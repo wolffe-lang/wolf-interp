@@ -1,0 +1,19 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.prov.region, mem.boundary.ffi
+//! The twin of `p4_region_freed.lu`: the same allocation, the same region, the
+//! read moved *inside* the region's extent. Nothing about the pointer changed —
+//! only whether the region that owns its memory is still alive.
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    unsafe {
+        let v = region r {
+            let inner = c.malloc(8) as *u8
+            c.memset(inner, 5, 8)
+            inner[0] as int
+        }
+        if v == 5 { 0 } else { 1 }
+    }
+}

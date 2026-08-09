@@ -1,0 +1,15 @@
+---
+source: tests/prov_machine.rs
+---
+program:   p5_false_noalias.lu
+verdict:   ub(mem.ub)
+row:       §7/P5
+clause:    [mem.unsafe.raw.2]
+what:      violated `assume noalias p, q`
+licenses:  O5: the asserted ranges get `noalias` treatment in Tier-3 code — vectorization/reordering as if proven
+message:   `assume noalias` asserts these ranges are disjoint, and alloc#0[0..1) overlaps alloc#0[0..1) — the assertion is false
+access:    `assume noalias p, q`
+tag from:  `c.malloc(8)`
+tree:
+  alloc#0 `c.malloc(8)` 8 byte(s), live, owned by region #0
+    tag#0 c.malloc(8)#root Active exposed

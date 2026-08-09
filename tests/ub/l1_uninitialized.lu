@@ -1,0 +1,19 @@
+//! check: run(exit=trap(ub))
+//! phase: resolve
+//! conforms: mem.ub, mem.boundary.ffi
+//! §7/L1: a read of uninitialized memory via a raw pointer. `c.malloc` returns
+//! storage nothing has written; reading it has no defined behavior, and that is
+//! what licenses O7 — moves lower to memcpy-and-forget, dead stores on
+//! moved-from places disappear, and locals are never zero-initialized "just in
+//! case".
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    unsafe {
+        let p = c.malloc(8) as *u8
+        let v = p[0] as int
+        c.free(p)
+        v
+    }
+}

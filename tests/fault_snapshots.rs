@@ -32,9 +32,25 @@ fn faults_dir() -> PathBuf {
         .join("faults")
 }
 
-fn programs() -> Vec<(String, String)> {
-    let mut out: Vec<(String, String)> = std::fs::read_dir(faults_dir())
-        .expect("the fault programs are readable")
+/// The corpus's own fault tier, which arrived with pin `ecea37c`.
+///
+/// Six of the programs this repo authored at is03 were upstreamed into
+/// `corpus/faults/`, and `tests/faults/README.md`'s dedupe rule then applies:
+/// **the vendored copies are the source of truth** and the local twins retire.
+/// They are still snapshot-tested — from here — because retiring the file is
+/// not the same as retiring the evidence.
+fn corpus_faults_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(wolf_interp::upstream_root())
+        .join("corpus")
+        .join("faults")
+}
+
+fn programs_in(dir: &Path) -> Vec<(String, String)> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
         .flatten()
         .map(|entry| entry.path())
         .filter(|path| path.extension().is_some_and(|e| e == "lu"))
@@ -46,8 +62,25 @@ fn programs() -> Vec<(String, String)> {
                 .into_owned();
             (name, std::fs::read_to_string(&path).expect("readable"))
         })
-        .collect();
+        .collect()
+}
+
+fn programs() -> Vec<(String, String)> {
+    let mut out = programs_in(&faults_dir());
+    out.extend(programs_in(&corpus_faults_dir()));
     out.sort();
+    // The dedupe is a property, not an accident: a program that exists in both
+    // places would be snapshot-tested twice under one name and the second run
+    // would silently overwrite the first.
+    let mut names: Vec<&str> = out.iter().map(|(name, _)| name.as_str()).collect();
+    names.sort_unstable();
+    let before = names.len();
+    names.dedup();
+    assert_eq!(
+        before,
+        names.len(),
+        "a fault program exists both locally and upstream; the vendored copy is the source of          truth (tests/faults/README.md)"
+    );
     out
 }
 
@@ -163,6 +196,11 @@ fn there_is_one_program_per_trap_identity_this_tier_can_raise() {
         ])
     );
 
+    // `ub` left this list at is04, but it left it *sideways*: the oracle's
+    // finding is the verdict `ub(anchor)`, not a `Trap`, so no program here
+    // produces `TrapKind::Ub` and none should. The kind stays in the closed
+    // vocabulary for the checked build (`[conf.trap.map]`), and
+    // `tests/ub_coverage.rs` is where its programs live.
     let deferred = [TrapKind::AllocContract, TrapKind::Race, TrapKind::Ub];
     assert_eq!(
         reachable.len() + deferred.len(),
@@ -170,7 +208,10 @@ fn there_is_one_program_per_trap_identity_this_tier_can_raise() {
         "the trap vocabulary moved; it is closed and requires a spec revision"
     );
     for kind in deferred {
-        assert!(!reachable.contains(&kind), "{kind} is not an is03 identity");
+        assert!(
+            !reachable.contains(&kind),
+            "{kind} is not a trap identity these programs raise"
+        );
     }
 }
 

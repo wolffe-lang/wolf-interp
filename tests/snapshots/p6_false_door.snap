@@ -1,0 +1,15 @@
+---
+source: tests/prov_machine.rs
+---
+program:   p6_false_door.lu
+verdict:   ub(mem.ub)
+row:       §7/P6
+clause:    [mem.unsafe.door]
+what:      false discharge of a re-entry door
+licenses:  O6: safe-tier code after the door keeps all safe-tier entitlements (O1–O4) — the door is where trust concentrates
+message:   `borrow region #1 from` a pointer into alloc#0, which is owned by `program` (region #0) — the obligation is that the allocation lies wholly inside the named region's footprint
+access:    `borrow r from p`
+tag from:  `c.malloc(8)`
+tree:
+  alloc#0 `c.malloc(8)` 8 byte(s), live, owned by region #0
+    tag#0 c.malloc(8)#root Active exposed

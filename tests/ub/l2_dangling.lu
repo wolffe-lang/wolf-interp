@@ -1,0 +1,24 @@
+//! check: run(exit=trap(ub))
+//! phase: resolve
+//! conforms: mem.prov.expose, mem.unsafe.raw.1, mem.ub
+//! §7/L2: the deref of a dangling raw pointer — "freed C allocation" in the
+//! row's own words. The integer survives the `free` (integers always do), and
+//! `[mem.prov.expose]` resolves the cast back angelically **among exposed
+//! tags** — but every tag of a freed allocation is Disabled, so no execution is
+//! defined and none is chosen. O8 is the pairing: escape analysis and stack
+//! promotion, without conservatively pinning an address because an integer
+//! somewhere might name it.
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    unsafe {
+        let p = c.malloc(8) as *u8
+        c.memset(p, 5, 8)
+        let address = p as int
+        c.free(p)
+        let q = address as *u8
+        let v = q[0] as int
+        v
+    }
+}

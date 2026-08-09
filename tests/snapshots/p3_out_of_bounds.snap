@@ -1,0 +1,15 @@
+---
+source: tests/prov_machine.rs
+---
+program:   p3_out_of_bounds.lu
+verdict:   ub(mem.ub)
+row:       §7/P3
+clause:    [mem.ub]
+what:      access outside an allocation's bounds
+licenses:  O3a: `dereferenceable(n)` on known-size accesses; bounds-based alias disproof between distinct allocations
+message:   write of 1 byte(s) at alloc#0[16], which holds 8
+access:    `p[16] = 1`
+tag from:  `c.malloc(8)`
+tree:
+  alloc#0 `c.malloc(8)` 8 byte(s), live, owned by region #0
+    tag#0 c.malloc(8)#root Active exposed

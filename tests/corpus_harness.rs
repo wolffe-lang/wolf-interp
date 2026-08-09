@@ -62,14 +62,24 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             `corpus/comptime/` and `corpus/faults/` tiers had NOT landed
     //             at this pin, so no dedupe against `tests/faults/` was owed —
     //             see that directory's README.)
+    //   ecea37c → 128 files (is04: s16's `corpus/comptime/` added 19 entries
+    //             and `corpus/faults/` added 6 — the six fault-class programs
+    //             this repo authored at is03 and upstreamed. Per
+    //             `tests/faults/README.md`, the vendored copies are now the
+    //             source of truth and the local twins of those six are gone;
+    //             the local directory keeps only the region/handle programs the
+    //             corpus still has no counterpart for. Two existing files
+    //             changed content without changing the count: `regions.lu`
+    //             gained `build_config` and `comptime.lu` was rewritten. All
+    //             new files are entries, so the member count is unmoved.)
     let report = report();
     assert_eq!(
         report.total(),
-        103,
+        128,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 89);
+    assert_eq!(report.entries(), 114);
     assert_eq!(report.members(), 14);
 }
 

@@ -1,0 +1,23 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.prov.expose, mem.unsafe.raw.1
+//! The twin of `l2_dangling.lu`, and the positive statement of
+//! `[mem.prov.expose]`: an int→ptr round trip through a *live* allocation
+//! resolves angelically to the tag the ptr→int cast exposed, and the execution
+//! is defined. Raw code can only commit provenance UB by touching an allocation
+//! with no exposed tags, or a dead one — which is D11's "simpler than safe",
+//! made checkable.
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    unsafe {
+        let p = c.malloc(8) as *u8
+        c.memset(p, 5, 8)
+        let address = p as int
+        let q = address as *u8
+        let v = q[0] as int
+        c.free(p)
+        if v == 5 { 0 } else { 1 }
+    }
+}

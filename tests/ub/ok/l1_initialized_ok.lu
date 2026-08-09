@@ -1,0 +1,18 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.ub, mem.boundary.ffi
+//! The twin of `l1_uninitialized.lu`: one `c.memset` apart. This is also the
+//! shape `corpus/ffi.lu` writes, which is why the C intrinsic set has to model
+//! `memset` at all rather than treat it as an opaque no-op.
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    unsafe {
+        let p = c.malloc(8) as *u8
+        c.memset(p, 0, 8)
+        let v = p[0] as int
+        c.free(p)
+        v
+    }
+}

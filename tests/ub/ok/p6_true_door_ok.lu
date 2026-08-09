@@ -1,0 +1,22 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.unsafe.door, mem.prov.tag
+//! The twin of `p6_false_door.lu`: the allocation is made while `r` is the
+//! ambient region, so it lies inside `r`'s footprint and the door's obligation
+//! holds. The result carries a fresh child tag under the region's node —
+//! `[mem.prov.tag]` lists `borrow r from ptr` among the retag points — so
+//! nothing above the door ever sees a wildcard.
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    let r = region()
+    unsafe {
+        let p = in r { c.malloc(8) as *u8 }
+        c.memset(p, 1, 8)
+        let b = borrow r from p
+        let v = b[0] as int
+        c.free(p)
+        if v == 1 { 0 } else { 1 }
+    }
+}

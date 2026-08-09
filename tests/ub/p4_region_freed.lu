@@ -1,0 +1,25 @@
+//! check: run(exit=trap(ub))
+//! phase: resolve
+//! conforms: mem.prov.region, mem.boundary.ffi, mem.ub
+//! §7/P4: an access to an allocation whose **region** was freed.
+//! `[mem.boundary.ffi]` says "a C call executes against an implicit region
+//! borrowed for the call's extent", so the block below charges its allocation
+//! to `r`; `[mem.prov.region]` says freeing a region Disables every tag tree it
+//! owns, and `}` frees `r` wholesale. The pointer outlives the region that
+//! owned its memory. P4 rather than P1 because the *region* is the fact: O3b
+//! gives every region its own alias-scope domain, and O4 makes a region that is
+//! not open in the current scope yield `invariant.load`.
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    unsafe {
+        let p = region r {
+            let inner = c.malloc(8) as *u8
+            c.memset(inner, 5, 8)
+            inner
+        }
+        let v = p[0] as int
+        v
+    }
+}

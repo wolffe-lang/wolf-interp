@@ -1,0 +1,29 @@
+//! check: run(exit=trap(ub))
+//! phase: resolve
+//! conforms: mem.prov.tag, mem.prov.state, mem.ub
+//! §7/P1, in its *protector* form — the canonical retag-then-opaque-call
+//! program. `a` and `b` are two children of one allocation's root, minted at
+//! parameter entry, and both are protected for the call's extent
+//! (`[mem.prov.tag]`: "parameter entry is protector-equivalent"). Writing
+//! through `b` is a **foreign** write for `a`, and `[mem.prov.state]` escalates
+//! that to immediate UB while `a` is protected — which is exactly the fact that
+//! licenses O1: a `mut` parameter lowers to `noalias` + `dereferenceable`, and
+//! a load through `a` may be folded across the opaque body.
+
+import c "stdlib.h"
+
+fn observe(a: *u8, mut b: *u8) -> int {
+    b[0] = 3
+    a[0] as int
+}
+
+fn main() -> !int {
+    unsafe {
+        let p = c.malloc(8) as *u8
+        p[0] = 1
+        var q = p
+        let n = observe(p, mut q)
+        c.free(p)
+        n
+    }
+}

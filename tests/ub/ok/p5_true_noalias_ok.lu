@@ -1,0 +1,22 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.unsafe.raw.2
+//! The twin of `p5_false_noalias.lu`, and the local copy of the corpus's own
+//! `memory/unsafe_noalias.lu`: two separate allocations never overlap, so the
+//! assertion is true and the execution is defined.
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    unsafe {
+        let p = c.malloc(8) as *u8
+        let q = c.malloc(8) as *u8
+        assume noalias p, q
+        p[0] = 1
+        q[0] = 2
+        let out = (p[0] + q[0]) as int
+        c.free(p)
+        c.free(q)
+        if out == 3 { 0 } else { 1 }
+    }
+}

@@ -79,7 +79,7 @@ fn the_registry_is_one_hundred_percent_covered() {
     assert_eq!(rows.len(), Rule::ALL.len());
     // is02 registered 36 rules; is03 added 23 for `spec/02` §3 and §4 plus
     // `[mem.model.order]`. The floor moves up with each sprint, never down.
-    assert!(rows.len() >= 59, "the registry lost rules: {}", rows.len());
+    assert!(rows.len() >= 71, "the registry lost rules: {}", rows.len());
 }
 
 #[test]
@@ -187,10 +187,70 @@ fn the_memory_model_rules_cite_the_clause_that_states_them() {
         (Rule::HandleAccess, "mem.shared.handle.3"),
         // The evaluation-order clause the pin bump published.
         (Rule::EvalStrictOrder, "mem.model.order"),
+        // is04: `spec/02` §5-§7, the unsafe tier.
+        (Rule::UnsafeRaw, "mem.unsafe.raw.1"),
+        (Rule::AssumeNoalias, "mem.unsafe.raw.2"),
+        (Rule::UnsafeDoor, "mem.unsafe.door"),
+        (Rule::UnsafeScope, "mem.unsafe.scope"),
+        (Rule::BoundaryFfi, "mem.boundary.ffi"),
+        (Rule::ProvTag, "mem.prov.tag"),
+        (Rule::ProvState, "mem.prov.state"),
+        (Rule::ProvExpose, "mem.prov.expose"),
+        (Rule::ProvRegion, "mem.prov.region"),
+        (Rule::Ub, "mem.ub"),
+        (Rule::UbLicensed, "mem.ub.closed"),
+        (Rule::UbVerdict, "proto.record.ub"),
     ];
     for (rule, anchor) in expected {
         assert_eq!(rule.anchor(), *anchor, "{rule:?}");
     }
+}
+
+#[test]
+fn the_trace_namespaces_are_derived_from_the_anchors_not_from_a_list() {
+    // is03 established the contract for `--trace=mem` and is04 extends it to
+    // `--trace=prov`: both filters are predicates over the *anchor*, so a rule
+    // that joins one of those clause families is traced by construction and the
+    // filter cannot drift away from the registry.
+    for row in rules::registry() {
+        assert_eq!(
+            row.rule.is_memory(),
+            row.anchor.starts_with("mem."),
+            "{:?} cites `{}`",
+            row.rule,
+            row.anchor
+        );
+        let tier3 = row.anchor.starts_with("mem.prov")
+            || row.anchor.starts_with("mem.unsafe")
+            || row.anchor.starts_with("mem.ub")
+            || row.anchor.starts_with("mem.boundary");
+        assert_eq!(
+            row.rule.is_provenance(),
+            tier3,
+            "{:?} cites `{}`",
+            row.rule,
+            row.anchor
+        );
+        // Tier 3 is a *subset* of the memory model, never a sibling of it.
+        assert!(!row.rule.is_provenance() || row.rule.is_memory());
+    }
+
+    // The registry actually populates both namespaces, so the assertions above
+    // are not vacuously true.
+    assert!(
+        rules::registry()
+            .iter()
+            .filter(|r| r.rule.is_memory())
+            .count()
+            > 30
+    );
+    assert!(
+        rules::registry()
+            .iter()
+            .filter(|r| r.rule.is_provenance())
+            .count()
+            >= 11
+    );
 }
 
 #[test]

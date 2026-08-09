@@ -1,0 +1,19 @@
+//! check: run(exit=trap(ub))
+//! phase: resolve
+//! conforms: mem.ub, mem.unsafe.raw.1
+//! §7/P3: an access outside an allocation's bounds. `[mem.unsafe.raw.1]` makes
+//! the *arithmetic* unrestricted — computing `p[16]` is fine — and §7/P3 is
+//! about the access. The pairing is O3a: `dereferenceable(n)` on every
+//! known-size access, and alias disproof between distinct allocations by bounds
+//! alone.
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    unsafe {
+        let p = c.malloc(8) as *u8
+        p[16] = 1
+        c.free(p)
+        0
+    }
+}

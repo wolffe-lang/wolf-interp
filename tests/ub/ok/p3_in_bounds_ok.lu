@@ -1,0 +1,17 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.ub, mem.unsafe.raw.1
+//! The twin of `p3_out_of_bounds.lu`: the last byte of the allocation is inside
+//! it. One byte apart from the fault, and the difference is the whole of O3a.
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    unsafe {
+        let p = c.malloc(8) as *u8
+        p[7] = 1
+        let v = p[7] as int
+        c.free(p)
+        if v == 1 { 0 } else { 1 }
+    }
+}

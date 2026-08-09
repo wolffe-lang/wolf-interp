@@ -1,0 +1,24 @@
+//! check: run(exit=trap(ub))
+//! phase: resolve
+//! conforms: mem.unsafe.raw.2, mem.ub
+//! §7/P5: a violated `assume noalias`. `[mem.unsafe.raw.2]` calls it "the only
+//! *assertion-created* UB in the language", and it is also the only way raw
+//! code takes on an aliasing obligation at all — everything else about `*T` is
+//! unrestricted by `[mem.unsafe.raw.1]`. `q` is a copy of `p`, so the two
+//! ranges are the same range and the assertion is false the moment it is
+//! written. O5 is what it would have bought: `noalias` treatment, and
+//! vectorization as if the disjointness had been proven.
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    unsafe {
+        let p = c.malloc(8) as *u8
+        let q = p
+        assume noalias p, q
+        p[0] = 1
+        q[0] = 2
+        c.free(p)
+        0
+    }
+}

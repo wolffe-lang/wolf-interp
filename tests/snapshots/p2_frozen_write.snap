@@ -1,0 +1,16 @@
+---
+source: tests/prov_machine.rs
+---
+program:   p2_frozen_write.lu
+verdict:   ub(mem.ub)
+row:       §7/P2
+clause:    [mem.prov.state]
+what:      write through a Frozen tag
+licenses:  O2: `read` params are immutable-for-the-call — loads hoist/CSE across opaque calls (the SB "holy grail"); `imm` data const-propagates
+message:   write through tag#1 (parameter), which is Frozen at alloc#0[0] — a `read`-mode borrow is immutable for its whole extent
+access:    `p[0] = 9`
+tag from:  `p`
+tree:
+  alloc#0 `c.malloc(8)` 8 byte(s), live, owned by region #0
+    tag#0 c.malloc(8)#root Active exposed
+      tag#1 parameter Frozen PROTECTED

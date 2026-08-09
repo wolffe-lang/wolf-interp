@@ -82,8 +82,10 @@ fn exercise(source: &[u8]) {
     ] {
         let observation = frontend::observe(source, rung);
         // `[proto.record.verdict]` is a closed set of six shapes, and a fuzzed
-        // program must land on one. `Pass`/`Fail`/`Exit`/`Trap`/`Unsupported`
-        // are reachable; `Ub` needs the is04 oracle.
+        // program must land on one. All six are reachable from is04 on: a
+        // mutation that plants an `unsafe` block and a raw pointer can and does
+        // reach the oracle, and when it does the verdict has to cite a
+        // well-formed anchor rather than an ad-hoc string.
         match &observation.verdict {
             wolf_interp::protocol::Verdict::Trap(kind) => {
                 assert!(
@@ -92,7 +94,18 @@ fn exercise(source: &[u8]) {
                 );
             }
             wolf_interp::protocol::Verdict::Ub(anchor) => {
-                panic!("is02 has no UB oracle, so it must never report ub({anchor})")
+                assert!(
+                    wolf_interp::anchor::classify(anchor).is_ok(),
+                    "a UB verdict must cite a well-formed anchor: ub({anchor})"
+                );
+                let finding = observation
+                    .ub
+                    .as_ref()
+                    .expect("a ub verdict carries its row");
+                assert!(
+                    !finding.row.optimization().is_empty(),
+                    "`[mem.ub.closed]`: zero rows without a named licensed optimization"
+                );
             }
             _ => {}
         }

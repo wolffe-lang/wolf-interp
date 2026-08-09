@@ -1,0 +1,15 @@
+---
+source: tests/prov_machine.rs
+---
+program:   l1_uninitialized.lu
+verdict:   ub(mem.ub)
+row:       §7/L1
+clause:    [mem.ub]
+what:      read of uninitialized or moved-from memory via raw pointers
+licenses:  O7: moves lower to memcpy-and-forget; dead-store elimination on moved-from places; no zero-init of locals
+message:   read of alloc#0[0], which nothing has written
+access:    `p[0]`
+tag from:  `c.malloc(8)`
+tree:
+  alloc#0 `c.malloc(8)` 8 byte(s), live, owned by region #0
+    tag#0 c.malloc(8)#root Active exposed

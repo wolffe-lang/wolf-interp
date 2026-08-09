@@ -1,0 +1,15 @@
+---
+source: tests/prov_machine.rs
+---
+program:   p4_region_freed.lu
+verdict:   ub(mem.ub)
+row:       §7/P4
+clause:    [mem.prov.region]
+what:      access to an allocation whose region was freed
+licenses:  O3b: one alias-scope domain per region — pointers into distinct regions never alias; O4: regions not open in the current scope yield `invariant.load`
+message:   read at alloc#0[0], whose owning region #1 was freed wholesale
+access:    `p[0]`
+tag from:  `c.malloc(8)`
+tree:
+  alloc#0 `c.malloc(8)` 8 byte(s), live, owned by region #1
+    tag#0 c.malloc(8)#root Disabled exposed

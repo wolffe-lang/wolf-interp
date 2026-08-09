@@ -68,10 +68,10 @@ fn entries() -> Vec<Entry> {
 
 /// The files this implementation evaluates end to end, with what they produce.
 ///
-/// **This list is the sprint's first-run ledger.** Adding to it is progress and
+/// **This list is the sprint's run ledger.** Adding to it is progress and
 /// belongs in a commit message; losing an entry is a regression. A file leaves
 /// this list only when the corpus drops it.
-const FIRST_RUN_LEDGER: &[(&str, &str)] = &[
+const RUN_LEDGER: &[(&str, &str)] = &[
     // The seed corpus.
     ("hello.lu", "exit(0)"),
     ("overflow.lu", "trap(overflow)"),
@@ -139,6 +139,28 @@ const FIRST_RUN_LEDGER: &[(&str, &str)] = &[
     ("traits/golden_arith.lu", "exit(0)"),
     ("traits/golden_eq.lu", "exit(0)"),
     ("traits/golden_missing_bound.lu", "exit(0)"),
+    // -- is04 -------------------------------------------------------------
+    // The unsafe litmuses. `unsafe_noalias.lu` runs *defined*: the assertion is
+    // true, so `[mem.unsafe.raw.2]` is discharged and O5's `noalias` treatment
+    // is licensed. `unsafe_ub_uaf.lu` is the oracle's first verdict — §7/P1
+    // through a freed C allocation, satisfying the file's `run(exit=trap(ub))`
+    // per `[conf.trap.map]`'s `ub` kind (see `ledger::ub_is_the_oracle_verdict`).
+    ("memory/unsafe_noalias.lu", "exit(0)"),
+    ("memory/unsafe_ub_uaf.lu", "ub(mem.ub)"),
+    // The six fault-class programs this repo authored at is03 and upstreamed;
+    // they arrived in `corpus/faults/` with pin `ecea37c` and the machine
+    // already reproduced every one (`tests/faults/README.md`).
+    ("faults/assert_fails.lu", "trap(assert)"),
+    ("faults/bounds_slice.lu", "trap(bounds)"),
+    ("faults/div_zero_rem.lu", "trap(div-zero)"),
+    ("faults/exclusivity_nested_path.lu", "trap(exclusivity)"),
+    ("faults/overflow_add.lu", "trap(overflow)"),
+    ("faults/use_after_move_field.lu", "trap(use-after-move)"),
+    // Const-generic normalization: `Buf[N + 1]` needs `type_arg ::= expr` to
+    // read as an expression, which is01's parser only did for a *leading*
+    // literal. Both files now parse, resolve and run.
+    ("comptime/norm_linear.lu", "exit(0)"),
+    ("comptime/norm_witness.lu", "exit(0)"),
 ];
 
 #[test]
@@ -157,13 +179,13 @@ fn no_corpus_file_mismatches_its_expectation() {
 }
 
 #[test]
-fn the_first_run_ledger_is_exactly_what_reaches_run() {
+fn the_run_ledger_is_exactly_what_reaches_run() {
     let observed: BTreeMap<String, String> = entries()
         .into_iter()
         .filter(|entry| entry.phase == Phase::Run)
         .map(|entry| (entry.path, entry.verdict.to_string()))
         .collect();
-    let expected: BTreeMap<String, String> = FIRST_RUN_LEDGER
+    let expected: BTreeMap<String, String> = RUN_LEDGER
         .iter()
         .map(|(path, verdict)| ((*path).to_owned(), (*verdict).to_owned()))
         .collect();
@@ -240,6 +262,17 @@ fn every_run_expectation_this_machine_reaches_is_met_exactly() {
                 assert_eq!(want, got, "{}", entry.path);
             }
             (ExitSpec::Trap(None), Verdict::Trap(_)) => {}
+            // `run(exit=trap(ub))` against `ub(anchor)`: one event, two lenses.
+            // `[conf.trap.map]` routes the `ub` kind's comparison semantics to
+            // `[proto.record.ub]` precisely so the two must agree.
+            (ExitSpec::Trap(want), Verdict::Ub(anchor)) => {
+                assert!(
+                    ledger::ub_is_the_oracle_verdict(*want),
+                    "{}: expected {}, observed ub({anchor})",
+                    entry.path,
+                    ExitSpec::Trap(*want)
+                );
+            }
             (want, got) => panic!("{}: expected {want}, observed {got}", entry.path),
         }
         if let Some(want) = stdout {
@@ -252,7 +285,7 @@ fn every_run_expectation_this_machine_reaches_is_met_exactly() {
         }
     }
     assert!(
-        checked >= 11,
+        checked >= 20,
         "only {checked} run expectations were exercised"
     );
 }
@@ -276,14 +309,60 @@ fn phase_reached_is_never_inflated() {
                 entry.path,
                 entry.phase
             ),
-            Verdict::Exit(_) | Verdict::Trap(_) => {
+            // A `ub` verdict reaches `run` exactly as a trap does: the
+            // execution *completed*, at the defined stopping point "this has no
+            // defined behavior". Inflating or deflating it would both be lies.
+            Verdict::Exit(_) | Verdict::Trap(_) | Verdict::Ub(_) => {
                 assert_eq!(entry.phase, Phase::Run, "{}", entry.path);
             }
-            Verdict::Pass | Verdict::Ub(_) => {
+            Verdict::Pass => {
                 panic!("{}: unexpected verdict {}", entry.path, entry.verdict)
             }
         }
     }
+}
+
+#[test]
+fn unsafe_free_corpus_programs_never_produce_a_ub_verdict() {
+    // The sprint's headline claim as a CI assertion: **zero UB in safe code**.
+    //
+    // `[mem.ub]` states it — "Safe-tier programs cannot reach any row — every
+    // row requires Tier 3 (or an FFI boundary) in the execution" — and this is
+    // that sentence checked against every program in the pinned corpus rather
+    // than argued. The filter is the source text: a file with no `unsafe`
+    // block, no `asm`, and no `import c` is safe-tier by construction, and its
+    // verdict must never be `ub(…)`.
+    let root = corpus_root();
+    let report = corpus::walk(&root, None).expect("walkable");
+    let mut safe = 0usize;
+    for file in &report.files {
+        if !matches!(file.outcome, Outcome::Entry(_)) {
+            continue;
+        }
+        let full = root.join(&file.path);
+        let source = std::fs::read(&full).expect("readable");
+        let text = String::from_utf8_lossy(&source);
+        if text.contains("unsafe") || text.contains("import c ") || text.contains("asm ") {
+            continue;
+        }
+        safe += 1;
+        let (record, observed) = wolf_interp::observe_record(&full, &source, None);
+        assert!(
+            !matches!(record.verdict, Verdict::Ub(_)),
+            "{}: a safe-tier program reached §7/{} — either the machine is wrong or `[mem.ub]`'s \
+             \"safe-tier programs cannot reach any row\" is\n{}",
+            file.path,
+            observed
+                .ub
+                .as_ref()
+                .map_or_else(|| "?".to_owned(), |finding| finding.row.to_string()),
+            observed
+                .ub
+                .as_ref()
+                .map_or_else(String::new, ToString::to_string),
+        );
+    }
+    assert!(safe > 90, "only {safe} safe-tier programs were checked");
 }
 
 #[test]

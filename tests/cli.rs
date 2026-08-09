@@ -119,7 +119,7 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = stdout_of(&output);
-    assert!(stdout.contains("103 file(s)"), "{stdout}");
+    assert!(stdout.contains("128 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -128,11 +128,12 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = wolf_interp(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 103);
+    assert_eq!(value["total"], 128);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
-    // The first entry in path order is `comptime.lu`: it parses and resolves,
-    // and CTFE is outside is02, so it stops at the deepest *completed* rung.
+    // The first entry in slash-path order is still `comptime.lu` (`.` precedes
+    // `/`): it parses and resolves, and comptime evaluation is the compiler's
+    // s16 engine, so it stops at the deepest *completed* rung.
     assert_eq!(value["files"][0]["file"], "comptime.lu");
     assert_eq!(
         value["files"][0]["interpreter_status"],

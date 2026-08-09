@@ -1,0 +1,23 @@
+//! check: run(exit=trap(ub))
+//! phase: resolve
+//! conforms: mem.unsafe.door, mem.ub
+//! §7/P6: a re-entry door's obligation discharged falsely. `[mem.unsafe.door]`
+//! states the obligation — "`ptr` addresses a live allocation wholly inside
+//! region `r`'s footprint" — and states where the UB lands: "at the *door*, not
+//! later — the safe tier stays safe by construction". The allocation below
+//! belongs to the ambient program region, not to `r`. O6 is the entitlement
+//! this buys: safe code *after* the door keeps O1–O4 and re-checks nothing.
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    let r = region()
+    unsafe {
+        let p = c.malloc(8) as *u8
+        c.memset(p, 1, 8)
+        let b = borrow r from p
+        let v = b[0] as int
+        c.free(p)
+        v
+    }
+}

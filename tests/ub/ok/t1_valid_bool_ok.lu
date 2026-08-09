@@ -1,0 +1,18 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.ub, mem.unsafe.raw.1
+//! The twin of `t1_invalid_bool.lu`: the same cast over a byte that *is* a
+//! valid `bool` representation. The restriction is on the value, not on the
+//! operation.
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    unsafe {
+        let p = c.malloc(8) as *u8
+        p[0] = 1
+        let flag = p[0] as bool
+        c.free(p)
+        if flag { 0 } else { 1 }
+    }
+}

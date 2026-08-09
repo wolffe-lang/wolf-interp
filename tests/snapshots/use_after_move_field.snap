@@ -6,5 +6,5 @@ trap:    use-after-move
 clause:  [mem.tier0.move.2]
 rule:    UseAfterMove
 message: `p.x.n` was moved out and is uninitialized here
-at:      19:13 `p.x.n`
-because: 17:17 `take p.x` — `p.x` moved here
+at:      20:13 `p.x.n`
+because: 18:17 `take p.x` — `p.x` moved here
