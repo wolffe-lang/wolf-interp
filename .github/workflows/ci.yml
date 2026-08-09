@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [trunk, main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Primary gate: linux/x86-64 runs the whole ladder, including the corpus walk.
+  # macOS/aarch64 and windows/x86-64 build and test (D35 posture).
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # `upstream/` is the pinned wolf-lang submodule (PRIVATE — CI uses
+          # the tracked vendor/upstream snapshot instead; vendor/README.md).
+          # The gitlink pin stays visible via `git submodule status --cached`.
+          # code. The whole harness is dark without it.
+
+      # The runner image ships some toolchain; `rust-toolchain.toml` names the
+      # one we test against. Install it explicitly — an implicit rustup
+      # proxy-install races the first cargo invocation and picks up neither
+      # rustfmt nor clippy.
+      - name: Install the pinned toolchain
+        run: |
+          rustup show active-toolchain
+          rustup component add rustfmt clippy
+
+      - name: Toolchain versions
+        run: |
+          rustc --version
+          cargo --version
+          cargo fmt --version
+          cargo clippy --version
+
+      - name: rustfmt
+        run: cargo fmt --check
+
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: test
+        run: cargo test
+
+      # Everything is `unsupported` today; a green walk means every corpus
+      # directive header is legible to our own parser.
+      - name: corpus harness
+        run: cargo run -- corpus
+
+      # The fixtures are the protocol's own tests ([proto.harness.fixtures]).
+      - name: protocol fixtures
+        run: |
+          cargo run -- protocol validate upstream/corpus/protocol/valid.json upstream/corpus/protocol/with-extensions.json
+
+  # The independence doctrine as a CI law: no wolf-lang code, ever.
+  independence:
+    name: independence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain
+
+      - name: Lock file names no wolf crate and no wolf-lang git dependency
+        run: |
+          cargo generate-lockfile
+          if grep -nE '^name = "wolf[-_]' Cargo.lock | grep -v '"wolf-interp"'; then
+            echo "::error::Cargo.lock depends on a wolf-* crate; wolf-interp shares no code with the compiler."
+            exit 1
+          fi
+          if grep -n 'wolf-lang' Cargo.lock; then
+            echo "::error::Cargo.lock has a dependency on the wolf-lang repository."
+            exit 1
+          fi
+
+      - name: Only spec/ and corpus/ are consumed from the pin
+        run: |
+          if grep -rEn 'upstream/(crates|xtask|src)' \
+               --include='*.rs' --include='*.toml' --include='*.yml' \
+               --exclude-dir=target --exclude-dir=upstream --exclude-dir=.git . ; then
+            echo "::error::Something reaches into upstream/ outside spec/ and corpus/."
+            exit 1
+          fi
+
+      - name: The pin is a recorded revision, not a moving branch
+        run: |
+          git submodule status --cached upstream
+          test -n "$(git rev-parse HEAD:upstream)"

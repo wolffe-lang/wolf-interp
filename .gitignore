@@ -1,1 +1,6 @@
 /target
+
+# insta writes these while a snapshot is under review; the reviewed .snap is
+# what gets committed (CONTRIBUTING.md, "the snapshot ritual").
+*.snap.new
+*.pending-snap
