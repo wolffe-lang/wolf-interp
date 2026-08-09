@@ -1,0 +1,9 @@
+# Pinned toolchain, mirroring the compiler track's convention.
+#
+# Bump policy: a toolchain bump is its own commit, touching only this file
+# (plus whatever the new compiler's lints demand), and lands CI-green on all
+# three platforms. Never fold a bump into a feature commit.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
