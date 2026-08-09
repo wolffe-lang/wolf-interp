@@ -5,14 +5,14 @@
 //! outside every registered and reserved namespace is an error
 //! (`[conf.anchor.ns]`).
 //!
-//! ## Recorded divergence between spec/05 and the corpus
+//! ## Resolved: the underscore in the anchor charset
 //!
-//! `[conf.anchor.grammar]` says an anchor is built from "letters, digits, `-`,
-//! `.`" — but the pinned corpus ships anchors containing underscores
-//! (`comptime.types_as_values`, `str.regex_literal`, `mod.use.unused` is fine,
-//! but the first two are not). Rejecting `_` would redden the pinned corpus, so
-//! this implementation accepts it and the discrepancy is reported upward as a
-//! finding for the queued spec/05 amendment rather than silently normalized.
+//! At the previous pin `[conf.anchor.grammar]` said an anchor is built from
+//! "letters, digits, `-`, `.`" while the corpus shipped anchors containing
+//! underscores (`comptime.types_as_values`, `str.regex_literal`). We accepted
+//! `_` and reported the discrepancy upward; the amendment landed — the pinned
+//! clause now reads "letters, digits, `-`, `_`, `.`" and the charset below is
+//! the spec's, not a tolerance.
 
 use std::fmt;
 
@@ -21,9 +21,9 @@ pub const REGISTERED_NAMESPACES: [&str; 6] = ["gram", "mem", "conc", "abi", "con
 
 /// Namespaces reserved for spec documents not yet written; tags in them are
 /// legal and counted as *forward* (`[conf.anchor.ns]`).
-pub const RESERVED_NAMESPACES: [&str; 13] = [
+pub const RESERVED_NAMESPACES: [&str; 14] = [
     "str", "err", "task", "proc", "sync", "generics", "arith", "ffi", "unsafe", "comptime", "perf",
-    "mod", "std",
+    "mod", "std", "ty",
 ];
 
 /// How an anchor's namespace is classified.

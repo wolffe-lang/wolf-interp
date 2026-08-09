@@ -9,14 +9,21 @@
 //! Two implementations that quietly share a parser cannot disagree, and
 //! disagreement is the entire product (`[proto.cmp.triage]`).
 //!
-//! At sprint is00 there is no language work at all: no lexer, no parser, no
-//! evaluator. What exists is the scaffolding that makes independence
-//! mechanical — a directive parser, a corpus harness, and an honest
-//! `unsupported` speaker of the spec/06 protocol.
+//! At is01 the frontend is real: [`lex`] and [`parse`] implement
+//! `spec/01-grammar.md` in full, and [`frontend`] speaks the result as a
+//! spec/06 observation record at the `lex` and `parse` rungs. Everything
+//! deeper is still an honest `unsupported` — the conservatism ledger stays
+//! truthful (`[proto.record.unsupported]`).
 
 pub mod anchor;
+pub mod ast;
+pub mod compare;
 pub mod corpus;
+pub mod diag;
 pub mod directive;
+pub mod frontend;
+pub mod lex;
+pub mod parse;
 pub mod phase;
 pub mod protocol;
 pub mod schema;
@@ -61,14 +68,37 @@ pub fn slash_path(path: &Path) -> String {
         .join("/")
 }
 
-/// Builds the honest observation record this sprint can produce: nothing has
-/// been implemented, so nothing is claimed.
+/// Observes one program and builds its spec/06 record.
 ///
-/// `phase_reached` is `none` and the verdict is `unsupported` — a legal
-/// verdict per `[proto.record.unsupported]`, excluded from divergence counting
-/// and visible in the conservatism ledger. `seeded` is `false` because there
-/// is no seeded scheduling to speak of yet (`[proto.seed.flag]`), whatever
-/// `--seed` was passed.
+/// `seeded` is always `false`: there is no seeded scheduling yet, whatever
+/// `--seed` was passed (`[proto.seed.flag]` — an implementation without it
+/// *declares* so rather than lying).
+#[must_use]
+pub fn observe_record(
+    file: &Path,
+    source: &[u8],
+    requested_phase: Option<Phase>,
+) -> (ObservationRecord, Option<crate::diag::Diag>) {
+    let observation = frontend::observe(source, requested_phase);
+    let record = ObservationRecord {
+        protocol: PROTOCOL_VERSION,
+        impl_name: IMPL_NAME.to_owned(),
+        impl_version: IMPL_VERSION.to_owned(),
+        commit: COMMIT.to_owned(),
+        file: slash_path(file),
+        phase_reached: observation.phase_reached,
+        seeded: false,
+        diagnostics: observation.diagnostics,
+        verdict: observation.verdict,
+        stdout_sha256: None,
+        stdout_inline: None,
+        extensions: BTreeMap::new(),
+    };
+    (record, observation.detail)
+}
+
+/// The record for a program nothing has looked at — kept for callers that want
+/// the shape without running the frontend.
 #[must_use]
 pub fn unsupported_record(file: &Path) -> ObservationRecord {
     ObservationRecord {
