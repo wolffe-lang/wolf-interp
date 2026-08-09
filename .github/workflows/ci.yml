@@ -86,41 +86,41 @@ jobs:
 
           # parse: the canonical program is clean, a counter-example carries its
           # pinned code (and the tool still exits 0).
-          cargo run --quiet -- conform-run vendor/upstream/corpus/wordcount.lu --phase=parse --json \
-            | grep -q '"verdict":"pass"'
-          cargo run --quiet -- conform-run vendor/upstream/corpus/grammar/structlit_cond.lu --phase=parse --json \
-            | grep -q '"verdict":"fail(E0006)"'
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/wordcount.lu --phase=parse --json)
+          echo "$out" | grep -q '"verdict":"pass"'
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/grammar/structlit_cond.lu --phase=parse --json)
+          echo "$out" | grep -q '"verdict":"fail(E0006)"'
 
           # resolve: sema-lite completes on every well-formed file.
-          cargo run --quiet -- conform-run vendor/upstream/corpus/regions.lu --phase=resolve --json \
-            | grep -q '"phase_reached":"resolve","seeded":false,"diagnostics":\[\],"verdict":"pass"'
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/regions.lu --phase=resolve --json)
+          echo "$out" | grep -q '"phase_reached":"resolve","seeded":false,"diagnostics":\[\],"verdict":"pass"'
 
           # typecheck: NOT performed. The honest answer is the deepest completed
           # rung plus `unsupported` — never a claim of `typecheck`.
-          cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --phase=typecheck --json \
-            | grep -q '"phase_reached":"resolve","seeded":false,"diagnostics":\[\],"verdict":"unsupported"'
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --phase=typecheck --json)
+          echo "$out" | grep -q '"phase_reached":"resolve","seeded":false,"diagnostics":\[\],"verdict":"unsupported"'
 
           # run: files from the first-run ledger, by verdict — one per rung of
           # the trap vocabulary this implementation reaches.
-          cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --json \
-            | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"'
-          cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --json \
-            | grep -q '"stdout_inline":"hello, wolf'
-          cargo run --quiet -- conform-run vendor/upstream/corpus/overflow.lu --json \
-            | grep -q '"verdict":"trap(overflow)"'
-          cargo run --quiet -- conform-run vendor/upstream/corpus/memory/div_zero.lu --json \
-            | grep -q '"verdict":"trap(div-zero)"'
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --json)
+          echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"'
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --json)
+          echo "$out" | grep -q '"stdout_inline":"hello, wolf'
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/overflow.lu --json)
+          echo "$out" | grep -q '"verdict":"trap(overflow)"'
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/memory/div_zero.lu --json)
+          echo "$out" | grep -q '"verdict":"trap(div-zero)"'
 
           # is03's Tier-1/2 rungs: the region litmuses run, and the generational
           # handle fault is `stale-handle` in every profile ([mem.shared.handle.2]).
           for f in region_ambient_ok region_multiopen_ok region_multiopen_swap \
                    region_iso_edge_ok shared_ok; do
-            cargo run --quiet -- conform-run "vendor/upstream/corpus/memory/$f.lu" --json \
-              | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"' \
+            out=$(cargo run --quiet -- conform-run "vendor/upstream/corpus/memory/$f.lu" --json)
+            echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"' \
               || { echo "::error::memory/$f.lu no longer reaches run cleanly"; exit 1; }
           done
-          cargo run --quiet -- conform-run vendor/upstream/corpus/memory/handle_stale.lu --json \
-            | grep -q '"verdict":"trap(stale-handle)"'
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/memory/handle_stale.lu --json)
+          echo "$out" | grep -q '"verdict":"trap(stale-handle)"'
 
           # `--trace=mem` is a filter over the rule registry: every line it
           # keeps cites a `mem.*` clause, and the region events are all there.
@@ -134,13 +134,13 @@ jobs:
 
           # A file outside is03's coverage says so, with a reason on an `x-` key
           # ([proto.record.ext]) rather than in the payload-free verdict.
-          cargo run --quiet -- conform-run vendor/upstream/corpus/procs.lu --json \
-            | grep -q '"verdict":"unsupported",.*"x-unsupported"'
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/procs.lu --json)
+          echo "$out" | grep -q '"verdict":"unsupported",.*"x-unsupported"'
           # `regions.lu` is unsupported for a different reason, and the reason is
           # a finding against the corpus: `build_config()` is declared nowhere.
           # See docs/approximation-contract.md §5.5.
-          cargo run --quiet -- conform-run vendor/upstream/corpus/regions.lu --json \
-            | grep -q '"verdict":"unsupported",.*build_config'
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/regions.lu --json)
+          echo "$out" | grep -q '"verdict":"unsupported",.*build_config'
 
       # The fixtures are the protocol's own tests ([proto.harness.fixtures]).
       - name: protocol fixtures
