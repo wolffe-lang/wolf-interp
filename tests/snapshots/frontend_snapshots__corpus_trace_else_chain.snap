@@ -1,0 +1,40 @@
+---
+source: tests/frontend_snapshots.rs
+expression: "trace_of(&corpus(\"grammar/else_chain.lu\"))"
+---
+  137..267   [gram.item.unit] unit
+  137..267   [gram.item.fn]   fn main
+  155..267   [gram.expr.block]     block
+  161..170   [gram.item.let]       binding
+  169..170   [gram.expr.primary]         int 2
+  175..233   [gram.item.let]       binding
+  183..233   [gram.expr.flow]         if
+  186..192   [gram.expr.prec]           binary Eq
+  186..187   [gram.expr.primary]             path x
+  191..192   [gram.expr.primary]             int 1
+  193..199   [gram.expr.block]           block
+  195..197   [gram.expr.block]             tail value
+  195..197   [gram.expr.primary]               int 10
+  205..233   [gram.expr.flow]           if
+  208..214   [gram.expr.prec]             binary Eq
+  208..209   [gram.expr.primary]               path x
+  213..214   [gram.expr.primary]               int 2
+  215..221   [gram.expr.block]             block
+  217..219   [gram.expr.block]               tail value
+  217..219   [gram.expr.primary]                 int 20
+  227..233   [gram.expr.block]             block expression
+  227..233   [gram.expr.block]               block
+  229..231   [gram.expr.block]                 tail value
+  229..231   [gram.expr.primary]                   int 30
+  238..265   [gram.expr.block]       tail value
+  238..265   [gram.expr.flow]         if
+  241..248   [gram.expr.prec]           binary Eq
+  241..242   [gram.expr.primary]             path r
+  246..248   [gram.expr.primary]             int 20
+  249..254   [gram.expr.block]           block
+  251..252   [gram.expr.block]             tail value
+  251..252   [gram.expr.primary]               int 0
+  260..265   [gram.expr.block]           block expression
+  260..265   [gram.expr.block]             block
+  262..263   [gram.expr.block]               tail value
+  262..263   [gram.expr.primary]                 int 1

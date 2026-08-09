@@ -1,0 +1,68 @@
+---
+source: tests/frontend_snapshots.rs
+expression: "trace_of(&corpus(\"grammar/closure_extent.lu\"))"
+---
+  137..419   [gram.item.unit] unit
+  137..419   [gram.item.fn]   fn main
+  155..419   [gram.expr.block]     block
+  161..188   [gram.item.let]       binding
+  170..188   [gram.expr.primary]         call (0 arg(s))
+  170..186   [gram.amb.brackets]           bracket-apply (1 arg(s))
+  170..174   [gram.expr.primary]             path List
+  175..185   [gram.expr.primary]             tuple (2)
+  176..179   [gram.expr.primary]               path int
+  181..184   [gram.expr.primary]               path int
+  193..208   [gram.expr.block]       expr statement
+  193..208   [gram.expr.primary]         call (1 arg(s))
+  193..200   [gram.expr.primary]           path xs.push
+  201..207   [gram.expr.primary]           tuple (2)
+  202..203   [gram.expr.primary]             int 1
+  205..206   [gram.expr.primary]             int 9
+  213..228   [gram.expr.block]       expr statement
+  213..228   [gram.expr.primary]         call (1 arg(s))
+  213..220   [gram.expr.primary]           path xs.push
+  221..227   [gram.expr.primary]           tuple (2)
+  222..223   [gram.expr.primary]             int 2
+  225..226   [gram.expr.primary]             int 3
+  233..285   [gram.item.let]       binding
+  243..285   [gram.expr.primary]         call (1 arg(s))
+  243..282   [gram.expr.primary]           member .take
+  243..277   [gram.expr.primary]             call (1 arg(s))
+  243..255   [gram.expr.primary]               path xs.sorted_by
+  256..276   [gram.expr.closure]               closure (2 param(s))
+  265..276   [gram.expr.prec]                 binary Cmp
+  265..268   [gram.expr.primary]                   member .1
+  265..266   [gram.expr.primary]                     path b
+  273..276   [gram.expr.primary]                   member .1
+  273..274   [gram.expr.primary]                     path a
+  283..284   [gram.expr.primary]           int 1
+  290..363   [gram.item.let]       binding
+  302..331   [gram.expr.primary]         call (3 arg(s))
+  302..305   [gram.expr.primary]           path zip
+  306..308   [gram.expr.primary]           path xs
+  310..325   [gram.expr.closure]           closure (1 param(s))
+  316..325   [gram.expr.prec]             binary Add
+  316..319   [gram.expr.primary]               member .0
+  316..317   [gram.expr.primary]                 path p
+  322..325   [gram.expr.primary]               member .1
+  322..323   [gram.expr.primary]                 path p
+  327..330   [gram.expr.primary]           int 100
+  368..417   [gram.expr.block]       tail value
+  368..417   [gram.expr.flow]         if
+  371..400   [gram.expr.prec]           binary And
+  371..384   [gram.expr.prec]             binary Eq
+  371..379   [gram.expr.primary]               member .1
+  371..377   [gram.amb.brackets]                 bracket-apply (1 arg(s))
+  371..374   [gram.expr.primary]                   path top
+  375..376   [gram.expr.primary]                   int 0
+  383..384   [gram.expr.primary]               int 9
+  388..400   [gram.expr.prec]             binary Eq
+  388..393   [gram.expr.primary]               path mixed
+  397..400   [gram.expr.primary]               int 115
+  401..406   [gram.expr.block]           block
+  403..404   [gram.expr.block]             tail value
+  403..404   [gram.expr.primary]               int 0
+  412..417   [gram.expr.block]           block expression
+  412..417   [gram.expr.block]             block
+  414..415   [gram.expr.block]               tail value
+  414..415   [gram.expr.primary]                 int 1

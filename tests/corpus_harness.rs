@@ -52,7 +52,7 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     let report = report();
     assert_eq!(
         report.total(),
-        69,
+        74,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());

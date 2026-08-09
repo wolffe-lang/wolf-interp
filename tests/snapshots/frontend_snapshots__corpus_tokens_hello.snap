@@ -1,0 +1,33 @@
+---
+source: tests/frontend_snapshots.rs
+expression: "tokens_of(&corpus(\"hello.lu\"))"
+---
+  309..311   kw fn
+  312..316   ident main
+  316..317   punct (
+  317..318   punct )
+  319..321   punct ->
+  322..323   punct !
+  323..326   ident int
+  327..328   punct {
+  333..336   kw let
+  337..340   ident who
+  341..342   punct =
+  343..344   str-open plain
+  344..348     text "wolf"
+  348..349   str-close
+  349..349   term nl
+  354..359   ident print
+  359..360   punct (
+  360..361   str-open plain
+  361..368     text "hello, "
+  368..369     interp-open
+  369..372       ident who
+  372..373     interp-close
+  373..374   str-close
+  374..375   punct )
+  375..375   term nl
+  380..381   int 0
+  381..381   term nl
+  382..383   punct }
+  383..383   term nl

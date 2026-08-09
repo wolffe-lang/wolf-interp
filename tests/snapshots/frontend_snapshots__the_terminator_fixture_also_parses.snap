@@ -1,0 +1,43 @@
+---
+source: tests/frontend_snapshots.rs
+expression: trace_of(TERMINATOR_RULES)
+---
+    0..285   [gram.item.unit] unit
+    0..10    [gram.item.attr]   attribute
+   11..34    [gram.item.type]   struct Point (1 field(s))
+   36..285   [gram.item.fn]   fn rules
+   79..285   [gram.expr.block]     block
+   85..113   [gram.item.let]       binding
+  100..113   [gram.expr.prec]         binary Add
+  100..101   [gram.expr.primary]           path a
+  112..113   [gram.expr.primary]           path b
+  118..159   [gram.item.let]       binding
+  129..159   [gram.expr.primary]         call (2 arg(s))
+  129..130   [gram.expr.primary]           path f
+  140..141   [gram.expr.primary]           path a
+  151..152   [gram.expr.primary]           path b
+  164..231   [gram.item.let]       binding
+  178..231   [gram.expr.primary]         call (1 arg(s))
+  178..179   [gram.expr.primary]           path g
+  180..230   [gram.expr.closure]           closure (0 param(s))
+  185..230   [gram.expr.block]             block expression
+  185..230   [gram.expr.block]               block
+  195..209   [gram.item.let]                 binding
+  208..209   [gram.expr.primary]                   path a
+  218..224   [gram.expr.block]                 tail value
+  218..224   [gram.expr.primary]                   path inside
+  236..270   [gram.expr.block]       expr statement
+  236..270   [gram.expr.flow]         if
+  239..245   [gram.expr.prec]           binary Eq
+  239..240   [gram.expr.primary]             path a
+  244..245   [gram.expr.primary]             int 1
+  246..270   [gram.expr.block]           block
+  248..259   [gram.expr.block]             expr statement
+  248..258   [gram.expr.primary]               call (1 arg(s))
+  248..253   [gram.expr.primary]                 path print
+  254..257   [gram.lex.str]                 string (1 part(s))
+  260..268   [gram.expr.block]             tail value
+  260..268   [gram.expr.flow]               return
+  267..268   [gram.expr.primary]                 int 0
+  275..283   [gram.expr.block]       tail value
+  275..283   [gram.expr.primary]         path trailing

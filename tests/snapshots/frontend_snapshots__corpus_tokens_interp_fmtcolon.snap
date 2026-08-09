@@ -1,0 +1,77 @@
+---
+source: tests/frontend_snapshots.rs
+expression: "tokens_of(&corpus(\"grammar/interp_fmtcolon.lu\"))"
+---
+  136..138   kw fn
+  139..143   ident main
+  143..144   punct (
+  144..145   punct )
+  146..148   punct ->
+  149..150   punct !
+  150..153   ident int
+  154..155   punct {
+  160..163   kw var
+  164..165   ident m
+  166..167   punct =
+  168..171   ident Map
+  171..172   punct [
+  172..175   ident str
+  175..176   punct ,
+  177..180   ident int
+  180..181   punct ]
+  181..182   punct (
+  182..183   punct )
+  183..183   term nl
+  188..189   ident m
+  189..190   punct [
+  190..191   str-open plain
+  191..192     text "k"
+  192..193   str-close
+  193..194   punct ]
+  195..196   punct =
+  197..199   int 42
+  199..199   term nl
+  204..209   ident print
+  209..210   punct (
+  210..211   str-open plain
+  211..212     interp-open
+  212..213       ident m
+  213..214       punct [
+  214..215       str-open plain
+  215..216         text "k"
+  216..217       str-close
+  217..218       punct ]
+  218..219       fmt-open
+  219..221       fmt ">8"
+  221..222     interp-close
+  222..223   str-close
+  223..224   punct )
+  268..268   term nl
+  273..276   kw let
+  277..278   ident w
+  279..280   punct =
+  281..282   int 8
+  282..282   term nl
+  287..292   ident print
+  292..293   punct (
+  293..294   str-open plain
+  294..295     interp-open
+  295..296       ident m
+  296..297       punct [
+  297..298       str-open plain
+  298..299         text "k"
+  299..300       str-close
+  300..301       punct ]
+  301..302       fmt-open
+  302..303       fmt ">"
+  303..304       interp-open
+  304..305         ident w
+  305..306       interp-close
+  306..307     interp-close
+  307..308   str-close
+  308..309   punct )
+  346..346   term nl
+  351..352   int 0
+  352..352   term nl
+  353..354   punct }
+  354..354   term nl

@@ -35,7 +35,8 @@ fn conform_run_emits_a_valid_record_and_exits_zero() {
     assert_eq!(schema::validate(&value), Ok(()));
     assert_eq!(value["protocol"], 1);
     assert_eq!(value["impl"], "wolf-interp");
-    assert_eq!(value["phase_reached"], "none");
+    // The frontend completes `parse` and claims nothing deeper (is01).
+    assert_eq!(value["phase_reached"], "parse");
     assert_eq!(value["verdict"], "unsupported");
     assert_eq!(value["seeded"], false);
     assert_eq!(value["file"], serde_json::json!(hello));
@@ -57,9 +58,11 @@ fn conform_run_stays_honest_under_phase_and_seed() {
 
     let value: serde_json::Value =
         serde_json::from_str(stdout_of(&output).trim()).expect("stdout is one JSON object");
-    // A deeper `--phase` never buys a deeper claim, and `--seed` never buys
-    // `seeded: true` (`[proto.seed.flag]`).
-    assert_eq!(value["phase_reached"], "none");
+    // A deeper `--phase` never buys a deeper claim than the deepest *completed*
+    // rung (`[proto.record.phase]`), and `--seed` never buys `seeded: true`
+    // (`[proto.seed.flag]`).
+    assert_eq!(value["phase_reached"], "parse");
+    assert_eq!(value["verdict"], "unsupported");
     assert_eq!(value["seeded"], false);
 
     // The unhonored knobs are announced on stderr, never on stdout.
@@ -102,7 +105,7 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = stdout_of(&output);
-    assert!(stdout.contains("69 file(s)"), "{stdout}");
+    assert!(stdout.contains("74 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -111,10 +114,12 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = wolf_interp(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 69);
+    assert_eq!(value["total"], 74);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
-    assert_eq!(value["files"][0]["interpreter_status"], "unsupported");
+    // The frontend reaches `parse` on every well-formed entry and declares
+    // itself unsupported beyond it.
+    assert_eq!(value["files"][0]["interpreter_status"], "unsupported@parse");
 }
 
 #[test]
@@ -144,4 +149,79 @@ fn protocol_validate_accepts_and_rejects_the_fixtures_as_named() {
         assert_eq!(output.status.code(), Some(1), "{rejected}");
         assert!(stdout_of(&output).starts_with("reject"), "{rejected}");
     }
+}
+
+#[test]
+fn the_lex_and_parse_rungs_are_real_and_pass_the_canonical_program() {
+    let wordcount = format!("{}/corpus/wordcount.lu", wolf_interp::upstream_root());
+    for phase in ["lex", "parse"] {
+        let output = wolf_interp(&[
+            "conform-run",
+            &wordcount,
+            &format!("--phase={phase}"),
+            "--json",
+        ]);
+        assert_eq!(output.status.code(), Some(0));
+        let value: serde_json::Value =
+            serde_json::from_str(stdout_of(&output).trim()).expect("one JSON object");
+        assert_eq!(schema::validate(&value), Ok(()));
+        assert_eq!(value["verdict"], "pass", "{phase}");
+        assert_eq!(value["phase_reached"], phase);
+    }
+}
+
+#[test]
+fn a_rejected_program_is_a_record_and_the_tool_still_exits_zero() {
+    // `[proto.invoke.exit]`: the *record* carries the program's outcome.
+    let file = format!(
+        "{}/corpus/grammar/newline_leading.lu",
+        wolf_interp::upstream_root()
+    );
+    let output = wolf_interp(&["conform-run", &file, "--phase=parse", "--json"]);
+    assert_eq!(output.status.code(), Some(0));
+    let value: serde_json::Value =
+        serde_json::from_str(stdout_of(&output).trim()).expect("one JSON object");
+    assert_eq!(value["verdict"], "fail(E0001)");
+    assert_eq!(value["phase_reached"], "parse");
+    assert_eq!(value["diagnostics"][0]["code"], "E0001");
+    assert_eq!(value["diagnostics"][0]["severity"], "error");
+    assert!(
+        value["diagnostics"][1].is_null(),
+        "no recovery, no second diagnostic"
+    );
+}
+
+#[test]
+fn the_human_frontend_doors_exit_65_on_a_rejection() {
+    let file = format!(
+        "{}/corpus/grammar/when_reserved.lu",
+        wolf_interp::upstream_root()
+    );
+    // Lexically fine, syntactically not: `when` is reserved.
+    assert_eq!(wolf_interp(&["lex", &file]).status.code(), Some(0));
+    let parsed = wolf_interp(&["parse", &file]);
+    assert_eq!(parsed.status.code(), Some(65));
+    let stderr = String::from_utf8_lossy(&parsed.stderr);
+    assert!(stderr.contains("E0008"), "{stderr}");
+    assert!(
+        stderr.contains("gram."),
+        "the clause anchor rides along: {stderr}"
+    );
+}
+
+#[test]
+fn the_dumps_are_ours_and_cite_clauses() {
+    let hello = format!("{}/corpus/hello.lu", wolf_interp::upstream_root());
+    let tokens = wolf_interp(&["lex", &hello, "--dump"]);
+    assert_eq!(tokens.status.code(), Some(0));
+    let tokens = stdout_of(&tokens);
+    assert!(tokens.contains("str-open plain"), "{tokens}");
+    assert!(tokens.contains("interp-open"), "{tokens}");
+    assert!(tokens.contains("term nl"), "{tokens}");
+
+    let trace = wolf_interp(&["parse", &hello, "--dump"]);
+    assert_eq!(trace.status.code(), Some(0));
+    let trace = stdout_of(&trace);
+    assert!(trace.contains("[gram.item.unit] unit"), "{trace}");
+    assert!(trace.contains("[gram.expr.block]"), "{trace}");
 }

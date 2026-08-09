@@ -1,0 +1,100 @@
+---
+source: tests/frontend_snapshots.rs
+expression: tokens_of(EVERY_STRING_MODE)
+---
+    0..2     kw fn
+    3..8     ident modes
+    8..9     punct (
+    9..10    punct )
+   11..13    punct ->
+   14..17    ident int
+   18..19    punct {
+   24..27    kw let
+   28..33    ident plain
+   34..35    punct =
+   36..37    str-open plain
+   37..40      text "abc"
+   40..41    str-close
+   41..41    term nl
+   46..49    kw let
+   50..56    ident interp
+   57..58    punct =
+   59..60    str-open plain
+   60..61      text "a"
+   61..62      interp-open
+   62..63        ident b
+   63..64      interp-close
+   64..65      text "c"
+   65..66    str-close
+   66..66    term nl
+   71..74    kw let
+   75..79    ident spec
+   80..81    punct =
+   82..83    str-open plain
+   83..84      interp-open
+   84..85        ident n
+   85..86        fmt-open
+   86..88        fmt ">8"
+   88..89      interp-close
+   89..90    str-close
+   90..90    term nl
+   95..98    kw let
+   99..104   ident width
+  105..106   punct =
+  107..108   str-open plain
+  108..109     interp-open
+  109..110       ident n
+  110..111       fmt-open
+  111..112       fmt ">"
+  112..113       interp-open
+  113..114         ident w
+  114..115       interp-close
+  115..116     interp-close
+  116..117   str-close
+  117..117   term nl
+  122..125   kw let
+  126..132   ident braces
+  133..134   punct =
+  135..136   str-open plain
+  136..147     text "{literal}"
+  147..148   str-close
+  148..148   term nl
+  153..156   kw let
+  157..163   ident nested
+  164..165   punct =
+  166..167   str-open plain
+  167..168     interp-open
+  168..169       str-open plain
+  169..175         text "inner-"
+  175..176         interp-open
+  176..180           ident deep
+  180..181         interp-close
+  181..182       str-close
+  182..183     interp-close
+  183..184   str-close
+  184..184   term nl
+  189..192   kw let
+  193..198   ident block
+  199..200   punct =
+  201..205   str-open multiline
+  205..237     text "one\ntwo\n"
+  237..240   str-close
+  240..240   term nl
+  245..248   kw let
+  249..252   ident raw
+  253..254   punct =
+  255..258   str-open raw#1
+  258..276     text "no \\escapes \"here\""
+  276..278   str-close
+  278..278   term nl
+  283..286   kw let
+  287..298   ident generalized
+  299..300   punct =
+  301..304   str-open generalized:re
+  304..310     text "[a-z]+"
+  310..311   str-close
+  311..311   term nl
+  316..317   int 0
+  317..317   term nl
+  318..319   punct }
+  319..319   term nl

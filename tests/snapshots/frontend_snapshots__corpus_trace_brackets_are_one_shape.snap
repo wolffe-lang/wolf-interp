@@ -1,0 +1,44 @@
+---
+source: tests/frontend_snapshots.rs
+expression: "trace_of(&corpus(\"grammar/brackets_generic_call.lu\"))"
+---
+  137..409   [gram.item.unit] unit
+  137..176   [gram.item.fn]   fn first
+  167..176   [gram.expr.block]     block
+  169..174   [gram.expr.block]       tail value
+  169..174   [gram.amb.brackets]         bracket-apply (1 arg(s))
+  169..171   [gram.expr.primary]           path xs
+  172..173   [gram.expr.primary]           int 0
+  178..409   [gram.item.fn]   fn main
+  196..409   [gram.expr.block]     block
+  202..222   [gram.item.let]       binding
+  211..222   [gram.expr.primary]         call (0 arg(s))
+  211..220   [gram.amb.brackets]           bracket-apply (1 arg(s))
+  211..215   [gram.expr.primary]             path List
+  216..219   [gram.expr.primary]             path int
+  227..237   [gram.expr.block]       expr statement
+  227..237   [gram.expr.primary]         call (1 arg(s))
+  227..234   [gram.expr.primary]           path xs.push
+  235..236   [gram.expr.primary]           int 7
+  242..304   [gram.item.let]       binding
+  250..264   [gram.expr.primary]         call (1 arg(s))
+  250..260   [gram.amb.brackets]           bracket-apply (1 arg(s))
+  250..255   [gram.expr.primary]             path first
+  256..259   [gram.expr.primary]             path int
+  261..263   [gram.expr.primary]           path xs
+  309..376   [gram.item.let]       binding
+  317..322   [gram.amb.brackets]         bracket-apply (1 arg(s))
+  317..319   [gram.expr.primary]           path xs
+  320..321   [gram.expr.primary]           int 0
+  381..407   [gram.expr.block]       tail value
+  381..407   [gram.expr.flow]         if
+  384..390   [gram.expr.prec]           binary Eq
+  384..385   [gram.expr.primary]             path a
+  389..390   [gram.expr.primary]             path b
+  391..396   [gram.expr.block]           block
+  393..394   [gram.expr.block]             tail value
+  393..394   [gram.expr.primary]               int 0
+  402..407   [gram.expr.block]           block expression
+  402..407   [gram.expr.block]             block
+  404..405   [gram.expr.block]               tail value
+  404..405   [gram.expr.primary]                 int 1

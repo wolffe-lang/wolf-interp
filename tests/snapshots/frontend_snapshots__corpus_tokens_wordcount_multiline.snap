@@ -1,0 +1,7 @@
+---
+source: tests/frontend_snapshots.rs
+expression: excerpt
+---
+  574..578   str-open multiline
+  578..647     text "usage: wc FILE...\nCount words across files, in parallel.\n"
+  647..650   str-close
