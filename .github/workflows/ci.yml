@@ -100,7 +100,8 @@ jobs:
           cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --phase=typecheck --json \
             | grep -q '"phase_reached":"resolve","seeded":false,"diagnostics":\[\],"verdict":"unsupported"'
 
-          # run: the first three files of the first-run ledger, by verdict.
+          # run: files from the first-run ledger, by verdict — one per rung of
+          # the trap vocabulary this implementation reaches.
           cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --json \
             | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"'
           cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --json \
@@ -110,10 +111,36 @@ jobs:
           cargo run --quiet -- conform-run vendor/upstream/corpus/memory/div_zero.lu --json \
             | grep -q '"verdict":"trap(div-zero)"'
 
-          # A file outside is02's coverage says so, with a reason on an `x-` key
+          # is03's Tier-1/2 rungs: the region litmuses run, and the generational
+          # handle fault is `stale-handle` in every profile ([mem.shared.handle.2]).
+          for f in region_ambient_ok region_multiopen_ok region_multiopen_swap \
+                   region_iso_edge_ok shared_ok; do
+            cargo run --quiet -- conform-run "vendor/upstream/corpus/memory/$f.lu" --json \
+              | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"' \
+              || { echo "::error::memory/$f.lu no longer reaches run cleanly"; exit 1; }
+          done
+          cargo run --quiet -- conform-run vendor/upstream/corpus/memory/handle_stale.lu --json \
+            | grep -q '"verdict":"trap(stale-handle)"'
+
+          # `--trace=mem` is a filter over the rule registry: every line it
+          # keeps cites a `mem.*` clause, and the region events are all there.
+          cargo run --quiet -- conform-run vendor/upstream/corpus/memory/region_multiopen_ok.lu \
+            --trace=mem 2>&1 >/dev/null | grep -q 'RegionMultiopen \[mem.region.multiopen\]'
+          if cargo run --quiet -- conform-run \
+               vendor/upstream/corpus/memory/region_multiopen_ok.lu --trace=mem 2>&1 >/dev/null \
+               | grep '^trace ' | grep -v '\[mem\.' ; then
+            echo "::error::--trace=mem leaked a non-memory rule"; exit 1
+          fi
+
+          # A file outside is03's coverage says so, with a reason on an `x-` key
           # ([proto.record.ext]) rather than in the payload-free verdict.
-          cargo run --quiet -- conform-run vendor/upstream/corpus/regions.lu --json \
+          cargo run --quiet -- conform-run vendor/upstream/corpus/procs.lu --json \
             | grep -q '"verdict":"unsupported",.*"x-unsupported"'
+          # `regions.lu` is unsupported for a different reason, and the reason is
+          # a finding against the corpus: `build_config()` is declared nowhere.
+          # See docs/approximation-contract.md §5.5.
+          cargo run --quiet -- conform-run vendor/upstream/corpus/regions.lu --json \
+            | grep -q '"verdict":"unsupported",.*build_config'
 
       # The fixtures are the protocol's own tests ([proto.harness.fixtures]).
       - name: protocol fixtures

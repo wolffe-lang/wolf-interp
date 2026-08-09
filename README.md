@@ -42,7 +42,11 @@ runtime check and every fault citing the clause it enforces.
 full *dynamic* semantics but only the static analysis needed to run programs.
 It does **not** implement the type checker, the borrow checker, or the region
 checker; every safety property those prove statically is enforced dynamically
-here instead. Two consequences, both codified in the protocol:
+here instead. The dynamic side of `spec/02` §3–§4 — the region table, the
+cross-region edge table, `freeze`, `shared` refcounts and generational
+`handle`s — is `src/eval/region.rs`, and the obligations it places on the
+compiler's static half are written down in
+[docs/approximation-contract.md](docs/approximation-contract.md). Two consequences, both codified in the protocol:
 
 - a program the compiler rejects that runs clean here is an **expected verdict
   class** — static conservatism, ledgered rather than counted as agreement;
@@ -75,19 +79,30 @@ enforced dynamically instead.
 
 ### Against the pinned corpus
 
-41 of 80 entry files reach `run`. Among them: `hello.lu` → `exit(0)` printing
+56 of 89 entry files reach `run`. Among them: `hello.lu` → `exit(0)` printing
 `hello, wolf`, `overflow.lu` → `trap(overflow)`, `memory/div_zero.lu` →
 `trap(div-zero)`, `memory/oob_bounds.lu` → `trap(bounds)`,
 `memory/defer_order.lu` → `exit(0)` with `body first second`, `wordcount.lu`
-→ `exit(2)`, and the three D32 module cases. Every file whose `check:` is a
-run expectation and which this machine evaluates matches it exactly; there are
-zero mismatches (`cargo run -- corpus` prints the ledger, and
-`tests/run_corpus.rs` enforces it).
+→ `exit(2)`, the three D32 module cases, and — since is03 — the Tier-1/2
+litmuses: `memory/region_ambient_ok.lu`, `memory/region_multiopen_ok.lu`,
+`memory/region_multiopen_swap.lu`, `memory/region_iso_edge_ok.lu`,
+`memory/shared_ok.lu` all `exit(0)`, and `memory/handle_stale.lu` →
+`trap(stale-handle)`. Every file whose `check:` is a run expectation and which
+this machine evaluates matches it exactly; there are zero mismatches
+(`cargo run -- corpus` prints the ledger, and `tests/run_corpus.rs` enforces
+it).
 
 Two of those entries are the *dynamic counterpart* of a static code the corpus
 pins: `memory/move_use_after.lu` (`fail(E1001)` ⇄ `trap(use-after-move)`) and
 `memory/excl_overlap.lu` (`fail(E1002)` ⇄ `trap(exclusivity)`) — the two
-mappings `[conf.trap.map]` states.
+mappings `[conf.trap.map]` states. is03 produces the dynamic half of **E1004**
+and **E1005** as well; the ledger cannot classify those as counterparts until
+`spec/02` states their kinds, which the approximation contract proposes.
+
+`corpus/regions.lu` stays `unsupported`: its `main` calls `build_config()`,
+which is declared nowhere in the corpus and is not in the ambient std stub, so
+its pinned `run(exit=0)` is unsatisfiable for any implementation. Filed as a
+finding, not worked around.
 
 ### Error codes
 
@@ -179,9 +194,9 @@ Today's records, in full — a run, a rejection, and a scope gap:
  "verdict":"fail(E0002)","stdout_sha256":null,"stdout_inline":null}
 
 {"protocol":1,"impl":"wolf-interp","impl_version":"0.0.1","commit":"…",
- "file":"upstream/corpus/regions.lu","phase_reached":"resolve","seeded":false,
+ "file":"upstream/corpus/procs.lu","phase_reached":"resolve","seeded":false,
  "diagnostics":[],"verdict":"unsupported","stdout_sha256":null,"stdout_inline":null,
- "x-unsupported":"regions are Tier 1 (`[mem.region]`); is03 extends the value model"}
+ "x-unsupported":"concurrency is spec/03 and campaign ic03; nothing here schedules"}
 ```
 
 `phase_reached` never exceeds the deepest rung that *completed*, and `seeded`
@@ -242,6 +257,12 @@ cargo run -- corpus
 - `fault_snapshots.rs` — one program per reachable trap identity
   (`tests/faults/`, corpus dialect, upstream-ready), with its fault rendering
   snapshotted: kind, clause anchor, and both spans;
+- `region_machine.rs` — is03's acceptance: every §3/§4 fault class paired with
+  a **near-miss twin** that must run clean (`tests/faults/ok/`), the leak
+  assertion (every region freed at a clean exit) and the forest invariant over
+  the whole corpus, and the five D3 optimizer-fact witnesses
+  (`tests/witness/`) whose `--trace=mem` output must cite the rules that
+  license each fact;
 - `conformance.rs` — every corpus file's expectation at the lex, parse and
   resolve rungs;
 - `spec_extract.rs` — tests re-derived from the pinned markdown on every run: a
