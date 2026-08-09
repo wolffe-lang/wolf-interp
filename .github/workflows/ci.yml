@@ -66,11 +66,17 @@ jobs:
       #   lex / parse      is01's frontend
       #   resolve          is02's sema-lite (module graph, visibility)
       #   typecheck/mem/wir  NOT performed — `unsupported` at `resolve`
-      #   run              is02's tree-walk evaluator
+      #   run              is02's tree-walk evaluator, is03's region machine,
+      #                    is04's provenance machine and UB oracle
       #
       # A record that claims a rung this implementation did not complete is the
       # exact failure [proto.record.phase] exists to prevent, so the assertions
       # are on `phase_reached` as much as on `verdict`.
+      #
+      # Discipline, learned the hard way on macOS: **capture, then grep.** A
+      # direct `cmd | grep -q` closes the pipe the moment grep matches, and the
+      # writer's flush then races the close and aborts with EPIPE. Every check
+      # below assigns to a variable first.
       - name: conform-run rungs
         shell: bash
         run: |
@@ -122,25 +128,92 @@ jobs:
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/memory/handle_stale.lu --json)
           echo "$out" | grep -q '"verdict":"trap(stale-handle)"'
 
+          # is04's Tier-3 rungs. The unsafe litmuses became runnable when the
+          # provenance machine landed: a *true* `assume noalias` is defined
+          # ([mem.unsafe.raw.2]), and the use-after-free one is the oracle's
+          # verdict rather than a trap ([proto.record.verdict]).
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/memory/unsafe_noalias.lu --json)
+          echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"'
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/memory/unsafe_ub_uaf.lu --json)
+          echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"ub(mem.ub)"'
+          # [proto.record.ub]: the row id rides `x-ub-row`, and the D2 pairing —
+          # the optimization the row licenses — rides the record too, because a
+          # UB rule that licenses nothing is one this language does not have.
+          echo "$out" | grep -q '"x-ub-row":"P1"'
+          echo "$out" | grep -q '"x-ub-licenses":"O1:'
+          echo "$out" | grep -q '"x-ub-clause":"mem.prov.state"'
+
+          # Every §7 row this tier detects, from the authored programs, with the
+          # near-miss twin proving the check discriminates. `tests/ub_coverage.rs`
+          # is the matrix; this is the same claim through the process contract.
+          for row in p1_protector p2_frozen_write p3_out_of_bounds p4_region_freed \
+                     p5_false_noalias p6_false_door l1_uninitialized l2_dangling \
+                     t1_invalid_bool; do
+            id=$(echo "$row" | cut -c1-2 | tr '[:lower:]' '[:upper:]')
+            out=$(cargo run --quiet -- conform-run "tests/ub/$row.lu" --json)
+            echo "$out" | grep -q "\"verdict\":\"ub(mem.ub)\"" \
+              || { echo "::error::tests/ub/$row.lu no longer reports UB: $out"; exit 1; }
+            echo "$out" | grep -q "\"x-ub-row\":\"$id\"" \
+              || { echo "::error::tests/ub/$row.lu reports the wrong row: $out"; exit 1; }
+          done
+          while IFS= read -r f; do
+            out=$(cargo run --quiet -- conform-run "$f" --json)
+            echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"' \
+              || { echo "::error::$f is a near-miss twin and must run clean: $out"; exit 1; }
+          done < <(find tests/ub/ok -name '*.lu' | sort)
+
+          # The `faults/` and `comptime/` tiers that arrived with the pin.
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/faults/overflow_add.lu --json)
+          echo "$out" | grep -q '"verdict":"trap(overflow)"'
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/comptime/norm_linear.lu --json)
+          echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"'
+
           # `--trace=mem` is a filter over the rule registry: every line it
           # keeps cites a `mem.*` clause, and the region events are all there.
-          cargo run --quiet -- conform-run vendor/upstream/corpus/memory/region_multiopen_ok.lu \
-            --trace=mem 2>&1 >/dev/null | grep -q 'RegionMultiopen \[mem.region.multiopen\]'
-          if cargo run --quiet -- conform-run \
-               vendor/upstream/corpus/memory/region_multiopen_ok.lu --trace=mem 2>&1 >/dev/null \
-               | grep '^trace ' | grep -v '\[mem\.' ; then
+          trace=$(cargo run --quiet -- conform-run \
+            vendor/upstream/corpus/memory/region_multiopen_ok.lu --trace=mem 2>&1 >/dev/null)
+          echo "$trace" | grep -q 'RegionMultiopen \[mem.region.multiopen\]'
+          if echo "$trace" | grep '^trace ' | grep -v '\[mem\.' ; then
             echo "::error::--trace=mem leaked a non-memory rule"; exit 1
           fi
 
-          # A file outside is03's coverage says so, with a reason on an `x-` key
+          # `--trace=prov` is the same mechanism one tier up: the Tier-3 subset,
+          # §5 `mem.unsafe.*` + §6 `mem.prov.*` + §7 `mem.ub*`, plus the FFI
+          # boundary clause. Derived from the anchor, never a hand-kept list.
+          trace=$(cargo run --quiet -- conform-run tests/ub/p1_protector.lu \
+            --trace=prov 2>&1 >/dev/null)
+          echo "$trace" | grep -q 'ProvTag \[mem.prov.tag\].*PROTECTED'
+          echo "$trace" | grep -q 'UbLicensed \[mem.ub.closed\]'
+          if echo "$trace" | grep '^trace ' \
+               | grep -vE '\[mem\.(prov|unsafe|ub|boundary)' ; then
+            echo "::error::--trace=prov leaked a non-Tier-3 rule"; exit 1
+          fi
+
+          # "Zero UB in safe code" as a process assertion, not only a library
+          # one: the unsafe-free litmuses never produce a `ub(*)` verdict.
+          for f in memory/prov_holy_grail memory/prov_two_phase memory/region_multiopen_swap \
+                   memory/shared_ok wordcount hello; do
+            out=$(cargo run --quiet -- conform-run "vendor/upstream/corpus/$f.lu" --json)
+            if echo "$out" | grep -q '"verdict":"ub('; then
+              echo "::error::$f.lu is safe-tier and reached a §7 row: $out"; exit 1
+            fi
+          done
+
+          # A file outside is04's coverage says so, with a reason on an `x-` key
           # ([proto.record.ext]) rather than in the payload-free verdict.
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/procs.lu --json)
           echo "$out" | grep -q '"verdict":"unsupported",.*"x-unsupported"'
-          # `regions.lu` is unsupported for a different reason, and the reason is
-          # a finding against the corpus: `build_config()` is declared nowhere.
-          # See docs/approximation-contract.md §5.5.
+          # `ffi.lu` now *executes* its unsafe block — the C intrinsics are
+          # modelled (docs/approximation-contract.md §8) — and stops at the
+          # inline `asm`, which no pinned document gives a meaning.
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/ffi.lu --json)
+          echo "$out" | grep -q '"verdict":"unsupported",.*asm'
+          # `regions.lu` gained `build_config` at pin ecea37c, closing half of
+          # is03's §5.5 finding. The other half stands: `frozen.get(config)` and
+          # `.is_valid()` are specified nowhere, so `run(exit=0)` is still
+          # unsatisfiable. See docs/approximation-contract.md §5.5.
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/regions.lu --json)
-          echo "$out" | grep -q '"verdict":"unsupported",.*build_config'
+          echo "$out" | grep -q '"verdict":"unsupported",.*get'
 
       # The fixtures are the protocol's own tests ([proto.harness.fixtures]).
       - name: protocol fixtures
