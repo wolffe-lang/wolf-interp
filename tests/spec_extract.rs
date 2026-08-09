@@ -444,6 +444,101 @@ fn the_interpolation_depth_rails_are_the_ones_the_spec_names() {
     );
 }
 
+#[test]
+fn the_syntactic_nesting_rail_is_the_number_the_spec_makes_normative() {
+    // `[gram.lex.rails]`, landed at pin 28ab5c9 in answer to is01's fuzz
+    // finding: "expression/statement recursion depth **256** — deeper input is
+    // rejected with a diagnostic at the point the rail is hit. Both
+    // implementations enforce identical rail values (differential-tested)."
+    //
+    // "Identical rail values" makes the number a comparison surface, so it is
+    // read out of the pinned document rather than trusted to a constant.
+    let prose = section(&grammar(), "1.7 Nesting rails");
+    let spelled: Vec<usize> = prose
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.parse().expect("digits"))
+        .collect();
+    assert!(
+        spelled.contains(&parse::MAX_NESTING),
+        "[gram.lex.rails] names {spelled:?}; MAX_NESTING is {}",
+        parse::MAX_NESTING
+    );
+    assert_eq!(parse::MAX_NESTING, 256, "the normative rail is 256");
+
+    // At the rail: answered with a diagnostic, not a stack overflow.
+    let deep = format!(
+        "fn main() -> int {{ {}0{} }}\n",
+        "(".repeat(parse::MAX_NESTING + 4),
+        ")".repeat(parse::MAX_NESTING + 4)
+    );
+    let diag = parse::parse_source(&deep).expect_err("the rail answers");
+    assert_eq!(diag.code, diag::E_NESTING_RAIL);
+}
+
+#[test]
+fn underscore_identifiers_are_legal_and_a_bare_underscore_is_still_the_wildcard() {
+    // Amended `[gram.lex.ident]`: `IDENT ::= ('_' XID_Continue+) |
+    // (XID_Start XID_Continue*)`, and "A bare `_` is the wildcard identifier
+    // (never a binding you can read); `_foo`-style identifiers are ordinary
+    // names". is01 accepted `_foo` as a CHOICE; it is now the production.
+    let ebnf = production(&grammar(), "IDENT");
+    assert!(ebnf.contains("'_'"), "the amended IDENT production moved");
+
+    parse::parse_source("fn main() -> int {\n    let _unused = 1\n    0\n}\n")
+        .expect("`_unused` is an ordinary identifier");
+    // A bare `_` binds nothing but is legal in pattern position.
+    parse::parse_source("fn main() -> int {\n    for _ in 0..3 { }\n    0\n}\n")
+        .expect("`_` is the wildcard");
+}
+
+#[test]
+fn freeze_takes_a_prefix_tier_operand() {
+    // Amended `[gram.expr.region]`: `region_expr ::= … | 'freeze'
+    // prefix_operand`, with the prose spelling out "`freeze r == x` means
+    // `(freeze r) == x`". is01 filed this as a CHOICE; it is now the grammar.
+    let ebnf = production(&grammar(), "region_expr");
+    assert!(
+        ebnf.contains("'freeze' prefix_operand"),
+        "the amended freeze production moved: {ebnf}"
+    );
+
+    // `(freeze r) == x` parses; the whole-expr reading would swallow the `==`
+    // and leave the `{` of the block dangling.
+    parse::parse_source("fn main() -> int {\n    if freeze r == x { 0 } else { 1 }\n}\n")
+        .expect("freeze binds tighter than `==`");
+}
+
+#[test]
+fn the_in_header_is_a_no_struct_literal_position() {
+    // Amended `[gram.amb.structlit]`: "No struct-literal expressions in
+    // condition/`in`-header/scrutinee position". is01 inferred it; now it is
+    // written down.
+    let annex = section(&grammar(), "8. Ambiguity annex");
+    assert!(
+        annex.contains("`in`-header"),
+        "the amended structlit annex entry moved"
+    );
+    parse::parse_source("fn main() -> int {\n    in r { let a = 1 }\n    0\n}\n")
+        .expect("`in r { … }` keeps its block");
+}
+
+#[test]
+fn e0006_spans_the_opening_brace() {
+    // Amended §9: "E0006 (struct literal in condition; primary span = the
+    // opening `{`)".
+    let reservations = section(&grammar(), "9. Diagnostics");
+    assert!(
+        reservations.contains("primary span = the opening `{`"),
+        "the amended E0006 reservation moved"
+    );
+
+    let source = "fn main() -> int {\n    if p == Point { x: 0 } { return 0 }\n    1\n}\n";
+    let diag = parse::parse_source(source).expect_err("E0006");
+    assert_eq!(diag.code, diag::E_STRUCT_LIT_IN_COND);
+    assert_eq!(&source[diag.span.start..diag.span.end], "{");
+}
+
 /// `"{"{"…"}"}"` — `depth` string literals, each inside the previous one's
 /// interpolation.
 fn nest_strings(depth: usize) -> String {

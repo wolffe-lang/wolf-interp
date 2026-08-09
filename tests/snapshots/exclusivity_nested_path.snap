@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: exclusivity_nested_path.lu
+trap:    exclusivity
+clause:  [mem.model.path.disjoint]
+rule:    PathDisjoint
+message: `p.a.n` is accessed as `mut` while `p.a` is held as `mut`; the paths conflict
+at:      18:19 `mut p.a.n`
+because: 18:10 `mut p.a` — `p.a` held here

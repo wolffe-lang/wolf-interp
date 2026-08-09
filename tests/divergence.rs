@@ -72,9 +72,15 @@ fn a_seeded_code_disagreement_files_a_span_or_code_divergence() {
     theirs.verdict = Verdict::Fail("E0006".to_owned());
     theirs.diagnostics = vec![Diagnostic {
         code: "E0006".to_owned(),
-        // Same code, but pointing at the `{` alone rather than at the whole
-        // would-be literal — the span choice `parse::CHOICES` records.
-        span: [ours.diagnostics[0].span[0] + 8, ours.diagnostics[0].span[1]],
+        // Same code, but pointing at the whole would-be literal rather than at
+        // the `{` alone — which is exactly the disagreement the amendment
+        // settled in the brace's favour (`parse::CHOICES_RESOLVED`). Kept as
+        // the seed because a real, historical divergence makes a better test
+        // than an invented one.
+        span: [
+            ours.diagnostics[0].span[0] - 8,
+            ours.diagnostics[0].span[1] + 8,
+        ],
         severity: "error".to_owned(),
     }];
 

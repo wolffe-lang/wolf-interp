@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: assert_fails.lu
+trap:    assert
+clause:  [conf.trap.map]
+rule:    Assert
+message: assertion failed
+at:      12:5 `assert(n == 3)`
+because: (single-span fault)

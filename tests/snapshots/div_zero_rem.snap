@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: div_zero_rem.lu
+trap:    div-zero
+clause:  [mem.ub.defined]
+rule:    DivZero
+message: division by zero is defined behavior in wolf: it traps
+at:      11:13 `10 % d`
+because: (single-span fault)

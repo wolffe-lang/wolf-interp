@@ -165,7 +165,9 @@ fn the_spans_of_pinned_failures_point_at_the_offending_source() {
     let expectations: &[(&str, &str)] = &[
         ("grammar/newline_leading.lu", "+"),
         ("grammar/semicolon.lu", ";"),
-        ("grammar/structlit_cond.lu", "Point { x: 0 }"),
+        // The amended §9 reservation pins E0006's primary span to the opening
+        // `{` — not the whole literal, which is what is01 reported.
+        ("grammar/structlit_cond.lu", "{"),
         ("grammar/when_reserved.lu", "when"),
     ];
     for (relative, text) in expectations {
@@ -178,19 +180,37 @@ fn the_spans_of_pinned_failures_point_at_the_offending_source() {
 }
 
 #[test]
-fn deeper_rungs_report_parse_and_declare_themselves_unsupported() {
-    // `[proto.record.phase]`: never claim the incomplete phase. Every
-    // well-formed corpus file must say `parse`/`unsupported` at every rung
-    // below it, which is what keeps the conservatism ledger truthful.
+fn every_parseable_file_resolves_under_sema_lite() {
+    // `resolve` is this implementation's sema-lite rung (see `frontend`'s
+    // ladder mapping). It takes signatures at face value and checks nothing a
+    // type checker would, so *every* file that parses must also resolve —
+    // a resolve failure here would mean the module machinery broke, not that a
+    // program is ill-typed.
     for case in cases() {
-        let must_parse = case.ledger_phase.is_none_or(|p| p >= Phase::Parse);
-        if !must_parse {
+        if case.ledger_phase.is_some_and(|p| p < Phase::Parse) {
             continue;
         }
-        for rung in [None, Some(Phase::Resolve), Some(Phase::Run)] {
-            let observation = frontend::observe(&case.source, rung);
+        let observation = frontend::observe(&case.source, Some(Phase::Resolve));
+        assert_eq!(observation.verdict, Verdict::Pass, "{}", case.path);
+        assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
+        assert!(observation.diagnostics.is_empty(), "{}", case.path);
+    }
+}
+
+#[test]
+fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
+    // `[proto.record.phase]`: never claim the incomplete phase. `typecheck`,
+    // `mem` and `wir` are the compiler's half of the split — asked for them,
+    // this implementation reports the deepest rung it *did* complete and says
+    // `unsupported`, which is what keeps the conservatism ledger truthful.
+    for case in cases() {
+        if case.ledger_phase.is_some_and(|p| p < Phase::Parse) {
+            continue;
+        }
+        for rung in [Phase::Typecheck, Phase::Mem, Phase::Wir] {
+            let observation = frontend::observe(&case.source, Some(rung));
             assert_eq!(observation.verdict, Verdict::Unsupported, "{}", case.path);
-            assert_eq!(observation.phase_reached, Phase::Parse, "{}", case.path);
+            assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
             assert!(observation.diagnostics.is_empty(), "{}", case.path);
         }
     }

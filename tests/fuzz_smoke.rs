@@ -17,6 +17,23 @@
 //!
 //! Every case must terminate with either a tree or one diagnostic. Nothing here
 //! asserts *which*: this is a liveness test, not a conformance one.
+//!
+//! # is02: the run rung is in scope too
+//!
+//! > Fuzz smoke over generated Tier-0 programs: no interpreter panics; all
+//! > terminations are verdicts.
+//!
+//! `exercise` now drives the *whole* ladder, evaluator included, because "an
+//! interpreter-internal Rust panic is by definition an interpreter bug" and the
+//! cheapest place to find one is here. Two properties are asserted at that rung
+//! and nowhere else:
+//!
+//! - **every termination is a verdict.** `[proto.record.verdict]` enumerates
+//!   six; a fuzzed program must land on one of them, never on a panic and never
+//!   on a hang (`Machine::FUEL` bounds the third case).
+//! - **a trap is always one of the closed eleven kinds** (`[conf.trap.set]`).
+//!   The vocabulary is the comparison alphabet of spec/06; a kind outside it
+//!   would make a differential report meaningless.
 
 use std::path::{Path, PathBuf};
 
@@ -57,8 +74,28 @@ const CASES: usize = 3000;
 /// Runs the whole frontend and throws the answer away. Returning `()` is the
 /// point: the assertion is that this returns at all.
 fn exercise(source: &[u8]) {
-    for rung in [Some(Phase::Lex), Some(Phase::Parse), None] {
+    for rung in [
+        Some(Phase::Lex),
+        Some(Phase::Parse),
+        Some(Phase::Resolve),
+        None,
+    ] {
         let observation = frontend::observe(source, rung);
+        // `[proto.record.verdict]` is a closed set of six shapes, and a fuzzed
+        // program must land on one. `Pass`/`Fail`/`Exit`/`Trap`/`Unsupported`
+        // are reachable; `Ub` needs the is04 oracle.
+        match &observation.verdict {
+            wolf_interp::protocol::Verdict::Trap(kind) => {
+                assert!(
+                    wolf_interp::trap::TrapKind::ALL.contains(kind),
+                    "a trap outside the closed vocabulary: {kind}"
+                );
+            }
+            wolf_interp::protocol::Verdict::Ub(anchor) => {
+                panic!("is02 has no UB oracle, so it must never report ub({anchor})")
+            }
+            _ => {}
+        }
         // Whatever happened, the record must be well-formed: a `fail` carries
         // exactly one diagnostic, everything else carries none.
         match &observation.verdict {
@@ -286,10 +323,13 @@ fn mutated_corpus_files_never_crash() {
 
 #[test]
 fn pathological_nesting_terminates() {
-    // Deep nesting is where a recursive-descent parser goes to die. The lexer's
-    // depth-32 rail (`[gram.lex.str]`, E0108) bounds string nesting; bracket
-    // nesting has no spec rail, so this test's job is to prove the *frontend*
-    // still answers rather than to assert a particular verdict.
+    // Deep nesting is where a recursive-descent parser goes to die. This test
+    // is why `[gram.lex.rails]` exists: is01 ran it, found an unrailed parser
+    // meets the stack instead of the user, and filed the gap; the amendment
+    // made expression/statement recursion depth **256** normative alongside the
+    // lexer's depth-32 string rail (`[gram.lex.str]`, E0108). The job here is
+    // still to prove the *frontend answers* — the rail's exact value is
+    // `tests/spec_extract.rs`'s business, which reads it out of the document.
     for depth in [8usize, 64, 512] {
         let nested_strings: String = {
             let mut out = String::from("x");

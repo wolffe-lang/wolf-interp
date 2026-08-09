@@ -49,14 +49,21 @@ fn the_walk_is_green() {
 fn the_pin_holds_the_corpus_we_think_it_does() {
     // A pin bump that changes the corpus size is a deliberate act; this test
     // makes it deliberate rather than silent (s01's progress-ledger rule).
+    //
+    // Ledger of deliberate bumps:
+    //   4a002aa → 74 files (is01: typecheck tier added 5)
+    //   28ab5c9 → 91 files (is02: s14's `corpus/traits/` added 17 — 12 entries
+    //             and 5 members across three module directories; no other tier
+    //             moved, and no existing file changed).
     let report = report();
     assert_eq!(
         report.total(),
-        74,
+        91,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert!(report.entries() > 0 && report.members() > 0);
+    assert_eq!(report.entries(), 80);
+    assert_eq!(report.members(), 11);
 }
 
 #[test]

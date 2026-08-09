@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: bounds_slice.lu
+trap:    bounds
+clause:  [mem.ub.defined]
+rule:    Bounds
+message: byte range 0..2 splits a UTF-8 code point
+at:      12:16 `s[..2]`
+because: (single-span fault)

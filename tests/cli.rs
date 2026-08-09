@@ -35,11 +35,17 @@ fn conform_run_emits_a_valid_record_and_exits_zero() {
     assert_eq!(schema::validate(&value), Ok(()));
     assert_eq!(value["protocol"], 1);
     assert_eq!(value["impl"], "wolf-interp");
-    // The frontend completes `parse` and claims nothing deeper (is01).
-    assert_eq!(value["phase_reached"], "parse");
-    assert_eq!(value["verdict"], "unsupported");
+    // is02: `hello.lu` runs. `[proto.record.fields]` then requires the digest
+    // and the inline text, because the program wrote output.
+    assert_eq!(value["phase_reached"], "run");
+    assert_eq!(value["verdict"], "exit(0)");
     assert_eq!(value["seeded"], false);
     assert_eq!(value["file"], serde_json::json!(hello));
+    assert_eq!(value["stdout_inline"], "hello, wolf\n");
+    assert_eq!(
+        value["stdout_sha256"],
+        serde_json::json!(wolf_interp::sha256::hex(b"hello, wolf\n"))
+    );
 }
 
 #[test]
@@ -59,15 +65,23 @@ fn conform_run_stays_honest_under_phase_and_seed() {
     let value: serde_json::Value =
         serde_json::from_str(stdout_of(&output).trim()).expect("stdout is one JSON object");
     // A deeper `--phase` never buys a deeper claim than the deepest *completed*
-    // rung (`[proto.record.phase]`), and `--seed` never buys `seeded: true`
-    // (`[proto.seed.flag]`).
-    assert_eq!(value["phase_reached"], "parse");
+    // rung (`[proto.record.phase]`): this file is concurrency, which no rung of
+    // is02 evaluates, so the answer is `resolve` + `unsupported` however deep
+    // the request. `--seed` never buys `seeded: true` (`[proto.seed.flag]`).
+    assert_eq!(value["phase_reached"], "resolve");
     assert_eq!(value["verdict"], "unsupported");
     assert_eq!(value["seeded"], false);
+    // The verdict carries no payload (`[proto.record.verdict]`); the reason
+    // rides an extension key (`[proto.record.ext]`).
+    assert!(
+        value["x-unsupported"]
+            .as_str()
+            .is_some_and(|r| r.contains("channel")),
+        "{value}"
+    );
 
-    // The unhonored knobs are announced on stderr, never on stdout.
+    // The unhonored knob is announced on stderr, never on stdout.
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("--phase=run"), "{stderr}");
     assert!(stderr.contains("--seed=7"), "{stderr}");
 }
 
@@ -105,7 +119,7 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = stdout_of(&output);
-    assert!(stdout.contains("74 file(s)"), "{stdout}");
+    assert!(stdout.contains("91 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -114,12 +128,17 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = wolf_interp(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 74);
+    assert_eq!(value["total"], 91);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
-    // The frontend reaches `parse` on every well-formed entry and declares
-    // itself unsupported beyond it.
-    assert_eq!(value["files"][0]["interpreter_status"], "unsupported@parse");
+    // The first entry in path order is `comptime.lu`: it parses and resolves,
+    // and CTFE is outside is02, so it stops at the deepest *completed* rung.
+    assert_eq!(value["files"][0]["file"], "comptime.lu");
+    assert_eq!(
+        value["files"][0]["interpreter_status"],
+        "unsupported@resolve"
+    );
+    assert_eq!(value["files"][0]["judgement"]["class"], "out-of-scope");
 }
 
 #[test]
