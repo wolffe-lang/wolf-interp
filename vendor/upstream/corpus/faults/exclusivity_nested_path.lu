@@ -1,5 +1,5 @@
 //! check: run(exit=trap(exclusivity))
-//! phase: run
+//! phase: typecheck
 //! conforms: mem.tier0.excl.1, mem.tier0.excl.2, mem.model.path.disjoint
 //!
 //! `[mem.model.path.disjoint]`: "Two paths conflict iff one is a prefix of the
@@ -7,9 +7,11 @@
 //! `mut`. The second passes a path and one of its own prefixes, which conflicts.
 
 struct Inner { n: int }
+
 struct P { a: Inner, b: Inner }
 
 fn bump(mut x: int, mut y: int) { x += 1; y += 1 }
+
 fn wide(mut i: Inner, mut n: int) { n += 1 }
 
 fn main() -> !int {

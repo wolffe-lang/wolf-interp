@@ -1,5 +1,5 @@
 //! check: run(exit=trap(use-after-move))
-//! phase: run
+//! phase: typecheck
 //! conforms: mem.tier0.move.1, mem.tier0.move.2, mem.model.path.disjoint
 //!
 //! Move states are field-granular: `p.x` moving out leaves `p.y` live, and
@@ -8,6 +8,7 @@
 //! implementation would get wrong while still passing that file.
 
 struct Inner { n: int }
+
 struct P { x: Inner, y: Inner }
 
 fn eat(take i: Inner) -> int { i.n }

@@ -9,10 +9,19 @@ this repo runs under forbids writing into the pinned tree — `spec/` + `corpus/
 are read-only inputs, and the sprint's "authored here and upstreamed" is a
 two-step process whose second step is a wolf-lang commit, not a wolf-interp one.
 
-> **Dedupe status at pin `bd41920`:** s16's `corpus/faults/` tier had not landed
-> upstream, so none of these programs is duplicated there and no retirement was
-> owed. When it lands, the vendored copies become the source of truth and the
-> overlapping files here retire; the ones with no upstream twin stay.
+> **Dedupe status at pin `ecea37c`:** s16's `corpus/faults/` tier landed, and it
+> is six of these programs upstreamed. The rule this file wrote in advance now
+> applies: **the vendored copies are the source of truth**, so
+> `assert_fails.lu`, `bounds_slice.lu`, `div_zero_rem.lu`,
+> `exclusivity_nested_path.lu`, `overflow_add.lu` and `use_after_move_field.lu`
+> have been deleted from this directory. They are still snapshot-tested —
+> `tests/fault_snapshots.rs` walks *both* directories, and asserts that no
+> program exists in both, so a future re-add is a build failure rather than a
+> silently duplicated snapshot. The upstream copies differ from what was sent
+> only in their `phase:` ledger, which is the compiler's rung to state.
+>
+> The programs with no upstream twin stay: every `region-fault` and
+> `stale-handle` case below, which the corpus still has no counterpart for.
 
 ## Faults
 
@@ -21,12 +30,12 @@ reachable at is03 — the dynamic region machine added the last two families.
 
 | kind | file | clause |
 |---|---|---|
-| `overflow` | `overflow_add.lu` | `arith.checked`, `[mem.ub.defined]` |
-| `div-zero` | `div_zero_rem.lu` | `[mem.ub.defined]` |
-| `bounds` | `bounds_slice.lu` | `[mem.ub.defined]` |
-| `use-after-move` | `use_after_move_field.lu` | `[mem.tier0.move.2]` |
+| `overflow` | `corpus/faults/overflow_add.lu` † | `arith.checked`, `[mem.ub.defined]` |
+| `div-zero` | `corpus/faults/div_zero_rem.lu` † | `[mem.ub.defined]` |
+| `bounds` | `corpus/faults/bounds_slice.lu` † | `[mem.ub.defined]` |
+| `use-after-move` | `corpus/faults/use_after_move_field.lu` † | `[mem.tier0.move.2]` |
 | `use-after-move` | `handle_uninit.lu` | `[mem.shared.handle.1]` (a reserved, never-`init`ed slot *is* uninitialized storage) |
-| `exclusivity` | `exclusivity_nested_path.lu` | `[mem.tier0.excl.1]`, `[mem.model.path.disjoint]` |
+| `exclusivity` | `corpus/faults/exclusivity_nested_path.lu` † | `[mem.tier0.excl.1]`, `[mem.model.path.disjoint]` |
 | `region-fault` | `region_uaf.lu` | `[mem.region.intra.2]` |
 | `region-fault` | `region_edge_cross.lu` | `[mem.region.edge]` (E1004's dynamic half) |
 | `region-fault` | `region_freeze_write.lu` | `[mem.region.freeze.1]` |
@@ -34,12 +43,18 @@ reachable at is03 — the dynamic region machine added the last two families.
 | `region-fault` | `region_move_open.lu` | `[mem.region.freeze.3]` (E1005's dynamic half) |
 | `region-fault` | `region_multiopen_nested.lu` | `[mem.region.multiopen]` |
 | `stale-handle` | `handle_stale_reuse.lu` | `[mem.shared.handle.2]` |
-| `assert` | `assert_fails.lu` | `[conf.trap.map]` |
+| `assert` | `corpus/faults/assert_fails.lu` † | `[conf.trap.map]` |
 
-The remaining three belong to tiers this sprint does not implement:
-`alloc-contract` (I15's `#[noalloc]` family), `race` (ic03), `ub` (is04's
-oracle). Their programs are those sprints' to author — writing them here would
-mean authoring expectations for machinery that does not exist.
+† Upstreamed at pin `ecea37c` and retired from this directory; the vendored copy
+is the one the tests read.
+
+The remaining three belong to tiers is03 did not implement: `alloc-contract`
+(I15's `#[noalloc]` family) and `race` (ic03) are still absent, and `ub` left
+this list **sideways** at is04. The oracle's finding is the protocol *verdict*
+`ub(anchor)`, not a `Trap` — `[proto.record.verdict]` gives it its own shape —
+so no program here raises `TrapKind::Ub` and none should. The kind stays in the
+closed vocabulary for the checked build (`[conf.trap.map]`); its programs live
+in `tests/ub/`, and `tests/ub_coverage.rs` is their gate.
 
 ## Near-miss twins — `ok/`
 
