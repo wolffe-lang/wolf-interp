@@ -189,6 +189,18 @@ impl AccessSet {
         })
     }
 
+    /// A held access over the *same base* that this path does not conflict
+    /// with — `[mem.tier0.excl.2]`'s "disjoint paths may be `mut`
+    /// simultaneously", observed rather than merely permitted.
+    #[must_use]
+    pub fn disjoint_sibling(&self, path: &Path) -> Option<&Held> {
+        self.held.iter().find(|held| {
+            held.path.frame == path.frame
+                && held.path.base == path.base
+                && !held.path.conflicts_with(path)
+        })
+    }
+
     /// Holds an access open. The caller has already checked for conflicts.
     pub fn push(&mut self, held: Held) {
         self.held.push(held);
@@ -247,6 +259,19 @@ mod tests {
         // conservative in the direction that keeps the check sound.
         let unknown = Path::local(0, "xs").project(Proj::UnknownIndex);
         assert!(unknown.conflicts_with(&p("xs", &["3"])));
+    }
+
+    #[test]
+    fn a_disjoint_sibling_is_found_and_a_conflicting_one_is_not() {
+        let mut set = AccessSet::new();
+        set.push(Held {
+            path: p("a", &["x"]),
+            access: Access::Exclusive,
+            span: Span::new(0, 1),
+        });
+        assert!(set.disjoint_sibling(&p("a", &["y"])).is_some());
+        assert!(set.disjoint_sibling(&p("a", &["x"])).is_none());
+        assert!(set.disjoint_sibling(&p("b", &["y"])).is_none());
     }
 
     #[test]

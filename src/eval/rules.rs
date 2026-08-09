@@ -86,6 +86,58 @@ pub enum Rule {
     /// checking context supplies a type.
     LiteralDefault,
 
+    // -- §3 Tier 1: regions (is03) ----------------------------------------
+    /// `region name { }` sugar and `region(…)` values both create a region.
+    RegionCreate,
+    /// Region values are affine: they move, are never copied, and denote
+    /// distinct regions.
+    RegionAffine,
+    /// Ambient allocation: heap values land in the current region.
+    RegionAmbient,
+    /// Region identity is a static fact with zero runtime representation.
+    RegionIdentity,
+    /// Within one region, references are unrestricted — cycles included.
+    RegionIntra,
+    /// A region dies as a unit: wholesale free, never per-allocation.
+    RegionFree,
+    /// The §3 edge table, checked at every store of a reference.
+    RegionEdge,
+    /// A region has at most one owning edge: the forest invariant.
+    RegionEdgeIso,
+    /// Frozen data may be referenced from anywhere, forever.
+    RegionEdgeImm,
+    /// Entering opens a region; leaving closes it (Suspended).
+    RegionOpen,
+    /// Multiple disjoint regions may be open simultaneously.
+    RegionMultiopen,
+    /// A suspended region's contents are unreachable for writing.
+    RegionSuspended,
+    /// `freeze r` promotes the whole graph to `imm`, deep and in place.
+    RegionFreeze,
+    /// `move r` transfers the region value; the old binding is moved-from.
+    RegionTransfer,
+    /// Freezing or transferring a region with an open child is refused.
+    RegionClosedSubtree,
+
+    // -- §4 Tier 2: `shared` and `handle` (is03) --------------------------
+    /// `shared T` is a refcounted cell; the value drops at the last strong
+    /// release.
+    SharedRc,
+    /// Strong `shared` edges are acyclic; there is no cycle collector.
+    SharedAcyclic,
+    /// `weak` keeps nothing alive; upgrading is option-shaped.
+    SharedWeak,
+    /// A `shared` payload's destructor runs at the last strong release point.
+    SharedDrop,
+    /// `handle T` is a generational index into a `pool(T)`; pools are
+    /// two-phase.
+    HandleTwoPhase,
+    /// A stale handle is a deterministic fault in every profile.
+    HandleStale,
+    /// `pool[h]` accesses the slot under Tier-0 exclusivity; the pool is the
+    /// place base.
+    HandleAccess,
+
     // -- expression-oriented control flow ---------------------------------
     /// A block yields its tail expression.
     Block,
@@ -95,6 +147,9 @@ pub enum Rule {
     /// `&&`/`||` short-circuit; every other operand position evaluates
     /// left-to-right.
     EvalOrder,
+    /// Evaluation is strict and left-to-right everywhere; nothing is
+    /// unsequenced.
+    EvalStrictOrder,
     /// Assignment is a statement and its place is a path.
     Assign,
     /// A call binds arguments to parameters by mode and evaluates the body.
@@ -225,6 +280,94 @@ impl Rule {
                 "arith.literal.default",
                 "an unconstrained integer literal defaults to i32 and a float literal to f64",
             ),
+            Rule::RegionCreate => (
+                "mem.region.create.1",
+                "`region name { … }` sugar and `region(…)` values both create a region with a strategy",
+            ),
+            Rule::RegionAffine => (
+                "mem.region.create.2",
+                "region values are affine: they move, are never copied, and denote distinct regions",
+            ),
+            Rule::RegionAmbient => (
+                "mem.region.create.3",
+                "every function executes with a current region and heap allocations land there",
+            ),
+            Rule::RegionIdentity => (
+                "mem.region.create.4",
+                "region identity is a static fact the dynamic machine tracks and compiled code need not",
+            ),
+            Rule::RegionIntra => (
+                "mem.region.intra.1",
+                "within one region references are unrestricted: cycles and back-edges are safe",
+            ),
+            Rule::RegionFree => (
+                "mem.region.intra.2",
+                "a region dies as a unit — every allocation in it is freed wholesale",
+            ),
+            Rule::RegionEdge => (
+                "mem.region.edge",
+                "every store of a reference is checked against the cross-region edge table",
+            ),
+            Rule::RegionEdgeIso => (
+                "mem.region.edge.iso",
+                "a region has at most one owning edge; the owning handle is affine like the region",
+            ),
+            Rule::RegionEdgeImm => (
+                "mem.region.edge.imm",
+                "frozen (`imm`) data may be referenced from anywhere, forever",
+            ),
+            Rule::RegionOpen => (
+                "mem.region.open.1",
+                "entering `in r { … }` or the sugar block opens a region; exit closes it (Suspended)",
+            ),
+            Rule::RegionMultiopen => (
+                "mem.region.multiopen",
+                "multiple disjoint regions may be open simultaneously — wolf's extension past Verona",
+            ),
+            Rule::RegionSuspended => (
+                "mem.region.open.3",
+                "a suspended region's contents are unreachable for writing",
+            ),
+            Rule::RegionFreeze => (
+                "mem.region.freeze.1",
+                "`freeze r` consumes the region value and promotes the whole graph to `imm`, deep and in place",
+            ),
+            Rule::RegionTransfer => (
+                "mem.region.freeze.2",
+                "`move r` transfers the region value; any use of the old binding is a moved-from use",
+            ),
+            Rule::RegionClosedSubtree => (
+                "mem.region.freeze.3",
+                "freezing or transferring a region containing an open child is refused: closed subtrees only",
+            ),
+            Rule::SharedRc => (
+                "mem.shared.rc.1",
+                "`shared T` is a refcounted cell; clones share ownership and it drops at the last strong release",
+            ),
+            Rule::SharedAcyclic => (
+                "mem.shared.rc.2",
+                "strong `shared` edges are acyclic — wolf has no cycle collector and refuses to leak instead",
+            ),
+            Rule::SharedWeak => (
+                "mem.shared.rc.3",
+                "`weak T` keeps nothing alive; upgrading yields an option-shaped result the caller handles",
+            ),
+            Rule::SharedDrop => (
+                "mem.shared.drop.3",
+                "a `shared` payload's destructor runs when the last strong count drops, at that release point",
+            ),
+            Rule::HandleTwoPhase => (
+                "mem.shared.handle.1",
+                "`handle T` is a generational index into a `pool(T)`; `reserve` then `init`, so no null handles exist",
+            ),
+            Rule::HandleStale => (
+                "mem.shared.handle.2",
+                "accessing a freed or re-generationed slot is a deterministic fault in every profile",
+            ),
+            Rule::HandleAccess => (
+                "mem.shared.handle.3",
+                "`pool[h]` accesses the slot under Tier-0 exclusivity rules; the pool is the place base",
+            ),
             Rule::Block => (
                 "gram.expr.block",
                 "a block evaluates its statements and yields its tail expression",
@@ -236,6 +379,10 @@ impl Rule {
             Rule::EvalOrder => (
                 "gram.expr.prec",
                 "`&&`/`||` short-circuit; other operand positions evaluate left to right",
+            ),
+            Rule::EvalStrictOrder => (
+                "mem.model.order",
+                "evaluation is strict and left-to-right everywhere: nothing is unsequenced",
             ),
             Rule::Assign => (
                 "gram.expr.assign",
@@ -302,8 +449,18 @@ impl Rule {
         self.row().description
     }
 
+    /// Is this a memory-model rule — one `--trace=mem` keeps?
+    ///
+    /// The filter is the anchor's namespace, not a hand-kept list: a rule
+    /// citing `mem.*` is a memory rule by definition, so the filter cannot
+    /// drift away from the registry.
+    #[must_use]
+    pub fn is_memory(self) -> bool {
+        self.anchor().starts_with("mem.")
+    }
+
     /// Every rule, in declaration order. The registry.
-    pub const ALL: [Rule; 36] = [
+    pub const ALL: [Rule; 59] = [
         Rule::ValueSemantics,
         Rule::PlacePath,
         Rule::PathDisjoint,
@@ -325,9 +482,32 @@ impl Rule {
         Rule::DivZero,
         Rule::Bounds,
         Rule::LiteralDefault,
+        Rule::RegionCreate,
+        Rule::RegionAffine,
+        Rule::RegionAmbient,
+        Rule::RegionIdentity,
+        Rule::RegionIntra,
+        Rule::RegionFree,
+        Rule::RegionEdge,
+        Rule::RegionEdgeIso,
+        Rule::RegionEdgeImm,
+        Rule::RegionOpen,
+        Rule::RegionMultiopen,
+        Rule::RegionSuspended,
+        Rule::RegionFreeze,
+        Rule::RegionTransfer,
+        Rule::RegionClosedSubtree,
+        Rule::SharedRc,
+        Rule::SharedAcyclic,
+        Rule::SharedWeak,
+        Rule::SharedDrop,
+        Rule::HandleTwoPhase,
+        Rule::HandleStale,
+        Rule::HandleAccess,
         Rule::Block,
         Rule::Flow,
         Rule::EvalOrder,
+        Rule::EvalStrictOrder,
         Rule::Assign,
         Rule::Call,
         Rule::Closure,

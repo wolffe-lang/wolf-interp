@@ -10,7 +10,7 @@
 //! > `unsupported` — never the incomplete phase. A `fail(CODE)` verdict reports
 //! > the phase that failed as `phase_reached`.
 //!
-//! # The ladder mapping (is02)
+//! # The ladder mapping (is02–is03)
 //!
 //! The canonical ladder is `none, lex, parse, resolve, typecheck, mem, wir,
 //! run`. It is the *compiler's* pipeline; an interpreter does not have all of
@@ -25,7 +25,7 @@
 //! | `typecheck` | *not implemented* | the type checker is the compiler's half (`sema` docs) |
 //! | `mem` | *not implemented* | the borrow/region checkers are the compiler's half |
 //! | `wir` | *not implemented* | there is no IR here; a tree-walk has no lowering |
-//! | `run` | the tree-walk evaluator | is02 |
+//! | `run` | the tree-walk evaluator, with is03's dynamic region machine | is02–is03 |
 //!
 //! Two consequences, both deliberate:
 //!
@@ -75,6 +75,12 @@ pub struct Observation {
     pub trap: Option<Trap>,
     /// `--trace`'s rule log, when it was asked for.
     pub trace: Vec<String>,
+    /// Regions still holding memory when the program ended (is03's leak
+    /// assertion). Empty for every phase that does not run.
+    pub leaks: Vec<crate::eval::region::RegionId>,
+    /// `Err` when the region forest invariant broke during the run — an
+    /// interpreter bug, surfaced rather than swallowed.
+    pub forest: Result<(), String>,
 }
 
 impl Observation {
@@ -97,6 +103,8 @@ impl Observation {
             reason: None,
             trap: None,
             trace: Vec::new(),
+            leaks: Vec::new(),
+            forest: Ok(()),
         }
     }
 
@@ -122,7 +130,7 @@ pub const DEEPEST_STATIC: Phase = Phase::Resolve;
 /// one-file root module — `resolve` and `run` as well.
 #[must_use]
 pub fn observe(source: &[u8], requested: Option<Phase>) -> Observation {
-    observe_with(None, source, requested, false)
+    observe_with(None, source, requested, crate::eval::Trace::Off)
 }
 
 /// Observes the program rooted at `file`, loading its module graph (D32:
@@ -132,7 +140,7 @@ pub fn observe_file(
     file: &Path,
     source: &[u8],
     requested: Option<Phase>,
-    trace: bool,
+    trace: crate::eval::Trace,
 ) -> Observation {
     observe_with(Some(file), source, requested, trace)
 }
@@ -141,7 +149,7 @@ fn observe_with(
     file: Option<&Path>,
     source: &[u8],
     requested: Option<Phase>,
-    trace: bool,
+    trace: crate::eval::Trace,
 ) -> Observation {
     if requested == Some(Phase::None) {
         return Observation::clean(Phase::None, Verdict::Pass);
@@ -235,6 +243,8 @@ fn observe_with(
     };
     observation.stdout = run.stdout;
     observation.trace = run.trace;
+    observation.leaks = run.leaks;
+    observation.forest = run.forest;
     observation
 }
 
@@ -247,6 +257,7 @@ mod tests {
     const BAD_PARSE: &str = "fn main() -> !int {\n    let a = 1\n        + 2\n    0\n}\n";
     const BAD_LEX: &str = "fn main() -> !int {\n    let s = \"unclosed\n    0\n}\n";
     const REGIONS: &str = "fn main() -> !int {\n    region r { let a = 1 }\n    0\n}\n";
+    const CONCURRENCY: &str = "fn main() -> !int {\n    scope s { let a = 1 }\n    0\n}\n";
 
     #[test]
     fn a_clean_program_passes_at_the_rung_it_was_asked_for() {
@@ -281,10 +292,21 @@ mod tests {
 
     #[test]
     fn a_construct_outside_coverage_reports_the_last_completed_phase() {
-        let obs = observe(REGIONS.as_bytes(), None);
+        let obs = observe(CONCURRENCY.as_bytes(), None);
         assert_eq!(obs.verdict, Verdict::Unsupported);
         assert_eq!(obs.phase_reached, Phase::Resolve);
-        assert!(obs.reason.expect("a reason").contains("Tier 1"));
+        assert!(obs.reason.expect("a reason").contains("ic03"));
+    }
+
+    #[test]
+    fn a_region_block_runs_at_is03_and_leaks_nothing() {
+        // The rung moved: `region r { … }` was `unsupported` at is02 and is a
+        // run outcome now, with the sprint's leak assertion clean.
+        let obs = observe(REGIONS.as_bytes(), None);
+        assert_eq!(obs.verdict, Verdict::Exit(0));
+        assert_eq!(obs.phase_reached, Phase::Run);
+        assert!(obs.leaks.is_empty(), "{:?}", obs.leaks);
+        assert_eq!(obs.forest, Ok(()));
     }
 
     #[test]

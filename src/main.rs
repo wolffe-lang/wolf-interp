@@ -17,6 +17,7 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 
 use wolf_interp::corpus::{self, Outcome};
+use wolf_interp::eval::Trace;
 use wolf_interp::ledger::{self, Judgement};
 use wolf_interp::phase::Phase;
 use wolf_interp::protocol::Verdict;
@@ -99,10 +100,14 @@ struct ConformRunArgs {
     /// Emit the machine-readable observation record.
     #[arg(long)]
     json: bool,
-    /// Log every evaluation rule as it fires, with its clause anchor, to
-    /// stderr. Human-facing; never part of the record.
-    #[arg(long)]
-    trace: bool,
+    /// Log evaluation rules as they fire, with their clause anchors, to
+    /// stderr. `--trace` logs all of them; `--trace=mem` keeps only the
+    /// memory-model rules — every region event (create/open/suspend/freeze/
+    /// free, edge checks, RC ops, handle faults), which is what is05's
+    /// divergence triage and s20's checker validation read. Human-facing;
+    /// never part of the record.
+    #[arg(long, num_args = 0..=1, default_missing_value = "all", value_name = "FILTER")]
+    trace: Option<Trace>,
 }
 
 #[derive(Debug, Args)]
@@ -379,8 +384,12 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
         Err(code) => return code,
     };
 
-    let (record, observed) =
-        wolf_interp::observe_record_traced(&args.file, &source, args.phase, args.trace);
+    let (record, observed) = wolf_interp::observe_record_traced(
+        &args.file,
+        &source,
+        args.phase,
+        args.trace.unwrap_or_default(),
+    );
 
     // Never emit a record this implementation's own validator would reject.
     let value = match serde_json::to_value(&record) {

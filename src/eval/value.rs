@@ -6,9 +6,16 @@
 //!
 //! Which is why [`Value`] is an ordinary owned Rust tree with no `Rc` in it
 //! anywhere: there is no sharing to model at Tier 0, so a Rust `clone` *is* a
-//! wolf `copy` and a Rust move *is* a wolf move. Tier 2's `shared`/`handle`
-//! (is03) are the values that will need identity; deliberately, none of them
-//! exist here.
+//! wolf `copy` and a Rust move *is* a wolf move.
+//!
+//! is03 adds the values that *do* have identity, and every one of them is an
+//! **index into [`super::region::Store`]** rather than a Rust pointer:
+//! [`Value::Region`], [`Value::PoolRef`], [`Value::Handle`], [`Value::Shared`]
+//! and [`Value::Weak`]. Keeping identity in a side table rather than in the
+//! value tree is what makes use-after-free *exact* — a stale reference is a
+//! live index whose generation no longer matches, which is a comparison, not a
+//! guess — and it keeps `Value` cloneable, which the whole Tier-0 machine
+//! depends on.
 //!
 //! Storage is **slots**, and every slot carries its own dynamic state
 //! ([`SlotState`]). Struct fields and tuple elements are slots in their own
@@ -17,6 +24,7 @@
 
 use std::fmt;
 
+use super::region::{CellId, PoolId, RegionId};
 use crate::diag::Span;
 
 /// Whether a slot currently holds a value (`[mem.tier0.move.1]`).
@@ -224,6 +232,30 @@ pub struct ClosureValue {
     pub captures: Vec<(String, Value)>,
 }
 
+/// A first-class region value (X4, `[mem.region.create.2]`).
+///
+/// Affine: it moves and is never copied, which is what
+/// `[mem.region.multiopen]` leans on for distinctness. The generation is the
+/// region's at binding time, so a value that outlives a wholesale free is
+/// detectably stale rather than merely wrong.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RegionValue {
+    pub id: RegionId,
+    pub generation: u32,
+}
+
+/// A `handle T`: `(pool, index, generation)` (`[mem.shared.handle.1]`).
+///
+/// Copy-shaped — `spec/02` Appendix A annotates `var cur = hs[0]` with
+/// `[mem.tier0.move.3]` "handle is Copy-shaped" — so handles behave like the
+/// generational indices they are, and every deref re-checks the generation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HandleValue {
+    pub pool: PoolId,
+    pub index: usize,
+    pub generation: u32,
+}
+
 /// A wolf runtime value.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -260,6 +292,18 @@ pub enum Value {
     /// resolves the corpus against a names-only std stub; this is the same set
     /// with behavior attached, and it moves when the real std surface lands.
     Builtin(&'static str),
+
+    // -- Tier 1 & 2: the granules with identity (is03) ---------------------
+    /// `region()`, `region(rc)`, and the sugar's binder (`[mem.region.create.1]`).
+    Region(RegionValue),
+    /// A `Pool[T]`, anchored to the region that was current when it was built.
+    PoolRef(PoolId),
+    /// `handle T` (`[mem.shared.handle.1]`).
+    Handle(HandleValue),
+    /// A strong `shared T` reference (`[mem.shared.rc.1]`).
+    Shared(CellId),
+    /// A `weak T` reference, which keeps nothing alive (`[mem.shared.rc.3]`).
+    Weak(CellId),
 }
 
 impl Value {
@@ -293,6 +337,11 @@ impl Value {
             Value::Error(e) => format!("error {}", e.tag),
             Value::Module(name) => format!("module {name}"),
             Value::Builtin(name) => format!("builtin {name}"),
+            Value::Region(_) => "region".to_owned(),
+            Value::PoolRef(_) => "Pool".to_owned(),
+            Value::Handle(_) => "handle".to_owned(),
+            Value::Shared(_) => "shared".to_owned(),
+            Value::Weak(_) => "weak".to_owned(),
         }
     }
 
@@ -381,6 +430,20 @@ impl fmt::Display for Value {
             Value::Fn(name) | Value::Module(name) => f.write_str(name),
             Value::Builtin(name) => f.write_str(name),
             Value::Closure(_) => f.write_str("<closure>"),
+            // Identity-carrying granules render as what they are: an id, and
+            // the generation that makes staleness decidable. `[mem.region.create.4]`
+            // says region identity has zero runtime representation in compiled
+            // code — this is the dynamic machine's bookkeeping, not a value the
+            // language promises to print.
+            Value::Region(handle) => write!(f, "region#{}@{}", handle.id, handle.generation),
+            Value::PoolRef(id) => write!(f, "pool#{id}"),
+            Value::Handle(handle) => write!(
+                f,
+                "handle#{}[{}]@{}",
+                handle.pool, handle.index, handle.generation
+            ),
+            Value::Shared(id) => write!(f, "shared#{id}"),
+            Value::Weak(id) => write!(f, "weak#{id}"),
             Value::Error(e) => {
                 f.write_str(&e.tag)?;
                 if !e.payload.is_empty() {

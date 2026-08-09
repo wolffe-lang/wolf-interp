@@ -272,6 +272,428 @@ fn a_borrows_extent_ends_with_its_scope() {
     );
 }
 
+// -- §3 Tier 1: the dynamic region machine ---------------------------------
+
+/// A program body wrapped in `fn main`, for the many small region litmuses.
+fn main_of(body: &str) -> String {
+    format!("fn main() -> int {{\n{body}\n}}\n")
+}
+
+#[test]
+fn allocations_land_in_the_innermost_open_region() {
+    // `[mem.region.create.3]`: "every function executes with a *current
+    // region*; heap allocations land there … `in r { … }` sets the current
+    // region to `r` for the block." The callee allocating into the *caller's*
+    // region is D12's default, and it falls out of not pushing on a call.
+    let run = run("fn fill() -> List[int] {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   xs.push(7)\n\
+         \x20   xs\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   region tmp {\n\
+         \x20       let xs = fill()\n\
+         \x20       xs[0] - 7\n\
+         \x20   }\n\
+         }\n");
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    assert!(run.leaks.is_empty());
+}
+
+#[test]
+fn a_sugar_block_frees_wholesale_at_its_closing_brace() {
+    // `[mem.region.intra.2]`: "A region dies as a unit … every allocation in it
+    // is freed **wholesale**. Per-allocation frees do not exist in safe code."
+    let run = run(&main_of(
+        "    region a { let xs = List[int]() }\n\
+         \x20   region b { let ys = List[int]() }\n\
+         \x20   0",
+    ));
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    assert!(run.leaks.is_empty(), "{:?}", run.leaks);
+}
+
+#[test]
+fn a_first_class_region_is_freed_when_its_owner_dies() {
+    // Scope exit, not last use — see `Machine::reclaim`'s note. The observable
+    // is the same for a program with no destructors, which is every program
+    // this machine can currently express.
+    let run = run(&main_of("    let r = region(rc)\n\x20   in r { 0 }"));
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    assert!(run.leaks.is_empty(), "{:?}", run.leaks);
+}
+
+#[test]
+fn two_disjoint_regions_open_simultaneously() {
+    // `[mem.region.multiopen]` — the Verona relaxation, executed. This is the
+    // clause flagged for model checking, and this machine is its first
+    // executable test.
+    let run = run(&main_of(
+        "    let a = region()\n\
+         \x20   let b = region()\n\
+         \x20   var total = 0\n\
+         \x20   in a {\n\
+         \x20       var xs = List[int]()\n\
+         \x20       xs.push(1)\n\
+         \x20       in b {\n\
+         \x20           var ys = List[int]()\n\
+         \x20           ys.push(2)\n\
+         \x20           total += xs[0] + ys[0]\n\
+         \x20       }\n\
+         \x20   }\n\
+         \x20   total - 3",
+    ));
+    assert_eq!(run.outcome, Outcome::Exit(0));
+}
+
+#[test]
+fn reopening_the_region_you_are_already_inside_is_a_no_op() {
+    // `corpus/memory/region_multiopen_swap.lu` writes exactly this shape and
+    // pins it at `run(exit=0)`. `[mem.region.open.1]`'s "Open in at most one
+    // scope at a time" does not say it, and the corpus requires it — the
+    // finding is filed in `docs/approximation-contract.md`.
+    let run = run(&main_of(
+        "    region a {\n\
+         \x20       var xs = List[int]()\n\
+         \x20       in a { xs.push(1) }\n\
+         \x20       xs[0] - 1\n\
+         \x20   }",
+    ));
+    assert_eq!(run.outcome, Outcome::Exit(0));
+}
+
+#[test]
+fn an_ancestor_and_its_descendant_do_not_open_together() {
+    // The other half of the multiopen finding: "distinct region values" is not
+    // "disjoint regions" once `[mem.region.edge.iso]` lets one own the other.
+    let trap = trap_of(
+        "struct Holder { child: region }\n\
+         fn main() -> int {\n\
+         \x20   let c = region()\n\
+         \x20   let outer = region()\n\
+         \x20   let h = in outer { Holder { child: move c } }\n\
+         \x20   in outer { in h.child { 1 } }\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule.anchor(), "mem.region.multiopen");
+}
+
+#[test]
+fn a_dangling_handle_into_a_freed_region_faults_exactly() {
+    // `[mem.region.intra.2]`: "Any later access through a surviving reference
+    // faults … detection is exact (region id + generation), never
+    // probabilistic."
+    let trap = trap_of(
+        "struct Node { value: int }\n\
+         fn main() -> int {\n\
+         \x20   var pool = Pool[Node]()\n\
+         \x20   var h = pool.reserve()\n\
+         \x20   region r: pool(Node) {\n\
+         \x20       var inner = Pool[Node]()\n\
+         \x20       h = inner.reserve()\n\
+         \x20       inner.init(h, Node { value: 1 })\n\
+         \x20       pool = move inner\n\
+         \x20   }\n\
+         \x20   pool[h].value\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule.anchor(), "mem.region.intra.2");
+    assert!(trap.secondary.is_some(), "the dead region's creation site");
+}
+
+#[test]
+fn an_illegal_cross_region_edge_faults_at_the_store() {
+    // §3's edge table, "other region ❌ E1004", as the dynamic half. The check
+    // happens at the *store*, which is why the fault's span is the struct
+    // literal and not the later read.
+    let trap = trap_of(
+        "struct Node { value: int, link: handle Node }\n\
+         fn main() -> int {\n\
+         \x20   region a: pool(Node) {\n\
+         \x20       var pa = Pool[Node]()\n\
+         \x20       let ha = pa.reserve()\n\
+         \x20       pa.init(ha, Node { value: 1, link: ha })\n\
+         \x20       region b: pool(Node) {\n\
+         \x20           var pb = Pool[Node]()\n\
+         \x20           let hb = pb.reserve()\n\
+         \x20           pb.init(hb, Node { value: 2, link: ha })\n\
+         \x20       }\n\
+         \x20   }\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule.anchor(), "mem.region.edge");
+    assert!(trap.message.contains("E1004"), "{}", trap.message);
+}
+
+#[test]
+fn intra_region_cycles_are_safe_by_construction() {
+    // `[mem.region.intra.1]`: "cycles, back-edges, intrusive structures are
+    // safe. Nothing dangles while the region lives." The doubly-linked ring is
+    // the program Rust makes miserable.
+    let run = run(
+        "struct Node { value: int, next: handle Node, prev: handle Node }\n\
+         fn main() -> int {\n\
+         \x20   region r: pool(Node) {\n\
+         \x20       var p = Pool[Node]()\n\
+         \x20       let a = p.reserve()\n\
+         \x20       let b = p.reserve()\n\
+         \x20       p.init(a, Node { value: 1, next: b, prev: b })\n\
+         \x20       p.init(b, Node { value: 2, next: a, prev: a })\n\
+         \x20       p[p[a].next].value - 2\n\
+         \x20   }\n\
+         }\n",
+    );
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    assert!(run.leaks.is_empty());
+}
+
+#[test]
+fn a_region_transfers_only_as_a_closed_subtree() {
+    // `[mem.region.freeze.3]` (E1005's dynamic half): the open form faults and
+    // the closed form is the legal twin.
+    let trap = trap_of(
+        "struct Holder { child: region }\n\
+         fn main() -> int {\n\
+         \x20   let r = region()\n\
+         \x20   let h = in r { Holder { child: move r } }\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule.anchor(), "mem.region.freeze.3");
+
+    assert_eq!(
+        outcome(
+            "struct Holder { child: region }\n\
+             fn main() -> int {\n\
+             \x20   let r = region()\n\
+             \x20   let n = in r { 21 }\n\
+             \x20   let h = Holder { child: move r }\n\
+             \x20   n - 21\n\
+             }\n",
+        ),
+        Outcome::Exit(0)
+    );
+}
+
+#[test]
+fn a_region_has_at_most_one_owning_edge() {
+    // `[mem.region.edge.iso]`, the forest invariant. A second owner is
+    // impossible to *write* — the region value is affine, so the second store
+    // reads a moved-from place — which is exactly the static rule made
+    // dynamic.
+    let trap = trap_of(
+        "struct Holder { child: region }\n\
+         fn main() -> int {\n\
+         \x20   let r = region()\n\
+         \x20   let a = Holder { child: move r }\n\
+         \x20   let b = Holder { child: move r }\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::UseAfterMove);
+    assert_eq!(trap.rule.anchor(), "mem.tier0.move.2");
+}
+
+#[test]
+fn freezing_is_deep_and_forever_and_writes_through_it_fault() {
+    // `[mem.region.freeze.1]`: "promotes the entire graph to `imm` — deep, in
+    // place, no copy. Frozen data is immutable **forever**." The read is legal
+    // from anywhere (`[mem.region.edge.imm]`); the write faults.
+    let trap = trap_of(
+        "struct Node { value: int }\n\
+         fn main() -> int {\n\
+         \x20   let r = region(pool(Node))\n\
+         \x20   let p = in r { Pool[Node]() }\n\
+         \x20   let frozen = freeze r\n\
+         \x20   let h = p.reserve()\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule.anchor(), "mem.region.freeze.1");
+
+    // `freeze region { … }` builds anonymously and promotes: the block's value
+    // survives, and the region is never freed.
+    let run = run(&main_of(
+        "    let cfg = freeze region { 2 }\n\x20   cfg - 2",
+    ));
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    assert!(run.leaks.is_empty(), "a frozen region is not a leak");
+}
+
+#[test]
+fn a_suspended_region_is_read_only() {
+    // `[mem.region.open.3]`: "A Suspended region's contents are unreachable for
+    // writing." The read of the same slot is fine, which is what makes the
+    // O4 `invariant.load` entitlement sound.
+    let source = "struct Node { value: int }\n\
+                  fn main() -> int {\n\
+                  \x20   let r = region(pool(Node))\n\
+                  \x20   let p = in r { Pool[Node]() }\n\
+                  \x20   let h = in r { p.reserve() }\n\
+                  \x20   in r { p.init(h, Node { value: 42 }) }\n\
+                  \x20   let seen = p[h].value\n\
+                  \x20   seen - 42\n\
+                  }\n";
+    assert_eq!(outcome(source), Outcome::Exit(0));
+
+    let trap = trap_of(
+        "struct Node { value: int }\n\
+         fn main() -> int {\n\
+         \x20   let r = region(pool(Node))\n\
+         \x20   let p = in r { Pool[Node]() }\n\
+         \x20   let h = in r { p.reserve() }\n\
+         \x20   p.init(h, Node { value: 42 })\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule.anchor(), "mem.region.open.3");
+}
+
+#[test]
+fn region_values_are_affine() {
+    // `[mem.region.create.2]`: "Region values are **affine**: they move, are
+    // never copied". Binding one to a second name moves it, and the first is
+    // then a moved-from place — the Tier-0 rule doing Tier-1 work.
+    let trap = trap_of(&main_of(
+        "    let a = region()\n\
+         \x20   let b = a\n\
+         \x20   in a { 0 }",
+    ));
+    assert_eq!(trap.kind, TrapKind::UseAfterMove);
+}
+
+// -- §4 Tier 2: `shared` and `handle` --------------------------------------
+
+#[test]
+fn a_pool_is_two_phase_and_reading_a_reserved_slot_is_uninitialized() {
+    // `[mem.shared.handle.1]`: "`reserve()` yields a handle; `init(h, v)` fills
+    // it (grammar/corpus lock — **no null handles exist**)." Reading between
+    // the two is a read of uninitialized storage, which `[mem.tier0.move.2]`
+    // already names.
+    let trap = trap_of(
+        "struct Node { value: int }\n\
+         fn main() -> int {\n\
+         \x20   region r: pool(Node) {\n\
+         \x20       var p = Pool[Node]()\n\
+         \x20       let h = p.reserve()\n\
+         \x20       p[h].value\n\
+         \x20   }\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::UseAfterMove);
+    assert_eq!(trap.rule.anchor(), "mem.shared.handle.1");
+}
+
+#[test]
+fn a_stale_handle_faults_deterministically_and_slots_are_reused() {
+    // `[mem.shared.handle.2]`: "Accessing a handle whose slot was freed or
+    // re-generationed is a **deterministic fault** … in every profile. This is
+    // defined behavior, not UB." And: "Freed slots may be reused; generation
+    // bumps on reuse."
+    let trap = trap_of(
+        "struct Node { value: int }\n\
+         fn main() -> int {\n\
+         \x20   region r: pool(Node) {\n\
+         \x20       var p = Pool[Node]()\n\
+         \x20       let first = p.reserve()\n\
+         \x20       p.init(first, Node { value: 1 })\n\
+         \x20       p.remove(first)\n\
+         \x20       let second = p.reserve()\n\
+         \x20       p.init(second, Node { value: 2 })\n\
+         \x20       p[first].value\n\
+         \x20   }\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::StaleHandle);
+    assert_eq!(trap.rule.anchor(), "mem.shared.handle.2");
+    assert!(trap.message.contains("generation"), "{}", trap.message);
+}
+
+#[test]
+fn refcounts_are_naive_and_the_payload_drops_at_the_last_release() {
+    // `[mem.shared.rc.1]` and `[mem.shared.drop.3]`. The interpreter runs
+    // honest non-atomic refcounts on purpose: Perceus elision is a compiler
+    // optimization that must be *unobservable* against this baseline.
+    let run = run("struct Cfg { limit: int }\n\
+         fn main() -> int {\n\
+         \x20   let a = shared (Cfg { limit: 7 })\n\
+         \x20   let b = a.clone()\n\
+         \x20   b.limit - 7\n\
+         }\n");
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    assert!(
+        run.live_cells.is_empty(),
+        "the cell outlived its owners: {:?}",
+        run.live_cells
+    );
+}
+
+#[test]
+fn a_weak_edge_keeps_nothing_alive_and_upgrading_is_option_shaped() {
+    // `[mem.shared.rc.3]`: "`weak T` does not keep the value alive; upgrading
+    // yields an option-shaped result the caller must handle."
+    let run = run("struct Cfg { limit: int }\n\
+         fn weak_of() -> weak Cfg {\n\
+         \x20   let a = shared (Cfg { limit: 7 })\n\
+         \x20   a.downgrade()\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   var w = weak_of()\n\
+         \x20   let live = w.upgrade() else |_| { return 0 }\n\
+         \x20   1\n\
+         }\n");
+    assert_eq!(run.outcome, Outcome::Exit(0));
+
+    // While a strong owner is alive, the upgrade succeeds.
+    assert_eq!(
+        outcome(
+            "struct Cfg { limit: int }\n\
+             fn main() -> int {\n\
+             \x20   let a = shared (Cfg { limit: 7 })\n\
+             \x20   let w = a.downgrade()\n\
+             \x20   let live = w.upgrade() else |_| { return 1 }\n\
+             \x20   live.limit - 7\n\
+             }\n",
+        ),
+        Outcome::Exit(0)
+    );
+}
+
+#[test]
+fn the_acyclicity_assertion_reports_a_strong_cycle_without_inventing_a_trap() {
+    // `[mem.shared.rc.2]` is a *compile* error (E1006) and `[conf.trap.set]` is
+    // closed with no kind for it, so the dynamic half is an assertion in the
+    // trace — never a trap this implementation legislated into existence. The
+    // missing counterpart is a spec finding.
+    let program = crate::sema::load_source(
+        "t.lu",
+        "struct S { value: int }\n\
+         fn main() -> int {\n\
+         \x20   let inner = shared (S { value: 1 })\n\
+         \x20   let outer = shared (inner)\n\
+         \x20   0\n\
+         }\n",
+    )
+    .expect("parses");
+    let run = Machine::new(&program).tracing(super::Trace::Memory).run();
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    assert!(
+        run.trace
+            .iter()
+            .any(|line| line.contains("mem.shared.rc.2") && line.contains("acyclic")),
+        "the acyclicity assertion never ran: {:?}",
+        run.trace
+    );
+    assert!(!matches!(run.outcome, Outcome::Trap(_)));
+}
+
 // -- checked arithmetic (X3) ----------------------------------------------
 
 #[test]
@@ -601,13 +1023,11 @@ fn an_ambiguous_definition_declines_to_dispatch() {
 #[test]
 fn a_construct_outside_this_tier_names_the_tier_that_owns_it() {
     for (source, owner) in [
+        // Tier 1 and Tier 2 moved *into* coverage at is03; what is left
+        // outside is the unsafe tier and concurrency.
         (
-            "fn main() -> int {\n    region r { let a = 1 }\n    0\n}\n",
-            "Tier 1",
-        ),
-        (
-            "fn main() -> int {\n    let s = shared 1\n    0\n}\n",
-            "Tier 2",
+            "fn main() -> int {\n    var a = 1\n    let p = &a\n    let q = *p\n    0\n}\n",
+            "Tier 3",
         ),
         (
             "fn main() -> int {\n    unsafe { let a = 1 }\n    0\n}\n",
@@ -645,7 +1065,7 @@ fn the_trace_records_each_rule_as_it_fires() {
         "fn main() -> int {\n    var x: i32 = 2147483647\n    x + 1\n}\n",
     )
     .expect("parses");
-    let run = Machine::new(&program).tracing(true).run();
+    let run = Machine::new(&program).tracing(super::Trace::All).run();
     assert!(matches!(run.outcome, Outcome::Trap(_)));
     let trace = run.trace.join("\n");
     // Rules render with their anchor, so the trace is self-citing too.

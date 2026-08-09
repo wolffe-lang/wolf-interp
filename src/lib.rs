@@ -9,7 +9,7 @@
 //! Two implementations that quietly share a parser cannot disagree, and
 //! disagreement is the entire product (`[proto.cmp.triage]`).
 //!
-//! At is02 wolf programs **run**. [`lex`] and [`parse`] implement
+//! At is03 wolf programs **run**, regions and all. [`lex`] and [`parse`] implement
 //! `spec/01-grammar.md` in full (is01); [`sema`] is the "sema-lite" module
 //! machinery a call needs to find its callee, and nothing more; [`eval`] is
 //! `spec/02-memory-model.md` §2 as a dynamic machine, with every ownership rule
@@ -92,16 +92,33 @@ pub fn observe_record(
     source: &[u8],
     requested_phase: Option<Phase>,
 ) -> (ObservationRecord, Observed) {
-    observe_record_traced(file, source, requested_phase, false)
+    observe_record_traced(file, source, requested_phase, crate::eval::Trace::Off)
 }
 
 /// The human-facing half of an observation: never on the wire
 /// (`[proto.record.diag]` — messages are a per-implementation quality concern).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Observed {
     pub diagnostic: Option<crate::diag::Diag>,
     pub trap: Option<crate::eval::Trap>,
     pub trace: Vec<String>,
+    /// Regions still holding memory at program exit — is03's leak assertion,
+    /// exposed so CI can assert it over the whole corpus.
+    pub leaks: Vec<crate::eval::region::RegionId>,
+    /// `Err` when the region forest invariant broke during the run.
+    pub forest: Result<(), String>,
+}
+
+impl Default for Observed {
+    fn default() -> Observed {
+        Observed {
+            diagnostic: None,
+            trap: None,
+            trace: Vec::new(),
+            leaks: Vec::new(),
+            forest: Ok(()),
+        }
+    }
 }
 
 /// As [`observe_record`], with `--trace`'s rule log.
@@ -110,7 +127,7 @@ pub fn observe_record_traced(
     file: &Path,
     source: &[u8],
     requested_phase: Option<Phase>,
-    trace: bool,
+    trace: crate::eval::Trace,
 ) -> (ObservationRecord, Observed) {
     let observation = frontend::observe_file(file, source, requested_phase, trace);
 
@@ -176,6 +193,8 @@ pub fn observe_record_traced(
             diagnostic: observation.detail,
             trap: observation.trap,
             trace: observation.trace,
+            leaks: observation.leaks,
+            forest: observation.forest,
         },
     )
 }

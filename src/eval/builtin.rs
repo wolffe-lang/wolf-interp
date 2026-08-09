@@ -22,8 +22,9 @@
 use crate::diag::Span;
 use crate::trap::TrapKind;
 
+use super::region::SlotLife;
 use super::rules::Rule;
-use super::value::{IntTy, Slot, Value};
+use super::value::{HandleValue, IntTy, Slot, Value};
 use super::{Machine, Signal};
 
 type BResult = Result<Value, Signal>;
@@ -45,11 +46,14 @@ pub fn ambient(name: &str) -> Option<Value> {
         "min",
         "max",
         "assert",
+        // `Pool[T]()` is pinned: `[mem.shared.handle.1]` fixes the two-phase
+        // shape ("`reserve()` yields a handle; `init(h, v)` fills it") and the
+        // corpus locks the spelling, so is03 implements it.
+        "Pool",
         // In the stub, and deliberately not implemented: their semantics are
         // not in any pinned document, so this machine declines rather than
         // guesses. Naming them still resolves the *name*, which keeps the
         // failure "unsupported feature" instead of "unknown name".
-        "Pool",
         "Mutex",
         "channel",
         "worker",
@@ -101,8 +105,36 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             machine.out(&text);
             Ok(Value::Unit)
         }
-        "List" => Ok(Value::List(Vec::new())),
-        "Map" => Ok(Value::Map(Vec::new())),
+        // Collection constructors are allocation sites (`[mem.model.alloc]`),
+        // so they land in the current region (`[mem.region.create.3]`).
+        "List" => {
+            machine.allocate(span, "List");
+            Ok(Value::List(Vec::new()))
+        }
+        "Map" => {
+            machine.allocate(span, "Map");
+            Ok(Value::Map(Vec::new()))
+        }
+        "Pool" => {
+            // The pool is anchored to the region that is current when it is
+            // built, and `Store::new_pool` charges the allocation itself.
+            let current = machine.current_region();
+            let elem = match machine
+                .store()
+                .region(current)
+                .map(|region| region.strategy.clone())
+            {
+                Some(super::region::Strategy::Pool(ty)) => ty,
+                _ => "_".to_owned(),
+            };
+            let pool = machine.store().new_pool(elem);
+            machine.note(
+                Rule::HandleTwoPhase,
+                span,
+                &format!("pool#{pool} built; slots are reserved then initialized"),
+            );
+            Ok(Value::PoolRef(pool))
+        }
         "min" | "max" => {
             let mut best: Option<i128> = None;
             let mut ty = IntTy::LITERAL;
@@ -162,9 +194,32 @@ pub fn property(machine: &mut Machine, receiver: &Value, name: &str, span: Span)
         // D25: `str` is bytes, and `len` is a byte count — the same unit
         // slicing uses, so `s[..s.len]` is the whole string.
         (Value::Str(s), "len") => Ok(Value::Int(s.len() as i128, IntTy::INT)),
-        (Value::Struct { name: ty, .. }, field) => {
-            let _ = machine;
-            unsupported(format!("`{ty}` has no field `{field}`"))
+        // Projection *through* an RC cell: `[mem.shared.rc.1]`'s cell holds the
+        // payload, and reading a field of a `shared T` reads the payload's.
+        // Writes through a `shared` are not implemented — there is no pinned
+        // interior-mutability surface, and guessing one would put invented
+        // behavior into a differential comparison.
+        (Value::Shared(cell), field) => {
+            let payload = match machine.store().cell(*cell) {
+                Some(cell) if !cell.dead => cell.value.clone(),
+                _ => {
+                    return unsupported(format!(
+                        "shared#{cell}'s payload was released; `[mem.shared.rc.1]` says a strong \
+                         reference keeps it alive, so reaching a dead one is an interpreter bug"
+                    ));
+                }
+            };
+            machine.note(Rule::SharedRc, span, &format!("shared#{cell}.{field}"));
+            property(machine, &payload, field, span)
+        }
+        (Value::Struct { name: ty, fields }, field) => {
+            match fields.iter().find(|(f, _)| f == field) {
+                Some((_, slot)) => Ok(slot.value.clone()),
+                None => {
+                    let _ = machine;
+                    unsupported(format!("`{ty}` has no field `{field}`"))
+                }
+            }
         }
         (other, field) => unsupported(format!("{} has no member `{field}`", other.kind())),
     }
@@ -279,6 +334,161 @@ pub fn method(
             machine.invoke(target, args, span)
         }
 
+        // -- Tier 2: pools and handles (`[mem.shared.handle]`) -------------
+        (Value::PoolRef(pool), "reserve") => {
+            let pool = *pool;
+            // Reserving is a write into the pool's region.
+            machine.check_pool_region(pool, span, true)?;
+            let Some((index, generation)) = machine.store().reserve(pool) else {
+                return unsupported(format!("pool#{pool} does not exist"));
+            };
+            machine.note(
+                Rule::HandleTwoPhase,
+                span,
+                &format!("reserve pool#{pool}[{index}] at generation {generation}"),
+            );
+            Ok(Value::Handle(HandleValue {
+                pool,
+                index,
+                generation,
+            }))
+        }
+        (Value::PoolRef(pool), "init") => {
+            let pool = *pool;
+            machine.check_pool_region(pool, span, true)?;
+            let (handle, value) = two_phase_args(&args, "init")?;
+            // The slot is region data, so §4's store goes through §3's edge
+            // table exactly like a struct field does.
+            let owner = machine.store().pool_region(pool);
+            machine.check_edge_into(owner, &value, span, "pool slot")?;
+            if machine
+                .store()
+                .init_slot(pool, handle.index, handle.generation, value)
+            {
+                machine.note(
+                    Rule::HandleTwoPhase,
+                    span,
+                    &format!("init pool#{pool}[{}]", handle.index),
+                );
+                Ok(Value::Unit)
+            } else {
+                machine.stale_handle(handle, span)
+            }
+        }
+        (Value::PoolRef(pool), "remove") => {
+            let pool = *pool;
+            machine.check_pool_region(pool, span, true)?;
+            let Some(handle) = handle_arg(&args) else {
+                return unsupported("`remove` takes a handle".to_owned());
+            };
+            if machine
+                .store()
+                .remove_slot(pool, handle.index, handle.generation)
+            {
+                machine.note(
+                    Rule::HandleStale,
+                    span,
+                    &format!(
+                        "pool#{pool}[{}] freed; its generation bumped and every outstanding \
+                         handle to it is now stale",
+                        handle.index
+                    ),
+                );
+                Ok(Value::Unit)
+            } else {
+                machine.stale_handle(handle, span)
+            }
+        }
+        (Value::PoolRef(pool), "get") => {
+            let pool = *pool;
+            let Some(handle) = handle_arg(&args) else {
+                return unsupported("`get` takes a handle".to_owned());
+            };
+            let _ = pool;
+            machine.read_slot(handle, span)
+        }
+        (Value::PoolRef(pool), "len" | "count") => {
+            let count = machine
+                .store()
+                .pool(*pool)
+                .map(|p| p.slots.iter().filter(|s| s.life == SlotLife::Live).count())
+                .unwrap_or_default();
+            Ok(Value::Int(count as i128, IntTy::INT))
+        }
+
+        // -- Tier 2: `shared` and `weak` (`[mem.shared.rc]`) ---------------
+        (Value::Shared(cell), "clone") => {
+            let cell = *cell;
+            if machine.store().retain(cell) {
+                machine.note(
+                    Rule::SharedRc,
+                    span,
+                    &format!("shared#{cell} cloned: one more strong owner"),
+                );
+                Ok(Value::Shared(cell))
+            } else {
+                unsupported(format!("shared#{cell} has no payload to clone"))
+            }
+        }
+        (Value::Shared(cell), "downgrade") => {
+            let cell = *cell;
+            machine.store().downgrade(cell);
+            machine.note(
+                Rule::SharedWeak,
+                span,
+                &format!("shared#{cell} downgraded: a weak edge keeps nothing alive"),
+            );
+            Ok(Value::Weak(cell))
+        }
+        (Value::Shared(cell), "strong_count") => {
+            let count = machine.store().cell(*cell).map_or(0, |c| c.strong);
+            Ok(Value::Int(i128::from(count), IntTy::INT))
+        }
+        (Value::Weak(cell), "upgrade") => {
+            let cell = *cell;
+            if machine.store().upgrade(cell) {
+                machine.note(
+                    Rule::SharedWeak,
+                    span,
+                    &format!("weak#{cell} upgraded: the payload is still alive"),
+                );
+                Ok(Value::Shared(cell))
+            } else {
+                // `[mem.shared.rc.3]`: "upgrading yields an **option-shaped**
+                // result the caller must handle". The clause names the shape
+                // and not the tag; `None` is the shape's own word, and the
+                // corpus handles it with a wildcard `else |_|`, so nothing
+                // observable turns on the choice. Recorded as an open question
+                // in `docs/approximation-contract.md`.
+                machine.note(
+                    Rule::SharedWeak,
+                    span,
+                    &format!("weak#{cell} upgraded to nothing: the payload is gone"),
+                );
+                Ok(error("None"))
+            }
+        }
+
+        // -- Tier 1: region values (`[mem.region]`) -------------------------
+        (Value::Region(handle), "is_closed") => {
+            let state = machine.store().state(handle.id);
+            let label = machine.store().label(handle.id);
+            let detail = format!(
+                "{label} is {}",
+                state.map_or_else(|| "gone".to_owned(), |state| state.to_string())
+            );
+            machine.note(Rule::RegionOpen, span, &detail);
+            Ok(Value::Bool(!matches!(
+                state,
+                Some(super::region::RegionState::Open)
+            )))
+        }
+        (Value::Region(handle), "is_frozen") => {
+            let frozen =
+                machine.store().state(handle.id) == Some(super::region::RegionState::Frozen);
+            Ok(Value::Bool(frozen))
+        }
+
         (receiver, name) => unsupported(format!(
             "`{}` has no method `{name}` in this machine's std subset",
             receiver.kind()
@@ -307,6 +517,19 @@ pub fn index(machine: &mut Machine, target: &Value, index: &Value, span: Span) -
                     ),
                 ),
             }
+        }
+        // `pool[h]` — the checked slot access of `[mem.shared.handle.3]`. Every
+        // deref compares generations; a stale one is `stale-handle`, in every
+        // profile (`[mem.shared.handle.2]`).
+        (Value::PoolRef(pool), Value::Handle(handle)) => {
+            if handle.pool != *pool {
+                return unsupported(format!(
+                    "a handle into pool#{} was used against pool#{pool}; handles are indices into \
+                     one pool",
+                    handle.pool
+                ));
+            }
+            machine.read_slot(*handle, span)
         }
         (Value::Map(pairs), key) => match pairs.iter().find(|(k, _)| k == key) {
             Some((_, slot)) => Ok(slot.value.clone()),
@@ -387,4 +610,23 @@ fn error(tag: &str) -> Value {
         tag: tag.to_owned(),
         payload: Vec::new(),
     }))
+}
+
+/// The handle argument of `remove(h)` / `get(h)`.
+fn handle_arg(args: &[Value]) -> Option<HandleValue> {
+    match args.first() {
+        Some(Value::Handle(handle)) => Some(*handle),
+        _ => None,
+    }
+}
+
+/// `init(h, v)`'s two arguments — phase two of `[mem.shared.handle.1]`.
+fn two_phase_args(args: &[Value], name: &str) -> Result<(HandleValue, Value), Signal> {
+    match (args.first(), args.get(1)) {
+        (Some(Value::Handle(handle)), Some(value)) => Ok((*handle, value.clone())),
+        _ => Err(Signal::Unsupported(format!(
+            "`{name}` takes a handle and a value; pools are two-phase \
+             (`[mem.shared.handle.1]`)"
+        ))),
+    }
 }

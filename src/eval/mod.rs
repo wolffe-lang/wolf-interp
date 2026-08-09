@@ -26,6 +26,7 @@
 
 pub mod builtin;
 pub mod place;
+pub mod region;
 pub mod rules;
 pub mod value;
 
@@ -33,16 +34,19 @@ use std::collections::BTreeMap;
 
 use crate::ast::{
     Arg, AssignOp, BinOp, Binding, Block, ClosureParam, ElseHandler, Expr, ExprKind, FnDecl,
-    IndexArg, Interpolation, Member, ParamKind, ParamMode, PatKind, Pattern, Stmt, StmtKind,
-    StrPart, Type, TypeArg, TypeKind, UnOp,
+    IndexArg, Interpolation, Member, ParamKind, ParamMode, PatKind, Pattern, RegionStrategy, Stmt,
+    StmtKind, StrPart, Type, TypeArg, TypeKind, UnOp,
 };
 use crate::diag::Span;
 use crate::sema::{Def, Program};
 use crate::trap::TrapKind;
 
 use place::{Access, AccessSet, Held, Path, Proj};
+use region::{Edge, Ref, RegionId, RegionState, Store, Strategy};
 use rules::Rule;
-use value::{ArithMode, ClosureValue, ErrorValue, IntTy, Slot, SlotState, Value};
+use value::{
+    ArithMode, ClosureValue, ErrorValue, HandleValue, IntTy, RegionValue, Slot, SlotState, Value,
+};
 
 /// A trap: a fault of a *defined* execution, named by the closed vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +87,7 @@ pub enum Signal {
     Break(Value),
     Continue,
     Trap(Box<Trap>),
-    /// Outside is02's coverage, or a sema-lite failure (unresolvable name,
+    /// Outside this evaluator's coverage, or a sema-lite failure (unresolvable name,
     /// ambiguous dispatch, a type error the checker owns). Becomes verdict
     /// `unsupported` with the reason on an `x-` key — never a crash, and never
     /// a trap, because the trap vocabulary is for faults of *defined*
@@ -123,6 +127,16 @@ enum Receiver {
     Expr(Expr),
 }
 
+/// What the `}` of a `region … { … }` block does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SugarExit {
+    /// The sugar's own contract: create, scope, free (X4).
+    Free,
+    /// `freeze region { … }`: promote instead of free, and the block's value
+    /// is `imm` forever (`[mem.region.freeze.1]`).
+    Freeze,
+}
+
 fn unsupported<T>(reason: impl Into<String>) -> EResult<T> {
     Err(Signal::Unsupported(reason.into()))
 }
@@ -135,6 +149,51 @@ pub enum Outcome {
     Unsupported(String),
 }
 
+/// What `--trace` was asked for.
+///
+/// `mem` is the sprint's own request — "`--trace=mem` logs every region event
+/// (create/open/suspend/freeze/free, edge checks, RC ops, handle faults)" —
+/// and is a *filter* over the same rule registry rather than a second trace
+/// mechanism, so a memory rule cannot be traced by one and missed by the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Trace {
+    #[default]
+    Off,
+    /// Every rule as it fires.
+    All,
+    /// Only rules citing a `mem.*` clause.
+    Memory,
+}
+
+impl Trace {
+    #[must_use]
+    pub fn is_on(self) -> bool {
+        self != Trace::Off
+    }
+
+    #[must_use]
+    pub fn keeps(self, rule: Rule) -> bool {
+        match self {
+            Trace::Off => false,
+            Trace::All => true,
+            Trace::Memory => rule.is_memory(),
+        }
+    }
+}
+
+impl std::str::FromStr for Trace {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Trace, String> {
+        match s {
+            "all" | "" => Ok(Trace::All),
+            "mem" | "memory" => Ok(Trace::Memory),
+            "off" | "none" => Ok(Trace::Off),
+            other => Err(format!("unknown trace filter `{other}` (all, mem, off)")),
+        }
+    }
+}
+
 /// Everything one run produced.
 #[derive(Debug, Clone)]
 pub struct Run {
@@ -142,6 +201,14 @@ pub struct Run {
     pub stdout: Vec<u8>,
     /// One line per rule firing, when `--trace` asked for it.
     pub trace: Vec<String>,
+    /// Regions still holding memory when the program ended: the sprint's leak
+    /// assertion, exposed as a hook rather than only as an `assert!` so is06's
+    /// crash-cleanup oracle can read it.
+    pub leaks: Vec<RegionId>,
+    /// `shared` cells whose payload outlived the program.
+    pub live_cells: Vec<region::CellId>,
+    /// `Err` when the region forest invariant was broken at exit.
+    pub forest: Result<(), String>,
 }
 
 /// A lexical scope: its locals and its scope-exit effects.
@@ -167,9 +234,15 @@ pub struct Machine<'p> {
     frames: Vec<Frame>,
     access: AccessSet,
     globals: BTreeMap<String, Slot>,
+    /// `[mem.model.machine]` components 3 and 4: the region forest and the
+    /// scope stack, plus the Tier-2 pools and cells.
+    store: Store,
     stdout: Vec<u8>,
     trace: Vec<String>,
-    tracing: bool,
+    tracing: Trace,
+    /// Set when the forest invariant assertion ever failed. A broken invariant
+    /// is an interpreter bug, so it is recorded rather than swallowed.
+    forest: Result<(), String>,
     /// Steps taken, against [`Machine::FUEL`].
     steps: u64,
 }
@@ -189,26 +262,52 @@ impl<'p> Machine<'p> {
             frames: Vec::new(),
             access: AccessSet::new(),
             globals: BTreeMap::new(),
+            store: Store::new(),
             stdout: Vec::new(),
             trace: Vec::new(),
-            tracing: false,
+            tracing: Trace::Off,
+            forest: Ok(()),
             steps: 0,
         }
     }
 
     #[must_use]
-    pub fn tracing(mut self, on: bool) -> Machine<'p> {
-        self.tracing = on;
+    pub fn tracing(mut self, trace: Trace) -> Machine<'p> {
+        self.tracing = trace;
         self
     }
 
     /// Runs the program's `main`.
     pub fn run(mut self) -> Run {
         let outcome = self.run_main();
+        // The program region is freed last, by the machine: `main`'s caller is
+        // the runtime, and `[mem.region.intra.2]` frees at the owner's death.
+        self.store.free(Store::root());
+        let leaks = self.store.leaks();
+        let live_cells = self.store.live_cells();
+        let forest = match (&self.forest, self.store.assert_forest()) {
+            (Err(broken), _) => Err(broken.clone()),
+            (Ok(()), verdict) => verdict,
+        };
+        // The program region's own wholesale free is the last region event,
+        // and the leak assertion is what it leaves behind.
+        self.fire(
+            Rule::RegionFree,
+            Span::new(0, 0),
+            &format!(
+                "program exit: {} region(s) created, {} leaked, {} live `shared` cell(s)",
+                self.store.regions().len(),
+                leaks.len(),
+                live_cells.len()
+            ),
+        );
         Run {
             outcome,
             stdout: self.stdout,
             trace: self.trace,
+            leaks,
+            live_cells,
+            forest,
         }
     }
 
@@ -283,11 +382,35 @@ impl<'p> Machine<'p> {
     // -- bookkeeping -------------------------------------------------------
 
     fn fire(&mut self, rule: Rule, span: Span, detail: &str) {
-        if self.tracing {
+        if self.tracing.keeps(rule) {
             self.trace.push(format!(
                 "{:>6}..{:<6} {} {}",
                 span.start, span.end, rule, detail
             ));
+        }
+    }
+
+    /// The forest invariant, re-walked after a mutation of the region graph.
+    ///
+    /// > After every mutation, a debug assertion re-walks the region graph and
+    /// > asserts the forest invariant — O(heap) per store is fine, this is a
+    /// > reference interpreter.
+    ///
+    /// It records rather than panics: a `panic!` in this module is by
+    /// definition an interpreter bug (`tests/fuzz_smoke.rs` treats it as one),
+    /// and the recorded failure surfaces on [`Run::forest`], which CI asserts
+    /// over the whole corpus.
+    fn assert_forest(&mut self, span: Span) {
+        if self.forest.is_err() {
+            return;
+        }
+        if let Err(broken) = self.store.assert_forest() {
+            self.fire(
+                Rule::RegionEdgeIso,
+                span,
+                &format!("FOREST BROKEN: {broken}"),
+            );
+            self.forest = Err(broken);
         }
     }
 
@@ -336,13 +459,90 @@ impl<'p> Machine<'p> {
     }
 
     fn pop_scope(&mut self) {
-        if let Some(frame) = self.frames.last_mut()
-            && let Some(scope) = frame.scopes.pop()
-        {
-            // A borrow's dynamic extent ends at its binding's death
-            // (`[mem.tier0.borrow.1]`).
-            let extra = self.access.len().saturating_sub(scope.held);
-            self.access.release(extra);
+        let Some(frame) = self.frames.last_mut() else {
+            return;
+        };
+        let Some(scope) = frame.scopes.pop() else {
+            return;
+        };
+        // A borrow's dynamic extent ends at its binding's death
+        // (`[mem.tier0.borrow.1]`).
+        let extra = self.access.len().saturating_sub(scope.held);
+        self.access.release(extra);
+        self.reclaim(&scope);
+    }
+
+    /// Scope-exit reclamation: the Tier-1 and Tier-2 half of `[mem.shared.drop]`.
+    ///
+    /// The bindings that die here are swept in reverse declaration order (LIFO,
+    /// `[mem.shared.drop.1]`), *after* the scope's `defer`/`errdefer` have run.
+    /// Two deliberate approximations, both recorded in
+    /// `docs/approximation-contract.md`:
+    ///
+    /// - **Scope exit, not last use.** `[mem.region.intra.2]` frees at "the last
+    ///   use of the region value" and `[mem.shared.drop.2]` reclaims
+    ///   destructor-free values "any time after their last use". Both are
+    ///   explicitly unobservable *except* through destructor timing, and this
+    ///   machine has no user destructors to time — `[mem.shared.drop.1]`'s
+    ///   scope-exit point is therefore the only observable one, and it is the
+    ///   one implemented.
+    /// - **Function parameters are not swept.** A `read`-mode argument copies
+    ///   its value under MVS, so sweeping a parameter could free a region the
+    ///   caller still owns. Declining to sweep leaks (defined and safe,
+    ///   `[mem.ub.defined]`); sweeping would fault wrongly, and the
+    ///   approximation direction forbids that.
+    fn reclaim(&mut self, scope: &Scope) {
+        for (name, slot) in scope.locals.iter().rev() {
+            if !slot.is_live() {
+                // Moved out: its new owner is responsible for it.
+                continue;
+            }
+            let mut refs = Vec::new();
+            region::references(&slot.value, &mut refs);
+            for granule in refs {
+                match granule {
+                    Ref::Region(id) => {
+                        let freed = self.store.free(id);
+                        if !freed.is_empty() {
+                            let detail = format!(
+                                "`{name}` dies: {} freed wholesale",
+                                freed
+                                    .iter()
+                                    .map(|id| self.store.label(*id))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            );
+                            self.fire(Rule::RegionFree, Span::new(0, 0), &detail);
+                        }
+                    }
+                    Ref::Shared(cell) => {
+                        if self.store.release(cell) {
+                            self.fire(
+                                Rule::SharedDrop,
+                                Span::new(0, 0),
+                                &format!("`{name}` dies: shared#{cell} released its payload"),
+                            );
+                        } else {
+                            self.fire(
+                                Rule::SharedRc,
+                                Span::new(0, 0),
+                                &format!("`{name}` dies: shared#{cell} strong count decremented"),
+                            );
+                        }
+                    }
+                    Ref::Weak(cell) => {
+                        self.store.drop_weak(cell);
+                        self.fire(
+                            Rule::SharedWeak,
+                            Span::new(0, 0),
+                            &format!("`{name}` dies: weak#{cell} dropped, nothing released"),
+                        );
+                    }
+                    // Pools and handles are storage *in* a region; the region's
+                    // wholesale free is what reclaims them.
+                    Ref::Pool(_) | Ref::Handle(_) => {}
+                }
+            }
         }
     }
 
@@ -550,6 +750,500 @@ impl<'p> Machine<'p> {
         self.stdout.extend_from_slice(text.as_bytes());
     }
 
+    // -- Tier 1: the region machine (§3) -----------------------------------
+
+    /// Every §3 fault surfaces through one trap kind.
+    ///
+    /// `[conf.trap.set]` is closed at eleven kinds and `[conf.trap.map]` maps
+    /// the region family onto `region-fault`: use-after-free, an illegal
+    /// cross-region edge, a write through a frozen or suspended path, and an
+    /// open-discipline violation are one *kind* with different rules and
+    /// messages. The rule (and through it the clause anchor) is what tells them
+    /// apart, which is why every call names one.
+    fn region_fault<T>(
+        &mut self,
+        rule: Rule,
+        span: Span,
+        message: impl Into<String>,
+        secondary: Option<(Span, String)>,
+    ) -> EResult<T> {
+        self.trap(TrapKind::RegionFault, rule, span, message, secondary)
+    }
+
+    /// `[mem.region.create.1]`'s strategy: arena by default, `rc`, or `pool(T)`.
+    fn strategy_of(&mut self, strategy: Option<&RegionStrategy>) -> Strategy {
+        match strategy {
+            None => Strategy::Arena,
+            Some(RegionStrategy::Rc(_)) => Strategy::Rc,
+            Some(RegionStrategy::Pool { ty, .. }) => Strategy::Pool(type_name(ty)),
+        }
+    }
+
+    /// Charges one allocation to the current region (`[mem.region.create.3]`).
+    ///
+    /// "There is no `new` keyword. Allocation sites are struct literals,
+    /// collection constructors, and closures" (`[mem.model.alloc]`) — so this
+    /// is called from exactly those, and nowhere else.
+    pub(crate) fn allocate(&mut self, span: Span, what: &str) -> RegionId {
+        let id = self.store.charge();
+        let label = self.store.label(id);
+        self.fire(
+            Rule::RegionAmbient,
+            span,
+            &format!("{what} allocated in {label}"),
+        );
+        id
+    }
+
+    /// The current (ambient) region.
+    pub(crate) fn current_region(&self) -> RegionId {
+        self.store.current()
+    }
+
+    /// Opens a region for a block (`[mem.region.open.1]`, `[mem.region.multiopen]`).
+    fn enter_region(&mut self, id: RegionId, span: Span) -> EResult<()> {
+        match self.store.enter(id) {
+            Ok(()) => {
+                let label = self.store.label(id);
+                let open = self.store.open_set().len();
+                self.fire(Rule::RegionOpen, span, &format!("open {label}"));
+                if open > 2 {
+                    // More than the program region and this one: the relaxation
+                    // past Verona's single window is in force here.
+                    self.fire(
+                        Rule::RegionMultiopen,
+                        span,
+                        &format!("{open} regions open simultaneously"),
+                    );
+                }
+                Ok(())
+            }
+            Err(refused) => {
+                // The clause that refused is the clause the fault cites: an
+                // open-discipline violation is `[mem.region.open.1]`, a
+                // non-antichain open set is `[mem.region.multiopen]`.
+                let rule = match refused {
+                    region::EnterError::State(_) => Rule::RegionOpen,
+                    region::EnterError::NotDisjoint(_) => Rule::RegionMultiopen,
+                };
+                let reason = refused.reason().to_owned();
+                self.region_fault(rule, span, reason, None)
+            }
+        }
+    }
+
+    fn leave_region(&mut self, id: RegionId, span: Span) {
+        self.store.leave(id);
+        let label = self.store.label(id);
+        let state = self
+            .store
+            .state(id)
+            .map_or_else(|| "gone".to_owned(), |state| state.to_string());
+        self.fire(
+            if state == "suspended" {
+                Rule::RegionSuspended
+            } else {
+                Rule::RegionOpen
+            },
+            span,
+            &format!("close {label} → {state}"),
+        );
+    }
+
+    /// The §3 edge table, applied to every reference a stored value carries.
+    ///
+    /// > On **every** store of a reference, check the edge rule: intra-region
+    /// > references unrestricted …; cross-region references only to a region's
+    /// > bridge (`iso` edge) or into `Frozen` (`imm`) data.
+    ///
+    /// `into` is `None` when the destination is a **stack** local, which §3's
+    /// table does not cover: a local may name any region, and that is what
+    /// makes a region value first-class.
+    fn check_edges(
+        &mut self,
+        into: Option<RegionId>,
+        value: &Value,
+        span: Span,
+        what: &str,
+    ) -> EResult<()> {
+        for granule in region::refs_of(value) {
+            match self.store.classify_edge(into, granule) {
+                Edge::Intra => self.fire(
+                    Rule::RegionIntra,
+                    span,
+                    &format!("{what}: intra-region reference — cycles and back-edges are safe"),
+                ),
+                Edge::Imm => self.fire(
+                    Rule::RegionEdgeImm,
+                    span,
+                    &format!("{what}: reference into frozen data, legal from anywhere"),
+                ),
+                Edge::Tier2 => self.fire(
+                    Rule::SharedRc,
+                    span,
+                    &format!("{what}: Tier-2 cell reference — §4 governs, not §3's table"),
+                ),
+                Edge::Iso(child) => {
+                    if let Some(parent) = into {
+                        self.store.adopt(parent, child);
+                        self.assert_forest(span);
+                    }
+                    let label = self.store.label(child);
+                    self.fire(
+                        Rule::RegionEdgeIso,
+                        span,
+                        &format!("{what}: owning `iso` edge to {label} — at most one"),
+                    );
+                }
+                Edge::Illegal(reason) => {
+                    self.fire(Rule::RegionEdge, span, &format!("{what}: refused"));
+                    return self.region_fault(
+                        Rule::RegionEdge,
+                        span,
+                        format!(
+                            "{what}: {reason} — the compiler rejects this edge statically (E1004)"
+                        ),
+                        None,
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// `region name { … }` / `freeze region { … }` — the sugar (X4).
+    ///
+    /// Create, open, run, close, and then either free wholesale
+    /// (`[mem.region.intra.2]`) or promote to `imm` (`[mem.region.freeze.1]`).
+    /// The binder is declared *inside* the block's scope, which is what makes
+    /// `region a { … in a { … } … }` — the corpus's own multiopen litmus —
+    /// name something.
+    fn eval_region_sugar(
+        &mut self,
+        name: Option<&crate::ast::Ident>,
+        strategy: Option<&RegionStrategy>,
+        body: &Block,
+        span: Span,
+        finish: SugarExit,
+    ) -> EResult<Value> {
+        let strategy = self.strategy_of(strategy);
+        let binder = name.map(|ident| ident.name.clone());
+        let id = self.store.create(binder.clone(), strategy.clone(), span);
+        let label = self.store.label(id);
+        self.fire(
+            Rule::RegionCreate,
+            span,
+            &format!("create {label} with strategy {strategy} (sugar)"),
+        );
+        self.fire(
+            Rule::RegionIdentity,
+            span,
+            &format!("{label} has identity in this machine and none in compiled code"),
+        );
+
+        self.push_scope();
+        if let Some(binder) = &binder {
+            let generation = self.store.generation(id);
+            self.fire(
+                Rule::RegionAffine,
+                span,
+                &format!("`{binder}` is an affine region value"),
+            );
+            self.declare(
+                binder,
+                Slot::live(Value::Region(RegionValue { id, generation })),
+            );
+        }
+        let entered = self.enter_region(id, span);
+        let result = match entered {
+            Ok(()) => {
+                let result = self.eval_block(body);
+                self.leave_region(id, span);
+                result
+            }
+            Err(signal) => Err(signal),
+        };
+
+        // The exit action runs on the trap path too: a region whose block
+        // faulted is still freed, which is the invariant is06's crash-cleanup
+        // oracle checks.
+        match finish {
+            SugarExit::Free => {
+                let freed = self.store.free(id);
+                if !freed.is_empty() {
+                    let labels = freed
+                        .iter()
+                        .map(|id| self.store.label(*id))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    self.fire(
+                        Rule::RegionFree,
+                        span,
+                        &format!("`}}` frees {labels} wholesale"),
+                    );
+                }
+            }
+            SugarExit::Freeze => match self.store.freeze(id) {
+                Ok(frozen) => {
+                    let count = frozen.len();
+                    self.fire(
+                        Rule::RegionFreeze,
+                        span,
+                        &format!(
+                            "{label} and {} owned region(s) are `imm` forever",
+                            count - 1
+                        ),
+                    );
+                }
+                Err(reason) => {
+                    self.pop_scope();
+                    return self.region_fault(Rule::RegionClosedSubtree, span, reason, None);
+                }
+            },
+        }
+        self.pop_scope();
+        self.assert_forest(span);
+        result
+    }
+
+    /// `in r { … }` — set the current region for the block
+    /// (`[mem.region.create.3]`).
+    fn eval_in(&mut self, region: &Expr, body: &Block, span: Span) -> EResult<Value> {
+        let value = self.eval(region)?;
+        let id = self.region_id_of(&value, span, "`in`")?;
+        self.enter_region(id, span)?;
+        let result = self.eval_block(body);
+        self.leave_region(id, span);
+        result
+    }
+
+    /// `freeze r` (`[mem.region.freeze.1]`), including the anonymous
+    /// `freeze region { … }` form the grammar exists for.
+    fn eval_freeze(&mut self, operand: &Expr, span: Span) -> EResult<Value> {
+        if let ExprKind::RegionSugar {
+            name,
+            strategy,
+            body,
+        } = &*operand.kind
+        {
+            // `freeze region { … }` "builds anonymously and promotes": the
+            // block's value is the frozen data, and the region is never freed.
+            return self.eval_region_sugar(
+                name.as_ref(),
+                strategy.as_ref(),
+                body,
+                span,
+                SugarExit::Freeze,
+            );
+        }
+        // `freeze r` *consumes* the region value (`[mem.region.create.2]`), so
+        // the operand moves rather than being read.
+        let value = match self.live_place(operand)? {
+            Some(path) => self.move_path(&path, span)?,
+            None => self.eval(operand)?,
+        };
+        let id = self.region_id_of(&value, span, "`freeze`")?;
+        match self.store.freeze(id) {
+            Ok(frozen) => {
+                let label = self.store.label(id);
+                self.fire(
+                    Rule::RegionFreeze,
+                    span,
+                    &format!(
+                        "{label} and {} owned region(s) are `imm` forever",
+                        frozen.len().saturating_sub(1)
+                    ),
+                );
+                let generation = self.store.generation(id);
+                Ok(Value::Region(RegionValue { id, generation }))
+            }
+            Err(reason) => self.region_fault(Rule::RegionClosedSubtree, span, reason, None),
+        }
+    }
+
+    /// The region a value names, checked live.
+    ///
+    /// A region value that outlived its region's wholesale free is *exactly*
+    /// detectable — the generation moved — and that is the use-after-free this
+    /// machine promises never to miss (`[mem.region.intra.2]`).
+    fn region_id_of(&mut self, value: &Value, span: Span, what: &str) -> EResult<RegionId> {
+        let Value::Region(handle) = value else {
+            return unsupported(format!(
+                "{what} needs a region value, got {}; region typing is the checker's",
+                value.kind()
+            ));
+        };
+        let live = self.store.generation(handle.id) == handle.generation
+            && self.store.state(handle.id) != Some(RegionState::Freed);
+        if live {
+            return Ok(handle.id);
+        }
+        let label = self.store.label(handle.id);
+        self.region_fault(
+            Rule::RegionFree,
+            span,
+            format!(
+                "{what} names {label}, which was freed wholesale; every allocation in it died \
+                 with it, and this reference is dangling"
+            ),
+            self.store
+                .region(handle.id)
+                .map(|region| (region.span, "the region was created here".to_owned())),
+        )
+    }
+
+    // -- Tier 2: `shared`, `weak`, pools and handles (§4) ------------------
+
+    /// The store, for `builtin`'s Tier-2 surface.
+    pub(crate) fn store(&mut self) -> &mut Store {
+        &mut self.store
+    }
+
+    /// Reads a pool slot through a handle, with the generation check every
+    /// deref performs (`[mem.shared.handle.2]`).
+    pub(crate) fn read_slot(&mut self, handle: HandleValue, span: Span) -> EResult<Value> {
+        self.check_pool_region(handle.pool, span, false)?;
+        match self
+            .store
+            .slot(handle.pool, handle.index, handle.generation)
+        {
+            Some(slot) if slot.life == region::SlotLife::Live => {
+                let value = slot.value.clone();
+                self.fire(
+                    Rule::HandleAccess,
+                    span,
+                    &format!("pool#{}[{}] read", handle.pool, handle.index),
+                );
+                Ok(value)
+            }
+            Some(_) => {
+                // Reserved but not yet `init`ed: the handle is valid and the
+                // storage is uninitialized, which `[mem.tier0.move.2]` already
+                // names — "use of an **uninitialized** … place".
+                self.trap(
+                    TrapKind::UseAfterMove,
+                    Rule::HandleTwoPhase,
+                    span,
+                    format!(
+                        "pool#{}[{}] was reserved and never initialized; `reserve` yields the \
+                         handle, `init` fills the slot",
+                        handle.pool, handle.index
+                    ),
+                    None,
+                )
+            }
+            None => self.stale_handle(handle, span),
+        }
+    }
+
+    pub(crate) fn stale_handle<T>(&mut self, handle: HandleValue, span: Span) -> EResult<T> {
+        let current = self
+            .store
+            .pool(handle.pool)
+            .and_then(|pool| pool.slots.get(handle.index))
+            .map_or_else(
+                || "no such slot".to_owned(),
+                |slot| format!("generation {}", slot.generation),
+            );
+        self.trap(
+            TrapKind::StaleHandle,
+            Rule::HandleStale,
+            span,
+            format!(
+                "handle into pool#{} slot {} carries generation {}, the slot is at {current}; a \
+                 stale handle is a deterministic fault in every profile, never UB",
+                handle.pool, handle.index, handle.generation
+            ),
+            None,
+        )
+    }
+
+    /// A pool's region must be live to read and open to write.
+    pub(crate) fn check_pool_region(
+        &mut self,
+        pool: region::PoolId,
+        span: Span,
+        writing: bool,
+    ) -> EResult<()> {
+        let Some(id) = self.store.pool_region(pool) else {
+            return unsupported(format!("pool#{pool} does not exist"));
+        };
+        let label = self.store.label(id);
+        match self.store.state(id) {
+            Some(RegionState::Freed) => {
+                // Detection is exact and it says so: the region that died, and
+                // where it was created (`[mem.region.intra.2]`).
+                let created = self
+                    .store
+                    .region(id)
+                    .map(|region| (region.span, "the region was created here".to_owned()));
+                self.region_fault(
+                    Rule::RegionFree,
+                    span,
+                    format!(
+                        "this handle reaches into {label}, which was freed wholesale; the slot \
+                         died with the region"
+                    ),
+                    created,
+                )
+            }
+            Some(RegionState::Frozen) if writing => self.region_fault(
+                Rule::RegionFreeze,
+                span,
+                format!("{label} is frozen: `imm` data is immutable forever"),
+                None,
+            ),
+            Some(RegionState::Suspended) if writing => self.region_fault(
+                Rule::RegionSuspended,
+                span,
+                format!(
+                    "{label} is suspended here, so no live path may write into it; open it with \
+                     `in`"
+                ),
+                None,
+            ),
+            _ => Ok(()),
+        }
+    }
+
+    /// The acyclicity assertion of `[mem.shared.rc.2]`, run at strong-edge
+    /// creation.
+    ///
+    /// It is an **assertion**, not a trap: the rule is a compile error (E1006)
+    /// and `[mem.ub.defined]` lists it as such, while `[conf.trap.set]` is
+    /// closed at eleven kinds and has none for it. Inventing one would put this
+    /// implementation's guess into a differential comparison. The assertion
+    /// fires into the trace and is asserted directly in tests; the missing
+    /// dynamic counterpart is a spec finding, recorded in
+    /// `docs/approximation-contract.md`.
+    pub(crate) fn assert_shared_acyclic(
+        &mut self,
+        from: region::CellId,
+        value: &Value,
+        span: Span,
+    ) {
+        for granule in region::refs_of(value) {
+            let Ref::Shared(to) = granule else { continue };
+            if self.store.would_cycle(from, to) {
+                self.fire(
+                    Rule::SharedAcyclic,
+                    span,
+                    &format!(
+                        "ASSERTION: a strong edge shared#{from} → shared#{to} would close a cycle \
+                         (the compiler's E1006)"
+                    ),
+                );
+            } else {
+                self.fire(
+                    Rule::SharedAcyclic,
+                    span,
+                    &format!("strong edge shared#{from} → shared#{to} keeps the graph acyclic"),
+                );
+            }
+            self.store.add_strong_edge(from, to);
+        }
+    }
+
     // -- calls -------------------------------------------------------------
 
     /// What a call produced: its value, and the *final* values of its
@@ -571,7 +1265,7 @@ impl<'p> Machine<'p> {
         let Some(body) = &decl.body else {
             return unsupported(format!(
                 "`{}` has no body (extern or trait signature); the interpreter has no C ABI \
-                 and no method dispatch at is02",
+                 and no trait-method dispatch",
                 decl.name.name
             ));
         };
@@ -664,6 +1358,14 @@ impl<'p> Machine<'p> {
                         arg.span,
                         &format!("`mut {path}` held for the call"),
                     );
+                    // `[mem.tier0.excl.2]`: `f(mut a.x, mut a.y)` is legal by
+                    // `[mem.model.path.disjoint]`. The rule fires when it is
+                    // actually being *used* — two exclusive holds over one
+                    // base — which is the O1 alias fact made observable.
+                    if let Some(sibling) = self.access.disjoint_sibling(&path) {
+                        let detail = format!("`{path}` and `{}` are disjoint places", sibling.path);
+                        self.fire(Rule::ExclusivityDisjoint, arg.span, &detail);
+                    }
                     self.access.push(Held {
                         path: path.clone(),
                         access: Access::Exclusive,
@@ -706,6 +1408,16 @@ impl<'p> Machine<'p> {
                     values.push(value);
                 }
             }
+        }
+        // `[mem.model.order]`: "arguments left-to-right before the call". The
+        // loop above is that order, and this records it so the trace can be
+        // read as evidence rather than taken on trust.
+        if !args.is_empty() {
+            self.fire(
+                Rule::EvalStrictOrder,
+                args[0].span,
+                &format!("{} argument(s) evaluated left to right", args.len()),
+            );
         }
         Ok(Args {
             values,
@@ -1040,11 +1752,28 @@ impl<'p> Machine<'p> {
                     };
                     built.push((field.name.name.clone(), Slot::live(value)));
                 }
+                // `[mem.model.order]`: struct-literal fields evaluate in
+                // written order, which the loop above is.
+                self.fire(
+                    Rule::EvalStrictOrder,
+                    expr.span,
+                    &format!(
+                        "`{name}`'s {} field(s) evaluated in written order",
+                        built.len()
+                    ),
+                );
                 self.fire(Rule::Alloc, expr.span, &format!("struct literal `{name}`"));
-                Ok(Value::Struct {
+                // An allocation site (`[mem.model.alloc]`) lands in the current
+                // region (`[mem.region.create.3]`), and every reference it
+                // carries is a store into that region's data — §3's table
+                // applies to each one.
+                let owner = self.allocate(expr.span, &format!("struct literal `{name}`"));
+                let value = Value::Struct {
                     name,
                     fields: built,
-                })
+                };
+                self.check_edges(Some(owner), &value, expr.span, "struct field")?;
+                Ok(value)
             }
             ExprKind::Unary { op, operand } => self.eval_unary(*op, operand, expr.span),
             ExprKind::Binary { op, lhs, rhs } => {
@@ -1230,13 +1959,39 @@ impl<'p> Machine<'p> {
                 block_bodied: _,
             } => self.eval_closure(params, body, expr.span),
 
-            // -- outside is02's coverage, by name ---------------------------
-            ExprKind::RegionSugar { .. } | ExprKind::RegionValue { .. } | ExprKind::In { .. } => {
-                unsupported("regions are Tier 1 (`[mem.region]`); is03 extends the value model")
-            }
-            ExprKind::Freeze(_) => unsupported(
-                "`freeze` promotes a region to deep-immutable; Tier 1 arrives with is03",
+            // -- Tier 1: regions (is03) -------------------------------------
+            ExprKind::RegionSugar {
+                name,
+                strategy,
+                body,
+            } => self.eval_region_sugar(
+                name.as_ref(),
+                strategy.as_ref(),
+                body,
+                expr.span,
+                SugarExit::Free,
             ),
+            ExprKind::RegionValue { strategy } => {
+                let strategy = self.strategy_of(strategy.as_ref());
+                let id = self.store.create(None, strategy.clone(), expr.span);
+                let label = self.store.label(id);
+                self.fire(
+                    Rule::RegionCreate,
+                    expr.span,
+                    &format!("create {label} with strategy {strategy} (first-class value)"),
+                );
+                self.fire(
+                    Rule::RegionAffine,
+                    expr.span,
+                    "the region value is affine: it moves and is never copied",
+                );
+                let generation = self.store.generation(id);
+                Ok(Value::Region(RegionValue { id, generation }))
+            }
+            ExprKind::In { region, body } => self.eval_in(region, body, expr.span),
+            ExprKind::Freeze(operand) => self.eval_freeze(operand, expr.span),
+
+            // -- outside is03's coverage, by name ---------------------------
             ExprKind::Scope { .. }
             | ExprKind::SpawnProc { .. }
             | ExprKind::Select { .. }
@@ -1365,7 +2120,7 @@ impl<'p> Machine<'p> {
                 Ok(value)
             }
             Def::Opaque(what) => unsupported(format!(
-                "`{name}` is a {what}; traits, enums and type-level items have no is02 semantics"
+                "`{name}` is a {what}; traits, enums and type-level items have no dynamic semantics here"
             )),
             Def::Ambiguous => {
                 let _ = span;
@@ -1391,7 +2146,31 @@ impl<'p> Machine<'p> {
             }
             UnOp::Move => {
                 let path = self.place_of(operand)?;
-                self.move_path(&path, span)
+                let value = self.move_path(&path, span)?;
+                // `[mem.region.freeze.2]` transfers the region value, and
+                // `[mem.region.freeze.3]` refuses to transfer an open one —
+                // "the forest transfers as closed subtrees only". E1005's
+                // dynamic half.
+                if let Value::Region(handle) = &value {
+                    let id = handle.id;
+                    if let Some(region) = self.store.region(id)
+                        && region.depth > 0
+                    {
+                        let label = self.store.label(id);
+                        return self.region_fault(
+                            Rule::RegionClosedSubtree,
+                            span,
+                            format!(
+                                "{label} is open here and cannot be transferred; a region moves \
+                                 as a closed subtree (the compiler's E1005)"
+                            ),
+                            None,
+                        );
+                    }
+                    let label = self.store.label(id);
+                    self.fire(Rule::RegionTransfer, span, &format!("transfer {label}"));
+                }
+                Ok(value)
             }
             UnOp::Not => match self.eval(operand)? {
                 Value::Bool(b) => Ok(Value::Bool(!b)),
@@ -1427,7 +2206,19 @@ impl<'p> Machine<'p> {
                 Ok(value)
             }
             UnOp::Deref => unsupported("raw-pointer deref is Tier 3 (`[mem.unsafe.raw]`)"),
-            UnOp::Shared => unsupported("`shared` is Tier 2 (`[mem.shared.rc]`); is03 owns it"),
+            UnOp::Shared => {
+                // `shared X` builds the RC cell (`[mem.shared.rc.1]`). The
+                // payload moves into it: the cell is now its place.
+                let value = self.eval_for_init(operand)?;
+                let cell = self.store.new_cell(value.clone(), span);
+                self.fire(
+                    Rule::SharedRc,
+                    span,
+                    &format!("shared#{cell} created with one strong owner"),
+                );
+                self.assert_shared_acyclic(cell, &value, span);
+                Ok(Value::Shared(cell))
+            }
         }
     }
 
@@ -2040,6 +2831,17 @@ impl<'p> Machine<'p> {
     pub(crate) fn invoke(&mut self, target: Value, args: Vec<Value>, span: Span) -> EResult<Value> {
         self.apply(target, args, span).map(|applied| applied.value)
     }
+
+    /// §3's edge table, for `builtin`'s stores into region data (pool slots).
+    pub(crate) fn check_edge_into(
+        &mut self,
+        into: Option<RegionId>,
+        value: &Value,
+        span: Span,
+        what: &str,
+    ) -> EResult<()> {
+        self.check_edges(into, value, span, what)
+    }
 }
 
 // -- helpers ---------------------------------------------------------------
@@ -2136,6 +2938,11 @@ fn split_qualified(qualified: &str) -> (String, String) {
 /// owns bytes, but wolf strings are immutable views (D25) and treating them as
 /// non-`Copy` would make the dynamic machine *stricter* than the compiler,
 /// which is the one direction the sprint forbids.
+///
+/// The Tier-1/2 granules split: `handle` is `Copy`-shaped — spec/02 Appendix A
+/// annotates `var cur = hs[0]` with `[mem.tier0.move.3]` — while region values
+/// are affine by `[mem.region.create.2]`, and `shared`/`weak`/pool references
+/// carry ownership that a silent duplicate would forge.
 fn is_copy(value: &Value) -> bool {
     matches!(
         value,
@@ -2148,7 +2955,21 @@ fn is_copy(value: &Value) -> bool {
             | Value::Fn(_)
             | Value::Module(_)
             | Value::Builtin(_)
+            | Value::Handle(_)
     )
+}
+
+/// The last segment of a type's path — `pool(Node)`'s `Node`, `Pool[Node]`'s.
+fn type_name(ty: &Type) -> String {
+    match &*ty.kind {
+        TypeKind::Path { path, .. } => path
+            .segments
+            .last()
+            .map(|segment| segment.name.clone())
+            .unwrap_or_default(),
+        TypeKind::Prefixed { ty, .. } | TypeKind::ErrorUnion(ty) => type_name(ty),
+        _ => "_".to_owned(),
+    }
 }
 
 /// Applies a declared type to a value: the checking context sema-lite provides.

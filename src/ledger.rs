@@ -378,7 +378,7 @@ mod tests {
         let mut r = record(Verdict::Unsupported);
         r.extensions.insert(
             "x-unsupported".to_owned(),
-            serde_json::Value::from("regions are Tier 1"),
+            serde_json::Value::from("concurrency is spec/03 and campaign ic03"),
         );
         for check in [
             Check::Pass,
@@ -390,7 +390,10 @@ mod tests {
         ] {
             let judgement = judge(&check, &r, "");
             assert!(matches!(judgement, Judgement::OutOfScope(_)));
-            assert_eq!(judgement.detail(), "regions are Tier 1");
+            assert_eq!(
+                judgement.detail(),
+                "concurrency is spec/03 and campaign ic03"
+            );
         }
     }
 
