@@ -54,10 +54,36 @@ jobs:
       - name: test
         run: cargo test
 
-      # Everything is `unsupported` today; a green walk means every corpus
-      # directive header is legible to our own parser.
+      # A green walk means every corpus directive header is legible to our own
+      # directive parser.
       - name: corpus harness
         run: cargo run -- corpus
+
+      # The frontend rungs, end to end through the real binary rather than the
+      # library: `conform-run` is a *process* contract ([proto.invoke.exit]).
+      # Every corpus file must lex clean; the canonical program must parse
+      # clean; a pinned counter-example must come back as a record carrying its
+      # pinned code, with the tool still exiting 0.
+      - name: conform-run rungs
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r f; do
+            out=$(cargo run --quiet -- conform-run "$f" --phase=lex --json)
+            case "$out" in
+              *'"verdict":"pass"'*'"phase_reached":"lex"'*) ;;
+              *) echo "::error file=$f::lex rung is not clean: $out"; fail=1 ;;
+            esac
+          done < <(find vendor/upstream/corpus -name '*.lu' | sort)
+          test "$fail" -eq 0
+
+          cargo run --quiet -- conform-run vendor/upstream/corpus/wordcount.lu --phase=parse --json \
+            | grep -q '"verdict":"pass"'
+          cargo run --quiet -- conform-run vendor/upstream/corpus/grammar/structlit_cond.lu --phase=parse --json \
+            | grep -q '"verdict":"fail(E0006)"'
+          cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --json \
+            | grep -q '"phase_reached":"parse","seeded":false,"diagnostics":\[\],"verdict":"unsupported"'
 
       # The fixtures are the protocol's own tests ([proto.harness.fixtures]).
       - name: protocol fixtures
@@ -99,3 +125,17 @@ jobs:
         run: |
           git submodule status --cached upstream
           test -n "$(git rev-parse HEAD:upstream)"
+
+      # The frontend was written from spec/01 alone. Naming a compiler crate in
+      # prose is fine and sometimes necessary ("deliberately not a mirror of
+      # wolf_ast"); *importing* one is the doctrine breaking. This catches the
+      # import, which the Cargo.lock check above cannot see for a path or
+      # vendored dependency.
+      - name: No source file imports a compiler-side crate
+        run: |
+          if grep -rEn '^\s*(pub )?use +wolf_(?!interp)|^\s*extern crate +wolf_' \
+               -P --include='*.rs' \
+               --exclude-dir=target --exclude-dir=upstream --exclude-dir=.git . ; then
+            echo "::error::A source file imports a wolf-lang crate; the frontend is written from spec/ only."
+            exit 1
+          fi

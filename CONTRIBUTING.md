@@ -29,6 +29,43 @@ When your reimplementation disagrees with the compiler, do not reach for the
 compiler's source to find out why. Write the disagreement down; that is a
 sprint deliverable, not an inconvenience.
 
+## The divergence-filing rule (standing)
+
+**Any input where this parser and the compiler disagree becomes a wolf-lang
+spec issue, with both readings attached.** The grammar document is amended and
+both implementations follow the amendment. The two parsers never reconcile by
+private agreement, and neither one is patched to match the other before the
+clause is fixed.
+
+Triage order is normative (`[proto.cmp.triage]`): **the spec document is the
+defendant first.** An ambiguous clause is presumed the root cause until the
+clause is shown unambiguous; only then is the implementation that disagrees
+with it the defendant. This is not politeness — it is the mechanism by which
+differential testing hardens the spec, and skipping it converts a spec bug into
+two implementations that quietly agree on something undocumented.
+
+What to attach to the issue:
+
+1. the input, reduced;
+2. both records, verbatim (`conform-run --json` from each side);
+3. the clause each reading claims to follow, by anchor;
+4. the `class` the comparison assigned (`compare::Class`).
+
+Two lists exist so that filing is cheap rather than archaeological, and both
+are code, not prose:
+
+- `parse::CHOICES` — every place `spec/01` underdetermines the parse and what
+  this implementation chose instead. A divergence that lands on one of these
+  is a spec gap with a candidate amendment already written.
+- `diag::UNPINNED_CODES` — every diagnostic code this implementation invented.
+  The corpus pins a handful (`check: fail(CODE)`); everything else is a guess
+  that the s10 catalog will eventually overrule. Disagreement here is expected,
+  not a bug, and it is the intended input to that catalog.
+
+The pipeline itself is exercised in `tests/divergence.rs` against a seeded
+counterparty, because a filing rule nobody has run is a filing rule that does
+not work.
+
 ## Commits
 
 Mirroring the compiler track's conventions:
@@ -72,6 +109,22 @@ what turns that from a hazard into a workflow. Never commit a `.snap.new` or
 `wolf fmt` (STYLE_VERSION 1) — a snapshot embedding corpus text will churn
 wholesale when the style version bumps, for reasons having nothing to do with
 this repo. Prefer test-owned inputs, as `tests/snapshot_exemplar.rs` does.
+
+`tests/frontend_snapshots.rs` splits the difference on purpose: its fixtures
+are test-owned (and so churn only when the lexer changes), while a handful of
+corpus-derived snapshots are kept deliberately, because "the tokenizer agrees
+with the canonical program" is worth a regression test. When those churn on a
+STYLE_VERSION bump, review the diff for span shifts only, then accept.
+
+### Spec-derived tests
+
+`tests/spec_extract.rs` re-reads the pinned `spec/01-grammar.md` at test time
+and diffs it against the transcriptions in `lex.rs` and `parse.rs` — the
+keyword list and its checksum, the contextual keywords, the §3.2 precedence
+table, the counter-examples, the §9 code reservations. **Do not "fix" a failure
+there by editing the test.** A failure means the pinned spec and this
+implementation disagree, which is either a pin bump you have not absorbed or a
+transcription error. Absorb it or fix the transcription.
 
 ## Platform lessons (inherited from the compiler track)
 
