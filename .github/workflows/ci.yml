@@ -62,7 +62,7 @@ jobs:
       # The fixtures are the protocol's own tests ([proto.harness.fixtures]).
       - name: protocol fixtures
         run: |
-          cargo run -- protocol validate upstream/corpus/protocol/valid.json upstream/corpus/protocol/with-extensions.json
+          cargo run -- protocol validate vendor/upstream/corpus/protocol/valid.json vendor/upstream/corpus/protocol/with-extensions.json
 
   # The independence doctrine as a CI law: no wolf-lang code, ever.
   independence:
