@@ -17,6 +17,7 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 
 use wolf_interp::corpus::{self, Outcome};
+use wolf_interp::ledger::{self, Judgement};
 use wolf_interp::phase::Phase;
 use wolf_interp::protocol::Verdict;
 use wolf_interp::schema;
@@ -98,6 +99,10 @@ struct ConformRunArgs {
     /// Emit the machine-readable observation record.
     #[arg(long)]
     json: bool,
+    /// Log every evaluation rule as it fires, with its clause anchor, to
+    /// stderr. Human-facing; never part of the record.
+    #[arg(long)]
+    trace: bool,
 }
 
 #[derive(Debug, Args)]
@@ -164,15 +169,27 @@ fn run_corpus(args: &CorpusArgs) -> u8 {
     }
 }
 
-/// What the frontend makes of one corpus entry today, as one word for the
-/// report. Members are never conform-run directly (`[conf.directive.member]`),
-/// so they are not asked.
-fn frontend_status(root: &Path, relative: &str) -> String {
-    let Ok(source) = std::fs::read(root.join(relative)) else {
-        return "unreadable".to_owned();
+/// What this implementation makes of one corpus entry, and how that sits
+/// against the file's own `check:` directive.
+///
+/// Members are never conform-run directly (`[conf.directive.member]`), so they
+/// are not asked.
+fn observe_entry(
+    root: &Path,
+    relative: &str,
+    directives: &wolf_interp::directive::Directives,
+) -> (String, Option<Judgement>) {
+    let path = root.join(relative);
+    let Ok(source) = std::fs::read(&path) else {
+        return ("unreadable".to_owned(), None);
     };
-    let observation = wolf_interp::frontend::observe(&source, None);
-    format!("{}@{}", observation.verdict, observation.phase_reached)
+    let (record, _) = wolf_interp::observe_record(&path, &source, None);
+    let status = format!("{}@{}", record.verdict, record.phase_reached);
+    let judgement = directives.check.as_ref().map(|check| {
+        let stdout = record.stdout_inline.clone().unwrap_or_default();
+        ledger::judge(check, &record, &stdout)
+    });
+    (status, judgement)
 }
 
 fn print_corpus_report(report: &corpus::CorpusReport) {
@@ -186,7 +203,10 @@ fn print_corpus_report(report: &corpus::CorpusReport) {
     for file in &report.files {
         match &file.outcome {
             Outcome::Entry(directives) => {
-                let status = frontend_status(&report.root, &file.path);
+                let (status, judgement) = observe_entry(&report.root, &file.path, directives);
+                let verdict = judgement
+                    .as_ref()
+                    .map_or_else(|| "-".to_owned(), |j| j.label().to_owned());
                 let phase = directives
                     .phase
                     .map_or_else(|| "-".to_owned(), |p| p.to_string());
@@ -201,9 +221,14 @@ fn print_corpus_report(report: &corpus::CorpusReport) {
                 };
                 println!(
                     "entry   {:<width$}  phase={phase:<9}  check={check:<34}  \
-                     frontend={status:<24}  conforms={tags}",
+                     wolf-interp={status:<28}  {verdict:<12}  conforms={tags}",
                     file.path
                 );
+                if let Some(judgement) = &judgement
+                    && judgement.is_mismatch()
+                {
+                    println!("        {judgement}");
+                }
             }
             Outcome::Member(directives) => {
                 let tags = if directives.conforms.is_empty() {
@@ -258,26 +283,35 @@ fn print_corpus_report(report: &corpus::CorpusReport) {
         );
     }
 
-    // The honest ledger: how far the frontend actually gets, counted rather
-    // than claimed (`[proto.record.unsupported]` — scope gaps stay visible).
-    let mut clean = 0usize;
-    let mut rejected = 0usize;
+    // The honest ledger: what this implementation actually produced, counted
+    // rather than claimed (`[proto.record.unsupported]` — scope gaps stay
+    // visible, never silent).
+    let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    let mut reached_run = 0usize;
     for file in &report.files {
-        if !matches!(file.outcome, Outcome::Entry(_)) {
+        let Outcome::Entry(directives) = &file.outcome else {
             continue;
+        };
+        let (status, judgement) = observe_entry(&report.root, &file.path, directives);
+        if status.ends_with("@run") {
+            reached_run += 1;
         }
-        if frontend_status(&report.root, &file.path).starts_with("fail") {
-            rejected += 1;
-        } else {
-            clean += 1;
+        if let Some(judgement) = judgement {
+            *counts.entry(judgement.label()).or_default() += 1;
         }
     }
     println!();
     println!(
-        "frontend: {clean} entr{} parse clean and stop at `unsupported` beyond `parse`; \
-         {rejected} rejected with a pinned grammar-tier code (is01: no resolver, no types, \
-         no evaluation)",
-        if clean == 1 { "y" } else { "ies" }
+        "wolf-interp: {reached_run} entr{} reach the `run` rung; \
+         {} match their `check:` expectation, {} are the dynamic counterpart of the static \
+         code the corpus pins, {} are static-conservatism entries (the compiler rejects \
+         statically what this machine never checks), {} are out of scope, {} mismatch",
+        if reached_run == 1 { "y" } else { "ies" },
+        counts.get("match").copied().unwrap_or(0),
+        counts.get("dynamic-counterpart").copied().unwrap_or(0),
+        counts.get("conservatism").copied().unwrap_or(0),
+        counts.get("out-of-scope").copied().unwrap_or(0),
+        counts.get("MISMATCH").copied().unwrap_or(0),
     );
 }
 
@@ -286,14 +320,21 @@ fn corpus_json(report: &corpus::CorpusReport) -> serde_json::Value {
         .files
         .iter()
         .map(|file| match &file.outcome {
-            Outcome::Entry(directives) => serde_json::json!({
-                "file": file.path,
-                "kind": "entry",
-                "phase": directives.phase.map(|p| p.to_string()),
-                "check": directives.check.as_ref().map(ToString::to_string),
-                "conforms": directives.conforms,
-                "interpreter_status": frontend_status(&report.root, &file.path),
-            }),
+            Outcome::Entry(directives) => {
+                let (status, judgement) = observe_entry(&report.root, &file.path, directives);
+                serde_json::json!({
+                    "file": file.path,
+                    "kind": "entry",
+                    "phase": directives.phase.map(|p| p.to_string()),
+                    "check": directives.check.as_ref().map(ToString::to_string),
+                    "conforms": directives.conforms,
+                    "interpreter_status": status,
+                    "judgement": judgement.map(|j| serde_json::json!({
+                        "class": j.label(),
+                        "detail": j.detail(),
+                    })),
+                })
+            }
             Outcome::Member(directives) => serde_json::json!({
                 "file": file.path,
                 "kind": "member",
@@ -338,7 +379,8 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
         Err(code) => return code,
     };
 
-    let (record, detail) = wolf_interp::observe_record(&args.file, &source, args.phase);
+    let (record, observed) =
+        wolf_interp::observe_record_traced(&args.file, &source, args.phase, args.trace);
 
     // Never emit a record this implementation's own validator would reject.
     let value = match serde_json::to_value(&record) {
@@ -360,18 +402,36 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
             "{}: verdict={} phase_reached={} seeded={}",
             record.file, record.verdict, record.phase_reached, record.seeded
         );
-        if let Some(detail) = &detail {
+        if let Some(detail) = &observed.diagnostic {
             eprintln!("  {detail}");
+        }
+        if let Some(trap) = &observed.trap {
+            eprintln!("  {trap}");
+        }
+        if let Some(reason) = record.extensions.get("x-unsupported") {
+            eprintln!("  unsupported: {}", reason.as_str().unwrap_or_default());
+        }
+        if let Some(inline) = &record.stdout_inline {
+            print!("{inline}");
         }
     }
 
+    for line in &observed.trace {
+        eprintln!("trace {line}");
+    }
+
     if matches!(record.verdict, Verdict::Unsupported)
-        && args.phase.is_some_and(|p| p > Phase::Parse)
+        && args
+            .phase
+            .is_some_and(|p| p > wolf_interp::frontend::DEEPEST_STATIC)
+        && args.phase != Some(Phase::Run)
     {
         eprintln!(
-            "note: --phase={} requested; this implementation completes `parse` and reports \
-             `unsupported` beyond it (is01)",
-            args.phase.expect("checked")
+            "note: --phase={} requested; this implementation completes `{}` and does not \
+             perform the static phases beyond it — they are enforced dynamically at `run` \
+             instead (see the ladder mapping in `frontend`)",
+            args.phase.expect("checked"),
+            wolf_interp::frontend::DEEPEST_STATIC,
         );
     }
     if let Some(seed) = args.seed {

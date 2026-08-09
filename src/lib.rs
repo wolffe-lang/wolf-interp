@@ -9,11 +9,20 @@
 //! Two implementations that quietly share a parser cannot disagree, and
 //! disagreement is the entire product (`[proto.cmp.triage]`).
 //!
-//! At is01 the frontend is real: [`lex`] and [`parse`] implement
-//! `spec/01-grammar.md` in full, and [`frontend`] speaks the result as a
-//! spec/06 observation record at the `lex` and `parse` rungs. Everything
-//! deeper is still an honest `unsupported` — the conservatism ledger stays
-//! truthful (`[proto.record.unsupported]`).
+//! At is02 wolf programs **run**. [`lex`] and [`parse`] implement
+//! `spec/01-grammar.md` in full (is01); [`sema`] is the "sema-lite" module
+//! machinery a call needs to find its callee, and nothing more; [`eval`] is
+//! `spec/02-memory-model.md` §2 as a dynamic machine, with every ownership rule
+//! enforced as a runtime check and every fault citing its clause
+//! ([`eval::rules`]). [`frontend`] speaks the result as a spec/06 observation
+//! record and documents the ladder mapping — which rungs this implementation
+//! completes, and which belong to the compiler.
+//!
+//! What is outside that scope reports the last *completed* phase with verdict
+//! `unsupported`, so the conservatism ledger stays truthful
+//! (`[proto.record.unsupported]`); [`ledger`] is where an observation is judged
+//! against a corpus expectation, and it keeps "expected divergence" and
+//! "finding" apart on purpose.
 
 pub mod anchor;
 pub mod ast;
@@ -21,12 +30,16 @@ pub mod compare;
 pub mod corpus;
 pub mod diag;
 pub mod directive;
+pub mod eval;
 pub mod frontend;
+pub mod ledger;
 pub mod lex;
 pub mod parse;
 pub mod phase;
 pub mod protocol;
 pub mod schema;
+pub mod sema;
+pub mod sha256;
 pub mod trap;
 
 use std::collections::BTreeMap;
@@ -78,8 +91,71 @@ pub fn observe_record(
     file: &Path,
     source: &[u8],
     requested_phase: Option<Phase>,
-) -> (ObservationRecord, Option<crate::diag::Diag>) {
-    let observation = frontend::observe(source, requested_phase);
+) -> (ObservationRecord, Observed) {
+    observe_record_traced(file, source, requested_phase, false)
+}
+
+/// The human-facing half of an observation: never on the wire
+/// (`[proto.record.diag]` — messages are a per-implementation quality concern).
+#[derive(Debug, Clone, Default)]
+pub struct Observed {
+    pub diagnostic: Option<crate::diag::Diag>,
+    pub trap: Option<crate::eval::Trap>,
+    pub trace: Vec<String>,
+}
+
+/// As [`observe_record`], with `--trace`'s rule log.
+#[must_use]
+pub fn observe_record_traced(
+    file: &Path,
+    source: &[u8],
+    requested_phase: Option<Phase>,
+    trace: bool,
+) -> (ObservationRecord, Observed) {
+    let observation = frontend::observe_file(file, source, requested_phase, trace);
+
+    // `[proto.record.fields]`: the digest whenever the program wrote output,
+    // the inline text up to 4096 bytes. Only an `exit` verdict has "the program
+    // wrote output" to speak of — a trap's partial output is not a comparison
+    // surface the protocol defines.
+    let wrote = matches!(observation.verdict, Verdict::Exit(_)) && !observation.stdout.is_empty();
+    let (digest, inline) = if wrote {
+        let text = String::from_utf8_lossy(&observation.stdout).into_owned();
+        // The cap is in *bytes*; truncating mid-code-point would produce a
+        // record this implementation's own validator rejects.
+        let mut cut = schema::STDOUT_INLINE_LIMIT.min(text.len());
+        while cut > 0 && !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        (
+            Some(sha256::hex(&observation.stdout)),
+            Some(text[..cut].to_owned()),
+        )
+    } else {
+        (None, None)
+    };
+
+    // `[proto.record.ext]`: `x-` keys are ours, and participate in equality
+    // only when both records carry them — which is exactly right for a reason
+    // string the other implementation has no obligation to match.
+    let mut extensions = BTreeMap::new();
+    if let Some(reason) = &observation.reason {
+        extensions.insert(
+            "x-unsupported".to_owned(),
+            serde_json::Value::from(reason.clone()),
+        );
+    }
+    if let Some(trap) = &observation.trap {
+        extensions.insert(
+            "x-trap-clause".to_owned(),
+            serde_json::Value::from(trap.rule.anchor()),
+        );
+        extensions.insert(
+            "x-trap-span".to_owned(),
+            serde_json::json!([trap.span.start, trap.span.end]),
+        );
+    }
+
     let record = ObservationRecord {
         protocol: PROTOCOL_VERSION,
         impl_name: IMPL_NAME.to_owned(),
@@ -90,11 +166,18 @@ pub fn observe_record(
         seeded: false,
         diagnostics: observation.diagnostics,
         verdict: observation.verdict,
-        stdout_sha256: None,
-        stdout_inline: None,
-        extensions: BTreeMap::new(),
+        stdout_sha256: digest,
+        stdout_inline: inline,
+        extensions,
     };
-    (record, observation.detail)
+    (
+        record,
+        Observed {
+            diagnostic: observation.detail,
+            trap: observation.trap,
+            trace: observation.trace,
+        },
+    )
 }
 
 /// The record for a program nothing has looked at — kept for callers that want

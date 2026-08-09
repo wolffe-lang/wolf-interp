@@ -1,7 +1,8 @@
-//! The frontend as a rung of the canonical ladder.
+//! The phase ladder, and what this implementation actually completes on it.
 //!
-//! This is where `spec/01`'s lexer and parser meet `spec/06`'s observation
-//! record. The whole file is one contract: `[proto.record.phase]`.
+//! This is where `spec/01`'s lexer and parser, `sema`'s module machinery and
+//! `eval`'s dynamic semantics meet `spec/06`'s observation record. The whole
+//! file is one contract: `[proto.record.phase]`.
 //!
 //! > `phase_reached` names the deepest phase that **completed**. An
 //! > implementation that cannot complete a phase because a construct is outside
@@ -9,28 +10,50 @@
 //! > `unsupported` — never the incomplete phase. A `fail(CODE)` verdict reports
 //! > the phase that failed as `phase_reached`.
 //!
-//! Read literally, that gives four shapes and no others:
+//! # The ladder mapping (is02)
 //!
-//! | what happened | `phase_reached` | `verdict` |
+//! The canonical ladder is `none, lex, parse, resolve, typecheck, mem, wir,
+//! run`. It is the *compiler's* pipeline; an interpreter does not have all of
+//! it, and pretending otherwise is what `[proto.record.phase]` forbids. What
+//! this implementation completes, rung by rung:
+//!
+//! | rung | wolf-interp | note |
 //! |---|---|---|
-//! | lexing failed | `lex` | `fail(CODE)` |
-//! | parsing failed | `parse` | `fail(CODE)` |
-//! | clean, and `--phase` asked for `lex`/`parse` | that rung | `pass` |
-//! | clean, and `--phase` asked for more (or nothing) | `parse` | `unsupported` |
+//! | `lex` | the mode-stack lexer | is01 |
+//! | `parse` | the full-surface parser | is01 |
+//! | `resolve` | **sema-lite** — the D32 module graph, item collection, visibility | is02 |
+//! | `typecheck` | *not implemented* | the type checker is the compiler's half (`sema` docs) |
+//! | `mem` | *not implemented* | the borrow/region checkers are the compiler's half |
+//! | `wir` | *not implemented* | there is no IR here; a tree-walk has no lowering |
+//! | `run` | the tree-walk evaluator | is02 |
 //!
-//! The last row is the one worth being pedantic about: at is01 there is no
-//! resolver, so `--phase=resolve` must not claim `resolve`. It reports the
-//! deepest rung that *completed* — `parse` — and declares itself unsupported,
-//! which keeps the scope gap in the conservatism ledger instead of silently
-//! passing (`[proto.record.unsupported]`).
+//! Two consequences, both deliberate:
+//!
+//! - `--phase=typecheck|mem|wir` reports `resolve` + `unsupported`. It asks the
+//!   implementation to *stop after* a phase this one never performs, and the
+//!   deepest thing it did complete is `resolve`.
+//! - `--phase=run` (and the default) can report `run` even though `typecheck`
+//!   and `mem` were skipped, because the run **completed**. The static rungs
+//!   this machine skips are exactly the properties it enforces dynamically
+//!   instead — that is the sema boundary, not a gap in the evidence.
+//!
+//! A program the machine cannot evaluate — regions, `shared`, concurrency,
+//! comptime, method dispatch, an unimplemented std name — reports `resolve`
+//! (the last completed rung) with verdict `unsupported` and the reason on the
+//! `x-unsupported` extension key (`[proto.record.ext]`; the verdict itself
+//! carries no payload, per `[proto.record.verdict]`).
+
+use std::path::Path;
 
 use crate::diag::Diag;
+use crate::eval::{Machine, Outcome, Trap};
 use crate::lex;
 use crate::parse;
 use crate::phase::Phase;
 use crate::protocol::{Diagnostic, Verdict};
+use crate::sema::{self, LoadError};
 
-/// What the frontend made of one program.
+/// What the implementation made of one program.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Observation {
     pub phase_reached: Phase,
@@ -42,15 +65,25 @@ pub struct Observation {
     /// The diagnostic behind a `fail`, with its message and clause anchor —
     /// for humans, never for the wire.
     pub detail: Option<Diag>,
+    /// The program's output, when it ran.
+    pub stdout: Vec<u8>,
+    /// Why the verdict is `unsupported`. Rides `x-unsupported`; never the
+    /// verdict itself (`[proto.record.verdict]` gives verdicts no payload).
+    pub reason: Option<String>,
+    /// The fault behind a `trap`, for humans: spans, clause anchor, one
+    /// sentence.
+    pub trap: Option<Trap>,
+    /// `--trace`'s rule log, when it was asked for.
+    pub trace: Vec<String>,
 }
 
 impl Observation {
     fn failed(phase: Phase, diag: Diag) -> Observation {
         Observation {
-            phase_reached: phase,
-            verdict: Verdict::Fail(diag.code.to_owned()),
             diagnostics: vec![diag.to_protocol()],
+            verdict: Verdict::Fail(diag.code.to_owned()),
             detail: Some(diag),
+            ..Observation::clean(phase, Verdict::Pass)
         }
     }
 
@@ -60,23 +93,61 @@ impl Observation {
             verdict,
             diagnostics: Vec::new(),
             detail: None,
+            stdout: Vec::new(),
+            reason: None,
+            trap: None,
+            trace: Vec::new(),
+        }
+    }
+
+    fn unsupported(phase: Phase, reason: impl Into<String>) -> Observation {
+        Observation {
+            reason: Some(reason.into()),
+            ..Observation::clean(phase, Verdict::Unsupported)
         }
     }
 }
 
-/// The deepest rung this implementation can reach on a well-formed program.
-pub const DEEPEST_SUPPORTED: Phase = Phase::Parse;
+/// The deepest rung this implementation can reach on a well-formed program it
+/// can evaluate.
+pub const DEEPEST_SUPPORTED: Phase = Phase::Run;
 
-/// Observes one source file at the requested rung.
+/// The deepest *static* rung this implementation completes. Everything between
+/// here and [`DEEPEST_SUPPORTED`] belongs to the compiler.
+pub const DEEPEST_STATIC: Phase = Phase::Resolve;
+
+/// Observes one source buffer at the requested rung, with no module graph.
 ///
-/// `requested` is `--phase=<p>`; `None` means "as deep as the implementation
-/// can" (`[proto.invoke.cli]`).
+/// The frontend-only door: `lex`, `parse`, and — because a single buffer is a
+/// one-file root module — `resolve` and `run` as well.
 #[must_use]
 pub fn observe(source: &[u8], requested: Option<Phase>) -> Observation {
+    observe_with(None, source, requested, false)
+}
+
+/// Observes the program rooted at `file`, loading its module graph (D32:
+/// directory = module).
+#[must_use]
+pub fn observe_file(
+    file: &Path,
+    source: &[u8],
+    requested: Option<Phase>,
+    trace: bool,
+) -> Observation {
+    observe_with(Some(file), source, requested, trace)
+}
+
+fn observe_with(
+    file: Option<&Path>,
+    source: &[u8],
+    requested: Option<Phase>,
+    trace: bool,
+) -> Observation {
     if requested == Some(Phase::None) {
         return Observation::clean(Phase::None, Verdict::Pass);
     }
 
+    // -- lex ---------------------------------------------------------------
     let lexed = lex::lex_bytes(source);
     if let Some(error) = lexed.first_error() {
         return Observation::failed(Phase::Lex, error.clone());
@@ -85,7 +156,8 @@ pub fn observe(source: &[u8], requested: Option<Phase>) -> Observation {
         return Observation::clean(Phase::Lex, Verdict::Pass);
     }
 
-    match parse::parse(&lexed) {
+    // -- parse -------------------------------------------------------------
+    let parsed = match parse::parse(&lexed) {
         Err(error) => {
             // A deferred lex diagnostic (E0007) is a parse-tier finding; when
             // it sits earlier in the file than the parse error, it is the first
@@ -97,18 +169,73 @@ pub fn observe(source: &[u8], requested: Option<Phase>) -> Observation {
                 .filter(|d| d.span.start <= error.span.start)
                 .cloned()
                 .unwrap_or(error);
-            Observation::failed(Phase::Parse, first)
+            return Observation::failed(Phase::Parse, first);
         }
-        Ok(parsed) => match parsed.deferred.into_iter().min_by_key(|d| d.span.start) {
-            Some(deferred) => Observation::failed(Phase::Parse, deferred),
-            None if requested == Some(Phase::Parse) => {
-                Observation::clean(Phase::Parse, Verdict::Pass)
-            }
-            // Anything deeper is outside is01's scope. Report the last
-            // *completed* rung, never the incomplete one.
-            None => Observation::clean(DEEPEST_SUPPORTED, Verdict::Unsupported),
-        },
+        Ok(parsed) => parsed,
+    };
+    if let Some(deferred) = parsed.deferred.iter().min_by_key(|d| d.span.start) {
+        return Observation::failed(Phase::Parse, deferred.clone());
     }
+    if requested == Some(Phase::Parse) {
+        return Observation::clean(Phase::Parse, Verdict::Pass);
+    }
+
+    // -- resolve (sema-lite) ----------------------------------------------
+    let program = match file {
+        Some(file) => sema::load(file),
+        None => sema::load_source("<buffer>", std::str::from_utf8(source).unwrap_or_default()),
+    };
+    let program = match program {
+        Ok(program) => program,
+        Err(LoadError::Syntax { file, diag }) => {
+            // A sibling file of the same module failed the frontend. The phase
+            // that failed is that file's parse rung, and its code is the one
+            // the protocol compares.
+            let mut observation = Observation::failed(Phase::Parse, *diag);
+            observation.reason = Some(format!("in module file `{file}`"));
+            return observation;
+        }
+        Err(LoadError::Io(message)) => {
+            return Observation::unsupported(
+                Phase::Parse,
+                format!("the module graph could not be read: {message}"),
+            );
+        }
+    };
+    if requested == Some(Phase::Resolve) {
+        return Observation::clean(Phase::Resolve, Verdict::Pass);
+    }
+
+    // -- typecheck / mem / wir: not this implementation's -------------------
+    if matches!(requested, Some(Phase::Typecheck | Phase::Mem | Phase::Wir)) {
+        let asked = requested.expect("checked");
+        return Observation::unsupported(
+            DEEPEST_STATIC,
+            format!(
+                "`--phase={asked}` asks this implementation to stop after a phase it does not \
+                 perform: the type checker, the borrow/region checkers and the IR are the \
+                 compiler's half of the split. Every property they prove statically is enforced \
+                 dynamically at `run` instead"
+            ),
+        );
+    }
+
+    // -- run ---------------------------------------------------------------
+    let run = Machine::new(&program).tracing(trace).run();
+    let mut observation = match run.outcome {
+        Outcome::Exit(status) => Observation::clean(Phase::Run, Verdict::Exit(status)),
+        Outcome::Trap(trap) => Observation {
+            trap: Some((*trap).clone()),
+            ..Observation::clean(Phase::Run, Verdict::Trap(trap.kind))
+        },
+        // The run did not complete, so `run` is not the deepest *completed*
+        // phase — `resolve` is. Inflating it here is exactly the lie
+        // `[proto.record.phase]` names.
+        Outcome::Unsupported(reason) => Observation::unsupported(DEEPEST_STATIC, reason),
+    };
+    observation.stdout = run.stdout;
+    observation.trace = run.trace;
+    observation
 }
 
 #[cfg(test)]
@@ -119,31 +246,45 @@ mod tests {
         "fn main() -> !int {\n    let who = \"wolf\"\n    print(\"hi, {who}\")\n    0\n}\n";
     const BAD_PARSE: &str = "fn main() -> !int {\n    let a = 1\n        + 2\n    0\n}\n";
     const BAD_LEX: &str = "fn main() -> !int {\n    let s = \"unclosed\n    0\n}\n";
+    const REGIONS: &str = "fn main() -> !int {\n    region r { let a = 1 }\n    0\n}\n";
 
     #[test]
     fn a_clean_program_passes_at_the_rung_it_was_asked_for() {
-        for rung in [Phase::Lex, Phase::Parse] {
+        for rung in [Phase::Lex, Phase::Parse, Phase::Resolve] {
             let obs = observe(CLEAN.as_bytes(), Some(rung));
-            assert_eq!(obs.verdict, Verdict::Pass);
+            assert_eq!(obs.verdict, Verdict::Pass, "{rung:?}");
             assert_eq!(obs.phase_reached, rung);
             assert!(obs.diagnostics.is_empty());
         }
     }
 
     #[test]
-    fn deeper_rungs_are_unsupported_at_the_deepest_completed_phase() {
-        for rung in [
-            None,
-            Some(Phase::Resolve),
-            Some(Phase::Typecheck),
-            Some(Phase::Mem),
-            Some(Phase::Wir),
-            Some(Phase::Run),
-        ] {
+    fn a_clean_program_runs_at_the_run_rung_and_by_default() {
+        for rung in [None, Some(Phase::Run)] {
             let obs = observe(CLEAN.as_bytes(), rung);
-            assert_eq!(obs.verdict, Verdict::Unsupported, "{rung:?}");
-            assert_eq!(obs.phase_reached, Phase::Parse, "{rung:?}");
+            assert_eq!(obs.verdict, Verdict::Exit(0), "{rung:?}");
+            assert_eq!(obs.phase_reached, Phase::Run);
+            assert_eq!(obs.stdout, b"hi, wolf\n");
         }
+    }
+
+    #[test]
+    fn the_static_rungs_this_implementation_skips_are_declared_not_claimed() {
+        // `--phase=typecheck` asks it to stop after a phase it never performs.
+        for rung in [Phase::Typecheck, Phase::Mem, Phase::Wir] {
+            let obs = observe(CLEAN.as_bytes(), Some(rung));
+            assert_eq!(obs.verdict, Verdict::Unsupported, "{rung:?}");
+            assert_eq!(obs.phase_reached, Phase::Resolve, "{rung:?}");
+            assert!(obs.reason.is_some());
+        }
+    }
+
+    #[test]
+    fn a_construct_outside_coverage_reports_the_last_completed_phase() {
+        let obs = observe(REGIONS.as_bytes(), None);
+        assert_eq!(obs.verdict, Verdict::Unsupported);
+        assert_eq!(obs.phase_reached, Phase::Resolve);
+        assert!(obs.reason.expect("a reason").contains("Tier 1"));
     }
 
     #[test]
@@ -184,5 +325,13 @@ mod tests {
         let [start, end] = obs.diagnostics[0].span;
         assert!(start < end);
         assert_eq!(&BAD_PARSE.as_bytes()[start as usize..end as usize], b"+");
+    }
+
+    #[test]
+    fn a_trap_reports_the_run_rung_and_the_kind() {
+        let obs = observe(b"fn main() -> int {\n    var d = 0\n    10 / d\n}\n", None);
+        assert_eq!(obs.phase_reached, Phase::Run);
+        assert_eq!(obs.verdict, Verdict::Trap(crate::trap::TrapKind::DivZero));
+        assert_eq!(obs.trap.expect("a trap").rule.anchor(), "mem.ub.defined");
     }
 }

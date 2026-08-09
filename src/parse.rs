@@ -68,33 +68,20 @@ pub const PREFIX_OPERATORS: &[&str] = &["!", "-", "&", "&mut", "*", "move", "cop
 /// are published rather than absorbed.
 pub const CHOICES: &[(&str, &str)] = &[
     (
-        "gram.expr.region",
-        "`freeze expr` takes a tier-3 operand, not a full `expr`: read literally, \
-         `freeze r == x` would parse as `freeze (r == x)`, which no reading of X4 wants.",
-    ),
-    (
-        "gram.expr.region",
-        "`in expr block` parses its region in no-struct-literal mode; otherwise \
-         `in r { … }` reads `r { … }` as a struct literal and the block vanishes. \
-         §3.4 names only if/while/match/for, which is an omission.",
-    ),
-    (
-        "gram.expr.flow",
-        "arm separators are enforced per the §3.4 prose (comma required after an \
-         expression-bodied arm followed by another arm), which is stricter than \
-         `arm_sep ::= ',' | TERM` alone.",
-    ),
-    (
         "gram.amb.structlit",
         "E0006 fires only when the brace body cannot be a block — `IDENT :` or \
          `IDENT ,`. The shorthand `{ x }` is genuinely ambiguous with a block, and \
-         §3.4 resolves it in the block's favour, so it is a block, silently.",
+         §3.4 resolves it in the block's favour, so it is a block, silently. \
+         (The amendment settled E0006's *span*, not its trigger; this stays open.)",
     ),
     (
-        "gram.lex.ident",
-        "`_` alone is the wildcard; `_foo` lexes as an identifier even though `_` \
-         is not XID_Start. Rejecting it would outlaw the universal \
-         intentionally-unused convention on the strength of a notation shorthand.",
+        "gram.item.fn",
+        "a bodyless `fn` is accepted inside a `trait` body as well as under \
+         `extern`. §2.6 makes `trait_member ::= fn_item` while §2.3's prose says \
+         \"Bodyless form (TERM) only under `extern`\"; the pinned corpus's \
+         `traits/*.lu` are full of bodyless trait methods, so the prose is the \
+         narrower of the two and the corpus decides. E0204 still rejects a \
+         bodyless `fn` at item or `impl` level.",
     ),
     (
         "gram.lex.number",
@@ -108,29 +95,72 @@ pub const CHOICES: &[(&str, &str)] = &[
          tokens. C text that is not also wolf-lexable (character literals, say) \
          therefore fails at the lex rung rather than being ignored.",
     ),
+];
+
+/// Choices is01 published that the pin bump to `[gram.lex.rails]` + the seven
+/// sibling amendments **closed**. Kept as a table, not deleted, because the
+/// point of the divergence pipeline is that a filed gap has a visible fate:
+/// each row names the clause that now decides it, and a test asserts the
+/// implementation still behaves the way the amendment says.
+///
+/// This is the is01→is02 CHOICES ledger update in machine-readable form.
+pub const CHOICES_RESOLVED: &[(&str, &str)] = &[
     (
-        "gram.expr",
-        "syntactic nesting is railed at MAX_NESTING (E0207). The spec rails only \
-         string-in-interpolation nesting (depth 32); `((((…))))` and `****T` are \
-         unbounded there, which no recursive-descent implementation can honour.",
+        "gram.lex.rails",
+        "syntactic recursion depth. is01 railed at 32 (borrowed from the string \
+         rail) and filed the gap; the amendment makes 256 normative and requires \
+         both implementations to enforce the same value. MAX_NESTING is 256.",
+    ),
+    (
+        "gram.lex.ident",
+        "`_foo` is an identifier. is01 accepted it against a literal reading of \
+         `IDENT ::= XID_Start XID_Continue*`; the amended production is \
+         `('_' XID_Continue+) | (XID_Start XID_Continue*)`, and a bare `_` stays \
+         the wildcard.",
+    ),
+    (
+        "gram.expr.region",
+        "`freeze` takes a tier-3 operand. is01 parsed `freeze r == x` as \
+         `(freeze r) == x`; the amended EBNF reads `'freeze' prefix_operand` and \
+         the prose spells the same example out.",
+    ),
+    (
+        "gram.amb.structlit",
+        "the `in`-block header is a no-struct-literal position. is01 inferred it \
+         (otherwise `in r { … }` eats its own block); `[gram.amb.structlit]` now \
+         names condition/`in`-header/scrutinee explicitly.",
+    ),
+    (
+        "gram.expr.flow",
+        "match-arm separators follow the §3.4 prose, not `arm_sep ::= ',' | TERM` \
+         read alone. The amendment brings the EBNF into line with the prose.",
+    ),
+    (
+        "gram.amb.structlit",
+        "E0006's primary span is the opening `{`. is01 spanned the whole \
+         `Point { x: 0 }`; §9's reservation now pins the brace, and the parser \
+         was moved onto it.",
     ),
 ];
 
 /// How deep syntactic nesting may go before the parser refuses.
 ///
-/// **This is not in the spec.** `[gram.lex.str]` rails string-inside-
-/// interpolation nesting at 32 and stops there; nothing bounds `((((…))))`,
-/// `****T`, or blocks inside blocks. A recursive-descent parser without a rail
-/// meets the stack instead of the user — `tests/fuzz_smoke.rs` found exactly
-/// that — so this one has a rail, and the gap is filed in [`CHOICES`].
+/// **Normative since the `[gram.lex.rails]` amendment**, which is01's fuzz
+/// smoke provoked: "expression/statement recursion depth **256** — deeper input
+/// is rejected with a diagnostic at the point the rail is hit. Both
+/// implementations enforce identical rail values (differential-tested)."
 ///
-/// The number is deliberately **the spec's own**: `[gram.lex.str]` already
-/// chose 32 as the depth at which nesting stops being a program and starts
-/// being an attack, and reusing it means one number to argue about instead of
-/// two. It is also comfortably inside a debug build's 2 MiB test-thread stack,
-/// which the unrailed parser was not: the deepest nesting anywhere in the
-/// pinned corpus is 6.
-pub const MAX_NESTING: usize = 32;
+/// is01 railed at 32 (the string rail's number, reused so there was one figure
+/// to argue about) and filed the gap; the amendment picked 256 and made it a
+/// differential-comparison surface, so the number here is the spec's, not a
+/// tolerance. The rail is still enforced with E0207 — the *code* remains this
+/// implementation's invention (`diag::UNPINNED_CODES`), only the depth is
+/// pinned.
+///
+/// 256 frames of `parse_expr` fit inside a debug build's 2 MiB test-thread
+/// stack with room to spare; `tests/fuzz_smoke.rs` proves it at the boundary.
+/// The deepest nesting anywhere in the pinned corpus is 6.
+pub const MAX_NESTING: usize = 256;
 
 type PResult<T> = Result<T, Diag>;
 
@@ -144,13 +174,45 @@ pub struct Parsed {
     pub deferred: Vec<Diag>,
 }
 
+/// Stack reserved for the recursive descent, in bytes.
+///
+/// `[gram.lex.rails]` makes depth **256** normative and differential-tested, so
+/// the parser has to *reach* 256 in order to be the thing that stops the
+/// program — a stack overflow at depth 190 is not "enforcing the rail", it is
+/// crashing, and `[proto.record]` has no verdict for a crash.
+///
+/// A debug build of this parser needs between 8 and 16 MiB to climb 260 nested
+/// `(`; a release build needs far less. Rather than depend on the ambient
+/// thread's stack (2 MiB by default, 8 MiB for the main thread on Linux, and
+/// 1 MiB on Windows), [`parse`] runs the descent on a thread whose stack it
+/// chose. The reservation is address space, not memory: only the pages the
+/// descent actually touches are ever committed.
+const PARSE_STACK: usize = 64 * 1024 * 1024;
+
 /// Parses an already-lexed token stream.
+///
+/// Runs the descent on a [`PARSE_STACK`]-sized thread so the nesting rail, not
+/// the stack, is what stops hostile input (`[gram.lex.rails]`).
 ///
 /// # Errors
 ///
 /// The first parse failure, as a `{code, span, anchor, message}` diagnostic.
 /// There is never a second: this parser does not recover.
 pub fn parse(lexed: &Lexed) -> Result<Parsed, Diag> {
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .stack_size(PARSE_STACK)
+            .name("wolf-interp-parse".to_owned())
+            .spawn_scoped(scope, || parse_on_this_stack(lexed))
+            .expect("the parser's stack thread must spawn")
+            .join()
+            // The descent itself never panics; a panic here is an interpreter
+            // bug and is propagated rather than converted into a verdict.
+            .unwrap_or_else(|payload| std::panic::resume_unwind(payload))
+    })
+}
+
+fn parse_on_this_stack(lexed: &Lexed) -> Result<Parsed, Diag> {
     let mut parser = Parser {
         tokens: &lexed.tokens,
         pos: 0,
@@ -159,6 +221,7 @@ pub fn parse(lexed: &Lexed) -> Result<Parsed, Diag> {
             .last()
             .map_or(Span::empty(0), |t| Span::empty(t.span.end)),
         no_struct_lit: false,
+        in_trait_body: false,
         depth: 0,
     };
     let unit = parser.parse_unit()?;
@@ -203,10 +266,14 @@ struct Parser<'a> {
     tokens: &'a [Token],
     pos: usize,
     eof: Span,
-    /// `[gram.amb.structlit]`: in condition and scrutinee position a `{` begins
-    /// the block, so struct literals need parens. The flag is cleared by every
-    /// `(`, `[` and `{` — a nested expression is no longer in that position.
+    /// `[gram.amb.structlit]`: in condition, `in`-header and scrutinee position
+    /// a `{` begins the block, so struct literals need parens. The flag is
+    /// cleared by every `(`, `[` and `{` — a nested expression is no longer in
+    /// that position.
     no_struct_lit: bool,
+    /// Inside a `trait` body, where `fn_item`'s bodyless form is legal without
+    /// `extern` — see [`CHOICES`].
+    in_trait_body: bool,
     /// Current syntactic nesting, against [`MAX_NESTING`].
     depth: usize,
 }
@@ -380,6 +447,14 @@ impl<'a> Parser<'a> {
         out
     }
 
+    fn with_trait_body<T>(&mut self, inside: bool, f: impl FnOnce(&mut Self) -> T) -> T {
+        let saved = self.in_trait_body;
+        self.in_trait_body = inside;
+        let out = f(self);
+        self.in_trait_body = saved;
+        out
+    }
+
     /// Runs one recursive production against the nesting rail.
     ///
     /// Every production that can recur through itself without consuming a
@@ -398,25 +473,6 @@ impl<'a> Parser<'a> {
         let out = f(self);
         self.depth -= 1;
         out
-    }
-
-    /// Index of the `}` matching the `{` at `open`, for diagnostics that want
-    /// to point at a whole construct.
-    fn matching_brace(&self, open: usize) -> Option<usize> {
-        let mut depth = 0usize;
-        for (offset, token) in self.tokens[open..].iter().enumerate() {
-            match token.tok {
-                Tok::LBrace => depth += 1,
-                Tok::RBrace => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return Some(open + offset);
-                    }
-                }
-                _ => {}
-            }
-        }
-        None
     }
 
     // -- unit & items ------------------------------------------------------
@@ -705,14 +761,18 @@ impl<'a> Parser<'a> {
         };
 
         let body = if self.at(&Tok::LBrace) {
-            Some(self.with_struct_lit(true, Parser::parse_block)?)
+            // A default method's body is an ordinary body; items nested in it
+            // are not trait members and still need bodies of their own.
+            Some(self.with_trait_body(false, |p| p.with_struct_lit(true, Parser::parse_block))?)
         } else {
-            // `[gram.item.fn]`: "Bodyless form (TERM) only under `extern`."
-            if !is_extern {
+            // `[gram.item.fn]`: "Bodyless form (TERM) only under `extern`" —
+            // plus trait members, which §2.6 builds out of `fn_item` and the
+            // pinned corpus writes bodyless throughout (see [`CHOICES`]).
+            if !is_extern && !self.in_trait_body {
                 return Err(self.error(
                     diag::E_FN_NEEDS_BODY,
                     anchor,
-                    "a function needs a body unless it is `extern`",
+                    "a function needs a body unless it is `extern` or a trait member",
                 ));
             }
             self.expect_term(anchor)?;
@@ -1002,7 +1062,8 @@ impl<'a> Parser<'a> {
         let name = self.expect_ident(anchor)?;
         let generics = self.parse_generics()?;
         self.expect(&Tok::LBrace, anchor)?;
-        let members = self.parse_members()?;
+        // Trait members may be bodyless — see [`CHOICES`] under `gram.item.fn`.
+        let members = self.with_trait_body(true, Parser::parse_members)?;
         let end = self.expect(&Tok::RBrace, anchor)?.end;
         Ok(TraitDef {
             name,
@@ -1025,7 +1086,8 @@ impl<'a> Parser<'a> {
             None
         };
         self.expect(&Tok::LBrace, anchor)?;
-        let members = self.parse_members()?;
+        // An `impl` member is a definition: bodies are required there.
+        let members = self.with_trait_body(false, Parser::parse_members)?;
         let end = self.expect(&Tok::RBrace, anchor)?.end;
         Ok(ImplDef {
             generics,
@@ -1920,7 +1982,8 @@ impl<'a> Parser<'a> {
             && let Some(path) = path_of(&expr)
         {
             if self.no_struct_lit {
-                if let Some(diag) = self.struct_lit_in_condition(&path) {
+                let _ = &path;
+                if let Some(diag) = self.struct_lit_in_condition() {
                     return Err(diag);
                 }
             } else {
@@ -2032,19 +2095,22 @@ impl<'a> Parser<'a> {
     /// Only fires when the brace body *cannot* be a block: `IDENT :` or
     /// `IDENT ,`. The shorthand `{ x }` is ambiguous with a block and §3.4
     /// resolves it in the block's favour, so it is left alone (see [`CHOICES`]).
-    fn struct_lit_in_condition(&self, path: &Path) -> Option<Diag> {
+    ///
+    /// The **primary span is the opening `{`**, per the amended §9 reservation
+    /// ("E0006 (struct literal in condition; primary span = the opening `{`)").
+    /// is01 spanned the whole `Point { x: 0 }` and reported the ambiguity
+    /// upward; the amendment picked the brace, because the brace is the token
+    /// whose reading is contested — the path before it is a perfectly good
+    /// expression under either reading.
+    fn struct_lit_in_condition(&self) -> Option<Diag> {
         let looks_like_a_literal = matches!(self.tok_at(1), Some(Tok::Ident(_)))
             && matches!(self.tok_at(2), Some(Tok::Colon | Tok::Comma));
         if !looks_like_a_literal {
             return None;
         }
-        let end = self
-            .matching_brace(self.pos)
-            .and_then(|index| self.tokens.get(index))
-            .map_or(self.span().end, |t| t.span.end);
         Some(Diag::new(
             diag::E_STRUCT_LIT_IN_COND,
-            Span::new(path.span.start, end),
+            self.span(),
             "gram.amb.structlit",
             "a struct literal here is read as the block that follows the condition; \
              wrap it in parentheses",

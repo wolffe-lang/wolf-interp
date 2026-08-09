@@ -193,11 +193,10 @@ pub const E_FN_NEEDS_BODY: &str = "E0204";
 pub const E_RANGE_CHAIN: &str = "E0205";
 /// `assume noalias` needs ≥2 operands (`[gram.expr.unsafe]`). **Unpinned.**
 pub const E_ASSUME_ARITY: &str = "E0206";
-/// Syntactic nesting past the parser's recursion rail. **Unpinned, and a spec
-/// gap:** `[gram.lex.str]` rails *string* nesting at depth 32, but nothing in
-/// spec/01 bounds expression, type or block nesting, so a recursive-descent
-/// implementation has to invent a limit or die on the stack. Ours is
-/// [`crate::parse::MAX_NESTING`].
+/// Syntactic nesting past the recursion rail. The **code** is unpinned; the
+/// **depth** is not: `[gram.lex.rails]` makes expression/statement recursion
+/// depth 256 normative and differential-tested, an amendment this
+/// implementation's is01 fuzz smoke provoked. See [`crate::parse::MAX_NESTING`].
 pub const E_NESTING_RAIL: &str = "E0207";
 
 /// Every code this implementation invented, with the clause it serves.
@@ -262,8 +261,8 @@ pub const UNPINNED_CODES: &[(&str, &str, &str)] = &[
     ),
     (
         E_NESTING_RAIL,
-        "gram.expr",
-        "syntactic nesting past the recursion rail",
+        "gram.lex.rails",
+        "syntactic nesting past the normative depth-256 rail",
     ),
 ];
 
