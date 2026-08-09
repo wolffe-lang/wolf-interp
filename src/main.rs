@@ -103,9 +103,10 @@ struct ConformRunArgs {
     /// Log evaluation rules as they fire, with their clause anchors, to
     /// stderr. `--trace` logs all of them; `--trace=mem` keeps only the
     /// memory-model rules — every region event (create/open/suspend/freeze/
-    /// free, edge checks, RC ops, handle faults), which is what is05's
-    /// divergence triage and s20's checker validation read. Human-facing;
-    /// never part of the record.
+    /// free, edge checks, RC ops, handle faults); `--trace=prov` keeps the
+    /// Tier-3 ones — every retag, permission transition, exposure, protector
+    /// and UB row, which is what s23's shipped miri-lite diffs against.
+    /// Human-facing; never part of the record.
     #[arg(long, num_args = 0..=1, default_missing_value = "all", value_name = "FILTER")]
     trace: Option<Trace>,
 }
@@ -416,6 +417,9 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
         }
         if let Some(trap) = &observed.trap {
             eprintln!("  {trap}");
+        }
+        if let Some(finding) = &observed.ub {
+            eprintln!("  {finding}");
         }
         if let Some(reason) = record.extensions.get("x-unsupported") {
             eprintln!("  unsupported: {}", reason.as_str().unwrap_or_default());

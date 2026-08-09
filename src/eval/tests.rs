@@ -1029,10 +1029,9 @@ fn a_construct_outside_this_tier_names_the_tier_that_owns_it() {
             "fn main() -> int {\n    var a = 1\n    let p = &a\n    let q = *p\n    0\n}\n",
             "Tier 3",
         ),
-        (
-            "fn main() -> int {\n    unsafe { let a = 1 }\n    0\n}\n",
-            "is04",
-        ),
+        // `unsafe { }` itself moved *into* coverage at is04; what is left
+        // outside it is the opaque C body, whose meaning is c10's.
+        ("fn main() -> int {\n    unsafe c [] { }\n    0\n}\n", "c10"),
         (
             "fn main() -> int {\n    scope s { let a = 1 }\n    0\n}\n",
             "ic03",

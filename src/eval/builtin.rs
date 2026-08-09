@@ -22,6 +22,7 @@
 use crate::diag::Span;
 use crate::trap::TrapKind;
 
+use super::prov::UbRow;
 use super::region::SlotLife;
 use super::rules::Rule;
 use super::value::{HandleValue, IntTy, Slot, Value};
@@ -66,6 +67,36 @@ pub fn ambient(name: &str) -> Option<Value> {
         .iter()
         .find(|candidate| **candidate == name)
         .map(|candidate| Value::Builtin(candidate))
+}
+
+/// The C functions this machine models as **host intrinsics**.
+///
+/// # The approximation, stated where it lives
+///
+/// `corpus/memory/unsafe_noalias.lu`, `corpus/memory/unsafe_ub_uaf.lu` and
+/// `corpus/ffi.lu` open with `import c "stdlib.h"` and then call `c.malloc`,
+/// `c.memset` and `c.free`. There is no FFI here and there will not be one: an
+/// interpreter that dlopen'd libc would be comparing the *host's* allocator
+/// against the compiler's, and `[proto.cmp.defined-divergence]` already says
+/// layout observations are not a comparison surface. So these are modelled —
+/// `malloc` mints an allocation inside the provenance machine, `free` kills
+/// one, `memset` writes bytes — and the model is the *only* thing the oracle
+/// claims. `docs/approximation-contract.md` §8 is the contract; the set is
+/// deliberately small, and a C name outside it is `unsupported`, never guessed.
+///
+/// `[mem.boundary.ffi]` is what makes the ownership honest: "a C call executes
+/// against an implicit region borrowed for the call's extent", so a host
+/// allocation is owned by the region that was current when it was made, and
+/// `[mem.prov.region]` then decides what a region free does to it (§7/P4).
+/// `[mem.prov.expose]`'s "wildcard pointers from FFI behave as exposed" is why
+/// the root tag is exposed the moment it exists.
+#[must_use]
+pub fn c_intrinsic(name: &str) -> Option<&'static str> {
+    const MODELLED: &[&str] = &["c.malloc", "c.calloc", "c.free", "c.memset", "c.memcpy"];
+    MODELLED
+        .iter()
+        .copied()
+        .find(|candidate| candidate.strip_prefix("c.") == Some(name))
 }
 
 /// Ambient dotted names: `std.fs.read_text`, and the `fs` binding `use std.fs`
@@ -172,6 +203,72 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 span,
                 "assertion failed".to_owned(),
             )
+        }
+        // -- Tier 3: the modelled C intrinsics (see `c_intrinsic`) ---------
+        "c.malloc" | "c.calloc" => {
+            let size = c_size(&args, name)?;
+            let region = machine.current_region();
+            let ptr = machine.prov().host_alloc(size, region, span);
+            if name == "c.calloc" {
+                // `calloc` zeroes, which is *observable* here: §7/L1 is a read
+                // of memory nothing wrote, and calloc wrote.
+                machine.prov().init_range(ptr, size);
+            }
+            machine.note(
+                Rule::BoundaryFfi,
+                span,
+                &format!("`{name}({size})` → {ptr}, exposed per the FFI posture"),
+            );
+            Ok(Value::Raw(ptr))
+        }
+        "c.free" => {
+            let Some(Value::Raw(ptr)) = args.first().copied_raw() else {
+                return unsupported("`c.free` takes a raw pointer".to_owned());
+            };
+            if machine.prov().host_free(ptr, span) {
+                machine.note(
+                    Rule::ProvRegion,
+                    span,
+                    &format!("`c.free({ptr})`: the allocation's whole tag tree is Disabled"),
+                );
+                return Ok(Value::Unit);
+            }
+            // A double free, a free of an interior pointer, or a free of
+            // something that never came from the modelled heap. The row is the
+            // dangling-raw-pointer one: `free` derefs the block it releases.
+            machine.ub_from_builtin(
+                UbRow::L2,
+                span,
+                ptr.alloc,
+                format!(
+                    "`c.free({ptr})` releases a block that is not a live allocation of the \
+                     modelled C heap at offset 0"
+                ),
+            )
+        }
+        "c.memset" => {
+            let Some(Value::Raw(ptr)) = args.first().copied_raw() else {
+                return unsupported("`c.memset` takes a raw pointer".to_owned());
+            };
+            let byte = args.get(1).and_then(Value::as_int).unwrap_or(0);
+            let len = c_len(&args, 2, name)?;
+            machine.raw_fill(ptr, byte, len, span)?;
+            machine.note(
+                Rule::BoundaryFfi,
+                span,
+                &format!("`c.memset({ptr}, {byte}, {len})` — a checked write of the whole range"),
+            );
+            Ok(Value::Unit)
+        }
+        "c.memcpy" => {
+            let (Some(Value::Raw(dst)), Some(Value::Raw(src))) =
+                (args.first().copied_raw(), args.get(1).copied_raw())
+            else {
+                return unsupported("`c.memcpy` takes two raw pointers".to_owned());
+            };
+            let len = c_len(&args, 2, name)?;
+            machine.raw_copy(dst, src, len, span)?;
+            Ok(Value::Unit)
         }
         other => unsupported(format!(
             "`{other}` is in the ambient std stub but has no pinned semantics; the real std \
@@ -327,6 +424,20 @@ pub fn method(
                     Ok(error("NotAnInt"))
                 }
             }
+        }
+
+        // -- Tier 3: raw pointers (`[mem.unsafe.raw.1]`) -------------------
+        (Value::Raw(ptr), "is_null") => Ok(Value::Bool(ptr.is_null())),
+        (Value::Raw(ptr), "addr") => {
+            let ptr = *ptr;
+            machine.prov().expose(ptr, span);
+            let address = machine.prov().address_of(ptr);
+            machine.note(
+                Rule::ProvExpose,
+                span,
+                &format!("{ptr}.addr exposes its tag"),
+            );
+            Ok(Value::Int(address, IntTy::INT))
         }
 
         (Value::Closure(_) | Value::Fn(_), "call") => {
@@ -541,6 +652,10 @@ pub fn index(machine: &mut Machine, target: &Value, index: &Value, span: Span) -
         (Value::Str(_), Value::Int(_, _)) => unsupported(
             "there is no `s[i]` character indexing in wolf (D25); slice with a range".to_owned(),
         ),
+        (Value::Raw(_), _) => unsupported(
+            "a raw index is provenance-checked in `eval` before it reaches the std subset"
+                .to_owned(),
+        ),
         (target, index) => unsupported(format!(
             "{} cannot be indexed by {}",
             target.kind(),
@@ -602,6 +717,45 @@ pub fn slice(
             Ok(Value::List(items[from as usize..to as usize].to_vec()))
         }
         other => unsupported(format!("{} cannot be sliced", other.kind())),
+    }
+}
+
+/// A `size_t`-shaped argument.
+fn c_size(args: &[Value], name: &str) -> Result<usize, Signal> {
+    match args.first().and_then(Value::as_int) {
+        Some(n) if n >= 0 => usize::try_from(n).map_err(|_| {
+            Signal::Unsupported(format!(
+                "`{name}` was asked for {n} bytes, which does not fit"
+            ))
+        }),
+        _ => Err(Signal::Unsupported(format!(
+            "`{name}` takes a non-negative byte count"
+        ))),
+    }
+}
+
+fn c_len(args: &[Value], at: usize, name: &str) -> Result<usize, Signal> {
+    match args.get(at).and_then(Value::as_int) {
+        Some(n) if n >= 0 => usize::try_from(n)
+            .map_err(|_| Signal::Unsupported(format!("`{name}`'s length {n} does not fit"))),
+        _ => Err(Signal::Unsupported(format!(
+            "`{name}` takes a non-negative length"
+        ))),
+    }
+}
+
+/// `Option<&Value>` → `Option<Value>` for the `Copy`-shaped raw pointer, so the
+/// call sites above read as one `let … else`.
+trait CopiedRaw {
+    fn copied_raw(self) -> Option<Value>;
+}
+
+impl CopiedRaw for Option<&Value> {
+    fn copied_raw(self) -> Option<Value> {
+        match self {
+            Some(Value::Raw(ptr)) => Some(Value::Raw(*ptr)),
+            _ => None,
+        }
     }
 }
 

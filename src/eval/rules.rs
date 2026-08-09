@@ -138,6 +138,43 @@ pub enum Rule {
     /// place base.
     HandleAccess,
 
+    // -- §5 Tier 3: unsafe (is04) -----------------------------------------
+    /// Raw pointers carry no aliasing assumptions; arithmetic, casts and copies
+    /// of them are unrestricted.
+    UnsafeRaw,
+    /// `assume noalias p, q` asserts the pointed-to ranges are disjoint; a
+    /// false assertion is UB.
+    AssumeNoalias,
+    /// `borrow r from ptr` and the checked `handle` are the only two doors back
+    /// into the safe world.
+    UnsafeDoor,
+    /// `unsafe { }` appears only inside fully-safe signatures; the module is the
+    /// audit granule.
+    UnsafeScope,
+    /// A C call executes against an implicit region borrowed for the call's
+    /// extent.
+    BoundaryFfi,
+
+    // -- §6 provenance (is04) ---------------------------------------------
+    /// Every pointer carries a tag; every allocation carries a tree of them,
+    /// and new tags are children of the tag they derive from.
+    ProvTag,
+    /// The per-tag, per-location state machine and its transition table.
+    ProvState,
+    /// Int→ptr casts resolve angelically among exposed tags; ptr→int exposes.
+    ProvExpose,
+    /// Freeing a region Disables every tag tree it owns; freezing Frozens them.
+    ProvRegion,
+
+    // -- §7 the UB enumeration (is04) --------------------------------------
+    /// A row of the closed UB enumeration was reached.
+    Ub,
+    /// Every row of the enumeration names the optimization it licenses (D2).
+    UbLicensed,
+    /// `ub(anchor)` is a protocol verdict that participates in comparison as
+    /// the highest-severity divergence class.
+    UbVerdict,
+
     // -- expression-oriented control flow ---------------------------------
     /// A block yields its tail expression.
     Block,
@@ -316,13 +353,18 @@ impl Rule {
                 "mem.region.edge.imm",
                 "frozen (`imm`) data may be referenced from anywhere, forever",
             ),
+            // Both of these anchors were **repaired upstream** on 2026-08-09 in
+            // response to is03's verdict, and the machine's behaviour is now the
+            // normative reading rather than a proposal: openness is depth-counted
+            // (`in a { … }` inside `region a { … }` is idempotent) and the open
+            // set must be an antichain in the region forest.
             Rule::RegionOpen => (
                 "mem.region.open.1",
-                "entering `in r { … }` or the sugar block opens a region; exit closes it (Suspended)",
+                "entering `in r { … }` or the sugar block opens a region; exit closes it (Suspended), and re-entry is depth-counted idempotent",
             ),
             Rule::RegionMultiopen => (
                 "mem.region.multiopen",
-                "multiple disjoint regions may be open simultaneously — wolf's extension past Verona",
+                "the open set must be an antichain in the region forest: disjoint siblings may be open at once, an owner and its child may not",
             ),
             Rule::RegionSuspended => (
                 "mem.region.open.3",
@@ -367,6 +409,54 @@ impl Rule {
             Rule::HandleAccess => (
                 "mem.shared.handle.3",
                 "`pool[h]` accesses the slot under Tier-0 exclusivity rules; the pool is the place base",
+            ),
+            Rule::UnsafeRaw => (
+                "mem.unsafe.raw.1",
+                "raw pointers carry no aliasing assumptions; their arithmetic, casts and copies are unrestricted",
+            ),
+            Rule::AssumeNoalias => (
+                "mem.unsafe.raw.2",
+                "`assume noalias p, q` asserts the pointed-to ranges do not overlap; a false assertion is UB",
+            ),
+            Rule::UnsafeDoor => (
+                "mem.unsafe.door",
+                "`borrow r from ptr` and the checked `handle` are the only doors back into the safe world",
+            ),
+            Rule::UnsafeScope => (
+                "mem.unsafe.scope",
+                "`unsafe { }` blocks appear only inside fully-safe signatures; the module is the audit granule",
+            ),
+            Rule::BoundaryFfi => (
+                "mem.boundary.ffi",
+                "a C call executes against an implicit region borrowed for the call's extent",
+            ),
+            Rule::ProvTag => (
+                "mem.prov.tag",
+                "every pointer carries a tag and every allocation a tree of them; new tags are children of their provenance parent",
+            ),
+            Rule::ProvState => (
+                "mem.prov.state",
+                "each tag is Reserved, Active, Frozen or Disabled per location, and every access applies the transition table",
+            ),
+            Rule::ProvExpose => (
+                "mem.prov.expose",
+                "ptr→int exposes a tag; int→ptr resolves angelically among the exposed ones",
+            ),
+            Rule::ProvRegion => (
+                "mem.prov.region",
+                "freeing a region Disables every tag tree it owns; `freeze` transitions all of them to Frozen",
+            ),
+            Rule::Ub => (
+                "mem.ub",
+                "the UB enumeration is closed: an execution reaching a row has no defined behavior",
+            ),
+            Rule::UbLicensed => (
+                "mem.ub.closed",
+                "zero rows without a named licensed optimization — the D2 ratchet, carried on every report",
+            ),
+            Rule::UbVerdict => (
+                "proto.record.ub",
+                "`ub(anchor)` cites the §7 row and participates in comparison as a soundness-candidate divergence",
             ),
             Rule::Block => (
                 "gram.expr.block",
@@ -459,8 +549,24 @@ impl Rule {
         self.anchor().starts_with("mem.")
     }
 
+    /// Is this a Tier-3 rule — one `--trace=prov` keeps?
+    ///
+    /// The filter is derived from the anchor exactly as [`Rule::is_memory`] is,
+    /// but over the three clause families that *are* the unsafe tier: §5
+    /// (`mem.unsafe`), §6 (`mem.prov`) and §7 (`mem.ub`). A rule joining one of
+    /// those namespaces is a provenance rule by definition, so the filter cannot
+    /// drift away from the registry.
+    #[must_use]
+    pub fn is_provenance(self) -> bool {
+        let anchor = self.anchor();
+        anchor.starts_with("mem.prov")
+            || anchor.starts_with("mem.unsafe")
+            || anchor.starts_with("mem.ub")
+            || anchor.starts_with("mem.boundary")
+    }
+
     /// Every rule, in declaration order. The registry.
-    pub const ALL: [Rule; 59] = [
+    pub const ALL: [Rule; 71] = [
         Rule::ValueSemantics,
         Rule::PlacePath,
         Rule::PathDisjoint,
@@ -504,6 +610,18 @@ impl Rule {
         Rule::HandleTwoPhase,
         Rule::HandleStale,
         Rule::HandleAccess,
+        Rule::UnsafeRaw,
+        Rule::AssumeNoalias,
+        Rule::UnsafeDoor,
+        Rule::UnsafeScope,
+        Rule::BoundaryFfi,
+        Rule::ProvTag,
+        Rule::ProvState,
+        Rule::ProvExpose,
+        Rule::ProvRegion,
+        Rule::Ub,
+        Rule::UbLicensed,
+        Rule::UbVerdict,
         Rule::Block,
         Rule::Flow,
         Rule::EvalOrder,

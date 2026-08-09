@@ -101,6 +101,9 @@ pub fn observe_record(
 pub struct Observed {
     pub diagnostic: Option<crate::diag::Diag>,
     pub trap: Option<crate::eval::Trap>,
+    /// The `[mem.ub]` row behind a `ub(…)` verdict, with its two spans, the
+    /// optimization it licenses, and the borrow-tree slice at the violation.
+    pub ub: Option<crate::eval::prov::UbFinding>,
     pub trace: Vec<String>,
     /// Regions still holding memory at program exit — is03's leak assertion,
     /// exposed so CI can assert it over the whole corpus.
@@ -114,6 +117,7 @@ impl Default for Observed {
         Observed {
             diagnostic: None,
             trap: None,
+            ub: None,
             trace: Vec::new(),
             leaks: Vec::new(),
             forest: Ok(()),
@@ -172,6 +176,38 @@ pub fn observe_record_traced(
             serde_json::json!([trap.span.start, trap.span.end]),
         );
     }
+    // `[proto.record.ub]`: "`ub(anchor)` cites the s04 §7 row (e.g., `ub(mem.ub)`
+    // with the row id in `x-ub-row`, or the specific clause)". Both, then: the
+    // verdict carries the document-level anchor so two implementations compare
+    // like for like, and the row — the thing the two oracles must actually
+    // agree on — rides the extension key the clause names.
+    if let Some(finding) = &observation.ub {
+        extensions.insert(
+            "x-ub-row".to_owned(),
+            serde_json::Value::from(finding.row.id()),
+        );
+        extensions.insert(
+            "x-ub-clause".to_owned(),
+            serde_json::Value::from(finding.row.clause()),
+        );
+        extensions.insert(
+            "x-ub-span".to_owned(),
+            serde_json::json!([finding.span.start, finding.span.end]),
+        );
+        if let Some(tag) = finding.tag_span {
+            extensions.insert(
+                "x-ub-tag-span".to_owned(),
+                serde_json::json!([tag.start, tag.end]),
+            );
+        }
+        // The D2 pairing on the wire: a row without a licensed optimization is
+        // one this language does not have (`[mem.ub.closed]`).
+        extensions.insert(
+            "x-ub-licenses".to_owned(),
+            serde_json::Value::from(finding.row.optimization()),
+        );
+        extensions.insert("x-ub-tree".to_owned(), serde_json::json!(finding.tree));
+    }
 
     let record = ObservationRecord {
         protocol: PROTOCOL_VERSION,
@@ -192,6 +228,7 @@ pub fn observe_record_traced(
         Observed {
             diagnostic: observation.detail,
             trap: observation.trap,
+            ub: observation.ub,
             trace: observation.trace,
             leaks: observation.leaks,
             forest: observation.forest,

@@ -46,6 +46,7 @@
 use std::path::Path;
 
 use crate::diag::Diag;
+use crate::eval::prov::UbFinding;
 use crate::eval::{Machine, Outcome, Trap};
 use crate::lex;
 use crate::parse;
@@ -73,11 +74,17 @@ pub struct Observation {
     /// The fault behind a `trap`, for humans: spans, clause anchor, one
     /// sentence.
     pub trap: Option<Trap>,
+    /// The finding behind a `ub` verdict: the §7 row, the two spans, the
+    /// licensed optimization and the borrow-tree slice.
+    pub ub: Option<UbFinding>,
     /// `--trace`'s rule log, when it was asked for.
     pub trace: Vec<String>,
     /// Regions still holding memory when the program ended (is03's leak
     /// assertion). Empty for every phase that does not run.
     pub leaks: Vec<crate::eval::region::RegionId>,
+    /// C allocations never freed. Leaks are defined and safe
+    /// (`[mem.ub.defined]`); this is a report.
+    pub host_leaks: Vec<crate::eval::prov::AllocId>,
     /// `Err` when the region forest invariant broke during the run — an
     /// interpreter bug, surfaced rather than swallowed.
     pub forest: Result<(), String>,
@@ -102,8 +109,10 @@ impl Observation {
             stdout: Vec::new(),
             reason: None,
             trap: None,
+            ub: None,
             trace: Vec::new(),
             leaks: Vec::new(),
+            host_leaks: Vec::new(),
             forest: Ok(()),
         }
     }
@@ -236,6 +245,14 @@ fn observe_with(
             trap: Some((*trap).clone()),
             ..Observation::clean(Phase::Run, Verdict::Trap(trap.kind))
         },
+        // `[proto.record.phase]`: the run *completed* — it reached a defined
+        // stopping point, and "this execution has no defined behavior" is that
+        // point. `run` is therefore the deepest completed phase, exactly as it
+        // is for a trap; the verdict is what carries the difference.
+        Outcome::Ub(finding) => Observation {
+            ub: Some((*finding).clone()),
+            ..Observation::clean(Phase::Run, Verdict::Ub(finding.anchor().to_owned()))
+        },
         // The run did not complete, so `run` is not the deepest *completed*
         // phase — `resolve` is. Inflating it here is exactly the lie
         // `[proto.record.phase]` names.
@@ -244,6 +261,7 @@ fn observe_with(
     observation.stdout = run.stdout;
     observation.trace = run.trace;
     observation.leaks = run.leaks;
+    observation.host_leaks = run.host_leaks;
     observation.forest = run.forest;
     observation
 }

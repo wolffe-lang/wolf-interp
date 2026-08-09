@@ -134,11 +134,21 @@ pub fn walk(root: &Path, spec_root: Option<&Path>) -> io::Result<CorpusReport> {
     collect_lu_files(root, &mut paths)?;
     // `read_dir` order is platform noise (compiler-track lesson): sort before
     // anything downstream can depend on the order.
+    //
+    // The key is the **relative slash path**, not the `PathBuf`. `Path`'s order
+    // is component-wise, so it puts `comptime/assert_static.lu` before
+    // `comptime.lu` (the directory component `comptime` sorts under the file
+    // `comptime.lu`), while every consumer of this report sorts the strings the
+    // records carry, where `.` precedes `/`. Sorting the thing that leaves the
+    // tool is what makes "the walk is sorted" a property a differ can rely on.
+    let mut paths: Vec<(String, PathBuf)> = paths
+        .into_iter()
+        .map(|path| (relative_slash_path(root, &path), path))
+        .collect();
     paths.sort();
 
     let mut files = Vec::with_capacity(paths.len());
-    for path in paths {
-        let relative = relative_slash_path(root, &path);
+    for (relative, path) in paths {
         let outcome = match fs::read_to_string(&path) {
             Ok(source) => match crate::directive::parse_header(&source) {
                 Ok(directives) if directives.member => Outcome::Member(Box::new(directives)),

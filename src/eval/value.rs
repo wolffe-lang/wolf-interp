@@ -304,6 +304,12 @@ pub enum Value {
     Shared(CellId),
     /// A `weak T` reference, which keeps nothing alive (`[mem.shared.rc.3]`).
     Weak(CellId),
+
+    // -- Tier 3: raw pointers (is04) ---------------------------------------
+    /// A `*T` raw pointer: `(address, tag)` (`[mem.prov.tag]`). Copies of it
+    /// are unrestricted and share its tag — `[mem.unsafe.raw.1]` says so, and
+    /// that is exactly what makes the raw tier *simpler* than the safe one.
+    Raw(super::prov::RawPtr),
 }
 
 impl Value {
@@ -342,6 +348,7 @@ impl Value {
             Value::Handle(_) => "handle".to_owned(),
             Value::Shared(_) => "shared".to_owned(),
             Value::Weak(_) => "weak".to_owned(),
+            Value::Raw(_) => "*T".to_owned(),
         }
     }
 
@@ -444,6 +451,7 @@ impl fmt::Display for Value {
             ),
             Value::Shared(id) => write!(f, "shared#{id}"),
             Value::Weak(id) => write!(f, "weak#{id}"),
+            Value::Raw(ptr) => write!(f, "{ptr}"),
             Value::Error(e) => {
                 f.write_str(&e.tag)?;
                 if !e.payload.is_empty() {

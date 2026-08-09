@@ -895,7 +895,12 @@ pub fn references(value: &Value, out: &mut Vec<Ref>) {
         | Value::Fn(_)
         | Value::Closure(_)
         | Value::Module(_)
-        | Value::Builtin(_) => {}
+        | Value::Builtin(_)
+        // A raw pointer is not a §3 *reference*: `[mem.unsafe.raw.1]` gives it
+        // no aliasing obligations, and the edge table is about the granules the
+        // safe tier can name. Its obligations are §6's, and they are checked
+        // there (`super::prov`).
+        | Value::Raw(_) => {}
     }
 }
 

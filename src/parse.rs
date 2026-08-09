@@ -1361,14 +1361,15 @@ impl<'a> Parser<'a> {
                 if p.at(&Tok::RBracket) {
                     break;
                 }
-                // A literal or a parenthesised arithmetic expression is a const
-                // generic; anything else reads as a type.
+                // A literal, or *any* argument carrying a binary arithmetic
+                // operator, is a const generic; anything else reads as a type.
                 if matches!(
                     p.tok(),
                     Some(
                         Tok::Int(_) | Tok::Float(_) | Tok::StrStart(_) | Tok::Kw("true" | "false")
                     )
-                ) {
+                ) || p.type_arg_is_const_expr()
+                {
                     args.push(TypeArg::Expr(Box::new(p.parse_expr()?)));
                 } else {
                     args.push(TypeArg::Type(p.parse_type()?));
@@ -1381,6 +1382,66 @@ impl<'a> Parser<'a> {
         })?;
         self.expect(&Tok::RBracket, anchor)?;
         Ok(args)
+    }
+
+    /// Does the type argument starting here read as a const-generic
+    /// **expression** rather than as a type?
+    ///
+    /// `[gram.type]` writes `type_arg ::= type | expr` and adds "const
+    /// generics; disambiguated in sema" — so the parser's whole job is deciding
+    /// which production *reads*, and a leading literal is not enough:
+    /// `corpus/comptime/norm_linear.lu` writes `Buf[N + 1]`, whose first token
+    /// is an identifier and whose second is an operator no type production has.
+    ///
+    /// The decision is a bounded scan to this argument's end — the `,` or `]`
+    /// at bracket depth zero — looking for a **binary** arithmetic operator. It
+    /// is binary exactly when the token before it could end an operand, which
+    /// is what keeps `Foo[*u8]`'s prefix `*` a raw-pointer type and makes
+    /// `Buf[N *2]`'s a multiplication. No backtracking: is01's parser has none
+    /// and this does not introduce any.
+    fn type_arg_is_const_expr(&self) -> bool {
+        let mut depth = 0i32;
+        let mut offset = 0usize;
+        // Whether the previous token can end an operand, so the next operator
+        // is binary rather than prefix.
+        let mut operand = false;
+        loop {
+            let Some(tok) = self.tok_at(offset) else {
+                return false;
+            };
+            match tok {
+                Tok::LBracket | Tok::LParen | Tok::LBrace => {
+                    depth += 1;
+                    operand = false;
+                }
+                Tok::RParen | Tok::RBrace => {
+                    depth -= 1;
+                    operand = true;
+                }
+                Tok::RBracket => {
+                    if depth == 0 {
+                        return false;
+                    }
+                    depth -= 1;
+                    operand = true;
+                }
+                Tok::Comma if depth == 0 => return false,
+                Tok::Ident(_) | Tok::Int(_) | Tok::Float(_) => operand = true,
+                Tok::Plus | Tok::Minus | Tok::Star | Tok::Slash | Tok::Percent => {
+                    if depth == 0 && operand {
+                        return true;
+                    }
+                    operand = false;
+                }
+                _ => operand = false,
+            }
+            offset += 1;
+            // A type argument is short; a runaway scan means the token stream
+            // ended without a closing bracket, which the caller reports.
+            if offset > self.tokens.len() {
+                return false;
+            }
+        }
     }
 
     // -- patterns ----------------------------------------------------------

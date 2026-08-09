@@ -61,6 +61,10 @@ pub struct Module {
     pub bindings: Vec<String>,
     /// Modules this one `use`s, in declaration order.
     pub uses: Vec<String>,
+    /// Headers this module pulled in with `import c "…"` (D17). The importer
+    /// is c10's; what `resolve` needs is that the name `c` is bound, so
+    /// `c.malloc` resolves to a namespace rather than to nothing.
+    pub c_headers: Vec<String>,
 }
 
 /// A whole program: the root module plus every module reachable through `use`.
@@ -78,6 +82,18 @@ impl Program {
     #[must_use]
     pub fn root(&self) -> &Module {
         self.modules.get("").expect("the root module always exists")
+    }
+
+    /// Did `module` pull a C header in with `import c "…"`?
+    ///
+    /// The name `c` is bound by the import (D17: "`import c` pulls a real
+    /// header through the importer"), and the interpreter needs exactly that
+    /// much: whether `c.malloc` names the C namespace or nothing at all.
+    #[must_use]
+    pub fn imports_c(&self, module: &str) -> bool {
+        self.modules
+            .get(module)
+            .is_some_and(|module| !module.c_headers.is_empty())
     }
 
     /// Looks a name up in `module`, honouring visibility when the lookup comes
@@ -303,7 +319,19 @@ fn collect(unit: &Unit, module: &mut Module) {
             }
             ItemKind::Impl(_) => {}
             ItemKind::Use(decl) => collect_use(decl, module),
-            ItemKind::ImportC(_) => {}
+            ItemKind::ImportC(header) => {
+                let name = header
+                    .parts
+                    .iter()
+                    .filter_map(|part| match part {
+                        crate::ast::StrPart::Text(text) => Some(text.as_str()),
+                        crate::ast::StrPart::Interp(_) => None,
+                    })
+                    .collect::<String>();
+                if !module.c_headers.contains(&name) {
+                    module.c_headers.push(name);
+                }
+            }
         }
     }
 }

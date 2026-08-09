@@ -26,6 +26,7 @@
 
 pub mod builtin;
 pub mod place;
+pub mod prov;
 pub mod region;
 pub mod rules;
 pub mod value;
@@ -42,6 +43,7 @@ use crate::sema::{Def, Program};
 use crate::trap::TrapKind;
 
 use place::{Access, AccessSet, Held, Path, Proj};
+use prov::{AccessKind, Prov, Provenance, RawPtr, RetagKind, UbFinding, UbRow};
 use region::{Edge, Ref, RegionId, RegionState, Store, Strategy};
 use rules::Rule;
 use value::{
@@ -87,6 +89,13 @@ pub enum Signal {
     Break(Value),
     Continue,
     Trap(Box<Trap>),
+    /// The provenance oracle reached a row of `[mem.ub]`'s closed enumeration.
+    ///
+    /// Distinct from [`Signal::Trap`] on purpose: a trap is a fault of a
+    /// *defined* execution and the compiler must reproduce it, while this says
+    /// the execution has no defined behavior at all. The protocol keeps them
+    /// apart too — `trap(kind)` versus `ub(anchor)` (`[proto.record.verdict]`).
+    Ub(Box<UbFinding>),
     /// Outside this evaluator's coverage, or a sema-lite failure (unresolvable name,
     /// ambiguous dispatch, a type error the checker owns). Becomes verdict
     /// `unsupported` with the reason on an `x-` key — never a crash, and never
@@ -117,6 +126,44 @@ struct Args {
     writebacks: Vec<(usize, Path)>,
     /// How many accesses this call pushed onto the access set, to release.
     held: usize,
+    /// `(argument index, retag)` for each argument that got a fresh tag at
+    /// parameter entry (`[mem.prov.tag]`).
+    retags: Vec<(usize, PendingRetag)>,
+    /// Tags protected for this call's extent, released when it ends.
+    protectors: Vec<prov::TagId>,
+}
+
+/// Which side of the C membrane a call lands on (`[mem.boundary.ffi]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Callee {
+    /// A wolf function, closure or std method: parameter modes apply, so
+    /// parameter entry is a retag point.
+    Wolf,
+    /// A modelled C intrinsic: no wolf parameters, no modes, no retag —
+    /// exposure and a foreign havoc instead.
+    C,
+}
+
+impl Callee {
+    fn of(target: &Value) -> Callee {
+        match target {
+            Value::Builtin(name) if name.starts_with("c.") => Callee::C,
+            _ => Callee::Wolf,
+        }
+    }
+}
+
+/// One argument's retag, waiting to be bound to the callee's parameter place.
+#[derive(Debug, Clone, Copy)]
+struct PendingRetag {
+    alloc: prov::AllocId,
+    tag: prov::TagId,
+    /// `mut` arguments bind: the callee writes *through* the borrow, so its
+    /// parameter place is the child tag. `read` arguments do not — under MVS
+    /// the callee's parameter is its own copy, and the Frozen child exists to
+    /// witness "the caller's place is immutable for the call", which is what
+    /// the protector enforces (`docs/approximation-contract.md` §7.3).
+    bind: bool,
 }
 
 /// A method call's receiver: a place when the receiver denotes one (so a
@@ -146,6 +193,8 @@ fn unsupported<T>(reason: impl Into<String>) -> EResult<T> {
 pub enum Outcome {
     Exit(u8),
     Trap(Box<Trap>),
+    /// Oracle-detected UB (`[proto.record.ub]`).
+    Ub(Box<UbFinding>),
     Unsupported(String),
 }
 
@@ -163,6 +212,10 @@ pub enum Trace {
     All,
     /// Only rules citing a `mem.*` clause.
     Memory,
+    /// Only the Tier-3 rules — §5 `mem.unsafe.*`, §6 `mem.prov.*`, §7
+    /// `mem.ub.*`, and the FFI boundary clause. Derived from the anchor, not
+    /// from a hand-kept list ([`Rule::is_provenance`]).
+    Provenance,
 }
 
 impl Trace {
@@ -177,6 +230,7 @@ impl Trace {
             Trace::Off => false,
             Trace::All => true,
             Trace::Memory => rule.is_memory(),
+            Trace::Provenance => rule.is_provenance(),
         }
     }
 }
@@ -188,8 +242,11 @@ impl std::str::FromStr for Trace {
         match s {
             "all" | "" => Ok(Trace::All),
             "mem" | "memory" => Ok(Trace::Memory),
+            "prov" | "provenance" => Ok(Trace::Provenance),
             "off" | "none" => Ok(Trace::Off),
-            other => Err(format!("unknown trace filter `{other}` (all, mem, off)")),
+            other => Err(format!(
+                "unknown trace filter `{other}` (all, mem, prov, off)"
+            )),
         }
     }
 }
@@ -207,6 +264,9 @@ pub struct Run {
     pub leaks: Vec<RegionId>,
     /// `shared` cells whose payload outlived the program.
     pub live_cells: Vec<region::CellId>,
+    /// C allocations never `free`d. A leak is **defined and safe**
+    /// (`[mem.ub.defined]`), so this is a report and never a fault.
+    pub host_leaks: Vec<prov::AllocId>,
     /// `Err` when the region forest invariant was broken at exit.
     pub forest: Result<(), String>,
 }
@@ -237,6 +297,15 @@ pub struct Machine<'p> {
     /// `[mem.model.machine]` components 3 and 4: the region forest and the
     /// scope stack, plus the Tier-2 pools and cells.
     store: Store,
+    /// `[mem.model.machine]` component 2: the provenance forest (is04).
+    prov: Provenance,
+    /// How many `unsafe { }` blocks are open. `[mem.ub]`'s enumeration is
+    /// Tier-3-reachable only, so the rows that need "in unsafe code" in their
+    /// wording (T1) ask this.
+    unsafe_depth: u32,
+    /// Retags produced by the current call's arguments, waiting for
+    /// [`Machine::call_fn`] to bind them to the callee's parameter places.
+    pending_retags: Vec<Option<PendingRetag>>,
     stdout: Vec<u8>,
     trace: Vec<String>,
     tracing: Trace,
@@ -263,6 +332,9 @@ impl<'p> Machine<'p> {
             access: AccessSet::new(),
             globals: BTreeMap::new(),
             store: Store::new(),
+            prov: Provenance::new(),
+            unsafe_depth: 0,
+            pending_retags: Vec::new(),
             stdout: Vec::new(),
             trace: Vec::new(),
             tracing: Trace::Off,
@@ -277,14 +349,45 @@ impl<'p> Machine<'p> {
         self
     }
 
-    /// Runs the program's `main`.
-    pub fn run(mut self) -> Run {
+    /// Stack the tree-walk runs on.
+    ///
+    /// The same argument the parser makes for [`crate::parse::PARSE_STACK`],
+    /// one tier up: the machine's own limit — 512 activations, and
+    /// [`Machine::FUEL`] steps — has to be the thing that stops a runaway
+    /// program, because a stack overflow is a *crash* and `[proto.record]` has
+    /// no verdict for one. `corpus/comptime/depth_spiral.lu` is the program
+    /// that makes the point: an unbounded `comptime fn` recursion this machine
+    /// does not fold must come back as `unsupported`, not as a SIGSEGV. The
+    /// reservation is address space; only the pages the descent touches are
+    /// committed.
+    const RUN_STACK: usize = 64 * 1024 * 1024;
+
+    /// Runs the program's `main`, on a stack this machine chose.
+    pub fn run(self) -> Run {
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(Machine::RUN_STACK)
+                .name("wolf-interp-run".to_owned())
+                .spawn_scoped(scope, || self.run_on_this_stack())
+                .expect("the machine's stack thread must spawn")
+                .join()
+                // The walk never panics; a panic here is an interpreter bug
+                // (`tests/fuzz_smoke.rs` treats it as one) and is propagated
+                // rather than turned into a verdict.
+                .unwrap_or_else(|payload| std::panic::resume_unwind(payload))
+        })
+    }
+
+    fn run_on_this_stack(mut self) -> Run {
         let outcome = self.run_main();
         // The program region is freed last, by the machine: `main`'s caller is
         // the runtime, and `[mem.region.intra.2]` frees at the owner's death.
-        self.store.free(Store::root());
+        let freed = self.store.free(Store::root());
+        // `[mem.prov.region]`: freeing a region Disables every tag tree it owns.
+        self.prov.region_freed(&freed, Span::new(0, 0));
         let leaks = self.store.leaks();
         let live_cells = self.store.live_cells();
+        let host_leaks = self.prov.live_host_allocs();
         let forest = match (&self.forest, self.store.assert_forest()) {
             (Err(broken), _) => Err(broken.clone()),
             (Ok(()), verdict) => verdict,
@@ -301,12 +404,14 @@ impl<'p> Machine<'p> {
                 live_cells.len()
             ),
         );
+        self.drain_prov();
         Run {
             outcome,
             stdout: self.stdout,
             trace: self.trace,
             leaks,
             live_cells,
+            host_leaks,
             forest,
         }
     }
@@ -368,6 +473,7 @@ impl<'p> Machine<'p> {
                 other.kind()
             )),
             Err(Signal::Trap(trap)) => Outcome::Trap(trap),
+            Err(Signal::Ub(finding)) => Outcome::Ub(finding),
             Err(Signal::Unsupported(reason)) => Outcome::Unsupported(reason),
             Err(Signal::Return(value)) => {
                 let result = Ok(value);
@@ -412,6 +518,105 @@ impl<'p> Machine<'p> {
             );
             self.forest = Err(broken);
         }
+    }
+
+    /// Moves the provenance machine's rule firings into `--trace`.
+    ///
+    /// Called after every operation that can produce them, so a `prov` trace
+    /// interleaves with the `mem` one in execution order rather than arriving
+    /// as a block at the end.
+    fn drain_prov(&mut self) {
+        for (rule, span, detail) in self.prov.take_notes() {
+            self.fire(rule, span, &detail);
+        }
+    }
+
+    /// Reports one row of `[mem.ub]` and stops the execution.
+    ///
+    /// Not a trap: `[proto.record.verdict]` gives UB its own verdict, and
+    /// `[proto.record.ub]` makes it the highest-severity divergence class. The
+    /// D2 pairing rides along — every report names the optimization the row
+    /// licenses, because a UB rule that licenses nothing is one this language
+    /// does not have (`[mem.ub.closed]`).
+    fn ub<T>(&mut self, finding: UbFinding) -> EResult<T> {
+        self.drain_prov();
+        self.fire(
+            finding.row.rule(),
+            finding.span,
+            &format!("§7/{}: {}", finding.row, finding.message),
+        );
+        self.fire(
+            Rule::UbLicensed,
+            finding.span,
+            &format!("§7/{} licenses {}", finding.row, finding.row.optimization()),
+        );
+        for line in &finding.tree {
+            self.fire(Rule::ProvTag, finding.span, line);
+        }
+        self.fire(
+            Rule::UbVerdict,
+            finding.span,
+            &format!(
+                "verdict ub({}) with x-ub-row={}",
+                finding.anchor(),
+                finding.row
+            ),
+        );
+        Err(Signal::Ub(Box::new(finding)))
+    }
+
+    /// A UB row this machine raises without going through the tag tree.
+    ///
+    /// `alloc` is the allocation the row is *about*, when there is one: the
+    /// report then carries the same two-spans-and-tree shape a tag-tree
+    /// violation does. §7/T1 is the row with no allocation to name — it is
+    /// about the representation of a value, not about a tag — and it says so by
+    /// passing `None`.
+    fn ub_row<T>(
+        &mut self,
+        row: UbRow,
+        span: Span,
+        alloc: Option<prov::AllocId>,
+        message: impl Into<String>,
+    ) -> EResult<T> {
+        let (tag_span, tree) = match alloc {
+            Some(alloc) => (
+                self.prov.alloc(alloc).map(|entry| entry.span),
+                self.prov.tree(alloc),
+            ),
+            None => (None, Vec::new()),
+        };
+        let finding = UbFinding {
+            row,
+            span,
+            tag_span,
+            message: message.into(),
+            tree,
+        };
+        self.ub(finding)
+    }
+
+    /// Runs one provenance-checked access, turning a violation into the verdict.
+    fn prov_access(
+        &mut self,
+        ptr: RawPtr,
+        len: usize,
+        kind: AccessKind,
+        span: Span,
+    ) -> EResult<()> {
+        match self.prov.access(ptr, len, kind, span) {
+            Ok(()) => {
+                self.drain_prov();
+                Ok(())
+            }
+            Err(finding) => self.ub(finding),
+        }
+    }
+
+    /// The provenance key of a place: the frame keeps two activations of one
+    /// local apart, exactly as [`Path`] does.
+    fn place_key(path: &Path) -> String {
+        format!("{}:{path}", path.frame)
     }
 
     fn step(&mut self) -> EResult<()> {
@@ -470,6 +675,7 @@ impl<'p> Machine<'p> {
         let extra = self.access.len().saturating_sub(scope.held);
         self.access.release(extra);
         self.reclaim(&scope);
+        self.prov.prune();
     }
 
     /// Scope-exit reclamation: the Tier-1 and Tier-2 half of `[mem.shared.drop]`.
@@ -503,6 +709,7 @@ impl<'p> Machine<'p> {
                 match granule {
                     Ref::Region(id) => {
                         let freed = self.store.free(id);
+                        self.prov.region_freed(&freed, Span::new(0, 0));
                         if !freed.is_empty() {
                             let detail = format!(
                                 "`{name}` dies: {} freed wholesale",
@@ -654,6 +861,7 @@ impl<'p> Machine<'p> {
             Some((slot, None)) => {
                 let value = slot.value.clone();
                 self.fire(Rule::PlacePath, span, &format!("read `{display}`"));
+                self.access_place(path, AccessKind::Read, span)?;
                 Ok(value)
             }
             Some((_, Some((moved_at, depth)))) => {
@@ -724,7 +932,24 @@ impl<'p> Machine<'p> {
             Rule::Assign
         };
         self.fire(rule, span, &format!("write `{display}`"));
-        Ok(())
+        self.access_place(path, AccessKind::Write, span)
+    }
+
+    /// One Tier-0 place access, against the provenance forest.
+    ///
+    /// **Lazy by design.** A place that no borrow ever named has no tag tree,
+    /// and this returns immediately — so the cost of the machine is bounded by
+    /// the borrows a program actually creates rather than by the reads it
+    /// performs. The first retag of a place is what mints its root.
+    fn access_place(&mut self, path: &Path, kind: AccessKind, span: Span) -> EResult<()> {
+        let key = Machine::place_key(path);
+        match self.prov.access_place(&key, kind, span) {
+            Ok(()) => {
+                self.drain_prov();
+                Ok(())
+            }
+            Err(finding) => self.ub(finding),
+        }
     }
 
     /// Grows a map when a path's last step is an absent key. Returns whether it
@@ -970,6 +1195,9 @@ impl<'p> Machine<'p> {
         match finish {
             SugarExit::Free => {
                 let freed = self.store.free(id);
+                // `[mem.prov.region]`: the wholesale free Disables every tag
+                // tree of every allocation the region owned.
+                self.prov.region_freed(&freed, span);
                 if !freed.is_empty() {
                     let labels = freed
                         .iter()
@@ -985,6 +1213,9 @@ impl<'p> Machine<'p> {
             }
             SugarExit::Freeze => match self.store.freeze(id) {
                 Ok(frozen) => {
+                    // `[mem.prov.region]`: `freeze` transitions all its tags to
+                    // Frozen, so a later write through any of them is §7/P2.
+                    self.prov.region_frozen(&frozen, span);
                     let count = frozen.len();
                     self.fire(
                         Rule::RegionFreeze,
@@ -1045,6 +1276,7 @@ impl<'p> Machine<'p> {
         let id = self.region_id_of(&value, span, "`freeze`")?;
         match self.store.freeze(id) {
             Ok(frozen) => {
+                self.prov.region_frozen(&frozen, span);
                 let label = self.store.label(id);
                 self.fire(
                     Rule::RegionFreeze,
@@ -1262,6 +1494,28 @@ impl<'p> Machine<'p> {
         args: Vec<Value>,
         span: Span,
     ) -> EResult<Applied> {
+        // `comptime fn` is evaluated by the *compiler's* comptime engine (s16):
+        // an absolute sandbox, fuel/heap/depth budgets, memoization on argument
+        // hashes. `comptime` is a **reserved forward namespace**
+        // (`[conf.anchor.ns]`) — no document this implementation reads pins any
+        // of it — so running the body as an ordinary function would not be a
+        // conservative approximation of comptime evaluation, it would be a
+        // *different execution* reported under comptime's name. It also cannot
+        // reproduce the outcome the corpus pins: a budget violation is a
+        // diagnostic, and this machine's only bound is `Machine::FUEL`, which
+        // arrives after fifty million steps rather than after the budget.
+        if decl
+            .quals
+            .iter()
+            .any(|qual| matches!(qual, crate::ast::FnQual::Comptime(_)))
+        {
+            return unsupported(format!(
+                "`{}` is a `comptime fn`; compile-time evaluation with its sandbox and budgets is \
+                 the compiler's engine (s16), and nothing in `spec/` pins it — the `comptime` \
+                 namespace is still a reserved forward one",
+                decl.name.name
+            ));
+        }
         let Some(body) = &decl.body else {
             return unsupported(format!(
                 "`{}` has no body (extern or trait signature); the interpreter has no C ABI \
@@ -1289,7 +1543,9 @@ impl<'p> Machine<'p> {
             module: module.to_owned(),
             scopes: vec![Scope::default()],
         });
-        for (param, value) in decl.params.iter().zip(args) {
+        let retags = std::mem::take(&mut self.pending_retags);
+        let frame = self.frames.len() - 1;
+        for (index, (param, value)) in decl.params.iter().zip(args).enumerate() {
             let name = match &param.kind {
                 ParamKind::Named { name, .. } => name.name.clone(),
                 ParamKind::SelfParam { .. } => "self".to_owned(),
@@ -1298,8 +1554,17 @@ impl<'p> Machine<'p> {
                 ParamKind::Named { ty, .. } => coerce(value, Some(ty)),
                 ParamKind::SelfParam { .. } => value,
             };
+            // A `mut` parameter *is* the borrow: the callee's reads and writes
+            // of it go through the child tag its caller minted, so a write is a
+            // child write (Reserved → Active) and the caller's own access
+            // during the call is foreign.
+            if let Some(Some(retag)) = retags.get(index) {
+                let key = format!("{frame}:{name}");
+                self.prov.bind_place(&key, retag.alloc, retag.tag);
+            }
             self.declare(&name, Slot::live(value));
         }
+        self.drain_prov();
 
         let result = self.eval_block(body);
         let frame = self.frame();
@@ -1330,6 +1595,7 @@ impl<'p> Machine<'p> {
             })
             .collect();
         self.frames.pop();
+        self.prov.drop_frame(frame);
 
         let value = match result {
             Ok(value) | Err(Signal::Return(value)) => value,
@@ -1343,9 +1609,27 @@ impl<'p> Machine<'p> {
     /// Exclusivity is checked as the arguments accumulate, which is what makes
     /// `f(mut a.x, mut a.y)` legal and `f(mut a, mut a.x)` a trap.
     fn eval_args(&mut self, args: &[Arg]) -> EResult<Args> {
+        self.eval_args_for(args, Callee::Wolf)
+    }
+
+    /// As [`Machine::eval_args`], knowing what is being called.
+    ///
+    /// The distinction exists for exactly one reason and it is a spec reason:
+    /// `[mem.prov.tag]`'s retag point is "`mut`/`read` **parameter** entry",
+    /// and a C function has no wolf parameters and no wolf modes. Retagging its
+    /// arguments would invent a `read` borrow the language never promised and
+    /// then report the callee's own write through it as §7/P2 — a *spurious*
+    /// UB verdict on `corpus/ffi.lu`, in the one direction the approximation
+    /// contract forbids. What `[mem.boundary.ffi]` and `[mem.prov.expose]` say
+    /// happens instead is exposure: "wildcard pointers from FFI behave as
+    /// exposed", so a pointer handed to C joins the exposed set and the call is
+    /// a foreign havoc that angelic resolution already models.
+    fn eval_args_for(&mut self, args: &[Arg], callee: Callee) -> EResult<Args> {
         let mut values = Vec::with_capacity(args.len());
         let mut writebacks = Vec::new();
         let mut held = 0usize;
+        let mut retags: Vec<(usize, PendingRetag)> = Vec::new();
+        let mut protectors: Vec<prov::TagId> = Vec::new();
 
         for (index, arg) in args.iter().enumerate() {
             match arg.mode {
@@ -1372,6 +1656,21 @@ impl<'p> Machine<'p> {
                         span: arg.span,
                     });
                     held += 1;
+                    // `[mem.prov.tag]`: `mut` parameter entry is a retag point,
+                    // and "parameter entry is protector-equivalent: the tag is
+                    // protected for the whole call". The child is *Reserved*,
+                    // not Active — creation is not a use, which is the
+                    // two-phase window `corpus/memory/prov_two_phase.lu` needs.
+                    let value = self.pass_argument(
+                        callee,
+                        &path,
+                        value,
+                        RetagKind::Mutable,
+                        index,
+                        &mut retags,
+                        &mut protectors,
+                        arg.span,
+                    );
                     writebacks.push((index, path));
                     values.push(value);
                 }
@@ -1390,17 +1689,31 @@ impl<'p> Machine<'p> {
                 None => {
                     // Default mode: immutable for the whole call, caller retains
                     // (`[mem.tier0.mode.read]`).
-                    let value = match self.live_place(&arg.expr)? {
+                    let value: Value = match self.live_place(&arg.expr)? {
                         Some(path) => {
                             self.check_access(&path, Access::Shared, arg.span)?;
                             let value = self.read_path(&path, arg.span)?;
                             self.fire(Rule::ModeRead, arg.span, &format!("`read {path}`"));
+                            held += 1;
+                            // `read` parameter entry retags too, with a Frozen
+                            // child: the caller's place is immutable for the
+                            // whole call, which is O2 — the SB "holy grail"
+                            // load-hoisting fact — as a protector.
+                            let value = self.pass_argument(
+                                callee,
+                                &path,
+                                value,
+                                RetagKind::Shared,
+                                index,
+                                &mut retags,
+                                &mut protectors,
+                                arg.span,
+                            );
                             self.access.push(Held {
                                 path,
                                 access: Access::Shared,
                                 span: arg.span,
                             });
-                            held += 1;
                             value
                         }
                         None => self.eval(&arg.expr)?,
@@ -1423,7 +1736,106 @@ impl<'p> Machine<'p> {
             values,
             writebacks,
             held,
+            retags,
+            protectors,
         })
+    }
+
+    /// One argument crossing a call boundary.
+    #[allow(clippy::too_many_arguments)]
+    fn pass_argument(
+        &mut self,
+        callee: Callee,
+        path: &Path,
+        value: Value,
+        kind: RetagKind,
+        index: usize,
+        retags: &mut Vec<(usize, PendingRetag)>,
+        protectors: &mut Vec<prov::TagId>,
+        span: Span,
+    ) -> Value {
+        match callee {
+            Callee::Wolf => self.retag_argument(path, value, kind, index, retags, protectors, span),
+            Callee::C => self.expose_to_c(value, span),
+        }
+    }
+
+    /// A value handed across the C membrane.
+    ///
+    /// `[mem.prov.expose]`: "Wildcard pointers from FFI behave as exposed."
+    /// The pointer keeps its tag — copies of raw pointers are unrestricted
+    /// (`[mem.unsafe.raw.1]`) — and the *allocation* gains it as a resolution
+    /// candidate, so anything C hands back later resolves angelically to it
+    /// rather than to nothing.
+    fn expose_to_c(&mut self, value: Value, span: Span) -> Value {
+        if let Value::Raw(ptr) = value {
+            self.prov.expose(ptr, span);
+            self.fire(
+                Rule::BoundaryFfi,
+                span,
+                &format!(
+                    "{ptr} crosses the C membrane: exposed, and the call is a foreign \
+                     havoc over what it reaches"
+                ),
+            );
+            self.drain_prov();
+        }
+        value
+    }
+
+    /// The retag at parameter entry (`[mem.prov.tag]`).
+    ///
+    /// Two shapes, because two things can carry provenance across a call:
+    ///
+    /// - a **raw pointer value**, whose tag travels *in* the value — the callee
+    ///   receives a pointer carrying the fresh child, so a write through a
+    ///   `read`-mode pointer is §7/P2 and a foreign write during the extent is
+    ///   §7/P1 at the write;
+    /// - a **Tier-0 place**, whose tag lives beside it in the provenance
+    ///   forest. Only `mut` binds the callee's parameter to the child: under
+    ///   MVS a `read` parameter is the callee's own copy, so its Frozen child
+    ///   is a witness of the caller-side promise rather than an access path
+    ///   (`docs/approximation-contract.md` §7.3).
+    #[allow(clippy::too_many_arguments)]
+    fn retag_argument(
+        &mut self,
+        path: &Path,
+        value: Value,
+        kind: RetagKind,
+        index: usize,
+        retags: &mut Vec<(usize, PendingRetag)>,
+        protectors: &mut Vec<prov::TagId>,
+        span: Span,
+    ) -> Value {
+        if let Value::Raw(ptr) = value {
+            let (Some(alloc), Prov::Tag(parent)) = (ptr.alloc, ptr.prov) else {
+                // A wildcard pointer takes on no obligations at a call
+                // boundary: `[mem.unsafe.raw.1]`, and D11's "simpler than safe".
+                return value;
+            };
+            let child = self
+                .prov
+                .retag(alloc, parent, kind, true, "parameter", span);
+            protectors.push(child);
+            self.drain_prov();
+            return Value::Raw(RawPtr {
+                prov: Prov::Tag(child),
+                ..ptr
+            });
+        }
+        let key = Machine::place_key(path);
+        let (alloc, child) = self.prov.retag_place(&key, kind, true, span);
+        protectors.push(child);
+        retags.push((
+            index,
+            PendingRetag {
+                alloc,
+                tag: child,
+                bind: kind == RetagKind::Mutable,
+            },
+        ));
+        self.drain_prov();
+        value
     }
 
     fn finish_args(
@@ -1431,9 +1843,18 @@ impl<'p> Machine<'p> {
         writebacks: &[(usize, Path)],
         final_values: &[Value],
         held: usize,
+        protectors: &[prov::TagId],
         span: Span,
     ) {
         self.access.release(held);
+        // The call's extent ended: every protector minted for it comes off,
+        // and the tags nothing can reach any more go away
+        // (`[mem.prov.tag]`'s "protected for the whole call").
+        for tag in protectors {
+            self.prov.unprotect(*tag, span);
+        }
+        self.prov.prune();
+        self.drain_prov();
         for (index, path) in writebacks {
             let Some(value) = final_values.get(*index) else {
                 continue;
@@ -1458,7 +1879,7 @@ impl<'p> Machine<'p> {
         let errored = match &result {
             Ok(value) => value.is_error(),
             Err(Signal::Return(value)) => value.is_error(),
-            Err(Signal::Trap(_) | Signal::Unsupported(_)) => true,
+            Err(Signal::Trap(_) | Signal::Ub(_) | Signal::Unsupported(_)) => true,
             Err(Signal::Break(_) | Signal::Continue) => false,
         };
         let defers = self.run_defers(errored);
@@ -1523,10 +1944,7 @@ impl<'p> Machine<'p> {
                 }
                 Ok(())
             }
-            StmtKind::AssumeNoalias(_) => unsupported(
-                "`assume noalias` is Tier 3; the provenance machine that gives it meaning is is04"
-                    .to_owned(),
-            ),
+            StmtKind::AssumeNoalias(operands) => self.exec_assume_noalias(operands, stmt.span),
             StmtKind::Expr(expr) => {
                 self.eval(expr)?;
                 Ok(())
@@ -1609,6 +2027,19 @@ impl<'p> Machine<'p> {
     }
 
     fn exec_assign(&mut self, place: &Expr, op: AssignOp, value: &Expr, span: Span) -> EResult<()> {
+        // `p[0] = 1` / `*p = 1`: the destination is bytes in an allocation, not
+        // a slot in the value tree, so the provenance machine takes it.
+        if let Some(ptr) = self.raw_target(place)? {
+            let rhs = self.eval(value)?;
+            let rhs = if op == AssignOp::Assign {
+                rhs
+            } else {
+                let current = self.raw_load(ptr, place.span)?;
+                let binop = assign_binop(op);
+                self.binary(binop, current, rhs, span)?
+            };
+            return self.raw_store(ptr, &rhs, span);
+        }
         let path = self.place_of(place)?;
         if op == AssignOp::Assign {
             let value = self.eval_for_init(value)?;
@@ -1622,19 +2053,7 @@ impl<'p> Machine<'p> {
 
         let current = self.read_path(&path, place.span)?;
         let rhs = self.eval(value)?;
-        let binop = match op {
-            AssignOp::Assign => unreachable!("handled above"),
-            AssignOp::Add => BinOp::Add,
-            AssignOp::Sub => BinOp::Sub,
-            AssignOp::Mul => BinOp::Mul,
-            AssignOp::Div => BinOp::Div,
-            AssignOp::Rem => BinOp::Rem,
-            AssignOp::BitAnd => BinOp::BitAnd,
-            AssignOp::BitOr => BinOp::BitOr,
-            AssignOp::BitXor => BinOp::BitXor,
-            AssignOp::Shl => BinOp::Shl,
-            AssignOp::Shr => BinOp::Shr,
-        };
+        let binop = assign_binop(op);
         // A map's absent key defaults to its value type's zero, which is what
         // makes `tally[w] += 1` the idiom the corpus writes.
         let current = if current == Value::Unit {
@@ -1807,7 +2226,7 @@ impl<'p> Machine<'p> {
             }
             ExprKind::Cast { expr: inner, ty } => {
                 let value = self.eval(inner)?;
-                Ok(coerce(value, Some(ty)))
+                self.eval_cast(value, ty, expr.span)
             }
             ExprKind::Call { callee, args } => self.eval_call(callee, args, expr.span),
             ExprKind::BracketApply { base, args } => self.eval_bracket(base, args, expr.span),
@@ -1998,12 +2417,31 @@ impl<'p> Machine<'p> {
             | ExprKind::When { .. } => {
                 unsupported("concurrency is spec/03 and campaign ic03; nothing here schedules")
             }
-            ExprKind::Unsafe { .. } | ExprKind::UnsafeC { .. } | ExprKind::Asm { .. } => {
-                unsupported("the unsafe tier and its provenance machine are is04")
+            // -- Tier 3: unsafe (is04) --------------------------------------
+            ExprKind::Unsafe { body } => {
+                // `[mem.unsafe.scope]`: an `unsafe { }` block is a *marker*, not
+                // a different evaluator — the same rules run, and the §7 rows
+                // become reachable because raw pointers do.
+                self.fire(
+                    Rule::UnsafeScope,
+                    expr.span,
+                    "enter `unsafe { }`; the module is the audit granule",
+                );
+                self.unsafe_depth += 1;
+                let result = self.eval_block(body);
+                self.unsafe_depth -= 1;
+                self.fire(Rule::UnsafeScope, expr.span, "leave `unsafe { }`");
+                result
             }
-            ExprKind::Borrow { .. } => {
-                unsupported("`borrow r from ptr` is the Tier-3 re-entry door (`[mem.unsafe.door]`)")
-            }
+            ExprKind::Borrow { place, from } => self.eval_door(place, from, expr.span),
+            ExprKind::UnsafeC { .. } => unsupported(
+                "`unsafe c { … }` is opaque token text whose meaning is c10's (`[gram.expr.unsafe]`);                  nothing here compiles C",
+            ),
+            ExprKind::Asm { .. } => unsupported(
+                "inline `asm` has no pinned semantics in any document this implementation \
+                 reads; executing a guessed instruction would put invented behavior into a \
+                 differential comparison",
+            ),
         }
     }
 
@@ -2090,6 +2528,31 @@ impl<'p> Machine<'p> {
                      (`[mod.vis.private]` is the compiler's E0304)"
                 )),
             };
+        }
+        if head == "c" && !self.local_exists("c") {
+            let module = self
+                .frames
+                .last()
+                .map(|f| f.module.clone())
+                .unwrap_or_default();
+            if self.program.imports_c(&module) {
+                return match builtin::c_intrinsic(&tail) {
+                    Some(name) => {
+                        self.fire(
+                            Rule::BoundaryFfi,
+                            expr.span,
+                            &format!("`c.{tail}` names an imported C function"),
+                        );
+                        Ok(Value::Builtin(name))
+                    }
+                    None => unsupported(format!(
+                        "`c.{tail}` is an imported C function this machine does not model; the \
+                         host-intrinsic set is documented in `docs/approximation-contract.md` §8, \
+                         and inventing a body for a real libc call would put guessed behavior into \
+                         a differential comparison"
+                    )),
+                };
+            }
         }
         if let Some(builtin) = builtin::ambient_dotted(&head, &tail) {
             return Ok(builtin);
@@ -2205,7 +2668,19 @@ impl<'p> Machine<'p> {
                 self.access.push(Held { path, access, span });
                 Ok(value)
             }
-            UnOp::Deref => unsupported("raw-pointer deref is Tier 3 (`[mem.unsafe.raw]`)"),
+            UnOp::Deref => {
+                // `*p` is `p[0]`: one pointee, at the pointer's own offset.
+                let value = self.eval(operand)?;
+                let Value::Raw(ptr) = value else {
+                    return unsupported(format!(
+                        "`*` is the Tier 3 raw-pointer dereference (`[mem.unsafe.raw.1]`), and {} \
+                         is not a raw pointer; `&`/`&mut` are Tier-0 borrows here and yield values, \
+                         not pointers",
+                        value.kind()
+                    ));
+                };
+                self.raw_load(ptr, span)
+            }
             UnOp::Shared => {
                 // `shared X` builds the RC cell (`[mem.shared.rc.1]`). The
                 // payload moves into it: the cell is now its place.
@@ -2555,13 +3030,27 @@ impl<'p> Machine<'p> {
         }
 
         let target = self.eval(callee)?;
-        let evaluated = self.eval_args(args)?;
+        let evaluated = self.eval_args_for(args, Callee::of(&target))?;
+        // Handed to `call_fn` across `apply`, which performs no evaluation of
+        // its own between here and the callee's parameter binding.
+        self.pending_retags = vec![None; evaluated.values.len()];
+        for (index, retag) in &evaluated.retags {
+            if retag.bind && *index < self.pending_retags.len() {
+                self.pending_retags[*index] = Some(*retag);
+            }
+        }
         let result = self.apply(target, evaluated.values.clone(), span);
         let finals = match &result {
             Ok(applied) => applied.params.clone(),
             Err(_) => evaluated.values,
         };
-        self.finish_args(&evaluated.writebacks, &finals, evaluated.held, span);
+        self.finish_args(
+            &evaluated.writebacks,
+            &finals,
+            evaluated.held,
+            &evaluated.protectors,
+            span,
+        );
         result.map(|applied| applied.value)
     }
 
@@ -2652,6 +3141,7 @@ impl<'p> Machine<'p> {
                 let frame = self.frame();
                 self.access.release_frame(frame);
                 self.frames.pop();
+                self.prov.drop_frame(frame);
                 match result {
                     Ok(value) | Err(Signal::Return(value)) => Ok(plain(value)),
                     Err(other) => Err(other),
@@ -2693,7 +3183,27 @@ impl<'p> Machine<'p> {
             }
             Receiver::Expr(expr) => (None, self.eval(expr)?),
         };
+        // The receiver of a method call is a `mut` argument in all but
+        // spelling, so it retags first — and the retag happens *before* the
+        // arguments are evaluated, which is the whole of the two-phase shape:
+        // `xs.push(xs.len)` reads `xs` through the parent while the receiver's
+        // fresh tag is still Reserved. Stacked Borrows invalidates the receiver
+        // there; a tree does not (`[mem.prov.state]`, "foreign read: Reserved
+        // ok"), which is `corpus/memory/prov_two_phase.lu`'s entire point.
+        let receiver_tag = match &path {
+            Some(path) => {
+                let key = Machine::place_key(path);
+                let (alloc, child) = self.prov.retag_place(&key, RetagKind::Mutable, true, span);
+                self.drain_prov();
+                Some((key, alloc, child))
+            }
+            None => None,
+        };
         let evaluated = self.eval_args(args)?;
+        // Now the receiver's own accesses go through the child.
+        let previous = receiver_tag
+            .as_ref()
+            .map(|(key, alloc, child)| self.prov.rebind_place(key, *alloc, *child));
         let mut receiver_value = value;
         let result = builtin::method(
             self,
@@ -2706,13 +3216,25 @@ impl<'p> Machine<'p> {
             &evaluated.writebacks,
             &evaluated.values,
             evaluated.held,
+            &evaluated.protectors,
             span,
         );
         // A mutating method writes its receiver back — value semantics, so the
         // observable effect is a whole-value store into the receiver's place.
-        if let (Some(path), Ok(_)) = (&path, &result) {
-            self.write_path(path, receiver_value, span)?;
+        // It is a *child* write through the retagged tag: Reserved → Active,
+        // the activation the two-phase window was waiting for.
+        let written = match (&path, &result) {
+            (Some(path), Ok(_)) => self.write_path(path, receiver_value, span),
+            _ => Ok(()),
+        };
+        if let Some((key, _, child)) = receiver_tag {
+            self.prov.unprotect(child, span);
+            self.prov
+                .restore_place(&key, previous.expect("set beside receiver_tag"));
+            self.prov.prune();
+            self.drain_prov();
         }
+        written?;
         result
     }
 
@@ -2795,6 +3317,15 @@ impl<'p> Machine<'p> {
             return builtin::slice(self, &target, start, end, *inclusive, span);
         }
         let index = self.eval(&arg.expr)?;
+        if let Value::Raw(ptr) = target {
+            let Value::Int(i, _) = index else {
+                return unsupported(format!(
+                    "a raw pointer is indexed by an integer, got {}",
+                    index.kind()
+                ));
+            };
+            return self.raw_load(ptr.offset_by(i), span);
+        }
         builtin::index(self, &target, &index, span)
     }
 
@@ -2805,6 +3336,390 @@ impl<'p> Machine<'p> {
                 "a slice endpoint must be an integer, got {}",
                 other.kind()
             ))),
+        }
+    }
+
+    // -- Tier 3: raw pointers, casts and the door (§5–§7) ------------------
+
+    /// The provenance machine, for `builtin`'s C-intrinsic surface.
+    pub(crate) fn prov(&mut self) -> &mut Provenance {
+        &mut self.prov
+    }
+
+    /// Are we inside an `unsafe { }` block? `[mem.ub]`'s rows are Tier-3
+    /// reachable only, and T1's wording says so out loud.
+    pub(crate) fn in_unsafe(&self) -> bool {
+        self.unsafe_depth > 0
+    }
+
+    /// Reports a UB row from `builtin` (the C intrinsics raise P1/L2).
+    pub(crate) fn ub_from_builtin<T>(
+        &mut self,
+        row: UbRow,
+        span: Span,
+        alloc: Option<prov::AllocId>,
+        message: impl Into<String>,
+    ) -> EResult<T> {
+        self.ub_row(row, span, alloc, message)
+    }
+
+    /// `assume noalias p, q (, r)*` (`[mem.unsafe.raw.2]`).
+    ///
+    /// The *only* assertion-created UB in the language, and the only way raw
+    /// code takes on an aliasing obligation at all — everything else about
+    /// `*T` is unrestricted by `[mem.unsafe.raw.1]`.
+    fn exec_assume_noalias(&mut self, operands: &[Expr], span: Span) -> EResult<()> {
+        let mut ptrs = Vec::with_capacity(operands.len());
+        for operand in operands {
+            let value = match self.live_place(operand)? {
+                Some(path) => self.read_path(&path, operand.span)?,
+                None => self.eval(operand)?,
+            };
+            match value {
+                Value::Raw(ptr) => ptrs.push(ptr),
+                other => {
+                    return unsupported(format!(
+                        "`assume noalias` asserts about pointed-to *ranges*, and {} names none",
+                        other.kind()
+                    ));
+                }
+            }
+        }
+        match self.prov.assume_noalias(&ptrs, span) {
+            Ok(()) => {
+                self.drain_prov();
+                Ok(())
+            }
+            Err(finding) => self.ub(finding),
+        }
+    }
+
+    /// `borrow r from ptr` — D11's singular unsafe→safe door
+    /// (`[mem.unsafe.door]`).
+    ///
+    /// > Obligation: `ptr` addresses a live allocation wholly inside region
+    /// > `r`'s footprint, correctly typed, for the borrow's extent.
+    /// > Discharging a door's obligation falsely is UB at the *door* (§7/P6),
+    /// > not later — the safe tier stays safe by construction.
+    ///
+    /// Which is why every part of the obligation is checked *here*, and the
+    /// result carries a fresh child tag under the region's node rather than a
+    /// wildcard: safe code above the door never sees one.
+    fn eval_door(&mut self, place: &Expr, from: &Expr, span: Span) -> EResult<Value> {
+        let region = self.eval(place)?;
+        let id = self.region_id_of(&region, span, "`borrow … from`")?;
+        let pointer = match self.live_place(from)? {
+            Some(path) => self.read_path(&path, from.span)?,
+            None => self.eval(from)?,
+        };
+        let Value::Raw(ptr) = pointer else {
+            return unsupported(format!(
+                "`borrow r from ptr` launders a *raw pointer*, got {}",
+                pointer.kind()
+            ));
+        };
+        let label = self.store.label(id);
+        let (alloc, tag) = match (ptr.alloc, ptr.prov) {
+            (Some(alloc), Prov::Tag(tag)) => (alloc, tag),
+            (Some(alloc), Prov::Wildcard) => {
+                // A wildcard pointer discharges nothing: the door's obligation
+                // is about a *specific* allocation, and an angelically-resolved
+                // pointer names no tag to reborrow from.
+                return self.ub_row(
+                    UbRow::P6,
+                    span,
+                    Some(alloc),
+                    format!(
+                        "`borrow` from a wildcard pointer into alloc#{alloc}: the door needs a \
+                         pointer with provenance, and an exposed one carries none"
+                    ),
+                );
+            }
+            (None, _) => {
+                return self.ub_row(
+                    UbRow::P6,
+                    span,
+                    None,
+                    "`borrow` from a null pointer: the door's obligation is that `ptr` addresses \
+                     a live allocation",
+                );
+            }
+        };
+        let (live, owner) = match self.prov.alloc(alloc) {
+            Some(entry) => (entry.live, entry.owner),
+            None => (false, None),
+        };
+        if !live {
+            return self.ub_row(
+                UbRow::P6,
+                span,
+                Some(alloc),
+                format!(
+                    "`borrow {label} from` a pointer into alloc#{alloc}, which is not live: the \
+                     door's obligation is a *live* allocation, and discharging it falsely is UB \
+                     here rather than at the first use"
+                ),
+            );
+        }
+        if owner != Some(id) {
+            return self.ub_row(
+                UbRow::P6,
+                span,
+                Some(alloc),
+                format!(
+                    "`borrow {label} from` a pointer into alloc#{alloc}, which is owned by {} — \
+                     the obligation is that the allocation lies wholly inside the named region's \
+                     footprint",
+                    owner.map_or_else(|| "no region".to_owned(), |owner| self.store.label(owner))
+                ),
+            );
+        }
+        // `[mem.prov.tag]`: `borrow r from ptr` is a retag point.
+        let child = self.prov.retag(
+            alloc,
+            tag,
+            RetagKind::Mutable,
+            false,
+            "`borrow … from`",
+            span,
+        );
+        self.drain_prov();
+        self.fire(
+            Rule::UnsafeDoor,
+            span,
+            &format!(
+                "door discharged: alloc#{alloc} is live and inside {label}; tag#{child} is the \
+                 region-scoped reborrow, so nothing above this line sees a wildcard"
+            ),
+        );
+        Ok(Value::Raw(RawPtr {
+            prov: Prov::Tag(child),
+            ..ptr
+        }))
+    }
+
+    /// `e as T`.
+    ///
+    /// Three of the four arms are Tier 3: ptr→int exposes, int→ptr resolves
+    /// angelically, and a cast that *produces* a restricted type's value in
+    /// unsafe code is §7/T1's whole subject.
+    fn eval_cast(&mut self, value: Value, ty: &Type, span: Span) -> EResult<Value> {
+        if let TypeKind::RawPointer(inner) = &*ty.kind {
+            let (elem, signed) = pointee(inner);
+            return match value {
+                // A cast between raw pointer types keeps the tag:
+                // `[mem.unsafe.raw.1]` makes casts of raw pointers unrestricted.
+                Value::Raw(ptr) => {
+                    self.fire(
+                        Rule::UnsafeRaw,
+                        span,
+                        &format!("raw→raw cast keeps {} — casts are unrestricted", ptr.prov),
+                    );
+                    Ok(Value::Raw(RawPtr {
+                        elem,
+                        signed,
+                        ..ptr
+                    }))
+                }
+                Value::Int(address, _) => {
+                    // `[mem.prov.expose]`: "Int→ptr casts produce a pointer with
+                    // **exposed** provenance resolved angelically among exposed
+                    // tags." The resolution happens at the *access*, so what the
+                    // cast produces is a wildcard.
+                    let resolved = self.prov.resolve_address(address);
+                    let ptr = match resolved {
+                        Some((alloc, offset)) => RawPtr {
+                            alloc: Some(alloc),
+                            offset,
+                            prov: Prov::Wildcard,
+                            elem,
+                            signed,
+                        },
+                        None => RawPtr {
+                            elem,
+                            signed,
+                            ..RawPtr::null()
+                        },
+                    };
+                    self.fire(
+                        Rule::ProvExpose,
+                        span,
+                        &format!("int→ptr: {address} becomes {ptr} with wildcard provenance"),
+                    );
+                    Ok(Value::Raw(ptr))
+                }
+                other => unsupported(format!(
+                    "a `*T` cast takes a raw pointer or an integer address, got {}",
+                    other.kind()
+                )),
+            };
+        }
+
+        let target = type_name(ty);
+        if let Value::Raw(ptr) = value {
+            if IntTy::named(&target).is_some() {
+                // ptr→int **exposes** the tag (`[mem.prov.expose]`), which is
+                // what later lets a wildcard resolve back to it.
+                self.prov.expose(ptr, span);
+                self.drain_prov();
+                let address = self.prov.address_of(ptr);
+                return Ok(coerce(Value::Int(address, IntTy::INT), Some(ty)));
+            }
+            return unsupported(format!("a raw pointer does not cast to `{target}`"));
+        }
+
+        // §7/T1 — "producing an invalid value of a restricted type in unsafe
+        // code (bool ∉ {0,1} …)". The row exists to license O9's niche packing
+        // and default-free jump tables, so the check is at the *production*.
+        if target == "bool"
+            && let Value::Int(v, _) = value
+        {
+            if v == 0 || v == 1 {
+                return Ok(Value::Bool(v == 1));
+            }
+            if self.in_unsafe() {
+                return self.ub_row(
+                    UbRow::T1,
+                    span,
+                    None,
+                    format!(
+                        "`{v} as bool` produces a `bool` outside {{0, 1}}; the representation is \
+                         restricted, which is what licenses niche packing and default-free jump \
+                         tables"
+                    ),
+                );
+            }
+            return unsupported(
+                "a safe-tier `int as bool` cast has no pinned meaning; the restricted-value rule \
+                 that gives one is §7/T1, and it is Tier-3 reachable only"
+                    .to_owned(),
+            );
+        }
+        Ok(coerce(value, Some(ty)))
+    }
+
+    /// `p[i]` / `*p` — a provenance-checked load.
+    fn raw_load(&mut self, ptr: RawPtr, span: Span) -> EResult<Value> {
+        self.prov_access(ptr, ptr.elem, AccessKind::Read, span)?;
+        let raw = self.prov.load(ptr, ptr.elem);
+        let bits = u32::try_from(ptr.elem * 8).unwrap_or(8);
+        let ty = IntTy {
+            bits,
+            signed: ptr.signed,
+            mode: ArithMode::Checked,
+            literal: false,
+        };
+        Ok(Value::Int(raw, ty))
+    }
+
+    /// `p[i] = v` / `*p = v` — a provenance-checked store.
+    fn raw_store(&mut self, ptr: RawPtr, value: &Value, span: Span) -> EResult<()> {
+        let Value::Int(v, _) = value else {
+            return unsupported(format!(
+                "a raw store writes an integer-shaped pointee, got {}",
+                value.kind()
+            ));
+        };
+        self.prov_access(ptr, ptr.elem, AccessKind::Write, span)?;
+        self.prov.store(ptr, ptr.elem, *v);
+        Ok(())
+    }
+
+    /// `c.memset` — one checked write over the whole range.
+    ///
+    /// A range write, not a loop of byte writes: `[mem.prov.state]` is
+    /// per-location, so writing `[lo, hi)` in one access is the faithful
+    /// reading, and it is also what makes the §7/P3 report name the *whole*
+    /// out-of-bounds range rather than the first byte past the end.
+    pub(crate) fn raw_fill(
+        &mut self,
+        ptr: RawPtr,
+        byte: i128,
+        len: usize,
+        span: Span,
+    ) -> EResult<()> {
+        self.prov_access(ptr, len, AccessKind::Write, span)?;
+        for i in 0..len {
+            let at = RawPtr {
+                offset: ptr.offset + i as i128,
+                elem: 1,
+                signed: false,
+                ..ptr
+            };
+            self.prov.store(at, 1, byte & 0xff);
+        }
+        Ok(())
+    }
+
+    /// `c.memcpy` — a checked read of the source and a checked write of the
+    /// destination, in that order.
+    pub(crate) fn raw_copy(
+        &mut self,
+        dst: RawPtr,
+        src: RawPtr,
+        len: usize,
+        span: Span,
+    ) -> EResult<()> {
+        self.prov_access(src, len, AccessKind::Read, span)?;
+        self.prov_access(dst, len, AccessKind::Write, span)?;
+        for i in 0..len {
+            let from = RawPtr {
+                offset: src.offset + i as i128,
+                elem: 1,
+                signed: false,
+                ..src
+            };
+            let to = RawPtr {
+                offset: dst.offset + i as i128,
+                elem: 1,
+                signed: false,
+                ..dst
+            };
+            let byte = self.prov.load(from, 1);
+            self.prov.store(to, 1, byte);
+        }
+        Ok(())
+    }
+
+    /// The pointer an assignment target denotes, when it is a raw one.
+    ///
+    /// `p[0] = 1` and `*p = 1` are not paths into this machine's slot tree —
+    /// they name bytes in the provenance machine's allocations — so the
+    /// assignment path asks here first and only falls back to [`Path`].
+    fn raw_target(&mut self, expr: &Expr) -> EResult<Option<RawPtr>> {
+        let (base, index) = match &*expr.kind {
+            ExprKind::BracketApply { base, args } => {
+                let [IndexArg::Value(arg)] = args.as_slice() else {
+                    return Ok(None);
+                };
+                (base, Some(arg.expr.clone()))
+            }
+            ExprKind::Unary {
+                op: UnOp::Deref,
+                operand,
+            } => (operand, None),
+            _ => return Ok(None),
+        };
+        let value = match self.live_place(base)? {
+            Some(path) => self.read_path(&path, base.span)?,
+            None => match self.eval(base) {
+                Ok(value) => value,
+                Err(Signal::Unsupported(_)) => return Ok(None),
+                Err(other) => return Err(other),
+            },
+        };
+        let Value::Raw(ptr) = value else {
+            return Ok(None);
+        };
+        let Some(index) = index else {
+            return Ok(Some(ptr));
+        };
+        match self.eval(&index)? {
+            Value::Int(i, _) => Ok(Some(ptr.offset_by(i))),
+            other => unsupported(format!(
+                "a raw pointer is indexed by an integer, got {}",
+                other.kind()
+            )),
         }
     }
 
@@ -2956,7 +3871,40 @@ fn is_copy(value: &Value) -> bool {
             | Value::Module(_)
             | Value::Builtin(_)
             | Value::Handle(_)
+            // `[mem.unsafe.raw.1]`: "copies of raw pointers are unrestricted".
+            // A copy shares the tag — no retag, no obligation, which is the
+            // whole of D11's "simpler than safe".
+            | Value::Raw(_)
     )
+}
+
+/// A compound-assignment operator's binary operator.
+fn assign_binop(op: AssignOp) -> BinOp {
+    match op {
+        AssignOp::Assign | AssignOp::Add => BinOp::Add,
+        AssignOp::Sub => BinOp::Sub,
+        AssignOp::Mul => BinOp::Mul,
+        AssignOp::Div => BinOp::Div,
+        AssignOp::Rem => BinOp::Rem,
+        AssignOp::BitAnd => BinOp::BitAnd,
+        AssignOp::BitOr => BinOp::BitOr,
+        AssignOp::BitXor => BinOp::BitXor,
+        AssignOp::Shl => BinOp::Shl,
+        AssignOp::Shr => BinOp::Shr,
+    }
+}
+
+/// A raw pointer's pointee size in bytes and signedness — `*u8` is `(1, false)`,
+/// `*int` is `(8, true)`. What `p[i]` addresses, and what `assume noalias`
+/// compares (`[mem.unsafe.raw.2]` asserts about *ranges*).
+fn pointee(ty: &Type) -> (usize, bool) {
+    let name = type_name(ty);
+    match IntTy::named(&name) {
+        Some(int) => ((int.bits / 8).max(1) as usize, int.signed),
+        // An unknown pointee is one byte: the conservative choice, since a
+        // narrower range can only *miss* an overlap, never invent one.
+        None => (1, false),
+    }
 }
 
 /// The last segment of a type's path — `pool(Node)`'s `Node`, `Pool[Node]`'s.

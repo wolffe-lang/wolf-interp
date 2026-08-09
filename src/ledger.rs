@@ -25,6 +25,7 @@ use std::fmt;
 use crate::directive::{Check, ExitSpec};
 use crate::phase::Phase;
 use crate::protocol::{ObservationRecord, Verdict};
+use crate::trap::TrapKind;
 
 /// What one file's observation says about one file's expectation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,8 +118,11 @@ pub fn judge(check: &Check, record: &ObservationRecord, stdout: &str) -> Judgeme
                 (ExitSpec::Code(want), got) => {
                     Some(format!("expected exit({want}), observed {got}"))
                 }
-                (ExitSpec::Trap(None), Verdict::Trap(_)) => None,
+                (ExitSpec::Trap(None), Verdict::Trap(_) | Verdict::Ub(_)) => None,
                 (ExitSpec::Trap(Some(want)), Verdict::Trap(got)) if want == got => None,
+                // `trap(ub)` and `ub(anchor)` are the same finding seen through
+                // the two lenses the documents give it. See [`ub_is_the_oracle_verdict`].
+                (ExitSpec::Trap(Some(TrapKind::Ub)), Verdict::Ub(_)) => None,
                 (ExitSpec::Trap(want), got) => Some(format!(
                     "expected {}, observed {got}",
                     ExitSpec::Trap(*want)
@@ -185,6 +189,37 @@ pub fn judge(check: &Check, record: &ObservationRecord, stdout: &str) -> Judgeme
     }
 }
 
+/// Does a `trap(ub)` expectation accept an `ub(anchor)` verdict?
+///
+/// **Yes**, and the documents say so twice.
+///
+/// `corpus/memory/unsafe_ub_uaf.lu` pins `check: run(exit=trap(ub))`, while
+/// `[proto.record.verdict]` gives the oracle a verdict of its own — `ub(anchor)`
+/// — and `[proto.record.ub]` makes it a comparison participant. Two names for
+/// one event is a contradiction only if they are two events.
+///
+/// They are not. `[conf.trap.set]` lists `ub` among the eleven kinds and
+/// `[conf.trap.map]` says what the kind *is*: "`ub` (oracle-detected UB;
+/// `[proto.record.ub]` gives it comparison semantics)". The kind is the
+/// **checked build's** observable — a program compiled with the D21 quarantine
+/// allocator terminates with kind `ub`, which is a run outcome a corpus
+/// directive can pin. The verdict is the **oracle's** observable, and it says
+/// strictly more: it names the §7 row (`x-ub-row`), the two spans, and the
+/// optimization the row licenses. The clause routes the kind's comparison
+/// semantics to the verdict's clause precisely because the two must agree.
+///
+/// So this implementation emits the richer form and the ledger accepts it
+/// against the directive. A bare `exit=trap` (kind unspecified) accepts it too.
+/// What it does **not** do is silently accept `ub(…)` where a *different* kind
+/// was pinned: `trap(bounds)` versus `ub(mem.ub)` stays a mismatch, because
+/// there the corpus is claiming a defined execution and the oracle is denying
+/// that one exists — which is exactly the soundness-candidate class
+/// `[proto.cmp.severity]` puts at the top.
+#[must_use]
+pub fn ub_is_the_oracle_verdict(expected: Option<TrapKind>) -> bool {
+    matches!(expected, None | Some(TrapKind::Ub))
+}
+
 /// The trap a static memory-tier code means dynamically, where spec/02 says so.
 ///
 /// `[mem.tier0.move.2]`: "Use of an uninitialized or moved-from place is a
@@ -197,10 +232,17 @@ pub fn judge(check: &Check, record: &ObservationRecord, stdout: &str) -> Judgeme
 /// stated dynamic counterpart, and inventing one would be this implementation
 /// legislating.
 #[must_use]
-pub fn dynamic_meaning(code: &str) -> Option<crate::trap::TrapKind> {
+pub fn dynamic_meaning(code: &str) -> Option<TrapKind> {
     match code {
-        "E1001" => Some(crate::trap::TrapKind::UseAfterMove),
-        "E1002" => Some(crate::trap::TrapKind::Exclusivity),
+        "E1001" => Some(TrapKind::UseAfterMove),
+        "E1002" => Some(TrapKind::Exclusivity),
+        // Upstream `ecea37c` closed is03's §5.4-adjacent gap: `[conf.trap.map]`
+        // now states the runtime meanings of **E1004** (illegal cross-region
+        // edge) and **E1005** (transfer of an open region) as `region-fault`.
+        // Both were already produced by the machine and could only be ledgered
+        // as conservatism; they are counterparts now, because the document says
+        // so rather than because this implementation guessed.
+        "E1004" | "E1005" => Some(TrapKind::RegionFault),
         _ => None,
     }
 }
@@ -232,7 +274,6 @@ pub fn ledger_phase(phase: Option<Phase>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::trap::TrapKind;
     use std::collections::BTreeMap;
 
     fn record(verdict: Verdict) -> ObservationRecord {
@@ -307,6 +348,66 @@ mod tests {
             judge(&any, &record(Verdict::Trap(TrapKind::Bounds)), ""),
             Judgement::Match(_)
         ));
+    }
+
+    #[test]
+    fn a_trap_ub_directive_is_satisfied_by_the_oracle_verdict() {
+        // `corpus/memory/unsafe_ub_uaf.lu`'s `run(exit=trap(ub))` against this
+        // implementation's `ub(mem.ub)`.
+        let pinned = Check::Run {
+            exit: ExitSpec::Trap(Some(TrapKind::Ub)),
+            stdout: None,
+        };
+        assert!(matches!(
+            judge(&pinned, &record(Verdict::Ub("mem.ub".to_owned())), ""),
+            Judgement::Match(_)
+        ));
+        // `exit=trap` with the kind unspecified accepts it too.
+        let any = Check::Run {
+            exit: ExitSpec::Trap(None),
+            stdout: None,
+        };
+        assert!(matches!(
+            judge(&any, &record(Verdict::Ub("mem.ub".to_owned())), ""),
+            Judgement::Match(_)
+        ));
+        // A *different* pinned kind does not: the corpus claims a defined
+        // execution and the oracle denies one exists, which is the
+        // soundness-candidate class, not a match.
+        let other = Check::Run {
+            exit: ExitSpec::Trap(Some(TrapKind::Bounds)),
+            stdout: None,
+        };
+        assert!(judge(&other, &record(Verdict::Ub("mem.ub".to_owned())), "").is_mismatch());
+        // And a program pinned to a clean exit that the oracle calls UB is the
+        // highest-severity finding there is.
+        let clean = Check::Run {
+            exit: ExitSpec::Code(0),
+            stdout: None,
+        };
+        assert!(judge(&clean, &record(Verdict::Ub("mem.ub".to_owned())), "").is_mismatch());
+
+        assert!(ub_is_the_oracle_verdict(None));
+        assert!(ub_is_the_oracle_verdict(Some(TrapKind::Ub)));
+        assert!(!ub_is_the_oracle_verdict(Some(TrapKind::RegionFault)));
+    }
+
+    #[test]
+    fn the_region_codes_gained_their_dynamic_meanings_upstream() {
+        // is03 reported that `region-fault` had no stated static counterpart;
+        // `ecea37c` gave E1004/E1005 theirs, so the ledger classifies them.
+        for code in ["E1004", "E1005"] {
+            assert!(matches!(
+                judge(
+                    &Check::Fail(code.to_owned()),
+                    &record(Verdict::Trap(TrapKind::RegionFault)),
+                    ""
+                ),
+                Judgement::DynamicCounterpart(_)
+            ));
+        }
+        assert_eq!(dynamic_meaning("E1004"), Some(TrapKind::RegionFault));
+        assert_eq!(dynamic_meaning("E1006"), None);
     }
 
     #[test]
