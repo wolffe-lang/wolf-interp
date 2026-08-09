@@ -1,0 +1,3 @@
+# Byte-exact spans are the protocol's currency: sources check out
+# byte-identical on every platform (compiler-track lesson #1).
+* text=auto eol=lf
