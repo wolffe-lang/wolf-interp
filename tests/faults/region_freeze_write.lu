@@ -1,0 +1,13 @@
+//! check: run(exit=trap(region-fault))
+//! phase: resolve
+//! conforms: mem.region.freeze.1, mem.region.edge.imm
+
+struct Node { value: int }
+
+fn main() -> !int {
+    let r = region(pool(Node))
+    let p = in r { Pool[Node]() }
+    let frozen = freeze r
+    let h = p.reserve()
+    if frozen.is_frozen() { 0 } else { 1 }
+}

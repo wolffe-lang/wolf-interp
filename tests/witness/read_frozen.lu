@@ -1,0 +1,22 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.tier0.mode.read, mem.region.freeze.1
+//! D3/O2 — `read` params are immutable-for-the-call, so loads hoist and CSE
+//! across opaque calls (the Stacked Borrows "holy grail"). The witness: the
+//! same frozen field read twice around a call yields the same value, and the
+//! machine's own trace shows no write could have intervened.
+
+struct Cfg { limit: int }
+
+fn opaque(n: int) -> int { n * 0 }
+
+fn main() -> !int {
+    let r = region(rc)
+    let cfg = in r { Cfg { limit: 7 } }
+    let frozen = freeze r
+    var seed = 99
+    let before = cfg.limit
+    let noise = opaque(seed)
+    let after = cfg.limit
+    if before == after && noise == 0 && frozen.is_frozen() { 0 } else { 1 }
+}

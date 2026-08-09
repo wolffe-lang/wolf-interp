@@ -1,0 +1,20 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.shared.handle.1, mem.shared.handle.3
+//! The legal twin of `handle_stale_reuse.lu` and `handle_uninit.lu`: reserve,
+//! init, then read. A slot is reused only after its generation bumps, and the
+//! handle taken after the bump is the live one.
+
+struct Node { value: int }
+
+fn main() -> !int {
+    region r: pool(Node) {
+        var p = Pool[Node]()
+        let first = p.reserve()
+        p.init(first, Node { value: 1 })
+        p.remove(first)
+        let second = p.reserve()
+        p.init(second, Node { value: 41 })
+        p[second].value - 41
+    }
+}

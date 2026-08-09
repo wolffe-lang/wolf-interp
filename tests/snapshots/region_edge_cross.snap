@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: region_edge_cross.lu
+trap:    region-fault
+clause:  [mem.region.edge]
+rule:    RegionEdge
+message: struct field: a reference from `b` (region #2) into `a` (region #1) is neither intra-region, nor an owning `iso` edge, nor into frozen data — the compiler rejects this edge statically (E1004)
+at:      15:25 `Node { value: 2, link: ha }`
+because: (single-span fault)

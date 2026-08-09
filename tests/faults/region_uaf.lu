@@ -1,0 +1,18 @@
+//! check: run(exit=trap(region-fault))
+//! phase: resolve
+//! conforms: mem.region.intra.2, mem.shared.handle.1
+
+struct Node { value: int }
+
+fn main() -> !int {
+    var pool = Pool[Node]()
+    var h = pool.reserve()
+    region r: pool(Node) {
+        var inner = Pool[Node]()
+        h = inner.reserve()
+        inner.init(h, Node { value: 1 })
+        pool = move inner
+    }
+    let v = pool[h].value
+    v
+}

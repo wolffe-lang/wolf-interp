@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: region_suspended_write.lu
+trap:    region-fault
+clause:  [mem.region.open.3]
+rule:    RegionSuspended
+message: region #1 is suspended here, so no live path may write into it; open it with `in`
+at:      11:5 `p.init(h, Node { value: 1 })`
+because: (single-span fault)

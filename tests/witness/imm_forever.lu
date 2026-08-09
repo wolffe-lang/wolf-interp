@@ -1,0 +1,17 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.region.freeze.1, mem.region.edge.imm
+//! D3 — `imm` data const-propagates and needs no synchronization, forever.
+//! The witness: a frozen region is referenced from a region it does not
+//! belong to, which the edge table permits only for `imm`, and it stays
+//! Frozen for the rest of the program — there is no un-freeze.
+
+struct Holder { cfg: region }
+
+fn main() -> !int {
+    let source = region()
+    let n = in source { 21 }
+    let frozen = freeze source
+    let h = Holder { cfg: frozen }
+    if n * 2 == 42 && h.cfg.is_frozen() { 0 } else { 1 }
+}

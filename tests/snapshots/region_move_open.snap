@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: region_move_open.lu
+trap:    region-fault
+clause:  [mem.region.freeze.3]
+rule:    RegionClosedSubtree
+message: region #1 is open here and cannot be transferred; a region moves as a closed subtree (the compiler's E1005)
+at:      9:36 `move r`
+because: (single-span fault)

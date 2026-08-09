@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: handle_stale_reuse.lu
+trap:    stale-handle
+clause:  [mem.shared.handle.2]
+rule:    HandleStale
+message: handle into pool#0 slot 0 carries generation 0, the slot is at generation 1; a stale handle is a deterministic fault in every profile, never UB
+at:      15:9 `p[first]`
+because: (single-span fault)

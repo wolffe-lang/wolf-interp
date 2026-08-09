@@ -1,0 +1,15 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: region_uaf.lu
+trap:    region-fault
+clause:  [mem.region.intra.2]
+rule:    RegionFree
+message: this handle reaches into `r` (region #1), which was freed wholesale; the slot died with the region
+at:      16:13 `pool[h]`
+because: 10:5 `region r: pool(Node) {
+        var inner = Pool[Node]()
+        h = inner.reserve()
+        inner.init(h, Node { value: 1 })
+        pool = move inner
+    }` — the region was created here

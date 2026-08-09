@@ -1,0 +1,19 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.region.open.3, mem.region.open.1
+//! D3/O4 — regions not open in the current scope yield `invariant.load`.
+//! The witness: a value read out of a suspended region cannot have changed,
+//! because every write into it faults (`region_suspended_write.lu` is the
+//! fault twin). Here the region is opened, written, closed, and read.
+
+struct Node { value: int }
+
+fn main() -> !int {
+    let r = region(pool(Node))
+    let p = in r { Pool[Node]() }
+    let h = in r { p.reserve() }
+    in r { p.init(h, Node { value: 42 }) }
+    let first = p[h].value
+    let second = p[h].value
+    if first == second && first == 42 { 0 } else { 1 }
+}

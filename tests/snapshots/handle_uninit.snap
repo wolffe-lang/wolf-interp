@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: handle_uninit.lu
+trap:    use-after-move
+clause:  [mem.shared.handle.1]
+rule:    HandleTwoPhase
+message: pool#0[0] was reserved and never initialized; `reserve` yields the handle, `init` fills the slot
+at:      11:9 `p[h]`
+because: (single-span fault)

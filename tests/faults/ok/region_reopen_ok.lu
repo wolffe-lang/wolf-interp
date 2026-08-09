@@ -1,0 +1,20 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.region.open.1, mem.region.multiopen
+//! The legal twin of `region_multiopen_nested.lu`: re-entering the region you
+//! are already inside is a no-op, not a violation. `corpus/memory/
+//! region_multiopen_swap.lu` requires this reading; `[mem.region.open.1]`'s
+//! "Open in at most one scope at a time" does not state it.
+
+fn main() -> !int {
+    var total = 0
+    region a {
+        var xs = List[int]()
+        xs.push(1)
+        in a {
+            xs.push(2)
+        }
+        total = xs[0] + xs[1]
+    }
+    if total == 3 { 0 } else { 1 }
+}

@@ -1,0 +1,14 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.region.freeze.1, mem.region.edge.imm
+//! The legal twin of `region_freeze_write.lu`: frozen data is readable from
+//! anywhere, forever. Only the write faults.
+
+struct Cfg { limit: int }
+
+fn main() -> !int {
+    let r = region(rc)
+    let cfg = in r { Cfg { limit: 7 } }
+    let frozen = freeze r
+    if cfg.limit == 7 && frozen.is_frozen() { 0 } else { 1 }
+}

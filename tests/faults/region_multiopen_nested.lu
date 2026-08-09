@@ -1,0 +1,16 @@
+//! check: run(exit=trap(region-fault))
+//! phase: resolve
+//! conforms: mem.region.multiopen, mem.region.edge.iso
+
+struct Holder { child: region }
+
+fn main() -> !int {
+    let c = region()
+    let outer = region()
+    let h = in outer { Holder { child: move c } }
+    var n = 0
+    in outer {
+        n = in h.child { 1 }
+    }
+    n
+}

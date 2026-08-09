@@ -1,0 +1,11 @@
+//! check: run(exit=trap(region-fault))
+//! phase: resolve
+//! conforms: mem.region.freeze.3, mem.region.freeze.2
+
+struct Holder { child: region }
+
+fn main() -> !int {
+    let r = region()
+    let h = in r { Holder { child: move r } }
+    0
+}

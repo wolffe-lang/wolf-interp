@@ -1,0 +1,14 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.region.freeze.2, mem.region.edge.iso
+//! The legal twin of `region_move_open.lu`: a CLOSED region transfers. The
+//! owning edge is established at the store, and there is at most one.
+
+struct Holder { child: region }
+
+fn main() -> !int {
+    let r = region()
+    let n = in r { 21 }
+    let h = Holder { child: move r }
+    if n == 21 && h.child.is_closed() { 0 } else { 1 }
+}

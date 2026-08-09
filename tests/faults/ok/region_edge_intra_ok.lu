@@ -1,0 +1,19 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.region.intra.1, mem.shared.handle.1
+//! The legal twin of `region_edge_cross.lu`: the same intrusive back-edge,
+//! built inside ONE region. Cycles and back-edges are safe by construction —
+//! this is the program Rust makes miserable.
+
+struct Node { value: int, link: handle Node }
+
+fn main() -> !int {
+    region a: pool(Node) {
+        var p = Pool[Node]()
+        let first = p.reserve()
+        let second = p.reserve()
+        p.init(first, Node { value: 1, link: second })
+        p.init(second, Node { value: 2, link: first })
+        p[p[first].link].value + p[p[second].link].value - 3
+    }
+}

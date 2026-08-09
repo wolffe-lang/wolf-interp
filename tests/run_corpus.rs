@@ -87,6 +87,26 @@ const FIRST_RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/prov_holy_grail.lu", "exit(0)"),
     ("memory/prov_two_phase.lu", "exit(0)"),
     ("memory/shared_cycle.lu", "exit(0)"),
+    // Tier-1/2 litmuses, newly reaching `run` at is03 (the dynamic region
+    // machine). Every one matches its `check:` exactly.
+    ("memory/handle_stale.lu", "trap(stale-handle)"),
+    ("memory/region_ambient_ok.lu", "exit(0)"),
+    ("memory/region_iso_edge_ok.lu", "exit(0)"),
+    ("memory/region_multiopen_ok.lu", "exit(0)"),
+    ("memory/region_multiopen_swap.lu", "exit(0)"),
+    ("memory/shared_ok.lu", "exit(0)"),
+    // The `rows/` tier, newly present at pin bd41920. Nothing in the evaluator
+    // moved for these: D30's error rows are values, and is02's machine already
+    // ran them — they arrived with the pin, not with the sprint.
+    ("rows/coarsen.lu", "exit(0)"),
+    ("rows/hof_tail.lu", "exit(0)"),
+    ("rows/inferred_private.lu", "exit(0)"),
+    ("rows/negative/dup_tags.lu", "exit(7)"),
+    ("rows/negative/errdefer_infallible.lu", "exit(1)"),
+    ("rows/negative/missing_tag.lu", "exit(0)"),
+    ("rows/negative/payload_mismatch.lu", "exit(0)"),
+    ("rows/negative/pub_inferred.lu", "exit(1)"),
+    ("rows/propagate/main.lu", "exit(0)"),
     // The grammar annex's accepted readings, now executed rather than parsed.
     ("grammar/bang_errunion.lu", "exit(0)"),
     ("grammar/bang_not.lu", "exit(0)"),

@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 
 use wolf_interp::directive::{Check, ExitSpec};
 use wolf_interp::eval::Trap;
+use wolf_interp::eval::rules::Rule;
 use wolf_interp::frontend;
 use wolf_interp::phase::Phase;
 use wolf_interp::protocol::Verdict;
@@ -135,9 +136,11 @@ fn each_program_produces_the_trap_its_own_directive_pins() {
 
 #[test]
 fn there_is_one_program_per_trap_identity_this_tier_can_raise() {
-    // `[conf.trap.set]` is closed at eleven kinds. Six are reachable here; the
-    // other five belong to tiers this sprint does not implement, and claiming
-    // them would be the same lie as an inflated `phase_reached`.
+    // `[conf.trap.set]` is closed at eleven kinds. **Eight** are reachable at
+    // is03 — the dynamic region machine added `region-fault` and
+    // `stale-handle`; the other three belong to tiers this sprint does not
+    // implement, and claiming them would be the same lie as an inflated
+    // `phase_reached`.
     let reachable: std::collections::BTreeSet<TrapKind> = programs()
         .iter()
         .filter_map(|(_, source)| {
@@ -154,24 +157,20 @@ fn there_is_one_program_per_trap_identity_this_tier_can_raise() {
             TrapKind::Bounds,
             TrapKind::UseAfterMove,
             TrapKind::Exclusivity,
+            TrapKind::RegionFault,
+            TrapKind::StaleHandle,
             TrapKind::Assert,
         ])
     );
 
-    let deferred = [
-        TrapKind::RegionFault,
-        TrapKind::StaleHandle,
-        TrapKind::AllocContract,
-        TrapKind::Race,
-        TrapKind::Ub,
-    ];
+    let deferred = [TrapKind::AllocContract, TrapKind::Race, TrapKind::Ub];
     assert_eq!(
         reachable.len() + deferred.len(),
         TrapKind::ALL.len(),
         "the trap vocabulary moved; it is closed and requires a spec revision"
     );
     for kind in deferred {
-        assert!(!reachable.contains(&kind), "{kind} is not an is02 identity");
+        assert!(!reachable.contains(&kind), "{kind} is not an is03 identity");
     }
 }
 
@@ -180,20 +179,40 @@ fn every_ownership_fault_prints_two_spans() {
     // "any later read faults `[mem.tier0.use-after-move]` with the move site
     // and the use site both spanned"; "Any overlapping conflicting access
     // faults `[mem.tier0.exclusivity]`, both spans printed."
+    //
+    // The promise belongs to the **rule**, not to the trap kind: is03's
+    // two-phase fault reports `use-after-move` for a slot that was reserved
+    // and never initialized, and there is no second site to point at — no
+    // move happened. Listing the rules that owe a second span keeps the claim
+    // exact instead of approximately right.
+    let owes_two_spans = [Rule::UseAfterMove, Rule::Exclusivity, Rule::PathDisjoint];
     for (name, source) in programs() {
         let observation = frontend::observe(source.as_bytes(), None);
         let trap = observation.trap.expect("a trap");
-        let two_spans_required =
-            matches!(trap.kind, TrapKind::UseAfterMove | TrapKind::Exclusivity);
-        assert_eq!(
-            trap.secondary.is_some(),
-            two_spans_required,
-            "{name}: {} spans",
-            trap.kind
-        );
+        if owes_two_spans.contains(&trap.rule) {
+            assert!(
+                trap.secondary.is_some(),
+                "{name}: {:?} owes a second span",
+                trap.rule
+            );
+        }
         if let Some((span, _)) = trap.secondary {
             assert!(span.start < source.len(), "{name}");
             assert!(span.start <= span.end, "{name}");
         }
     }
+}
+
+#[test]
+fn the_use_after_free_fault_points_at_the_region_that_died() {
+    // `[mem.region.intra.2]`'s detection is exact — region id plus generation —
+    // and the message has to say *which* region, at *which* creation site, or
+    // the exactness is invisible to the reader.
+    let source = std::fs::read_to_string(faults_dir().join("region_uaf.lu")).expect("readable");
+    let trap = frontend::observe(source.as_bytes(), None)
+        .trap
+        .expect("a trap");
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule.anchor(), "mem.region.intra.2");
+    assert!(trap.message.contains("freed wholesale"), "{}", trap.message);
 }

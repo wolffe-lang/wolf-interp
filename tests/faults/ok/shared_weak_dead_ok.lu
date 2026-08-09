@@ -1,0 +1,18 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.shared.rc.3, mem.shared.drop.3
+//! A `weak` edge keeps nothing alive, and upgrading a dead one yields the
+//! option-shaped result the caller must handle — defined behavior, not a fault.
+
+struct Cfg { limit: int }
+
+fn main() -> !int {
+    var w = weak_of()
+    let live = w.upgrade() else |_| { return 0 }
+    if live.limit == 7 { 1 } else { 1 }
+}
+
+fn weak_of() -> weak Cfg {
+    let a = shared (Cfg { limit: 7 })
+    a.downgrade()
+}

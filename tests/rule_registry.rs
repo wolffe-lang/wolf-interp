@@ -77,7 +77,9 @@ fn the_registry_is_one_hundred_percent_covered() {
         rows.len()
     );
     assert_eq!(rows.len(), Rule::ALL.len());
-    assert!(rows.len() >= 30, "the registry lost rules: {}", rows.len());
+    // is02 registered 36 rules; is03 added 23 for `spec/02` §3 and §4 plus
+    // `[mem.model.order]`. The floor moves up with each sprint, never down.
+    assert!(rows.len() >= 59, "the registry lost rules: {}", rows.len());
 }
 
 #[test]
@@ -159,6 +161,32 @@ fn the_memory_model_rules_cite_the_clause_that_states_them() {
         (Rule::BorrowExtent, "mem.tier0.borrow.2"),
         (Rule::DivZero, "mem.ub.defined"),
         (Rule::Bounds, "mem.ub.defined"),
+        // is03: `spec/02` §3, clause by clause.
+        (Rule::RegionCreate, "mem.region.create.1"),
+        (Rule::RegionAffine, "mem.region.create.2"),
+        (Rule::RegionAmbient, "mem.region.create.3"),
+        (Rule::RegionIdentity, "mem.region.create.4"),
+        (Rule::RegionIntra, "mem.region.intra.1"),
+        (Rule::RegionFree, "mem.region.intra.2"),
+        (Rule::RegionEdge, "mem.region.edge"),
+        (Rule::RegionEdgeIso, "mem.region.edge.iso"),
+        (Rule::RegionEdgeImm, "mem.region.edge.imm"),
+        (Rule::RegionOpen, "mem.region.open.1"),
+        (Rule::RegionMultiopen, "mem.region.multiopen"),
+        (Rule::RegionSuspended, "mem.region.open.3"),
+        (Rule::RegionFreeze, "mem.region.freeze.1"),
+        (Rule::RegionTransfer, "mem.region.freeze.2"),
+        (Rule::RegionClosedSubtree, "mem.region.freeze.3"),
+        // is03: `spec/02` §4.
+        (Rule::SharedRc, "mem.shared.rc.1"),
+        (Rule::SharedAcyclic, "mem.shared.rc.2"),
+        (Rule::SharedWeak, "mem.shared.rc.3"),
+        (Rule::SharedDrop, "mem.shared.drop.3"),
+        (Rule::HandleTwoPhase, "mem.shared.handle.1"),
+        (Rule::HandleStale, "mem.shared.handle.2"),
+        (Rule::HandleAccess, "mem.shared.handle.3"),
+        // The evaluation-order clause the pin bump published.
+        (Rule::EvalStrictOrder, "mem.model.order"),
     ];
     for (rule, anchor) in expected {
         assert_eq!(rule.anchor(), *anchor, "{rule:?}");
@@ -202,7 +230,8 @@ fn the_trace_only_ever_names_registered_rules() {
         }
         let full = root.join(&file.path);
         let source = std::fs::read(&full).expect("readable");
-        let (_, observed) = wolf_interp::observe_record_traced(&full, &source, None, true);
+        let (_, observed) =
+            wolf_interp::observe_record_traced(&full, &source, None, wolf_interp::eval::Trace::All);
         for line in observed.trace {
             // `<start>..<end> <Rule> [<anchor>] <detail>`
             let rule = line
@@ -229,12 +258,35 @@ fn the_trace_only_ever_names_registered_rules() {
         }
     }
 
-    // The corpus does not exercise every rule — Tier-2 borrows and view sets in
-    // particular have no runnable litmus yet — but it should exercise most.
+    // The corpus does not exercise every rule — local borrows and view sets have
+    // no runnable litmus yet, and the rules that *only* appear on a fault path
+    // are carried on the `Trap` rather than in the trace — but it should
+    // exercise most, and is03's region machine moved that number a long way.
     assert!(
-        fired.len() >= 15,
+        fired.len() >= 35,
         "only {} of {} rules ever fired over the corpus: {fired:?}",
         fired.len(),
         Rule::ALL.len()
     );
+
+    // Specifically: the Tier-1 rules now fire over the *pinned* corpus, which
+    // is the behavioural half of "the region machine is implemented".
+    for rule in [
+        "RegionCreate",
+        "RegionAffine",
+        "RegionAmbient",
+        "RegionOpen",
+        "RegionMultiopen",
+        "RegionSuspended",
+        "RegionFree",
+        "RegionFreeze",
+        "RegionEdgeIso",
+        "HandleTwoPhase",
+        "SharedRc",
+    ] {
+        assert!(
+            fired.contains(rule),
+            "{rule} never fired over the pinned corpus"
+        );
+    }
 }

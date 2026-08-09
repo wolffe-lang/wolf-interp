@@ -1,0 +1,23 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.tier0.mode.mut, mem.tier0.excl.2
+//! D3/O1 — `mut` params lower to `noalias` + `dereferenceable`.
+//! The licensing fact made observable: two `mut` arguments are held
+//! exclusively for one call, and the call is legal precisely because the
+//! paths are disjoint (`[mem.model.path.disjoint]`). Nothing else may reach
+//! either place for the call's extent, which is what `noalias` asserts.
+
+struct P { x: int, y: int }
+
+fn swap(mut a: int, mut b: int) -> int {
+    let t = a
+    a = b
+    b = t
+    a + b
+}
+
+fn main() -> !int {
+    var p = P { x: 1, y: 10 }
+    let sum = swap(mut p.x, mut p.y)
+    if p.x == 10 && p.y == 1 && sum == 11 { 0 } else { 1 }
+}

@@ -1,0 +1,25 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.region.multiopen, mem.region.create.3
+//! D3/O3b — one alias-scope domain PER REGION: pointers into distinct regions
+//! never alias, inter-procedurally. The witness: two disjoint regions open at
+//! once, each with its own pool, and a handle from one is never valid in the
+//! other — the dynamic ground truth the alias domain rests on.
+
+struct Node { value: int }
+
+fn main() -> !int {
+    var sum = 0
+    region a: pool(Node) {
+        var pa = Pool[Node]()
+        let ha = pa.reserve()
+        pa.init(ha, Node { value: 10 })
+        region b: pool(Node) {
+            var pb = Pool[Node]()
+            let hb = pb.reserve()
+            pb.init(hb, Node { value: 20 })
+            sum = pa[ha].value + pb[hb].value
+        }
+    }
+    if sum == 30 { 0 } else { 1 }
+}

@@ -1,0 +1,13 @@
+//! check: run(exit=trap(use-after-move))
+//! phase: resolve
+//! conforms: mem.shared.handle.1, mem.tier0.move.2
+
+struct Node { value: int }
+
+fn main() -> !int {
+    region r: pool(Node) {
+        var p = Pool[Node]()
+        let h = p.reserve()
+        p[h].value
+    }
+}

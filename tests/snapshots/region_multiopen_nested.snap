@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: region_multiopen_nested.lu
+trap:    region-fault
+clause:  [mem.region.multiopen]
+rule:    RegionMultiopen
+message: region #1 is not disjoint from the already-open region #2: one owns the other, and an owner's open window reaches its child's data. `[mem.region.multiopen]` discharges disjointness with distinctness of affine values, which does not imply it across an `iso` edge
+at:      13:13 `in h.child { 1 }`
+because: (single-span fault)

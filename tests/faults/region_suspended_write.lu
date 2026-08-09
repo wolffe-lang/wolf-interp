@@ -1,0 +1,13 @@
+//! check: run(exit=trap(region-fault))
+//! phase: resolve
+//! conforms: mem.region.open.3, mem.region.open.1
+
+struct Node { value: int }
+
+fn main() -> !int {
+    let r = region(pool(Node))
+    let p = in r { Pool[Node]() }
+    let h = in r { p.reserve() }
+    p.init(h, Node { value: 1 })
+    0
+}

@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: region_freeze_write.lu
+trap:    region-fault
+clause:  [mem.region.freeze.1]
+rule:    RegionFreeze
+message: region #1 is frozen: `imm` data is immutable forever
+at:      11:13 `p.reserve()`
+because: (single-span fault)

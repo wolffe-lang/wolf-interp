@@ -1,0 +1,19 @@
+//! check: run(exit=trap(region-fault))
+//! phase: resolve
+//! conforms: mem.region.edge, mem.region.intra.1
+
+struct Node { value: int, link: handle Node }
+
+fn main() -> !int {
+    region a: pool(Node) {
+        var pa = Pool[Node]()
+        let ha = pa.reserve()
+        pa.init(ha, Node { value: 1, link: ha })
+        region b: pool(Node) {
+            var pb = Pool[Node]()
+            let hb = pb.reserve()
+            pb.init(hb, Node { value: 2, link: ha })
+        }
+    }
+    0
+}

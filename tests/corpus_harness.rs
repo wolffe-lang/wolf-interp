@@ -55,15 +55,22 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //   28ab5c9 → 91 files (is02: s14's `corpus/traits/` added 17 — 12 entries
     //             and 5 members across three module directories; no other tier
     //             moved, and no existing file changed).
+    //   bd41920 → 103 files (is03: s15's `corpus/rows/` added 12 — 9 entries
+    //             and 3 members, the members being `rows/propagate/`'s three
+    //             module files. One existing file changed content without
+    //             changing the count: `grammar/bang_errunion.lu`. s16's
+    //             `corpus/comptime/` and `corpus/faults/` tiers had NOT landed
+    //             at this pin, so no dedupe against `tests/faults/` was owed —
+    //             see that directory's README.)
     let report = report();
     assert_eq!(
         report.total(),
-        91,
+        103,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 80);
-    assert_eq!(report.members(), 11);
+    assert_eq!(report.entries(), 89);
+    assert_eq!(report.members(), 14);
 }
 
 #[test]

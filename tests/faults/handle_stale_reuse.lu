@@ -1,0 +1,17 @@
+//! check: run(exit=trap(stale-handle))
+//! phase: resolve
+//! conforms: mem.shared.handle.2
+
+struct Node { value: int }
+
+fn main() -> !int {
+    region r: pool(Node) {
+        var p = Pool[Node]()
+        let first = p.reserve()
+        p.init(first, Node { value: 1 })
+        p.remove(first)
+        let second = p.reserve()
+        p.init(second, Node { value: 2 })
+        p[first].value
+    }
+}
