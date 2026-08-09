@@ -71,10 +71,9 @@ jobs:
           fail=0
           while IFS= read -r f; do
             out=$(cargo run --quiet -- conform-run "$f" --phase=lex --json)
-            case "$out" in
-              *'"verdict":"pass"'*'"phase_reached":"lex"'*) ;;
-              *) echo "::error file=$f::lex rung is not clean: $out"; fail=1 ;;
-            esac
+            if [[ "$out" == *'"verdict":"pass"'* && "$out" == *'"phase_reached":"lex"'* ]]; then :; else
+              echo "::error file=$f::lex rung is not clean: $out"; fail=1
+            fi
           done < <(find vendor/upstream/corpus -name '*.lu' | sort)
           test "$fail" -eq 0
 
