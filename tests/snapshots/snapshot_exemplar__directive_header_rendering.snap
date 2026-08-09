@@ -1,0 +1,11 @@
+---
+source: tests/snapshot_exemplar.rs
+expression: render(&directives)
+---
+member:   false
+phase:    resolve
+check:    run(exit=trap(div-zero), stdout="one, two")
+conforms:
+  - mem.ub.defined
+  - str.interp
+prose:    3 line(s)

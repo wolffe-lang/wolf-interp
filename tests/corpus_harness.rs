@@ -1,0 +1,202 @@
+//! The corpus harness over the pinned corpus.
+//!
+//! Green here means: every `//!` header in `upstream/corpus` is legible to
+//! this implementation's own directive parser. It is a weak claim about wolf
+//! and a strong claim about the two tracks agreeing on the directive grammar —
+//! which is the only claim is00 is entitled to make.
+
+use std::path::{Path, PathBuf};
+
+use wolf_interp::anchor;
+use wolf_interp::corpus::{self, CorpusReport, Outcome};
+
+fn upstream() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join(wolf_interp::upstream_root())
+}
+
+fn report() -> CorpusReport {
+    let root = upstream().join("corpus");
+    corpus::walk(&root, Some(&upstream().join("spec"))).unwrap_or_else(|e| {
+        panic!(
+            "could not walk {}: {e}\n\
+             hint: the corpus is a pinned submodule — run `git submodule update --init upstream`",
+            root.display()
+        )
+    })
+}
+
+#[test]
+fn every_header_in_the_pinned_corpus_parses() {
+    let report = report();
+    let failures = report.failures();
+    assert!(
+        failures.is_empty(),
+        "unparseable corpus headers:\n{}",
+        failures
+            .iter()
+            .map(|(path, reason)| format!("  {path}: {reason}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+#[test]
+fn the_walk_is_green() {
+    assert!(report().is_green());
+}
+
+#[test]
+fn the_pin_holds_the_corpus_we_think_it_does() {
+    // A pin bump that changes the corpus size is a deliberate act; this test
+    // makes it deliberate rather than silent (s01's progress-ledger rule).
+    let report = report();
+    assert_eq!(
+        report.total(),
+        69,
+        "corpus size changed — was the pin bumped?"
+    );
+    assert_eq!(report.entries() + report.members(), report.total());
+    assert!(report.entries() > 0 && report.members() > 0);
+}
+
+#[test]
+fn entries_carry_check_and_phase_and_members_carry_neither() {
+    for file in &report().files {
+        match &file.outcome {
+            Outcome::Entry(directives) => {
+                assert!(directives.check.is_some(), "{} has no check:", file.path);
+                assert!(directives.phase.is_some(), "{} has no phase:", file.path);
+                assert!(directives.is_entry());
+            }
+            Outcome::Member(directives) => {
+                assert!(
+                    directives.check.is_none(),
+                    "{} is a member with check:",
+                    file.path
+                );
+                assert!(
+                    directives.phase.is_none(),
+                    "{} is a member with phase:",
+                    file.path
+                );
+                assert!(!directives.is_entry());
+            }
+            Outcome::Failed(reason) => panic!("{}: {reason}", file.path),
+        }
+    }
+}
+
+#[test]
+fn member_files_live_beside_an_entry_file() {
+    // `member: true` means "compiled through this directory's entry file"
+    // (directory = module). A member with no entry anywhere up its package
+    // would be unreachable — nothing would ever exercise it.
+    let report = report();
+    let entry_dirs: Vec<&str> = report
+        .files
+        .iter()
+        .filter(|f| matches!(f.outcome, Outcome::Entry(_)))
+        .map(|f| f.path.rsplit_once('/').map_or("", |(dir, _)| dir))
+        .collect();
+
+    for file in &report.files {
+        if !matches!(file.outcome, Outcome::Member(_)) {
+            continue;
+        }
+        let dir = file.path.rsplit_once('/').map_or("", |(dir, _)| dir);
+        let reachable = entry_dirs
+            .iter()
+            .any(|entry_dir| dir == *entry_dir || dir.starts_with(&format!("{entry_dir}/")));
+        assert!(
+            reachable,
+            "{} is a member with no entry file in or above its directory",
+            file.path
+        );
+    }
+}
+
+#[test]
+fn every_conforms_tag_is_a_well_formed_anchor() {
+    for file in &report().files {
+        let Some(directives) = file.directives() else {
+            continue;
+        };
+        for tag in &directives.conforms {
+            anchor::classify(tag).unwrap_or_else(|e| panic!("{}: {e}", file.path));
+        }
+    }
+}
+
+#[test]
+fn registered_namespace_tags_resolve_against_the_pinned_anchors_json() {
+    let report = report();
+    assert!(
+        report.anchors_checked,
+        "upstream/spec/anchors.json was not read — is the submodule sparse-checkout missing spec/?"
+    );
+    assert!(
+        report.unknown_anchors.is_empty(),
+        "corpus cites anchors absent from spec/anchors.json: {:?}",
+        report.unknown_anchors
+    );
+}
+
+#[test]
+fn the_walk_is_deterministic_and_sorted() {
+    // `read_dir` order is platform noise; the harness must not inherit it.
+    let first = report();
+    let paths: Vec<&str> = first.files.iter().map(|f| f.path.as_str()).collect();
+    let mut sorted = paths.clone();
+    sorted.sort_unstable();
+    assert_eq!(paths, sorted);
+
+    let again: Vec<String> = report().files.iter().map(|f| f.path.clone()).collect();
+    assert_eq!(paths, again);
+}
+
+#[test]
+fn paths_never_leak_platform_separators() {
+    for file in &report().files {
+        assert!(
+            !file.path.contains('\\'),
+            "{} carries a raw separator",
+            file.path
+        );
+    }
+}
+
+/// The vendored snapshot must be byte-identical to the submodule at its
+/// pin — verified whenever the submodule is initialized (locally always;
+/// CI has no submodule and skips).
+#[test]
+fn vendor_matches_submodule() {
+    use std::path::Path;
+    if !Path::new("upstream/corpus").is_dir() {
+        eprintln!("submodule absent; vendored snapshot not cross-checked here");
+        return;
+    }
+    fn walk(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+        let mut entries: Vec<_> = std::fs::read_dir(dir).unwrap().flatten().collect();
+        entries.sort_by_key(|e| e.path());
+        for e in entries {
+            let p = e.path();
+            if p.is_dir() {
+                walk(&p, out);
+            } else {
+                out.push(p);
+            }
+        }
+    }
+    for tree in ["spec", "corpus"] {
+        let mut live = Vec::new();
+        walk(Path::new("upstream").join(tree).as_path(), &mut live);
+        for lp in live {
+            let rel = lp.strip_prefix("upstream").unwrap();
+            let vp = Path::new("vendor/upstream").join(rel);
+            let a = std::fs::read(&lp).unwrap();
+            let b = std::fs::read(&vp)
+                .unwrap_or_else(|_| panic!("vendored file missing: {}", vp.display()));
+            assert_eq!(a, b, "vendor drift: {}", rel.display());
+        }
+    }
+}
