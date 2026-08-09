@@ -57,14 +57,60 @@ are code, not prose:
 - `parse::CHOICES` — every place `spec/01` underdetermines the parse and what
   this implementation chose instead. A divergence that lands on one of these
   is a spec gap with a candidate amendment already written.
+- `parse::CHOICES_RESOLVED` — the choices a spec amendment has since **closed**,
+  each naming the clause that now decides it. Filed gaps get a visible fate;
+  deleting a resolved row would erase the evidence that the pipeline works.
 - `diag::UNPINNED_CODES` — every diagnostic code this implementation invented.
   The corpus pins a handful (`check: fail(CODE)`); everything else is a guess
   that the s10 catalog will eventually overrule. Disagreement here is expected,
   not a bug, and it is the intended input to that catalog.
+- `eval::rules::Rule` — every *dynamic* rule, with the clause it enforces. A
+  divergence at the `run` rung names one of these, and the anchor is already
+  attached (`conform-run --trace`, and `x-trap-clause` on trap records).
 
 The pipeline itself is exercised in `tests/divergence.rs` against a seeded
 counterparty, because a filing rule nobody has run is a filing rule that does
 not work.
+
+### Verdict classes that are not divergences
+
+`src/ledger.rs` sorts an observation against a corpus expectation into five
+classes, and three of them are *expected*:
+
+- **dynamic-counterpart** — the corpus pins a static code whose dynamic meaning
+  spec/02 states, and this machine trapped with exactly that kind. `E1001` ⇄
+  `use-after-move` and `E1002` ⇄ `exclusivity` are the only two
+  (`[conf.trap.map]`); nothing else may be added without a clause to cite.
+- **conservatism** — the corpus expects a static rejection this implementation
+  does not perform, and the program ran. Expected by construction (the sema
+  boundary); ledgered, never green-washed.
+- **out-of-scope** — verdict `unsupported`, with the reason on `x-unsupported`.
+
+A **mismatch** is a finding and is never explained away in code. Do not "fix" a
+mismatch by editing the corpus: the corpus is a pinned input, and
+`[proto.cmp.triage]` puts the spec in the dock first.
+
+## The sema boundary
+
+The interpreter implements full dynamic semantics and only the static analysis
+needed to run programs — no type checker, no borrow checker, no region checker.
+Consequences worth stating for anyone adding code:
+
+- **A property the static tier owns never becomes a trap.** The trap vocabulary
+  is closed at eleven kinds and every one of them is a fault of a *defined*
+  execution (`[conf.trap.map]`). Wrong arity, a wrong-typed operand, an unknown
+  field: those are `unsupported`, with a reason naming the code that owns them.
+  Turning one into a trap would put a static rejection in the run rung and
+  corrupt the differential comparison in the worst direction.
+- **The dynamic machine is deliberately more permissive** than the compiler's
+  static checkers. The approximation is one-way: the compiler accepting a
+  program obliges this machine not to fault on it; the converse is never
+  implied.
+- **A std name with no pinned semantics is declined, not guessed.** The ambient
+  prelude (`eval::builtin`) mirrors the compiler's names-only stub. Inventing
+  behaviour for `acquire()` or `re"…"` would put this implementation's guesses
+  into a differential comparison against the compiler's guesses, and the
+  resulting "divergence" would be about nothing.
 
 ## Commits
 

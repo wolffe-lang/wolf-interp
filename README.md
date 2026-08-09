@@ -12,33 +12,82 @@ Dual-licensed MIT or Apache-2.0.
 
 ---
 
-## Status: is01 — the frontend
+## Status: is02 — the tree-walk core
 
-The lexer and parser are real and cover the whole of
-`spec/01-grammar.md`, written from that document and nothing else:
+wolf programs **run**. `spec/02-memory-model.md` §2 is implemented as a
+dynamic machine: values, moves, mutation, functions, control flow and error
+unions execute per its clauses, with every ownership rule enforced as a
+runtime check and every fault citing the clause it enforces.
 
-- **lexer** (`src/lex.rs`) — the f-string mode stack (interpolation, format
-  specs, nesting to the spec's depth rails), `"""` closing-column dedent, raw
-  and generalized literals, and byte-exact terminator insertion per
-  `[gram.lex.newline]`;
-- **parser** (`src/parse.rs`) — full surface, §3.2's precedence climb kept as
-  data so a spec-extraction test can diff it against the pinned table, and
-  **no error recovery**: the first error wins, with a span and the
-  `[gram.…]` clause that failed;
-- **AST** (`src/ast.rs`) — designed for is02's evaluator, every node carrying
-  its span and the clause anchor of the production that built it;
-- **conform-run** speaks `--phase=lex` and `--phase=parse` for real. Deeper
-  rungs report `phase_reached: parse` with verdict `unsupported`, per
-  `[proto.record.phase]`'s completed-phase rule.
+- **lexer + parser** (`src/lex.rs`, `src/parse.rs`) — the whole of
+  `spec/01-grammar.md`, written from that document and nothing else, with no
+  error recovery: the first error wins, carrying a span and the `[gram.…]`
+  clause that failed (is01).
+- **sema-lite** (`src/sema.rs`) — the D32 module graph and nothing more:
+  directory = module, `use` binds a sibling module of the package root,
+  `pub`/`pub(pkg)` gate cross-module access, signatures taken at face value.
+- **evaluator** (`src/eval/`) — MVS values with per-slot `Live`/`Moved` state
+  (field-granular), `read`/`mut`/`take` parameter modes with **dynamic**
+  exclusivity checking over exact paths, `copy`, re-initialization, closures,
+  expression-oriented control flow, checked arithmetic, `!T` error unions as
+  values with `?`/`else`/`defer`/`errdefer`. No unwinding anywhere.
+- **rule registry** (`src/eval/rules.rs`) — every dynamic rule with its clause
+  anchor and one sentence. `conform-run --trace` logs each rule as it fires;
+  `tests/rule_registry.rs` proves 100% anchor coverage against the pinned spec
+  and demonstrates that a planted anchorless rule fails the same gate.
 
-Against the pinned corpus: every file lexes clean; every file whose ledger
-`phase:` is `parse` or deeper parses clean; the four `corpus/grammar/`
-counter-examples fail at parse with the codes the corpus pins — E0001, E0002,
-E0006, E0008.
+### The sema boundary
 
-No name resolution, no types, no evaluation. Those rungs stay `unsupported`,
-which `[proto.record.unsupported]` makes a legal answer that lands in the
-conservatism ledger instead of quietly counting as agreement.
+**The load-bearing design decision of this track.** The interpreter implements
+full *dynamic* semantics but only the static analysis needed to run programs.
+It does **not** implement the type checker, the borrow checker, or the region
+checker; every safety property those prove statically is enforced dynamically
+here instead. Two consequences, both codified in the protocol:
+
+- a program the compiler rejects that runs clean here is an **expected verdict
+  class** — static conservatism, ledgered rather than counted as agreement;
+- a sema-lite failure (unresolvable name, ambiguous dispatch, a type error the
+  checker owns) is verdict `unsupported`, with the reason on the
+  `x-unsupported` extension key — never a crash, and never a trap, because the
+  trap vocabulary is for faults of *defined* executions.
+
+The approximation direction is one-way: **the compiler accepts ⇒ the
+interpreter must not fault; never the converse.**
+
+### The phase ladder, mapped
+
+The canonical ladder is the compiler's pipeline. What this implementation
+completes (the full table, with rationale, is `src/frontend.rs`'s module doc):
+
+| rung | wolf-interp |
+|---|---|
+| `lex`, `parse` | the frontend |
+| `resolve` | sema-lite |
+| `typecheck`, `mem`, `wir` | **not performed** — the compiler's half |
+| `run` | the tree-walk evaluator |
+
+`--phase=typecheck` therefore reports `resolve` + `unsupported`: it asks this
+implementation to stop after a phase it never performs, and
+`[proto.record.phase]` says report the deepest phase that **completed**.
+`--phase=run` can report `run` even though the static rungs were skipped,
+because the run itself completed — those rungs are exactly the properties
+enforced dynamically instead.
+
+### Against the pinned corpus
+
+41 of 80 entry files reach `run`. Among them: `hello.lu` → `exit(0)` printing
+`hello, wolf`, `overflow.lu` → `trap(overflow)`, `memory/div_zero.lu` →
+`trap(div-zero)`, `memory/oob_bounds.lu` → `trap(bounds)`,
+`memory/defer_order.lu` → `exit(0)` with `body first second`, `wordcount.lu`
+→ `exit(2)`, and the three D32 module cases. Every file whose `check:` is a
+run expectation and which this machine evaluates matches it exactly; there are
+zero mismatches (`cargo run -- corpus` prints the ledger, and
+`tests/run_corpus.rs` enforces it).
+
+Two of those entries are the *dynamic counterpart* of a static code the corpus
+pins: `memory/move_use_after.lu` (`fail(E1001)` ⇄ `trap(use-after-move)`) and
+`memory/excl_overlap.lu` (`fail(E1002)` ⇄ `trap(exclusivity)`) — the two
+mappings `[conf.trap.map]` states.
 
 ### Error codes
 
@@ -51,6 +100,9 @@ in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 `parse::CHOICES` is the companion list: places where `spec/01` does not
 determine the parse, and what this implementation does instead.
+`parse::CHOICES_RESOLVED` is its history — the entries a spec amendment has
+since closed, kept as a table so a filed gap has a visible fate. Six of is01's
+eight choices are in it as of the current pin.
 
 ## Getting the pin
 
@@ -93,14 +145,15 @@ upstream corpus grew or a clause anchor moved, the bump is where you find out.
 
 ```sh
 cargo run -- corpus [--root <dir>] [--spec <dir>] [--json]
-cargo run -- conform-run <file.lu> [--phase=<p>] [--seed=N] [--json]
+cargo run -- conform-run <file.lu> [--phase=<p>] [--seed=N] [--json] [--trace]
 cargo run -- lex   <file.lu> [--dump]
 cargo run -- parse <file.lu> [--dump]
 cargo run -- protocol validate <record.json>...
 ```
 
-`lex --dump` prints the token stream and `parse --dump` prints a production
-trace, each line citing the `[gram.…]` clause that built it. Both formats are
+`lex --dump` prints the token stream, `parse --dump` prints a production trace
+and `conform-run --trace` prints the evaluation rules as they fire — each line
+of all three citing the clause anchor behind it. Both formats are
 **ours**; nothing in the protocol consumes them, and they are deliberately not
 modelled on anything the compiler prints. In human mode a rejected program
 exits `65`; under `conform-run` a rejection is a *record* and the tool still
@@ -112,24 +165,32 @@ It exits `0` whenever it produced a well-formed observation record — the
 not run. `1` means the work ran and failed its check (a red corpus walk, a
 rejected record).
 
-Today's records, in full:
+Today's records, in full — a run, a rejection, and a scope gap:
 
 ```json
 {"protocol":1,"impl":"wolf-interp","impl_version":"0.0.1","commit":"…",
- "file":"upstream/corpus/hello.lu","phase_reached":"parse","seeded":false,
- "diagnostics":[],"verdict":"unsupported","stdout_sha256":null,"stdout_inline":null}
+ "file":"upstream/corpus/hello.lu","phase_reached":"run","seeded":false,
+ "diagnostics":[],"verdict":"exit(0)",
+ "stdout_sha256":"dc97e7cd…","stdout_inline":"hello, wolf\n"}
 
 {"protocol":1,"impl":"wolf-interp","impl_version":"0.0.1","commit":"…",
  "file":"upstream/corpus/grammar/semicolon.lu","phase_reached":"parse","seeded":false,
  "diagnostics":[{"code":"E0002","span":[222,223],"severity":"error"}],
  "verdict":"fail(E0002)","stdout_sha256":null,"stdout_inline":null}
+
+{"protocol":1,"impl":"wolf-interp","impl_version":"0.0.1","commit":"…",
+ "file":"upstream/corpus/regions.lu","phase_reached":"resolve","seeded":false,
+ "diagnostics":[],"verdict":"unsupported","stdout_sha256":null,"stdout_inline":null,
+ "x-unsupported":"regions are Tier 1 (`[mem.region]`); is03 extends the value model"}
 ```
 
-`phase_reached` never exceeds the deepest rung that *completed* — `parse`, no
-matter what `--phase` asks for — and `seeded` is `false` no matter what
-`--seed` asks for. Both are true statements about this implementation; the
-requests are acknowledged on stderr. A `fail` carries exactly one diagnostic,
-because there is no recovery and `[proto.cmp.phase]` compares only the first.
+`phase_reached` never exceeds the deepest rung that *completed*, and `seeded`
+is `false` no matter what `--seed` asks for. Both are true statements about
+this implementation; unhonoured requests are acknowledged on stderr. A `fail`
+carries exactly one diagnostic, because there is no recovery and
+`[proto.cmp.phase]` compares only the first. A verdict never carries a payload
+(`[proto.record.verdict]`); reasons ride `x-` keys, which participate in
+comparison only when both records have them.
 
 ## The directive grammar
 
@@ -170,13 +231,25 @@ cargo test
 cargo run -- corpus
 ```
 
-`cargo test` includes the suites that make the frontend defensible:
-`conformance.rs` (every corpus file's expectation at the lex and parse rungs),
-`spec_extract.rs` (tests re-derived from the pinned markdown on every run — a
-spec edit that moves the keyword list, the precedence table or a
-counter-example fails here), `fuzz_smoke.rs` (totality over garbage bytes,
-token soup and mutated corpus files) and `divergence.rs` (the filing pipeline,
-seeded).
+`cargo test` includes the suites that make the implementation defensible:
+
+- `run_corpus.rs` — the `run` rung against every corpus expectation, plus the
+  **first-run ledger**: the exact set of files that evaluate, written out so
+  progress and regression are both visible;
+- `rule_registry.rs` — 100% clause coverage of the evaluation rules against the
+  pinned `spec/anchors.json`, with a planted anchorless rule as the negative
+  control;
+- `fault_snapshots.rs` — one program per reachable trap identity
+  (`tests/faults/`, corpus dialect, upstream-ready), with its fault rendering
+  snapshotted: kind, clause anchor, and both spans;
+- `conformance.rs` — every corpus file's expectation at the lex, parse and
+  resolve rungs;
+- `spec_extract.rs` — tests re-derived from the pinned markdown on every run: a
+  spec edit that moves the keyword list, the precedence table, the nesting rail
+  or a counter-example fails here;
+- `fuzz_smoke.rs` — totality over garbage bytes, token soup and mutated corpus
+  files, through the evaluator: no panics, and every termination is a verdict;
+- `divergence.rs` — the filing pipeline, seeded.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the independence doctrine, the
 snapshot ritual, and the commit conventions.

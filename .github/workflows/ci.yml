@@ -59,11 +59,18 @@ jobs:
       - name: corpus harness
         run: cargo run -- corpus
 
-      # The frontend rungs, end to end through the real binary rather than the
-      # library: `conform-run` is a *process* contract ([proto.invoke.exit]).
-      # Every corpus file must lex clean; the canonical program must parse
-      # clean; a pinned counter-example must come back as a record carrying its
-      # pinned code, with the tool still exiting 0.
+      # The ladder, end to end through the real binary rather than the library:
+      # `conform-run` is a *process* contract ([proto.invoke.exit]). Each check
+      # below pins one rung of the mapping documented in `src/frontend.rs`:
+      #
+      #   lex / parse      is01's frontend
+      #   resolve          is02's sema-lite (module graph, visibility)
+      #   typecheck/mem/wir  NOT performed — `unsupported` at `resolve`
+      #   run              is02's tree-walk evaluator
+      #
+      # A record that claims a rung this implementation did not complete is the
+      # exact failure [proto.record.phase] exists to prevent, so the assertions
+      # are on `phase_reached` as much as on `verdict`.
       - name: conform-run rungs
         shell: bash
         run: |
@@ -77,12 +84,36 @@ jobs:
           done < <(find vendor/upstream/corpus -name '*.lu' | sort)
           test "$fail" -eq 0
 
+          # parse: the canonical program is clean, a counter-example carries its
+          # pinned code (and the tool still exits 0).
           cargo run --quiet -- conform-run vendor/upstream/corpus/wordcount.lu --phase=parse --json \
             | grep -q '"verdict":"pass"'
           cargo run --quiet -- conform-run vendor/upstream/corpus/grammar/structlit_cond.lu --phase=parse --json \
             | grep -q '"verdict":"fail(E0006)"'
+
+          # resolve: sema-lite completes on every well-formed file.
+          cargo run --quiet -- conform-run vendor/upstream/corpus/regions.lu --phase=resolve --json \
+            | grep -q '"phase_reached":"resolve","seeded":false,"diagnostics":\[\],"verdict":"pass"'
+
+          # typecheck: NOT performed. The honest answer is the deepest completed
+          # rung plus `unsupported` — never a claim of `typecheck`.
+          cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --phase=typecheck --json \
+            | grep -q '"phase_reached":"resolve","seeded":false,"diagnostics":\[\],"verdict":"unsupported"'
+
+          # run: the first three files of the first-run ledger, by verdict.
           cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --json \
-            | grep -q '"phase_reached":"parse","seeded":false,"diagnostics":\[\],"verdict":"unsupported"'
+            | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"'
+          cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --json \
+            | grep -q '"stdout_inline":"hello, wolf'
+          cargo run --quiet -- conform-run vendor/upstream/corpus/overflow.lu --json \
+            | grep -q '"verdict":"trap(overflow)"'
+          cargo run --quiet -- conform-run vendor/upstream/corpus/memory/div_zero.lu --json \
+            | grep -q '"verdict":"trap(div-zero)"'
+
+          # A file outside is02's coverage says so, with a reason on an `x-` key
+          # ([proto.record.ext]) rather than in the payload-free verdict.
+          cargo run --quiet -- conform-run vendor/upstream/corpus/regions.lu --json \
+            | grep -q '"verdict":"unsupported",.*"x-unsupported"'
 
       # The fixtures are the protocol's own tests ([proto.harness.fixtures]).
       - name: protocol fixtures
