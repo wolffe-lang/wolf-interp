@@ -11,13 +11,17 @@
 //! compiler's convention so a differ can tell "the program is wrong" from
 //! "the tool is wrong".
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Duration;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use wolf_interp::corpus::{self, Outcome};
+use wolf_interp::differ::{self, Counterparty, DeepClass, DeepDivergence, LedgerEntry};
 use wolf_interp::eval::Trace;
+use wolf_interp::fuzz::{self, Mode};
 use wolf_interp::ledger::{self, Judgement};
 use wolf_interp::phase::Phase;
 use wolf_interp::protocol::Verdict;
@@ -72,6 +76,12 @@ enum Command {
         #[command(subcommand)]
         command: ProtocolCommand,
     },
+    /// The corpus-wide differential runner: this implementation against the
+    /// pinned compiler, compared through spec/06 (is05).
+    DiffRun(DiffRunArgs),
+    /// Fuzzer-driven differential testing: generated programs through the
+    /// same comparison, with AST-aware reduction of anything divergent.
+    Fuzz(FuzzArgs),
 }
 
 #[derive(Debug, Args)]
@@ -120,6 +130,74 @@ struct FrontendArgs {
     dump: bool,
 }
 
+#[derive(Debug, Args)]
+struct DiffRunArgs {
+    /// Corpus root to walk (entries only; `member: true` files compile
+    /// through their entry and are never conform-run directly).
+    #[arg(long, default_value_os_t = default_corpus_root())]
+    corpus: PathBuf,
+    /// The counterparty `wolf` binary. Defaults to the conventional build
+    /// products of `cargo build -p wolf_driver` inside `upstream/`.
+    #[arg(long)]
+    compiler: Option<PathBuf>,
+    /// Hard-fail instead of SKIPping when no counterparty binary exists.
+    #[arg(long)]
+    require_counterparty: bool,
+    /// Wall-clock budget per invocation, either side. A timeout is a
+    /// verdict, not an error.
+    #[arg(long, default_value_t = 30_000)]
+    timeout_ms: u64,
+    /// Write the JSONL divergence report here (one line per divergence,
+    /// ordered by `[proto.cmp.severity]`; empty file = green).
+    #[arg(long)]
+    report: Option<PathBuf>,
+    /// Write the conservatism ledger here (JSONL, one entry per line).
+    #[arg(long)]
+    ledger: Option<PathBuf>,
+    /// Print the JSONL report to stdout instead of the human summary.
+    #[arg(long)]
+    json: bool,
+    /// Print a `[proto.cmp.triage]` filing template for every unfiled
+    /// divergence.
+    #[arg(long)]
+    filing: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum FuzzMode {
+    Defined,
+    Boundary,
+    Mixed,
+}
+
+#[derive(Debug, Args)]
+struct FuzzArgs {
+    /// How many programs to generate.
+    #[arg(long, default_value_t = 1000)]
+    count: u64,
+    /// Campaign seed. Same seed, same programs, every platform — replay a
+    /// night's findings from its recorded seed.
+    #[arg(long, default_value_t = 0x1505)]
+    seed: u64,
+    /// Generation mode; `mixed` alternates.
+    #[arg(long, value_enum, default_value_t = FuzzMode::Mixed)]
+    mode: FuzzMode,
+    /// The counterparty `wolf` binary; without one the campaign runs the
+    /// self-oracle checks only (and says so).
+    #[arg(long)]
+    compiler: Option<PathBuf>,
+    /// Hard-fail instead of degrading to self-oracle mode when no
+    /// counterparty binary exists.
+    #[arg(long)]
+    require_counterparty: bool,
+    /// Wall-clock budget per subprocess invocation.
+    #[arg(long, default_value_t = 10_000)]
+    timeout_ms: u64,
+    /// Where generated cases and minimized reproducers land.
+    #[arg(long, default_value = "target/fuzz")]
+    out: PathBuf,
+}
+
 #[derive(Debug, Subcommand)]
 enum ProtocolCommand {
     /// Validate observation records against spec/06 `[proto.record]`.
@@ -140,6 +218,8 @@ fn main() -> ExitCode {
         Command::Protocol {
             command: ProtocolCommand::Validate { files },
         } => run_protocol_validate(&files),
+        Command::DiffRun(args) => run_diff_run(&args),
+        Command::Fuzz(args) => run_fuzz(&args),
     };
     ExitCode::from(code)
 }
@@ -556,4 +636,412 @@ fn run_protocol_validate(files: &[PathBuf]) -> u8 {
 
 fn display_path(path: &Path) -> String {
     wolf_interp::slash_path(path)
+}
+
+// ---------------------------------------------------------------------------
+// diff-run — the is05 differential runner
+// ---------------------------------------------------------------------------
+
+/// Resolves the counterparty, or prints the loud SKIP and decides the exit.
+fn counterparty_or_skip(explicit: Option<&Path>, require: bool) -> Result<PathBuf, u8> {
+    match differ::detect_counterparty(explicit) {
+        Counterparty::Found(path) => {
+            eprintln!("notice: counterparty compiler: {}", path.display());
+            Ok(path)
+        }
+        Counterparty::Missing { tried } => {
+            eprint!("{}", differ::skip_notice(&tried));
+            if require {
+                eprintln!(
+                    "wolf-interp: --require-counterparty was passed and no compiler binary exists"
+                );
+                Err(EXIT_CHECK_FAILED)
+            } else {
+                Err(EXIT_OK)
+            }
+        }
+    }
+}
+
+struct DiffOutcome {
+    divergences: Vec<DeepDivergence>,
+    ledger: Vec<LedgerEntry>,
+    compared: usize,
+    skipped_members: usize,
+}
+
+fn diff_corpus(args: &DiffRunArgs, compiler: &Path) -> Result<DiffOutcome, u8> {
+    let this = std::env::current_exe()
+        .map_err(|e| tool_error(&format!("cannot locate this binary: {e}")))?;
+    let report = corpus::walk(&args.corpus, None)
+        .map_err(|e| tool_error(&format!("cannot walk `{}`: {e}", args.corpus.display())))?;
+    let timeout = Duration::from_millis(args.timeout_ms);
+
+    let mut out = DiffOutcome {
+        divergences: Vec::new(),
+        ledger: Vec::new(),
+        compared: 0,
+        skipped_members: 0,
+    };
+    for file in &report.files {
+        match &file.outcome {
+            Outcome::Member(_) => {
+                out.skipped_members += 1;
+                continue;
+            }
+            Outcome::Failed(reason) => {
+                return Err(tool_error(&format!(
+                    "{}: unreadable corpus header: {reason}",
+                    file.path
+                )));
+            }
+            Outcome::Entry(_) => {}
+        }
+        let full = args.corpus.join(&file.path);
+        let source = std::fs::read(&full).unwrap_or_default();
+        let has_unsafe = source_has_unsafe(&source);
+        let a = differ::invoke(&this, &full, timeout);
+        let b = differ::invoke(compiler, &full, timeout);
+        let comparison = differ::compare_invocations(&file.path, &a, &b, has_unsafe);
+        out.compared += 1;
+        if let Some(divergence) = comparison.divergence {
+            out.divergences.push(divergence);
+        }
+        out.ledger.extend(comparison.ledger);
+    }
+    // `[proto.cmp.severity]`: the report orders by class, then by file so two
+    // runs of the same trees diff cleanly.
+    out.divergences
+        .sort_by(|x, y| (x.class, &x.file).cmp(&(y.class, &y.file)));
+    Ok(out)
+}
+
+/// The safe-tier filter the corpus tests already use: a file with no
+/// `unsafe`, no `asm`, and no C import is safe-tier by construction.
+fn source_has_unsafe(source: &[u8]) -> bool {
+    let text = String::from_utf8_lossy(source);
+    text.contains("unsafe") || text.contains("import c ") || text.contains("asm ")
+}
+
+/// Renders the human summary; returns the exit code per the gating posture:
+/// soundness candidates always gate; anything else gates only unfiled.
+fn report_diff(outcome: &DiffOutcome, args_filing: bool) -> u8 {
+    let mut by_class: BTreeMap<&str, usize> = BTreeMap::new();
+    for d in &outcome.divergences {
+        *by_class.entry(d.class.as_str()).or_default() += 1;
+    }
+    let mut by_ledger: BTreeMap<String, usize> = BTreeMap::new();
+    for entry in &outcome.ledger {
+        let key = match entry {
+            LedgerEntry::Unsupported { side, .. } => {
+                format!("unsupported({})", side.as_str())
+            }
+            LedgerEntry::RejectsBeyond { side, .. } => {
+                format!("rejects-beyond({})", side.as_str())
+            }
+            LedgerEntry::RunUnmatched { .. } => "run-unmatched".to_owned(),
+        };
+        *by_ledger.entry(key).or_default() += 1;
+    }
+
+    println!(
+        "differential: {} entr{} compared, {} member(s) exercised through their entries",
+        outcome.compared,
+        if outcome.compared == 1 { "y" } else { "ies" },
+        outcome.skipped_members
+    );
+    println!("divergences: {}", outcome.divergences.len());
+    for (class, count) in &by_class {
+        println!("  {class}: {count}");
+    }
+    println!("conservatism ledger: {} entr{}", outcome.ledger.len(), {
+        if outcome.ledger.len() == 1 {
+            "y"
+        } else {
+            "ies"
+        }
+    });
+    for (kind, count) in &by_ledger {
+        println!("  {kind}: {count}");
+    }
+
+    let mut gating = 0usize;
+    for d in &outcome.divergences {
+        let filed = d
+            .filed
+            .map(|id| format!(" [filed: {id}]"))
+            .unwrap_or_default();
+        println!(
+            "{}  {}  a={}  b={}  {}{filed}",
+            d.class,
+            d.file,
+            d.a,
+            d.b,
+            d.rung.map_or("-", Phase::as_str),
+        );
+        let gates = d.class == DeepClass::SoundnessCandidate || d.filed.is_none();
+        if gates {
+            gating += 1;
+        }
+        if args_filing && d.filed.is_none() {
+            println!("{}", d.filing());
+        }
+    }
+
+    if gating == 0 {
+        println!(
+            "differential: GREEN — every divergence is filed in docs/divergence-log.md \
+             and none is a soundness candidate"
+        );
+        EXIT_OK
+    } else {
+        println!(
+            "differential: {gating} gating divergence(s) — soundness candidates gate always; \
+             everything else gates until filed with a triage in docs/divergence-log.md"
+        );
+        EXIT_CHECK_FAILED
+    }
+}
+
+fn write_jsonl(path: &Path, lines: impl Iterator<Item = serde_json::Value>) -> Result<(), u8> {
+    let mut text = String::new();
+    for line in lines {
+        text.push_str(&line.to_string());
+        text.push('\n');
+    }
+    std::fs::write(path, text)
+        .map_err(|e| tool_error(&format!("cannot write `{}`: {e}", path.display())))
+}
+
+fn run_diff_run(args: &DiffRunArgs) -> u8 {
+    let compiler = match counterparty_or_skip(args.compiler.as_deref(), args.require_counterparty) {
+        Ok(path) => path,
+        Err(code) => return code,
+    };
+    let outcome = match diff_corpus(args, &compiler) {
+        Ok(outcome) => outcome,
+        Err(code) => return code,
+    };
+    if let Some(path) = &args.report
+        && let Err(code) = write_jsonl(
+            path,
+            outcome.divergences.iter().map(DeepDivergence::to_json),
+        )
+    {
+        return code;
+    }
+    if let Some(path) = &args.ledger
+        && let Err(code) = write_jsonl(path, outcome.ledger.iter().map(LedgerEntry::to_json))
+    {
+        return code;
+    }
+    if args.json {
+        for d in &outcome.divergences {
+            println!("{}", d.to_json());
+        }
+        let gating = outcome
+            .divergences
+            .iter()
+            .filter(|d| d.class == DeepClass::SoundnessCandidate || d.filed.is_none())
+            .count();
+        return if gating == 0 {
+            EXIT_OK
+        } else {
+            EXIT_CHECK_FAILED
+        };
+    }
+    report_diff(&outcome, args.filing)
+}
+
+// ---------------------------------------------------------------------------
+// fuzz — generation, comparison, reduction
+// ---------------------------------------------------------------------------
+
+fn run_fuzz(args: &FuzzArgs) -> u8 {
+    if let Err(e) = std::fs::create_dir_all(&args.out) {
+        return tool_error(&format!("cannot create `{}`: {e}", args.out.display()));
+    }
+    let compiler = match differ::detect_counterparty(args.compiler.as_deref()) {
+        Counterparty::Found(path) => {
+            eprintln!("notice: counterparty compiler: {}", path.display());
+            Some(path)
+        }
+        Counterparty::Missing { tried } => {
+            eprint!("{}", differ::skip_notice(&tried));
+            if args.require_counterparty {
+                eprintln!(
+                    "wolf-interp: --require-counterparty was passed and no compiler binary exists"
+                );
+                return EXIT_CHECK_FAILED;
+            }
+            eprintln!(
+                "notice: fuzz continues in self-oracle mode (defined programs must exit 0; \
+                 no unsafe-free program may report ub)"
+            );
+            None
+        }
+    };
+    let this = match std::env::current_exe() {
+        Ok(path) => path,
+        Err(e) => return tool_error(&format!("cannot locate this binary: {e}")),
+    };
+    let timeout = Duration::from_millis(args.timeout_ms);
+
+    println!(
+        "fuzz: seed={:#x} count={} mode={:?} counterparty={}",
+        args.seed,
+        args.count,
+        args.mode,
+        compiler.is_some(),
+    );
+
+    let mut findings = 0usize;
+    let mut divergent_classes: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut ledger_entries = 0usize;
+    let case_path = args.out.join("case.lu");
+    for index in 0..args.count {
+        let mode = match args.mode {
+            FuzzMode::Defined => Mode::Defined,
+            FuzzMode::Boundary => Mode::Boundary,
+            FuzzMode::Mixed => {
+                if index % 2 == 0 {
+                    Mode::Defined
+                } else {
+                    Mode::Boundary
+                }
+            }
+        };
+        let program = fuzz::generate(&mut fuzz::Rng::for_case(args.seed, index), mode);
+        let source = fuzz::render(&program);
+
+        let problem: Option<(&'static str, String)> = if let Some(compiler) = &compiler {
+            if std::fs::write(&case_path, &source).is_err() {
+                return tool_error("cannot write the generated case");
+            }
+            let a = differ::invoke(&this, &case_path, timeout);
+            let b = differ::invoke(compiler, &case_path, timeout);
+            let comparison = differ::compare_invocations("fuzz/case.lu", &a, &b, false);
+            ledger_entries += comparison.ledger.len();
+            // In defined mode the generator *promises* a well-typed program,
+            // so a counterparty rejection is never conservatism — it indicts
+            // the generator or the compiler, and either way a human looks.
+            let rejected_beyond = comparison.ledger.iter().find_map(|entry| match entry {
+                LedgerEntry::RejectsBeyond {
+                    side: wolf_interp::differ::Side::Counterparty,
+                    code,
+                    phase,
+                    ..
+                } if mode == Mode::Defined => Some((code.clone(), *phase)),
+                _ => None,
+            });
+            comparison
+                .divergence
+                .map(|d| {
+                    *divergent_classes.entry(d.class.as_str()).or_default() += 1;
+                    (d.class.as_str(), format!("a={} b={}", d.a, d.b))
+                })
+                .or_else(|| {
+                    rejected_beyond.map(|(code, phase)| {
+                        *divergent_classes.entry("verdict").or_default() += 1;
+                        (
+                            "verdict",
+                            format!(
+                                "counterparty rejects a defined-by-construction program: \
+                                 {code} at {phase}"
+                            ),
+                        )
+                    })
+                })
+        } else {
+            self_oracle(&source, mode)
+        };
+
+        if let Some((class, detail)) = problem {
+            findings += 1;
+            // Reduce with the same oracle the finding came from, then keep
+            // the minimized case beside its seed so it replays.
+            let mut still = |candidate: &fuzz::GProgram| {
+                let candidate_source = fuzz::render(candidate);
+                if let Some(compiler) = &compiler {
+                    if std::fs::write(&case_path, &candidate_source).is_err() {
+                        return false;
+                    }
+                    let a = differ::invoke(&this, &case_path, timeout);
+                    let b = differ::invoke(compiler, &case_path, timeout);
+                    let comparison = differ::compare_invocations("fuzz/case.lu", &a, &b, false);
+                    comparison
+                        .divergence
+                        .as_ref()
+                        .is_some_and(|d| d.class.as_str() == class)
+                        || (mode == Mode::Defined
+                            && comparison.ledger.iter().any(|entry| {
+                                matches!(
+                                    entry,
+                                    LedgerEntry::RejectsBeyond {
+                                        side: wolf_interp::differ::Side::Counterparty,
+                                        ..
+                                    }
+                                )
+                            }))
+                } else {
+                    self_oracle(&candidate_source, mode).is_some_and(|(c, _)| c == class)
+                }
+            };
+            let minimized = fuzz::reduce(&program, &mut still);
+            let repro = args.out.join(format!("finding-{index}.lu"));
+            let text = format!(
+                "// fuzz finding: class={class} seed={:#x} index={index} mode={}\n// {detail}\n{}",
+                args.seed,
+                mode.as_str(),
+                fuzz::render(&minimized)
+            );
+            if std::fs::write(&repro, text).is_err() {
+                return tool_error("cannot write the minimized reproducer");
+            }
+            println!(
+                "FINDING {class} at index {index} (minimized: {})",
+                repro.display()
+            );
+            println!("  {detail}");
+        }
+    }
+
+    println!(
+        "fuzz: {} case(s), {} finding(s), {} conservatism entr{}",
+        args.count,
+        findings,
+        ledger_entries,
+        if ledger_entries == 1 { "y" } else { "ies" }
+    );
+    for (class, count) in &divergent_classes {
+        println!("  {class}: {count}");
+    }
+    if findings == 0 {
+        EXIT_OK
+    } else {
+        EXIT_CHECK_FAILED
+    }
+}
+
+/// The counterparty-less oracle: what a generated program must do by
+/// construction. Defined mode promises a clean exit; every mode promises an
+/// unsafe-free program never reports UB and always parses.
+fn self_oracle(source: &str, mode: Mode) -> Option<(&'static str, String)> {
+    let observation = wolf_interp::frontend::observe(source.as_bytes(), None);
+    match (&observation.verdict, mode) {
+        (Verdict::Ub(anchor), _) => Some((
+            "soundness-candidate",
+            format!("ub({anchor}) in an unsafe-free generated program"),
+        )),
+        (Verdict::Fail(code), _) => Some((
+            "verdict",
+            format!("the generator emitted a program this frontend rejects: {code}"),
+        )),
+        (Verdict::Exit(0), _) => None,
+        (verdict, Mode::Defined) => Some((
+            "verdict",
+            format!("a defined-by-construction program produced {verdict}"),
+        )),
+        (_, Mode::Boundary) => None,
+    }
 }
