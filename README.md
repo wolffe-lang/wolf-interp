@@ -208,7 +208,11 @@ upstream corpus grew or a clause anchor moved, the bump is where you find out.
 
 ```sh
 cargo run -- corpus [--root <dir>] [--spec <dir>] [--json]
-cargo run -- conform-run <file.lu> [--phase=<p>] [--seed=N] [--json] [--trace[=all|mem|prov]]
+cargo run -- conform-run <file.lu> [--phase=<p>] [--seed=N] [--schedule=N|ev:c0,c1,…] \
+                          [--json] [--trace[=all|mem|prov]]
+cargo run -- conform-run <file.lu> --explore=N [--explore-steps=M] [--explore-preemptions=P] \
+                          [--explore-wall-ms=MS] [--explore-naive] [--explore-no-prune] \
+                          [--paranoid] [--json]
 cargo run -- lex   <file.lu> [--dump]
 cargo run -- parse <file.lu> [--dump]
 cargo run -- protocol validate <record.json>...
@@ -231,6 +235,18 @@ honestly — `diff-run` SKIPs, `fuzz` runs its self-oracle — and
 (`cargo build -p wolf_driver` inside `upstream/`) is legitimate binary
 acquisition; reading its source remains forbidden (the integrator ruling —
 `docs/divergence-log.md`).
+
+`conform-run --explore=N` is is07's schedule explorer: bounded exhaustive
+interleaving search over the `sched-ev/0` decision stream (DPOR with sleep
+sets; `--explore-naive` is the full-DFS baseline), asserting that every
+explored schedule of the program produces the same verdict, stdout and
+cleanup profile — the DRF-SC promise checked rather than claimed. A
+schedule-dependent program is a *finding*: the report prints each distinct
+outcome with its decision stream and a replay handle — `--seed=N` when the
+stream packs into the 62-bit schedule namespace, `--schedule=ev:c0,c1,…`
+otherwise — and the tool exits `1`. Budgets are explicit and an exhausted
+budget reports "frontier OPEN", never silent success. The design and its
+named approximations live in `docs/approximation-contract.md` §10.6.
 
 `lex --dump` prints the token stream, `parse --dump` prints a production trace
 and `conform-run --trace` prints the evaluation rules as they fire — each line
