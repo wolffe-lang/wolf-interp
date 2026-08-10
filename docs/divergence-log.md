@@ -46,6 +46,22 @@ differential lane detects the absence, prints `notice:` lines, and SKIPs;
 
 ## Open findings
 
+Fifth corpus differential: is09, pin `cbde620` (s21's shared tier — nine
+files advance to `mem`, `prov_holy_grail.lu` to `typecheck`; spec-extract
+renders the §3.2 operator climb into `grammar.ebnf`), 148 entries
+compared, **0 divergences** — the fourth consecutive zero round. 246
+conservatism-ledger entries, composition unchanged from the fourth round
+(59 rejects-beyond by the counterparty, 64 run-unmatched pre-M1, 80
+counterparty-unsupported, 43 interp-unsupported): the pin moved only
+`phase:` directives and spec text, and neither side's accept set moved
+with it. The newly explicit operator-climb EBNF was diffed against this
+repo's is01 §3.2 transcription (`parse::PRECEDENCE`,
+`parse::PREFIX_OPERATORS`): tier-for-tier, operator-for-operator,
+associativity-for-associativity identical — no finding; the check is now
+mechanical
+(`tests/spec_extract.rs::the_emitted_operator_climb_matches_our_transcription`).
+`differ::FILED_DIVERGENCES` remains **empty**.
+
 Fourth corpus differential: is08, pin `843174f`, 148 entries compared,
 **0 divergences**, 246 conservatism-ledger entries (59 rejects-beyond by
 the counterparty — the E1005/E1011/E1012 region-checker litmuses landed —

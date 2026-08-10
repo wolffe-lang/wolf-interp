@@ -106,6 +106,15 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             resolved — they RUN), and `conc/message_passing.lu` +
     //             `conc/when_multi.lu` cite the new `[conc.chan.move]` /
     //             `[conc.when.*]` clauses in their `conforms:` lines.)
+    //   cbde620 → 164 files (is09: s21's shared tier. No file added or
+    //             removed — ten existing files changed only their `phase:`
+    //             directive: nine advance to `mem` (`regions.lu`,
+    //             `memory/{handle_stale,move_ok,oob_bounds,prov_two_phase,
+    //             region_ambient_ok,region_multiopen_ok,region_multiopen_swap,
+    //             shared_ok}.lu`) and `memory/prov_holy_grail.lu` to
+    //             `typecheck`. The same pin renders the §3.2 operator climb
+    //             into `spec/grammar.ebnf` — checked against our is01
+    //             transcription in `tests/spec_extract.rs`.)
     let report = report();
     assert_eq!(
         report.total(),

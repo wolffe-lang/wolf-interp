@@ -539,6 +539,93 @@ fn e0006_spans_the_opening_brace() {
     assert_eq!(&source[diag.span.start..diag.span.end], "{");
 }
 
+#[test]
+fn the_emitted_operator_climb_matches_our_transcription() {
+    // The pin `cbde620` closes the gap both editor sprints flagged: `cargo
+    // xtask spec-extract` now renders the §3.2 climb table into
+    // `spec/grammar.ebnf` as explicit tier productions (`[gram.expr.prec]`),
+    // tightest first, each carrying its tier number and associativity in a
+    // trailing comment. That gives the spec's "one authoritative table, two
+    // independent transcriptions" a *third* rendering — and this test diffs
+    // it against is01's transcription mechanically, the same way the
+    // markdown-table test above does. A difference is a finding, never a
+    // local patch.
+    let ebnf = spec("grammar.ebnf");
+    let line = |name: &str| -> String {
+        let needle = format!("{name} ::=");
+        ebnf.lines()
+            .find(|l| l.trim_start().starts_with(&needle))
+            .unwrap_or_else(|| panic!("no `{needle}` production in the emitted grammar"))
+            .split_once("::=")
+            .expect("just matched")
+            .1
+            .to_owned()
+    };
+
+    // Tier 3: the prefix operators, exactly and in order.
+    assert_eq!(
+        quoted_terminals(&line("prefix_op")),
+        parse::PREFIX_OPERATORS
+            .iter()
+            .map(|op| (*op).to_owned())
+            .collect::<Vec<_>>(),
+        "tier 3: the emitted prefix set differs from our transcription"
+    );
+    assert!(
+        line("prefix_operand").contains("tier 3, prefix"),
+        "tier 3's comment moved"
+    );
+
+    // Tiers 4–13: production name, operator spellings (in order), tier
+    // number and associativity — all four read out of the emitted grammar
+    // and compared against `parse::PRECEDENCE`.
+    let tiers: &[(u8, &str)] = &[
+        (4, "cast_expr"),
+        (5, "mul_expr"),
+        (6, "add_expr"),
+        (7, "shift_expr"),
+        (8, "bitand_expr"),
+        (9, "bitxor_expr"),
+        (10, "bitor_expr"),
+        (11, "cmp_op"),
+        (12, "and_expr"),
+        (13, "or_expr"),
+    ];
+    for (tier, production) in tiers {
+        let body = line(production);
+        let ours = parse::PRECEDENCE
+            .iter()
+            .find(|(t, _, _)| t == tier)
+            .unwrap_or_else(|| panic!("tier {tier} missing from our transcription"));
+        assert_eq!(
+            quoted_terminals(&body),
+            ours.1.iter().map(|op| (*op).to_owned()).collect::<Vec<_>>(),
+            "tier {tier} ({production}): operator sets differ"
+        );
+        // Tier 11's comment rides `cmp_expr`; every other tier annotates its
+        // own production.
+        let commented = if *tier == 11 { line("cmp_expr") } else { body };
+        let assoc = match ours.2 {
+            Assoc::Left => "left",
+            Assoc::Right => "right",
+            Assoc::None => "none",
+        };
+        assert!(
+            commented.contains(&format!("tier {tier}, {assoc}")),
+            "tier {tier} ({production}): the emitted grammar disagrees on tier \
+             number or associativity: {commented}"
+        );
+    }
+
+    // Tier 11's shape claim — comparisons do not chain — is structural in the
+    // emitted grammar: `(cmp_op bitor_expr)?`, one optional rung, never `*`.
+    let cmp = line("cmp_expr");
+    assert!(
+        cmp.contains(")?") && !cmp.contains(")*"),
+        "tier 11 must be non-chaining in the emitted grammar: {cmp}"
+    );
+}
+
 /// `"{"{"…"}"}"` — `depth` string literals, each inside the previous one's
 /// interpolation.
 fn nest_strings(depth: usize) -> String {
