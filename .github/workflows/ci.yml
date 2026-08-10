@@ -304,6 +304,67 @@ jobs:
           out=$(cargo run --quiet -- fuzz --count 100 --seed 5381 --compiler does/not/exist 2>&1)
           echo "$out" | grep -q '0 finding(s)'
 
+      # is09: the conformance bundle. Determinism is the artifact's whole
+      # warranty (docs/conformance-bundle.md), so it is asserted three ways:
+      # export twice and byte-compare; run the consumption dry-run (the full
+      # pull → verify → diff path, with the bundle's own recorded reference
+      # outcomes replayed as the counterparty); and ship the manifest as an
+      # artifact so the `bundle-identical` job below can prove the three
+      # OSes exported the SAME bundle, hash for hash. The per-file hash
+      # listing is printed here so a cross-OS mismatch is diagnosable from
+      # the logs alone.
+      - name: conformance bundle (determinism + dry run)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet -- conformance export --out target/bundle-a --json | tee bundle-a.json
+          cargo run --quiet -- conformance export --out target/bundle-b >/dev/null
+          if ! diff -r target/bundle-a target/bundle-b; then
+            echo "::error::re-export is not byte-identical on ${{ matrix.os }}"; exit 1
+          fi
+          out=$(cargo run --quiet -- conformance check target/bundle-a \
+                  --replay target/bundle-a/expected/records.jsonl)
+          echo "$out" | grep -q 'divergences: 0' \
+            || { echo "::error::the consumption dry-run diverged: $out"; exit 1; }
+          echo "bundle_sha256 on ${{ matrix.os }}:"
+          grep '"bundle_sha256"' target/bundle-a/MANIFEST.json
+          echo "the manifest (per-file hashes — the cross-OS diagnostic):"
+          cat target/bundle-a/MANIFEST.json
+
+      - name: upload bundle manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-manifest-${{ matrix.os }}
+          path: target/bundle-a/MANIFEST.json
+          if-no-files-found: error
+
+  # is09: the three OSes must export the SAME bundle — every normalization
+  # lesson (LF-before-observation, slash paths, sorted walks) cashed in as
+  # one assertion. The manifests carry a sha256 per file, so on mismatch the
+  # diff below names the exact files that differ, and the per-OS job logs
+  # above carry the full hash listings.
+  bundle-identical:
+    name: bundle identical across OSes
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bundle-manifest-*
+      - name: compare the three manifests byte-for-byte
+        run: |
+          set -euo pipefail
+          ls -R
+          for os in macos-latest windows-latest; do
+            if ! diff bundle-manifest-ubuntu-latest/MANIFEST.json \
+                      "bundle-manifest-$os/MANIFEST.json"; then
+              echo "::error::the $os bundle differs from the linux one — a normalization regression; the per-file hashes above name the culprits"
+              exit 1
+            fi
+          done
+          echo "linux, macOS and windows exported hash-identical bundles:"
+          grep '"bundle_sha256"' bundle-manifest-ubuntu-latest/MANIFEST.json
+
   # The independence doctrine as a CI law: no wolf-lang code, ever.
   independence:
     name: independence
