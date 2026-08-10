@@ -7,7 +7,8 @@ evaluator with its region and provenance machines, the differential tools);
 `tests/` is the suite that makes it defensible; `upstream/` and
 `vendor/upstream/` are the pinned spec and corpus, consumed as data;
 `docs/` holds the engineering documents and the user manual
-(`docs/README.md` is the index). The independence doctrine in two
+(`docs/README.md` is the index). The package is `wolf-interp`; the binary
+it builds is named `lupin` (is12). The independence doctrine in two
 sentences: this repository shares no code with the wolf compiler, and the
 two implementations meet only through the pinned spec, the corpus, and the
 observation protocol. Disagreement between them is the product.
