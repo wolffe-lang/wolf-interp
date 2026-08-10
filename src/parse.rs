@@ -1995,9 +1995,18 @@ impl<'a> Parser<'a> {
     }
 
     /// Tier 2, left-associative:
-    /// `postfix_expr ::= primary (call_args | index_args | '.' member | '?')*`.
+    /// `postfix_expr ::= receiver (call_args | index_args | '.' member | '?')*`
+    /// with `receiver ::= primary | '(' param_mode expr ')'` — the X1 moded
+    /// receiver (§3.3). The moded form is receiver position only: a `.` member
+    /// must immediately follow the closing `)`, and anywhere else it is E0210
+    /// (spec-pinned by the receiver ruling; detached, the mode marks nothing).
     fn parse_postfix(&mut self) -> PResult<Expr> {
-        let mut expr = self.parse_primary()?;
+        let mut expr =
+            if self.at(&Tok::LParen) && matches!(self.tok_at(1), Some(Tok::Kw("mut" | "take"))) {
+                self.parse_moded_receiver()?
+            } else {
+                self.parse_primary()?
+            };
         let start = expr.span.start;
         loop {
             match self.tok() {
@@ -2052,6 +2061,41 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(expr)
+    }
+
+    /// `receiver ::= '(' param_mode expr ')'`, already known to start with
+    /// `( mut` or `( take`. Legal only immediately before a `.` member; the
+    /// detached form is E0210, spanning the whole parenthesized receiver.
+    fn parse_moded_receiver(&mut self) -> PResult<Expr> {
+        let anchor = "gram.expr.primary";
+        let start = self.expect(&Tok::LParen, anchor)?.start;
+        let mode = self
+            .parse_param_mode()
+            .expect("caller checked the mode keyword");
+        let place = self.with_struct_lit(true, Parser::parse_expr)?;
+        self.skip_inserted_terms();
+        let close = self.expect(&Tok::RParen, anchor)?;
+        let span = Span::new(start, close.end);
+        if !self.at(&Tok::Dot) {
+            let spelled = match mode {
+                ParamMode::Mut => "mut",
+                ParamMode::Take => "take",
+            };
+            return Err(Diag::new(
+                diag::E_MODED_RECEIVER_DETACHED,
+                span,
+                anchor,
+                format!(
+                    "`({spelled} …)` is receiver spelling (X1): legal only immediately \
+                     before a `.` member — detached, the mode marks nothing"
+                ),
+            ));
+        }
+        Ok(Expr {
+            kind: Box::new(ExprKind::ModedReceiver { mode, place }),
+            span,
+            anchor,
+        })
     }
 
     /// `member ::= IDENT | INT | reserved_kw` — member position is
@@ -3037,6 +3081,13 @@ fn trace_expr(out: &mut String, depth: usize, expr: &Expr) {
             Member::Named(ident) => format!("member .{}", ident.name),
             Member::Index(index, _) => format!("member .{index}"),
         },
+        ExprKind::ModedReceiver { mode, .. } => format!(
+            "moded receiver ({})",
+            match mode {
+                ParamMode::Mut => "mut",
+                ParamMode::Take => "take",
+            }
+        ),
         ExprKind::Try(_) => "try `?`".to_owned(),
         ExprKind::Range { inclusive, .. } => {
             format!("range {}", if *inclusive { "..=" } else { ".." })
@@ -3213,6 +3264,7 @@ fn trace_expr(out: &mut String, depth: usize, expr: &Expr) {
             trace_expr(out, child, place);
             trace_expr(out, child, from);
         }
+        ExprKind::ModedReceiver { place, .. } => trace_expr(out, child, place),
         _ => {}
     }
 }

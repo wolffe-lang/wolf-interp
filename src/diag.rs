@@ -198,6 +198,11 @@ pub const E_ASSUME_ARITY: &str = "E0206";
 /// depth 256 normative and differential-tested, an amendment this
 /// implementation's is01 fuzz smoke provoked. See [`crate::parse::MAX_NESTING`].
 pub const E_NESTING_RAIL: &str = "E0207";
+/// A moded receiver `(mut e)` / `(take e)` detached from a `.` member.
+/// **Spec-pinned**: §3.3's X1 receiver ruling names E0210 — "the moded form is
+/// admitted only where a `.` member immediately follows the closing `)`;
+/// anywhere else it is a parse error (E0210)."
+pub const E_MODED_RECEIVER_DETACHED: &str = "E0210";
 
 /// Every code this implementation invented, with the clause it serves.
 ///

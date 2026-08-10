@@ -2097,6 +2097,10 @@ impl<'p> Machine<'p> {
                 Ok(base)
             }
             ExprKind::Group(inner) => self.place_of(inner),
+            // `(mut p).norm()` — the place is `p`; the mode is the *call's*
+            // concern (`[gram.expr.primary]`, the X1 receiver ruling) and is
+            // read by `method_split`, not here.
+            ExprKind::ModedReceiver { place, .. } => self.place_of(place),
             ExprKind::Member { base, member } => {
                 let path = self.place_of(base)?;
                 Ok(match member {
@@ -2231,6 +2235,11 @@ impl<'p> Machine<'p> {
             ExprKind::Call { callee, args } => self.eval_call(callee, args, expr.span),
             ExprKind::BracketApply { base, args } => self.eval_bracket(base, args, expr.span),
             ExprKind::Member { base, member } => self.eval_member(base, member, expr.span),
+            // A moded receiver evaluates as its place; the mode is consumed by
+            // `method_split` when the member access is a call, and marks
+            // nothing on a bare member read (`(mut p).x` — the grammar admits
+            // it, and no pinned clause gives the mode a meaning there).
+            ExprKind::ModedReceiver { place, .. } => self.eval(place),
             ExprKind::Try(inner) => {
                 let value = self.eval(inner)?;
                 if value.is_error() {
@@ -3025,8 +3034,8 @@ impl<'p> Machine<'p> {
         // *value*. `[gram.item.use]`'s `path` production swallows the dots, so
         // `xs.push` and `geometry.area` arrive in the same shape and are told
         // apart by whether the head names a local or a module.
-        if let Some((receiver, method)) = self.method_split(callee) {
-            return self.eval_method(&receiver, &method, args, span);
+        if let Some((receiver, method, mode)) = self.method_split(callee) {
+            return self.eval_method(&receiver, &method, mode, args, span);
         }
 
         let target = self.eval(callee)?;
@@ -3054,19 +3063,28 @@ impl<'p> Machine<'p> {
         result.map(|applied| applied.value)
     }
 
-    /// Splits a callee into `(receiver, method)` when it is a method call.
-    fn method_split(&mut self, callee: &Expr) -> Option<(Receiver, String)> {
+    /// Splits a callee into `(receiver, method, receiver mode)` when it is a
+    /// method call. The mode is the X1 receiver spelling — `(mut c).bump()`,
+    /// `(take conn).close()` — and `None` is the bare (`read self`) form.
+    fn method_split(&mut self, callee: &Expr) -> Option<(Receiver, String, Option<ParamMode>)> {
         match &*callee.kind {
             ExprKind::Member {
                 base,
                 member: Member::Named(name),
-            } if !self.is_module_expr(base) => Some((
-                match self.place_of(base) {
-                    Ok(path) => Receiver::Place(path),
-                    Err(_) => Receiver::Expr(base.clone()),
-                },
-                name.name.clone(),
-            )),
+            } if !self.is_module_expr(base) => {
+                let (base, mode) = match &*base.kind {
+                    ExprKind::ModedReceiver { mode, place } => (place, Some(*mode)),
+                    _ => (base, None),
+                };
+                Some((
+                    match self.place_of(base) {
+                        Ok(path) => Receiver::Place(path),
+                        Err(_) => Receiver::Expr(base.clone()),
+                    },
+                    name.name.clone(),
+                    mode,
+                ))
+            }
             ExprKind::Path(path) if path.segments.len() >= 2 => {
                 let head = &path.segments[0].name;
                 if !self.local_exists(head) && !self.globals.contains_key(head) {
@@ -3076,7 +3094,7 @@ impl<'p> Machine<'p> {
                 let Some(Proj::Field(method)) = place.projections.pop() else {
                     return None;
                 };
-                Some((Receiver::Place(place), method))
+                Some((Receiver::Place(place), method, None))
             }
             _ => None,
         }
@@ -3169,6 +3187,7 @@ impl<'p> Machine<'p> {
         &mut self,
         receiver: &Receiver,
         method: &str,
+        mode: Option<ParamMode>,
         args: &[Arg],
         span: Span,
     ) -> EResult<Value> {
@@ -3223,7 +3242,15 @@ impl<'p> Machine<'p> {
         // observable effect is a whole-value store into the receiver's place.
         // It is a *child* write through the retagged tag: Reserved → Active,
         // the activation the two-phase window was waiting for.
+        //
+        // A `(take c)` receiver is consumed instead (`[mem.tier0.mode.take]` →
+        // `[mem.tier0.move.1]`): no writeback, and the place is moved-from
+        // afterwards, so a later use traps `use-after-move`.
         let written = match (&path, &result) {
+            (Some(path), Ok(_)) if mode == Some(ParamMode::Take) => {
+                self.fire(Rule::ModeTake, span, &format!("`take {path}` (receiver)"));
+                self.move_path(path, span).map(|_| ())
+            }
             (Some(path), Ok(_)) => self.write_path(path, receiver_value, span),
             _ => Ok(()),
         };

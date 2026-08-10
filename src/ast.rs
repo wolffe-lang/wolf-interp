@@ -709,6 +709,15 @@ pub enum ExprKind {
         base: Expr,
         member: Member,
     },
+    /// `'(' param_mode expr ')'` — the X1 moded receiver (§3.3, 131da77):
+    /// `(mut p).norm()`, `(take conn).close()`. Receiver position **only**:
+    /// the parser admits it solely where a `.` member follows the closing
+    /// `)`; detached it is E0210, so this node always sits under a
+    /// [`ExprKind::Member`] base.
+    ModedReceiver {
+        mode: ParamMode,
+        place: Expr,
+    },
     /// Postfix `?` — error propagation (D30).
     Try(Expr),
 
