@@ -1,0 +1,24 @@
+---
+source: tests/conc_machine.rs
+expression: "sched.join(\"\\n\")"
+---
+     0..0      SchedSeed [conc.det.seed] ev#0 sched-ev/0 stream opens; seed=0 (strict FIFO); root supervisor scope up
+     0..0      ChanBuf [conc.chan.buf] ev#1 channel#0 created, rendezvous (cap 0)
+     0..0      TaskScope [conc.task.scope] ev#2 scope#0 `s` opens (owner task 0)
+     0..0      SchedSpawn [conc.task.spawn] ev#3 spawn `task@104` (task 1) under scope#0 in proc#0
+     0..0      SchedSpawn [conc.task.spawn] ev#4 spawn `task@183` (task 2) under scope#0 in proc#0
+     0..0      TaskJoin [conc.task.join] ev#5 `main` blocks at scope#0's exit join
+     0..0      SchedPark [conc.det.events] ev#6 park `main` (task 0)
+     0..0      SchedDecision [conc.det.events] ev#7 schedule `task@104` (task 1), picked 0 of 2 ready
+     0..0      ChanBuf [conc.chan.buf] ev#8 `task@104` blocks receiving on channel#0 (empty)
+     0..0      SchedPark [conc.det.events] ev#9 park `task@104` (task 1)
+     0..0      SchedDecision [conc.det.events] ev#10 schedule `task@183` (task 2), picked 0 of 1 ready
+     0..0      TaskName [conc.task.name] ev#11 task `task@183` (task 2) completes: error `Boom`
+     0..0      TaskFail [conc.task.fail] ev#12 `task@183` failed: cancelling 1 sibling(s); the failure re-raises at the scope exit
+     0..0      CancelPoint [conc.cancel.points] ev#13 cancel `task@104` (task 1); delivery at a runtime-owned blocking point
+     0..0      SchedUnpark [conc.det.events] ev#14 unpark `task@104` (task 1)
+     0..0      SchedDecision [conc.det.events] ev#15 schedule `task@104` (task 1), picked 0 of 1 ready
+     0..0      TaskName [conc.task.name] ev#16 task `task@104` (task 1) completes: cancelled
+     0..0      SchedUnpark [conc.det.events] ev#17 unpark `main` (task 0)
+     0..0      SchedDecision [conc.det.events] ev#18 schedule `main` (task 0), picked 0 of 1 ready
+     0..0      TaskJoin [conc.task.join] ev#19 scope#0 joins: all 2 child(ren) complete

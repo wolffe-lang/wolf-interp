@@ -46,75 +46,147 @@ differential lane detects the absence, prints `notice:` lines, and SKIPs;
 
 ## Open findings
 
-First corpus differential: 2026-08-09, pin `8b04edf`, 133 entries compared,
-6 divergences, 228 conservatism-ledger entries (46 rejects-beyond by the
-counterparty — the standing false-rejection metric, 51 run-unmatched
-pre-M1, 78 counterparty-unsupported, 53 interp-unsupported).
+Second corpus differential: is06, pin `67c977f`, 133 entries compared,
+**1 divergence** (down from 6), 227 conservatism-ledger entries (46
+rejects-beyond by the counterparty, 61 run-unmatched pre-M1 — up from 51:
+the conc tier runs now — 78 counterparty-unsupported, 42 interp-unsupported
+— down from 53).
 
-### DIV-2026-001 — `typecheck/match_exhaustive.lu` — verdict @ parse — **compiler suspected**
+### DIV-2026-007 — `grammar/receiver_moded.lu` — span-or-code @ parse — **compiler suspected**
 
-- a (interp): `fail(E0201)@parse` at bytes 342..345 (`int`)
-- b (wolfc): `unsupported@typecheck` (i.e. parsed, resolved, typechecked)
-- The file spells `Rgb(int int int)`. `[gram.item.type]`'s production is
-  `variant ::= IDENT ('(' type (',' type)* ')')?` — commas are required, and
-  the clause is not ambiguous. The compiler accepts a form outside the
-  published grammar (or the corpus file has a typo its parser tolerates —
-  either way the defect is compiler-side). Owed: wolf-lang filing; either
-  the file gains commas *upstream* or the grammar is amended to admit
-  space-separated payload types — not this repo's call to make.
+The successor to DIV-2026-006, which the spec amendment resolved. Pin
+`67c977f` amended §3.3: "primary span = the entire parenthesized moded
+receiver" — the span this interpreter has reported since is05 (bytes
+233..240, `(mut y)`). The compiler at the same pin still reports 234..237
+(the `mut` keyword), observed through its own protocol records. The spec is
+now clear and the interpreter matches it; owed: a wolf-lang parser fix.
 
-### DIV-2026-002 — `resolve/cycle/main.lu` — verdict @ resolve — **interp suspected**
+### DIV-2026-008 — `conc/freeze_publish.lu` — corpus expectation @ run — **corpus/spec suspected**
 
-- a (interp): `exit(1)@run` — the cycle is tolerated and the program runs
-- b (wolfc): `fail(E0303)@resolve`
-- D32 / `[mod.cycle]`: imports form a DAG; the corpus pins E0303. The spec
-  is clear and the compiler matches it. This machine's sema-lite claims the
-  `resolve` rung (frontend ladder mapping) and must therefore enforce the
-  module-graph laws that rung owns. Owed here: cycle detection in `sema`,
-  failing E0303 with the cycle's spans.
+- interp: `exit(1)@run` (closures capture by value; the tasks write their
+  own copies of `a`/`b`; `a + b == 25` is false)
+- corpus: `check: run(exit=0)`
+- The file's expected exit **requires** writes to captured mutable locals to
+  be visible across tasks — exactly the shape `[conc.task.spawn]` makes a
+  compile error ("capturing a `mut` borrow of enclosing state is a compile
+  error (E1101) unless the state is a `sync` type") and that
+  `conc/store_buffer.lu` itself pins as `fail(E1101)`. The corpus
+  contradicts the spec, or the spec's capture rule has an unwritten
+  exception. Owed: a wolf-lang ruling — either the file gains a channel/
+  `sync` reporting path or `[conc.task.spawn]` names the exception.
+  (This machine's tests pin the conforming spelling:
+  `tests/conc_machine.rs::freeze_then_share_reads_from_any_task`.)
 
-### DIV-2026-003 — `resolve/dupdef/main.lu` — verdict @ resolve — **interp suspected**
+### DIV-2026-009 — `conc/when_multi.lu` — corpus expectation @ run — **corpus suspected**
 
-- a (interp): `unsupported@resolve`, reason "`helper` is defined more than
-  once … (the compiler's E0302)"
-- b (wolfc): `fail(E0302)@resolve`
-- The detection **already exists** here; only the record shape is wrong:
-  a detected D32 violation is a `fail(E0302)`, not an `unsupported` whose
-  `phase_reached` claims resolve completed clean. Owed here: report the
-  existing detection as the failure it is.
+- interp: `exit(1)@run` under every seed (total = 223)
+- corpus: `check: run(exit=0)`, i.e. `total == 224`
+- Arithmetic: `(1+10+100) + (2+10+100) = 223`. No legal execution
+  satisfies the file's check; the expected total is off by one. Owed: the
+  corpus fix upstream. (Compounding: `when` has no clauses in spec/03 at
+  all — see finding S-1 below.)
 
-### DIV-2026-004 — `resolve/private/main.lu` — verdict @ resolve — **interp suspected**
+## Spec findings from is06 (spec-is-defendant — filed, not absorbed)
 
-- a (interp): `unsupported@resolve`, reason names `[mod.vis.private]` and
-  E0304 itself
-- b (wolfc): `fail(E0304)@resolve`
-- Same shape as DIV-2026-003: the visibility violation is detected and then
-  declared out of scope instead of failed. Owed here: `fail(E0304)`.
+spec/03 had never been executed before this sprint. The machine is the
+first executable test of it, and the harvest below is routed upstream, not
+patched around. None of these gate: they are clause debts, and the rules
+implementing them cite either a clause family root or the reserved `sync`
+namespace and say so in their descriptions.
 
-### DIV-2026-005 — `resolve/unused/main.lu` — verdict @ resolve — **interp suspected**
-
-- a (interp): `exit(0)@run`
-- b (wolfc): `fail(E0305)@resolve`
-- `[mod.use.unused]` (D32): an unused import is a hard error, not a lint.
-  The spec is clear, the compiler matches it, and this machine simply does
-  not perform the check. Owed here: unused-import tracking in `sema`.
-
-### DIV-2026-006 — `grammar/receiver_moded.lu` — span-or-code @ parse — **spec suspected**
-
-- a (interp): `E0210` at bytes 233..240 — the whole `(mut y)` receiver
-- b (wolfc): `E0210` at bytes 234..237 — the `mut` keyword
-- Both implementations agree the program is illegal and agree on the code;
-  the §3.3 receiver ruling pins E0210 but is silent on its span, and the
-  two implementations chose defensibly and differently. Precedent:
-  `[gram.amb.structlit]`'s E0006 span was pinned by amendment after exactly
-  this kind of finding (is01). Owed: a spec amendment naming the span (this
-  repo's candidate: the whole parenthesized receiver, since the *placement*
-  is what is illegal); both implementations then conform.
+- **S-1 — `when` has no clauses.** 03 Q6 decided `when` is a language
+  construct; the corpus exercises it (`procs.lu`, `when_multi.lu`); the
+  sprint contract names `[conc.when.order]`/`[conc.when.nonest]` — and
+  spec/03 contains no `conc.when.*` anchors at all. The machine's rules
+  cite forward `sync.when.order`/`sync.when.nonest` until the section is
+  written.
+- **S-2 — region-transfer clauses missing.** The sprint names
+  `[conc.chan.move]`, `[conc.chan.staleuse]`, `[conc.chan.imm]`;
+  spec/03 §3 has only `[conc.chan.type]`'s parenthetical "(moved on
+  send)" and `[conc.mm.hb.move]`. The dynamic disconnectedness check and
+  the sender-stale-use fault have no clause ids to cite; the machine cites
+  `conc.mm.hb.move` and the `conc.chan` family root.
+- **S-3 — no verdict for deadlock, no trap kind either.**
+  `[proto.record.verdict]` has no verdict for nontermination and the
+  closed `[conf.trap.set]` has no `deadlock` kind. A program whose every
+  task is blocked with no pending timer reports `unsupported` with the
+  blocked-task roster — honest, but a spec gap for a language whose
+  concurrency is supposed to be schedulable and explorable (is07 will
+  need a stable spelling for "this schedule deadlocks").
+- **S-4 — child failure does not reach a blocked scope owner.**
+  `[conc.task.fail]` cancels *siblings* and re-raises *at the scope
+  exit*; it says nothing about the owner's own pending blocking
+  operations. An owner blocked on a channel its failed child would have
+  served deadlocks (observed on `procs.lu`'s second scope). Trio/njs
+  cancel the whole scope; spec/03 as written does not.
+- **S-5 — `corpus/procs.lu` and `conc/proc_kill_defers.lu` name
+  undefined functions.** `build_batch()`, `worker()`, `sleeper()` exist
+  in no document and no corpus file; the acceptance criterion
+  "`procs.lu` runs to completion" is unsatisfiable as the corpus stands.
+  The machine reports `unsupported` (honest decline); the supervision
+  semantics are pinned instead by self-contained litmuses in
+  `tests/conc_machine.rs`.
+- **S-6 — the `cancelled` exit reason is unreachable from the language.**
+  `[conc.proc.exit]` lists `cancelled` ("structured cancellation reached
+  the proc") but no construct in the pinned surface delivers structured
+  cancellation *to a proc* (procs sit under the root supervisor, outside
+  every user scope). Mechanism owed.
+- **S-7 — `link` has no spelling for coupling two procs, and the root
+  domain's death is unspecified.** `w.link()` couples `w` with the
+  *caller's* proc; called from `main` that is the root supervisor's
+  domain, whose abnormal exit spec/03 §2 never defines. The machine
+  reports the root kill as `unsupported`
+  (`tests/conc_machine.rs::a_linked_proc_takes_its_partner_with_it`).
+- **S-8 — closed-channel readiness in `select` is unspecified.**
+  `[conc.select.ready]` defines readiness for messages; `[conc.chan.close]`
+  defines the drained-close error for `recv` — whether a drained-closed
+  channel makes a `select` arm *ready* (Go: yes) is unwritten. The machine
+  answers yes, delivering the closed error to the arm.
 
 ## Resolved findings
 
-(none yet — a resolution lands a corpus file + clause citation in its
-resolving commit, then the entry moves here with the commit hash)
+### DIV-2026-001 — `typecheck/match_exhaustive.lu` — **resolved upstream, pin `67c977f`**
+
+Compiler suspected, confirmed: the parser accepted comma-less variant
+payloads outside the published grammar (and the formatter stripped the
+commas the grammar requires — the printer bug the leniency masked). The
+upstream fix landed both the parser rejection and the corrected corpus
+file `Rgb(int, int, int)`. Both implementations now parse the file and it
+**runs** here (`exit(0)`, in the run ledger). Closed by the pin bump.
+
+### DIV-2026-002 — `resolve/cycle/main.lu` — **resolved here, is06**
+
+Interp suspected, confirmed. `sema::resolve_check` now enforces
+`[mod.cycle]` (D32): the module-use graph is walked depth-first and the
+back-edge that closes a cycle fails `E0303` at the closing `use` decl —
+span `[18,28]`, byte-identical to the counterparty's record. The corpus
+file is the regression test (it fails at `resolve` exactly as pinned).
+
+### DIV-2026-003 — `resolve/dupdef/main.lu` — **resolved here, is06**
+
+Record shape fixed: a detected D32 duplicate is `fail(E0302)` at the
+second definition site (`[21,27]`, matching the counterparty), not an
+`unsupported` whose `phase_reached` claims resolve completed clean.
+
+### DIV-2026-004 — `resolve/private/main.lu` — **resolved here, is06**
+
+Same shape: the detected cross-module private access is `fail(E0304)` at
+the referencing member ident (`[305,311]`, matching the counterparty).
+
+### DIV-2026-005 — `resolve/unused/main.lu` — **resolved here, is06**
+
+`[mod.use.unused]` implemented: an unused import of a loaded module is a
+hard error, judged per file (D32 makes `use` file-scoped). `fail(E0305)`
+at the bound name (`[250,255]`, matching the counterparty). Ambient
+prelude names (`use std.fs`) are exempt — they resolve no directory and no
+module law this rung owns speaks about them.
+
+### DIV-2026-006 — `grammar/receiver_moded.lu` — **resolved in the spec, pin `67c977f`**
+
+Spec suspected, confirmed: §3.3 now pins "primary span = the entire
+parenthesized moded receiver" — the reading this repo proposed and already
+implemented. The interpreter conforms as-is; the compiler does not yet,
+and that residue is DIV-2026-007 above (compiler suspected).
 
 ## Fuzz campaign record
 

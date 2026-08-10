@@ -543,7 +543,90 @@ than silently absent, and ic03's interleavings are what make it reachable. §7/C
 is the sprint's `deferred(concurrency)` mark for the same reason, one campaign
 further out.
 
-## 10. Observability
+## 10. Deliberate approximations in the **concurrency** machine (is06)
+
+**Status:** drafted by is06 at pin `67c977f` — the first executable test of
+`spec/03-concurrency.md`. The spec findings the sprint harvested live in
+`docs/divergence-log.md` (S-1..S-8); this section records what *this
+machine* chose where the spec left room, and why every choice keeps the
+one-way approximation direction.
+
+### 10.1 One task at a time, by construction
+
+Tasks live on OS threads only because a suspended tree-walk needs a call
+stack; a per-task gate serializes them so **at most one task ever runs**.
+Every schedule decision flows through one seeded generator and is a
+numbered `sched-ev/0` event (`[conc.det.events]`); the same seed replays
+the identical stream (`[conc.det.seed]`). Seed 0 (and the unseeded
+default) is strict FIFO. There is no `unsafe` anywhere in the machine —
+the crate forbids it — so the determinism claim rests on the baton, not on
+memory-order reasoning.
+
+### 10.2 Captures copy; cross-task shared mutability is (almost) inexpressible
+
+Closures capture **by value** (`[gram.expr.closure]`), and that decision
+does the heavy lifting: a spawned task writes its own copies, globals are
+snapshotted per task, region transfer is checked at the send, frozen data
+is immutable, and `Mutex` payloads move through the scheduler. The shapes
+the compiler rejects statically (E1101/E1102) therefore mostly *cannot
+misbehave* here — they run, with task-local effects (the standing
+conservatism class; `conc/store_buffer.lu` is the exemplar, and
+`conc/freeze_publish.lu`'s reliance on the forbidden shape is
+DIV-2026-008). The two memories two tasks CAN share mutably are **pool
+slots in an unmoved region** and **raw allocations** — exactly
+`[conc.mm.race.1]`'s reachability — and both are watched by a
+vector-clock race detector that traps `race` (`[conc.mm.race.3]`) exactly
+at the conflicting interleaving the schedule realized. Detection is per
+byte range (raw) and per slot (pools): no over-approximation, so the
+forbidden direction (faulting a compiler-accepted program wrongly) stays
+closed.
+
+### 10.3 The killed-proc sequence, and what "no user code" means
+
+`[conc.proc.kill]` runs in order: tasks are marked killed and unwound with
+a dedicated signal that **skips every `defer`/`errdefer`**; the proc's own
+region bulk-frees; reasons deliver. The machine's scope-exit *sweep*
+(refcount decrements, idempotent region frees) still runs on the unwind —
+it is bookkeeping, not user code, and skipping it would leak cells the
+proc never owned. A task's ambient region at spawn is the spawner's
+current region; a proc's is its own fresh region (`[conc.proc.1]`).
+
+### 10.4 Blocking points and the wakes they surface
+
+Cancellation and kill are delivered **only** at the closed set of
+runtime-owned blocking points (`[conc.cancel.points]`): channel send/recv,
+`select`, `when` acquisition, scope join, timer wait. Cancellation
+surfaces as an error value (`Cancelled`) that ordinary returns carry —
+defers run (`[conc.cancel.defer]`). A `--checked` build's function-entry/
+back-edge polls are not implemented (no `--checked` profile exists here).
+`checkpoint()` is not implemented (no pinned std surface). C intrinsics
+complete synchronously, so `[conc.cancel.c]`'s "next safe point after
+return" degenerates to the next blocking point — noted in the trace when a
+concurrent program crosses the membrane.
+
+### 10.5 Choices the spec left open, taken and named
+
+- **Scope join under cancellation** keeps joining: structured concurrency's
+  invariant (children complete first) outranks prompt cancellation of the
+  owner; the children were cancelled with it, so the join terminates.
+- **Drained-closed channels make `select` arms ready** with the closed
+  error (Go's posture; finding S-8).
+- **Deadlock** — all tasks blocked, no timer — reports `unsupported` with
+  the blocked-task roster (findings S-3/S-4): no verdict and no trap kind
+  exist for it, and inventing one would put a guess into a differential
+  comparison.
+- **`when` payload write-back**: operands named by simple paths rebind to
+  the payload inside the body and write back at release, in reverse
+  canonical order; nested `when` traps `assert` (no kind fits; finding
+  S-1 owns the real answer).
+- **Monitor of an already-exited proc** delivers immediately; the reason
+  value keeps its label but a `normal` payload observed this way collapses
+  to unit (the label is what the corpus and tests compare).
+- **Exclusivity and borrows stay per task.** The access set that enforces
+  `[mem.tier0.excl]` is task-local; cross-task exclusivity has no dynamic
+  meaning here because cross-task mutable paths do not exist (10.2).
+
+## 11. Observability
 
 `--trace=mem` logs every region event — create, open, close/suspend, freeze,
 free, edge checks, ambient allocations, RC operations, handle faults — each line

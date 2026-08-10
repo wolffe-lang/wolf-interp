@@ -57,7 +57,7 @@ fn the_two_phase_litmus_keeps_its_receiver_reserved_across_the_argument_read() {
     let trace = trace_of(&source, Trace::Provenance);
     let retags: Vec<&String> = trace
         .iter()
-        .filter(|line| line.contains("retag `1:xs`") && line.contains("Reserved"))
+        .filter(|line| line.contains("retag `t0:1:xs`") && line.contains("Reserved"))
         .collect();
     assert!(
         !retags.is_empty(),

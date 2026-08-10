@@ -49,7 +49,10 @@ fn conform_run_emits_a_valid_record_and_exits_zero() {
 }
 
 #[test]
-fn conform_run_stays_honest_under_phase_and_seed() {
+fn conform_run_honors_seed_and_declares_it() {
+    // is06: `--seed=N` requests the spec/03 §5 deterministic schedule and the
+    // record declares `"seeded": true` (`[proto.seed.flag]`); the program runs
+    // under the sim scheduler now, so the concurrency file reaches `run`.
     let output = wolf_interp(&[
         "conform-run",
         &format!(
@@ -64,25 +67,35 @@ fn conform_run_stays_honest_under_phase_and_seed() {
 
     let value: serde_json::Value =
         serde_json::from_str(stdout_of(&output).trim()).expect("stdout is one JSON object");
-    // A deeper `--phase` never buys a deeper claim than the deepest *completed*
-    // rung (`[proto.record.phase]`): this file is concurrency, which no rung of
-    // is02 evaluates, so the answer is `resolve` + `unsupported` however deep
-    // the request. `--seed` never buys `seeded: true` (`[proto.seed.flag]`).
-    assert_eq!(value["phase_reached"], "resolve");
-    assert_eq!(value["verdict"], "unsupported");
-    assert_eq!(value["seeded"], false);
-    // The verdict carries no payload (`[proto.record.verdict]`); the reason
-    // rides an extension key (`[proto.record.ext]`).
-    assert!(
-        value["x-unsupported"]
-            .as_str()
-            .is_some_and(|r| r.contains("channel")),
-        "{value}"
-    );
+    assert_eq!(value["phase_reached"], "run");
+    assert_eq!(value["verdict"], "exit(0)");
+    assert_eq!(value["seeded"], true);
 
-    // The unhonored knob is announced on stderr, never on stdout.
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("--seed=7"), "{stderr}");
+    // The same seed replays the identical record ([conc.det.seed]).
+    let again = wolf_interp(&[
+        "conform-run",
+        &format!(
+            "{}/corpus/conc/select_seeded.lu",
+            wolf_interp::upstream_root()
+        ),
+        "--phase=run",
+        "--seed=7",
+        "--json",
+    ]);
+    assert_eq!(stdout_of(&output), stdout_of(&again));
+
+    // Unseeded, the record says so ([proto.seed.flag]).
+    let unseeded = wolf_interp(&[
+        "conform-run",
+        &format!(
+            "{}/corpus/conc/select_seeded.lu",
+            wolf_interp::upstream_root()
+        ),
+        "--json",
+    ]);
+    let value: serde_json::Value =
+        serde_json::from_str(stdout_of(&unseeded).trim()).expect("one JSON object");
+    assert_eq!(value["seeded"], false);
 }
 
 #[test]
