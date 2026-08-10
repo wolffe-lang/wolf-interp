@@ -1,5 +1,30 @@
 # Contributing to wolf-interp
 
+## Orientation
+
+What lives where: `src/` is the implementation (frontend, sema-lite, the
+evaluator with its region and provenance machines, the differential tools);
+`tests/` is the suite that makes it defensible; `upstream/` and
+`vendor/upstream/` are the pinned spec and corpus, consumed as data;
+`docs/` holds the engineering documents and the user manual
+(`docs/README.md` is the index). The independence doctrine in two
+sentences: this repository shares no code with the wolf compiler, and the
+two implementations meet only through the pinned spec, the corpus, and the
+observation protocol. Disagreement between them is the product.
+
+The gates, all green before any push:
+
+```sh
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+cargo run -- corpus
+```
+
+`cargo test` includes the doc-truth harness (`tests/doc_truth.rs`): every
+command/output pair in README.md and `docs/manual/` runs against the built
+binary and is byte-compared, so a doc edit that invents output fails CI.
+
 ## The independence doctrine
 
 **If you are tempted to import it, reimplement it.**
