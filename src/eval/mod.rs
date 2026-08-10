@@ -25,13 +25,17 @@
 //! tree-walk with per-access state checks is the design, not a compromise".
 
 pub mod builtin;
+mod conc;
 pub mod place;
 pub mod prov;
 pub mod region;
 pub mod rules;
+pub mod sched;
 pub mod value;
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::ast::{
     Arg, AssignOp, BinOp, Binding, Block, ClosureParam, ElseHandler, Expr, ExprKind, FnDecl,
@@ -89,6 +93,11 @@ pub enum Signal {
     Break(Value),
     Continue,
     Trap(Box<Trap>),
+    /// The task's proc was killed (`[conc.proc.kill]`): the frames return
+    /// without running **any** further user code — `defer`/`errdefer`
+    /// included, which is the decided D14 distinction from cancellation
+    /// (`[conc.cancel.defer]`: cancellation is polite; kill is structural).
+    ProcKilled,
     /// The provenance oracle reached a row of `[mem.ub]`'s closed enumeration.
     ///
     /// Distinct from [`Signal::Trap`] on purpose: a trap is a fault of a
@@ -288,35 +297,67 @@ struct Frame {
     scopes: Vec<Scope>,
 }
 
-/// The abstract machine.
-pub struct Machine<'p> {
-    program: &'p Program,
+/// The state every task of one program run shares, behind locks.
+///
+/// The locks are for the borrow checker, not for parallelism: the scheduler's
+/// baton guarantees at most one task runs at a time (`sched`), so every guard
+/// here is uncontended by construction and the ordering of mutations is the
+/// schedule's, deterministically. Each component gets its own mutex so a
+/// transient store access can never deadlock against a trace line; no code
+/// holds two of these at once except [`Machine::save_task_stack`]'s documented
+/// store→sched ordering.
+#[derive(Clone)]
+struct Shared {
+    program: Arc<Program>,
+    /// `[mem.model.machine]` components 3 and 4: the region forest and the
+    /// Tier-2 pools and cells. The open-stack half is per task, swapped in
+    /// and out at context switches ([`Store::swap_open`]).
+    store: Arc<Mutex<Store>>,
+    /// `[mem.model.machine]` component 2: the provenance forest (is04).
+    prov: Arc<Mutex<Provenance>>,
+    stdout: Arc<Mutex<Vec<u8>>>,
+    trace: Arc<Mutex<Vec<String>>>,
+    /// Set when the forest invariant assertion ever failed. A broken invariant
+    /// is an interpreter bug, so it is recorded rather than swallowed.
+    forest: Arc<Mutex<Result<(), String>>>,
+    /// Steps taken by every task together, against [`Machine::FUEL`].
+    steps: Arc<AtomicU64>,
+    /// The sim scheduler (is06): tasks, channels, procs, virtual time.
+    sched: Arc<sched::Sched>,
+    tracing: Trace,
+}
+
+/// The abstract machine — one **task's** view of the program run.
+///
+/// Frames, exclusivity, pending retags and the unsafe depth are per task;
+/// everything with identity lives in [`Shared`]. `main` is task 0; spawned
+/// tasks get their own `Machine` on their own thread, scheduled one at a
+/// time (`sched`).
+pub struct Machine {
+    shared: Shared,
+    /// This machine's task id in the scheduler.
+    task: sched::TaskId,
     frames: Vec<Frame>,
     access: AccessSet,
+    /// Item-level bindings. Evaluated at program start on task 0 and
+    /// snapshotted into each task at spawn: cross-task global mutation is not
+    /// a channel this machine provides (the compiler's E1101 rejects the
+    /// shape statically; `docs/approximation-contract.md` records the choice).
     globals: BTreeMap<String, Slot>,
-    /// `[mem.model.machine]` components 3 and 4: the region forest and the
-    /// scope stack, plus the Tier-2 pools and cells.
-    store: Store,
-    /// `[mem.model.machine]` component 2: the provenance forest (is04).
-    prov: Provenance,
     /// How many `unsafe { }` blocks are open. `[mem.ub]`'s enumeration is
     /// Tier-3-reachable only, so the rows that need "in unsafe code" in their
     /// wording (T1) ask this.
     unsafe_depth: u32,
+    /// How many `when` bodies are open — nested acquisition faults
+    /// (03 Q6; the clause spec/03 still owes).
+    when_depth: u32,
     /// Retags produced by the current call's arguments, waiting for
     /// [`Machine::call_fn`] to bind them to the callee's parameter places.
     pending_retags: Vec<Option<PendingRetag>>,
-    stdout: Vec<u8>,
-    trace: Vec<String>,
     tracing: Trace,
-    /// Set when the forest invariant assertion ever failed. A broken invariant
-    /// is an interpreter bug, so it is recorded rather than swallowed.
-    forest: Result<(), String>,
-    /// Steps taken, against [`Machine::FUEL`].
-    steps: u64,
 }
 
-impl<'p> Machine<'p> {
+impl Machine {
     /// Evaluation steps a program may take before the machine gives up.
     ///
     /// A non-terminating program has no verdict — `[proto.record.verdict]`
@@ -325,28 +366,63 @@ impl<'p> Machine<'p> {
     pub const FUEL: u64 = 50_000_000;
 
     #[must_use]
-    pub fn new(program: &'p Program) -> Machine<'p> {
+    pub fn new(program: &Program) -> Machine {
+        Machine::with_seed(program, None)
+    }
+
+    /// As [`Machine::new`], with `--seed=N`'s deterministic schedule request
+    /// (`[conc.det.seed]`; `[proto.seed.flag]`). `None` and `Some(0)` are both
+    /// the strict-FIFO schedule; the record's `seeded` flag is the caller's.
+    #[must_use]
+    pub fn with_seed(program: &Program, seed: Option<u64>) -> Machine {
+        let shared = Shared {
+            program: Arc::new(program.clone()),
+            store: Arc::new(Mutex::new(Store::new())),
+            prov: Arc::new(Mutex::new(Provenance::new())),
+            stdout: Arc::new(Mutex::new(Vec::new())),
+            trace: Arc::new(Mutex::new(Vec::new())),
+            forest: Arc::new(Mutex::new(Ok(()))),
+            steps: Arc::new(AtomicU64::new(0)),
+            sched: Arc::new(sched::Sched::new(seed.unwrap_or(0))),
+            tracing: Trace::Off,
+        };
+        Machine::for_task(shared, 0, BTreeMap::new())
+    }
+
+    /// A task's machine: its own frames over the shared world.
+    fn for_task(shared: Shared, task: sched::TaskId, globals: BTreeMap<String, Slot>) -> Machine {
+        let tracing = shared.tracing;
         Machine {
-            program,
+            shared,
+            task,
             frames: Vec::new(),
             access: AccessSet::new(),
-            globals: BTreeMap::new(),
-            store: Store::new(),
-            prov: Provenance::new(),
+            globals,
             unsafe_depth: 0,
+            when_depth: 0,
             pending_retags: Vec::new(),
-            stdout: Vec::new(),
-            trace: Vec::new(),
-            tracing: Trace::Off,
-            forest: Ok(()),
-            steps: 0,
+            tracing,
         }
     }
 
     #[must_use]
-    pub fn tracing(mut self, trace: Trace) -> Machine<'p> {
+    pub fn tracing(mut self, trace: Trace) -> Machine {
         self.tracing = trace;
+        self.shared.tracing = trace;
         self
+    }
+
+    // -- the shared world's doors ------------------------------------------
+
+    /// The region store, for this module and `builtin`'s Tier-2 surface.
+    /// A transient guard: never held across another `self` call.
+    pub(crate) fn store(&self) -> MutexGuard<'_, Store> {
+        self.shared.store.lock().expect("store lock")
+    }
+
+    /// The provenance machine, for this module and `builtin`'s C intrinsics.
+    pub(crate) fn prov(&self) -> MutexGuard<'_, Provenance> {
+        self.shared.prov.lock().expect("prov lock")
     }
 
     /// Stack the tree-walk runs on.
@@ -380,15 +456,29 @@ impl<'p> Machine<'p> {
 
     fn run_on_this_stack(mut self) -> Run {
         let outcome = self.run_main();
+        // The root supervisor's teardown (`[conc.task.root]`): every daemon
+        // proc still alive is killed per `[conc.proc.kill]`, every remaining
+        // task thread is reaped one at a time, and the regions the killed
+        // procs owned bulk-free here.
+        let leftover = self.shared.sched.shutdown();
+        for region in leftover {
+            let freed = self.store().free(region);
+            self.prov().region_freed(&freed, Span::new(0, 0));
+        }
+        self.shared.sched.join_all();
+        self.drain_sched();
         // The program region is freed last, by the machine: `main`'s caller is
         // the runtime, and `[mem.region.intra.2]` frees at the owner's death.
-        let freed = self.store.free(Store::root());
+        let freed = self.store().free(Store::root());
         // `[mem.prov.region]`: freeing a region Disables every tag tree it owns.
-        self.prov.region_freed(&freed, Span::new(0, 0));
-        let leaks = self.store.leaks();
-        let live_cells = self.store.live_cells();
-        let host_leaks = self.prov.live_host_allocs();
-        let forest = match (&self.forest, self.store.assert_forest()) {
+        self.prov().region_freed(&freed, Span::new(0, 0));
+        let leaks = self.store().leaks();
+        let live_cells = self.store().live_cells();
+        let host_leaks = self.prov().live_host_allocs();
+        let forest = match (
+            &*self.shared.forest.lock().expect("forest lock"),
+            self.store().assert_forest(),
+        ) {
             (Err(broken), _) => Err(broken.clone()),
             (Ok(()), verdict) => verdict,
         };
@@ -399,16 +489,18 @@ impl<'p> Machine<'p> {
             Span::new(0, 0),
             &format!(
                 "program exit: {} region(s) created, {} leaked, {} live `shared` cell(s)",
-                self.store.regions().len(),
+                self.store().regions().len(),
                 leaks.len(),
                 live_cells.len()
             ),
         );
         self.drain_prov();
+        let stdout = std::mem::take(&mut *self.shared.stdout.lock().expect("stdout lock"));
+        let trace = std::mem::take(&mut *self.shared.trace.lock().expect("trace lock"));
         Run {
             outcome,
-            stdout: self.stdout,
-            trace: self.trace,
+            stdout,
+            trace,
             leaks,
             live_cells,
             host_leaks,
@@ -423,9 +515,10 @@ impl<'p> Machine<'p> {
         });
 
         // Item-level `let`/`var`/`const` evaluate once, in declaration order.
-        let bindings = self.program.root().bindings.clone();
+        let bindings = self.shared.program.root().bindings.clone();
         for name in bindings {
-            let Some(Def::Binding(binding)) = self.program.lookup("", &name, false).cloned() else {
+            let Some(Def::Binding(binding)) = self.shared.program.lookup("", &name, false).cloned()
+            else {
                 continue;
             };
             match self.eval(&binding.value) {
@@ -436,7 +529,7 @@ impl<'p> Machine<'p> {
             }
         }
 
-        let Some(Def::Fn(main)) = self.program.lookup("", "main", false).cloned() else {
+        let Some(Def::Fn(main)) = self.shared.program.lookup("", "main", false).cloned() else {
             return Outcome::Unsupported(
                 "the program has no `main` in its root module (D32: directory = module)".to_owned(),
             );
@@ -482,6 +575,11 @@ impl<'p> Machine<'p> {
             Err(Signal::Break(_) | Signal::Continue) => {
                 Outcome::Unsupported("`break`/`continue` outside a loop".to_owned())
             }
+            Err(Signal::ProcKilled) => Outcome::Unsupported(
+                "`main`'s own proc was killed (a `link` to a dying proc reached the root \
+                 supervisor); spec/03 gives the root domain no exit semantics"
+                    .to_owned(),
+            ),
         }
     }
 
@@ -489,10 +587,20 @@ impl<'p> Machine<'p> {
 
     fn fire(&mut self, rule: Rule, span: Span, detail: &str) {
         if self.tracing.keeps(rule) {
-            self.trace.push(format!(
+            self.shared.trace.lock().expect("trace lock").push(format!(
                 "{:>6}..{:<6} {} {}",
                 span.start, span.end, rule, detail
             ));
+        }
+    }
+
+    /// Moves the scheduler's decision log into `--trace`, in decision order.
+    /// Called after every operation that can schedule, exactly as
+    /// [`Machine::drain_prov`] does for the provenance machine.
+    fn drain_sched(&mut self) {
+        let notes = self.shared.sched.take_notes();
+        for (rule, detail) in notes {
+            self.fire(rule, Span::new(0, 0), &detail);
         }
     }
 
@@ -507,16 +615,17 @@ impl<'p> Machine<'p> {
     /// and the recorded failure surfaces on [`Run::forest`], which CI asserts
     /// over the whole corpus.
     fn assert_forest(&mut self, span: Span) {
-        if self.forest.is_err() {
+        if self.shared.forest.lock().expect("forest lock").is_err() {
             return;
         }
-        if let Err(broken) = self.store.assert_forest() {
+        let verdict = self.store().assert_forest();
+        if let Err(broken) = verdict {
             self.fire(
                 Rule::RegionEdgeIso,
                 span,
                 &format!("FOREST BROKEN: {broken}"),
             );
-            self.forest = Err(broken);
+            *self.shared.forest.lock().expect("forest lock") = Err(broken);
         }
     }
 
@@ -526,7 +635,8 @@ impl<'p> Machine<'p> {
     /// interleaves with the `mem` one in execution order rather than arriving
     /// as a block at the end.
     fn drain_prov(&mut self) {
-        for (rule, span, detail) in self.prov.take_notes() {
+        let notes = self.prov().take_notes();
+        for (rule, span, detail) in notes {
             self.fire(rule, span, &detail);
         }
     }
@@ -579,11 +689,14 @@ impl<'p> Machine<'p> {
         alloc: Option<prov::AllocId>,
         message: impl Into<String>,
     ) -> EResult<T> {
+        // One guard, one statement: two `self.prov()` temporaries in a single
+        // expression would deadlock the non-reentrant lock against itself
+        // (guard temporaries live to the end of the statement).
         let (tag_span, tree) = match alloc {
-            Some(alloc) => (
-                self.prov.alloc(alloc).map(|entry| entry.span),
-                self.prov.tree(alloc),
-            ),
+            Some(alloc) => {
+                let prov = self.prov();
+                (prov.alloc(alloc).map(|entry| entry.span), prov.tree(alloc))
+            }
             None => (None, Vec::new()),
         };
         let finding = UbFinding {
@@ -604,7 +717,45 @@ impl<'p> Machine<'p> {
         kind: AccessKind,
         span: Span,
     ) -> EResult<()> {
-        match self.prov.access(ptr, len, kind, span) {
+        // The race detector first (`[conc.mm.race.3]`): raw memory is Tier
+        // 3/FFI-reachable, exactly `[conc.mm.race.1]`'s surface, and two tasks
+        // with copies of one pointer are the shape that can actually race in
+        // this machine.
+        if let Some(alloc) = ptr.alloc
+            && self.shared.sched.ever_concurrent()
+        {
+            let lo = usize::try_from(ptr.offset.max(0)).unwrap_or(0);
+            let report = self.shared.sched.race_check(
+                self.task,
+                sched::RaceKey::Alloc(alloc),
+                lo,
+                lo.saturating_add(len),
+                kind == AccessKind::Write,
+            );
+            self.drain_sched();
+            if let Some(report) = report {
+                return self.trap(
+                    TrapKind::Race,
+                    Rule::RaceDetect,
+                    span,
+                    format!(
+                        "data race: this {} of alloc#{alloc} conflicts with an unordered {} by {} \
+                         — no happens-before edge orders them ([conc.mm.hb]); detection is exact \
+                         at the interleaving this schedule realized",
+                        if kind == AccessKind::Write {
+                            "write"
+                        } else {
+                            "read"
+                        },
+                        if report.other_write { "write" } else { "read" },
+                        report.other_task
+                    ),
+                    None,
+                );
+            }
+        }
+        let access = self.prov().access(ptr, len, kind, span);
+        match access {
             Ok(()) => {
                 self.drain_prov();
                 Ok(())
@@ -614,14 +765,17 @@ impl<'p> Machine<'p> {
     }
 
     /// The provenance key of a place: the frame keeps two activations of one
-    /// local apart, exactly as [`Path`] does.
-    fn place_key(path: &Path) -> String {
-        format!("{}:{path}", path.frame)
+    /// local apart, exactly as [`Path`] does — and the task keeps two tasks'
+    /// frame 0 apart, because frames are per task (is06). Without the task
+    /// component, `ch` in two spawned closures would collide into one tag
+    /// tree and mint spurious §7/P1 findings.
+    fn place_key(&self, path: &Path) -> String {
+        format!("t{}:{}:{path}", self.task, path.frame)
     }
 
     fn step(&mut self) -> EResult<()> {
-        self.steps += 1;
-        if self.steps > Machine::FUEL {
+        let taken = self.shared.steps.fetch_add(1, Ordering::Relaxed);
+        if taken >= Machine::FUEL {
             return unsupported(format!(
                 "the program did not terminate within {} evaluation steps",
                 Machine::FUEL
@@ -675,7 +829,7 @@ impl<'p> Machine<'p> {
         let extra = self.access.len().saturating_sub(scope.held);
         self.access.release(extra);
         self.reclaim(&scope);
-        self.prov.prune();
+        self.prov().prune();
     }
 
     /// Scope-exit reclamation: the Tier-1 and Tier-2 half of `[mem.shared.drop]`.
@@ -708,14 +862,14 @@ impl<'p> Machine<'p> {
             for granule in refs {
                 match granule {
                     Ref::Region(id) => {
-                        let freed = self.store.free(id);
-                        self.prov.region_freed(&freed, Span::new(0, 0));
+                        let freed = self.store().free(id);
+                        self.prov().region_freed(&freed, Span::new(0, 0));
                         if !freed.is_empty() {
                             let detail = format!(
                                 "`{name}` dies: {} freed wholesale",
                                 freed
                                     .iter()
-                                    .map(|id| self.store.label(*id))
+                                    .map(|id| self.store().label(*id))
                                     .collect::<Vec<_>>()
                                     .join(", ")
                             );
@@ -723,7 +877,7 @@ impl<'p> Machine<'p> {
                         }
                     }
                     Ref::Shared(cell) => {
-                        if self.store.release(cell) {
+                        if self.store().release(cell) {
                             self.fire(
                                 Rule::SharedDrop,
                                 Span::new(0, 0),
@@ -738,7 +892,7 @@ impl<'p> Machine<'p> {
                         }
                     }
                     Ref::Weak(cell) => {
-                        self.store.drop_weak(cell);
+                        self.store().drop_weak(cell);
                         self.fire(
                             Rule::SharedWeak,
                             Span::new(0, 0),
@@ -942,8 +1096,9 @@ impl<'p> Machine<'p> {
     /// the borrows a program actually creates rather than by the reads it
     /// performs. The first retag of a place is what mints its root.
     fn access_place(&mut self, path: &Path, kind: AccessKind, span: Span) -> EResult<()> {
-        let key = Machine::place_key(path);
-        match self.prov.access_place(&key, kind, span) {
+        let key = self.place_key(path);
+        let access = self.prov().access_place(&key, kind, span);
+        match access {
             Ok(()) => {
                 self.drain_prov();
                 Ok(())
@@ -972,7 +1127,11 @@ impl<'p> Machine<'p> {
     }
 
     fn write_out(&mut self, text: &str) {
-        self.stdout.extend_from_slice(text.as_bytes());
+        self.shared
+            .stdout
+            .lock()
+            .expect("stdout lock")
+            .extend_from_slice(text.as_bytes());
     }
 
     // -- Tier 1: the region machine (§3) -----------------------------------
@@ -1010,8 +1169,8 @@ impl<'p> Machine<'p> {
     /// collection constructors, and closures" (`[mem.model.alloc]`) — so this
     /// is called from exactly those, and nowhere else.
     pub(crate) fn allocate(&mut self, span: Span, what: &str) -> RegionId {
-        let id = self.store.charge();
-        let label = self.store.label(id);
+        let id = self.store().charge();
+        let label = self.store().label(id);
         self.fire(
             Rule::RegionAmbient,
             span,
@@ -1022,15 +1181,16 @@ impl<'p> Machine<'p> {
 
     /// The current (ambient) region.
     pub(crate) fn current_region(&self) -> RegionId {
-        self.store.current()
+        self.store().current()
     }
 
     /// Opens a region for a block (`[mem.region.open.1]`, `[mem.region.multiopen]`).
     fn enter_region(&mut self, id: RegionId, span: Span) -> EResult<()> {
-        match self.store.enter(id) {
+        let entered = self.store().enter(id);
+        match entered {
             Ok(()) => {
-                let label = self.store.label(id);
-                let open = self.store.open_set().len();
+                let label = self.store().label(id);
+                let open = self.store().open_set().len();
                 self.fire(Rule::RegionOpen, span, &format!("open {label}"));
                 if open > 2 {
                     // More than the program region and this one: the relaxation
@@ -1058,10 +1218,10 @@ impl<'p> Machine<'p> {
     }
 
     fn leave_region(&mut self, id: RegionId, span: Span) {
-        self.store.leave(id);
-        let label = self.store.label(id);
+        self.store().leave(id);
+        let label = self.store().label(id);
         let state = self
-            .store
+            .store()
             .state(id)
             .map_or_else(|| "gone".to_owned(), |state| state.to_string());
         self.fire(
@@ -1092,7 +1252,8 @@ impl<'p> Machine<'p> {
         what: &str,
     ) -> EResult<()> {
         for granule in region::refs_of(value) {
-            match self.store.classify_edge(into, granule) {
+            let edge = self.store().classify_edge(into, granule);
+            match edge {
                 Edge::Intra => self.fire(
                     Rule::RegionIntra,
                     span,
@@ -1110,10 +1271,10 @@ impl<'p> Machine<'p> {
                 ),
                 Edge::Iso(child) => {
                     if let Some(parent) = into {
-                        self.store.adopt(parent, child);
+                        self.store().adopt(parent, child);
                         self.assert_forest(span);
                     }
-                    let label = self.store.label(child);
+                    let label = self.store().label(child);
                     self.fire(
                         Rule::RegionEdgeIso,
                         span,
@@ -1136,6 +1297,11 @@ impl<'p> Machine<'p> {
         Ok(())
     }
 
+    /// One-statement `freeze`: the guard must not live into the match arms.
+    fn store_freeze(&mut self, id: RegionId) -> Result<Vec<RegionId>, String> {
+        self.store().freeze(id)
+    }
+
     /// `region name { … }` / `freeze region { … }` — the sugar (X4).
     ///
     /// Create, open, run, close, and then either free wholesale
@@ -1153,8 +1319,8 @@ impl<'p> Machine<'p> {
     ) -> EResult<Value> {
         let strategy = self.strategy_of(strategy);
         let binder = name.map(|ident| ident.name.clone());
-        let id = self.store.create(binder.clone(), strategy.clone(), span);
-        let label = self.store.label(id);
+        let id = self.store().create(binder.clone(), strategy.clone(), span);
+        let label = self.store().label(id);
         self.fire(
             Rule::RegionCreate,
             span,
@@ -1168,7 +1334,7 @@ impl<'p> Machine<'p> {
 
         self.push_scope();
         if let Some(binder) = &binder {
-            let generation = self.store.generation(id);
+            let generation = self.store().generation(id);
             self.fire(
                 Rule::RegionAffine,
                 span,
@@ -1194,14 +1360,14 @@ impl<'p> Machine<'p> {
         // oracle checks.
         match finish {
             SugarExit::Free => {
-                let freed = self.store.free(id);
+                let freed = self.store().free(id);
                 // `[mem.prov.region]`: the wholesale free Disables every tag
                 // tree of every allocation the region owned.
-                self.prov.region_freed(&freed, span);
+                self.prov().region_freed(&freed, span);
                 if !freed.is_empty() {
                     let labels = freed
                         .iter()
-                        .map(|id| self.store.label(*id))
+                        .map(|id| self.store().label(*id))
                         .collect::<Vec<_>>()
                         .join(", ");
                     self.fire(
@@ -1211,11 +1377,11 @@ impl<'p> Machine<'p> {
                     );
                 }
             }
-            SugarExit::Freeze => match self.store.freeze(id) {
+            SugarExit::Freeze => match self.store_freeze(id) {
                 Ok(frozen) => {
                     // `[mem.prov.region]`: `freeze` transitions all its tags to
                     // Frozen, so a later write through any of them is §7/P2.
-                    self.prov.region_frozen(&frozen, span);
+                    self.prov().region_frozen(&frozen, span);
                     let count = frozen.len();
                     self.fire(
                         Rule::RegionFreeze,
@@ -1274,10 +1440,11 @@ impl<'p> Machine<'p> {
             None => self.eval(operand)?,
         };
         let id = self.region_id_of(&value, span, "`freeze`")?;
-        match self.store.freeze(id) {
+        let outcome = self.store().freeze(id);
+        match outcome {
             Ok(frozen) => {
-                self.prov.region_frozen(&frozen, span);
-                let label = self.store.label(id);
+                self.prov().region_frozen(&frozen, span);
+                let label = self.store().label(id);
                 self.fire(
                     Rule::RegionFreeze,
                     span,
@@ -1286,7 +1453,7 @@ impl<'p> Machine<'p> {
                         frozen.len().saturating_sub(1)
                     ),
                 );
-                let generation = self.store.generation(id);
+                let generation = self.store().generation(id);
                 Ok(Value::Region(RegionValue { id, generation }))
             }
             Err(reason) => self.region_fault(Rule::RegionClosedSubtree, span, reason, None),
@@ -1305,12 +1472,50 @@ impl<'p> Machine<'p> {
                 value.kind()
             ));
         };
-        let live = self.store.generation(handle.id) == handle.generation
-            && self.store.state(handle.id) != Some(RegionState::Freed);
+        let live = self.store().generation(handle.id) == handle.generation
+            && self.store().state(handle.id) != Some(RegionState::Freed);
         if live {
+            // Cross-task claims (spec/03 §3, is06): a region `move`d through
+            // a channel is the receiver's wholesale; any later touch by the
+            // sender — through any surviving path — faults. The clause id the
+            // sprint names ([conc.chan.staleuse]) is one spec/03 still owes;
+            // the machine cites the channel family and says so.
+            let claim = self.store().claim_of(handle.id);
+            match claim {
+                Some(region::TaskClaim::Task(owner)) if owner != self.task => {
+                    let label = self.store().label(handle.id);
+                    return self.region_fault(
+                        Rule::ChanStale,
+                        span,
+                        format!(
+                            "{what} touches {label}, which was `move`d through a channel and is \
+                             owned by task {owner} now; the sender's access is stale \
+                             (the E1005 family's dynamic cross-task half)"
+                        ),
+                        None,
+                    );
+                }
+                Some(region::TaskClaim::InChannel) => {
+                    let label = self.store().label(handle.id);
+                    return self.region_fault(
+                        Rule::ChanStale,
+                        span,
+                        format!(
+                            "{what} touches {label}, which is in flight inside a channel; \
+                             nothing may touch a region between its `move` send and its receive"
+                        ),
+                        None,
+                    );
+                }
+                _ => {}
+            }
             return Ok(handle.id);
         }
-        let label = self.store.label(handle.id);
+        let label = self.store().label(handle.id);
+        let created = self
+            .store()
+            .region(handle.id)
+            .map(|region| (region.span, "the region was created here".to_owned()));
         self.region_fault(
             Rule::RegionFree,
             span,
@@ -1318,27 +1523,22 @@ impl<'p> Machine<'p> {
                 "{what} names {label}, which was freed wholesale; every allocation in it died \
                  with it, and this reference is dangling"
             ),
-            self.store
-                .region(handle.id)
-                .map(|region| (region.span, "the region was created here".to_owned())),
+            created,
         )
     }
 
     // -- Tier 2: `shared`, `weak`, pools and handles (§4) ------------------
 
-    /// The store, for `builtin`'s Tier-2 surface.
-    pub(crate) fn store(&mut self) -> &mut Store {
-        &mut self.store
-    }
-
     /// Reads a pool slot through a handle, with the generation check every
     /// deref performs (`[mem.shared.handle.2]`).
     pub(crate) fn read_slot(&mut self, handle: HandleValue, span: Span) -> EResult<Value> {
         self.check_pool_region(handle.pool, span, false)?;
-        match self
-            .store
+        self.race_check_pool(handle.pool, handle.index, false, span)?;
+        let slot = self
+            .store()
             .slot(handle.pool, handle.index, handle.generation)
-        {
+            .cloned();
+        match slot {
             Some(slot) if slot.life == region::SlotLife::Live => {
                 let value = slot.value.clone();
                 self.fire(
@@ -1370,7 +1570,7 @@ impl<'p> Machine<'p> {
 
     pub(crate) fn stale_handle<T>(&mut self, handle: HandleValue, span: Span) -> EResult<T> {
         let current = self
-            .store
+            .store()
             .pool(handle.pool)
             .and_then(|pool| pool.slots.get(handle.index))
             .map_or_else(
@@ -1397,16 +1597,46 @@ impl<'p> Machine<'p> {
         span: Span,
         writing: bool,
     ) -> EResult<()> {
-        let Some(id) = self.store.pool_region(pool) else {
+        let Some(id) = self.store().pool_region(pool) else {
             return unsupported(format!("pool#{pool} does not exist"));
         };
-        let label = self.store.label(id);
-        match self.store.state(id) {
+        // A pool anchored in a transferred region is subject to the same
+        // cross-task claim its region is (spec/03 §3, is06).
+        let claim = self.store().claim_of(id);
+        match claim {
+            Some(region::TaskClaim::Task(owner)) if owner != self.task => {
+                let label = self.store().label(id);
+                return self.region_fault(
+                    Rule::ChanStale,
+                    span,
+                    format!(
+                        "this handle reaches into {label}, which was `move`d through a channel \
+                         and belongs to task {owner} now; the sender's access is stale"
+                    ),
+                    None,
+                );
+            }
+            Some(region::TaskClaim::InChannel) => {
+                let label = self.store().label(id);
+                return self.region_fault(
+                    Rule::ChanStale,
+                    span,
+                    format!(
+                        "this handle reaches into {label}, which is in flight inside a channel"
+                    ),
+                    None,
+                );
+            }
+            _ => {}
+        }
+        let label = self.store().label(id);
+        let state = self.store().state(id);
+        match state {
             Some(RegionState::Freed) => {
                 // Detection is exact and it says so: the region that died, and
                 // where it was created (`[mem.region.intra.2]`).
                 let created = self
-                    .store
+                    .store()
                     .region(id)
                     .map(|region| (region.span, "the region was created here".to_owned()));
                 self.region_fault(
@@ -1438,6 +1668,45 @@ impl<'p> Machine<'p> {
         }
     }
 
+    /// One pool-slot access against the race detector (`[conc.mm.race.3]`).
+    ///
+    /// Pool slots in an **unmoved** region are one of exactly two memories two
+    /// tasks can share mutably in this machine (the other is raw allocations;
+    /// see `sched::RaceKey`) — the shape the compiler rejects statically
+    /// (E1101/E1102) and the dynamic machine detects exactly.
+    pub(crate) fn race_check_pool(
+        &mut self,
+        pool: region::PoolId,
+        index: usize,
+        write: bool,
+        span: Span,
+    ) -> EResult<()> {
+        if !self.shared.sched.ever_concurrent() {
+            return Ok(());
+        }
+        let report =
+            self.shared
+                .sched
+                .race_check(self.task, sched::RaceKey::Pool(pool, index), 0, 1, write);
+        self.drain_sched();
+        if let Some(report) = report {
+            return self.trap(
+                TrapKind::Race,
+                Rule::RaceDetect,
+                span,
+                format!(
+                    "data race: this {} of pool#{pool}[{index}] conflicts with an unordered {} \
+                     by {} — share the region by `move`, `freeze` or a `sync` wrapper (D14)",
+                    if write { "write" } else { "read" },
+                    if report.other_write { "write" } else { "read" },
+                    report.other_task
+                ),
+                None,
+            );
+        }
+        Ok(())
+    }
+
     /// The acyclicity assertion of `[mem.shared.rc.2]`, run at strong-edge
     /// creation.
     ///
@@ -1456,7 +1725,7 @@ impl<'p> Machine<'p> {
     ) {
         for granule in region::refs_of(value) {
             let Ref::Shared(to) = granule else { continue };
-            if self.store.would_cycle(from, to) {
+            if self.store().would_cycle(from, to) {
                 self.fire(
                     Rule::SharedAcyclic,
                     span,
@@ -1472,7 +1741,7 @@ impl<'p> Machine<'p> {
                     &format!("strong edge shared#{from} → shared#{to} keeps the graph acyclic"),
                 );
             }
-            self.store.add_strong_edge(from, to);
+            self.store().add_strong_edge(from, to);
         }
     }
 
@@ -1559,8 +1828,8 @@ impl<'p> Machine<'p> {
             // child write (Reserved → Active) and the caller's own access
             // during the call is foreign.
             if let Some(Some(retag)) = retags.get(index) {
-                let key = format!("{frame}:{name}");
-                self.prov.bind_place(&key, retag.alloc, retag.tag);
+                let key = format!("t{}:{frame}:{name}", self.task);
+                self.prov().bind_place(&key, retag.alloc, retag.tag);
             }
             self.declare(&name, Slot::live(value));
         }
@@ -1595,7 +1864,7 @@ impl<'p> Machine<'p> {
             })
             .collect();
         self.frames.pop();
-        self.prov.drop_frame(frame);
+        self.prov().drop_frame(frame);
 
         let value = match result {
             Ok(value) | Err(Signal::Return(value)) => value,
@@ -1769,7 +2038,7 @@ impl<'p> Machine<'p> {
     /// rather than to nothing.
     fn expose_to_c(&mut self, value: Value, span: Span) -> Value {
         if let Value::Raw(ptr) = value {
-            self.prov.expose(ptr, span);
+            self.prov().expose(ptr, span);
             self.fire(
                 Rule::BoundaryFfi,
                 span,
@@ -1814,7 +2083,7 @@ impl<'p> Machine<'p> {
                 return value;
             };
             let child = self
-                .prov
+                .prov()
                 .retag(alloc, parent, kind, true, "parameter", span);
             protectors.push(child);
             self.drain_prov();
@@ -1823,8 +2092,8 @@ impl<'p> Machine<'p> {
                 ..ptr
             });
         }
-        let key = Machine::place_key(path);
-        let (alloc, child) = self.prov.retag_place(&key, kind, true, span);
+        let key = self.place_key(path);
+        let (alloc, child) = self.prov().retag_place(&key, kind, true, span);
         protectors.push(child);
         retags.push((
             index,
@@ -1851,9 +2120,9 @@ impl<'p> Machine<'p> {
         // and the tags nothing can reach any more go away
         // (`[mem.prov.tag]`'s "protected for the whole call").
         for tag in protectors {
-            self.prov.unprotect(*tag, span);
+            self.prov().unprotect(*tag, span);
         }
-        self.prov.prune();
+        self.prov().prune();
         self.drain_prov();
         for (index, path) in writebacks {
             let Some(value) = final_values.get(*index) else {
@@ -1874,11 +2143,21 @@ impl<'p> Machine<'p> {
     fn eval_block(&mut self, block: &Block) -> EResult<Value> {
         self.push_scope();
         let result = self.eval_block_body(block);
+        // The killed-proc rule (`[conc.proc.kill]`, D14's decided distinction):
+        // a KILLED proc's frames unwind without running any further user code —
+        // `defer`/`errdefer` included. Contrast cancellation, which flows
+        // through the ordinary error-value paths below and runs them
+        // (`[conc.cancel.defer]`).
+        if matches!(result, Err(Signal::ProcKilled)) {
+            self.pop_scope();
+            return result;
+        }
         // `errdefer` runs when the scope is left on the error path, and only
         // then (`[err.errdefer]`); `defer` runs on both.
         let errored = match &result {
             Ok(value) => value.is_error(),
             Err(Signal::Return(value)) => value.is_error(),
+            Err(Signal::ProcKilled) => unreachable!("returned above"),
             Err(Signal::Trap(_) | Signal::Ub(_) | Signal::Unsupported(_)) => true,
             Err(Signal::Break(_) | Signal::Continue) => false,
         };
@@ -2401,8 +2680,8 @@ impl<'p> Machine<'p> {
             ),
             ExprKind::RegionValue { strategy } => {
                 let strategy = self.strategy_of(strategy.as_ref());
-                let id = self.store.create(None, strategy.clone(), expr.span);
-                let label = self.store.label(id);
+                let id = self.store().create(None, strategy.clone(), expr.span);
+                let label = self.store().label(id);
                 self.fire(
                     Rule::RegionCreate,
                     expr.span,
@@ -2413,19 +2692,17 @@ impl<'p> Machine<'p> {
                     expr.span,
                     "the region value is affine: it moves and is never copied",
                 );
-                let generation = self.store.generation(id);
+                let generation = self.store().generation(id);
                 Ok(Value::Region(RegionValue { id, generation }))
             }
             ExprKind::In { region, body } => self.eval_in(region, body, expr.span),
             ExprKind::Freeze(operand) => self.eval_freeze(operand, expr.span),
 
-            // -- outside is03's coverage, by name ---------------------------
-            ExprKind::Scope { .. }
-            | ExprKind::SpawnProc { .. }
-            | ExprKind::Select { .. }
-            | ExprKind::When { .. } => {
-                unsupported("concurrency is spec/03 and campaign ic03; nothing here schedules")
-            }
+            // -- spec/03: the concurrency surface (is06) --------------------
+            ExprKind::Scope { name, body } => self.eval_scope(name.as_ref(), body, expr.span),
+            ExprKind::SpawnProc { path, args } => self.eval_spawn_proc(path, args, expr.span),
+            ExprKind::Select { arms } => self.eval_select(arms, expr.span),
+            ExprKind::When { operands, body } => self.eval_when(operands, body, expr.span),
             // -- Tier 3: unsafe (is04) --------------------------------------
             ExprKind::Unsafe { body } => {
                 // `[mem.unsafe.scope]`: an `unsafe { }` block is a *marker*, not
@@ -2502,10 +2779,10 @@ impl<'p> Machine<'p> {
                 .last()
                 .map(|f| f.module.clone())
                 .unwrap_or_default();
-            if let Some(def) = self.program.lookup(&module, name, false) {
-                return self.value_of_def(def, &module, name, expr.span);
+            if let Some(def) = self.shared.program.lookup(&module, name, false).cloned() {
+                return self.value_of_def(&def, &module, name, expr.span);
             }
-            if self.program.modules.contains_key(name) {
+            if self.shared.program.modules.contains_key(name) {
                 return Ok(Value::Module(name.clone()));
             }
             if let Some(builtin) = builtin::ambient(name) {
@@ -2526,8 +2803,8 @@ impl<'p> Machine<'p> {
         // A dotted path: module member, or a dotted error tag (`io.Error`).
         let head = path.segments[0].name.clone();
         let tail = path.segments[1].name.clone();
-        if self.program.modules.contains_key(&head) {
-            return match self.program.lookup(&head, &tail, true) {
+        if self.shared.program.modules.contains_key(&head) {
+            return match self.shared.program.lookup(&head, &tail, true) {
                 Some(def) => {
                     let def = def.clone();
                     self.value_of_def(&def, &head, &tail, expr.span)
@@ -2544,7 +2821,7 @@ impl<'p> Machine<'p> {
                 .last()
                 .map(|f| f.module.clone())
                 .unwrap_or_default();
-            if self.program.imports_c(&module) {
+            if self.shared.program.imports_c(&module) {
                 return match builtin::c_intrinsic(&tail) {
                     Some(name) => {
                         self.fire(
@@ -2625,10 +2902,9 @@ impl<'p> Machine<'p> {
                 // dynamic half.
                 if let Value::Region(handle) = &value {
                     let id = handle.id;
-                    if let Some(region) = self.store.region(id)
-                        && region.depth > 0
-                    {
-                        let label = self.store.label(id);
+                    let depth = self.store().region(id).map_or(0, |region| region.depth);
+                    if depth > 0 {
+                        let label = self.store().label(id);
                         return self.region_fault(
                             Rule::RegionClosedSubtree,
                             span,
@@ -2639,7 +2915,7 @@ impl<'p> Machine<'p> {
                             None,
                         );
                     }
-                    let label = self.store.label(id);
+                    let label = self.store().label(id);
                     self.fire(Rule::RegionTransfer, span, &format!("transfer {label}"));
                 }
                 Ok(value)
@@ -2694,7 +2970,7 @@ impl<'p> Machine<'p> {
                 // `shared X` builds the RC cell (`[mem.shared.rc.1]`). The
                 // payload moves into it: the cell is now its place.
                 let value = self.eval_for_init(operand)?;
-                let cell = self.store.new_cell(value.clone(), span);
+                let cell = self.store().new_cell(value.clone(), span);
                 self.fire(
                     Rule::SharedRc,
                     span,
@@ -2883,6 +3159,12 @@ impl<'p> Machine<'p> {
         span: Span,
     ) -> EResult<Value> {
         let iterable = self.eval(iter)?;
+        // `for v in ch` iterates a channel lazily until drained-close
+        // ([conc.chan.close]) — each iteration is a blocking point.
+        if let Value::Chan(chan) = iterable {
+            self.fire(Rule::Flow, span, "for over a channel");
+            return self.eval_for_chan(chan, pattern, body, iter.span);
+        }
         let items: Vec<Value> = match iterable {
             Value::Range {
                 start,
@@ -3104,7 +3386,7 @@ impl<'p> Machine<'p> {
         match &*expr.kind {
             ExprKind::Path(path) if path.is_single() => {
                 let name = &path.segments[0].name;
-                !self.local_exists(name) && self.program.modules.contains_key(name)
+                !self.local_exists(name) && self.shared.program.modules.contains_key(name)
             }
             _ => false,
         }
@@ -3119,7 +3401,7 @@ impl<'p> Machine<'p> {
         match target {
             Value::Fn(qualified) => {
                 let (module, name) = split_qualified(&qualified);
-                match self.program.lookup(&module, &name, false).cloned() {
+                match self.shared.program.lookup(&module, &name, false).cloned() {
                     Some(Def::Fn(decl)) => self.call_fn(&decl, &module, args, span),
                     Some(Def::Struct(def)) => {
                         // A tuple-shaped constructor call. The corpus builds
@@ -3159,7 +3441,7 @@ impl<'p> Machine<'p> {
                 let frame = self.frame();
                 self.access.release_frame(frame);
                 self.frames.pop();
-                self.prov.drop_frame(frame);
+                self.prov().drop_frame(frame);
                 match result {
                     Ok(value) | Err(Signal::Return(value)) => Ok(plain(value)),
                     Err(other) => Err(other),
@@ -3211,8 +3493,10 @@ impl<'p> Machine<'p> {
         // ok"), which is `corpus/memory/prov_two_phase.lu`'s entire point.
         let receiver_tag = match &path {
             Some(path) => {
-                let key = Machine::place_key(path);
-                let (alloc, child) = self.prov.retag_place(&key, RetagKind::Mutable, true, span);
+                let key = self.place_key(path);
+                let (alloc, child) = self
+                    .prov()
+                    .retag_place(&key, RetagKind::Mutable, true, span);
                 self.drain_prov();
                 Some((key, alloc, child))
             }
@@ -3222,7 +3506,7 @@ impl<'p> Machine<'p> {
         // Now the receiver's own accesses go through the child.
         let previous = receiver_tag
             .as_ref()
-            .map(|(key, alloc, child)| self.prov.rebind_place(key, *alloc, *child));
+            .map(|(key, alloc, child)| self.prov().rebind_place(key, *alloc, *child));
         let mut receiver_value = value;
         let result = builtin::method(
             self,
@@ -3255,10 +3539,10 @@ impl<'p> Machine<'p> {
             _ => Ok(()),
         };
         if let Some((key, _, child)) = receiver_tag {
-            self.prov.unprotect(child, span);
-            self.prov
+            self.prov().unprotect(child, span);
+            self.prov()
                 .restore_place(&key, previous.expect("set beside receiver_tag"));
-            self.prov.prune();
+            self.prov().prune();
             self.drain_prov();
         }
         written?;
@@ -3270,7 +3554,12 @@ impl<'p> Machine<'p> {
             && let (ExprKind::Path(path), Member::Named(name)) = (&*base.kind, member)
         {
             let module = path.segments[0].name.clone();
-            return match self.program.lookup(&module, &name.name, true).cloned() {
+            return match self
+                .shared
+                .program
+                .lookup(&module, &name.name, true)
+                .cloned()
+            {
                 Some(def) => self.value_of_def(&def, &module, &name.name, span),
                 None => unsupported(format!(
                     "`{module}.{}` does not resolve; it is either absent or not `pub`",
@@ -3368,11 +3657,6 @@ impl<'p> Machine<'p> {
 
     // -- Tier 3: raw pointers, casts and the door (§5–§7) ------------------
 
-    /// The provenance machine, for `builtin`'s C-intrinsic surface.
-    pub(crate) fn prov(&mut self) -> &mut Provenance {
-        &mut self.prov
-    }
-
     /// Are we inside an `unsafe { }` block? `[mem.ub]`'s rows are Tier-3
     /// reachable only, and T1's wording says so out loud.
     pub(crate) fn in_unsafe(&self) -> bool {
@@ -3412,7 +3696,8 @@ impl<'p> Machine<'p> {
                 }
             }
         }
-        match self.prov.assume_noalias(&ptrs, span) {
+        let checked = self.prov().assume_noalias(&ptrs, span);
+        match checked {
             Ok(()) => {
                 self.drain_prov();
                 Ok(())
@@ -3445,7 +3730,7 @@ impl<'p> Machine<'p> {
                 pointer.kind()
             ));
         };
-        let label = self.store.label(id);
+        let label = self.store().label(id);
         let (alloc, tag) = match (ptr.alloc, ptr.prov) {
             (Some(alloc), Prov::Tag(tag)) => (alloc, tag),
             (Some(alloc), Prov::Wildcard) => {
@@ -3472,7 +3757,7 @@ impl<'p> Machine<'p> {
                 );
             }
         };
-        let (live, owner) = match self.prov.alloc(alloc) {
+        let (live, owner) = match self.prov().alloc(alloc) {
             Some(entry) => (entry.live, entry.owner),
             None => (false, None),
         };
@@ -3497,12 +3782,12 @@ impl<'p> Machine<'p> {
                     "`borrow {label} from` a pointer into alloc#{alloc}, which is owned by {} — \
                      the obligation is that the allocation lies wholly inside the named region's \
                      footprint",
-                    owner.map_or_else(|| "no region".to_owned(), |owner| self.store.label(owner))
+                    owner.map_or_else(|| "no region".to_owned(), |owner| self.store().label(owner))
                 ),
             );
         }
         // `[mem.prov.tag]`: `borrow r from ptr` is a retag point.
-        let child = self.prov.retag(
+        let child = self.prov().retag(
             alloc,
             tag,
             RetagKind::Mutable,
@@ -3553,7 +3838,7 @@ impl<'p> Machine<'p> {
                     // **exposed** provenance resolved angelically among exposed
                     // tags." The resolution happens at the *access*, so what the
                     // cast produces is a wildcard.
-                    let resolved = self.prov.resolve_address(address);
+                    let resolved = self.prov().resolve_address(address);
                     let ptr = match resolved {
                         Some((alloc, offset)) => RawPtr {
                             alloc: Some(alloc),
@@ -3587,9 +3872,9 @@ impl<'p> Machine<'p> {
             if IntTy::named(&target).is_some() {
                 // ptr→int **exposes** the tag (`[mem.prov.expose]`), which is
                 // what later lets a wildcard resolve back to it.
-                self.prov.expose(ptr, span);
+                self.prov().expose(ptr, span);
                 self.drain_prov();
-                let address = self.prov.address_of(ptr);
+                let address = self.prov().address_of(ptr);
                 return Ok(coerce(Value::Int(address, IntTy::INT), Some(ty)));
             }
             return unsupported(format!("a raw pointer does not cast to `{target}`"));
@@ -3628,7 +3913,7 @@ impl<'p> Machine<'p> {
     /// `p[i]` / `*p` — a provenance-checked load.
     fn raw_load(&mut self, ptr: RawPtr, span: Span) -> EResult<Value> {
         self.prov_access(ptr, ptr.elem, AccessKind::Read, span)?;
-        let raw = self.prov.load(ptr, ptr.elem);
+        let raw = self.prov().load(ptr, ptr.elem);
         let bits = u32::try_from(ptr.elem * 8).unwrap_or(8);
         let ty = IntTy {
             bits,
@@ -3648,7 +3933,7 @@ impl<'p> Machine<'p> {
             ));
         };
         self.prov_access(ptr, ptr.elem, AccessKind::Write, span)?;
-        self.prov.store(ptr, ptr.elem, *v);
+        self.prov().store(ptr, ptr.elem, *v);
         Ok(())
     }
 
@@ -3673,7 +3958,7 @@ impl<'p> Machine<'p> {
                 signed: false,
                 ..ptr
             };
-            self.prov.store(at, 1, byte & 0xff);
+            self.prov().store(at, 1, byte & 0xff);
         }
         Ok(())
     }
@@ -3702,8 +3987,8 @@ impl<'p> Machine<'p> {
                 signed: false,
                 ..dst
             };
-            let byte = self.prov.load(from, 1);
-            self.prov.store(to, 1, byte);
+            let byte = self.prov().load(from, 1);
+            self.prov().store(to, 1, byte);
         }
         Ok(())
     }
@@ -3902,6 +4187,15 @@ fn is_copy(value: &Value) -> bool {
             // A copy shares the tag — no retag, no obligation, which is the
             // whole of D11's "simpler than safe".
             | Value::Raw(_)
+            // The concurrency granules are reference-shaped ids into the
+            // scheduler: scope handles are passable capabilities (D16),
+            // channels and Mutexes are `sync`-shaped and share, proc handles
+            // name a failure domain, durations are plain data (spec/03).
+            | Value::Scope(_)
+            | Value::Chan(_)
+            | Value::MutexRef(_)
+            | Value::Proc(_)
+            | Value::Duration(_)
     )
 }
 
@@ -4015,6 +4309,22 @@ fn parse_float(text: &str) -> EResult<f64> {
 pub fn run_source(name: &str, source: &str) -> Result<Run, crate::sema::LoadError> {
     let program = crate::sema::load_source(name, source)?;
     Ok(Machine::new(&program).run())
+}
+
+/// As [`run_source`], with a schedule seed and a trace filter — what the is06
+/// determinism tests replay (`[conc.det.seed]`).
+///
+/// # Errors
+///
+/// The load error, when the source does not lex or parse.
+pub fn run_source_seeded(
+    name: &str,
+    source: &str,
+    seed: Option<u64>,
+    trace: Trace,
+) -> Result<Run, crate::sema::LoadError> {
+    let program = crate::sema::load_source(name, source)?;
+    Ok(Machine::with_seed(&program, seed).tracing(trace).run())
 }
 
 #[cfg(test)]

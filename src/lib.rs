@@ -85,16 +85,17 @@ pub fn slash_path(path: &Path) -> String {
 
 /// Observes one program and builds its spec/06 record.
 ///
-/// `seeded` is always `false`: there is no seeded scheduling yet, whatever
-/// `--seed` was passed (`[proto.seed.flag]` — an implementation without it
-/// *declares* so rather than lying).
+/// Unseeded: the strict-FIFO default schedule runs and the record declares
+/// `seeded: false`. `--seed=N` goes through [`observe_record_seeded`], which
+/// requests the spec/03 §5 deterministic schedule and declares `seeded: true`
+/// (`[proto.seed.flag]`).
 #[must_use]
 pub fn observe_record(
     file: &Path,
     source: &[u8],
     requested_phase: Option<Phase>,
 ) -> (ObservationRecord, Observed) {
-    observe_record_traced(file, source, requested_phase, crate::eval::Trace::Off)
+    observe_record_seeded(file, source, requested_phase, crate::eval::Trace::Off, None)
 }
 
 /// The human-facing half of an observation: never on the wire
@@ -135,7 +136,22 @@ pub fn observe_record_traced(
     requested_phase: Option<Phase>,
     trace: crate::eval::Trace,
 ) -> (ObservationRecord, Observed) {
-    let observation = frontend::observe_file(file, source, requested_phase, trace);
+    observe_record_seeded(file, source, requested_phase, trace, None)
+}
+
+/// As [`observe_record`], with the trace log and `--seed=N`'s schedule
+/// request (`[conc.det.seed]`): one seed selects the whole schedule, the
+/// record declares `"seeded": true`, and the same seed replays the identical
+/// decision stream (`[proto.seed.flag]`).
+#[must_use]
+pub fn observe_record_seeded(
+    file: &Path,
+    source: &[u8],
+    requested_phase: Option<Phase>,
+    trace: crate::eval::Trace,
+    seed: Option<u64>,
+) -> (ObservationRecord, Observed) {
+    let observation = frontend::observe_file(file, source, requested_phase, trace, seed);
 
     // `[proto.record.fields]`: the digest whenever the program wrote output,
     // the inline text up to 4096 bytes. Only an `exit` verdict has "the program
@@ -218,7 +234,7 @@ pub fn observe_record_traced(
         commit: COMMIT.to_owned(),
         file: slash_path(file),
         phase_reached: observation.phase_reached,
-        seeded: false,
+        seeded: seed.is_some(),
         diagnostics: observation.diagnostics,
         verdict: observation.verdict,
         stdout_sha256: digest,

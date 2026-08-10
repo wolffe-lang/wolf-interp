@@ -104,9 +104,14 @@ struct ConformRunArgs {
     /// Stop after this rung of the canonical ladder.
     #[arg(long)]
     phase: Option<Phase>,
-    /// Request the deterministic schedule seeded per spec 03 §5.
+    /// Request the deterministic schedule seeded per spec 03 §5
+    /// (`sched-ev/0`): the record declares `"seeded": true` and the same
+    /// seed replays the identical decision stream (`[proto.seed.flag]`).
     #[arg(long)]
     seed: Option<u64>,
+    /// Alias of `--seed`: replay exactly the schedule this seed selects.
+    #[arg(long, value_name = "SEED")]
+    schedule: Option<u64>,
     /// Emit the machine-readable observation record.
     #[arg(long)]
     json: bool,
@@ -465,11 +470,12 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
         Err(code) => return code,
     };
 
-    let (record, observed) = wolf_interp::observe_record_traced(
+    let (record, observed) = wolf_interp::observe_record_seeded(
         &args.file,
         &source,
         args.phase,
         args.trace.unwrap_or_default(),
+        args.seed.or(args.schedule),
     );
 
     // Never emit a record this implementation's own validator would reject.
@@ -525,11 +531,6 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
              instead (see the ladder mapping in `frontend`)",
             args.phase.expect("checked"),
             wolf_interp::frontend::DEEPEST_STATIC,
-        );
-    }
-    if let Some(seed) = args.seed {
-        eprintln!(
-            "note: --seed={seed} requested; no seeded scheduling exists yet, so the record declares seeded=false ([proto.seed.flag])"
         );
     }
 

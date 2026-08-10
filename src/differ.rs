@@ -84,40 +84,24 @@ use crate::schema;
 /// Every entry is `(file, id, one-line summary)`; the id resolves in the log.
 pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
     (
-        "typecheck/match_exhaustive.lu",
-        "DIV-2026-001",
-        "corpus file spells `Rgb(int int int)`; `variant ::= IDENT ('(' type (',' type)* ')')?` \
-         requires commas — compiler suspected (accepts a form outside the published grammar)",
-    ),
-    (
-        "resolve/cycle/main.lu",
-        "DIV-2026-002",
-        "interp tolerates the import cycle D32/[mod.cycle] forbids and runs the program; \
-         compiler rejects E0303 at resolve — interp suspected",
-    ),
-    (
-        "resolve/dupdef/main.lu",
-        "DIV-2026-003",
-        "interp detects the duplicate definition but reports unsupported@resolve instead of \
-         fail(E0302) — interp suspected (record shape; the detection already exists)",
-    ),
-    (
-        "resolve/private/main.lu",
-        "DIV-2026-004",
-        "interp detects the cross-module private access but reports unsupported@resolve \
-         instead of fail(E0304) — interp suspected (record shape)",
-    ),
-    (
-        "resolve/unused/main.lu",
-        "DIV-2026-005",
-        "interp does not enforce [mod.use.unused]'s hard error and runs the program; \
-         compiler rejects E0305 at resolve — interp suspected",
-    ),
-    (
         "grammar/receiver_moded.lu",
-        "DIV-2026-006",
-        "both reject E0210; interp spans the whole `(mut y)`, compiler spans `mut` — \
-         spec suspected (the receiver ruling names the code, not the span)",
+        "DIV-2026-007",
+        "the spec amendment (pin 67c977f) pins E0210's primary span to the whole parenthesized \
+         moded receiver — the interp's span; the compiler still spans the `mut` keyword — \
+         compiler suspected (successor to the resolved DIV-2026-006)",
+    ),
+    (
+        "conc/freeze_publish.lu",
+        "DIV-2026-008",
+        "the file's exit=0 requires writes to captured mutable locals to be visible across \
+         tasks — exactly the shape [conc.task.spawn] makes a compile error (E1101) and \
+         store_buffer.lu pins as fail(E1101) — corpus/spec suspected",
+    ),
+    (
+        "conc/when_multi.lu",
+        "DIV-2026-009",
+        "1+10+100 + 2+10+100 = 223, but the file demands total == 224 for exit 0; no legal \
+         execution satisfies it — corpus suspected (and `when` has no spec/03 clauses at all)",
     ),
 ];
 
@@ -1088,8 +1072,14 @@ mod tests {
 
     #[test]
     fn the_filed_list_resolves_and_annotates() {
-        let (id, _) = filed("upstream/corpus/typecheck/match_exhaustive.lu").expect("filed");
-        assert_eq!(id, "DIV-2026-001");
+        // DIV-2026-001..006 resolved at is06 (pin 67c977f + the resolve-rung
+        // work); the survivors are the successor filing and the two conc-tier
+        // corpus findings.
+        let (id, _) = filed("upstream/corpus/grammar/receiver_moded.lu").expect("filed");
+        assert_eq!(id, "DIV-2026-007");
+        let (id, _) = filed("upstream/corpus/conc/freeze_publish.lu").expect("filed");
+        assert_eq!(id, "DIV-2026-008");
+        assert_eq!(filed("upstream/corpus/typecheck/match_exhaustive.lu"), None);
         assert_eq!(filed("upstream/corpus/hello.lu"), None);
     }
 

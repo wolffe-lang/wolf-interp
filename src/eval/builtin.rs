@@ -115,6 +115,19 @@ pub fn ambient_dotted(head: &str, tail: &str) -> Option<Value> {
 ///
 /// A trap, or `unsupported` for a stub name with no pinned semantics.
 pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> BResult {
+    // `[conc.cancel.c]` / `[conc.ffi.external]`: a C frame is never unwound
+    // or interrupted. This machine's C surface is host intrinsics that
+    // complete synchronously, so "the next safe point after return" is simply
+    // the task's next blocking point — noted where a concurrent program can
+    // observe it.
+    if name.starts_with("c.") && machine.concurrent() {
+        machine.note(
+            Rule::CancelFfi,
+            span,
+            "entering a C intrinsic: running-external, never interrupted; cancellation waits \
+             for the next runtime-owned blocking point",
+        );
+    }
     match name {
         // `corpus/hello.lu`: "`print` appends a newline; stdout matching ignores
         // the trailing one."
@@ -204,6 +217,35 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 "assertion failed".to_owned(),
             )
         }
+        // -- spec/03: the concurrency constructors (is06) ------------------
+        "channel" => {
+            // `channel[T](n)`: capacity n ≥ 1 buffers, n = 0 (or absent) is
+            // rendezvous (`[conc.chan.buf]`). The type argument was consumed
+            // by the bracket application; sendability is E1102's static half.
+            let cap = match args.first() {
+                None => 0,
+                Some(Value::Int(n, _)) if *n >= 0 => usize::try_from(*n).unwrap_or(0),
+                Some(other) => {
+                    return unsupported(format!(
+                        "`channel[T](n)` takes a non-negative capacity, got {}",
+                        other.kind()
+                    ));
+                }
+            };
+            machine.chan_new(cap, span)
+        }
+        "Mutex" => {
+            // `Mutex(v)` — the `sync` wrapper (`[conc.mm.hb.mutex]`); `when`
+            // is its only access surface in the pinned corpus.
+            let value = args.into_iter().next().unwrap_or(Value::Unit);
+            let id = machine.shared_mutex(value);
+            machine.note(
+                Rule::SchedAcquire,
+                span,
+                &format!("mutex#{id} created; acquisitions are totally ordered per sync object"),
+            );
+            Ok(Value::MutexRef(id))
+        }
         // -- Tier 3: the modelled C intrinsics (see `c_intrinsic`) ---------
         "c.malloc" | "c.calloc" => {
             let size = c_size(&args, name)?;
@@ -290,6 +332,18 @@ pub fn property(machine: &mut Machine, receiver: &Value, name: &str, span: Span)
         (Value::Map(pairs), "len") => Ok(Value::Int(pairs.len() as i128, IntTy::INT)),
         // D25: `str` is bytes, and `len` is a byte count — the same unit
         // slicing uses, so `s[..s.len]` is the whole string.
+        // Duration constructors (`[conc.select.timeout]`): `1.s`, `20.ms`.
+        // Member access on an int literal parses by `[gram.amb.intdot]`.
+        (Value::Int(v, _), "s" | "ms" | "us" | "ns") if *v >= 0 => {
+            let scale: u128 = match name {
+                "s" => 1_000_000_000,
+                "ms" => 1_000_000,
+                "us" => 1_000,
+                _ => 1,
+            };
+            let v = u128::try_from(*v).unwrap_or_default();
+            Ok(Value::Duration(v.saturating_mul(scale)))
+        }
         (Value::Str(s), "len") => Ok(Value::Int(s.len() as i128, IntTy::INT)),
         // Projection *through* an RC cell: `[mem.shared.rc.1]`'s cell holds the
         // payload, and reading a field of a `shared T` reads the payload's.
@@ -445,6 +499,80 @@ pub fn method(
             machine.invoke(target, args, span)
         }
 
+        // -- spec/03: scopes, channels, procs (is06) -----------------------
+        (Value::Scope(scope), "spawn") => {
+            // `s.spawn(closure)` — task spawning is a *method* on a scope
+            // handle; only procs have a keyword (`[gram.expr.conc]`, D16).
+            let scope = *scope;
+            match args.into_iter().next() {
+                Some(Value::Closure(closure)) => machine.spawn_closure_task(scope, &closure, span),
+                Some(Value::Fn(qualified)) => {
+                    // `s.spawn(worker)` — a named function with no captures.
+                    let closure = super::value::ClosureValue {
+                        params: Vec::new(),
+                        body: crate::ast::Expr {
+                            kind: Box::new(crate::ast::ExprKind::Call {
+                                callee: crate::ast::Expr {
+                                    kind: Box::new(crate::ast::ExprKind::Path(crate::ast::Path {
+                                        segments: qualified
+                                            .split("::")
+                                            .map(|part| crate::ast::Ident {
+                                                name: part.to_owned(),
+                                                span,
+                                            })
+                                            .collect(),
+                                        span,
+                                    })),
+                                    span,
+                                    anchor: "gram.expr.primary",
+                                },
+                                args: Vec::new(),
+                            }),
+                            span,
+                            anchor: "gram.expr.primary",
+                        },
+                        captures: Vec::new(),
+                    };
+                    machine.spawn_closure_task(scope, &closure, span)
+                }
+                other => unsupported(format!(
+                    "`spawn` takes a closure, got {}",
+                    other.map_or_else(|| "nothing".to_owned(), |v| v.kind())
+                )),
+            }
+        }
+        (Value::Chan(chan), "send") => {
+            let chan = *chan;
+            let value = args.into_iter().next().unwrap_or(Value::Unit);
+            machine.chan_send(chan, value, span)
+        }
+        (Value::Chan(chan), "recv") => {
+            let chan = *chan;
+            machine.chan_recv(chan, span)
+        }
+        (Value::Chan(chan), "close") => {
+            let chan = *chan;
+            machine.chan_close(chan, span)
+        }
+        (Value::Proc(proc), "monitor") => {
+            let proc = *proc;
+            machine.proc_monitor(proc, span)
+        }
+        (Value::Proc(proc), "kill") => {
+            let proc = *proc;
+            machine.proc_kill(proc, span)
+        }
+        (Value::Proc(proc), "link") => {
+            let proc = *proc;
+            machine.proc_link(proc, span)
+        }
+        // Exit-reason predicates (`[conc.proc.exit]`): the closed set as
+        // structural tags, queried without a `match`.
+        (Value::Error(err), "is_normal") => Ok(Value::Bool(err.tag == "normal")),
+        (Value::Error(err), "is_error") => Ok(Value::Bool(err.tag == "error")),
+        (Value::Error(err), "is_killed") => Ok(Value::Bool(err.tag == "killed")),
+        (Value::Error(err), "is_cancelled") => Ok(Value::Bool(err.tag == "cancelled")),
+
         // -- Tier 2: pools and handles (`[mem.shared.handle]`) -------------
         (Value::PoolRef(pool), "reserve") => {
             let pool = *pool;
@@ -468,6 +596,7 @@ pub fn method(
             let pool = *pool;
             machine.check_pool_region(pool, span, true)?;
             let (handle, value) = two_phase_args(&args, "init")?;
+            machine.race_check_pool(pool, handle.index, true, span)?;
             // The slot is region data, so §4's store goes through §3's edge
             // table exactly like a struct field does.
             let owner = machine.store().pool_region(pool);
@@ -492,6 +621,7 @@ pub fn method(
             let Some(handle) = handle_arg(&args) else {
                 return unsupported("`remove` takes a handle".to_owned());
             };
+            machine.race_check_pool(pool, handle.index, true, span)?;
             if machine
                 .store()
                 .remove_slot(pool, handle.index, handle.generation)

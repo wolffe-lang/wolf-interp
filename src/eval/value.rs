@@ -310,6 +310,21 @@ pub enum Value {
     /// are unrestricted and share its tag — `[mem.unsafe.raw.1]` says so, and
     /// that is exactly what makes the raw tier *simpler* than the safe one.
     Raw(super::prov::RawPtr),
+
+    // -- is06: the concurrency granules (spec/03) --------------------------
+    /// A structured-concurrency scope handle (`[conc.task.scope]`): an
+    /// ordinary, passable value — the nursery-as-capability shape D16 names.
+    Scope(usize),
+    /// A typed channel (`[conc.chan.type]`). The value is a reference to a
+    /// scheduler-owned endpoint pair; copies name the same channel.
+    Chan(usize),
+    /// A `Mutex(v)` — a `sync` wrapper (`[conc.mm.hb.mutex]`); copies share.
+    MutexRef(usize),
+    /// A proc handle (`[conc.proc.1]`): the failure domain, by id.
+    Proc(usize),
+    /// A duration, in nanoseconds — what `1.s` builds and `timeout(d)` reads
+    /// (`[conc.select.timeout]`; virtual time under test).
+    Duration(u128),
 }
 
 impl Value {
@@ -349,6 +364,11 @@ impl Value {
             Value::Shared(_) => "shared".to_owned(),
             Value::Weak(_) => "weak".to_owned(),
             Value::Raw(_) => "*T".to_owned(),
+            Value::Scope(_) => "a scope handle".to_owned(),
+            Value::Chan(_) => "channel".to_owned(),
+            Value::MutexRef(_) => "Mutex".to_owned(),
+            Value::Proc(_) => "a proc handle".to_owned(),
+            Value::Duration(_) => "a duration".to_owned(),
         }
     }
 
@@ -452,6 +472,11 @@ impl fmt::Display for Value {
             Value::Shared(id) => write!(f, "shared#{id}"),
             Value::Weak(id) => write!(f, "weak#{id}"),
             Value::Raw(ptr) => write!(f, "{ptr}"),
+            Value::Scope(id) => write!(f, "scope#{id}"),
+            Value::Chan(id) => write!(f, "channel#{id}"),
+            Value::MutexRef(id) => write!(f, "mutex#{id}"),
+            Value::Proc(id) => write!(f, "proc#{id}"),
+            Value::Duration(nanos) => write!(f, "{nanos}ns"),
             Value::Error(e) => {
                 f.write_str(&e.tag)?;
                 if !e.payload.is_empty() {

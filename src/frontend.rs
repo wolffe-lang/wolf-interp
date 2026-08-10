@@ -21,11 +21,11 @@
 //! |---|---|---|
 //! | `lex` | the mode-stack lexer | is01 |
 //! | `parse` | the full-surface parser | is01 |
-//! | `resolve` | **sema-lite** — the D32 module graph, item collection, visibility | is02 |
+//! | `resolve` | **sema-lite** — the D32 module graph, item collection, visibility, and (since is06) the module laws E0302–E0305 | is02, is06 |
 //! | `typecheck` | *not implemented* | the type checker is the compiler's half (`sema` docs) |
 //! | `mem` | *not implemented* | the borrow/region checkers are the compiler's half |
 //! | `wir` | *not implemented* | there is no IR here; a tree-walk has no lowering |
-//! | `run` | the tree-walk evaluator, with is03's dynamic region machine | is02–is03 |
+//! | `run` | the tree-walk evaluator: is03's region machine, is04's provenance oracle, is06's sim scheduler (spec/03) | is02–is06 |
 //!
 //! Two consequences, both deliberate:
 //!
@@ -139,7 +139,7 @@ pub const DEEPEST_STATIC: Phase = Phase::Resolve;
 /// one-file root module — `resolve` and `run` as well.
 #[must_use]
 pub fn observe(source: &[u8], requested: Option<Phase>) -> Observation {
-    observe_with(None, source, requested, crate::eval::Trace::Off)
+    observe_with(None, source, requested, crate::eval::Trace::Off, None)
 }
 
 /// Observes the program rooted at `file`, loading its module graph (D32:
@@ -150,8 +150,9 @@ pub fn observe_file(
     source: &[u8],
     requested: Option<Phase>,
     trace: crate::eval::Trace,
+    seed: Option<u64>,
 ) -> Observation {
-    observe_with(Some(file), source, requested, trace)
+    observe_with(Some(file), source, requested, trace, seed)
 }
 
 fn observe_with(
@@ -159,6 +160,7 @@ fn observe_with(
     source: &[u8],
     requested: Option<Phase>,
     trace: crate::eval::Trace,
+    seed: Option<u64>,
 ) -> Observation {
     if requested == Some(Phase::None) {
         return Observation::clean(Phase::None, Verdict::Pass);
@@ -219,6 +221,12 @@ fn observe_with(
             );
         }
     };
+    // The module laws the resolve rung owns (D32, E0302–E0305) — added at
+    // is06, closing DIV-2026-002..005: claiming a rung on the ladder means
+    // performing it (`[proto.record.phase]`).
+    if let Some(diag) = sema::resolve_check(&program) {
+        return Observation::failed(Phase::Resolve, diag);
+    }
     if requested == Some(Phase::Resolve) {
         return Observation::clean(Phase::Resolve, Verdict::Pass);
     }
@@ -238,7 +246,7 @@ fn observe_with(
     }
 
     // -- run ---------------------------------------------------------------
-    let run = Machine::new(&program).tracing(trace).run();
+    let run = Machine::with_seed(&program, seed).tracing(trace).run();
     let mut observation = match run.outcome {
         Outcome::Exit(status) => Observation::clean(Phase::Run, Verdict::Exit(status)),
         Outcome::Trap(trap) => Observation {
@@ -309,11 +317,21 @@ mod tests {
     }
 
     #[test]
-    fn a_construct_outside_coverage_reports_the_last_completed_phase() {
+    fn the_concurrency_rung_moved_at_is06() {
+        // `scope s { … }` was `unsupported` through is05; the sim scheduler
+        // runs it now — spawn commit, join, and all (spec/03 §2).
         let obs = observe(CONCURRENCY.as_bytes(), None);
+        assert_eq!(obs.verdict, Verdict::Exit(0));
+        assert_eq!(obs.phase_reached, Phase::Run);
+    }
+
+    #[test]
+    fn a_construct_outside_coverage_reports_the_last_completed_phase() {
+        // The opaque C body is still outside: its meaning is c10's.
+        let obs = observe(b"fn main() -> int {\n    unsafe c [] { }\n    0\n}\n", None);
         assert_eq!(obs.verdict, Verdict::Unsupported);
         assert_eq!(obs.phase_reached, Phase::Resolve);
-        assert!(obs.reason.expect("a reason").contains("ic03"));
+        assert!(obs.reason.expect("a reason").contains("c10"));
     }
 
     #[test]

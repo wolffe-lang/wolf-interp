@@ -217,6 +217,86 @@ pub enum Rule {
     Assert,
     /// Traps map onto the closed eleven-kind vocabulary and terminate.
     TrapVocabulary,
+
+    // -- spec/03: the sim scheduler (is06) ---------------------------------
+    /// The sched-ev/0 stream opens with its seed; `--seed=N` replays exactly.
+    SchedSeed,
+    /// Spawn commit: a task is created, named, under a scope and a proc.
+    SchedSpawn,
+    /// A task parks at a runtime-owned blocking point.
+    SchedPark,
+    /// A blocked task becomes runnable again.
+    SchedUnpark,
+    /// One scheduling decision: which ready task runs next.
+    SchedDecision,
+    /// A send↔receive pairing, per channel, per k.
+    SchedChan,
+    /// A `select` arm commits among the ready set — seeded, recorded.
+    SchedSelect,
+    /// A Mutex/`when` acquisition or release, ordered per sync object.
+    SchedAcquire,
+    /// A virtual-clock advance or timer fire.
+    SchedTimer,
+
+    // -- spec/03 §2: tasks and scopes --------------------------------------
+    /// `scope name? { … }` opens a structured-concurrency scope.
+    TaskScope,
+    /// Scope exit joins all children before the block completes.
+    TaskJoin,
+    /// A failing child cancels its siblings and re-raises at the scope exit.
+    TaskFail,
+    /// Tasks and procs carry names surfaced in the structured dump.
+    TaskName,
+    /// The process runs under a root supervisor scope of process lifetime.
+    TaskRoot,
+
+    // -- spec/03 §3: channels, select, cancellation ------------------------
+    /// `channel[T](n)` requires a sendable payload.
+    ChanType,
+    /// Capacity n ≥ 1 buffers; n = 0 is rendezvous; full/empty block.
+    ChanBuf,
+    /// `close` drains buffers; further sends and drained receives get the
+    /// closed error value — never UB, never a fault.
+    ChanClose,
+    /// A region `move`d through a channel publishes the whole graph.
+    ChanMove,
+    /// A sender's later touch of a sent region faults.
+    ChanStale,
+    /// Frozen data shares by reference across tasks — no transfer.
+    ChanImm,
+    /// Cancellation is cooperative, delivered at runtime-owned blocking
+    /// points only.
+    CancelPoint,
+    /// A cancelled task's own defer/errdefer run as its frames return.
+    CancelDefer,
+    /// C frames are never unwound; cancellation waits for the next safe point.
+    CancelFfi,
+
+    // -- spec/03 §3: procs -------------------------------------------------
+    /// A proc is a failure domain owning its regions.
+    ProcModel,
+    /// `link` couples fates symmetrically.
+    ProcLink,
+    /// `monitor` delivers the exit reason asynchronously as a typed value.
+    ProcMonitor,
+    /// Exit reasons are a closed set: normal, error, killed, cancelled.
+    ProcExit,
+    /// The killed-proc sequence: cancel without user code, free, deliver.
+    ProcKill,
+    /// Procs communicate exclusively via typed channels + `select`.
+    ProcMailbox,
+
+    // -- `when` (03 Q6; spec clauses pending — a filed finding) ------------
+    /// `when (a, b)` acquires the whole set in canonical order.
+    WhenOrder,
+    /// Nested acquisition inside a `when` body faults.
+    WhenNoNest,
+
+    // -- races -------------------------------------------------------------
+    /// A detected data race halts with trap kind `race`.
+    RaceDetect,
+    /// Record/replay/free — the conforming runtime's three modes.
+    DetMode,
 }
 
 /// One registry row: the rule, its clause anchor, and one sentence.
@@ -519,6 +599,138 @@ impl Rule {
                 "conf.trap.set",
                 "every fault this machine raises is one of the closed eleven kinds",
             ),
+            Rule::SchedSeed => (
+                "conc.det.seed",
+                "one seed selects the whole schedule; `--seed=N` regenerates the identical decision stream",
+            ),
+            Rule::SchedSpawn => (
+                "conc.task.spawn",
+                "spawn commit: the closure's captures obey D14 and the task enters the ready set",
+            ),
+            Rule::SchedPark => (
+                "conc.det.events",
+                "park: a task blocks at a runtime-owned primitive — a recorded event",
+            ),
+            Rule::SchedUnpark => (
+                "conc.det.events",
+                "unpark: a blocked task becomes runnable — a recorded event",
+            ),
+            Rule::SchedDecision => (
+                "conc.det.events",
+                "a scheduling decision picks the next runnable task from the ready set",
+            ),
+            Rule::SchedChan => (
+                "conc.mm.hb.chan",
+                "the k-th send on a channel happens-before the k-th receive completes; rendezvous also orders the return",
+            ),
+            Rule::SchedSelect => (
+                "conc.select.fair",
+                "among simultaneously-ready arms the choice is pseudo-random from the scheduler seed — recorded, never wall-clock incidental",
+            ),
+            Rule::SchedAcquire => (
+                "conc.mm.hb.mutex",
+                "the n-th release of a Mutex (or `when` exit) happens-before the n+1-th acquisition",
+            ),
+            Rule::SchedTimer => (
+                "conc.select.timeout",
+                "timer arms fire on the scheduler's clock — virtual under test — and each fire is a recorded event",
+            ),
+            Rule::TaskScope => (
+                "conc.task.scope",
+                "`scope name? { … }` opens a structured scope; handles are ordinary passable values; no detached spawn exists",
+            ),
+            Rule::TaskJoin => (
+                "conc.task.join",
+                "scope exit joins all children: the block completes only when every spawned task has completed or finished its cancellation",
+            ),
+            Rule::TaskFail => (
+                "conc.task.fail",
+                "a child completing with an error or fault cancels its siblings and re-raises at the scope exit, first failure in schedule order",
+            ),
+            Rule::TaskName => (
+                "conc.task.name",
+                "tasks and procs carry names surfaced in the structured dump; the dump's existence is contract",
+            ),
+            Rule::TaskRoot => (
+                "conc.task.root",
+                "the process runs under a root supervisor scope; daemon-shaped work is named, supervised and enumerable",
+            ),
+            Rule::ChanType => (
+                "conc.chan.type",
+                "`channel[T](n)` requires T sendable: Copy, imm, a region value moved on send, or a sync type",
+            ),
+            Rule::ChanBuf => (
+                "conc.chan.buf",
+                "capacity n ≥ 1 buffers, n = 0 is rendezvous; full sends and empty receives block as recorded cancellation points",
+            ),
+            Rule::ChanClose => (
+                "conc.chan.close",
+                "`close` makes further sends return an error value; buffered items drain; drained receives get the closed error",
+            ),
+            Rule::ChanMove => (
+                "conc.mm.hb.move",
+                "a region moved through a channel publishes the entire transferred graph to the receiver",
+            ),
+            Rule::ChanStale => (
+                "conc.chan",
+                "a sent region is the receiver's wholesale; any later touch by the sender faults (the clause id spec/03 still owes — a filed finding)",
+            ),
+            Rule::ChanImm => (
+                "conc.mm.hb.freeze",
+                "`freeze` happens-before every cross-task read: imm data shares by reference, no transfer",
+            ),
+            Rule::CancelPoint => (
+                "conc.cancel.points",
+                "cancellation is cooperative, delivered at runtime-owned blocking points from the closed set",
+            ),
+            Rule::CancelDefer => (
+                "conc.cancel.defer",
+                "a cancelled task runs its own defer/errdefer as its frames return — cancellation is polite; kill is structural",
+            ),
+            Rule::CancelFfi => (
+                "conc.cancel.c",
+                "C frames are never unwound or interrupted; a task in a C call cancels at its next safe point after return",
+            ),
+            Rule::ProcModel => (
+                "conc.proc.1",
+                "a proc is a failure domain owning its regions; nothing may assume shared address-space visibility beyond its channels",
+            ),
+            Rule::ProcLink => (
+                "conc.proc.2",
+                "`link` couples fates symmetrically: either side's abnormal exit kills the other",
+            ),
+            Rule::ProcMonitor => (
+                "conc.proc.2",
+                "`monitor` delivers the exit reason asynchronously to the monitor's channel as a typed value",
+            ),
+            Rule::ProcExit => (
+                "conc.proc.exit",
+                "exit reasons are a closed set — normal(value), error(value), killed, cancelled — and are values, never unwinding",
+            ),
+            Rule::ProcKill => (
+                "conc.proc.kill",
+                "killed-proc sequence: task tree cancelled without running user code (defers do NOT run), regions bulk-free, reasons deliver",
+            ),
+            Rule::ProcMailbox => (
+                "conc.chan.mailbox",
+                "procs communicate exclusively via typed channels + select; no selective receive; handlers are atomic and non-blocking",
+            ),
+            Rule::WhenOrder => (
+                "sync.when.order",
+                "`when (a, b)` acquires the whole set in canonical order — deadlock-free by ordered set acquisition (clauses owed by spec/03; filed)",
+            ),
+            Rule::WhenNoNest => (
+                "sync.when.nonest",
+                "nested acquisition inside a `when` body faults (clauses owed by spec/03; filed)",
+            ),
+            Rule::RaceDetect => (
+                "conc.mm.race.3",
+                "an implementation may detect a data race and halt with trap kind `race`; the sim scheduler detects exactly at realized interleavings",
+            ),
+            Rule::DetMode => (
+                "conc.det.modes",
+                "record, replay, free: the deterministic runtime's three modes; test builds keep every event point",
+            ),
         };
         Row {
             rule: self,
@@ -566,7 +778,7 @@ impl Rule {
     }
 
     /// Every rule, in declaration order. The registry.
-    pub const ALL: [Rule; 71] = [
+    pub const ALL: [Rule; 104] = [
         Rule::ValueSemantics,
         Rule::PlacePath,
         Rule::PathDisjoint,
@@ -638,6 +850,39 @@ impl Rule {
         Rule::StrInterp,
         Rule::Assert,
         Rule::TrapVocabulary,
+        Rule::SchedSeed,
+        Rule::SchedSpawn,
+        Rule::SchedPark,
+        Rule::SchedUnpark,
+        Rule::SchedDecision,
+        Rule::SchedChan,
+        Rule::SchedSelect,
+        Rule::SchedAcquire,
+        Rule::SchedTimer,
+        Rule::TaskScope,
+        Rule::TaskJoin,
+        Rule::TaskFail,
+        Rule::TaskName,
+        Rule::TaskRoot,
+        Rule::ChanType,
+        Rule::ChanBuf,
+        Rule::ChanClose,
+        Rule::ChanMove,
+        Rule::ChanStale,
+        Rule::ChanImm,
+        Rule::CancelPoint,
+        Rule::CancelDefer,
+        Rule::CancelFfi,
+        Rule::ProcModel,
+        Rule::ProcLink,
+        Rule::ProcMonitor,
+        Rule::ProcExit,
+        Rule::ProcKill,
+        Rule::ProcMailbox,
+        Rule::WhenOrder,
+        Rule::WhenNoNest,
+        Rule::RaceDetect,
+        Rule::DetMode,
     ];
 }
 

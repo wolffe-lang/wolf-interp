@@ -1031,11 +1031,8 @@ fn a_construct_outside_this_tier_names_the_tier_that_owns_it() {
         ),
         // `unsafe { }` itself moved *into* coverage at is04; what is left
         // outside it is the opaque C body, whose meaning is c10's.
+        // (Concurrency left this list at is06: `scope s { … }` runs now.)
         ("fn main() -> int {\n    unsafe c [] { }\n    0\n}\n", "c10"),
-        (
-            "fn main() -> int {\n    scope s { let a = 1 }\n    0\n}\n",
-            "ic03",
-        ),
     ] {
         let Outcome::Unsupported(reason) = outcome(source) else {
             panic!("expected unsupported for {source}")
@@ -1050,8 +1047,11 @@ fn a_non_terminating_program_declines_rather_than_hangs() {
     // inventing one would extend a closed vocabulary.
     let program =
         crate::sema::load_source("t.lu", "fn main() -> int {\n    loop { }\n}\n").expect("parses");
-    let mut machine = Machine::new(&program);
-    machine.steps = Machine::FUEL - 10;
+    let machine = Machine::new(&program);
+    machine
+        .shared
+        .steps
+        .store(Machine::FUEL - 10, std::sync::atomic::Ordering::Relaxed);
     assert!(matches!(machine.run().outcome, Outcome::Unsupported(_)));
 }
 

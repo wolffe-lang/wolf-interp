@@ -107,7 +107,21 @@ pub struct Region {
     /// Re-entrant open depth. See [`Store::enter`] for why this is a count and
     /// not a flag.
     pub depth: u32,
+    /// Which task may touch this region, once it has crossed a task boundary
+    /// (is06, spec/03 §3: a region `move`d through a channel transfers
+    /// wholesale, and any later touch by the sender faults). `None` means the
+    /// region has never been transferred and the single-task rules apply.
+    pub claim: Option<TaskClaim>,
     pub span: Span,
+}
+
+/// Where a transferred region currently lives (spec/03 §3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskClaim {
+    /// Sent, not yet received: owned by the channel, touchable by nobody.
+    InChannel,
+    /// Owned by one task; every other task's touch is a `region-fault`.
+    Task(usize),
 }
 
 impl Region {
@@ -266,9 +280,44 @@ impl Store {
             generation: 0,
             allocations: 0,
             depth: 0,
+            claim: None,
             span,
         });
         id
+    }
+
+    /// Claims a region subtree for a task or a channel (spec/03 §3, is06).
+    /// A `move` send claims for the channel; the receive claims for the
+    /// receiving task; `freeze` clears the claim (`imm` shares by reference).
+    pub fn claim(&mut self, id: RegionId, claim: Option<TaskClaim>) {
+        for target in self.descendants(id) {
+            if let Some(region) = self.regions.get_mut(target) {
+                region.claim = claim;
+            }
+        }
+    }
+
+    /// The claim on a region, when a transfer has ever happened to it.
+    #[must_use]
+    pub fn claim_of(&self, id: RegionId) -> Option<TaskClaim> {
+        self.regions.get(id).and_then(|region| region.claim)
+    }
+
+    /// Opens a region for a task that is *not* the running one — the fresh
+    /// proc's own region, entered before its root task ever runs. No stack
+    /// push here: the task's seeded stack carries it (is06).
+    pub fn force_open(&mut self, id: RegionId) {
+        if let Some(region) = self.regions.get_mut(id) {
+            region.state = RegionState::Open;
+            region.depth += 1;
+        }
+    }
+
+    /// Swaps the whole open stack — the scheduler's context switch. Each task
+    /// carries its own scope stack (`[mem.region.create.3]`'s ambient rule is
+    /// per task); the store holds the *running* task's.
+    pub fn swap_open(&mut self, stack: &mut Vec<RegionId>) {
+        std::mem::swap(&mut self.open, stack);
     }
 
     #[must_use]
@@ -488,6 +537,9 @@ impl Store {
                 && region.state != RegionState::Frozen
             {
                 region.state = RegionState::Frozen;
+                // Frozen data is readable from any task forever
+                // (`[conc.mm.hb.freeze]`), so a transfer claim ends here.
+                region.claim = None;
                 frozen.push(target);
             }
         }
@@ -900,7 +952,16 @@ pub fn references(value: &Value, out: &mut Vec<Ref>) {
         // no aliasing obligations, and the edge table is about the granules the
         // safe tier can name. Its obligations are §6's, and they are checked
         // there (`super::prov`).
-        | Value::Raw(_) => {}
+        | Value::Raw(_)
+        // The concurrency granules are scheduler-owned identities, not region
+        // storage: a channel endpoint or scope handle stores nothing in a
+        // region, and cross-task transfer of *regions* is checked at the
+        // `send` itself (spec/03 §3, is06), not by §3's edge table.
+        | Value::Scope(_)
+        | Value::Chan(_)
+        | Value::MutexRef(_)
+        | Value::Proc(_)
+        | Value::Duration(_) => {}
     }
 }
 
