@@ -65,6 +65,12 @@ struct Cli {
 enum Command {
     /// Walk the pinned corpus and report each file's directives.
     Corpus(CorpusArgs),
+    /// The conformance suite as a publishable artifact (is09): export the
+    /// versioned bundle, or check an implementation against one.
+    Conformance {
+        #[command(subcommand)]
+        command: ConformanceCommand,
+    },
     /// Observe one program and emit a spec/06 observation record.
     ConformRun(ConformRunArgs),
     /// Tokenize one program (`spec/01` §1).
@@ -246,6 +252,55 @@ struct FuzzArgs {
 }
 
 #[derive(Debug, Subcommand)]
+enum ConformanceCommand {
+    /// Emit the self-contained, byte-deterministic conformance bundle:
+    /// corpus + suites + reference records + vocabularies + anchor registry
+    /// + coverage matrix + MANIFEST (schema 1, docs/conformance-bundle.md).
+    Export(ConformanceExportArgs),
+    /// Run ANY conform-run-speaking implementation against a bundle and
+    /// report per `[proto.cmp]` — is05's differ with the counterparty
+    /// pluggable. Integrity-checks the bundle first.
+    Check(ConformanceCheckArgs),
+}
+
+#[derive(Debug, Args)]
+struct ConformanceExportArgs {
+    /// The bundle directory to (re)create. Deterministic: re-export at the
+    /// same commits is byte-identical, on every platform.
+    #[arg(long, default_value = "target/conformance-bundle")]
+    out: PathBuf,
+    /// Emit the machine-readable summary instead of the human one.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct ConformanceCheckArgs {
+    /// The bundle directory (as produced by `conformance export`).
+    bundle: PathBuf,
+    /// The implementation under test: a command invoked as
+    /// `<CMD> conform-run <file> --json` (`[proto.invoke]`).
+    #[arg(long = "impl", value_name = "CMD", conflicts_with = "replay")]
+    impl_cmd: Option<PathBuf>,
+    /// Replay recorded observations (a records JSONL) as the counterparty —
+    /// the consumption dry-run: exercises the full pull → run → diff path
+    /// with no second implementation in the room.
+    #[arg(long, value_name = "RECORDS")]
+    replay: Option<PathBuf>,
+    /// Wall-clock budget per invocation. A timeout is a verdict, not an
+    /// error.
+    #[arg(long, default_value_t = 30_000)]
+    timeout_ms: u64,
+    /// Write the JSONL divergence report here (ordered by
+    /// `[proto.cmp.severity]`; empty file = green).
+    #[arg(long)]
+    report: Option<PathBuf>,
+    /// Print the JSONL report to stdout instead of the human summary.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Subcommand)]
 enum ProtocolCommand {
     /// Validate observation records against spec/06 `[proto.record]`.
     Validate {
@@ -259,6 +314,12 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let code = match cli.command {
         Command::Corpus(args) => run_corpus(&args),
+        Command::Conformance {
+            command: ConformanceCommand::Export(args),
+        } => run_conformance_export(&args),
+        Command::Conformance {
+            command: ConformanceCommand::Check(args),
+        } => run_conformance_check(&args),
         Command::ConformRun(args) => run_conform_run(&args),
         Command::Lex(args) => run_lex(&args),
         Command::Parse(args) => run_parse(&args),
@@ -596,6 +657,104 @@ fn corpus_json(report: &corpus::CorpusReport) -> serde_json::Value {
         "green": report.is_green(),
         "files": files,
     })
+}
+
+// ---------------------------------------------------------------------------
+// conformance — the is09 exportable suite
+// ---------------------------------------------------------------------------
+
+fn run_conformance_export(args: &ConformanceExportArgs) -> u8 {
+    let options = wolf_interp::export::ExportOptions::conventional(&args.out);
+    let summary = match wolf_interp::export::export(&options) {
+        Ok(summary) => summary,
+        Err(message) => return tool_error(&message),
+    };
+    if args.json {
+        let value = serde_json::json!({
+            "out": wolf_interp::slash_path(&args.out),
+            "pin": summary.pin,
+            "files": summary.files,
+            "programs": summary.programs,
+            "records": summary.records,
+            "anchors_total": summary.anchors_total,
+            "anchors_covered": summary.anchors_covered,
+            "forward_tags": summary.forward_tags,
+            "bundle_sha256": summary.bundle_sha256,
+        });
+        println!("{value}");
+    } else {
+        println!(
+            "conformance bundle (schema {}) exported to {}",
+            wolf_interp::export::BUNDLE_SCHEMA,
+            args.out.display()
+        );
+        println!("  pin            {}", summary.pin);
+        println!(
+            "  files          {} ({} programs, {} reference records)",
+            summary.files, summary.programs, summary.records
+        );
+        println!(
+            "  coverage       {} / {} registered anchors cited; {} debt; {} forward tags",
+            summary.anchors_covered,
+            summary.anchors_total,
+            summary.anchors_total - summary.anchors_covered,
+            summary.forward_tags
+        );
+        println!("  bundle_sha256  {}", summary.bundle_sha256);
+    }
+    EXIT_OK
+}
+
+fn run_conformance_check(args: &ConformanceCheckArgs) -> u8 {
+    let counterparty = match (&args.impl_cmd, &args.replay) {
+        (Some(cmd), None) => wolf_interp::export::CheckImpl::Command(cmd.clone()),
+        (None, Some(records)) => wolf_interp::export::CheckImpl::Replay(records.clone()),
+        _ => return tool_error("pass exactly one of --impl <CMD> or --replay <RECORDS>"),
+    };
+    let bundle = match wolf_interp::export::open_bundle(&args.bundle) {
+        Ok(bundle) => bundle,
+        Err(message) => return tool_error(&message),
+    };
+    eprintln!(
+        "notice: bundle {} at pin {} verified (bundle_sha256 {})",
+        args.bundle.display(),
+        bundle.pin,
+        bundle.bundle_sha256
+    );
+    let outcome = match wolf_interp::export::check(
+        &bundle,
+        &counterparty,
+        Duration::from_millis(args.timeout_ms),
+    ) {
+        Ok(outcome) => outcome,
+        Err(message) => return tool_error(&message),
+    };
+    if let Some(path) = &args.report
+        && let Err(code) = write_jsonl(
+            path,
+            outcome.divergences.iter().map(DeepDivergence::to_json),
+        )
+    {
+        return code;
+    }
+    let gating = |d: &DeepDivergence| d.class == DeepClass::SoundnessCandidate || d.filed.is_none();
+    if args.json {
+        for d in &outcome.divergences {
+            println!("{}", d.to_json());
+        }
+        return if outcome.divergences.iter().filter(|d| gating(d)).count() == 0 {
+            EXIT_OK
+        } else {
+            EXIT_CHECK_FAILED
+        };
+    }
+    let as_diff = DiffOutcome {
+        divergences: outcome.divergences,
+        ledger: outcome.ledger,
+        compared: outcome.compared,
+        skipped_members: 0,
+    };
+    report_diff(&as_diff, false)
 }
 
 fn read_program(path: &Path) -> Result<Vec<u8>, u8> {

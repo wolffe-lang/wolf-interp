@@ -33,6 +33,7 @@ pub mod differ;
 pub mod directive;
 pub mod eval;
 pub mod explore;
+pub mod export;
 pub mod frontend;
 pub mod fuzz;
 pub mod ledger;
