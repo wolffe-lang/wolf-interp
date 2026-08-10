@@ -21,9 +21,13 @@ pub const REGISTERED_NAMESPACES: [&str; 6] = ["gram", "mem", "conc", "abi", "con
 
 /// Namespaces reserved for spec documents not yet written; tags in them are
 /// legal and counted as *forward* (`[conf.anchor.ns]`).
-pub const RESERVED_NAMESPACES: [&str; 14] = [
+pub const RESERVED_NAMESPACES: [&str; 15] = [
     "str", "err", "task", "proc", "sync", "generics", "arith", "ffi", "unsafe", "comptime", "perf",
     "mod", "std", "ty",
+    // is08: the REPL-spec notes' own namespace (`docs/repl.md`). The REPL
+    // extends the spec — its incremental-definition rules are deliberately
+    // NOT spec/01..05 clauses — and is09 exports the notes.
+    "repl",
 ];
 
 /// How an anchor's namespace is classified.

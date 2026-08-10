@@ -82,6 +82,21 @@ enum Command {
     /// Fuzzer-driven differential testing: generated programs through the
     /// same comparison, with AST-aware reduction of anything divergent.
     Fuzz(FuzzArgs),
+    /// The line REPL over the interpreter (is08): persistent session state,
+    /// `:mem`/`:trace` memory-model introspection, and the transcript format
+    /// the wolf-book's no-rot guarantee replays (`--script`).
+    Repl(ReplArgs),
+}
+
+#[derive(Debug, Args)]
+struct ReplArgs {
+    /// Replay a transcript (input lines + expected output blocks) and diff;
+    /// any drift exits 1. The format is documented in docs/repl.md.
+    #[arg(long)]
+    script: Option<PathBuf>,
+    /// The schedule seed for the session's scheduler (`[conc.det.seed]`).
+    #[arg(long)]
+    seed: Option<u64>,
 }
 
 #[derive(Debug, Args)]
@@ -252,8 +267,112 @@ fn main() -> ExitCode {
         } => run_protocol_validate(&files),
         Command::DiffRun(args) => run_diff_run(&args),
         Command::Fuzz(args) => run_fuzz(&args),
+        Command::Repl(args) => run_repl(&args),
     };
     ExitCode::from(code)
+}
+
+fn run_repl(args: &ReplArgs) -> u8 {
+    match &args.script {
+        Some(script) => replay_transcript(script, args.seed),
+        None => repl_loop(args.seed),
+    }
+}
+
+/// The live loop. Pipe-friendly on purpose: the prompt and (in pipe mode) the
+/// echoed input are printed, so a piped session's captured stdout IS a valid
+/// transcript — capture-then-grep in CI, no PTY anywhere.
+fn repl_loop(seed: Option<u64>) -> u8 {
+    use std::io::{BufRead, IsTerminal, Write};
+    let interactive = std::io::stdin().is_terminal();
+    let mut session = wolf_interp::eval::repl::Session::new(seed);
+    let stdin = std::io::stdin();
+    let mut lines = stdin.lock().lines();
+    loop {
+        print!("{}", session.prompt());
+        let _ = std::io::stdout().flush();
+        let Some(Ok(line)) = lines.next() else {
+            // EOF: end the line the prompt started, then leave.
+            println!();
+            return EXIT_OK;
+        };
+        let line = line.strip_suffix('\r').unwrap_or(&line).to_owned();
+        if !interactive {
+            // Echo, so captured output is a transcript.
+            println!("{line}");
+        }
+        match session.feed_line(&line) {
+            wolf_interp::eval::repl::Fed::Quit => return EXIT_OK,
+            wolf_interp::eval::repl::Fed::More => {}
+            wolf_interp::eval::repl::Fed::Output(out) => {
+                for rendered in out {
+                    println!("{rendered}");
+                }
+            }
+        }
+    }
+}
+
+/// `--script t.transcript`: replay the transcript's input lines through a
+/// fresh session, re-render the whole transcript, and byte-compare. Drift
+/// fails with the first differing line — the book's no-rot gate.
+fn replay_transcript(path: &Path, seed: Option<u64>) -> u8 {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(e) => return tool_error(&format!("cannot read {}: {e}", path.display())),
+    };
+    let expected = raw.replace("\r\n", "\n");
+    let mut session = wolf_interp::eval::repl::Session::new(seed);
+    let mut produced = String::new();
+    let mut inputs = 0usize;
+    let mut quit = false;
+    for line in expected.lines() {
+        let input = line
+            .strip_prefix("wolf> ")
+            .or_else(|| line.strip_prefix("....> "));
+        let Some(input) = input else { continue };
+        if quit {
+            break;
+        }
+        inputs += 1;
+        produced.push_str(session.prompt());
+        produced.push_str(input);
+        produced.push('\n');
+        match session.feed_line(input) {
+            wolf_interp::eval::repl::Fed::Quit => quit = true,
+            wolf_interp::eval::repl::Fed::More => {}
+            wolf_interp::eval::repl::Fed::Output(out) => {
+                for rendered in out {
+                    produced.push_str(&rendered);
+                    produced.push('\n');
+                }
+            }
+        }
+    }
+    if produced == expected {
+        println!("replay: OK ({inputs} input(s), byte-identical)");
+        EXIT_OK
+    } else {
+        let mut want = expected.lines();
+        let mut got = produced.lines();
+        let mut at = 0usize;
+        loop {
+            at += 1;
+            match (want.next(), got.next()) {
+                (Some(w), Some(g)) if w == g => {}
+                (w, g) => {
+                    eprintln!(
+                        "replay: DRIFT at line {at} of {}\n  expected: {}\n  got:      {}",
+                        path.display(),
+                        w.unwrap_or("<end of transcript>"),
+                        g.unwrap_or("<end of session output>"),
+                    );
+                    break;
+                }
+            }
+        }
+        EXIT_CHECK_FAILED
+    }
 }
 
 fn tool_error(message: &str) -> u8 {

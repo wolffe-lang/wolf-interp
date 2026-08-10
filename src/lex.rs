@@ -334,6 +334,11 @@ pub struct Lexed {
     pub deferred: Vec<Diag>,
     /// The deepest string-nesting depth seen, for the dump format.
     pub max_str_depth: usize,
+    /// Was the mode/delimiter stack still open when the bytes ran out — an
+    /// unclosed `(`/`[`/`{`/string/interpolation? The REPL's continuation
+    /// predicate ([`repl_input_complete`]) reads the stack the lexer itself
+    /// kept, captured before `close_unterminated` drains it.
+    pub open_at_eof: bool,
 }
 
 impl Lexed {
@@ -403,6 +408,8 @@ struct Lexer<'a> {
     /// `[gram.lex.newline]` exception is a property of *that* token, so it is
     /// recorded rather than re-derived from a stack we have already popped.
     attr_close: Option<usize>,
+    /// Captured by `close_unterminated`: the stack was open at end of input.
+    open_at_eof: bool,
 }
 
 /// Tokenizes a source file.
@@ -422,6 +429,7 @@ pub fn lex(src: &str) -> Lexed {
         max_str_depth: 0,
         depth_reported: false,
         attr_close: None,
+        open_at_eof: false,
     };
     lexer.run();
     Lexed {
@@ -429,6 +437,35 @@ pub fn lex(src: &str) -> Lexed {
         errors: lexer.errors,
         deferred: lexer.deferred,
         max_str_depth: lexer.max_str_depth,
+        open_at_eof: lexer.open_at_eof,
+    }
+}
+
+/// The REPL's continuation predicate (is08): is `src`, as typed so far, a
+/// complete input?
+///
+/// This runs the real lexer and asks the real `[gram.lex.newline]` machinery
+/// — not a paraphrase of it. An input **continues** (returns `false`) when:
+///
+/// - the mode/delimiter stack is still open at end of input — an unclosed
+///   `(`, `[`, `{`, string, or interpolation ([`Lexer`]'s `ctx`), or
+/// - the final token cannot end a statement, so the lexer inserted no
+///   terminator at EOF ([`Tok::ends_a_statement`] via
+///   `insert_terminator_at_eof` — a trailing `+` continues, byte-exactly as
+///   `grammar/newline_trailing.lu` pins for whole files).
+///
+/// Anything else — including input the parser will reject — is *complete*:
+/// the REPL evaluates it and reports, rather than trapping the user in a
+/// continuation they cannot escape.
+#[must_use]
+pub fn repl_input_complete(src: &str) -> bool {
+    let lexed = lex(src);
+    if lexed.open_at_eof {
+        return false;
+    }
+    match lexed.tokens.last() {
+        None => true,
+        Some(token) => matches!(token.tok, Tok::Term { .. }),
     }
 }
 
@@ -454,6 +491,7 @@ pub fn lex_bytes(bytes: &[u8]) -> Lexed {
                 )],
                 deferred: Vec::new(),
                 max_str_depth: 0,
+                open_at_eof: false,
             }
         }
     }
@@ -1412,6 +1450,7 @@ impl<'a> Lexer<'a> {
     /// diagnostic per open frame, innermost first, so the first one reported is
     /// the one nearest the mistake.
     fn close_unterminated(&mut self) {
+        self.open_at_eof = !self.ctx.is_empty();
         while let Some(ctx) = self.ctx.pop() {
             match ctx {
                 Ctx::Str(frame) => {
