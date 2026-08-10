@@ -109,9 +109,36 @@ struct ConformRunArgs {
     /// seed replays the identical decision stream (`[proto.seed.flag]`).
     #[arg(long)]
     seed: Option<u64>,
-    /// Alias of `--seed`: replay exactly the schedule this seed selects.
-    #[arg(long, value_name = "SEED")]
-    schedule: Option<u64>,
+    /// Replay one exact schedule: either a seed value (as `--seed`) or an
+    /// explicit decision stream `ev:c0,c1,…` — the explorer's counterexample
+    /// spelling when a stream does not fit the 62-bit packed-seed payload.
+    #[arg(long, value_name = "SEED|ev:…")]
+    schedule: Option<String>,
+    /// is07: systematically explore up to N inequivalent schedules (DPOR over
+    /// the sched-ev/0 decision stream) instead of observing one run. Reports
+    /// schedules explored, reduction stats, and verdict stability; any
+    /// schedule-dependent behavior is a finding and exits 1.
+    #[arg(long, value_name = "N")]
+    explore: Option<u64>,
+    /// Exploration: maximum decisions per schedule (depth cap).
+    #[arg(long, default_value_t = 4096)]
+    explore_steps: usize,
+    /// Exploration: CHESS-style preemption bound (max non-FIFO choices).
+    #[arg(long, value_name = "P")]
+    explore_preemptions: Option<u32>,
+    /// Exploration: wall-clock budget in milliseconds.
+    #[arg(long, value_name = "MS")]
+    explore_wall_ms: Option<u64>,
+    /// Exploration: full-branching DFS baseline instead of DPOR.
+    #[arg(long)]
+    explore_naive: bool,
+    /// Exploration: disable state-hash convergence pruning.
+    #[arg(long)]
+    explore_no_prune: bool,
+    /// Exploration: re-verify every state-hash hit against its stored
+    /// canonical preimage (the 128-bit-collision guard).
+    #[arg(long)]
+    paranoid: bool,
     /// Emit the machine-readable observation record.
     #[arg(long)]
     json: bool,
@@ -464,18 +491,48 @@ fn read_program(path: &Path) -> Result<Vec<u8>, u8> {
         .map_err(|e| tool_error(&format!("could not read `{}`: {e}", path.display())))
 }
 
+/// Parses `--schedule`'s value: a bare seed or an `ev:` decision stream.
+fn parse_schedule(text: &str) -> Result<wolf_interp::eval::SchedRequest, String> {
+    use wolf_interp::eval::SchedRequest;
+    if let Some(stream) = text.strip_prefix("ev:") {
+        let choices: Result<Vec<usize>, _> = if stream.is_empty() {
+            Ok(Vec::new())
+        } else {
+            stream.split(',').map(str::parse).collect()
+        };
+        return choices
+            .map(SchedRequest::Stream)
+            .map_err(|e| format!("`--schedule={text}` is not a decision stream: {e}"));
+    }
+    text.parse()
+        .map(SchedRequest::Seed)
+        .map_err(|e| format!("`--schedule={text}` is neither a seed nor `ev:…`: {e}"))
+}
+
 fn run_conform_run(args: &ConformRunArgs) -> u8 {
     let source = match read_program(&args.file) {
         Ok(source) => source,
         Err(code) => return code,
     };
 
-    let (record, observed) = wolf_interp::observe_record_seeded(
+    if let Some(budget) = args.explore {
+        return run_explore(args, budget);
+    }
+
+    let request = match (args.seed, args.schedule.as_deref()) {
+        (Some(seed), _) => wolf_interp::eval::SchedRequest::Seed(seed),
+        (None, Some(text)) => match parse_schedule(text) {
+            Ok(request) => request,
+            Err(message) => return tool_error(&message),
+        },
+        (None, None) => wolf_interp::eval::SchedRequest::Default,
+    };
+    let (record, observed) = wolf_interp::observe_record_scheduled(
         &args.file,
         &source,
         args.phase,
         args.trace.unwrap_or_default(),
-        args.seed.or(args.schedule),
+        &request,
     );
 
     // Never emit a record this implementation's own validator would reject.
@@ -536,6 +593,49 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
 
     // The record carries the program's outcome; the tool succeeded.
     EXIT_OK
+}
+
+/// `conform-run --explore=N`: is07's bounded exhaustive interleaving search.
+fn run_explore(args: &ConformRunArgs, budget: u64) -> u8 {
+    if args.phase.is_some() && args.phase != Some(Phase::Run) {
+        return tool_error("--explore explores the run rung; drop --phase or pass --phase=run");
+    }
+    let options = wolf_interp::explore::Options {
+        max_schedules: budget,
+        max_steps: args.explore_steps,
+        max_preemptions: args.explore_preemptions,
+        wall: args.explore_wall_ms.map(Duration::from_millis),
+        naive: args.explore_naive,
+        prune: !args.explore_no_prune,
+        paranoid: args.paranoid,
+        ..wolf_interp::explore::Options::default()
+    };
+    let report = match wolf_interp::explore_file(&args.file, &options) {
+        Ok(report) => report,
+        Err(message) => {
+            return tool_error(&format!(
+                "{}: cannot explore — {message}",
+                wolf_interp::slash_path(&args.file)
+            ));
+        }
+    };
+    let display = wolf_interp::slash_path(&args.file);
+    if args.json {
+        match serde_json::to_string(&wolf_interp::explore::to_json(&display, &report, &options)) {
+            Ok(line) => println!("{line}"),
+            Err(e) => return tool_error(&format!("could not serialize the report: {e}")),
+        }
+    } else {
+        print!(
+            "{}",
+            wolf_interp::explore::render(&display, &report, &options)
+        );
+    }
+    if report.green() {
+        EXIT_OK
+    } else {
+        EXIT_CHECK_FAILED
+    }
 }
 
 fn run_lex(args: &FrontendArgs) -> u8 {

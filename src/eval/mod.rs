@@ -260,6 +260,31 @@ impl std::str::FromStr for Trace {
     }
 }
 
+/// How a caller asks for a schedule (`[proto.seed.flag]` and the is07
+/// explorer's replay spelling).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum SchedRequest {
+    /// Unseeded: the strict-FIFO default; the record declares `seeded: false`.
+    #[default]
+    Default,
+    /// `--seed=N`: a generator seed, or a packed schedule when bit 62 is set
+    /// ([`sched::PACKED_SEED_TAG`]).
+    Seed(u64),
+    /// `--schedule=ev:c0,c1,…`: an explicit decision stream, replayed exactly
+    /// (choices beyond the stream take the FIFO default). The spelling for
+    /// counterexamples too large for the 62-bit packed-seed payload.
+    Stream(Vec<usize>),
+}
+
+impl SchedRequest {
+    /// Does the resulting record declare `seeded: true`? Any explicit
+    /// schedule request is deterministic replay (`[proto.seed.equal]`).
+    #[must_use]
+    pub fn is_seeded(&self) -> bool {
+        !matches!(self, SchedRequest::Default)
+    }
+}
+
 /// Everything one run produced.
 #[derive(Debug, Clone)]
 pub struct Run {
@@ -278,6 +303,9 @@ pub struct Run {
     pub host_leaks: Vec<prov::AllocId>,
     /// `Err` when the region forest invariant was broken at exit.
     pub forest: Result<(), String>,
+    /// The run's reified `sched-ev/0` stream and op log — what the is07
+    /// explorer branches over ([`crate::explore`]).
+    pub schedule: sched::SchedTrace,
 }
 
 /// A lexical scope: its locals and its scope-exit effects.
@@ -375,6 +403,39 @@ impl Machine {
     /// the strict-FIFO schedule; the record's `seeded` flag is the caller's.
     #[must_use]
     pub fn with_seed(program: &Program, seed: Option<u64>) -> Machine {
+        let sched = match seed {
+            // The packed-schedule half of the seed namespace ([`sched::PACKED_SEED_TAG`]):
+            // the seed *is* the decision stream, replayed digit by digit.
+            Some(seed) if sched::seed_is_packed(seed) => sched::Sched::packed(seed),
+            other => sched::Sched::new(other.unwrap_or(0)),
+        };
+        Machine::with_sched(program, sched)
+    }
+
+    /// The explorer's door: force `plan`'s decision prefix, FIFO beyond it,
+    /// with the completeness assertion armed ([`sched::Plan`]).
+    #[must_use]
+    pub fn with_plan(program: &Program, plan: sched::Plan) -> Machine {
+        Machine::with_sched(program, sched::Sched::planned(plan))
+    }
+
+    /// The CLI's door: `--seed=N` or `--schedule=ev:…` ([`SchedRequest`]).
+    #[must_use]
+    pub fn with_request(program: &Program, request: &SchedRequest) -> Machine {
+        match request {
+            SchedRequest::Default => Machine::with_seed(program, None),
+            SchedRequest::Seed(seed) => Machine::with_seed(program, Some(*seed)),
+            SchedRequest::Stream(choices) => Machine::with_plan(
+                program,
+                sched::Plan {
+                    choices: choices.clone(),
+                    ..sched::Plan::default()
+                },
+            ),
+        }
+    }
+
+    fn with_sched(program: &Program, sched: sched::Sched) -> Machine {
         let shared = Shared {
             program: Arc::new(program.clone()),
             store: Arc::new(Mutex::new(Store::new())),
@@ -383,7 +444,7 @@ impl Machine {
             trace: Arc::new(Mutex::new(Vec::new())),
             forest: Arc::new(Mutex::new(Ok(()))),
             steps: Arc::new(AtomicU64::new(0)),
-            sched: Arc::new(sched::Sched::new(seed.unwrap_or(0))),
+            sched: Arc::new(sched),
             tracing: Trace::Off,
         };
         Machine::for_task(shared, 0, BTreeMap::new())
@@ -497,6 +558,7 @@ impl Machine {
         self.drain_prov();
         let stdout = std::mem::take(&mut *self.shared.stdout.lock().expect("stdout lock"));
         let trace = std::mem::take(&mut *self.shared.trace.lock().expect("trace lock"));
+        let schedule = self.shared.sched.take_trace();
         Run {
             outcome,
             stdout,
@@ -505,6 +567,7 @@ impl Machine {
             live_cells,
             host_leaks,
             forest,
+            schedule,
         }
     }
 
@@ -1132,6 +1195,9 @@ impl Machine {
             .lock()
             .expect("stdout lock")
             .extend_from_slice(text.as_bytes());
+        // Printed bytes fold into the scheduler's canonical-state digest, so
+        // observably-diverged schedules never merge under state hashing.
+        self.shared.sched.stdout_mark(text.as_bytes());
     }
 
     // -- Tier 1: the region machine (§3) -----------------------------------

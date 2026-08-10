@@ -32,6 +32,7 @@ pub mod diag;
 pub mod differ;
 pub mod directive;
 pub mod eval;
+pub mod explore;
 pub mod frontend;
 pub mod fuzz;
 pub mod ledger;
@@ -151,7 +152,25 @@ pub fn observe_record_seeded(
     trace: crate::eval::Trace,
     seed: Option<u64>,
 ) -> (ObservationRecord, Observed) {
-    let observation = frontend::observe_file(file, source, requested_phase, trace, seed);
+    let request = seed.map_or(eval::SchedRequest::Default, eval::SchedRequest::Seed);
+    observe_record_scheduled(file, source, requested_phase, trace, &request)
+}
+
+/// As [`observe_record_seeded`], with the full schedule-request surface:
+/// `--seed=N` (generator or packed) or `--schedule=ev:…` (an explicit
+/// decision stream — the is07 explorer's counterexample spelling when the
+/// stream does not fit the 62-bit packed payload). Any explicit request is
+/// deterministic replay, so the record declares `seeded: true`
+/// (`[proto.seed.equal]`).
+#[must_use]
+pub fn observe_record_scheduled(
+    file: &Path,
+    source: &[u8],
+    requested_phase: Option<Phase>,
+    trace: crate::eval::Trace,
+    request: &eval::SchedRequest,
+) -> (ObservationRecord, Observed) {
+    let observation = frontend::observe_file(file, source, requested_phase, trace, request);
 
     // `[proto.record.fields]`: the digest whenever the program wrote output,
     // the inline text up to 4096 bytes. Only an `exit` verdict has "the program
@@ -234,7 +253,7 @@ pub fn observe_record_seeded(
         commit: COMMIT.to_owned(),
         file: slash_path(file),
         phase_reached: observation.phase_reached,
-        seeded: seed.is_some(),
+        seeded: request.is_seeded(),
         diagnostics: observation.diagnostics,
         verdict: observation.verdict,
         stdout_sha256: digest,
@@ -252,6 +271,29 @@ pub fn observe_record_seeded(
             forest: observation.forest,
         },
     )
+}
+
+/// Explores every inequivalent schedule of the program rooted at `file` —
+/// `conform-run --explore=N` (is07's systematic interleaving search; see
+/// [`explore`]). The program must clear the frontend first; a rejection comes
+/// back as `Err` with the diagnostic rendered, because a schedule space only
+/// exists for a program that runs.
+///
+/// # Errors
+///
+/// The rendered frontend diagnostic or module-graph failure.
+pub fn explore_file(file: &Path, options: &explore::Options) -> Result<explore::Report, String> {
+    let program = match sema::load(file) {
+        Ok(program) => program,
+        Err(sema::LoadError::Syntax { file, diag }) => return Err(format!("{file}: {diag}")),
+        Err(sema::LoadError::Io(message)) => {
+            return Err(format!("the module graph could not be read: {message}"));
+        }
+    };
+    if let Some(diag) = sema::resolve_check(&program) {
+        return Err(diag.to_string());
+    }
+    Ok(explore::explore(&program, options))
 }
 
 /// The record for a program nothing has looked at — kept for callers that want

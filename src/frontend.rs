@@ -47,7 +47,7 @@ use std::path::Path;
 
 use crate::diag::Diag;
 use crate::eval::prov::UbFinding;
-use crate::eval::{Machine, Outcome, Trap};
+use crate::eval::{Machine, Outcome, SchedRequest, Trap};
 use crate::lex;
 use crate::parse;
 use crate::phase::Phase;
@@ -139,7 +139,13 @@ pub const DEEPEST_STATIC: Phase = Phase::Resolve;
 /// one-file root module — `resolve` and `run` as well.
 #[must_use]
 pub fn observe(source: &[u8], requested: Option<Phase>) -> Observation {
-    observe_with(None, source, requested, crate::eval::Trace::Off, None)
+    observe_with(
+        None,
+        source,
+        requested,
+        crate::eval::Trace::Off,
+        &SchedRequest::Default,
+    )
 }
 
 /// Observes the program rooted at `file`, loading its module graph (D32:
@@ -150,9 +156,9 @@ pub fn observe_file(
     source: &[u8],
     requested: Option<Phase>,
     trace: crate::eval::Trace,
-    seed: Option<u64>,
+    request: &SchedRequest,
 ) -> Observation {
-    observe_with(Some(file), source, requested, trace, seed)
+    observe_with(Some(file), source, requested, trace, request)
 }
 
 fn observe_with(
@@ -160,7 +166,7 @@ fn observe_with(
     source: &[u8],
     requested: Option<Phase>,
     trace: crate::eval::Trace,
-    seed: Option<u64>,
+    request: &SchedRequest,
 ) -> Observation {
     if requested == Some(Phase::None) {
         return Observation::clean(Phase::None, Verdict::Pass);
@@ -246,7 +252,9 @@ fn observe_with(
     }
 
     // -- run ---------------------------------------------------------------
-    let run = Machine::with_seed(&program, seed).tracing(trace).run();
+    let run = Machine::with_request(&program, request)
+        .tracing(trace)
+        .run();
     let mut observation = match run.outcome {
         Outcome::Exit(status) => Observation::clean(Phase::Run, Verdict::Exit(status)),
         Outcome::Trap(trap) => Observation {

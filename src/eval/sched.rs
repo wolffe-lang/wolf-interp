@@ -60,6 +60,170 @@ pub type ChanId = usize;
 pub type MutexId = usize;
 pub type ProcId = usize;
 
+// ---------------------------------------------------------------------------
+// The decision stream, reified — is07's branch alphabet
+// ---------------------------------------------------------------------------
+
+/// Which alphabet a recorded decision draws from (`[conc.det.events]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecisionKind {
+    /// Which ready task runs next; candidates are task ids in queue order.
+    Task,
+    /// Which simultaneously-ready `select` arm commits (`[conc.select.fair]`);
+    /// candidates are arm indices in declaration order.
+    Arm,
+}
+
+/// One numbered decision from the `sched-ev/0` stream, with the alternatives
+/// that were live when it was taken. A schedule is exactly this sequence
+/// (`[conc.det.seed]`); the explorer permutes it and nothing else.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Decision {
+    pub kind: DecisionKind,
+    /// The eligible alternatives, in deterministic queue order.
+    pub candidates: Vec<usize>,
+    /// Index into `candidates`.
+    pub chosen: usize,
+    /// FNV-1a-128 of the canonical scheduler-visible state at the decision
+    /// point (`Task` decisions; 0 for `Arm`). See [`State::canonical_state`]
+    /// for exactly what the hash covers — and what it deliberately cannot.
+    pub state: u128,
+}
+
+/// A shared object two tasks can contend on — the conflict alphabet the
+/// explorer's happens-before analysis reads. Two operations conflict when
+/// they name the same key and at least one mutates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ObjKey {
+    /// A channel (`[conc.mm.hb.chan]`): sends, receives, closes, `select`
+    /// registrations and monitor deliveries all mutate its queues.
+    Chan(ChanId),
+    /// A `Mutex`/`when` target (`[conc.mm.hb.mutex]`).
+    Mutex(MutexId),
+    /// A proc's control state: kill, link, monitor, exit delivery
+    /// (`[conc.proc.2]`, `[conc.proc.kill]`).
+    Proc(ProcId),
+    /// A task's control flags: cancellation and kill requests race the
+    /// target's own blocking-point checks (`[conc.cancel.points]`).
+    TaskCtl(TaskId),
+    /// A scope's join/failure ledger (`[conc.task.join]`, `[conc.task.fail]`).
+    Scope(ScopeId),
+    /// Shared memory the race detector watches (`[conc.mm.race.1]`).
+    Mem(RaceKey),
+}
+
+/// One operation on a shared object, recorded at its initiation site with the
+/// acting task's vector clock — the event the DPOR happens-before relation is
+/// computed over (`[conc.det.dpor]`).
+#[derive(Debug, Clone)]
+pub struct OpRecord {
+    pub task: TaskId,
+    /// Index into the decision log of the `Task` decision that scheduled the
+    /// slice this op ran in; `None` for `main`'s initial slice (before any
+    /// decision existed, so there is no alternative to backtrack to).
+    pub slice: Option<usize>,
+    pub obj: ObjKey,
+    pub write: bool,
+    /// The acting task's vector clock at the op.
+    pub vc: Vec<u64>,
+}
+
+/// Everything the explorer needs from one finished run.
+#[derive(Debug, Clone, Default)]
+pub struct SchedTrace {
+    pub decisions: Vec<Decision>,
+    pub ops: Vec<OpRecord>,
+    /// The run hit the all-blocked/no-timer verdict (`declare_deadlock`).
+    pub deadlocked: bool,
+    /// Set when a plan replay observed different alternatives than the run
+    /// that produced the plan: a decision escaped the `sched-ev/0` stream —
+    /// the completeness violation `[conc.det.flow]` names, a hard error.
+    pub divergence: Option<String>,
+    /// `state hash → canonical preimage`, kept only under the explorer's
+    /// `--paranoid` flag so a hash hit can be re-verified by comparison.
+    pub preimages: Vec<(u128, String)>,
+}
+
+/// The explorer's replay plan: forced choice indices per decision position,
+/// with the alternatives each forced position is expected to present (the
+/// completeness assertion), replayed over the deterministic machine.
+#[derive(Debug, Clone, Default)]
+pub struct Plan {
+    /// Choice index per decision position; positions beyond the end take the
+    /// deterministic default (index 0 — strict FIFO).
+    pub choices: Vec<usize>,
+    /// What each forced position must offer, from the run that produced the
+    /// plan. Any mismatch is recorded as `SchedTrace::divergence`.
+    pub expected: Vec<(DecisionKind, Vec<usize>)>,
+    /// Keep canonical-state preimages beside their hashes (`--paranoid`).
+    pub keep_preimages: bool,
+    /// Test-only: perturb the ready queue *without* recording a decision —
+    /// the deliberately-leaked nondeterminism the red test plants, which the
+    /// completeness assertion must catch. Never set outside tests.
+    #[doc(hidden)]
+    pub leak_nondeterminism: bool,
+}
+
+/// The `--seed` namespace split (provisional until the s36 Phase A hook-design
+/// doc lands upstream; the compiler runtime's format has priority and this
+/// implementation will re-pin to it — see `docs/approximation-contract.md`
+/// §10.6). A seed with bit 62 set and bit 63 clear is a **packed schedule**:
+/// its low 62 bits are the schedule's choices at multi-candidate decision
+/// points, as mixed-radix digits, least significant first, trailing FIFO
+/// choices omitted. Every other value seeds the xorshift generator (0 = strict
+/// FIFO). Both kinds honor `[proto.seed.equal]`: equal seeds replay the
+/// identical decision stream, output bytes included.
+pub const PACKED_SEED_TAG: u64 = 1 << 62;
+/// The low 62 bits of a packed seed: the mixed-radix digit payload.
+pub const PACKED_SEED_MASK: u64 = PACKED_SEED_TAG - 1;
+
+/// Is this seed value a packed schedule rather than a generator seed?
+#[must_use]
+pub fn seed_is_packed(seed: u64) -> bool {
+    seed & PACKED_SEED_TAG != 0 && seed.leading_zeros() >= 1
+}
+
+/// Packs a decision stream into a `--seed=N` value, when it fits the 62-bit
+/// payload. `Some(0)` is the all-FIFO schedule (seed 0 replays it); `None`
+/// means the stream needs the explicit `--schedule=ev:…` spelling.
+#[must_use]
+pub fn pack_schedule(decisions: &[Decision]) -> Option<u64> {
+    let Some(last) = decisions.iter().rposition(|d| d.chosen != 0) else {
+        return Some(0);
+    };
+    let mut value: u128 = 0;
+    let mut weight: u128 = 1;
+    for decision in &decisions[..=last] {
+        let n = decision.candidates.len() as u128;
+        if n <= 1 {
+            continue;
+        }
+        value += (decision.chosen as u128) * weight;
+        weight = weight.checked_mul(n)?;
+        if weight > u128::from(PACKED_SEED_MASK) + 1 {
+            return None;
+        }
+    }
+    if value > u128::from(PACKED_SEED_MASK) {
+        return None;
+    }
+    #[allow(clippy::cast_possible_truncation)] // checked against the 62-bit mask above
+    Some(PACKED_SEED_TAG | (value as u64))
+}
+
+/// How the scheduler answers a decision point.
+#[derive(Debug)]
+enum Chooser {
+    /// `--seed=N` generator seeds: 0 = strict FIFO, else xorshift
+    /// (`[conc.det.seed]`, `[conc.select.fair]`).
+    Seeded { seed: u64, rng: u64 },
+    /// A packed schedule seed: mixed-radix digits consumed least significant
+    /// first; exhausted digits mean index 0 (FIFO).
+    Packed { digits: u64 },
+    /// The explorer's forced prefix, with the completeness assertion.
+    Plan(Box<Plan>),
+}
+
 /// The gate one task parks on. `true` means "you are scheduled: run".
 #[derive(Debug, Default)]
 struct Gate {
@@ -318,9 +482,26 @@ struct State {
     timer_seq: u64,
     /// Virtual nanoseconds (`[conc.select.timeout]`).
     clock: u128,
-    /// The schedule seed (`[conc.det.seed]`). 0 = strict FIFO.
-    seed: u64,
-    rng: u64,
+    /// How this run answers decision points (`[conc.det.seed]`).
+    chooser: Chooser,
+    /// Every decision taken, with its alternatives — the reified
+    /// `sched-ev/0` stream the explorer branches over.
+    decisions: Vec<Decision>,
+    /// Shared-object operations in execution order, for the explorer's
+    /// happens-before analysis (`[conc.det.dpor]`).
+    ops: Vec<OpRecord>,
+    /// The decision index that scheduled the currently-running slice.
+    cur_slice: Option<usize>,
+    /// The completeness violation, when a plan replay diverged.
+    divergence: Option<String>,
+    /// `declare_deadlock` fired during this run.
+    deadlocked: bool,
+    /// Canonical-state preimages beside their hashes (`--paranoid` only).
+    preimages: Vec<(u128, String)>,
+    /// Rolling FNV of everything printed, folded into the canonical state
+    /// hash so schedules that already diverged observably never merge.
+    stdout_len: u64,
+    stdout_fnv: u64,
     /// Numbered decisions — the `sched-ev/0` stream (`[conc.det.events]`).
     events: u64,
     /// Trace lines pending pickup by the running task's machine.
@@ -340,21 +521,189 @@ impl State {
         self.notes.push((rule, format!("ev#{event} {text}")));
     }
 
-    /// One scheduling decision: which of `n` candidates goes next.
+    /// One scheduling decision: which of the candidates goes next.
     ///
-    /// Seed 0 is strict FIFO (`index 0`); any other seed draws from a
-    /// xorshift generator — pseudo-random, **seeded by the scheduler**, never
-    /// wall-clock incidental (`[conc.select.fair]`'s load-bearing wording).
-    fn decide(&mut self, n: usize) -> usize {
-        if self.seed == 0 || n <= 1 {
-            return 0;
+    /// Seed 0 is strict FIFO (`index 0`); any other generator seed draws from
+    /// a xorshift generator — pseudo-random, **seeded by the scheduler**,
+    /// never wall-clock incidental (`[conc.select.fair]`'s load-bearing
+    /// wording). A packed seed consumes its digits; a plan replays its forced
+    /// prefix and asserts the alternatives match what the recording run saw
+    /// (`[conc.det.flow]` — a mismatch means a decision escaped the stream).
+    /// Every decision is recorded with its candidate set, whatever the mode.
+    fn decide(&mut self, kind: DecisionKind, candidates: Vec<usize>) -> usize {
+        let n = candidates.len();
+        let position = self.decisions.len();
+        let chosen = match &mut self.chooser {
+            Chooser::Seeded { seed, rng } => {
+                if *seed == 0 || n <= 1 {
+                    0
+                } else {
+                    let mut x = *rng;
+                    x ^= x << 13;
+                    x ^= x >> 7;
+                    x ^= x << 17;
+                    *rng = x;
+                    (x % n as u64) as usize
+                }
+            }
+            Chooser::Packed { digits } => {
+                if n <= 1 {
+                    0
+                } else {
+                    let digit = (*digits % n as u64) as usize;
+                    *digits /= n as u64;
+                    digit
+                }
+            }
+            Chooser::Plan(plan) => {
+                let mut mismatch = None;
+                if let Some((want_kind, want)) = plan.expected.get(position)
+                    && (*want_kind != kind || *want != candidates)
+                {
+                    mismatch = Some(format!(
+                        "decision #{position}: the recording run saw {want_kind:?} over \
+                         {want:?}, this replay sees {kind:?} over {candidates:?} — \
+                         nondeterminism outside a registered schedule point \
+                         ([conc.det.flow]): a decision escaped the sched-ev/0 stream"
+                    ));
+                }
+                let choice = plan.choices.get(position).copied().unwrap_or(0);
+                let chosen = if choice < n {
+                    choice
+                } else {
+                    mismatch.get_or_insert_with(|| {
+                        format!(
+                            "decision #{position}: the plan forces choice {choice} but only \
+                             {n} candidate(s) exist — the replayed stream diverged \
+                             ([conc.det.flow])"
+                        )
+                    });
+                    0
+                };
+                if let Some(mismatch) = mismatch
+                    && self.divergence.is_none()
+                {
+                    self.divergence = Some(mismatch);
+                }
+                chosen
+            }
+        };
+        let state = if kind == DecisionKind::Task {
+            let preimage = self.canonical_state();
+            let hash = fnv128(preimage.as_bytes());
+            if let Chooser::Plan(plan) = &self.chooser
+                && plan.keep_preimages
+            {
+                self.preimages.push((hash, preimage));
+            }
+            hash
+        } else {
+            0
+        };
+        self.decisions.push(Decision {
+            kind,
+            candidates,
+            chosen,
+            state,
+        });
+        if kind == DecisionKind::Task {
+            self.cur_slice = Some(position);
         }
-        let mut x = self.rng;
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        self.rng = x;
-        (x % n as u64) as usize
+        chosen
+    }
+
+    /// Records one shared-object operation for the explorer, attributed to
+    /// the decision that scheduled the slice it runs in.
+    fn op(&mut self, task: TaskId, obj: ObjKey, write: bool) {
+        let vc = self.tasks[task].vc.clone();
+        self.ops.push(OpRecord {
+            task,
+            slice: self.cur_slice,
+            obj,
+            write,
+            vc,
+        });
+    }
+
+    /// The task currently holding the baton — for op attribution at doors
+    /// that do not carry a `me` parameter (close, kill, link, monitor). The
+    /// baton guarantees at most one `Running` task; during a handoff window
+    /// the initiator is still the acting task, and task 0 opens the world.
+    fn actor(&self) -> TaskId {
+        self.tasks
+            .iter()
+            .position(|t| t.state == TaskState::Running)
+            .unwrap_or(0)
+    }
+
+    /// The canonical scheduler-visible state, serialized deterministically:
+    /// task states + queues (with wakes, clocks and region stacks), channel
+    /// contents, mutexes, procs, scopes, timers, the virtual clock, the race
+    /// detector's memory and a rolling digest of everything printed.
+    ///
+    /// What it deliberately cannot cover: suspended interpreter frames (a
+    /// task's Rust call stack is not serializable) and the region store's
+    /// interior. Two schedules whose difference lives *only* in local
+    /// variables could therefore collide; `docs/approximation-contract.md`
+    /// §10.6 records the approximation and the explorer's `--paranoid` flag
+    /// re-verifies every hash hit against this exact preimage.
+    fn canonical_state(&self) -> String {
+        use std::fmt::Write as _;
+        let mut s = String::with_capacity(512);
+        let _ = write!(
+            s,
+            "clock={};ready={:?};out={}:{:016x};",
+            self.clock, self.ready, self.stdout_len, self.stdout_fnv
+        );
+        for (id, t) in self.tasks.iter().enumerate() {
+            let _ = write!(
+                s,
+                "t{id}={:?},c{},k{},w{:?},vc{:?},os{:?};",
+                t.state, t.cancelled, t.killed, t.wake, t.vc, t.open_stack
+            );
+        }
+        for (id, c) in self.chans.iter().enumerate() {
+            let _ = write!(
+                s,
+                "ch{id}=cap{},cl{},b{:?},s{:?},r{:?},sel{:?},k{}/{};",
+                c.cap, c.closed, c.buf, c.senders, c.receivers, c.selecters, c.sends, c.recvs
+            );
+        }
+        for (id, m) in self.mutexes.iter().enumerate() {
+            let _ = write!(
+                s,
+                "mx{id}={:?},h{:?},w{:?},vc{:?},n{};",
+                m.value, m.holder, m.waiters, m.vc, m.acquisitions
+            );
+        }
+        for (id, p) in self.procs.iter().enumerate() {
+            let _ = write!(
+                s,
+                "p{id}={:?},mon{:?},lnk{:?};",
+                p.exited, p.monitors, p.links
+            );
+        }
+        for (id, scope) in self.scopes.iter().enumerate() {
+            let _ = write!(
+                s,
+                "sc{id}=o{},ch{:?},j{},f{};",
+                scope.owner,
+                scope.children,
+                scope.joining,
+                scope.failures.len()
+            );
+        }
+        for t in &self.timers {
+            let _ = write!(s, "tm={},{},{},{};", t.deadline, t.seq, t.task, t.arm);
+        }
+        for (key, history) in &self.accesses {
+            let _ = write!(s, "acc{key:?}=");
+            for a in history {
+                let _ = write!(s, "({},{},{},{},{})", a.task, a.tick, a.lo, a.hi, a.write);
+            }
+            s.push(';');
+        }
+        s
     }
 
     fn tick(&mut self, task: TaskId) -> u64 {
@@ -426,7 +775,18 @@ impl State {
     fn choose_next(&mut self) -> Option<TaskId> {
         loop {
             if !self.ready.is_empty() {
-                let index = self.decide(self.ready.len());
+                if let Chooser::Plan(plan) = &self.chooser
+                    && plan.leak_nondeterminism
+                    && self.ready.len() > 1
+                {
+                    // The red test's planted bug: perturb the ready queue
+                    // WITHOUT recording a decision. The candidates now differ
+                    // from what the recording run saw, and the completeness
+                    // assertion in `decide` must catch it.
+                    self.ready.rotate_left(1);
+                }
+                let candidates: Vec<usize> = self.ready.iter().copied().collect();
+                let index = self.decide(DecisionKind::Task, candidates);
                 let task = self.ready.remove(index).expect("decide() stays in bounds");
                 let name = self.tasks[task].name.clone();
                 self.note(
@@ -504,6 +864,7 @@ impl State {
     /// No task can run again: wake everything blocked with the deadlock
     /// verdict so each unwinds and the program reports honestly.
     fn declare_deadlock(&mut self) {
+        self.deadlocked = true;
         let roster = self.blocked_roster();
         self.note(
             Rule::SchedDecision,
@@ -636,6 +997,12 @@ impl State {
     /// cancelled task owns, so its own children finish their cancellation
     /// before its join completes.
     fn cancel_task(&mut self, task: TaskId) {
+        if self.tasks[task].state != TaskState::Done {
+            // The request races the target's own blocking-point checks: a
+            // conflict the explorer must see ([conc.cancel.points]).
+            let actor = self.actor();
+            self.op(actor, ObjKey::TaskCtl(task), true);
+        }
         let tcb = &mut self.tasks[task];
         if tcb.state == TaskState::Done || tcb.cancelled || tcb.killed {
             return;
@@ -670,6 +1037,8 @@ impl State {
         if self.procs[proc].exited.is_some() {
             return Vec::new();
         }
+        let actor = self.actor();
+        self.op(actor, ObjKey::Proc(proc), true);
         self.procs[proc].exited = Some(reason.label());
         let name = self.procs[proc].name.clone();
         self.note(
@@ -683,6 +1052,7 @@ impl State {
             payload: vec![reason.to_value()],
         }));
         for chan in self.procs[proc].monitors.clone() {
+            self.op(actor, ObjKey::Chan(chan), true);
             self.chans[chan]
                 .buf
                 .push_back((message.clone(), vc.clone()));
@@ -722,6 +1092,8 @@ impl State {
         if self.procs[proc].exited.is_some() {
             return Vec::new();
         }
+        let actor = self.actor();
+        self.op(actor, ObjKey::Proc(proc), true);
         let name = self.procs[proc].name.clone();
         self.note(
             Rule::ProcKill,
@@ -738,6 +1110,7 @@ impl State {
             .map(|(id, _)| id)
             .collect();
         for task in members {
+            self.op(actor, ObjKey::TaskCtl(task), true);
             self.tasks[task].killed = true;
             match self.tasks[task].state {
                 TaskState::Blocked => {
@@ -757,6 +1130,21 @@ impl State {
         }
         self.deliver_exit(proc, &ExitReason::Killed)
     }
+}
+
+/// FNV-1a, 128-bit — the canonical-state and outcome digest. Not
+/// cryptographic; collisions are what `--paranoid` re-verifies against the
+/// stored preimage.
+#[must_use]
+pub fn fnv128(bytes: &[u8]) -> u128 {
+    const OFFSET: u128 = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d;
+    const PRIME: u128 = 0x0000_0000_0100_0000_0000_0000_0000_013b;
+    let mut hash = OFFSET;
+    for byte in bytes {
+        hash ^= u128::from(*byte);
+        hash = hash.wrapping_mul(PRIME);
+    }
+    hash
 }
 
 fn closed_error() -> Value {
@@ -787,6 +1175,52 @@ pub enum Resolved {
 impl Sched {
     #[must_use]
     pub fn new(seed: u64) -> Sched {
+        Sched::with_chooser(
+            Chooser::Seeded {
+                seed,
+                rng: seed | 1,
+            },
+            format!(
+                "sched-ev/0 stream opens; seed={seed} ({}); root supervisor scope up",
+                if seed == 0 {
+                    "strict FIFO"
+                } else {
+                    "seeded pseudo-random"
+                }
+            ),
+        )
+    }
+
+    /// A packed-schedule seed (`[proto.seed.equal]` holds: the digits replay
+    /// one exact decision stream). `seed` is the full tagged value, for the
+    /// trace; the digits are its low 62 bits.
+    #[must_use]
+    pub fn packed(seed: u64) -> Sched {
+        Sched::with_chooser(
+            Chooser::Packed {
+                digits: seed & PACKED_SEED_MASK,
+            },
+            format!(
+                "sched-ev/0 stream opens; seed={seed} (packed schedule); root supervisor scope up"
+            ),
+        )
+    }
+
+    /// The explorer's door: replay `plan`'s forced prefix, FIFO beyond it,
+    /// asserting the alternatives match what the recording run saw.
+    #[must_use]
+    pub fn planned(plan: Plan) -> Sched {
+        let forced = plan.choices.len();
+        Sched::with_chooser(
+            Chooser::Plan(Box::new(plan)),
+            format!(
+                "sched-ev/0 stream opens; explorer-forced prefix of {forced} decision(s), \
+                 FIFO beyond; root supervisor scope up"
+            ),
+        )
+    }
+
+    fn with_chooser(chooser: Chooser, opening: String) -> Sched {
         let mut state = State {
             tasks: Vec::new(),
             handles: Vec::new(),
@@ -798,8 +1232,15 @@ impl Sched {
             timers: Vec::new(),
             timer_seq: 0,
             clock: 0,
-            seed,
-            rng: seed | 1,
+            chooser,
+            decisions: Vec::new(),
+            ops: Vec::new(),
+            cur_slice: None,
+            divergence: None,
+            deadlocked: false,
+            preimages: Vec::new(),
+            stdout_len: 0,
+            stdout_fnv: 0xcbf2_9ce4_8422_2325,
             events: 0,
             notes: Vec::new(),
             accesses: std::collections::BTreeMap::new(),
@@ -832,20 +1273,37 @@ impl Sched {
             links: Vec::new(),
             exited: None,
         });
-        state.note(
-            Rule::SchedSeed,
-            format!(
-                "sched-ev/0 stream opens; seed={seed} ({}); root supervisor scope up",
-                if seed == 0 {
-                    "strict FIFO"
-                } else {
-                    "seeded pseudo-random"
-                }
-            ),
-        );
+        state.note(Rule::SchedSeed, opening);
         Sched {
             state: Mutex::new(state),
         }
+    }
+
+    /// Everything the explorer needs from this run: the decision stream with
+    /// its alternatives, the op log, and the flags. Call after the run ends.
+    #[must_use]
+    pub fn take_trace(&self) -> SchedTrace {
+        let mut state = self.lock();
+        SchedTrace {
+            decisions: std::mem::take(&mut state.decisions),
+            ops: std::mem::take(&mut state.ops),
+            deadlocked: state.deadlocked,
+            divergence: state.divergence.take(),
+            preimages: std::mem::take(&mut state.preimages),
+        }
+    }
+
+    /// Folds printed bytes into the canonical-state digest, so schedules that
+    /// already diverged observably never merge under state hashing.
+    pub fn stdout_mark(&self, bytes: &[u8]) {
+        let mut state = self.lock();
+        state.stdout_len += bytes.len() as u64;
+        let mut hash = state.stdout_fnv;
+        for byte in bytes {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        state.stdout_fnv = hash;
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
@@ -1076,6 +1534,7 @@ impl Sched {
         loop {
             {
                 let mut state = self.lock();
+                state.op(me, ObjKey::Scope(scope), false);
                 let done = state.scopes[scope]
                     .children
                     .iter()
@@ -1135,6 +1594,7 @@ impl Sched {
         let mut regions = Vec::new();
         {
             let mut state = self.lock();
+            state.op(me, ObjKey::TaskCtl(me), false);
             let cancelled = state.tasks[me].cancelled;
             let killed = state.tasks[me].killed;
             // A cancelled task completing with an error finished its
@@ -1163,6 +1623,19 @@ impl Sched {
             );
             state.tasks[me].state = TaskState::Done;
             state.tasks[me].outcome = Some(end.clone());
+            if let Some(scope) = state.tasks[me].scope {
+                // A successful completion commutes with its siblings' (the
+                // ledger only orders *failures*, [conc.task.fail]); a failing
+                // one writes the ledger and cancels, so it conflicts.
+                let failing = matches!(
+                    end,
+                    TaskEnd::Error(_)
+                        | TaskEnd::Trapped(_)
+                        | TaskEnd::Ub(_)
+                        | TaskEnd::Unsupported(_)
+                );
+                state.op(me, ObjKey::Scope(scope), failing);
+            }
 
             // Scope accounting ([conc.task.fail]): a failing child cancels
             // its siblings now and re-raises at the scope exit.
@@ -1285,6 +1758,8 @@ impl Sched {
                 );
                 return Resolved::Err(cancelled_error());
             }
+            state.op(me, ObjKey::TaskCtl(me), false);
+            state.op(me, ObjKey::Chan(chan), true);
             if state.chans[chan].closed {
                 // Never UB, never a fault: an error value ([conc.chan.close]).
                 state.note(
@@ -1338,6 +1813,8 @@ impl Sched {
                 );
                 return Resolved::Err(cancelled_error());
             }
+            state.op(me, ObjKey::TaskCtl(me), false);
+            state.op(me, ObjKey::Chan(chan), true);
             state.chans[chan].receivers.push_back(me);
             state.settle_chan(chan);
             if state.tasks[me].wake.is_some() {
@@ -1374,6 +1851,8 @@ impl Sched {
         if state.chans[chan].closed {
             return;
         }
+        let actor = state.actor();
+        state.op(actor, ObjKey::Chan(chan), true);
         state.chans[chan].closed = true;
         state.note(Rule::ChanClose, format!("channel#{chan} closes"));
         // Blocked senders can no longer complete: closed error for each.
@@ -1412,6 +1891,10 @@ impl Sched {
                 );
                 return Err(Resolved::Err(cancelled_error()));
             }
+            state.op(me, ObjKey::TaskCtl(me), false);
+            for (_, chan) in arms {
+                state.op(me, ObjKey::Chan(*chan), true);
+            }
             // Readiness: a recv arm is ready when a message is deliverable
             // now, or the channel is drained-closed (the closed error is the
             // delivery). A timeout arm is ready when its deadline has passed.
@@ -1428,7 +1911,7 @@ impl Sched {
                 ready.push(arm);
             }
             if !ready.is_empty() {
-                let pick = state.decide(ready.len());
+                let pick = state.decide(DecisionKind::Arm, ready.clone());
                 let arm = ready[pick];
                 state.note(
                     Rule::SchedSelect,
@@ -1524,6 +2007,8 @@ impl Sched {
                 );
                 return Resolved::Err(cancelled_error());
             }
+            state.op(me, ObjKey::TaskCtl(me), false);
+            state.op(me, ObjKey::Mutex(mx), true);
             if state.mutexes[mx].holder.is_none() {
                 state.mutexes[mx].holder = Some(me);
                 state.mutexes[mx].acquisitions += 1;
@@ -1558,6 +2043,7 @@ impl Sched {
     pub fn release(&self, me: TaskId, mx: MutexId, value: Value) {
         let mut state = self.lock();
         debug_assert_eq!(state.mutexes[mx].holder, Some(me));
+        state.op(me, ObjKey::Mutex(mx), true);
         state.mutexes[mx].value = value;
         state.mutexes[mx].holder = None;
         let vc = state.task_vc(me);
@@ -1598,6 +2084,7 @@ impl Sched {
                 links: Vec::new(),
                 exited: None,
             });
+            state.op(parent, ObjKey::Proc(id), true);
             state.note(
                 Rule::ProcModel,
                 format!(
@@ -1618,6 +2105,8 @@ impl Sched {
     pub fn monitor(&self, proc: ProcId) -> ChanId {
         let chan = self.new_chan(usize::MAX);
         let mut state = self.lock();
+        let actor = state.actor();
+        state.op(actor, ObjKey::Proc(proc), true);
         state.procs[proc].monitors.push(chan);
         let name = state.procs[proc].name.clone();
         state.note(
@@ -1649,6 +2138,9 @@ impl Sched {
     /// `a.link(b)`-style symmetric fate coupling (`[conc.proc.2]`).
     pub fn link(&self, a: ProcId, b: ProcId) {
         let mut state = self.lock();
+        let actor = state.actor();
+        state.op(actor, ObjKey::Proc(a), true);
+        state.op(actor, ObjKey::Proc(b), true);
         if !state.procs[a].links.contains(&b) {
             state.procs[a].links.push(b);
         }
@@ -1689,6 +2181,7 @@ impl Sched {
         if !state.concurrent {
             return None;
         }
+        state.op(me, ObjKey::Mem(key), write);
         let my_vc = state.task_vc(me);
         let found = state.accesses.get(&key).and_then(|history| {
             history
