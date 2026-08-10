@@ -22,10 +22,18 @@
 //!
 //! | state | child read | child write | foreign read | foreign write |
 //! |---|---|---|---|---|
-//! | Reserved | → Active | → Active | ok | → Disabled |
+//! | Reserved | ok (stays Reserved) | → Active | ok | → Disabled |
 //! | Active | ok | ok | → Frozen | → Disabled |
 //! | Frozen | ok | **UB §7/P2** | ok | → Disabled |
 //! | Disabled | **UB §7/P1** | **UB §7/P1** | ok | ok |
+//!
+//! Upstream `8b04edf` repaired the Reserved row: the original table *activated
+//! on child reads* by transcription error, which closed the two-phase window
+//! one access early (a read between the retag and the first write flipped the
+//! tag to Active, so a subsequent foreign read froze it — published Tree
+//! Borrows keeps Reserved until the first child **write**). This machine
+//! implemented the bugged table verbatim, as it must; it implements the
+//! repaired one now, for the same reason.
 //!
 //! "child" is the clause's own definition — *access through this tag or a
 //! descendant* — so for a node `n` and an access through `t`, the access is a
@@ -139,8 +147,12 @@ impl UbRow {
     #[must_use]
     pub const fn what(self) -> &'static str {
         match self {
+            // 8b04edf named the protector escalation in the row itself; this
+            // machine always landed protected foreign writes on P1, and the
+            // row's words now say so rather than leaving it to the state table.
             UbRow::P1 => {
-                "access through a Disabled tag (use-after-free, use of an invalidated borrow)"
+                "access through a Disabled tag (use-after-free, use of an invalidated borrow), \
+                 or a foreign write to a protected tag"
             }
             UbRow::P2 => "write through a Frozen tag",
             UbRow::P3 => "access outside an allocation's bounds",
@@ -1089,7 +1101,12 @@ impl Provenance {
                 let current = tag.perms[off];
                 let next = match (current, child, kind) {
                     // -- child accesses -------------------------------------
-                    (Perm::Reserved, true, _) => Some(Perm::Active),
+                    // A child *read* leaves Reserved alone; activation happens
+                    // at the first child *write* — the repaired `[mem.prov.state]`
+                    // row (8b04edf; the original activated on reads by
+                    // transcription error, closing the two-phase window early).
+                    (Perm::Reserved, true, AccessKind::Read) => None,
+                    (Perm::Reserved, true, AccessKind::Write) => Some(Perm::Active),
                     (Perm::Active, true, _) => None,
                     (Perm::Frozen, true, AccessKind::Read) => None,
                     (Perm::Frozen, true, AccessKind::Write) => {
@@ -1518,7 +1535,9 @@ mod tests {
         // `[mem.prov.state]`, row by row. This is the spec-extracted table made
         // executable; a change here is a spec change.
         for (state, kind, child_access, expected) in [
-            (Perm::Reserved, AccessKind::Read, true, Ok(Perm::Active)),
+            // The repaired Reserved row (8b04edf): a child read leaves the
+            // two-phase window open; only the first child write activates.
+            (Perm::Reserved, AccessKind::Read, true, Ok(Perm::Reserved)),
             (Perm::Reserved, AccessKind::Write, true, Ok(Perm::Active)),
             (Perm::Reserved, AccessKind::Read, false, Ok(Perm::Reserved)),
             (Perm::Reserved, AccessKind::Write, false, Ok(Perm::Disabled)),
