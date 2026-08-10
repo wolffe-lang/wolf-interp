@@ -304,6 +304,22 @@ and §1 forbids that direction.
 E1005 is implemented and exercised by `tests/faults/region_move_open.lu`
 instead. Region transfer across procs is ic03's; the unsafe tier is is04's.
 
+*(Update, is06: spec/03 pinned `channel`, and the file now runs and traps
+`region-fault` — CI asserts it. The rest of the list stands.)*
+
+### 6.6 Declared types do not coerce at struct construction (found is11, filed)
+
+Passing a literal to an `int` parameter adopts the parameter's type
+(`f(42)` where `fn f(x: int) -> int` yields an `i64`), but constructing a
+struct does not: `C { limit: 42 }` with `limit: int` stores the literal's
+own `i32`, observable at the REPL as `:type c.limit` → `i32`. Coercion is
+the type checker's property and sema-lite takes signatures at face value,
+so the inconsistency cannot produce a spurious fault — but the two
+positions disagree with each other, which is a wart, not a choice. Filed
+during the is11 sweep rather than changed: aligning either direction is a
+behavior change, and the code that owns literal typing is the compiler's
+half of the split.
+
 ## 7. Deliberate approximations in the **provenance** machine (is04)
 
 `src/eval/prov.rs` is `spec/02` §6 made executable: per-allocation tag trees,
