@@ -354,6 +354,12 @@ struct Shared {
     /// The sim scheduler (is06): tasks, channels, procs, virtual time.
     sched: Arc<sched::Sched>,
     tracing: Trace,
+    /// is12: the front door's live pass-through. When set, every byte the
+    /// program prints reaches the process stdout the moment it is produced,
+    /// in addition to the buffered copy the observation keeps — `lupin
+    /// FILE.lu` streams a long-running program's output instead of holding
+    /// it to the end. Never set on the record-emitting surfaces.
+    live_stdout: bool,
     /// is08: the REPL session's type-generation map (`[repl.type.gen]`,
     /// `docs/repl.md`). Empty outside a session, in which case struct
     /// literals keep their written names and nothing here changes behavior.
@@ -456,6 +462,7 @@ impl Machine {
             steps: Arc::new(AtomicU64::new(0)),
             sched: Arc::new(sched),
             tracing: Trace::Off,
+            live_stdout: false,
             repl_types: Arc::new(Mutex::new(BTreeMap::new())),
         };
         Machine::for_task(shared, 0, BTreeMap::new())
@@ -481,6 +488,14 @@ impl Machine {
     pub fn tracing(mut self, trace: Trace) -> Machine {
         self.tracing = trace;
         self.shared.tracing = trace;
+        self
+    }
+
+    /// Streams program output to the process stdout as it is produced (the
+    /// is12 front door). Set before the run starts; spawned tasks inherit it.
+    #[must_use]
+    pub fn live_stdout(mut self) -> Machine {
+        self.shared.live_stdout = true;
         self
     }
 
@@ -1216,6 +1231,15 @@ impl Machine {
             .lock()
             .expect("stdout lock")
             .extend_from_slice(text.as_bytes());
+        if self.shared.live_stdout {
+            // The is12 pass-through: the bytes reach the terminal now, not
+            // at program exit. A failed write is the pipe's condition, never
+            // the program's fault — the buffered copy remains authoritative.
+            use std::io::Write;
+            let mut out = std::io::stdout();
+            let _ = out.write_all(text.as_bytes());
+            let _ = out.flush();
+        }
         // Printed bytes fold into the scheduler's canonical-state digest, so
         // observably-diverged schedules never merge under state hashing.
         self.shared.sched.stdout_mark(text.as_bytes());

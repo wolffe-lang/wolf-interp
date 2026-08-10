@@ -1,4 +1,9 @@
-//! The `wolf-interp` command line.
+//! The `lupin` command line (the wolf-interp package's binary, is12).
+//!
+//! The front door: `lupin FILE.lu` runs the file, `lupin -` reads a program
+//! from stdin, bare `lupin` opens the REPL. A subcommand name wins over a
+//! file of the same name (`lupin run repl` runs a file literally named
+//! `repl`).
 //!
 //! One subcommand is normative: `conform-run` implements
 //! `spec/06-differential-protocol.md` `[proto.invoke]`. `lex` and `parse` are
@@ -6,10 +11,13 @@
 //! anything. `corpus` and `protocol validate` are the harness the rest of the
 //! track is built on.
 //!
-//! Exit codes: `0` success, `1` the work ran and something failed the check,
-//! `2` the tool itself could not run (missing file, bad flags) — matching the
-//! compiler's convention so a differ can tell "the program is wrong" from
-//! "the tool is wrong".
+//! Exit codes, harness surfaces: `0` success, `1` the work ran and something
+//! failed the check, `2` the tool itself could not run (missing file, bad
+//! flags) — matching the compiler's convention so a differ can tell "the
+//! program is wrong" from "the tool is wrong". The front door (`run`, `eval`,
+//! `check`) instead reports the *program*: its own `exit(N)`, `2` on a
+//! static-phase rejection, `3` on a trap or UB finding, `4` on
+//! `unsupported`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -31,6 +39,14 @@ use wolf_interp::{lex, parse};
 const EXIT_OK: u8 = 0;
 const EXIT_CHECK_FAILED: u8 = 1;
 const EXIT_TOOL_ERROR: u8 = 2;
+/// Front door (`run`/`eval`/`check`): a static-phase rejection. Shares the
+/// number with tool errors deliberately — "this program did not get to run".
+const EXIT_STATIC: u8 = 2;
+/// Front door: the program ran and hit a trap, or the UB oracle's finding.
+const EXIT_FAULT: u8 = 3;
+/// Front door: the program is outside this implementation's scope
+/// (`[proto.record.unsupported]` — the reason prints to stderr).
+const EXIT_UNSUPPORTED: u8 = 4;
 /// A rejected program in human mode. `[gram]`-tier failures are the compiler
 /// convention's 65 (EX_DATAERR); `conform-run` never uses it, because there a
 /// rejection is a *record* and the tool still exits 0 (`[proto.invoke.exit]`).
@@ -48,21 +64,55 @@ fn default_spec_root() -> PathBuf {
     Path::new(upstream_root()).join("spec")
 }
 
+/// `--version`'s tail: `lupin 0.1.0 (wolf-interp, pin cbde620)` — the crate
+/// version, the package this binary is built from, and the upstream
+/// spec/corpus pin every observation is made against.
+fn version_string() -> &'static str {
+    static VERSION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    VERSION.get_or_init(|| {
+        format!(
+            "{} (wolf-interp, pin {})",
+            env!("CARGO_PKG_VERSION"),
+            wolf_interp::upstream_pin_short()
+        )
+    })
+}
+
 #[derive(Debug, Parser)]
 #[command(
-    name = "wolf-interp",
-    version,
-    about = "The wolf reference interpreter",
-    long_about = "The wolf reference interpreter: an independent implementation of the wolf \
-specification, and the compiler's differential-testing oracle."
+    name = "lupin",
+    version = version_string(),
+    about = "lupin — the wolf reference interpreter",
+    long_about = "lupin — the wolf reference interpreter: an independent implementation of the \
+wolf specification, and the compiler's differential-testing oracle. Built by the wolf-interp \
+package.",
+    after_help = "The front door: `lupin FILE.lu` runs the file (`lupin -` reads the program \
+from stdin; bare `lupin` opens the REPL). Its exit code is the program's own exit(N); a \
+static-phase rejection exits 2, a trap or UB finding exits 3, `unsupported` exits 4. A \
+subcommand name wins over a file of the same name — run a file literally named `repl` as \
+`lupin run repl`."
 )]
 struct Cli {
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
+    /// Run FILE directly (`lupin FILE.lu` = `lupin run FILE.lu`); `-` reads
+    /// the program from stdin. With nothing at all, the REPL opens.
+    #[arg(value_name = "FILE")]
+    file: Option<PathBuf>,
+    /// Evaluate CODE in a fresh session and print its value as the REPL
+    /// would (`lupin -e '1 + 1'` = `lupin eval '1 + 1'`).
+    #[arg(short = 'e', value_name = "CODE", conflicts_with = "file")]
+    eval: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Run one program; output passes through live and the exit code is the program's
+    Run(RunArgs),
+    /// Evaluate a snippet in a fresh session and print its value as the REPL would
+    Eval(EvalArgs),
+    /// Check files through the frontend only (lex, parse, resolve) and report diagnostics
+    Check(CheckArgs),
     /// Walk the pinned corpus and check every directive against this implementation.
     Corpus(CorpusArgs),
     /// Export the versioned conformance bundle, or check an implementation against one.
@@ -87,6 +137,39 @@ enum Command {
     Fuzz(FuzzArgs),
     /// Interactive session; `--script` replays a recorded transcript.
     Repl(ReplArgs),
+}
+
+#[derive(Debug, Args)]
+struct RunArgs {
+    /// The wolf program to run, or `-` to read it from stdin.
+    file: PathBuf,
+    /// Request the deterministic schedule seeded per spec 03 §5
+    /// (`[conc.det.seed]`) — the same seed replays the same run.
+    #[arg(long)]
+    seed: Option<u64>,
+    /// Replay one exact schedule: a seed value (as `--seed`) or an explicit
+    /// decision stream `ev:c0,c1,…`.
+    #[arg(long, value_name = "SEED|ev:…")]
+    schedule: Option<String>,
+    /// Emit the spec/06 observation record instead of passing output
+    /// through — what `conform-run --json` does, at the front door (the
+    /// record carries the outcome and the tool exits 0).
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct EvalArgs {
+    /// The snippet to evaluate (`lupin -e CODE` is the short spelling).
+    code: String,
+}
+
+#[derive(Debug, Args)]
+struct CheckArgs {
+    /// The files to check. Diagnostics print to stderr; exit 0 clean, 2 on
+    /// any rejection.
+    #[arg(required = true)]
+    files: Vec<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -307,7 +390,30 @@ enum ProtocolCommand {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let code = match cli.command {
+    // The front-door dispatch (is12): a subcommand name always wins; a bare
+    // file runs; `-e CODE` evaluates; nothing at all opens the REPL.
+    let code = match (cli.command, cli.eval, cli.file) {
+        (Some(command), _, _) => run_command(command),
+        (None, Some(code), _) => run_eval(&EvalArgs { code }),
+        (None, None, Some(file)) => run_run(&RunArgs {
+            file,
+            seed: None,
+            schedule: None,
+            json: false,
+        }),
+        (None, None, None) => run_repl(&ReplArgs {
+            script: None,
+            seed: None,
+        }),
+    };
+    ExitCode::from(code)
+}
+
+fn run_command(command: Command) -> u8 {
+    match command {
+        Command::Run(args) => run_run(&args),
+        Command::Eval(args) => run_eval(&args),
+        Command::Check(args) => run_check(&args),
         Command::Corpus(args) => run_corpus(&args),
         Command::Conformance {
             command: ConformanceCommand::Export(args),
@@ -324,8 +430,191 @@ fn main() -> ExitCode {
         Command::DiffRun(args) => run_diff_run(&args),
         Command::Fuzz(args) => run_fuzz(&args),
         Command::Repl(args) => run_repl(&args),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// the is12 front door — run, eval, check
+// ---------------------------------------------------------------------------
+
+/// `run`'s schedule request: `--seed` wins, then `--schedule`, then the
+/// strict-FIFO default — the same precedence `conform-run` uses.
+fn sched_request(
+    seed: Option<u64>,
+    schedule: Option<&str>,
+) -> Result<wolf_interp::eval::SchedRequest, u8> {
+    match (seed, schedule) {
+        (Some(seed), _) => Ok(wolf_interp::eval::SchedRequest::Seed(seed)),
+        (None, Some(text)) => parse_schedule(text).map_err(|message| tool_error(&message)),
+        (None, None) => Ok(wolf_interp::eval::SchedRequest::Default),
+    }
+}
+
+/// `lupin FILE.lu` / `lupin run FILE.lu` / `lupin -`: the program's stdout
+/// passes through live and the process exit code reports the program —
+/// `exit(N)` as N, a static rejection as 2, a trap or UB finding as 3,
+/// `unsupported` as 4.
+fn run_run(args: &RunArgs) -> u8 {
+    let stdin = args.file.as_os_str() == "-";
+    let source = if stdin {
+        use std::io::Read;
+        let mut source = Vec::new();
+        match std::io::stdin().read_to_end(&mut source) {
+            Ok(_) => source,
+            Err(e) => return tool_error(&format!("could not read stdin: {e}")),
+        }
+    } else {
+        match read_program(&args.file) {
+            Ok(source) => source,
+            Err(code) => return code,
+        }
     };
-    ExitCode::from(code)
+    let request = match sched_request(args.seed, args.schedule.as_deref()) {
+        Ok(request) => request,
+        Err(code) => return code,
+    };
+
+    if args.json {
+        // The record surface, verbatim: the record carries the outcome and
+        // the tool exits 0 (`[proto.invoke.exit]`).
+        let (record, _) = if stdin {
+            wolf_interp::observe_record_stdin(&source, &request)
+        } else {
+            wolf_interp::observe_record_scheduled(
+                &args.file,
+                &source,
+                None,
+                wolf_interp::eval::Trace::Off,
+                &request,
+            )
+        };
+        let value = match serde_json::to_value(&record) {
+            Ok(value) => value,
+            Err(e) => return tool_error(&format!("could not build the observation record: {e}")),
+        };
+        if let Err(errors) = schema::validate(&value) {
+            return tool_error(&format!("refusing to emit a malformed record: {errors}"));
+        }
+        return match record.to_json_line() {
+            Ok(line) => {
+                println!("{line}");
+                EXIT_OK
+            }
+            Err(e) => tool_error(&format!("could not serialize the record: {e}")),
+        };
+    }
+
+    let display = if stdin {
+        "<stdin>".to_owned()
+    } else {
+        wolf_interp::slash_path(&args.file)
+    };
+    let file = (!stdin).then_some(args.file.as_path());
+    let observation = wolf_interp::frontend::observe_live(file, &source, &request);
+    match &observation.verdict {
+        // The program's own exit status is the process's.
+        Verdict::Exit(status) => *status,
+        Verdict::Trap(_) => {
+            if let Some(trap) = &observation.trap {
+                eprintln!("{display}: {trap}");
+            }
+            EXIT_FAULT
+        }
+        Verdict::Ub(_) => {
+            if let Some(finding) = &observation.ub {
+                eprintln!("{display}: {finding}");
+            }
+            EXIT_FAULT
+        }
+        Verdict::Fail(_) => {
+            if let Some(diag) = &observation.detail {
+                eprintln!("{display}: {diag}");
+            }
+            EXIT_STATIC
+        }
+        Verdict::Unsupported => {
+            eprintln!(
+                "{display}: unsupported: {}",
+                observation
+                    .reason
+                    .as_deref()
+                    .unwrap_or("outside this implementation's scope")
+            );
+            EXIT_UNSUPPORTED
+        }
+        // Unreachable without a `--phase` cap, which `run` does not take.
+        Verdict::Pass => EXIT_OK,
+    }
+}
+
+/// `lupin eval 'CODE'` (`-e`): a fresh REPL session evaluates the snippet
+/// and prints exactly what the REPL would; the exit code reports the
+/// snippet on the front door's scale.
+fn run_eval(args: &EvalArgs) -> u8 {
+    use wolf_interp::eval::repl::{Fed, Session, SessionFault};
+    let mut session = Session::new(None);
+    let mut pending = false;
+    for line in args.code.lines() {
+        match session.feed_line(line) {
+            Fed::Quit => return EXIT_OK,
+            Fed::More => pending = true,
+            Fed::Output(out) => {
+                pending = false;
+                for rendered in out {
+                    println!("{rendered}");
+                }
+            }
+        }
+    }
+    if pending {
+        return tool_error("the snippet is incomplete — a delimiter or continuation is open");
+    }
+    match session.fault() {
+        None => EXIT_OK,
+        Some(SessionFault::Static) => EXIT_STATIC,
+        Some(SessionFault::Dynamic) => EXIT_FAULT,
+        Some(SessionFault::Unsupported) => EXIT_UNSUPPORTED,
+    }
+}
+
+/// `lupin check FILE...`: the frontend only — lex, parse, resolve — with
+/// diagnostics on stderr. Exit 0 when every file is clean, 2 otherwise.
+fn run_check(args: &CheckArgs) -> u8 {
+    let mut rejected = 0usize;
+    for file in &args.files {
+        let source = match read_program(file) {
+            Ok(source) => source,
+            Err(code) => return code,
+        };
+        let observation = wolf_interp::frontend::observe_file(
+            file,
+            &source,
+            Some(Phase::Resolve),
+            wolf_interp::eval::Trace::Off,
+            &wolf_interp::eval::SchedRequest::Default,
+        );
+        let display = wolf_interp::slash_path(file);
+        match &observation.verdict {
+            Verdict::Pass => println!("{display}: ok"),
+            Verdict::Unsupported => {
+                rejected += 1;
+                eprintln!(
+                    "{display}: unsupported: {}",
+                    observation
+                        .reason
+                        .as_deref()
+                        .unwrap_or("outside this implementation's scope")
+                );
+            }
+            _ => {
+                rejected += 1;
+                if let Some(diag) = &observation.detail {
+                    eprintln!("{display}: {diag}");
+                }
+            }
+        }
+    }
+    if rejected == 0 { EXIT_OK } else { EXIT_STATIC }
 }
 
 fn run_repl(args: &ReplArgs) -> u8 {
@@ -432,7 +721,7 @@ fn replay_transcript(path: &Path, seed: Option<u64>) -> u8 {
 }
 
 fn tool_error(message: &str) -> u8 {
-    eprintln!("wolf-interp: {message}");
+    eprintln!("lupin: {message}");
     EXIT_TOOL_ERROR
 }
 
@@ -514,7 +803,7 @@ fn print_corpus_report(report: &corpus::CorpusReport) {
                 };
                 println!(
                     "entry   {:<width$}  phase={phase:<9}  check={check:<34}  \
-                     wolf-interp={status:<28}  {verdict:<12}  conforms={tags}",
+                     lupin={status:<28}  {verdict:<12}  conforms={tags}",
                     file.path
                 );
                 if let Some(judgement) = &judgement
@@ -595,7 +884,7 @@ fn print_corpus_report(report: &corpus::CorpusReport) {
     }
     println!();
     println!(
-        "wolf-interp: {reached_run} entr{} reach the `run` rung; \
+        "lupin: {reached_run} entr{} reach the `run` rung; \
          {} match their `check:` expectation, {} are the dynamic counterpart of the static \
          code the corpus pins, {} are static-conservatism entries (the compiler rejects \
          statically what this machine never checks), {} are out of scope, {} mismatch",
@@ -1026,9 +1315,7 @@ fn counterparty_or_skip(explicit: Option<&Path>, require: bool) -> Result<PathBu
         Counterparty::Missing { tried } => {
             eprint!("{}", differ::skip_notice(&tried));
             if require {
-                eprintln!(
-                    "wolf-interp: --require-counterparty was passed and no compiler binary exists"
-                );
+                eprintln!("lupin: --require-counterparty was passed and no compiler binary exists");
                 Err(EXIT_CHECK_FAILED)
             } else {
                 Err(EXIT_OK)
@@ -1243,9 +1530,7 @@ fn run_fuzz(args: &FuzzArgs) -> u8 {
         Counterparty::Missing { tried } => {
             eprint!("{}", differ::skip_notice(&tried));
             if args.require_counterparty {
-                eprintln!(
-                    "wolf-interp: --require-counterparty was passed and no compiler binary exists"
-                );
+                eprintln!("lupin: --require-counterparty was passed and no compiler binary exists");
                 return EXIT_CHECK_FAILED;
             }
             eprintln!(

@@ -177,7 +177,12 @@ pub enum LoadError {
 /// [`LoadError::Syntax`] when any file of the program fails the frontend, and
 /// [`LoadError::Io`] when a file the program names cannot be read.
 pub fn load(entry: &Path) -> Result<Program, LoadError> {
-    let package_root = entry.parent().unwrap_or(Path::new(".")).to_path_buf();
+    // A bare filename (`lupin hello.lu` from the program's own directory)
+    // has `parent() == Some("")`; the package root is the current directory.
+    let package_root = match entry.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+        _ => PathBuf::from("."),
+    };
     let mut program = Program {
         modules: BTreeMap::new(),
         entry: crate::slash_path(entry),
@@ -248,7 +253,14 @@ fn load_module(
         .map_err(|e| LoadError::Io(format!("{}: {e}", dir.display())))?
         .flatten()
         .map(|path| path.path())
-        .filter(|path| path.is_file() && path.extension().is_some_and(|e| e == "lu"))
+        .filter(|path| {
+            // The entry belongs to its own program whatever it is named —
+            // `lupin run repl` runs a file literally named `repl` (is12's
+            // collision rule); everything else needs the `.lu` extension.
+            path.is_file()
+                && (path.extension().is_some_and(|e| e == "lu")
+                    || entry.is_some_and(|entry| same_file(entry, path)))
+        })
         .collect();
     // `read_dir` order is platform noise; D32 says the files are one module, so
     // the order must not change what the module contains.

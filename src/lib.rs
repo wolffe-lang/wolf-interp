@@ -52,8 +52,12 @@ use std::path::Path;
 use crate::phase::Phase;
 use crate::protocol::{ObservationRecord, PROTOCOL_VERSION, Verdict};
 
-/// The `impl` field this implementation writes into every record.
-pub const IMPL_NAME: &str = "wolf-interp";
+/// The `impl` field this implementation writes into every record: the binary
+/// is named `lupin` as of v0.1.0 (is12), and v0.1.0 is the moment identity
+/// settled — records and bundle manifests say `lupin` from here on.
+/// Historical records naming `wolf-interp` stay valid; the protocol compares
+/// everything *except* the identity fields.
+pub const IMPL_NAME: &str = "lupin";
 
 /// The `impl_version` field: this crate's version.
 pub const IMPL_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -61,6 +65,19 @@ pub const IMPL_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The `commit` field: the git revision this binary was built from, or
 /// `unknown` when built outside a checkout.
 pub const COMMIT: &str = env!("WOLF_INTERP_COMMIT");
+
+/// The upstream spec/corpus pin, verbatim from `vendor/upstream/PIN` at
+/// compile time (the tracked snapshot is byte-identical to the submodule, so
+/// there is one answer). `--version` prints its short form.
+pub const UPSTREAM_PIN: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/vendor/upstream/PIN"));
+
+/// The pin's 7-character short spelling, for `--version`.
+#[must_use]
+pub fn upstream_pin_short() -> &'static str {
+    let pin = UPSTREAM_PIN.trim();
+    pin.get(..7).unwrap_or(pin)
+}
 
 /// Upstream root: the live submodule when initialized, else the tracked
 /// vendored snapshot (vendor/README.md — private-submodule CI fallback).
@@ -173,7 +190,26 @@ pub fn observe_record_scheduled(
     request: &eval::SchedRequest,
 ) -> (ObservationRecord, Observed) {
     let observation = frontend::observe_file(file, source, requested_phase, trace, request);
+    record_of(slash_path(file), observation, request)
+}
 
+/// is12's stdin door (`lupin run - --json`): the same record built from a
+/// buffer with no module graph — a piped program is a one-file root module —
+/// and `file` reported as `-`, the only spelling the invocation had.
+#[must_use]
+pub fn observe_record_stdin(
+    source: &[u8],
+    request: &eval::SchedRequest,
+) -> (ObservationRecord, Observed) {
+    let observation = frontend::observe_buffer(source, None, request);
+    record_of("-".to_owned(), observation, request)
+}
+
+fn record_of(
+    file: String,
+    observation: frontend::Observation,
+    request: &eval::SchedRequest,
+) -> (ObservationRecord, Observed) {
     // `[proto.record.fields]`: the digest whenever the program wrote output,
     // the inline text up to 4096 bytes. Only an `exit` verdict has "the program
     // wrote output" to speak of — a trap's partial output is not a comparison
@@ -253,7 +289,7 @@ pub fn observe_record_scheduled(
         impl_name: IMPL_NAME.to_owned(),
         impl_version: IMPL_VERSION.to_owned(),
         commit: COMMIT.to_owned(),
-        file: slash_path(file),
+        file,
         phase_reached: observation.phase_reached,
         seeded: request.is_seeded(),
         diagnostics: observation.diagnostics,
@@ -328,7 +364,7 @@ mod tests {
         assert_eq!(record.phase_reached, Phase::None);
         assert_eq!(record.verdict, Verdict::Unsupported);
         assert!(!record.seeded);
-        assert_eq!(record.impl_name, "wolf-interp");
+        assert_eq!(record.impl_name, "lupin");
 
         let json: serde_json::Value =
             serde_json::from_str(&record.to_json_line().expect("serializes")).expect("is json");

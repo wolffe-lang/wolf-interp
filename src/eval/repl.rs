@@ -47,6 +47,20 @@ const PREFIX: &str = "fn __repl__() -> int {\n";
 /// How many trace events the `:trace` ring buffer keeps.
 const TRACE_RING: usize = 4096;
 
+/// The class of the first fault a session's inputs produced — `lupin eval`'s
+/// door onto the documented process exit codes. The session itself survives
+/// every one of these (`[repl.trap.alive]`); a one-shot `eval` reads the
+/// class afterwards and exits accordingly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionFault {
+    /// The input was rejected before it ran (a lex/parse diagnostic): exit 2.
+    Static,
+    /// A trap or a UB finding — the run reached a fault: exit 3.
+    Dynamic,
+    /// Outside this implementation's scope: exit 4.
+    Unsupported,
+}
+
 /// What feeding one line did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Fed {
@@ -76,6 +90,10 @@ pub struct Session {
     /// The `:trace` ring buffer, drained from the machine after every input.
     trace: std::collections::VecDeque<String>,
     tracing: bool,
+    /// The first [`SessionFault`] any input produced (`:reset` clears it with
+    /// the rest of the world). The interactive loop never reads this; `lupin
+    /// eval` does.
+    fault: Option<SessionFault>,
 }
 
 impl Session {
@@ -97,7 +115,20 @@ impl Session {
             type_gens: BTreeMap::new(),
             trace: std::collections::VecDeque::new(),
             tracing: false,
+            fault: None,
         }
+    }
+
+    /// The class of the first fault any fed input produced, if any — the
+    /// exit-code door for one-shot evaluation. The session survives faults
+    /// (`[repl.trap.alive]`); this only reports that one happened.
+    #[must_use]
+    pub fn fault(&self) -> Option<SessionFault> {
+        self.fault
+    }
+
+    fn note_fault(&mut self, fault: SessionFault) {
+        self.fault.get_or_insert(fault);
     }
 
     /// The prompt for the next line: continuation shows as `....>`.
@@ -351,7 +382,10 @@ impl Session {
         let wrapped = format!("{PREFIX}{input}\n}}\n");
         let parsed = match crate::parse::parse_source(&wrapped) {
             Ok(parsed) => parsed,
-            Err(diag) => return Err(vec![render_diag(&diag)]),
+            Err(diag) => {
+                self.note_fault(SessionFault::Static);
+                return Err(vec![render_diag(&diag)]);
+            }
         };
         for item in &parsed.unit.items {
             if let ItemKind::Fn(decl) = &item.kind
@@ -370,6 +404,7 @@ impl Session {
                 return Ok(stmts);
             }
         }
+        self.note_fault(SessionFault::Static);
         Err(vec!["input did not parse as statements".to_owned()])
     }
 
@@ -660,6 +695,7 @@ impl Session {
         let _ = stmt;
         match signal {
             Signal::Trap(trap) => {
+                self.note_fault(SessionFault::Dynamic);
                 let mut line = format!(
                     "trap({}): {} [{}]",
                     trap.kind,
@@ -683,6 +719,7 @@ impl Session {
                 );
             }
             Signal::Ub(finding) => {
+                self.note_fault(SessionFault::Dynamic);
                 // The D2 pairing, at the prompt: the row, its clause, and the
                 // optimization the row licenses.
                 let mut line = format!(
@@ -720,15 +757,18 @@ impl Session {
                 ));
             }
             Signal::Break(_) | Signal::Continue => {
+                self.note_fault(SessionFault::Static);
                 out.push("`break`/`continue` outside a loop [gram.expr.flow]".to_owned());
             }
             Signal::ProcKilled => {
+                self.note_fault(SessionFault::Dynamic);
                 out.push(
                     "the root domain was killed ([conc.proc.root]); :reset for a fresh world"
                         .to_owned(),
                 );
             }
             Signal::Unsupported(reason) => {
+                self.note_fault(SessionFault::Unsupported);
                 out.push(format!("unsupported: {reason}"));
             }
         }

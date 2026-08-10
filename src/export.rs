@@ -10,7 +10,7 @@
 //! documented in `docs/conformance-bundle.md` as the `[proto]` extension it
 //! is; schema version 1 is frozen.
 //!
-//! `wolf-interp conformance check <bundle> --impl <cmd>` is is05's differ
+//! `lupin conformance check <bundle> --impl <cmd>` is is05's differ
 //! generalized: the counterparty is *any* conform-run-speaking command, and
 //! the interpreter side of the comparison is replayed from the bundle's
 //! recorded reference outcomes rather than recomputed — which is what makes
@@ -613,8 +613,8 @@ fn bundle_readme(pin: &str) -> Vec<u8> {
     format!(
         "# wolf conformance bundle (schema 1)\n\
          \n\
-         The wolf conformance suite, exported by wolf-interp (the reference\n\
-         interpreter) at upstream pin `{pin}`. Self-contained: programs under\n\
+         The wolf conformance suite, exported by lupin (the wolf-interp\n\
+         reference interpreter) at upstream pin `{pin}`. Self-contained: programs under\n\
          `corpus/` and `suite/`, this implementation's protocol-1 reference\n\
          records under `expected/records.jsonl`, the closed trap and UB\n\
          vocabularies under `vocab/`, the pinned anchor registry under\n\
@@ -624,7 +624,7 @@ fn bundle_readme(pin: &str) -> Vec<u8> {
          \n\
          Check any conform-run-speaking implementation against it:\n\
          \n\
-             wolf-interp conformance check <this-dir> --impl <command>\n\
+             lupin conformance check <this-dir> --impl <command>\n\
          \n\
          The format is documented in the wolf-interp repository,\n\
          `docs/conformance-bundle.md`.\n"

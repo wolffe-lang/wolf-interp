@@ -145,6 +145,7 @@ pub fn observe(source: &[u8], requested: Option<Phase>) -> Observation {
         requested,
         crate::eval::Trace::Off,
         &SchedRequest::Default,
+        false,
     )
 }
 
@@ -158,7 +159,34 @@ pub fn observe_file(
     trace: crate::eval::Trace,
     request: &SchedRequest,
 ) -> Observation {
-    observe_with(Some(file), source, requested, trace, request)
+    observe_with(Some(file), source, requested, trace, request, false)
+}
+
+/// The is12 front door: run the program (its module graph when `file` names
+/// one on disk, a single-buffer root module for stdin) with the program's
+/// stdout passed through live. The observation still carries the buffered
+/// copy; the caller maps the verdict onto the documented exit codes.
+#[must_use]
+pub fn observe_live(file: Option<&Path>, source: &[u8], request: &SchedRequest) -> Observation {
+    observe_with(file, source, None, crate::eval::Trace::Off, request, true)
+}
+
+/// As [`observe`], with a schedule request: the stdin record surface
+/// (`lupin run - --json` observes a buffer, not a path).
+#[must_use]
+pub fn observe_buffer(
+    source: &[u8],
+    requested: Option<Phase>,
+    request: &SchedRequest,
+) -> Observation {
+    observe_with(
+        None,
+        source,
+        requested,
+        crate::eval::Trace::Off,
+        request,
+        false,
+    )
 }
 
 fn observe_with(
@@ -167,6 +195,7 @@ fn observe_with(
     requested: Option<Phase>,
     trace: crate::eval::Trace,
     request: &SchedRequest,
+    live: bool,
 ) -> Observation {
     if requested == Some(Phase::None) {
         return Observation::clean(Phase::None, Verdict::Pass);
@@ -252,9 +281,11 @@ fn observe_with(
     }
 
     // -- run ---------------------------------------------------------------
-    let run = Machine::with_request(&program, request)
-        .tracing(trace)
-        .run();
+    let mut machine = Machine::with_request(&program, request).tracing(trace);
+    if live {
+        machine = machine.live_stdout();
+    }
+    let run = machine.run();
     let mut observation = match run.outcome {
         Outcome::Exit(status) => Observation::clean(Phase::Run, Verdict::Exit(status)),
         Outcome::Trap(trap) => Observation {
