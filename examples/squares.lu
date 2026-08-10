@@ -1,0 +1,15 @@
+//! check: run(exit=0, stdout="sum of squares: 30")
+//! phase: run
+
+struct Point { x: int, y: int }
+
+fn main() -> !int {
+    var sum = 0
+    region frame {
+        var pts = List[Point]()
+        for i in 0..5 { pts.push(Point { x: i, y: i * i }) }
+        for p in pts { sum += p.y }
+    }
+    print("sum of squares: {sum}")
+    0
+}

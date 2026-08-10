@@ -1,0 +1,8 @@
+//! check: run(exit=trap(overflow))
+//! phase: run
+
+fn main() -> !int {
+    var x: i32 = 2_147_483_647
+    x += 1
+    0
+}

@@ -1,0 +1,9 @@
+//! check: run(exit=trap(use-after-move))
+//! phase: run
+
+fn main() -> !int {
+    let s = "wolf"
+    let t = move s
+    print("{s}")
+    0
+}
