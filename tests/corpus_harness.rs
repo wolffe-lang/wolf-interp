@@ -72,15 +72,26 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             changed content without changing the count: `regions.lu`
     //             gained `build_config` and `comptime.lu` was rewritten. All
     //             new files are entries, so the member count is unmoved.)
+    //   8b04edf → 149 files (is05: s17's sema completion. `corpus/typecheck/`
+    //             grew 16 (14 entries plus `typecheck/method_scope/`'s two
+    //             members alongside its entry `main.lu`), `corpus/grammar/`
+    //             added `receiver_moded.lu` + `intdot_exponent.lu`,
+    //             `corpus/memory/` added `view_set_norm.lu`, and
+    //             `corpus/rows/` added `open_row_growth.lu` +
+    //             `negative/open_into_closed.lu`. One existing file changed
+    //             content without changing the count: `regions.lu`'s tail now
+    //             uses only specified semantics — `config.limit == 42` under
+    //             `[mem.region.freeze.1]`'s "frozen data readable forever" —
+    //             which is the change that finally made it RUN here.)
     let report = report();
     assert_eq!(
         report.total(),
-        128,
+        149,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 114);
-    assert_eq!(report.members(), 14);
+    assert_eq!(report.entries(), 133);
+    assert_eq!(report.members(), 16);
 }
 
 #[test]

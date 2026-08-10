@@ -5,7 +5,7 @@ program:   p1_protector.lu
 verdict:   ub(mem.ub)
 row:       §7/P1
 clause:    [mem.prov.state]
-what:      access through a Disabled tag (use-after-free, use of an invalidated borrow)
+what:      access through a Disabled tag (use-after-free, use of an invalidated borrow), or a foreign write to a protected tag
 licenses:  O1: `mut` params lower to `noalias` + `dereferenceable`; unique-tag stores forward without memory checks
 message:   foreign write at alloc#0[0] while tag#1 (parameter) is PROTECTED for a call's extent — the protector makes the invalidation UB at the write rather than at a later use
 access:    `b[0] = 3`

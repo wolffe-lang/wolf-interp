@@ -9,8 +9,16 @@ and renumber nothing.
 on 2026-08-09 and are now normative text; the machine already conformed and
 `src/eval/region.rs` cites the repaired anchors. §5.4's E1004/E1005 half was
 repaired in `[conf.trap.map]` and `src/ledger.rs::dynamic_meaning` now
-classifies both as dynamic counterparts. §5.5 is **half** repaired. §5.3 and
-§5.6 stand. Each subsection below carries its own status line.
+classifies both as dynamic counterparts. §5.3 and §5.6 stand.
+
+**At pin `8b04edf` (is05):** §5.5 is **fully repaired** — `regions.lu`'s tail
+now uses only specified semantics and RUNS (`exit(0)`, the run ledger's newest
+entry). The §6 provenance table's Reserved row was repaired upstream (child
+reads no longer activate; the two-phase window is real) and
+`src/eval/prov.rs` was realigned to the published-TB table it always claimed
+to implement. P1's row text now names the protected foreign-write explicitly;
+this machine always landed protectors on P1, and the reviewed snapshot moved
+with the wording. Each subsection below carries its own status line.
 
 **Audience:** the compiler's static region and `shared` checkers (s19–s21), the
 unsafe-tier implementation tests (s22), the compiler's shipped miri-lite (s23 —
@@ -205,9 +213,11 @@ it already does for E1001/E1002 — state the kind — or spec/05 must open the 
 
 ### 5.5 `corpus/regions.lu` cannot reach its pinned `run(exit=0)` — **high**
 
-> **Status: HALF repaired at `ecea37c` (2026-08-09).** `build_config` and its
-> `Config` type are now declared in the file, and `h.child.is_closed()` is gone.
-> The rest of the finding stands, so `run(exit=0)` remains unsatisfiable.
+> **Status: FULLY repaired at `8b04edf` (2026-08-09).** The tail is now
+> `if total == 4950 && config.limit == 42 { 0 } else { 1 }` — frozen data
+> readable forever per `[mem.region.freeze.1]`, nothing unspecified left in
+> the file — and this machine runs it to `exit(0)`. The finding below is kept
+> as the record of what the corpus said before the repair.
 
 The file's `main` called `build_config()`, which was declared nowhere in the
 file, nowhere else in `corpus/`, and was not in the ambient std stub (s13's
