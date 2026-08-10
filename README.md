@@ -264,9 +264,8 @@ Today's records, in full — a run, a rejection, and a scope gap:
  "verdict":"fail(E0002)","stdout_sha256":null,"stdout_inline":null}
 
 {"protocol":1,"impl":"wolf-interp","impl_version":"0.0.1","commit":"…",
- "file":"upstream/corpus/procs.lu","phase_reached":"resolve","seeded":false,
- "diagnostics":[],"verdict":"unsupported","stdout_sha256":null,"stdout_inline":null,
- "x-unsupported":"concurrency is spec/03 and campaign ic03; nothing here schedules"}
+ "file":"upstream/corpus/conc/select_seeded.lu","phase_reached":"run","seeded":true,
+ "diagnostics":[],"verdict":"exit(0)","stdout_sha256":null,"stdout_inline":null}
 
 {"protocol":1,"impl":"wolf-interp","impl_version":"0.0.1","commit":"…",
  "file":"upstream/corpus/memory/unsafe_ub_uaf.lu","phase_reached":"run","seeded":false,
@@ -278,8 +277,10 @@ Today's records, in full — a run, a rejection, and a scope gap:
 ```
 
 `phase_reached` never exceeds the deepest rung that *completed*, and `seeded`
-is `false` no matter what `--seed` asks for. Both are true statements about
-this implementation; unhonoured requests are acknowledged on stderr. A `fail`
+is `true` exactly when `--seed=N` requested the spec/03 §5 deterministic
+schedule — which the sim scheduler honours since is06: one seed selects the
+whole decision stream and replays it byte-identically (`[conc.det.seed]`,
+`[proto.seed.flag]`). A `fail`
 carries exactly one diagnostic, because there is no recovery and
 `[proto.cmp.phase]` compares only the first. A verdict never carries a payload
 (`[proto.record.verdict]`); reasons ride `x-` keys, which participate in

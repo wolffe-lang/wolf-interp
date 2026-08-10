@@ -199,10 +199,35 @@ jobs:
             fi
           done
 
-          # A file outside is04's coverage says so, with a reason on an `x-` key
+          # A file outside coverage says so, with a reason on an `x-` key
           # ([proto.record.ext]) rather than in the payload-free verdict.
+          # Since is06 `procs.lu` *schedules* — the unsupported is its call to
+          # `build_batch()`, which no document defines (finding S-5 in
+          # docs/divergence-log.md), and the honest answer is a decline.
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/procs.lu --json)
           echo "$out" | grep -q '"verdict":"unsupported",.*"x-unsupported"'
+
+          # is06's spec/03 rungs: the conc litmus tier runs under the sim
+          # scheduler. Unseeded records declare seeded:false and run FIFO.
+          for f in conc/cancel_sibling conc/message_passing conc/select_seeded; do
+            out=$(cargo run --quiet -- conform-run "vendor/upstream/corpus/$f.lu" --json)
+            echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"'               || { echo "::error::$f.lu no longer reaches run cleanly: $out"; exit 1; }
+          done
+          # `--seed=N` requests the spec/03 §5 deterministic schedule, the
+          # record declares it ([proto.seed.flag]), and the same seed replays
+          # the identical record ([conc.det.seed]).
+          one=$(cargo run --quiet -- conform-run vendor/upstream/corpus/conc/select_seeded.lu --seed=7 --json)
+          echo "$one" | grep -q '"seeded":true'
+          two=$(cargo run --quiet -- conform-run vendor/upstream/corpus/conc/select_seeded.lu --seed=7 --json)
+          test "$one" = "$two"
+          # The E1005 dynamic-counterpart case finally RUNS (`channel` exists):
+          # the open region cannot transfer — region-fault per [conf.trap.map].
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/memory/region_move_while_open.lu --json)
+          echo "$out" | grep -q '"verdict":"trap(region-fault)"'
+          # D14's decided distinction, litmus-tested in tests/conc_machine.rs;
+          # here the process-level half: a deadlocked program reports honestly.
+          out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/procs.lu --json)
+          echo "$out" | grep -q '"x-unsupported"'
           # `ffi.lu` now *executes* its unsafe block — the C intrinsics are
           # modelled (docs/approximation-contract.md §8) — and stops at the
           # inline `asm`, which no pinned document gives a meaning.
