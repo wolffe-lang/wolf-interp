@@ -1,0 +1,22 @@
+wolf> let p = Pool[int]()
+wolf> let h = p.reserve()
+wolf> p.init(h, 7)
+wolf> :mem
+regions:
+  #0 `program` arena state=open objects=1
+pools:
+  pool#0[_] in region #0
+    [0] generation=0 live
+wolf> p[h]
+7 : i32
+wolf> p.remove(h)
+wolf> :mem
+regions:
+  #0 `program` arena state=open objects=1
+pools:
+  pool#0[_] in region #0
+    [0] generation=1 free
+wolf> p[h]
+trap(stale-handle): handle into pool#0 slot 0 carries generation 0, the slot is at generation 1; a stale handle is a deterministic fault in every profile, never UB [mem.shared.handle.2] at 0..4
+the session survives the trap; the world is as the fault left it [repl.trap.alive]
+wolf> :quit

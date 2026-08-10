@@ -45,9 +45,10 @@ const CONC_LEDGER: &[(&str, u64, u64, &str)] = &[
     ("conc/chan_unsendable.lu", 1, 1, "exit(0)"),
     ("conc/freeze_publish.lu", 2, 2, "exit(0)"),
     ("conc/message_passing.lu", 1, 1, "exit(0)"),
-    // S-5: names undefined functions; the honest decline is itself proved
-    // schedule-independent.
-    ("conc/proc_kill_defers.lu", 1, 1, "unsupported"),
+    // Self-contained since the s20 S-batch (S-5 resolved): it RUNS, and the
+    // kill-skips-defers outcome is schedule-independent — only the owner's
+    // `released` prints, on every schedule.
+    ("conc/proc_kill_defers.lu", 1, 1, "exit(0)"),
     ("conc/select_seeded.lu", 2, 2, "exit(0)"),
     // Two tasks writing their own captured copies: the orders commute, so
     // DPOR proves one class where naive DFS walks both orders.

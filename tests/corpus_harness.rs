@@ -96,14 +96,24 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             their `phase:` directive (typecheck → mem — the compiler's
     //             region-inference rung exists now), which moves nothing
     //             here.)
+    //   843174f → 164 files (is08: the s20 S-batch pin. `corpus/memory/`
+    //             grew 6 — the region-checker tier: `region_freeze_ok.lu`,
+    //             `region_freeze_open.lu`, `region_freeze_write.lu`,
+    //             `region_multiopen_values_ok.lu`, `region_open_ancestor.lu`,
+    //             `region_transfer_open.lu`. Four existing files changed
+    //             content without changing the count: `procs.lu` and
+    //             `conc/proc_kill_defers.lu` are self-contained now (S-5
+    //             resolved — they RUN), and `conc/message_passing.lu` +
+    //             `conc/when_multi.lu` cite the new `[conc.chan.move]` /
+    //             `[conc.when.*]` clauses in their `conforms:` lines.)
     let report = report();
     assert_eq!(
         report.total(),
-        158,
+        164,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 142);
+    assert_eq!(report.entries(), 148);
     assert_eq!(report.members(), 16);
 }
 

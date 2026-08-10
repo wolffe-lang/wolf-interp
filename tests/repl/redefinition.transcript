@@ -1,0 +1,22 @@
+wolf> fn f() -> int { 1 }
+defined fn `f`
+wolf> let g = fn() { f() }
+wolf> fn f() -> int { 2 }
+redefined fn `f` — shadowing, not mutation: existing captures keep the previous definition [repl.def.shadow]
+wolf> f()
+2 : i32
+wolf> g()
+1 : i32
+wolf> struct Point { x: int, y: int }
+defined type `Point`
+wolf> let a = Point { x: 1, y: 2 }
+wolf> struct Point { x: int, y: int, z: int }
+redefined type `Point` — a new nominal type (generation 2); existing values keep `Point#1` and print with the stale marker [repl.type.gen]
+wolf> let b = Point { x: 1, y: 2, z: 3 }
+wolf> a
+Point#1 { x: 1, y: 2 } : Point#1
+wolf> b
+Point { x: 1, y: 2, z: 3 } : Point
+wolf> a == b
+unsupported: `Point#1` and `Point#2` are different generations of `Point`: redefining a type mints a new nominal type ([repl.type.gen]); rebuild the older value to compare them
+wolf> :quit

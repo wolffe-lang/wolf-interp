@@ -46,6 +46,14 @@ differential lane detects the absence, prints `notice:` lines, and SKIPs;
 
 ## Open findings
 
+Fourth corpus differential: is08, pin `843174f`, 148 entries compared,
+**0 divergences**, 246 conservatism-ledger entries (59 rejects-beyond by
+the counterparty — the E1005/E1011/E1012 region-checker litmuses landed —
+64 run-unmatched pre-M1, 80 counterparty-unsupported, 43 interp-unsupported
+— down from 45: `procs.lu` and `conc/proc_kill_defers.lu` are
+self-contained now and RUN, S-5 resolved). `differ::FILED_DIVERGENCES`
+remains **empty**.
+
 Third corpus differential: is07, pin `79ceec6`, 142 entries compared,
 **0 divergences** (down from 1), 238 conservatism-ledger entries (55
 rejects-beyond by the counterparty — up from 46: the E1004/E1007/E1010
@@ -67,82 +75,71 @@ corpus files or the concurrent multiopen litmuses in
 
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
-spec/03 had never been executed before this sprint. The machine is the
-first executable test of it, and the harvest below is routed upstream, not
-patched around. None of these gate: they are clause debts, and the rules
-implementing them cite either a clause family root or the reserved `sync`
-namespace and say so in their descriptions.
+spec/03 had never been executed before is06. The machine was the first
+executable test of it, and the harvest was routed upstream, not patched
+around. **The s20 S-batch (pin `843174f`) paid S-1 through S-8** — the
+eight entries now live under *Resolved findings* below with what the spec
+adopted and where this machine realigned. S-9 remains open.
 
-- **S-1 — `when` has no clauses.** 03 Q6 decided `when` is a language
-  construct; the corpus exercises it (`procs.lu`, `when_multi.lu`); the
-  sprint contract names `[conc.when.order]`/`[conc.when.nonest]` — and
-  spec/03 contains no `conc.when.*` anchors at all. The machine's rules
-  cite forward `sync.when.order`/`sync.when.nonest` until the section is
-  written.
-- **S-2 — region-transfer clauses missing.** The sprint names
-  `[conc.chan.move]`, `[conc.chan.staleuse]`, `[conc.chan.imm]`;
-  spec/03 §3 has only `[conc.chan.type]`'s parenthetical "(moved on
-  send)" and `[conc.mm.hb.move]`. The dynamic disconnectedness check and
-  the sender-stale-use fault have no clause ids to cite; the machine cites
-  `conc.mm.hb.move` and the `conc.chan` family root.
-- **S-3 — no verdict for deadlock, no trap kind either.**
-  `[proto.record.verdict]` has no verdict for nontermination and the
-  closed `[conf.trap.set]` has no `deadlock` kind. A program whose every
-  task is blocked with no pending timer reports `unsupported` with the
-  blocked-task roster — honest, but a spec gap for a language whose
-  concurrency is supposed to be schedulable and explorable (is07 will
-  need a stable spelling for "this schedule deadlocks").
-- **S-4 — child failure does not reach a blocked scope owner.**
-  `[conc.task.fail]` cancels *siblings* and re-raises *at the scope
-  exit*; it says nothing about the owner's own pending blocking
-  operations. An owner blocked on a channel its failed child would have
-  served deadlocks (observed on `procs.lu`'s second scope). Trio/njs
-  cancel the whole scope; spec/03 as written does not.
-- **S-5 — `corpus/procs.lu` and `conc/proc_kill_defers.lu` name
-  undefined functions.** `build_batch()`, `worker()`, `sleeper()` exist
-  in no document and no corpus file; the acceptance criterion
-  "`procs.lu` runs to completion" is unsatisfiable as the corpus stands.
-  The machine reports `unsupported` (honest decline); the supervision
-  semantics are pinned instead by self-contained litmuses in
-  `tests/conc_machine.rs`.
-- **S-6 — the `cancelled` exit reason is unreachable from the language.**
-  `[conc.proc.exit]` lists `cancelled` ("structured cancellation reached
-  the proc") but no construct in the pinned surface delivers structured
-  cancellation *to a proc* (procs sit under the root supervisor, outside
-  every user scope). Mechanism owed.
-- **S-7 — `link` has no spelling for coupling two procs, and the root
-  domain's death is unspecified.** `w.link()` couples `w` with the
-  *caller's* proc; called from `main` that is the root supervisor's
-  domain, whose abnormal exit spec/03 §2 never defines. The machine
-  reports the root kill as `unsupported`
-  (`tests/conc_machine.rs::a_linked_proc_takes_its_partner_with_it`).
-- **S-8 — closed-channel readiness in `select` is unspecified.**
-  `[conc.select.ready]` defines readiness for messages; `[conc.chan.close]`
-  defines the drained-close error for `recv` — whether a drained-closed
-  channel makes a `select` arm *ready* (Go: yes) is unwritten. The machine
-  answers yes, delivering the closed error to the arm.
 - **S-9 (is07) — the seed↔schedule encoding has no normative home.**
   `[conc.det.seed]` defines `--replay=SEED` behaviorally and `[proto.seed]`
   makes equal seeds byte-comparable, but no pinned document says what a
   seed *is* beyond "a value that regenerates the stream" — the accepted
-  s36 Phase A hook-design doc is the designated owner and does not exist
-  yet at pin `79ceec6`. is07 ships a provisional split of the `u64`
-  namespace (bit 62 tags a packed schedule; low 62 bits are mixed-radix
-  choice digits; everything else seeds the generator —
-  `sched::PACKED_SEED_TAG`, approximation-contract §10.6) so that
-  explorer counterexamples are `--seed=N` replays *today*, honoring
-  `[proto.seed.equal]` one-sided. The compiler runtime's format has
-  priority: when the Phase A doc lands, this side re-pins to it and the
-  cross-validation harness diffs the two.
-
-Status at is07, pin `79ceec6`: **none of S-1..S-8 landed in the pinned
-spec** (the pin's spec tree is byte-identical to `67c977f`'s). The s20
-S-batch amendments (`[conc.when.*]`, the deadlock verdict, `[conc.chan.
-staleuse]`, link semantics) remain owed; the machine's rules keep their
-documented forward citations and approximation-contract entries, and the
-next pin bump re-checks this list first.
+  s36 Phase A hook-design doc is the designated owner and **does not exist
+  at pin `843174f` either** (re-checked at the is08 pin bump; the S-batch
+  is spec/03+05 only). is07's provisional split of the `u64` namespace
+  (bit 62 tags a packed schedule — `sched::PACKED_SEED_TAG`,
+  approximation-contract §10.6) stands until the Phase A doc lands; the
+  compiler runtime's format has priority and this side re-pins to it.
 
 ## Resolved findings
+
+### S-1..S-8 — the is06 harvest — **resolved upstream, pin `843174f` (the s20 S-batch)**
+
+All eight spec/03 findings from is06's first execution of the concurrency
+spec were adjudicated in one amendment batch, 18 clauses. Entry by entry:
+
+- **S-1 (`when` had no clauses)** → `[conc.when.order]`,
+  `[conc.when.nodeadlock]`, `[conc.when.body]`, `[conc.when.nonest]`
+  adopt the machine's canonical-order/whole-set/write-back semantics.
+  The `sync.when.*` forward citations are retired; **realignment**: the
+  nested-`when` stopgap `trap(assert)` is replaced per the spec's
+  deviation — dynamically reaching an acquisition of an already-held
+  sync object is `trap(deadlock)` (`[conc.deadlock.self]`), a lexical
+  nest is the compiler's E1103, and a dynamically nested `when` over a
+  disjoint set now *proceeds* (the compiler accepts it; the old blanket
+  fault would have broken the one-way approximation direction).
+- **S-2 (region-transfer clauses missing)** → `[conc.chan.move]`,
+  `[conc.chan.staleuse]`, `[conc.chan.imm]` specify exactly the dynamic
+  checks this machine runs at the send; the rules cite them now.
+- **S-3 (no deadlock verdict or trap kind)** → `[conc.deadlock.def]` and
+  `[conc.deadlock.trap]`, with `deadlock` added to `[conf.trap.set]` as
+  the deliberate twelfth kind. **Realignment**: the machine's
+  `unsupported`-with-roster report is retired for `trap(deadlock)` with
+  the roster in the message; the is07 explorer's per-schedule verdict is
+  the same spelling.
+- **S-4 (child failure did not reach a blocked owner)** →
+  `[conc.task.fail.owner]`: the scope is the cancellation unit, owner
+  included (Trio posture). **Realignment**: the scheduler cancels a
+  blocked, non-joining owner when a child fails; the owner's surfaced
+  cancellation is its finished cancellation and the child's failure
+  re-raises at the scope exit, after the join — replacing the is06
+  deadlock-provoked-by-failure special case.
+- **S-5 (`procs.lu`/`proc_kill_defers.lu` named undefined functions)** →
+  both files are self-contained at the pin and **RUN** here: `procs.lu`
+  exit(0), `proc_kill_defers.lu` exit(0) printing exactly `released`
+  (kill skips defers), both schedule-independent under the explorer.
+- **S-6 (`cancelled` unreachable)** → `[conc.proc.cancel]` specifies
+  `w.cancel()` as the delivery mechanism; implemented (cooperative,
+  defers run, monitors see `cancelled`; a proc completing its value
+  anyway keeps `normal(value)`).
+- **S-7 (`link` pair spelling + root death unspecified)** →
+  `[conc.proc.link.pair]` (implemented: `a.link(b)`, idempotent per
+  pair) and `[conc.proc.root]` (implemented: the root domain's abnormal
+  death runs the killed-proc sequence for every live proc and exits
+  nonzero — 1 here, class compared, never the number).
+- **S-8 (closed-channel `select` readiness)** → `[conc.select.closed]`
+  adopts the machine's Go-posture answer verbatim; the rule cites it.
 
 ### DIV-2026-007 — `grammar/receiver_moded.lu` — **resolved upstream, pin `79ceec6`**
 
@@ -167,7 +164,8 @@ stable across its whole schedule space.
 
 Corpus suspected, confirmed: the expected total is 223 now — the
 arithmetic this log recorded. Runs `exit(0)`, schedule-independent under
-exploration. (`when` still has no spec/03 clauses; S-1 stays open.)
+exploration. (`when` gained its spec/03 clauses at pin `843174f`; S-1 is
+resolved above.)
 
 ### DIV-2026-001 — `typecheck/match_exhaustive.lu` — **resolved upstream, pin `67c977f`**
 

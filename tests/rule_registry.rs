@@ -106,12 +106,10 @@ fn forward_namespace_citations_are_named_so_the_debt_is_visible() {
             "err.rows",
             "err.union",
             "str.interp",
-            // is06: `when` has no spec/03 clauses (03 Q6 decided the
-            // construct; s05 never wrote its section) — a filed finding.
-            // The rules cite the reserved `sync` namespace until the spec
-            // pays the debt.
-            "sync.when.nonest",
-            "sync.when.order",
+            // is08: is06's `sync.when.*` forward citations are retired —
+            // the s20 S-batch wrote `[conc.when.*]` into spec/03 and the
+            // rules cite the registered namespace now (findings S-1..S-8
+            // resolved; see docs/divergence-log.md).
         ]),
         "the forward-namespace debt list moved; if a document now owns one of \
          these, the anchor should be checkable"

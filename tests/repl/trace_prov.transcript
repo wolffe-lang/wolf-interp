@@ -1,0 +1,18 @@
+wolf> import c "stdlib.h"
+imported C header `stdlib.h` (host intrinsics)
+wolf> :trace on
+trace on: every rule firing is recorded with its clause anchor
+wolf> let p = c.malloc(8)
+wolf> c.memset(p, 7, 8)
+wolf> :trace show 3
+     9..10     EvalStrictOrder [mem.model.order] 3 argument(s) evaluated left to right
+     0..17     ProvState [mem.prov.state] write alloc#0[0..8) through tag#0 — tree consistent
+     0..17     BoundaryFfi [mem.boundary.ffi] `c.memset(*alloc#0+0@tag#0, 7, 8)` — a checked write of the whole range
+wolf> :trace off
+trace off
+wolf> c.free(p)
+wolf> c.memset(p, 1, 8)
+ub(mem.ub) §7/P1: write through tag#0 (c.malloc(8)#root), which is Disabled at alloc#0[0] [mem.prov.state] at 0..17; tag created at 8..19
+  licenses O1: `mut` params lower to `noalias` + `dereferenceable`; unique-tag stores forward without memory checks
+the session survives the finding; the world is as the access left it [repl.trap.alive]
+wolf> :quit

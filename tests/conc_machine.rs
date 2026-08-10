@@ -20,7 +20,8 @@
 //!    milliseconds (`[conc.select.timeout]`).
 //!
 //! Plus the race detector (`[conc.mm.race.3]`) over the only two memories two
-//! tasks can share mutably here, and the deadlock report's honesty.
+//! tasks can share mutably here, and the deadlock trap (`[conc.deadlock.*]`:
+//! the defined outcome, `trap(deadlock)` since the s20 S-batch).
 
 use std::time::Instant;
 
@@ -243,12 +244,12 @@ fn main() -> !int {
 
 #[test]
 fn a_linked_proc_takes_its_partner_with_it() {
-    // [conc.proc.2]: symmetric fate. `w.link()` couples the *caller's* proc
-    // with `w` — here that is the root domain, and the failing partner's
-    // abnormal exit kills it. spec/03 gives the root domain no exit
-    // semantics, so the machine reports the kill honestly as `unsupported`
-    // (a filed spec gap: `link` has no in-language spelling for coupling two
-    // child procs, and the root's death is unspecified).
+    // [conc.proc.2] symmetric fate + [conc.proc.root]: `w.link()` from
+    // `main` couples `w` to the ROOT domain, and the failing partner's
+    // abnormal exit kills it — which is now *specified*: the killed-proc
+    // sequence runs for every live proc and the process terminates with a
+    // nonzero, implementation-specified status (compare the class, never
+    // the number). This machine uses 1. (S-7's second half, resolved.)
     let source = r#"fn failing() -> !int { Kaboom }
 
 fn main() -> !int {
@@ -263,10 +264,10 @@ fn main() -> !int {
 "#;
     let run = run(source);
     match &run.outcome {
-        Outcome::Unsupported(reason) => {
-            assert!(reason.contains("killed"), "{reason}");
+        Outcome::Exit(status) => {
+            assert_ne!(*status, 0, "the root domain's death is a nonzero exit");
         }
-        other => panic!("expected the root-kill report, got {other:?}"),
+        other => panic!("expected the nonzero root-death exit, got {other:?}"),
     }
 }
 
@@ -394,7 +395,7 @@ fn touching_a_sent_region_from_the_sender_faults_with_the_clause() {
     match &run.outcome {
         Outcome::Trap(trap) => {
             assert_eq!(trap.kind, TrapKind::RegionFault);
-            assert_eq!(trap.rule.anchor(), "conc.chan");
+            assert_eq!(trap.rule.anchor(), "conc.chan.staleuse");
             assert!(
                 trap.message.contains("stale") || trap.message.contains("in flight"),
                 "{}",
@@ -465,26 +466,66 @@ fn freeze_then_share_reads_from_any_task() {
 }
 
 #[test]
-fn nested_when_acquisition_faults() {
-    let source = r#"fn main() -> !int {
+fn reacquiring_a_held_sync_object_traps_deadlock_immediately() {
+    // [conc.deadlock.self]: the `when` reached THROUGH A CALL asks for a
+    // mutex this task already holds — it can never complete, detected
+    // immediately. (The lexical nest is the compiler's E1103; is06 trapped
+    // `assert` here as a recorded stopgap; the S-batch added the `deadlock`
+    // kind and this machine realigned.)
+    let source = r#"fn grab(m: int, n: int) -> int {
+    var out = 0
+    when (m, n) { out = m + n }
+    out
+}
+
+fn main() -> !int {
     let a = Mutex(1)
     let b = Mutex(2)
+    let a2 = a
+    let b2 = b
+    var got = 0
     when (a, b) {
-        when (a, b) {
-            a += 1
-        }
+        got = grab(a2, b2)
     }
-    0
+    got
 }
 "#;
     let run = run(source);
     match &run.outcome {
         Outcome::Trap(trap) => {
-            assert_eq!(trap.kind, TrapKind::Assert);
-            assert_eq!(trap.rule.anchor(), "sync.when.nonest");
+            assert_eq!(trap.kind, TrapKind::Deadlock);
+            assert_eq!(trap.rule.anchor(), "conc.deadlock.self");
         }
-        other => panic!("expected the nested-when fault, got {other:?}"),
+        other => panic!("expected the self-acquisition deadlock, got {other:?}"),
     }
+}
+
+#[test]
+fn a_dynamically_nested_when_over_a_disjoint_set_proceeds() {
+    // [conc.when.nonest] traps only the already-held case dynamically; the
+    // lexical nest is the compiler's E1103. A `when` reached through a call
+    // whose set is DISJOINT from the held set is not self-acquisition — the
+    // compiler accepts that program, so faulting it here would break the
+    // one-way approximation direction.
+    let source = r#"fn bump(c: int, d: int) -> int {
+    var out = 0
+    when (c, d) { c += 1; out = c + d }
+    out
+}
+
+fn main() -> !int {
+    let a = Mutex(1)
+    let b = Mutex(2)
+    let c = Mutex(30)
+    let d = Mutex(10)
+    var got = 0
+    when (a, b) {
+        got = bump(c, d)
+    }
+    if got == 41 { 0 } else { 1 }
+}
+"#;
+    assert_eq!(exit_code(&run(source)), 0);
 }
 
 #[test]
@@ -674,9 +715,11 @@ fn a_channel_iteration_ends_at_drained_close() {
 }
 
 #[test]
-fn a_deadlocked_program_reports_honestly_instead_of_hanging() {
-    // No verdict exists for nontermination and no trap kind for deadlock
-    // (both filed as spec findings); the machine says so and stops.
+fn a_deadlocked_program_traps_deadlock_with_the_roster() {
+    // [conc.deadlock.def]/[conc.deadlock.trap]: every live task blocked with
+    // no pending timer is a *defined outcome* — `trap(deadlock)`, reporting
+    // the blocked-task roster. (is06 reported `unsupported` because the
+    // closed set had no kind; S-3's resolution added the deliberate twelfth.)
     let source = r#"fn main() -> !int {
     let ch = channel[int](0)
     let v = ch.recv()?
@@ -685,10 +728,13 @@ fn a_deadlocked_program_reports_honestly_instead_of_hanging() {
 "#;
     let run = run(source);
     match &run.outcome {
-        Outcome::Unsupported(reason) => {
-            assert!(reason.contains("deadlock"), "{reason}");
+        Outcome::Trap(trap) => {
+            assert_eq!(trap.kind, TrapKind::Deadlock);
+            assert_eq!(trap.rule.anchor(), "conc.deadlock.trap");
+            assert!(trap.message.contains("roster"), "{}", trap.message);
+            assert!(trap.message.contains("main"), "{}", trap.message);
         }
-        other => panic!("expected the deadlock report, got {other:?}"),
+        other => panic!("expected trap(deadlock), got {other:?}"),
     }
 }
 
@@ -762,4 +808,115 @@ fn main() -> !int {
         );
     }
     insta::assert_snapshot!("cancel_sibling_schedule_seed0", sched.join("\n"));
+}
+
+// ---------------------------------------------------------------------------
+// the s20 S-batch mechanisms: proc cancel, link pairs, owner cancellation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn cancelling_a_proc_runs_defers_and_delivers_the_cancelled_reason() {
+    // [conc.proc.cancel]: structured cancellation — cooperative at blocking
+    // points, defers RUN (the decided contrast with [conc.proc.kill], whose
+    // litmus is proc_kill_defers.lu). The exit reason is `cancelled`, which
+    // this delivery mechanism makes reachable for the first time (S-6).
+    let source = r#"fn sleeper() -> !int {
+    defer print_raw("defer-ran")
+    let ch = channel[int](0)
+    let v = ch.recv()?
+    v
+}
+
+fn main() -> !int {
+    let w = spawn proc sleeper()
+    let m = w.monitor()
+    w.cancel()
+    select {
+        exit(reason) from m => { if reason.is_cancelled() { 0 } else { 2 } },
+        timeout(1.s) => { 3 },
+    }
+}
+"#;
+    let run = run(source);
+    assert_eq!(exit_code(&run), 0);
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "defer-ran",
+        "cancellation is polite: the proc's defers run ([conc.cancel.defer])"
+    );
+}
+
+#[test]
+fn a_proc_that_completes_its_value_despite_cancellation_stays_normal() {
+    // [conc.proc.cancel]'s second half: a proc that never touches a blocking
+    // point after the request completes `normal(value)` — cancellation is
+    // cooperative, not preemptive.
+    let source = r#"fn quick() -> int { 7 }
+
+fn main() -> !int {
+    let w = spawn proc quick()
+    let m = w.monitor()
+    w.cancel()
+    select {
+        exit(reason) from m => { if reason.is_normal() || reason.is_cancelled() { 0 } else { 1 } },
+        timeout(1.s) => { 2 },
+    }
+}
+"#;
+    assert_eq!(exit_code(&run(source)), 0);
+}
+
+#[test]
+fn link_couples_two_named_procs_symmetrically() {
+    // [conc.proc.link.pair]: the two-proc spelling `a.link(b)` — the fate
+    // coupling never touches the root domain, so `main` survives to observe
+    // the second proc's `killed` reason.
+    let source = r#"fn failing() -> !int { Kaboom }
+
+fn sleeper() -> int {
+    let ch = channel[int](0)
+    let v = ch.recv() else |_| { return 1 }
+    v
+}
+
+fn main() -> !int {
+    let a = spawn proc sleeper()
+    let m = a.monitor()
+    let b = spawn proc failing()
+    a.link(b)
+    select {
+        exit(reason) from m => { if reason.is_killed() { 0 } else { 2 } },
+        timeout(1.s) => { 3 },
+    }
+}
+"#;
+    assert_eq!(exit_code(&run(source)), 0);
+}
+
+#[test]
+fn a_failing_child_cancels_the_blocked_scope_owner_too() {
+    // [conc.task.fail.owner]: the scope is the cancellation unit, owner
+    // included (the Trio posture, adopted after this machine deadlocked
+    // exactly this shape — finding S-4). The owner blocks on a channel its
+    // failing child will never serve; the failure's cancellation reaches the
+    // owner's `recv`, the join completes, and the CHILD's failure re-raises
+    // at the scope exit — never a deadlock, never the owner's cancellation
+    // error.
+    let source = r#"fn work() -> !int {
+    let ch = channel[int](0)
+    scope s {
+        s.spawn(fn() { Kaboom })
+        let v = ch.recv()?
+        return v
+    }
+    0
+}
+
+fn main() -> !int {
+    let r = work() else |_| { 42 }
+    if r == 42 { 0 } else { 1 }
+}
+"#;
+    let run = run(source);
+    assert_eq!(exit_code(&run), 0);
 }

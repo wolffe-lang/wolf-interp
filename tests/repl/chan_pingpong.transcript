@@ -1,0 +1,12 @@
+wolf> scope s {
+....>     let ch = channel[int](0)
+....>     s.spawn(fn() {
+....>         let ping = ch.recv() else |_| { return 0 }
+....>         ch.send(ping + 1)
+....>     })
+....>     ch.send(41)
+....>     let pong = ch.recv() else |_| { return 0 }
+....>     print("pong={pong}")
+....> }
+pong=42
+wolf> :quit

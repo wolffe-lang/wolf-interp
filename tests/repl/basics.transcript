@@ -1,0 +1,16 @@
+wolf> 1 + 2
+3 : i32
+wolf> let greeting = "hello, wolf"
+wolf> greeting
+hello, wolf : str
+wolf> let x = 1 +
+....>       2 * 3
+wolf> x
+7 : i32
+wolf> :type x * 2
+i32
+wolf> let oops = )
+error[E0201]: expected an expression, found `)` [gram.expr.primary] at 11..12
+wolf> x
+7 : i32
+wolf> :quit

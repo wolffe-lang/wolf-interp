@@ -1,0 +1,7 @@
+wolf> :load vendor/upstream/corpus/hello.lu
+loaded `vendor/upstream/corpus/hello.lu`
+defined fn `main`
+wolf> main()
+hello, wolf
+0 : i32
+wolf> :quit

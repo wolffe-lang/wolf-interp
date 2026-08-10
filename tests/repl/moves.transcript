@@ -1,0 +1,13 @@
+wolf> struct Packet { size: int }
+defined type `Packet`
+wolf> let a = Packet { size: 512 }
+wolf> let b = a
+wolf> b.size
+512 : i32
+wolf> a.size
+trap(use-after-move): `a.size` was moved out and is uninitialized here [mem.tier0.move.2] at 0..6
+  `a` moved here at 8..9
+the session survives the trap; the world is as the fault left it [repl.trap.alive]
+wolf> copy b
+Packet { size: 512 } : Packet
+wolf> :quit

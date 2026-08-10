@@ -1,0 +1,15 @@
+wolf> let a = Mutex(1)
+wolf> let b = Mutex(2)
+wolf> var t = 0
+wolf> when (b, a) { a += 1; t = a + b }
+wolf> t
+4 : i32
+wolf> let ch = channel[int](0)
+wolf> let v = ch.recv()
+trap(deadlock): every live task is blocked at a runtime-owned blocking point and no timer is pending; blocked-task roster: `main` (task 0) [conc.deadlock.trap] at 8..17
+the session survives the trap; the world is as the fault left it [repl.trap.alive]
+wolf> :schedule 7
+scheduler re-seeded: seed=7 governs every decision from here on ([conc.det.seed])
+wolf> t + 1
+5 : i32
+wolf> :quit

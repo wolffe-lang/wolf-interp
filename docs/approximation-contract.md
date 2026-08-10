@@ -546,8 +546,9 @@ further out.
 ## 10. Deliberate approximations in the **concurrency** machine (is06)
 
 **Status:** drafted by is06 at pin `67c977f` — the first executable test of
-`spec/03-concurrency.md`. The spec findings the sprint harvested live in
-`docs/divergence-log.md` (S-1..S-8); this section records what *this
+`spec/03-concurrency.md`; **revised by is08 at pin `843174f`**, whose s20
+S-batch turned findings S-1..S-8 into clauses (see §10.5 for the
+confirmations and the two realignments). This section records what *this
 machine* chose where the spec left room, and why every choice keeps the
 one-way approximation direction.
 
@@ -604,27 +605,61 @@ complete synchronously, so `[conc.cancel.c]`'s "next safe point after
 return" degenerates to the next blocking point — noted in the trace when a
 concurrent program crosses the membrane.
 
-### 10.5 Choices the spec left open, taken and named
+### 10.5 Choices the spec left open — now adjudicated by the s20 S-batch
 
-- **Scope join under cancellation** keeps joining: structured concurrency's
-  invariant (children complete first) outranks prompt cancellation of the
-  owner; the children were cancelled with it, so the join terminates.
-- **Drained-closed channels make `select` arms ready** with the closed
-  error (Go's posture; finding S-8).
-- **Deadlock** — all tasks blocked, no timer — reports `unsupported` with
-  the blocked-task roster (findings S-3/S-4): no verdict and no trap kind
-  exist for it, and inventing one would put a guess into a differential
-  comparison.
-- **`when` payload write-back**: operands named by simple paths rebind to
-  the payload inside the body and write back at release, in reverse
-  canonical order; nested `when` traps `assert` (no kind fits; finding
-  S-1 owns the real answer).
+**Status update (is08, pin `843174f`):** spec/03 wrote the clauses this
+section anticipated. Where the S-batch **confirmed** a choice, the rule now
+cites the registered clause instead of a forward namespace or a family
+root; where it **deviated**, the machine realigned. The ledger:
+
+- **Scope join under cancellation keeps joining** — *confirmed and
+  extended* by `[conc.task.fail.owner]`: the scope is the cancellation
+  unit, owner included (the Trio posture, adopted from finding S-4). A
+  failing child now cancels a scope owner blocked at a non-join blocking
+  point (`Rule::TaskFailOwner`); an owner blocked at the *join* keeps
+  joining, exactly as before. The owner's surfaced cancellation error is
+  its finished cancellation — the child's failure still re-raises at the
+  scope exit, after the join.
+- **Drained-closed channels make `select` arms ready** — *confirmed*:
+  `[conc.select.closed]` adopts Go's posture from finding S-8 verbatim.
+  `Rule::SelectClosed` cites it at both readiness sites.
+- **Deadlock** — *deviation paid as specified*: `unsupported`-with-roster
+  is retired. `[conc.deadlock.def]` makes all-blocked/no-timer a defined
+  outcome, `[conc.deadlock.trap]` adds `deadlock` as the deliberate
+  twelfth `[conf.trap.set]` kind, and the machine traps it with the
+  blocked-task roster in the message. Detection is *required* in
+  deterministic test modes — this machine and the is07 explorer are both
+  such modes, and the explorer's per-schedule verdict is now
+  `trap(deadlock)`.
+- **`when` payload write-back** — *confirmed*: `[conc.when.body]` states
+  the rebind/write-back/reverse-release semantics the machine chose.
+  **Nested `when`** — *deviation paid as specified*: the spec split the
+  stopgap `assert` trap into E1103 (lexical, the compiler's) and
+  `trap(deadlock)` for the dynamic already-held case
+  (`[conc.when.nonest]`, `[conc.deadlock.self]`). The machine now keeps
+  the per-task held-set and traps `deadlock` only on a genuine
+  self-acquisition; a `when` reached through a call over a *disjoint* set
+  proceeds — the compiler accepts that program, so the old blanket
+  nesting fault would have broken the one-way approximation direction.
+- **Region transfer over channels** — *confirmed*: `[conc.chan.move]`
+  (the send is the affine move; closed and disconnected, dynamically
+  re-checked at the send), `[conc.chan.staleuse]` (the sender's fault, at
+  the use site) and `[conc.chan.imm]` (by reference, no move, no copy)
+  are what `Rule::ChanMove`/`ChanStale`/`ChanImm` cite now.
+- **Proc surface debts paid** (S-6/S-7): `w.cancel()` implements
+  `[conc.proc.cancel]` (cooperative, defers run, `cancelled` reachable at
+  last), `a.link(b)` implements `[conc.proc.link.pair]`, and the root
+  domain's death is `[conc.proc.root]` — killed-proc sequence for every
+  live proc, then a nonzero, implementation-specified exit (1 here;
+  compare the class, never the number).
 - **Monitor of an already-exited proc** delivers immediately; the reason
   value keeps its label but a `normal` payload observed this way collapses
-  to unit (the label is what the corpus and tests compare).
+  to unit (the label is what the corpus and tests compare). Unchanged —
+  the S-batch does not speak to it.
 - **Exclusivity and borrows stay per task.** The access set that enforces
   `[mem.tier0.excl]` is task-local; cross-task exclusivity has no dynamic
   meaning here because cross-task mutable paths do not exist (10.2).
+  Unchanged.
 
 ### 10.6 The schedule explorer (is07): what it proves, what it approximates
 

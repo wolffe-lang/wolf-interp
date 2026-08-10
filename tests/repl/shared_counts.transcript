@@ -1,0 +1,26 @@
+wolf> let s = shared(10)
+wolf> :mem
+regions:
+  #0 `program` arena state=open objects=0
+shared cells:
+  shared#0 strong=1 weak=0
+wolf> let t = s.clone()
+wolf> let w = s.downgrade()
+wolf> :mem
+regions:
+  #0 `program` arena state=open objects=0
+shared cells:
+  shared#0 strong=2 weak=1
+wolf> let t = 0
+`t` rebound: the old binding dropped ([repl.let.rebind])
+wolf> :mem
+regions:
+  #0 `program` arena state=open objects=0
+shared cells:
+  shared#0 strong=1 weak=1
+wolf> let s = 0
+`s` rebound: the old binding dropped ([repl.let.rebind])
+wolf> :mem
+regions:
+  #0 `program` arena state=open objects=0
+wolf> :quit

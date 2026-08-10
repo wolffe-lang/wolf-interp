@@ -421,8 +421,9 @@ fn a_deadlocking_program_is_counted_deadlocked_on_every_schedule() {
     );
     assert!(report.outcomes[0].deadlocked);
     assert_eq!(
-        report.outcomes[0].verdict, "unsupported",
-        "S-3: no verdict exists yet"
+        report.outcomes[0].verdict, "trap(deadlock)",
+        "[conc.deadlock.trap]: the verdict spelling is07 reports per schedule \
+         (S-3 resolved by the s20 S-batch)"
     );
 }
 

@@ -1,0 +1,33 @@
+wolf> struct Config { limit: int }
+defined type `Config`
+wolf> let r = region(rc)
+wolf> :regions
+regions:
+  #0 `program` arena state=open objects=0
+  #1 `-` rc state=suspended objects=0
+wolf> let cfg = in r { Config { limit: 42 } }
+wolf> :mem
+regions:
+  #0 `program` arena state=open objects=0
+  #1 `-` rc state=suspended objects=1
+wolf> let frozen = freeze r
+wolf> :mem
+regions:
+  #0 `program` arena state=open objects=0
+  #1 `-` rc state=frozen objects=1
+wolf> cfg.limit
+42 : i32
+wolf> let q = region()
+wolf> let cell = in q { Config { limit: 7 } }
+wolf> :regions
+regions:
+  #0 `program` arena state=open objects=0
+  #1 `-` rc state=frozen objects=1
+  #2 `-` arena state=suspended objects=1
+wolf> let q = 0
+`q` rebound: the old binding dropped ([repl.let.rebind])
+wolf> :regions
+regions:
+  #0 `program` arena state=open objects=0
+  #1 `-` rc state=frozen objects=1
+wolf> :quit

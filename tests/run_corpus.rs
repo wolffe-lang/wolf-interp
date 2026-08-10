@@ -215,6 +215,22 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/region_infer_list_builder.lu", "exit(0)"),
     ("memory/region_infer_request_handler.lu", "exit(0)"),
     ("memory/region_infer_tree_transform.lu", "exit(0)"),
+    // -- is08 (pin 843174f) --------------------------------------------------
+    // The s20 S-batch made `procs.lu` and `conc/proc_kill_defers.lu`
+    // self-contained (S-5 resolved): the supervision showcase finally RUNS,
+    // and kill-skips-defers prints exactly `released`. The region-checker
+    // tier's pass files run; the fail litmuses' dynamic counterparts land on
+    // `[conf.trap.map]`'s region-fault row (E1005/E1011), except
+    // `region_freeze_write`, whose write lands on a value-semantics copy —
+    // the standing conservatism class.
+    ("procs.lu", "exit(0)"),
+    ("conc/proc_kill_defers.lu", "exit(0)"),
+    ("memory/region_freeze_ok.lu", "exit(0)"),
+    ("memory/region_freeze_open.lu", "trap(region-fault)"),
+    ("memory/region_freeze_write.lu", "exit(7)"),
+    ("memory/region_multiopen_values_ok.lu", "exit(0)"),
+    ("memory/region_open_ancestor.lu", "trap(region-fault)"),
+    ("memory/region_transfer_open.lu", "trap(region-fault)"),
 ];
 
 #[test]

@@ -1,0 +1,15 @@
+wolf> struct Cell { v: int }
+defined type `Cell`
+wolf> let ch = channel[region](2)
+wolf> let r = region()
+wolf> let data = in r { Cell { v: 9 } }
+wolf> ch.send(move r)
+wolf> :regions
+regions:
+  #0 `program` arena state=open objects=0
+  #1 `-` arena state=suspended objects=1 owner=in-channel
+wolf> r
+trap(use-after-move): `r` was moved out and is uninitialized here [mem.tier0.move.2] at 0..1
+  `r` moved here at 8..14
+the session survives the trap; the world is as the fault left it [repl.trap.alive]
+wolf> :quit

@@ -169,7 +169,7 @@ fn each_program_produces_the_trap_its_own_directive_pins() {
 
 #[test]
 fn there_is_one_program_per_trap_identity_this_tier_can_raise() {
-    // `[conf.trap.set]` is closed at eleven kinds. **Eight** are reachable at
+    // `[conf.trap.set]` is closed at twelve kinds. **Eight** are reachable at
     // is03 — the dynamic region machine added `region-fault` and
     // `stale-handle`; the other three belong to tiers this sprint does not
     // implement, and claiming them would be the same lie as an inflated
@@ -201,7 +201,15 @@ fn there_is_one_program_per_trap_identity_this_tier_can_raise() {
     // produces `TrapKind::Ub` and none should. The kind stays in the closed
     // vocabulary for the checked build (`[conf.trap.map]`), and
     // `tests/ub_coverage.rs` is where its programs live.
-    let deferred = [TrapKind::AllocContract, TrapKind::Race, TrapKind::Ub];
+    // `deadlock` — the deliberate twelfth kind, `[conc.deadlock.trap]` —
+    // needs a scheduler, so its programs live in `tests/conc_machine.rs`,
+    // not this single-task tier.
+    let deferred = [
+        TrapKind::AllocContract,
+        TrapKind::Race,
+        TrapKind::Ub,
+        TrapKind::Deadlock,
+    ];
     assert_eq!(
         reachable.len() + deferred.len(),
         TrapKind::ALL.len(),

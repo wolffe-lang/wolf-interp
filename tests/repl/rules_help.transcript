@@ -1,0 +1,26 @@
+wolf> :help
+:type e            evaluate e, report its type
+:mem               the memory model, live: regions, loans, shared, pools, tasks
+:regions           the region tree alone
+:trace on|off      record rule firings (clause-cited) into the ring buffer
+:trace show [n]    show the last n recorded events (default 20)
+:trace clear       empty the ring buffer
+:rules [prefix]    the rule registry, optionally filtered by anchor prefix
+:schedule seed     re-seed the scheduler's decision stream from here on
+:load file.lu      textual inclusion into the implicit module ([repl.module])
+:reset             fresh world, empty module
+:quit              leave
+wolf> :rules conc.deadlock
+[conc.deadlock.def] DeadlockDef: every live task blocked at a blocking point with no pending timer and no in-flight I/O is a deadlock — a defined outcome, detected exactly by a deterministic scheduler
+[conc.deadlock.trap] DeadlockTrap: a detected deadlock terminates with trap kind `deadlock`, reporting the blocked-task roster; detection is required in deterministic test modes
+[conc.deadlock.self] DeadlockSelf: acquiring a sync object the acquiring task already holds can never complete: detected immediately, `trap(deadlock)`
+wolf> :type 1 < 2
+bool
+wolf> :frobnicate
+unknown directive `:frobnicate`; :help lists the surface
+wolf> :reset
+session reset: fresh world, empty implicit module
+wolf> :mem
+regions:
+  #0 `program` arena state=open objects=0
+wolf> :quit

@@ -31,7 +31,7 @@
 //! - **every termination is a verdict.** `[proto.record.verdict]` enumerates
 //!   six; a fuzzed program must land on one of them, never on a panic and never
 //!   on a hang (`Machine::FUEL` bounds the third case).
-//! - **a trap is always one of the closed eleven kinds** (`[conf.trap.set]`).
+//! - **a trap is always one of the closed twelve kinds** (`[conf.trap.set]`).
 //!   The vocabulary is the comparison alphabet of spec/06; a kind outside it
 //!   would make a differential report meaningless.
 
