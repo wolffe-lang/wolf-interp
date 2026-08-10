@@ -130,11 +130,13 @@ fn pairs(block: &Block) -> Vec<Pair> {
     pairs
 }
 
-/// The established normalizations: LF, and the vendored fallback reported
-/// under its canonical `upstream/` spelling.
+/// The established normalizations: LF, forward slashes (windows prints
+/// `upstream\corpus`), and the vendored fallback reported under its
+/// canonical `upstream/` spelling.
 fn normalize(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes)
         .replace("\r\n", "\n")
+        .replace('\\', "/")
         .replace("vendor/upstream/", "upstream/")
 }
 
