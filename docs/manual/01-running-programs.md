@@ -59,6 +59,20 @@ check (a red corpus walk, a rejected record, an unstable exploration).
 The `lex` and `parse` doors are ordinary frontends by contrast: they exit
 `65` on a rejected program and print the diagnostic to stderr.
 
+## The std root
+
+`use std.X[.Y]` resolves against a **std root** when one is configured:
+`--std-root DIR` (on `run`, `check` and `conform-run`) reads the module
+directory `<DIR>/X[/Y]/`, and the `LUPIN_STD` environment variable is the
+flagless spelling every door honours — the interpreter half of the
+compiler's `--std-root`/`WOLF_STD` mechanism (s26), so the same source
+text resolves under both implementations. Nested paths work
+(`use std.x.deque_int` reads `<DIR>/x/deque_int/`), the path's last
+segment is the bound name, and without a root the loader falls back to
+the flat `<package root>/<last segment>` directory — sibling modules and
+flat mirrors keep working unchanged. The flag wins over the environment
+variable when both are given.
+
 ## Traps
 
 A trap is a fault of a defined execution: the program was legal, ran, and

@@ -339,6 +339,62 @@ during the is11 sweep rather than changed: aligning either direction is a
 behavior change, and the code that owns literal typing is the compiler's
 half of the split.
 
+### 6.7 Bare-ident patterns resolve against the value, not the type (0.1.2)
+
+The checker resolves a bare identifier in a pattern against the scrutinee's
+*type*: an in-scope enum variant is a variant pattern, a row tag of the
+scrutinee's `!T ! {row}` is a tag pattern, anything else binds (issue #5,
+wolf-std F-0007 — first-arm-always was the bug). This machine has no types
+to consult, so it approximates with what it has:
+
+- an identifier that names a variant of an enum **declared in the current
+  module** is a variant pattern — it matches the payload-free tag spelled
+  either bare (`Greater`) or enum-qualified (`Ordering.Greater`), and the
+  same table lets a payload pattern `Rgb(r, g, b)` match a value built as
+  `Color.Rgb(1, 2, 3)`;
+- otherwise, a **capitalized** identifier whose scrutinee is a tag-shaped
+  value (an error value) is a structural row-tag pattern (D30: rows need
+  no declaration; the machine already reads unresolved capitalized names
+  as tags in expression position) — it matches on tag equality and never
+  binds;
+- everything else binds, including a capitalized name over a non-error
+  scrutinee, which the counterparty also treats as a binding (observed at
+  pin a0c4564: `match 3 { Zed => Zed, _ => 9 }` warns E0802 unreachable on
+  the `_` arm and runs).
+
+The residual imprecision: a capitalized *binding* over an error scrutinee —
+a name the checker would resolve as a binding because it is neither a
+variant nor in the row — reads as a tag pattern here and fails to match.
+No pinned corpus, book, or wolf-std program spells one (the convention is
+lowercase bindings), and the failure mode is an honest `unsupported` ("no
+`match` arm applied"), never a wrong answer. Exhaustiveness stays the type
+checker's (E0801 has no dynamic half): a match no arm of which applies is
+`unsupported`, not a trap. Bare *dotted* path patterns (`Ordering.Less =>`)
+are outside `[gram.pat]` and rejected at parse with the counterparty's
+E0201 shape.
+
+### 6.8 `for` iterates a loop-entry snapshot; the spec is silent (S-11)
+
+`loop_expr ::= 'for' pattern 'in' expr block` is all the pinned spec says
+about `for` (`[gram.expr.flow]`): no clause in spec/01 or spec/02 states
+whether the loop holds an access on the iterated container for its extent,
+moves it, or copies it. This machine evaluates the operand **once, at loop
+entry**, and iterates that value — under MVS the natural reading — so a
+body that mutates the container (`for x in xs { xs.push(x) }`) executes,
+the mutation lands, and the iteration never observes it. No trap fires.
+
+wolfc rejects the same program statically with **E1001** (use-after-move:
+its lowering moves the operand into the loop), and `[conf.trap.map]`'s
+comparison alphabet would predict an `exclusivity` trap if the spec gave
+the loop a `mut`-grade hold it never states. Three mutually consistent
+readings, zero clauses: filed as **S-11** in `docs/divergence-log.md`
+(issue #9, wolf-std F-0014; compiler half wolf-lang#15) rather than
+legislated here — a snapshot loop cannot produce a spurious fault, which
+is the one direction §1 forbids, and inventing a trap the spec never
+names would be this machine legislating. wolf-std keeps the divergence
+visible: `tests/list/mutate_while_iterating.lu`, ledgered
+`lupin = run` / `wolfc = fail(E1001)`.
+
 ## 7. Deliberate approximations in the **provenance** machine (is04)
 
 `src/eval/prov.rs` is `spec/02` §6 made executable: per-allocation tag trees,

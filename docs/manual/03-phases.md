@@ -9,7 +9,7 @@ completes four of those rungs and enforces the rest dynamically:
 | rung | lupin |
 |---|---|
 | `lex`, `parse` | the frontend, written from `spec/01` alone |
-| `resolve` | sema-lite: the module graph and visibility, nothing more |
+| `resolve` | sema-lite: the module graph, visibility, and `let` immutability (E0410) |
 | `typecheck`, `mem`, `wir` | not performed — the compiler's half |
 | `run` | the tree-walk evaluator, the region store, the provenance oracle |
 
@@ -46,7 +46,7 @@ defines — the unit of comparison between implementations:
 
 ```console
 $ lupin conform-run examples/squares.lu --json
-{"protocol":1,"impl":"lupin","impl_version":"0.1.1","commit":"…","file":"examples/squares.lu","phase_reached":"run","seeded":false,"diagnostics":[],"verdict":"exit(0)","stdout_sha256":"42857004c6eb56e7ff16c5e877d9f83f2f8a280e2ae98ae6e13c20174c303ddb","stdout_inline":"sum of squares: 30\n"}
+{"protocol":1,"impl":"lupin","impl_version":"0.1.2","commit":"…","file":"examples/squares.lu","phase_reached":"run","seeded":false,"diagnostics":[],"verdict":"exit(0)","stdout_sha256":"42857004c6eb56e7ff16c5e877d9f83f2f8a280e2ae98ae6e13c20174c303ddb","stdout_inline":"sum of squares: 30\n"}
 ```
 
 Field by field:

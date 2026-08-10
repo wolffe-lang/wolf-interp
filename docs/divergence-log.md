@@ -46,6 +46,36 @@ differential lane detects the absence, prints `notice:` lines, and SKIPs;
 
 ## Open findings
 
+Sixth corpus differential: lupin 0.1.2, pin `a0c4564` (the E0410
+fail-files and the unsafe/checked memory tier land; 159 entries compared,
+16 members through their entries), **2 divergences, both filed as
+DIV-2026-010** — the first non-zero round since is07, and both are one
+finding: `typecheck/let_reassign.lu` and `typecheck/let_compound_assign.lu`
+reject on both sides with the **same E0410 at the same span**, but the
+counterparty's record places the rejection at `typecheck` while the corpus
+files themselves pin `phase: resolve`. The deep comparison reads wolfc's
+record as claiming the resolve rung *completed*, which collides with this
+machine's honest rejection at the rung it performs — a rung-placement
+inconsistency between the compiler's record and its own corpus directive,
+not a verdict disagreement. **Triage: spec/corpus first defendant** —
+either the corpus directives should say `typecheck` or wolfc's driver
+should report sema's E0410 at `resolve`; routed upstream with the filing;
+this machine's placement follows the corpus. 261 conservatism-ledger
+entries (64 rejects-beyond by the counterparty — the E1301/E1302 unsafe
+tier landed — 67 run-unmatched, 84 counterparty-unsupported, 46
+interp-unsupported).
+
+### DIV-2026-010 — `typecheck/let_reassign.lu` + `typecheck/let_compound_assign.lu` — **open, routed upstream**
+
+- Class: verdict (rung placement only). Codes and spans byte-identical
+  (`E0410` at `[444,445]` / `[307,312]`).
+- a (lupin): `fail(E0410)@resolve` — the rung this machine performs and
+  the one the corpus directive pins.
+- b (wolfc a0c4564): `fail(E0410)@typecheck` — sema's diagnostic surfaces
+  after its resolve rung reports complete.
+- Owed fix: upstream ruling on which rung E0410 belongs to; whichever way
+  it lands, one side's surface moves and this entry closes.
+
 Fifth corpus differential: is09, pin `cbde620` (s21's shared tier — nine
 files advance to `mem`, `prov_holy_grail.lu` to `typecheck`; spec-extract
 renders the §3.2 operator climb into `grammar.ebnf`), 148 entries
@@ -95,7 +125,7 @@ spec/03 had never been executed before is06. The machine was the first
 executable test of it, and the harvest was routed upstream, not patched
 around. **The s20 S-batch (pin `843174f`) paid S-1 through S-8** — the
 eight entries now live under *Resolved findings* below with what the spec
-adopted and where this machine realigned. S-9 remains open.
+adopted and where this machine realigned. S-9, S-10 and S-11 remain open.
 
 - **S-9 (is07) — the seed↔schedule encoding has no normative home.**
   `[conc.det.seed]` defines `--replay=SEED` behaviorally and `[proto.seed]`
@@ -130,6 +160,36 @@ adopted and where this machine realigned. S-9 remains open.
   E1101's runtime meaning (kind + clause, as the E1004/E1005 amendment
   did) or bless capture-by-copy as the defined interpreter-tier semantics.
   Until then §10.2 stands as the documented behavior.
+
+- **S-11 (lupin 0.1.2, wolf-interp#9 / wolf-std F-0014 / wolf-lang#15) —
+  container mutation during `for` iteration has no governing clause.**
+  `loop_expr ::= 'for' pattern 'in' expr block` is the whole of the pinned
+  text on `for` (`[gram.expr.flow]`): nothing states whether the loop
+  moves its operand, holds a `mut`-grade access on it for the loop's
+  extent, or reads it once. The three candidate readings produce three
+  different verdicts on `for x in xs { xs.push(x) }`, and both
+  implementations picked one: **wolfc** (a0c4564) lowers the operand as a
+  *move* and rejects the body's use statically — `fail(E1001)`, "`xs`
+  moved here", with a `for x in copy xs` fix-it — even though
+  `[mem.tier0.move.1]`'s move list (assignment, initialization, `take`
+  arguments, `return`) does not include loop operands; **lupin** evaluates
+  the operand once at loop entry and iterates that snapshot — the MVS
+  copy reading — so the program runs `exit(0)`, the pushes land, and the
+  iteration never observes them (approximation-contract §6.8). A third
+  reading — the loop holds the container `mut`-style for its extent —
+  would make the body's push a `trap(exclusivity)` under
+  `[conf.trap.map]`, and no clause states that hold either.
+  **Not legislated here, deliberately**: the snapshot loop cannot produce
+  a spurious fault (the one direction the approximation contract
+  forbids), and inventing a move or a hold the spec never names is the
+  compiler-alignment shortcut `ledger::dynamic_meaning` exists to refuse.
+  Routed upstream: spec/01 (or spec/02 §2) should state the operand
+  semantics of `for` — move (blessing E1001 and its dynamic
+  `use-after-move` half), extent-hold (naming the `exclusivity` trap), or
+  loop-entry copy (blessing this machine and making wolfc's E1001 a
+  conservative extension). wolf-std keeps the divergence visible in CI:
+  `tests/list/mutate_while_iterating.lu`, ledgered `lupin = run` /
+  `wolfc = fail(E1001)`. Compiler half: wolf-lang#15.
 
 ## Resolved findings
 
