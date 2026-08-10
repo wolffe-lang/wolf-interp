@@ -46,47 +46,26 @@ differential lane detects the absence, prints `notice:` lines, and SKIPs;
 
 ## Open findings
 
-Second corpus differential: is06, pin `67c977f`, 133 entries compared,
-**1 divergence** (down from 6), 227 conservatism-ledger entries (46
-rejects-beyond by the counterparty, 61 run-unmatched pre-M1 — up from 51:
-the conc tier runs now — 78 counterparty-unsupported, 42 interp-unsupported
-— down from 53).
+Third corpus differential: is07, pin `79ceec6`, 142 entries compared,
+**0 divergences** (down from 1), 238 conservatism-ledger entries (55
+rejects-beyond by the counterparty — up from 46: the E1004/E1007/E1010
+litmuses landed — 60 run-unmatched pre-M1, 78 counterparty-unsupported,
+45 interp-unsupported). `differ::FILED_DIVERGENCES` is **empty** for the
+first time since the differential lane exists.
 
-### DIV-2026-007 — `grammar/receiver_moded.lu` — span-or-code @ parse — **compiler suspected**
+The is07 exploration record (the corpus half lives in
+`tests/explore_corpus.rs::CONC_LEDGER`): every `conc/` litmus explored to a
+**closed frontier** under DPOR — 8 files, 1–2 Mazurkiewicz classes each,
+naive-DFS baseline agreeing on every conclusion — with one verdict per
+file across its entire schedule space. The determinism-taxonomy claim
+(spec/03 §5 `sched-ev/0`, `[proto.seed.equal]`) holds over the whole
+pinned conc tier: **no corpus file is schedule-dependent**. The multiopen
+model check (the question `memory/region_multiopen_ok.lu`'s own header
+flags for is07) answers definitively within bounds: no explored schedule —
+corpus files or the concurrent multiopen litmuses in
+`tests/explore_machine.rs` — breaks the region forest invariant or leaks.
 
-The successor to DIV-2026-006, which the spec amendment resolved. Pin
-`67c977f` amended §3.3: "primary span = the entire parenthesized moded
-receiver" — the span this interpreter has reported since is05 (bytes
-233..240, `(mut y)`). The compiler at the same pin still reports 234..237
-(the `mut` keyword), observed through its own protocol records. The spec is
-now clear and the interpreter matches it; owed: a wolf-lang parser fix.
-
-### DIV-2026-008 — `conc/freeze_publish.lu` — corpus expectation @ run — **corpus/spec suspected**
-
-- interp: `exit(1)@run` (closures capture by value; the tasks write their
-  own copies of `a`/`b`; `a + b == 25` is false)
-- corpus: `check: run(exit=0)`
-- The file's expected exit **requires** writes to captured mutable locals to
-  be visible across tasks — exactly the shape `[conc.task.spawn]` makes a
-  compile error ("capturing a `mut` borrow of enclosing state is a compile
-  error (E1101) unless the state is a `sync` type") and that
-  `conc/store_buffer.lu` itself pins as `fail(E1101)`. The corpus
-  contradicts the spec, or the spec's capture rule has an unwritten
-  exception. Owed: a wolf-lang ruling — either the file gains a channel/
-  `sync` reporting path or `[conc.task.spawn]` names the exception.
-  (This machine's tests pin the conforming spelling:
-  `tests/conc_machine.rs::freeze_then_share_reads_from_any_task`.)
-
-### DIV-2026-009 — `conc/when_multi.lu` — corpus expectation @ run — **corpus suspected**
-
-- interp: `exit(1)@run` under every seed (total = 223)
-- corpus: `check: run(exit=0)`, i.e. `total == 224`
-- Arithmetic: `(1+10+100) + (2+10+100) = 223`. No legal execution
-  satisfies the file's check; the expected total is off by one. Owed: the
-  corpus fix upstream. (Compounding: `when` has no clauses in spec/03 at
-  all — see finding S-1 below.)
-
-## Spec findings from is06 (spec-is-defendant — filed, not absorbed)
+## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before this sprint. The machine is the
 first executable test of it, and the harvest below is routed upstream, not
@@ -142,8 +121,53 @@ namespace and say so in their descriptions.
   defines the drained-close error for `recv` — whether a drained-closed
   channel makes a `select` arm *ready* (Go: yes) is unwritten. The machine
   answers yes, delivering the closed error to the arm.
+- **S-9 (is07) — the seed↔schedule encoding has no normative home.**
+  `[conc.det.seed]` defines `--replay=SEED` behaviorally and `[proto.seed]`
+  makes equal seeds byte-comparable, but no pinned document says what a
+  seed *is* beyond "a value that regenerates the stream" — the accepted
+  s36 Phase A hook-design doc is the designated owner and does not exist
+  yet at pin `79ceec6`. is07 ships a provisional split of the `u64`
+  namespace (bit 62 tags a packed schedule; low 62 bits are mixed-radix
+  choice digits; everything else seeds the generator —
+  `sched::PACKED_SEED_TAG`, approximation-contract §10.6) so that
+  explorer counterexamples are `--seed=N` replays *today*, honoring
+  `[proto.seed.equal]` one-sided. The compiler runtime's format has
+  priority: when the Phase A doc lands, this side re-pins to it and the
+  cross-validation harness diffs the two.
+
+Status at is07, pin `79ceec6`: **none of S-1..S-8 landed in the pinned
+spec** (the pin's spec tree is byte-identical to `67c977f`'s). The s20
+S-batch amendments (`[conc.when.*]`, the deadlock verdict, `[conc.chan.
+staleuse]`, link semantics) remain owed; the machine's rules keep their
+documented forward citations and approximation-contract entries, and the
+next pin bump re-checks this list first.
 
 ## Resolved findings
+
+### DIV-2026-007 — `grammar/receiver_moded.lu` — **resolved upstream, pin `79ceec6`**
+
+Compiler suspected, confirmed and fixed: the compiler's E0210 primary span
+now covers the whole parenthesized moded receiver, exactly as the pin
+`67c977f` spec amendment demanded and as this interpreter has reported
+since is05. Verified by the third corpus differential (0 divergences).
+The DIV-2026-006 → 007 chain — spec amendment first, then the lagging
+implementation — is closed end to end.
+
+### DIV-2026-008 — `conc/freeze_publish.lu` — **resolved upstream, pin `79ceec6`**
+
+Corpus/spec suspected, confirmed: the wolf-lang ruling kept
+`[conc.task.spawn]`'s capture rule intact and repaired the *file* — it now
+reports through a channel (`ch.send(table[3])` / `ch.recv()`) instead of
+writing captured mutable locals, exactly the conforming spelling this
+machine's `freeze_then_share_reads_from_any_task` litmus pinned. Runs
+`exit(0)` here, matching the corpus; is07's explorer proves the exit
+stable across its whole schedule space.
+
+### DIV-2026-009 — `conc/when_multi.lu` — **resolved upstream, pin `79ceec6`**
+
+Corpus suspected, confirmed: the expected total is 223 now — the
+arithmetic this log recorded. Runs `exit(0)`, schedule-independent under
+exploration. (`when` still has no spec/03 clauses; S-1 stays open.)
 
 ### DIV-2026-001 — `typecheck/match_exhaustive.lu` — **resolved upstream, pin `67c977f`**
 

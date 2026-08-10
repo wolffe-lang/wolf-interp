@@ -83,14 +83,27 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             uses only specified semantics — `config.limit == 42` under
     //             `[mem.region.freeze.1]`'s "frozen data readable forever" —
     //             which is the change that finally made it RUN here.)
+    //   79ceec6 → 158 files (is07: the is06 debts paid — `conc/
+    //             freeze_publish.lu` reports through a channel and
+    //             `conc/when_multi.lu` expects 223, closing DIV-2026-008/009;
+    //             the same pin's compiler fixes E0210's span, closing
+    //             DIV-2026-007. `corpus/memory/` grew 9: the three
+    //             `region_infer_*` annotation-freedom demonstrations, the
+    //             E1004/E1010 litmuses `region_conflict_params.lu` +
+    //             `region_escape_local.lu`, plus `exclusivity.lu`,
+    //             `mode_missing_mut.lu`, `mut_arg_temporary.lu` and
+    //             `view_set_violation.lu`. 29 existing files changed only
+    //             their `phase:` directive (typecheck → mem — the compiler's
+    //             region-inference rung exists now), which moves nothing
+    //             here.)
     let report = report();
     assert_eq!(
         report.total(),
-        149,
+        158,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 133);
+    assert_eq!(report.entries(), 142);
     assert_eq!(report.members(), 16);
 }
 

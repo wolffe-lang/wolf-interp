@@ -133,17 +133,19 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // (the upstream DIV-2026-001 repair).
     ("typecheck/match_exhaustive.lu", "exit(0)"),
     // -- is06: the sim scheduler (spec/03) ----------------------------------
-    // The conc litmus tier runs. `freeze_publish` and `when_multi` produce
-    // exit(1) against the corpus's exit=0 — both filed (DIV-2026-008/009,
-    // corpus/spec suspected); `chan_unsendable` and `store_buffer` run clean
-    // where the compiler rejects statically (E1102/E1101 conservatism).
+    // The conc litmus tier runs. `freeze_publish` and `when_multi` produced
+    // exit(1) against the corpus's exit=0 through pin `67c977f`; pin `79ceec6`
+    // paid both debts (DIV-2026-008: the file reports through a channel now;
+    // DIV-2026-009: the expected total is 223) and both run exit(0).
+    // `chan_unsendable` and `store_buffer` run clean where the compiler
+    // rejects statically (E1102/E1101 conservatism).
     ("conc/cancel_sibling.lu", "exit(0)"),
     ("conc/chan_unsendable.lu", "exit(0)"),
-    ("conc/freeze_publish.lu", "exit(1)"),
+    ("conc/freeze_publish.lu", "exit(0)"),
     ("conc/message_passing.lu", "exit(0)"),
     ("conc/select_seeded.lu", "exit(0)"),
     ("conc/store_buffer.lu", "exit(0)"),
-    ("conc/when_multi.lu", "exit(1)"),
+    ("conc/when_multi.lu", "exit(0)"),
     // `channel` exists now, so the E1005 dynamic-counterpart case finally
     // RUNS: the open region cannot be transferred, trap(region-fault) citing
     // the clause — [conf.trap.map]'s E1005 → region-fault row, exercised.
@@ -201,6 +203,18 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("typecheck/match_missing.lu", "exit(0)"),
     ("typecheck/match_unreachable.lu", "exit(0)"),
     ("typecheck/pattern_shape.lu", "exit(0)"),
+    // -- is07 (pin 79ceec6) --------------------------------------------------
+    // The three region-inference demonstrations run with zero annotations —
+    // the machine's dynamic region semantics needed nothing new. The E1004/
+    // E1010 litmuses and `mode_missing_mut` pin *static* rejections
+    // (`fail(E1004)`/`fail(E1010)`/`fail(E1007)`); their Tier-0 bodies run
+    // here and ledger as conservatism.
+    ("memory/mode_missing_mut.lu", "exit(1)"),
+    ("memory/region_conflict_params.lu", "exit(0)"),
+    ("memory/region_escape_local.lu", "exit(0)"),
+    ("memory/region_infer_list_builder.lu", "exit(0)"),
+    ("memory/region_infer_request_handler.lu", "exit(0)"),
+    ("memory/region_infer_tree_transform.lu", "exit(0)"),
 ];
 
 #[test]

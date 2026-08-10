@@ -132,7 +132,7 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = stdout_of(&output);
-    assert!(stdout.contains("149 file(s)"), "{stdout}");
+    assert!(stdout.contains("158 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -141,7 +141,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = wolf_interp(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 149);
+    assert_eq!(value["total"], 158);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
@@ -153,6 +153,57 @@ fn the_corpus_walk_has_a_machine_mode() {
         "unsupported@resolve"
     );
     assert_eq!(value["files"][0]["judgement"]["class"], "out-of-scope");
+}
+
+#[test]
+fn conform_run_explore_reports_and_gates_on_stability() {
+    // is07: `--explore=N` runs the DPOR explorer instead of one observation.
+    // A schedule-independent litmus is green (exit 0) and the report carries
+    // the counts; the JSON form is machine-readable.
+    let file = format!(
+        "{}/corpus/conc/cancel_sibling.lu",
+        wolf_interp::upstream_root()
+    );
+    let output = wolf_interp(&["conform-run", &file, "--explore=100"]);
+    assert_eq!(output.status.code(), Some(0), "{}", stdout_of(&output));
+    let text = stdout_of(&output);
+    assert!(text.contains("explored 2 schedule(s)"), "{text}");
+    assert!(text.contains("observably deterministic"), "{text}");
+
+    let output = wolf_interp(&["conform-run", &file, "--explore=100", "--json"]);
+    assert_eq!(output.status.code(), Some(0));
+    let value: serde_json::Value =
+        serde_json::from_str(stdout_of(&output).trim()).expect("one JSON object");
+    assert_eq!(value["schedules"], 2);
+    assert_eq!(value["stable"], true);
+    assert_eq!(value["green"], true);
+    assert_eq!(value["frontier_open"], false);
+    assert_eq!(value["mode"], "dpor");
+}
+
+#[test]
+fn conform_run_replays_an_explicit_decision_stream() {
+    // The explorer's counterexample spelling: `--schedule=ev:…` replays one
+    // exact schedule and the record declares `seeded: true` — deterministic
+    // replay is what the flag means ([proto.seed.equal]).
+    let file = format!(
+        "{}/corpus/conc/select_seeded.lu",
+        wolf_interp::upstream_root()
+    );
+    let one = wolf_interp(&["conform-run", &file, "--schedule=ev:0", "--json"]);
+    assert_eq!(one.status.code(), Some(0));
+    let value: serde_json::Value =
+        serde_json::from_str(stdout_of(&one).trim()).expect("one JSON object");
+    assert_eq!(value["seeded"], true);
+    assert_eq!(value["verdict"], "exit(0)");
+    // Byte-identical on replay.
+    let two = wolf_interp(&["conform-run", &file, "--schedule=ev:0", "--json"]);
+    assert_eq!(stdout_of(&one), stdout_of(&two));
+
+    // A malformed stream is a tool error with no record.
+    let bad = wolf_interp(&["conform-run", &file, "--schedule=ev:1,x"]);
+    assert_eq!(bad.status.code(), Some(2));
+    assert!(stdout_of(&bad).is_empty());
 }
 
 #[test]

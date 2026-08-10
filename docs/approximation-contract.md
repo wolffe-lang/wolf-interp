@@ -626,6 +626,60 @@ concurrent program crosses the membrane.
   `[mem.tier0.excl]` is task-local; cross-task exclusivity has no dynamic
   meaning here because cross-task mutable paths do not exist (10.2).
 
+### 10.6 The schedule explorer (is07): what it proves, what it approximates
+
+**Status:** is07, pin `79ceec6`. The explorer (`src/explore.rs`,
+`conform-run --explore=N`) is stateless model checking over the reified
+`sched-ev/0` stream: replay from the root with a forced decision prefix,
+classic Flanagan–Godefroid DPOR with sleep sets, full branching over
+`select`-arm commits, budgets for schedules/steps/preemptions/wall clock.
+The choices it rests on, named:
+
+- **The branch alphabet is two decision kinds.** Every schedule point of
+  is06's enumeration funnels into `State::decide` at exactly two places:
+  the ready-task pick and the `select`-arm pick. Channel pairings, `when`
+  grants, timer fires and deliveries are *deterministic consequences* of
+  those picks in this machine (FIFO queues, sorted timers), so permuting
+  the picks covers the whole space — the completeness assertion checks
+  this on every replay, and the red test proves the check bites
+  (`tests/explore_machine.rs`).
+- **Conflicts are syntactic over runtime objects.** Two ops conflict when
+  they touch the same channel/mutex/proc/task-control/scope/memory key and
+  one mutates. This over-approximates (two buffered sends to a non-full
+  channel "conflict" even when the program never observes order), which
+  costs exploration and never soundness. One refinement is load-bearing:
+  a task's *successful* scope-exit is a read of its scope (completion
+  order of non-failing siblings is unobservable — `[conc.task.fail]`
+  orders only failures), while a failing exit writes it; without this the
+  independent-writers reduction would collapse.
+- **The canonical state hash cannot see suspended frames.** It covers the
+  scheduler-visible state (tasks + queues + wakes + clocks + open stacks,
+  channels with contents, mutexes, procs, scopes, timers, race-detector
+  memory, virtual clock) plus a rolling stdout digest — not a task's Rust
+  call stack and not the region store's interior. Convergence pruning on
+  that hash could in principle merge schedules whose difference lives only
+  in un-communicated locals; `--explore-no-prune` removes the risk,
+  `--paranoid` re-verifies every hit against the stored preimage (the
+  collision guard), and on the pinned corpus pruning changes no
+  conclusion (asserted in tests).
+- **"Preemption" means a non-FIFO pick.** The machine is cooperative —
+  tasks run to their next blocking point — so the CHESS bound maps to
+  "decisions that depart from the front of the ready queue";
+  `--explore-preemptions=P` bounds that count and reports what it skipped
+  as an open frontier.
+- **The packed-seed namespace is provisional (finding S-9).** Bit 62 of a
+  `--seed` value tags a packed schedule (low 62 bits = mixed-radix choice
+  digits, trailing FIFO choices free); everything else seeds the xorshift
+  generator exactly as before, so all pre-is07 seeds and snapshots are
+  untouched. Streams too wide for 62 bits use `--schedule=ev:c0,c1,…`.
+  The accepted s36 Phase A hook-design doc owns the real encoding; it has
+  not landed at this pin, the compiler runtime's format has priority, and
+  this side re-pins when it exists.
+- **Deferred, named:** source-DPOR (Abdulla et al. 2014), sleep-set
+  refinements beyond the classic algorithm, stateful checkpointing, and
+  any relaxed-memory exploration (SC only — `[conc.mm]`'s unsafe-tier
+  relaxed orderings wait for stable clauses).
+
 ## 11. Observability
 
 `--trace=mem` logs every region event — create, open, close/suspend, freeze,
