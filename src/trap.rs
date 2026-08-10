@@ -1,14 +1,16 @@
 //! The trap vocabulary.
 //!
 //! Reimplemented from `spec/05-conformance.md` `[conf.trap.set]`: a **closed**
-//! set of eleven kinds. It is the comparison alphabet of spec/06, so an
+//! set of twelve kinds. It is the comparison alphabet of spec/06, so an
 //! unknown kind is an error everywhere it can appear — corpus directives and
-//! protocol verdicts alike.
+//! protocol verdicts alike. (`deadlock` is the deliberate twelfth, added by
+//! the pinned `[conc.deadlock.trap]` amendment — the spec revision that
+//! closed set demanded, and the resolution of finding S-3.)
 
 use std::fmt;
 use std::str::FromStr;
 
-/// One of the eleven kinds in the closed `[conf.trap.set]` vocabulary.
+/// One of the twelve kinds in the closed `[conf.trap.set]` vocabulary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TrapKind {
     Overflow,
@@ -22,11 +24,12 @@ pub enum TrapKind {
     Assert,
     Race,
     Ub,
+    Deadlock,
 }
 
 impl TrapKind {
     /// The whole closed set, in spec order. Extension requires a spec revision.
-    pub const ALL: [TrapKind; 11] = [
+    pub const ALL: [TrapKind; 12] = [
         TrapKind::Overflow,
         TrapKind::DivZero,
         TrapKind::Bounds,
@@ -38,6 +41,7 @@ impl TrapKind {
         TrapKind::Assert,
         TrapKind::Race,
         TrapKind::Ub,
+        TrapKind::Deadlock,
     ];
 
     /// The spelling used in directives and on the wire.
@@ -55,6 +59,7 @@ impl TrapKind {
             TrapKind::Assert => "assert",
             TrapKind::Race => "race",
             TrapKind::Ub => "ub",
+            TrapKind::Deadlock => "deadlock",
         }
     }
 
@@ -111,8 +116,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_set_has_exactly_eleven_kinds() {
-        assert_eq!(TrapKind::ALL.len(), 11);
+    fn the_set_has_exactly_twelve_kinds() {
+        assert_eq!(TrapKind::ALL.len(), 12);
     }
 
     #[test]

@@ -202,6 +202,16 @@ impl AccessSet {
     }
 
     /// Holds an access open. The caller has already checked for conflicts.
+    /// The live accesses, rendered deterministically — the REPL's `:mem`
+    /// surfaces what `[mem.tier0.excl]` is holding instead of only faulting.
+    #[must_use]
+    pub fn dump(&self) -> Vec<String> {
+        self.held
+            .iter()
+            .map(|held| format!("{:?} hold on `{}`", held.access, held.path))
+            .collect()
+    }
+
     pub fn push(&mut self, held: Held) {
         self.held.push(held);
     }

@@ -215,7 +215,7 @@ pub enum Rule {
     // -- traps -------------------------------------------------------------
     /// A user assertion that fails traps `assert`.
     Assert,
-    /// Traps map onto the closed eleven-kind vocabulary and terminate.
+    /// Traps map onto the closed twelve-kind vocabulary and terminate.
     TrapVocabulary,
 
     // -- spec/03: the sim scheduler (is06) ---------------------------------
@@ -286,11 +286,37 @@ pub enum Rule {
     /// Procs communicate exclusively via typed channels + `select`.
     ProcMailbox,
 
-    // -- `when` (03 Q6; spec clauses pending — a filed finding) ------------
+    // -- `when` (03 Q6; clauses landed in the s20 S-batch) ------------------
     /// `when (a, b)` acquires the whole set in canonical order.
     WhenOrder,
-    /// Nested acquisition inside a `when` body faults.
+    /// No lock-order deadlock can form: every `when` uses the one order.
+    WhenNoDeadlock,
+    /// The body runs with exclusive payload access; write-back at release.
+    WhenBody,
+    /// Lexically nested `when` is the compiler's E1103; the dynamic
+    /// already-held case is `[conc.deadlock.self]`.
     WhenNoNest,
+
+    // -- deadlock (the defined outcome, `[conc.deadlock]`) ------------------
+    /// Every live task blocked, no timer, no I/O: a defined outcome.
+    DeadlockDef,
+    /// A detected deadlock traps `deadlock` with the blocked-task roster.
+    DeadlockTrap,
+    /// Acquiring a sync object the task already holds can never complete.
+    DeadlockSelf,
+
+    // -- the S-batch's remaining machine-confirmed choices ------------------
+    /// A drained-closed channel makes its `select` receive arm ready.
+    SelectClosed,
+    /// A failing child's cancellation reaches a blocked scope owner too.
+    TaskFailOwner,
+    /// `w.cancel()` delivers structured cancellation to a proc.
+    ProcCancel,
+    /// `a.link(b)` couples two procs symmetrically; `w.link()` sugars it.
+    ProcLinkPair,
+    /// The root supervisor's domain is the process; its abnormal death runs
+    /// the killed-proc sequence for every live proc and exits nonzero.
+    ProcRoot,
 
     // -- races -------------------------------------------------------------
     /// A detected data race halts with trap kind `race`.
@@ -597,7 +623,7 @@ impl Rule {
             Rule::Assert => ("conf.trap.map", "a failed user assertion traps `assert`"),
             Rule::TrapVocabulary => (
                 "conf.trap.set",
-                "every fault this machine raises is one of the closed eleven kinds",
+                "every fault this machine raises is one of the closed twelve kinds",
             ),
             Rule::SchedSeed => (
                 "conc.det.seed",
@@ -668,16 +694,16 @@ impl Rule {
                 "`close` makes further sends return an error value; buffered items drain; drained receives get the closed error",
             ),
             Rule::ChanMove => (
-                "conc.mm.hb.move",
-                "a region moved through a channel publishes the entire transferred graph to the receiver",
+                "conc.chan.move",
+                "sending a region value is its affine move: the closed, disconnected subtree transfers wholesale and every prior write publishes ([conc.mm.hb.move])",
             ),
             Rule::ChanStale => (
-                "conc.chan",
-                "a sent region is the receiver's wholesale; any later touch by the sender faults (the clause id spec/03 still owes — a filed finding)",
+                "conc.chan.staleuse",
+                "after a moving send the donor's binding is moved-from; any later use is the sender's fault at the use site — E1001 statically, `trap(use-after-move)` here",
             ),
             Rule::ChanImm => (
-                "conc.mm.hb.freeze",
-                "`freeze` happens-before every cross-task read: imm data shares by reference, no transfer",
+                "conc.chan.imm",
+                "`imm` data sends by reference — no move, no copy, sender access survives ([conc.mm.hb.freeze] orders the reads)",
             ),
             Rule::CancelPoint => (
                 "conc.cancel.points",
@@ -716,12 +742,52 @@ impl Rule {
                 "procs communicate exclusively via typed channels + select; no selective receive; handlers are atomic and non-blocking",
             ),
             Rule::WhenOrder => (
-                "sync.when.order",
-                "`when (a, b)` acquires the whole set in canonical order — deadlock-free by ordered set acquisition (clauses owed by spec/03; filed)",
+                "conc.when.order",
+                "`when (a, b, …)` acquires the entire operand set one object at a time in the canonical order, regardless of the order written at the site",
+            ),
+            Rule::WhenNoDeadlock => (
+                "conc.when.nodeadlock",
+                "no lock-order deadlock, by construction: every `when` acquires its whole set in the one canonical order, so no cycle of `when` acquisitions can form",
+            ),
+            Rule::WhenBody => (
+                "conc.when.body",
+                "the body runs with exclusive access to every operand's payload; simple paths rebind to payloads and write back at release, in reverse canonical order",
             ),
             Rule::WhenNoNest => (
-                "sync.when.nonest",
-                "nested acquisition inside a `when` body faults (clauses owed by spec/03; filed)",
+                "conc.when.nonest",
+                "a lexically nested `when` is the compiler's E1103; dynamically reaching an acquisition of a sync object the task already holds is `trap(deadlock)` ([conc.deadlock.self])",
+            ),
+            Rule::DeadlockDef => (
+                "conc.deadlock.def",
+                "every live task blocked at a blocking point with no pending timer and no in-flight I/O is a deadlock — a defined outcome, detected exactly by a deterministic scheduler",
+            ),
+            Rule::DeadlockTrap => (
+                "conc.deadlock.trap",
+                "a detected deadlock terminates with trap kind `deadlock`, reporting the blocked-task roster; detection is required in deterministic test modes",
+            ),
+            Rule::DeadlockSelf => (
+                "conc.deadlock.self",
+                "acquiring a sync object the acquiring task already holds can never complete: detected immediately, `trap(deadlock)`",
+            ),
+            Rule::SelectClosed => (
+                "conc.select.closed",
+                "a drained-closed channel makes its receive arm ready: the arm runs and receives the closed error value — never a block-forever, never a fault",
+            ),
+            Rule::TaskFailOwner => (
+                "conc.task.fail.owner",
+                "a failing child's cancellation reaches the scope owner too: an owner blocked at a blocking point entered inside the scope's extent is cancelled exactly like a sibling",
+            ),
+            Rule::ProcCancel => (
+                "conc.proc.cancel",
+                "`w.cancel()` delivers structured cancellation to a proc: cooperative at blocking points, defers run; exit reason `cancelled` unless the value completes anyway",
+            ),
+            Rule::ProcLinkPair => (
+                "conc.proc.link.pair",
+                "`a.link(b)` couples two procs symmetrically, idempotent per pair; `w.link()` is `w.link(<the calling task's proc>)`",
+            ),
+            Rule::ProcRoot => (
+                "conc.proc.root",
+                "the root supervisor's domain is the process: its abnormal death runs the killed-proc sequence for every live proc and terminates nonzero — compare the outcome class, never the number ([conf.trap.exit])",
             ),
             Rule::RaceDetect => (
                 "conc.mm.race.3",
@@ -778,7 +844,7 @@ impl Rule {
     }
 
     /// Every rule, in declaration order. The registry.
-    pub const ALL: [Rule; 104] = [
+    pub const ALL: [Rule; 114] = [
         Rule::ValueSemantics,
         Rule::PlacePath,
         Rule::PathDisjoint,
@@ -880,7 +946,17 @@ impl Rule {
         Rule::ProcKill,
         Rule::ProcMailbox,
         Rule::WhenOrder,
+        Rule::WhenNoDeadlock,
+        Rule::WhenBody,
         Rule::WhenNoNest,
+        Rule::DeadlockDef,
+        Rule::DeadlockTrap,
+        Rule::DeadlockSelf,
+        Rule::SelectClosed,
+        Rule::TaskFailOwner,
+        Rule::ProcCancel,
+        Rule::ProcLinkPair,
+        Rule::ProcRoot,
         Rule::RaceDetect,
         Rule::DetMode,
     ];

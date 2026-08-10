@@ -264,10 +264,10 @@ pub enum Wake {
     /// A `select` arm committed (`[conc.select.fair]`): the arm index and the
     /// received value, `None` for a timeout arm.
     Arm(usize, Option<Value>),
-    /// Every task is blocked and no timer is pending: the program cannot make
-    /// progress. There is no verdict for nontermination and no trap kind for
-    /// deadlock in the closed `[conf.trap.set]`, so this surfaces as
-    /// `unsupported` with the blocked-task roster attached.
+    /// Every task is blocked and no timer is pending: a **deadlock**, the
+    /// defined outcome `[conc.deadlock.def]` names. Surfaces as
+    /// `trap(deadlock)` with the blocked-task roster attached
+    /// (`[conc.deadlock.trap]`).
     Deadlock(String),
 }
 
@@ -861,13 +861,16 @@ impl State {
             .join(", ")
     }
 
-    /// No task can run again: wake everything blocked with the deadlock
-    /// verdict so each unwinds and the program reports honestly.
+    /// No task can run again: `[conc.deadlock.def]`'s defined outcome, which
+    /// a deterministic scheduler detects exactly. Wake everything blocked
+    /// with the deadlock verdict so each unwinds into `trap(deadlock)`
+    /// (`[conc.deadlock.trap]` — detection is *required* in deterministic
+    /// test modes, and this machine is one).
     fn declare_deadlock(&mut self) {
         self.deadlocked = true;
         let roster = self.blocked_roster();
         self.note(
-            Rule::SchedDecision,
+            Rule::DeadlockDef,
             format!("DEADLOCK: every task is blocked and no timer is pending ({roster})"),
         );
         let blocked: Vec<TaskId> = self
@@ -927,8 +930,8 @@ impl State {
                     for (task, arm) in selecters {
                         self.deregister(task);
                         self.note(
-                            Rule::ChanClose,
-                            format!("channel#{chan} drained-closed; select arm {arm} commits with the closed error"),
+                            Rule::SelectClosed,
+                            format!("channel#{chan} drained-closed; select arm {arm} becomes ready and commits with the closed error"),
                         );
                         self.make_ready(task, Wake::Arm(arm, Some(closed_error())));
                     }
@@ -1168,7 +1171,8 @@ pub enum Resolved {
     Err(Value),
     /// Killed: unwind without user code.
     Killed,
-    /// Deadlock: unwind with this reason as `unsupported`.
+    /// Deadlock: unwind into `trap(deadlock)` carrying the roster
+    /// (`[conc.deadlock.trap]`).
     Deadlock(String),
 }
 
@@ -1667,6 +1671,29 @@ impl Sched {
                     for sibling in siblings {
                         state.cancel_task(sibling);
                     }
+                    // `[conc.task.fail.owner]`: the scope is the cancellation
+                    // unit, owner included. An owner blocked at a blocking
+                    // point it entered inside the scope's extent (it runs the
+                    // scope body, so any non-join block while the scope is
+                    // live qualifies) is cancelled exactly like a sibling. An
+                    // owner blocked at the *join* keeps joining — structured
+                    // concurrency's invariant outranks prompt cancellation,
+                    // and the children were cancelled with it.
+                    let owner = state.scopes[scope].owner;
+                    if !state.scopes[scope].joining
+                        && state.tasks[owner].state == TaskState::Blocked
+                    {
+                        let owner_name = state.tasks[owner].name.clone();
+                        state.note(
+                            Rule::TaskFailOwner,
+                            format!(
+                                "the failure's cancellation reaches the blocked scope owner \
+                                 `{owner_name}` (task {owner}) too; the failure still re-raises \
+                                 at the scope exit, after the join"
+                            ),
+                        );
+                        state.cancel_task(owner);
+                    }
                 }
                 // Wake the joining owner if everything is done now.
                 let owner = state.scopes[scope].owner;
@@ -1930,7 +1957,15 @@ impl Sched {
                     .map(|(_, c)| *c)
                     .expect("a ready recv arm names its channel");
                 if state.chans[chan].buf.is_empty() && state.chans[chan].senders.is_empty() {
-                    // Ready because drained-closed.
+                    // Ready because drained-closed ([conc.select.closed]):
+                    // the closed error value is the delivery.
+                    state.note(
+                        Rule::SelectClosed,
+                        format!(
+                            "select arm {arm} ready because channel#{chan} is drained-closed; \
+                             the arm receives the closed error value"
+                        ),
+                    );
                     return Ok((arm, Some(closed_error())));
                 }
                 let (value, vc) = state.take_message(chan);
@@ -2158,10 +2193,64 @@ impl Sched {
         self.lock().kill_proc(proc)
     }
 
+    /// `w.cancel()` (`[conc.proc.cancel]`): structured cancellation delivered
+    /// to the proc's task tree, cooperatively, at `[conc.cancel.points]`
+    /// blocking points — defers run (`[conc.cancel.defer]`; contrast
+    /// `[conc.proc.kill]`, which skips them). A proc that exits *because*
+    /// this reached it exits `cancelled`; one that completes its value
+    /// despite it keeps `normal(value)` — both fall out of the existing
+    /// end-of-task accounting.
+    pub fn cancel_proc(&self, proc: ProcId) {
+        let mut state = self.lock();
+        let actor = state.actor();
+        state.op(actor, ObjKey::Proc(proc), true);
+        let name = state.procs[proc].name.clone();
+        state.note(
+            Rule::ProcCancel,
+            format!(
+                "cancel proc#{proc} `{name}`: structured cancellation, cooperative at blocking \
+                 points; defers run"
+            ),
+        );
+        let members: Vec<TaskId> = state
+            .tasks
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.proc == proc && t.state != TaskState::Done)
+            .map(|(id, _)| id)
+            .collect();
+        for task in members {
+            state.cancel_task(task);
+        }
+    }
+
     /// The proc a task belongs to.
     #[must_use]
     pub fn proc_of(&self, task: TaskId) -> ProcId {
         self.lock().tasks[task].proc
+    }
+
+    /// The REPL's `:schedule seed` (is08): re-seed the decision generator for
+    /// every decision from here on. The world (tasks, channels, clocks) is
+    /// untouched — only future `sched-ev/0` choices change — and the reseed
+    /// is itself a recorded note so transcripts stay honest about it.
+    pub fn reseed(&self, seed: u64) {
+        let mut state = self.lock();
+        state.chooser = Chooser::Seeded {
+            seed,
+            rng: seed | 1,
+        };
+        state.note(
+            Rule::SchedSeed,
+            format!(
+                "sched-ev/0 generator re-seeded; seed={seed} ({}) from here on",
+                if seed == 0 {
+                    "strict FIFO"
+                } else {
+                    "seeded pseudo-random"
+                }
+            ),
+        );
     }
 
     // -- the race detector (`[conc.mm.race.3]`) -----------------------------

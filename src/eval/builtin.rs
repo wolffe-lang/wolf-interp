@@ -564,7 +564,23 @@ pub fn method(
         }
         (Value::Proc(proc), "link") => {
             let proc = *proc;
-            machine.proc_link(proc, span)
+            // `a.link(b)` names the partner; `w.link()` couples with the
+            // calling task's proc ([conc.proc.link.pair]).
+            let other = match args.first() {
+                Some(Value::Proc(other)) => Some(*other),
+                None => None,
+                Some(other) => {
+                    return unsupported(format!(
+                        "`link` couples procs: expected a proc argument, got {}",
+                        other.kind()
+                    ));
+                }
+            };
+            machine.proc_link(proc, other, span)
+        }
+        (Value::Proc(proc), "cancel") => {
+            let proc = *proc;
+            machine.proc_cancel(proc, span)
         }
         // Exit-reason predicates (`[conc.proc.exit]`): the closed set as
         // structural tags, queried without a `match`.

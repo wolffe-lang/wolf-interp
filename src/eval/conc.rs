@@ -3,11 +3,14 @@
 //! [`super::sched`] owns *when* things happen (every blocking or choosing
 //! operation is a scheduler decision); this module owns *what* they mean:
 //! scopes and their joins, spawns, channels with region transfer, `select`,
-//! `when`, procs and their supervision. Every rule cites its spec/03 clause;
-//! the two clause families the sprint names that spec/03 does **not** yet
-//! define (`conc.when.*`, `conc.chan.move`/`staleuse`) are cited into the
-//! reserved `sync` namespace or the `conc.chan` family root, and both gaps
-//! are filed findings (`docs/divergence-log.md`) — the spec is the defendant.
+//! `when`, procs and their supervision. Every rule cites its spec/03 clause.
+//! The s20 S-batch (pin `843174f`) paid the clause debts is06 filed: `when`
+//! has its section (`[conc.when.*]`), region transfer over channels has
+//! `[conc.chan.move]`/`[conc.chan.staleuse]`/`[conc.chan.imm]`, deadlock is
+//! a defined outcome with its own trap kind (`[conc.deadlock.*]`), and a
+//! failing child's cancellation reaches a blocked scope owner
+//! (`[conc.task.fail.owner]`) — see `docs/divergence-log.md` for the
+//! resolved findings S-1..S-8.
 
 use crate::ast::{Arg, Block, Expr, Ident, SelectArm, SelectArmKind};
 use crate::diag::Span;
@@ -143,21 +146,25 @@ impl Machine {
             Ok(failures) => failures,
             Err(Resolved::Killed) => return Err(Signal::ProcKilled),
             Err(Resolved::Deadlock(roster)) => {
-                return unsupported(deadlock_reason(&roster));
+                return self.deadlock_trap(&roster, span);
             }
             Err(_) => unreachable!("join resolves to killed or deadlock only"),
         };
         self.pop_scope();
-        // A deadlock in the scope body that a child *failure* provoked (the
-        // owner was blocked on a channel the failed child would have served)
-        // reports the failure, not the symptom: `[conc.task.fail]` cancels
-        // siblings only, not the owner's pending operations — the gap between
-        // those two is a filed spec finding, and the child's reason is the
-        // informative record either way.
+        // `[conc.task.fail.owner]`: when a child failed, the owner blocked
+        // inside the scope's extent was cancelled exactly like a sibling —
+        // the cancellation error the owner's body then carried out is its
+        // *finished cancellation*, not a new failure. The child's failure is
+        // what re-raises at the scope exit, below, after the join.
         let body_result = match body_result {
-            Err(Signal::Unsupported(reason))
-                if reason.starts_with("deadlock:") && !failures.is_empty() =>
+            Err(Signal::Return(Value::Error(err)))
+                if err.tag == "Cancelled" && !failures.is_empty() =>
             {
+                self.fire(
+                    Rule::TaskFailOwner,
+                    span,
+                    "the owner's cancellation completed; the child's failure re-raises at the                      scope exit",
+                );
                 Ok(Value::Unit)
             }
             other => other,
@@ -408,13 +415,51 @@ impl Machine {
         Ok(Value::Unit)
     }
 
-    /// `w.link()` (`[conc.proc.2]`): symmetric fate with the calling task's
-    /// own proc.
-    pub(crate) fn proc_link(&mut self, proc: ProcId, span: Span) -> EResult<Value> {
-        let mine = self.shared.sched.proc_of(self.task);
-        self.shared.sched.link(mine, proc);
+    /// `a.link(b)` / `w.link()` (`[conc.proc.link.pair]`): symmetric fate
+    /// coupling, idempotent per pair; the no-argument spelling is
+    /// `w.link(<the calling task's proc>)`. Delivery is `[conc.proc.2]`'s.
+    pub(crate) fn proc_link(
+        &mut self,
+        proc: ProcId,
+        other: Option<ProcId>,
+        span: Span,
+    ) -> EResult<Value> {
+        let partner = match other {
+            Some(partner) => partner,
+            None => self.shared.sched.proc_of(self.task),
+        };
+        self.fire(
+            Rule::ProcLinkPair,
+            span,
+            &format!(
+                "link proc#{proc} ⇄ proc#{partner}{}",
+                if other.is_some() {
+                    ""
+                } else {
+                    " (`w.link()` couples `w` with the calling task's proc)"
+                }
+            ),
+        );
+        self.shared.sched.link(partner, proc);
         self.drain_sched();
-        let _ = span;
+        Ok(Value::Unit)
+    }
+
+    /// `w.cancel()` (`[conc.proc.cancel]`): structured cancellation to the
+    /// proc's task tree — the delivery mechanism that makes
+    /// `[conc.proc.exit]`'s `cancelled` reason reachable (finding S-6,
+    /// resolved by the pinned amendment).
+    pub(crate) fn proc_cancel(&mut self, proc: ProcId, span: Span) -> EResult<Value> {
+        self.fire(
+            Rule::ProcCancel,
+            span,
+            &format!(
+                "proc#{proc} receives structured cancellation: cooperative at blocking points, \
+                 defers run; exits `cancelled` unless its value completes anyway"
+            ),
+        );
+        self.shared.sched.cancel_proc(proc);
+        self.drain_sched();
         Ok(Value::Unit)
     }
 
@@ -437,9 +482,10 @@ impl Machine {
         Ok(Value::Chan(chan))
     }
 
-    /// `ch.send(v)` / `ch.send(move r)`. A region payload transfers wholesale
-    /// (`[conc.mm.hb.move]`): the dynamic disconnectedness check runs at the
-    /// moment of send, and the sender's later touches fault ([`Rule::ChanStale`]).
+    /// `ch.send(v)` / `ch.send(move r)`. A region payload's send is its affine
+    /// move (`[conc.chan.move]`): the dynamic disconnectedness check runs at
+    /// the moment of send, and the sender's later touches fault at the use
+    /// site (`[conc.chan.staleuse]`, [`Rule::ChanStale`]).
     pub(crate) fn chan_send(&mut self, chan: ChanId, value: Value, span: Span) -> EResult<Value> {
         let mut transferred = Vec::new();
         for id in region_granules(&value) {
@@ -487,8 +533,7 @@ impl Machine {
                     span,
                     format!(
                         "{label} still has a live external edge from {owner}; a region sent \
-                         through a channel must be disconnected (the clause id spec/03 owes — \
-                         filed)"
+                         through a channel must be disconnected ([conc.chan.move])"
                     ),
                     None,
                 );
@@ -498,8 +543,8 @@ impl Machine {
                 Rule::ChanMove,
                 span,
                 &format!(
-                    "region #{id} moves wholesale into channel#{chan}: every prior write \
-                     publishes to the receiver ([conc.mm.hb.move])"
+                    "region #{id} moves wholesale into channel#{chan}: the send is the affine \
+                     move, and every prior write publishes to the receiver ([conc.mm.hb.move])"
                 ),
             );
             transferred.push(id);
@@ -521,7 +566,7 @@ impl Machine {
                 Ok(err)
             }
             Resolved::Killed => Err(Signal::ProcKilled),
-            Resolved::Deadlock(roster) => unsupported(deadlock_reason(&roster)),
+            Resolved::Deadlock(roster) => self.deadlock_trap(&roster, span),
         }
     }
 
@@ -549,7 +594,7 @@ impl Machine {
             }
             Resolved::Err(err) => Ok(err),
             Resolved::Killed => Err(Signal::ProcKilled),
-            Resolved::Deadlock(roster) => unsupported(deadlock_reason(&roster)),
+            Resolved::Deadlock(roster) => self.deadlock_trap(&roster, span),
         }
     }
 
@@ -680,35 +725,24 @@ impl Machine {
                 Err(Signal::Return(err))
             }
             Err(Resolved::Killed) => Err(Signal::ProcKilled),
-            Err(Resolved::Deadlock(roster)) => unsupported(deadlock_reason(&roster)),
+            Err(Resolved::Deadlock(roster)) => self.deadlock_trap(&roster, span),
             Err(Resolved::Value(_)) => unreachable!("select resolves through its arms"),
         }
     }
 
-    // -- when (03 Q6) -------------------------------------------------------
+    // -- when (`[conc.when]`, the s20 S-batch) ------------------------------
 
-    /// `when (a, b) { … }`: ordered set acquisition — deadlock-free by
-    /// construction — then the body with each operand rebound to the payload,
-    /// then write-back and release in reverse. The clauses are owed by
-    /// spec/03 (filed); the rules cite the reserved `sync` namespace.
+    /// `when (a, b) { … }` (`[conc.when.order]`): canonical-order acquisition
+    /// of the whole operand set — deadlock-free by construction
+    /// (`[conc.when.nodeadlock]`) — then the body with each operand rebound
+    /// to its payload, then write-back and release in reverse canonical
+    /// order (`[conc.when.body]`).
     pub(super) fn eval_when(
         &mut self,
         operands: &[Expr],
         body: &Block,
         span: Span,
     ) -> EResult<Value> {
-        if self.when_depth > 0 {
-            return self.trap(
-                TrapKind::Assert,
-                Rule::WhenNoNest,
-                span,
-                "nested acquisition inside a `when` body faults: the deadlock-freedom argument \
-                 is ordered acquisition of the WHOLE set at once, and a nested `when` reopens \
-                 the lock-order hole. (No trap kind in the closed [conf.trap.set] names this; \
-                 `assert` carries it and the gap is a filed spec finding.)",
-                None,
-            );
-        }
         let mut set: Vec<(MutexId, Option<String>)> = Vec::new();
         for operand in operands {
             let name = match &*operand.kind {
@@ -726,23 +760,53 @@ impl Machine {
             };
             set.push((id, name));
         }
-        // Canonical order: by scheduler mutex id — the same total order at
-        // every `when` site, which is the whole deadlock-freedom argument.
+        // Canonical order: by scheduler mutex id — creation order, the same
+        // total order at every `when` site (`[conc.when.order]`), which is
+        // the whole deadlock-freedom argument (`[conc.when.nodeadlock]`).
         let mut order = set.clone();
         order.sort_by_key(|(id, _)| *id);
         order.dedup_by_key(|(id, _)| *id);
+        // `[conc.deadlock.self]`: an acquisition of a sync object this task
+        // already holds — a `when` reached *through a call* from inside a
+        // `when` body whose sets intersect — can never complete. Detected
+        // immediately. (The lexical nest is the compiler's E1103,
+        // `[conc.when.nonest]`; a dynamically nested `when` over a DISJOINT
+        // set is not self-acquisition and proceeds.)
+        if let Some((held, _)) = order.iter().find(|(id, _)| self.when_held.contains(id)) {
+            let held = *held;
+            self.fire(
+                Rule::WhenNoNest,
+                span,
+                "a nested acquisition reached dynamically is incremental acquisition by \
+                 another spelling; lexical nesting is E1103, this one is self-acquisition",
+            );
+            return self.trap(
+                TrapKind::Deadlock,
+                Rule::DeadlockSelf,
+                span,
+                format!(
+                    "this task already holds mutex#{held}: acquiring a sync object the \
+                     acquiring task already holds can never complete ([conc.deadlock.self])"
+                ),
+                None,
+            );
+        }
         self.fire(
             Rule::WhenOrder,
             span,
             &format!(
-                "`when` acquires {{{}}} in canonical order — no lock-order deadlock exists by \
-                 construction",
+                "`when` acquires {{{}}} in canonical order",
                 order
                     .iter()
                     .map(|(id, _)| format!("mutex#{id}"))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
+        );
+        self.fire(
+            Rule::WhenNoDeadlock,
+            span,
+            "one canonical order at every `when` site: no cycle of `when` acquisitions can form",
         );
         let mut acquired: Vec<(MutexId, Option<String>, Value)> = Vec::new();
         for (id, name) in order {
@@ -765,16 +829,24 @@ impl Machine {
                     self.drain_sched();
                     return Err(Signal::ProcKilled);
                 }
-                Resolved::Deadlock(roster) => return unsupported(deadlock_reason(&roster)),
+                Resolved::Deadlock(roster) => return self.deadlock_trap(&roster, span),
             }
         }
-        self.when_depth += 1;
+        for (id, _, _) in &acquired {
+            self.when_held.push(*id);
+        }
         self.push_scope();
         for (_, name, payload) in &acquired {
             if let Some(name) = name {
                 self.declare(name, Slot::live(payload.clone()));
             }
         }
+        self.fire(
+            Rule::WhenBody,
+            span,
+            "the body holds exclusive access to every operand's payload; simple-path operands \
+             rebind to their payloads and write back at release",
+        );
         let result = self.eval_block(body);
         // Write back and release in reverse acquisition order; the release
         // publishes the body's writes to the next acquirer
@@ -794,20 +866,33 @@ impl Machine {
             })
             .collect();
         self.pop_scope();
-        self.when_depth -= 1;
+        for (id, _, _) in &acquired {
+            if let Some(at) = self.when_held.iter().rposition(|held| held == id) {
+                self.when_held.remove(at);
+            }
+        }
         for (id, _, value) in releases {
             self.shared.sched.release(self.task, id, value);
         }
         self.drain_sched();
         result
     }
-}
 
-fn deadlock_reason(roster: &str) -> String {
-    format!(
-        "deadlock: every task is blocked at a runtime-owned blocking point and no timer is \
-         pending ({roster}); the program cannot make progress, `[proto.record.verdict]` has no \
-         verdict for nontermination, and the closed `[conf.trap.set]` has no `deadlock` kind — \
-         a spec finding, filed"
-    )
+    /// `[conc.deadlock.trap]`: a detected deadlock terminates with trap kind
+    /// `deadlock`, reporting the blocked-task roster. The scheduler detected
+    /// it (`[conc.deadlock.def]`: every live task blocked, no pending timer,
+    /// no in-flight I/O); this is the surfacing, on whichever task's blocking
+    /// operation the wake reached.
+    fn deadlock_trap<T>(&mut self, roster: &str, span: Span) -> EResult<T> {
+        self.trap(
+            TrapKind::Deadlock,
+            Rule::DeadlockTrap,
+            span,
+            format!(
+                "every live task is blocked at a runtime-owned blocking point and no timer is \
+                 pending; blocked-task roster: {roster}"
+            ),
+            None,
+        )
+    }
 }

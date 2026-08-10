@@ -698,6 +698,13 @@ impl Store {
         id
     }
 
+    /// Every pool, in creation order — the REPL's `:mem` dump reads them
+    /// (`[mem.shared.handle.1]`: slots and generations are visible state).
+    #[must_use]
+    pub fn pools(&self) -> &[Pool] {
+        &self.pools
+    }
+
     #[must_use]
     pub fn pool(&self, id: PoolId) -> Option<&Pool> {
         self.pools.get(id)

@@ -198,7 +198,7 @@ pub fn judge(check: &Check, record: &ObservationRecord, stdout: &str) -> Judgeme
 /// — and `[proto.record.ub]` makes it a comparison participant. Two names for
 /// one event is a contradiction only if they are two events.
 ///
-/// They are not. `[conf.trap.set]` lists `ub` among the eleven kinds and
+/// They are not. `[conf.trap.set]` lists `ub` among the twelve kinds and
 /// `[conf.trap.map]` says what the kind *is*: "`ub` (oracle-detected UB;
 /// `[proto.record.ub]` gives it comparison semantics)". The kind is the
 /// **checked build's** observable — a program compiled with the D21 quarantine

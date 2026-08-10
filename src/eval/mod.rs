@@ -29,6 +29,7 @@ mod conc;
 pub mod place;
 pub mod prov;
 pub mod region;
+pub mod repl;
 pub mod rules;
 pub mod sched;
 pub mod value;
@@ -353,6 +354,13 @@ struct Shared {
     /// The sim scheduler (is06): tasks, channels, procs, virtual time.
     sched: Arc<sched::Sched>,
     tracing: Trace,
+    /// is08: the REPL session's type-generation map (`[repl.type.gen]`,
+    /// `docs/repl.md`). Empty outside a session, in which case struct
+    /// literals keep their written names and nothing here changes behavior.
+    /// Inside a session, a literal `Point { … }` mints a value of the
+    /// *current* generation (`Point#2`), so values created before a
+    /// redefinition keep their old nominal identity exactly.
+    repl_types: Arc<Mutex<BTreeMap<String, u32>>>,
 }
 
 /// The abstract machine — one **task's** view of the program run.
@@ -376,9 +384,11 @@ pub struct Machine {
     /// Tier-3-reachable only, so the rows that need "in unsafe code" in their
     /// wording (T1) ask this.
     unsafe_depth: u32,
-    /// How many `when` bodies are open — nested acquisition faults
-    /// (03 Q6; the clause spec/03 still owes).
-    when_depth: u32,
+    /// The sync objects held by `when` bodies currently open in THIS task.
+    /// Re-acquiring one can never complete and is detected immediately —
+    /// `trap(deadlock)` (`[conc.deadlock.self]`; the lexical nest is the
+    /// compiler's E1103, `[conc.when.nonest]`).
+    when_held: Vec<sched::MutexId>,
     /// Retags produced by the current call's arguments, waiting for
     /// [`Machine::call_fn`] to bind them to the callee's parameter places.
     pending_retags: Vec<Option<PendingRetag>>,
@@ -446,6 +456,7 @@ impl Machine {
             steps: Arc::new(AtomicU64::new(0)),
             sched: Arc::new(sched),
             tracing: Trace::Off,
+            repl_types: Arc::new(Mutex::new(BTreeMap::new())),
         };
         Machine::for_task(shared, 0, BTreeMap::new())
     }
@@ -460,7 +471,7 @@ impl Machine {
             access: AccessSet::new(),
             globals,
             unsafe_depth: 0,
-            when_depth: 0,
+            when_held: Vec::new(),
             pending_retags: Vec::new(),
             tracing,
         }
@@ -638,11 +649,21 @@ impl Machine {
             Err(Signal::Break(_) | Signal::Continue) => {
                 Outcome::Unsupported("`break`/`continue` outside a loop".to_owned())
             }
-            Err(Signal::ProcKilled) => Outcome::Unsupported(
-                "`main`'s own proc was killed (a `link` to a dying proc reached the root \
-                 supervisor); spec/03 gives the root domain no exit semantics"
-                    .to_owned(),
-            ),
+            Err(Signal::ProcKilled) => {
+                // `[conc.proc.root]`: the root supervisor's domain is the
+                // process. A linked partner's abnormal exit reached it, so
+                // the killed-proc sequence runs for every live proc (the
+                // scheduler shutdown below is exactly that enumeration) and
+                // the process terminates with a nonzero, implementation-
+                // specified status — 1 here; conforming tools compare the
+                // outcome class, never the number ([conf.trap.exit]).
+                self.fire(
+                    Rule::ProcRoot,
+                    Span::new(0, 0),
+                    "the root domain dies: killed-proc sequence for every live proc; nonzero exit",
+                );
+                Outcome::Exit(1)
+            }
         }
     }
 
@@ -1204,7 +1225,7 @@ impl Machine {
 
     /// Every §3 fault surfaces through one trap kind.
     ///
-    /// `[conf.trap.set]` is closed at eleven kinds and `[conf.trap.map]` maps
+    /// `[conf.trap.set]` is closed at twelve kinds and `[conf.trap.map]` maps
     /// the region family onto `region-fault`: use-after-free, an illegal
     /// cross-region edge, a write through a frozen or suspended path, and an
     /// open-discipline violation are one *kind* with different rules and
@@ -2503,11 +2524,20 @@ impl Machine {
                 Ok(Value::Tuple(slots))
             }
             ExprKind::StructLit { path, fields } => {
-                let name = path
+                let mut name = path
                     .segments
                     .last()
                     .map(|s| s.name.clone())
                     .unwrap_or_default();
+                // A REPL session's types are generational ([repl.type.gen]):
+                // the literal creates a value of the generation current NOW,
+                // and the value keeps that identity across redefinitions.
+                {
+                    let types = self.shared.repl_types.lock().expect("repl types lock");
+                    if let Some(generation) = types.get(&name) {
+                        name = format!("{name}#{generation}");
+                    }
+                }
                 let mut built = Vec::with_capacity(fields.len());
                 for field in fields {
                     let value = match &field.value {
@@ -3101,8 +3131,30 @@ impl Machine {
         // (`[mem.model.value]` — "values have no identity beyond their current
         // place", and certainly none in their width).
         match op {
-            Eq => return Ok(Value::Bool(value_eq(&left, &right))),
-            Ne => return Ok(Value::Bool(!value_eq(&left, &right))),
+            Eq | Ne => {
+                // [repl.type.mix]: two generations of one REPL-redefined type
+                // are distinct nominal types; comparing them is a type error
+                // with a hint, not a quiet `false`. Generational names exist
+                // only inside a REPL session (`#` cannot appear in a source
+                // identifier), so this arm is unreachable from the corpus.
+                if let (Value::Struct { name: a, .. }, Value::Struct { name: b, .. }) =
+                    (&left, &right)
+                    && a != b
+                    && let (Some((base_a, _)), Some((base_b, _))) =
+                        (a.split_once('#'), b.split_once('#'))
+                    && base_a == base_b
+                {
+                    return unsupported(format!(
+                        "`{a}` and `{b}` are different generations of `{base_a}`: redefining a \
+                         type mints a new nominal type ([repl.type.gen]); rebuild the older \
+                         value to compare them"
+                    ));
+                }
+                return match op {
+                    Eq => Ok(Value::Bool(value_eq(&left, &right))),
+                    _ => Ok(Value::Bool(!value_eq(&left, &right))),
+                };
+            }
             _ => {}
         }
 
