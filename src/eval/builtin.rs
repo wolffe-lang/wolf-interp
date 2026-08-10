@@ -363,15 +363,18 @@ pub fn property(machine: &mut Machine, receiver: &Value, name: &str, span: Span)
             machine.note(Rule::SharedRc, span, &format!("shared#{cell}.{field}"));
             property(machine, &payload, field, span)
         }
-        (Value::Struct { name: ty, fields }, field) => {
-            match fields.iter().find(|(f, _)| f == field) {
-                Some((_, slot)) => Ok(slot.value.clone()),
-                None => {
-                    let _ = machine;
-                    unsupported(format!("`{ty}` has no field `{field}`"))
-                }
+        (
+            Value::Struct {
+                name: ty, fields, ..
+            },
+            field,
+        ) => match fields.iter().find(|(f, _)| f == field) {
+            Some((_, slot)) => Ok(slot.value.clone()),
+            None => {
+                let _ = machine;
+                unsupported(format!("`{ty}` has no field `{field}`"))
             }
-        }
+        },
         (other, field) => unsupported(format!("{} has no member `{field}`", other.kind())),
     }
 }

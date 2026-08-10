@@ -436,7 +436,7 @@ fn run_json_is_the_record_surface_and_the_tool_exits_zero() {
         serde_json::from_str(stdout_of(&output).trim()).expect("one JSON object");
     assert_eq!(schema::validate(&value), Ok(()));
     assert_eq!(value["impl"], "lupin");
-    assert_eq!(value["impl_version"], "0.1.0");
+    assert_eq!(value["impl_version"], "0.1.1");
     assert_eq!(value["verdict"], "trap(overflow)");
 
     // The stdin record reports `-` as the file — the only spelling it had.
@@ -573,7 +573,7 @@ fn version_names_the_binary_the_package_and_the_pin() {
     let output = lupin(&["--version"]);
     assert_eq!(output.status.code(), Some(0));
     let text = stdout_of(&output).trim_end();
-    let prefix = "lupin 0.1.0 (wolf-interp, pin ";
+    let prefix = "lupin 0.1.1 (wolf-interp, pin ";
     assert!(text.starts_with(prefix), "{text}");
     let pin = text
         .strip_prefix(prefix)

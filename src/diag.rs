@@ -185,7 +185,14 @@ pub const E_UNEXPECTED_TOKEN: &str = "E0201";
 /// Input ended inside a production. **Unpinned.**
 pub const E_UNEXPECTED_EOF: &str = "E0202";
 /// `when` needs ≥2 operands (`[gram.expr.conc]`). **Unpinned.**
-pub const E_WHEN_ARITY: &str = "E0203";
+///
+/// The code is E0201, not a dedicated number: wolfc emits the generic
+/// expected-token family for this sentence, and the unpinned-code process
+/// follows the established assignment rather than inventing a competing one
+/// (wolf-interp#3 — this implementation's former E0203 collides with wolfc's
+/// toplevel-decl family). The message and the `[gram.expr.conc]` anchor stay
+/// specific; only the code family is shared.
+pub const E_WHEN_ARITY: &str = E_UNEXPECTED_TOKEN;
 /// A bodyless `fn` outside `extern` (`[gram.item.fn]`). **Unpinned.**
 pub const E_FN_NEEDS_BODY: &str = "E0204";
 /// Range chaining; tier 14 is non-associative (`[gram.expr.prec]`).
@@ -245,10 +252,11 @@ pub const UNPINNED_CODES: &[(&str, &str, &str)] = &[
     (
         E_UNEXPECTED_TOKEN,
         "gram",
-        "token begins no legal continuation",
+        "token begins no legal continuation — also `when` arity's sentence \
+         ([gram.expr.conc]; wolf-interp#3 retired the competing E0203 in \
+         favor of wolfc's established assignment)",
     ),
     (E_UNEXPECTED_EOF, "gram", "input ended inside a production"),
-    (E_WHEN_ARITY, "gram.expr.conc", "`when` needs ≥2 operands"),
     (
         E_FN_NEEDS_BODY,
         "gram.item.fn",

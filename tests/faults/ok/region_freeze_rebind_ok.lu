@@ -1,0 +1,16 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.region.freeze.1, mem.region.edge.imm
+//! The legal twin of `region_freeze_value_write.lu`: rebinding the *binding*
+//! replaces which value it holds and mutates no frozen storage, and reads of
+//! the frozen data stay legal forever. Only writes through the frozen value
+//! fault.
+
+struct Config { limit: int }
+
+fn main() -> !int {
+    var cfg = freeze region { Config { limit: 42 } }
+    let seen = cfg.limit
+    cfg = Config { limit: 7 }
+    if seen == 42 && cfg.limit == 7 { 0 } else { 1 }
+}

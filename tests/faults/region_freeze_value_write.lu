@@ -1,0 +1,15 @@
+//! check: run(exit=trap(region-fault))
+//! phase: resolve
+//! conforms: mem.region.freeze.1, mem.region.edge.imm
+//! The value-path half of freeze enforcement (wolf-interp#2): the struct
+//! was allocated inside the region the `freeze` sugar promoted, so the
+//! write through `cfg.limit` lands in frozen storage — E1012's shape,
+//! executed. The granule half is `region_freeze_write.lu`.
+
+struct Config { limit: int }
+
+fn main() -> !int {
+    var cfg = freeze region { Config { limit: 42 } }
+    cfg.limit = 7
+    cfg.limit
+}

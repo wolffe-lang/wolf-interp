@@ -133,16 +133,17 @@ fn the_bundle_opens_verified_and_its_records_reference_bundled_programs() {
 
 #[test]
 fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
-    // The count ledger, is09 edition (pin `cbde620`): 164 corpus files (148
-    // entries + 16 members) + 37 suite programs (9 UB triggers + 9 twins,
-    // 8 fault litmuses + 6 twins, 5 witnesses) = 201 programs, 185 entries
-    // conform-run into reference records. A pin bump or a new suite file
-    // moves these numbers — move them *deliberately*, here and in the
-    // corpus-harness ledger.
+    // The count ledger, lupin 0.1.1 edition (pin `cbde620`): 164 corpus
+    // files (148 entries + 16 members) + 39 suite programs (9 UB triggers +
+    // 9 twins, 9 fault litmuses + 7 twins, 5 witnesses) = 203 programs, 187
+    // entries conform-run into reference records. The wolf-interp#2 fix
+    // added the value-path freeze litmus and its rebind twin. A pin bump or
+    // a new suite file moves these numbers — move them *deliberately*, here
+    // and in the corpus-harness ledger.
     let (_, summary) = bundle();
     assert_eq!(summary.pin, "cbde62012f10bbdf63e4ec1e2ebeeed026973d23");
-    assert_eq!(summary.programs, 201);
-    assert_eq!(summary.records, 185);
+    assert_eq!(summary.programs, 203);
+    assert_eq!(summary.records, 187);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

@@ -1163,10 +1163,75 @@ impl Machine {
         }
     }
 
+    /// The first `Frozen` region a write through `path` would reach into.
+    ///
+    /// The containers a write mutates are the base slot's value and every
+    /// intermediate projection target; a container homed in a `Frozen`
+    /// region makes the write `[mem.region.freeze.1]`'s fault — the
+    /// value-path half of the check the granule paths (pools, cells) already
+    /// run. Rebinding the base (no projections) replaces what the *binding*
+    /// holds and touches no frozen storage, so it passes. The walk stops
+    /// where the value tree does: a path that grows a map key still writes
+    /// through every container above the growth point.
+    fn frozen_container(&self, path: &Path) -> Option<RegionId> {
+        if path.projections.is_empty() {
+            return None;
+        }
+        let base: &Slot = if path.frame == usize::MAX {
+            self.globals.get(&path.base)?
+        } else {
+            let frame = self.frames.get(path.frame)?;
+            frame.scopes.iter().rev().find_map(|scope| {
+                scope
+                    .locals
+                    .iter()
+                    .find(|(n, _)| *n == path.base)
+                    .map(|(_, slot)| slot)
+            })?
+        };
+        let mut homes: Vec<RegionId> = Vec::new();
+        let mut current: Option<&Slot> = Some(base);
+        for step in &path.projections {
+            let Some(slot) = current else { break };
+            if let Value::Struct { home: Some(id), .. } = &slot.value {
+                homes.push(*id);
+            }
+            current = match (&slot.value, step) {
+                (Value::Struct { fields, .. }, Proj::Field(name)) => {
+                    fields.iter().find(|(f, _)| f == name).map(|(_, slot)| slot)
+                }
+                (Value::Tuple(items) | Value::List(items), Proj::Index(i)) => {
+                    usize::try_from(*i).ok().and_then(|index| items.get(index))
+                }
+                (Value::Map(pairs), Proj::Key(key)) => pairs
+                    .iter()
+                    .find(|(k, _)| k.to_string() == *key)
+                    .map(|(_, slot)| slot),
+                _ => None,
+            };
+        }
+        let store = self.store();
+        homes
+            .into_iter()
+            .find(|id| store.state(*id) == Some(RegionState::Frozen))
+    }
+
     /// Writes through a path, making the place live again if it was moved from
     /// (`[mem.tier0.move.4]`).
     fn write_path(&mut self, path: &Path, value: Value, span: Span) -> EResult<()> {
         self.check_access(path, Access::Exclusive, span)?;
+        // `[mem.region.freeze.1]`: frozen data is immutable forever, through
+        // value paths as much as through granules. Checked before the slot is
+        // touched, so a trapping write mutates nothing.
+        if let Some(frozen) = self.frozen_container(path) {
+            let label = self.store().label(frozen);
+            return self.region_fault(
+                Rule::RegionFreeze,
+                span,
+                format!("{label} is frozen: `imm` data is immutable forever"),
+                None,
+            );
+        }
         let display = path.to_string();
         // A map grows on assignment to an absent key; every other path must
         // already denote a place.
@@ -2593,6 +2658,7 @@ impl Machine {
                 let value = Value::Struct {
                     name,
                     fields: built,
+                    home: Some(owner),
                 };
                 self.check_edges(Some(owner), &value, expr.span, "struct field")?;
                 Ok(value)
@@ -4260,10 +4326,12 @@ pub(crate) fn value_eq(left: &Value, right: &Value) -> bool {
             Value::Struct {
                 name: an,
                 fields: af,
+                ..
             },
             Value::Struct {
                 name: bn,
                 fields: bf,
+                ..
             },
         ) => {
             an == bn

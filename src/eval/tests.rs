@@ -557,6 +557,50 @@ fn a_suspended_region_is_read_only() {
 }
 
 #[test]
+fn a_write_through_a_frozen_value_path_traps_region_fault() {
+    // `[mem.region.freeze.1]` on tier-0 value paths (wolf-interp#2): the
+    // struct is homed in the region the sugar froze, so the write through
+    // `cfg.limit` is E1012's shape executed — a trap, never a landed write.
+    let trap = trap_of(
+        "struct Config { limit: int }\n\
+         fn main() -> int {\n\
+         \x20   var cfg = freeze region { Config { limit: 42 } }\n\
+         \x20   cfg.limit = 7\n\
+         \x20   cfg.limit\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule, Rule::RegionFreeze);
+    assert_eq!(trap.rule.anchor(), "mem.region.freeze.1");
+
+    // The named-region shape: built under `in r`, frozen after — the home
+    // travels with the value, not with the sugar.
+    let trap = trap_of(
+        "struct Cfg { limit: int }\n\
+         fn main() -> int {\n\
+         \x20   let r = region(rc)\n\
+         \x20   var cfg = in r { Cfg { limit: 7 } }\n\
+         \x20   let frozen = freeze r\n\
+         \x20   cfg.limit = 9\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule.anchor(), "mem.region.freeze.1");
+
+    // Reads stay legal forever, and rebinding the binding replaces what it
+    // holds without touching frozen storage — both halves of the twin.
+    let source = "struct Config { limit: int }\n\
+                  fn main() -> int {\n\
+                  \x20   var cfg = freeze region { Config { limit: 42 } }\n\
+                  \x20   let seen = cfg.limit\n\
+                  \x20   cfg = Config { limit: 7 }\n\
+                  \x20   if seen == 42 && cfg.limit == 7 { 0 } else { 1 }\n\
+                  }\n";
+    assert_eq!(outcome(source), Outcome::Exit(0));
+}
+
+#[test]
 fn region_values_are_affine() {
     // `[mem.region.create.2]`: "Region values are **affine**: they move, are
     // never copied". Binding one to a second name moves it, and the first is

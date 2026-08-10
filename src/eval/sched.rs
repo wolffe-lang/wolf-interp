@@ -625,6 +625,27 @@ impl State {
         });
     }
 
+    /// Records the cross-channel footprint of consuming a `select`
+    /// registration: committing one arm deregisters `selecter` from *every*
+    /// channel of its select, so the acting slice mutates all of those
+    /// channels' waiter lists — and the explorer's conflict alphabet must see
+    /// the coupling, or a send on a sibling arm's channel looks independent
+    /// of this commit and DPOR never tries the reversal (the is07
+    /// closed-frontier miss).
+    fn op_select_consume(&mut self, selecter: TaskId) {
+        let actor = self.actor();
+        let registered: Vec<ChanId> = self
+            .chans
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.selecters.iter().any(|(t, _)| *t == selecter))
+            .map(|(id, _)| id)
+            .collect();
+        for chan in registered {
+            self.op(actor, ObjKey::Chan(chan), true);
+        }
+    }
+
     /// The task currently holding the baton — for op attribution at doors
     /// that do not carry a `me` parameter (close, kill, link, monitor). The
     /// baton guarantees at most one `Running` task; during a handoff window
@@ -899,6 +920,12 @@ impl State {
             {
                 let (sender, value) = self.chans[chan].senders.pop_front().expect("non-empty");
                 let vc = self.task_vc(sender);
+                // A send is a release: tick the sender past the published
+                // snapshot, or its *later* ops share the released clock and
+                // acquirers appear ordered after them too — false
+                // happens-before edges that starve DPOR of backtracks
+                // (spawn and mutex release already tick; [conc.mm.hb.chan]).
+                self.tick(sender);
                 self.chans[chan].buf.push_back((value, vc));
                 self.chans[chan].sends += 1;
                 let k = self.chans[chan].sends;
@@ -928,6 +955,7 @@ impl State {
                     }
                     let selecters = std::mem::take(&mut self.chans[chan].selecters);
                     for (task, arm) in selecters {
+                        self.op_select_consume(task);
                         self.deregister(task);
                         self.note(
                             Rule::SelectClosed,
@@ -945,6 +973,11 @@ impl State {
                 return;
             };
             let (task, arm) = target;
+            if arm.is_some() {
+                // The commit consumes the select's registration on every arm
+                // channel — record that footprint before deregistering.
+                self.op_select_consume(task);
+            }
             let (value, sender_vc) = self.take_message(chan);
             self.chans[chan].recvs += 1;
             let k = self.chans[chan].recvs;
@@ -981,6 +1014,9 @@ impl State {
             .pop_front()
             .expect("caller checked a sender exists");
         let vc = self.task_vc(sender);
+        // Release discipline, as at the buffered path: the published
+        // snapshot must not cover the sender's later ops.
+        self.tick(sender);
         self.chans[chan].sends += 1;
         let k = self.chans[chan].sends;
         let name = self.tasks[sender].name.clone();

@@ -207,6 +207,93 @@ fn a_planted_schedule_dependent_bug_is_found_and_its_seed_replays_it() {
 }
 
 // ---------------------------------------------------------------------------
+// 3b. the closed-frontier regression: select coupling + send release ticks
+// ---------------------------------------------------------------------------
+
+/// The lost-update server (wolf-book ex17-1, wolf-interp#1): two deposits
+/// through a get-then-set protocol served by one `select` loop. The composite
+/// operation is not atomic, so the schedule space contains both the lost
+/// update (50) and the serialized total (100).
+///
+/// This program is the filed closed-frontier miss: before the fix, DPOR
+/// claimed "frontier closed, observably deterministic, balance=50" while
+/// `--seed=1` printed 100. Two machine defects starved the backtrack sets,
+/// either of which suffices to reintroduce the miss:
+///
+/// - a send committing a `select` arm consumes the selecter's registration
+///   on *every* channel of the select, but only the sent-on channel was
+///   recorded — sends on sibling arms' channels looked independent
+///   (`op_select_consume` is the fix);
+/// - channel sends published the sender's clock without ticking it past the
+///   snapshot (spawn and mutex release both tick), so the sender's *later*
+///   same-clock ops appeared happens-before the acquirer's — false HB edges.
+const LOST_UPDATE_SERVER: &str = r#"fn deposit(getreq: channel[int], getrep: channel[int], setch: channel[int]) {
+    getreq.send(1)
+    let v = getrep.recv() else |_| { return }
+    setch.send(v + 50)
+}
+fn main() -> !int {
+    let getreq = channel[int](0)
+    let getrep = channel[int](0)
+    let setch = channel[int](0)
+    var balance = 0
+    scope s {
+        s.spawn(fn() { deposit(getreq, getrep, setch) })
+        s.spawn(fn() { deposit(getreq, getrep, setch) })
+        var served = 0
+        while served < 4 {
+            select {
+                _ from getreq => { getrep.send(balance) },
+                v from setch => { balance = v },
+            }
+            served += 1
+        }
+    }
+    print("balance={balance}")
+    0
+}
+"#;
+
+#[test]
+fn the_select_coupled_lost_update_is_inside_the_closed_frontier() {
+    let report = run_explore(LOST_UPDATE_SERVER, &dpor());
+    assert!(
+        !report.frontier_open,
+        "the space is small; DPOR must close it"
+    );
+    assert!(
+        !report.stable(),
+        "the lost update and the serialized total are both reachable — one \
+         outcome means the frontier miss is back"
+    );
+    let stdouts: Vec<String> = report
+        .outcomes
+        .iter()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .collect();
+    assert!(stdouts.contains(&"balance=50\n".to_owned()), "{stdouts:?}");
+    assert!(stdouts.contains(&"balance=100\n".to_owned()), "{stdouts:?}");
+
+    // The reduced exploration finds exactly what exhaustive DFS finds.
+    let baseline = run_explore(LOST_UPDATE_SERVER, &naive());
+    assert!(!baseline.frontier_open);
+    let a: Vec<u128> = report.outcomes.iter().map(|o| o.digest).collect();
+    let b: Vec<u128> = baseline.outcomes.iter().map(|o| o.digest).collect();
+    assert_eq!(a, b, "DPOR and naive DFS must find the same outcomes");
+
+    // The previously-missed outcome replays from its emitted handle.
+    let serialized = report
+        .outcomes
+        .iter()
+        .find(|o| o.stdout == b"balance=100\n")
+        .expect("asserted above");
+    let seed = serialized.seed.expect("this stream packs into 62 bits");
+    let run = eval::run_source_seeded("t.lu", LOST_UPDATE_SERVER, Some(seed), eval::Trace::Off)
+        .expect("parses");
+    assert_eq!(run.stdout, b"balance=100\n");
+}
+
+// ---------------------------------------------------------------------------
 // 4. the DRF stability oracle and the defer law, across every schedule
 // ---------------------------------------------------------------------------
 

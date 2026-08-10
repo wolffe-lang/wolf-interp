@@ -269,6 +269,15 @@ pub enum Value {
     Struct {
         name: String,
         fields: Vec<(String, Slot)>,
+        /// The region charged at the literal's allocation site
+        /// (`[mem.model.alloc]` lands in the current region,
+        /// `[mem.region.create.3]`). Writes through the value consult this
+        /// region's state — what lets `[mem.region.freeze.1]` fault on
+        /// tier-0 value paths, not only on granule paths. `None` only for
+        /// values minted by machinery with no allocation site (tests,
+        /// scaffolding); region ids are never reused, so a bare id stays
+        /// meaningful forever.
+        home: Option<RegionId>,
     },
     List(Vec<Slot>),
     /// Insertion-ordered; wolf's `Map` has no specified iteration order, and
@@ -418,7 +427,7 @@ impl fmt::Display for Value {
                 }
                 f.write_str(")")
             }
-            Value::Struct { name, fields } => {
+            Value::Struct { name, fields, .. } => {
                 write!(f, "{name} {{")?;
                 for (i, (field, slot)) in fields.iter().enumerate() {
                     if i > 0 {
@@ -623,6 +632,7 @@ mod tests {
                 ("x".to_owned(), Slot::live(Value::int(1))),
                 ("y".to_owned(), Slot::live(Value::int(2))),
             ],
+            home: None,
         };
         let Value::Struct { fields, .. } = &mut value else {
             unreachable!()

@@ -111,6 +111,14 @@ fn every_region_fault_class_has_a_program_and_a_twin() {
             "mem.region.freeze.1",
             "region_freeze_read_ok.lu",
         ),
+        // The value-path half of the same clause (wolf-interp#2): the write
+        // lands through a struct homed in the frozen region rather than
+        // through a granule.
+        (
+            "region_freeze_value_write.lu",
+            "mem.region.freeze.1",
+            "region_freeze_rebind_ok.lu",
+        ),
         (
             "region_suspended_write.lu",
             "mem.region.open.3",

@@ -39,6 +39,7 @@ reachable at is03 — the dynamic region machine added the last two families.
 | `region-fault` | `region_uaf.lu` | `[mem.region.intra.2]` |
 | `region-fault` | `region_edge_cross.lu` | `[mem.region.edge]` (E1004's dynamic half) |
 | `region-fault` | `region_freeze_write.lu` | `[mem.region.freeze.1]` |
+| `region-fault` | `region_freeze_value_write.lu` | `[mem.region.freeze.1]` (the value-path half — E1012's shape, executed; wolf-interp#2) |
 | `region-fault` | `region_suspended_write.lu` | `[mem.region.open.3]` |
 | `region-fault` | `region_move_open.lu` | `[mem.region.freeze.3]` (E1005's dynamic half) |
 | `region-fault` | `region_multiopen_nested.lu` | `[mem.region.multiopen]` |
@@ -67,6 +68,7 @@ satisfies "the fault programs fault"; only the twin shows the check is
 |---|---|
 | `region_edge_intra_ok.lu` | intra-region back-edges are safe (`[mem.region.intra.1]`) — the cross-region twin of `region_edge_cross.lu` |
 | `region_freeze_read_ok.lu` | frozen data reads from anywhere, forever (`[mem.region.edge.imm]`) |
+| `region_freeze_rebind_ok.lu` | rebinding the binding that held a frozen value is legal; only writes *through* the value fault |
 | `region_reopen_ok.lu` | re-entering an already-open region is a no-op |
 | `region_transfer_closed_ok.lu` | a **closed** subtree transfers, establishing one owning edge |
 | `handle_reserve_init_ok.lu` | reserve → init → read, and a reused slot's fresh handle is live |
