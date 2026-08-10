@@ -545,7 +545,7 @@ fn print_corpus_report(report: &corpus::CorpusReport) {
     println!(
         "{} file(s) under {}: {} entr{}, {} member(s), {} failure(s)",
         report.total(),
-        report.root.display(),
+        wolf_interp::slash_path(&report.root),
         report.entries(),
         if report.entries() == 1 { "y" } else { "ies" },
         report.members(),
