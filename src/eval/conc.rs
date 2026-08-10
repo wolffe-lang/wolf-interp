@@ -276,7 +276,8 @@ impl Machine {
         // captured region value would free a region the spawner still holds.
         // Everything the task itself created died with its block scopes.
         self.frames.pop();
-        self.prov().drop_frame(frame);
+        let task = self.task;
+        self.prov().drop_frame(task, frame);
         {
             let mut stack = Vec::new();
             self.store().swap_open(&mut stack);

@@ -420,8 +420,6 @@ pub enum PatKind {
         path: Path,
         fields: Vec<Pattern>,
     },
-    /// A dotted path with no payload, `io.Error`.
-    Path(Path),
     Tuple(Vec<Pattern>),
     /// `IDENT '@' closed_pattern`
     At {

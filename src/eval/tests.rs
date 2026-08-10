@@ -1123,3 +1123,125 @@ fn the_trace_records_each_rule_as_it_fires() {
 fn tracing_is_off_by_default() {
     assert!(run("fn main() -> int { 0 }\n").trace.is_empty());
 }
+
+// -- 0.1.2: bare patterns resolve variants and row tags (issue #5) ----------
+
+#[test]
+fn a_bare_identifier_naming_a_variant_dispatches_rather_than_binding() {
+    // wolf-std F-0007: `match Ordering.Greater { Less => 1, … }` yielded 1 —
+    // the first arm always matched. An in-scope variant name is a variant
+    // pattern (`[gram.pat]`; the checker resolves it against the scrutinee's
+    // type, this machine against the module's variant table).
+    assert_eq!(
+        outcome(
+            "enum Ordering { Less, Equal, Greater }\n\
+             fn main() -> int {\n\
+             \x20   let o = Ordering.Greater\n\
+             \x20   match o { Less => 1, Equal => 2, Greater => 3 }\n\
+             }\n"
+        ),
+        Outcome::Exit(3)
+    );
+}
+
+#[test]
+fn a_bare_variant_value_matches_its_qualified_and_bare_spellings() {
+    // The value spelled bare (`Greater` resolves as a structural tag) still
+    // matches the variant pattern through the table.
+    assert_eq!(
+        outcome(
+            "enum Ordering { Less, Equal, Greater }\n\
+             fn main() -> int {\n\
+             \x20   let o = Greater\n\
+             \x20   match o { Less => 1, Equal => 2, Greater => 3 }\n\
+             }\n"
+        ),
+        Outcome::Exit(3)
+    );
+}
+
+#[test]
+fn a_payload_pattern_matches_the_enum_qualified_value() {
+    // `corpus/typecheck/match_exhaustive.lu`'s shape: `Rgb(r, g, b)` against
+    // a value built as `Color.Rgb(1, 2, 3)` — the same variant-table
+    // resolution, payload half.
+    assert_eq!(
+        outcome(
+            "enum Color { Red, Rgb(int, int, int) }\n\
+             fn main() -> int {\n\
+             \x20   match Color.Rgb(1, 2, 3) { Red => 0, Rgb(r, g, b) => r + g + b }\n\
+             }\n"
+        ),
+        Outcome::Exit(6)
+    );
+}
+
+#[test]
+fn row_tags_dispatch_and_lowercase_still_binds() {
+    // D30 rows need no declaration: over a tag-shaped scrutinee a
+    // capitalized bare identifier is a tag pattern; a lowercase one binds.
+    assert_eq!(
+        outcome(
+            "fn risky(n: int) -> int ! {TooShort, BadDigit(int)} {\n\
+             \x20   if n == 0 { return TooShort }\n\
+             \x20   if n == 1 { return BadDigit(9) }\n\
+             \x20   n\n\
+             }\n\
+             fn main() -> int {\n\
+             \x20   let a = risky(0) else |err| {\n\
+             \x20       match err { TooShort => 40, BadDigit(code) => code, other => 0 }\n\
+             \x20   }\n\
+             \x20   let b = risky(1) else |err| {\n\
+             \x20       match err { TooShort => 0, BadDigit(code) => code, other => 1 }\n\
+             \x20   }\n\
+             \x20   a + b - 7\n\
+             }\n"
+        ),
+        Outcome::Exit(42)
+    );
+}
+
+#[test]
+fn an_uppercase_name_over_a_non_error_scrutinee_binds_like_the_counterparty() {
+    // Observed at pin a0c4564: `match 3 { Zed => Zed, _ => 9 }` — the
+    // compiler treats `Zed` as a binding (E0802 unreachable on `_`) and the
+    // program yields the scrutinee.
+    assert_eq!(
+        outcome("fn main() -> int {\n    match 3 { Zed => Zed, _ => 9 }\n}\n"),
+        Outcome::Exit(3)
+    );
+}
+
+#[test]
+fn a_match_no_arm_of_which_applies_is_unsupported_not_a_wrong_answer() {
+    // Exhaustiveness is the type checker's (E0801 has no dynamic half);
+    // a dynamic miss is the honest `unsupported`, never first-arm-wins.
+    assert!(matches!(
+        outcome(
+            "enum Signal { Go, Slow, Stop }\n\
+             fn main() -> int {\n\
+             \x20   match Signal.Stop { Go => 0, Slow => 1 }\n\
+             }\n"
+        ),
+        Outcome::Unsupported(_)
+    ));
+}
+
+#[test]
+fn same_scope_let_shadowing_reads_the_latest_binding() {
+    // `corpus/typecheck/let_shadow_var_ok.lu`'s core, unit-sized: the
+    // rposition repair — a second `let b` shadows the first in the same
+    // scope, and reads and writes mean the latest one.
+    assert_eq!(
+        outcome(
+            "fn main() -> int {\n\
+             \x20   let b = 6\n\
+             \x20   let b = b + 4\n\
+             \x20   var b = b\n\
+             \x20   b += 32\n\
+             \x20   b - 42\n\
+             }\n"
+        ),
+        Outcome::Exit(0)
+    );
+}

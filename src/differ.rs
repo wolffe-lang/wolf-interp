@@ -83,12 +83,24 @@ use crate::schema;
 ///
 /// Every entry is `(file, id, one-line summary)`; the id resolves in the log.
 ///
-/// Empty at pin `79ceec6`: the third corpus differential ran **0** divergences.
-/// DIV-2026-007 closed there (the compiler's E0210 span now matches the
-/// amended §3.3), and DIV-2026-008/009 closed with the repaired corpus files
-/// (`freeze_publish.lu` reports through a channel; `when_multi.lu` expects
-/// 223). The resolved entries live in `docs/divergence-log.md`.
-pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[];
+/// DIV-2026-010 (0.1.2, pin `a0c4564`): the E0410 fail-files. Both sides
+/// reject with the same code at the same span; the counterparty's record
+/// places the rejection at `typecheck` while the corpus files themselves pin
+/// `phase: resolve` — a rung-placement inconsistency between the compiler's
+/// record and its own corpus, routed upstream. Not a soundness candidate;
+/// the verdicts agree.
+pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
+    (
+        "typecheck/let_reassign.lu",
+        "DIV-2026-010",
+        "same fail(E0410), same span; wolfc's record says typecheck where the corpus pins phase:          resolve — rung placement routed upstream",
+    ),
+    (
+        "typecheck/let_compound_assign.lu",
+        "DIV-2026-010",
+        "same fail(E0410), same span; wolfc's record says typecheck where the corpus pins phase:          resolve — rung placement routed upstream",
+    ),
+];
 
 /// The filing id for a corpus file, when its divergence is already filed.
 #[must_use]
@@ -1059,13 +1071,20 @@ mod tests {
     fn the_filed_list_resolves_and_annotates() {
         // DIV-2026-001..009 all resolved: 001..006 at is06 (pin 67c977f + the
         // resolve-rung work), 007..009 at is07 (pin 79ceec6 paid the is06
-        // debts; the third differential ran 0 divergences). The list is empty
-        // and `filed` answers `None` for everything — including the three
-        // files whose filings just closed.
-        assert!(FILED_DIVERGENCES.is_empty());
-        assert_eq!(filed("upstream/corpus/grammar/receiver_moded.lu"), None);
+        // debts). DIV-2026-010 is open at 0.1.2: the E0410 rung-placement
+        // inconsistency between the counterparty's record (`typecheck`) and
+        // the corpus's own `phase: resolve` directive — codes and spans
+        // agree, so it is filed, visible, and non-gating.
+        assert_eq!(FILED_DIVERGENCES.len(), 2);
+        assert_eq!(
+            filed("upstream/corpus/typecheck/let_reassign.lu").map(|(id, _)| id),
+            Some("DIV-2026-010")
+        );
+        assert_eq!(
+            filed("upstream/corpus/typecheck/let_compound_assign.lu").map(|(id, _)| id),
+            Some("DIV-2026-010")
+        );
         assert_eq!(filed("upstream/corpus/conc/freeze_publish.lu"), None);
-        assert_eq!(filed("upstream/corpus/conc/when_multi.lu"), None);
         assert_eq!(filed("upstream/corpus/hello.lu"), None);
     }
 

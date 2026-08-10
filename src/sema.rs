@@ -116,6 +116,16 @@ pub struct Module {
     /// is c10's; what `resolve` needs is that the name `c` is bound, so
     /// `c.malloc` resolves to a namespace rather than to nothing.
     pub c_headers: Vec<String>,
+    /// Variant name → the enums of this module that declare it, in declaration
+    /// order. What makes a bare identifier in a pattern a *variant pattern*
+    /// rather than a binding (`[gram.pat]`; the checker resolves an in-scope
+    /// variant name to its case — issue #5, wolf-std F-0007).
+    pub variants: BTreeMap<String, Vec<String>>,
+    /// Each `use` decl's bound name with its full dotted path, in declaration
+    /// order — what lets the loader resolve `use std.x.deque_int` against a
+    /// std root (issue #6, wolf-std F-0010) instead of only trying the flat
+    /// `<package root>/<last segment>` directory.
+    pub use_paths: Vec<(String, Vec<String>)>,
 }
 
 /// A whole program: the root module plus every module reachable through `use`.
@@ -170,13 +180,33 @@ pub enum LoadError {
     Io(String),
 }
 
-/// Loads the program rooted at `entry`.
+/// Loads the program rooted at `entry`, resolving `use std.*` against the
+/// `LUPIN_STD` environment variable when it is set.
 ///
 /// # Errors
 ///
 /// [`LoadError::Syntax`] when any file of the program fails the frontend, and
 /// [`LoadError::Io`] when a file the program names cannot be read.
 pub fn load(entry: &Path) -> Result<Program, LoadError> {
+    load_with(entry, None)
+}
+
+/// As [`load`], with an explicit std root — `--std-root DIR`, falling back to
+/// the `LUPIN_STD` environment variable (issue #6, wolf-std F-0010; the
+/// mechanism mirrors the compiler's s26 `--std-root`/`WOLF_STD` loader).
+///
+/// `use std.X[.Y]` resolves the module directory `<root>/X[/Y]/` and binds it
+/// under the path's last segment, exactly as the flat loader binds a sibling
+/// directory. Without a root — or when the named directory does not exist —
+/// the loader falls back to `<package root>/<bound name>`, which keeps flat
+/// mirrors and ordinary sibling modules working unchanged.
+///
+/// # Errors
+///
+/// As [`load`].
+pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadError> {
+    let env_root = std::env::var_os("LUPIN_STD").map(PathBuf::from);
+    let std_root: Option<&Path> = std_root.or(env_root.as_deref());
     // A bare filename (`lupin hello.lu` from the program's own directory)
     // has `parent() == Some("")`; the package root is the current directory.
     let package_root = match entry.parent() {
@@ -206,10 +236,40 @@ pub fn load(entry: &Path) -> Result<Program, LoadError> {
         loaded.push(name.clone());
 
         let module = load_module(&name, &dir, entry.as_deref(), &mut program.files)?;
+        let mut queued: Vec<String> = Vec::new();
+        for (bound, segments) in &module.use_paths {
+            if loaded.contains(bound) || queued.contains(bound) {
+                continue;
+            }
+            // `use std.X[.Y]` against a configured root: `<root>/X[/Y]/`.
+            if let Some(root) = std_root
+                && segments.len() >= 2
+                && segments[0] == "std"
+            {
+                let mut candidate = root.to_path_buf();
+                for segment in &segments[1..] {
+                    candidate.push(segment);
+                }
+                if candidate.is_dir() {
+                    queue.push((bound.clone(), candidate, None));
+                    queued.push(bound.clone());
+                    continue;
+                }
+            }
+            let candidate = package_root.join(bound);
+            if candidate.is_dir() {
+                queue.push((bound.clone(), candidate, None));
+                queued.push(bound.clone());
+            }
+        }
+        // The heads of dotted `use` paths (`std` in `use std.prelude`) sit in
+        // `module.uses` without a `use_paths` entry of their own; a sibling
+        // directory by that name is still a module of this program.
         for used in &module.uses {
             let candidate = package_root.join(used);
-            if candidate.is_dir() && !loaded.contains(used) {
+            if candidate.is_dir() && !loaded.contains(used) && !queued.contains(used) {
                 queue.push((used.clone(), candidate, None));
+                queued.push(used.clone());
             }
         }
         program.modules.insert(name, module);
@@ -403,6 +463,13 @@ fn collect(unit: &Unit, module: &mut Module, file: &str, source: &str) {
                         Some(name.span),
                         file,
                     );
+                    for variant in &def.variants {
+                        module
+                            .variants
+                            .entry(variant.name.name.clone())
+                            .or_default()
+                            .push(name.name.clone());
+                    }
                 }
             }
             ItemKind::Trait(def) => {
@@ -448,16 +515,19 @@ fn collect_use(
         .and_then(|rest| rest.find('\n'))
         .map_or(source.len(), |at| decl.span.end + at + 1);
     let decl_span = Span::new(decl.span.start, end);
-    let mut bind = |name: String, name_span: Span, module: &mut Module| {
+    let path_segments: Vec<String> = decl.path.segments.iter().map(|s| s.name.clone()).collect();
+    let mut bind = |name: String, name_span: Span, segments: Vec<String>, module: &mut Module| {
         scope.uses.push(UseRef {
             name: name.clone(),
             name_span,
             decl_span,
         });
+        module.use_paths.push((name.clone(), segments));
         module.uses.push(name);
     };
-    // `use std.fs` and friends name the ambient prelude, not a directory; the
-    // loader tries the directory and simply finds nothing.
+    // `use std.fs` and friends name the ambient prelude when no std root is
+    // configured — the loader tries the directories and simply finds nothing.
+    // With a std root (issue #6), the recorded path resolves against it.
     let head = decl.path.segments.first().cloned();
     if decl.list.is_empty() {
         let bound = decl.alias.as_ref().map_or_else(
@@ -465,11 +535,13 @@ fn collect_use(
             |alias| Some(alias.clone()),
         );
         if let Some(bound) = bound {
-            bind(bound.name.clone(), bound.span, module);
+            bind(bound.name.clone(), bound.span, path_segments, module);
         }
     } else {
         for item in &decl.list {
-            bind(item.name.clone(), item.span, module);
+            let mut segments = path_segments.clone();
+            segments.push(item.name.clone());
+            bind(item.name.clone(), item.span, segments, module);
         }
     }
     if let Some(head) = head
@@ -517,15 +589,17 @@ fn define(
 /// failure as a protocol-shaped diagnostic.
 ///
 /// Check order is fixed and deterministic: cycle (E0303), duplicate (E0302),
-/// private access (E0304), unused import (E0305). Each corpus law file
-/// exercises exactly one; a program violating several reports the first in
-/// this order, which is a defensible choice the spec does not pin.
+/// private access (E0304), unused import (E0305), `let` reassignment (E0410).
+/// Each corpus law file exercises exactly one; a program violating several
+/// reports the first in this order, which is a defensible choice the spec
+/// does not pin.
 #[must_use]
 pub fn resolve_check(program: &Program) -> Option<Diag> {
     cycle_check(program)
         .or_else(|| dup_check(program))
         .or_else(|| private_check(program))
         .or_else(|| unused_check(program))
+        .or_else(|| reassign_check(program))
 }
 
 /// `[mod.cycle]` (D32): imports form a DAG. E0303 at the `use` that closes
@@ -679,6 +753,373 @@ fn unused_check(program: &Program) -> Option<Diag> {
         }
     }
     None
+}
+
+// -- E0410: `let` reassignment (`[gram.item.let]`) --------------------------
+
+/// `let` is immutable (spec/01 §2.4: "`let` immutable, `var` mutable"), and
+/// assignment — plain or compound, `[gram.expr.assign]` routes both through
+/// the same place rules — to a `let`-bound name is rejected here, at the
+/// resolve rung this machine claims. E0410 with a `var` fix-it, the primary
+/// span on the assigned place, matching the counterparty's shape (observed at
+/// pin a0c4564: span is the place ident alone, for `+=` too). The interpreter
+/// half of wolf-lang#2 (issue #8, wolf-std F-0017).
+///
+/// Scope discipline, per the corpus's own non-cases
+/// (`typecheck/let_shadow_var_ok.lu`): a second `let x` *shadows* rather than
+/// assigns; a `var` shadowing a `let` is assignable again; a parameter is not
+/// a `let` binding (its mutability is the mode system's business); pattern
+/// bindings in `match`/`for`/`else |pat|`/`select` arms are not `let`
+/// bindings either. Only the latest binding of a name in scope speaks.
+fn reassign_check(program: &Program) -> Option<Diag> {
+    for module in program.modules.values() {
+        // Module-level bindings are in scope in every function of the module.
+        let mut globals: Vec<(String, bool)> = Vec::new();
+        for name in &module.bindings {
+            if let Some((Def::Binding(binding), _)) = module.items.get(name) {
+                globals.push((name.clone(), binding.kind == crate::ast::BindingKind::Var));
+            }
+        }
+        for (def, _) in module.items.values() {
+            let diag = match def {
+                Def::Fn(decl) => {
+                    let mut env = Env {
+                        scopes: vec![globals.clone()],
+                    };
+                    walk_fn_assigns(decl, &mut env)
+                }
+                Def::Binding(binding) => {
+                    let mut env = Env {
+                        scopes: vec![globals.clone()],
+                    };
+                    walk_expr_assigns(&binding.value, &mut env)
+                }
+                Def::Struct(_) | Def::Opaque(_) | Def::Ambiguous => None,
+            };
+            if diag.is_some() {
+                return diag;
+            }
+        }
+    }
+    None
+}
+
+/// The lexical environment of the reassignment walk: name → is it assignable.
+struct Env {
+    scopes: Vec<Vec<(String, bool)>>,
+}
+
+impl Env {
+    fn declare(&mut self, name: &str, assignable: bool) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.push((name.to_owned(), assignable));
+        }
+    }
+
+    /// The latest binding of `name`, innermost scope first — shadowing means
+    /// the most recent entry wins even within one scope.
+    fn assignable(&self, name: &str) -> Option<bool> {
+        self.scopes.iter().rev().find_map(|scope| {
+            scope
+                .iter()
+                .rev()
+                .find(|(n, _)| n == name)
+                .map(|(_, assignable)| *assignable)
+        })
+    }
+}
+
+/// Declares every name a pattern binds. Pattern bindings are never `let`
+/// bindings, so they are all assignable as far as this rule cares.
+fn declare_pattern(pattern: &Pattern, assignable: bool, env: &mut Env) {
+    match &*pattern.kind {
+        PatKind::Wildcard | PatKind::Literal(_) => {}
+        PatKind::Binding(ident) => env.declare(&ident.name, assignable),
+        PatKind::Variant { fields, .. } => {
+            for field in fields {
+                declare_pattern(field, assignable, env);
+            }
+        }
+        PatKind::Tuple(items) => {
+            for item in items {
+                declare_pattern(item, assignable, env);
+            }
+        }
+        PatKind::At { name, pattern } => {
+            env.declare(&name.name, assignable);
+            declare_pattern(pattern, assignable, env);
+        }
+        PatKind::Or(alternatives) => {
+            for alternative in alternatives {
+                declare_pattern(alternative, assignable, env);
+            }
+        }
+    }
+}
+
+fn walk_fn_assigns(decl: &FnDecl, env: &mut Env) -> Option<Diag> {
+    let body = decl.body.as_ref()?;
+    env.scopes.push(Vec::new());
+    for param in &decl.params {
+        match &param.kind {
+            crate::ast::ParamKind::Named { name, .. } => env.declare(&name.name, true),
+            crate::ast::ParamKind::SelfParam { .. } => env.declare("self", true),
+        }
+    }
+    let diag = walk_block_assigns(body, env);
+    env.scopes.pop();
+    diag
+}
+
+fn walk_block_assigns(block: &Block, env: &mut Env) -> Option<Diag> {
+    env.scopes.push(Vec::new());
+    let mut diag = None;
+    for stmt in &block.stmts {
+        diag = walk_stmt_assigns(stmt, env);
+        if diag.is_some() {
+            break;
+        }
+    }
+    if diag.is_none()
+        && let Some(tail) = &block.tail
+    {
+        diag = walk_expr_assigns(tail, env);
+    }
+    env.scopes.pop();
+    diag
+}
+
+fn walk_stmt_assigns(stmt: &Stmt, env: &mut Env) -> Option<Diag> {
+    match &stmt.kind {
+        StmtKind::Binding(binding) => {
+            let diag = walk_expr_assigns(&binding.value, env);
+            if diag.is_some() {
+                return diag;
+            }
+            declare_pattern(
+                &binding.pattern,
+                binding.kind == crate::ast::BindingKind::Var,
+                env,
+            );
+            None
+        }
+        StmtKind::Assign { place, value, .. } => {
+            let diag = walk_expr_assigns(value, env).or_else(|| walk_expr_assigns(place, env));
+            if diag.is_some() {
+                return diag;
+            }
+            if let ExprKind::Path(path) = &*place.kind
+                && path.is_single()
+                && let Some(head) = path.segments.first()
+                && env.assignable(&head.name) == Some(false)
+            {
+                return Some(Diag::new(
+                    "E0410",
+                    place.span,
+                    "gram.item.let",
+                    format!(
+                        "`{}` is bound with `let`, so it cannot be assigned again; declare the \
+                         binding with `var` to update it in place (machine-applicable), or shadow \
+                         it with a second `let` if the next value is really a new thing",
+                        head.name
+                    ),
+                ));
+            }
+            None
+        }
+        StmtKind::Defer { expr, .. } => walk_expr_assigns(expr, env),
+        StmtKind::AssumeNoalias(operands) => {
+            operands.iter().find_map(|op| walk_expr_assigns(op, env))
+        }
+        StmtKind::Expr(expr) => walk_expr_assigns(expr, env),
+        StmtKind::Item(item) => match &item.kind {
+            ItemKind::Fn(decl) => {
+                let mut nested = Env {
+                    scopes: vec![env.scopes.first().cloned().unwrap_or_default()],
+                };
+                walk_fn_assigns(decl, &mut nested)
+            }
+            _ => None,
+        },
+    }
+}
+
+#[allow(clippy::too_many_lines)]
+fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
+    match &*expr.kind {
+        ExprKind::Path(_)
+        | ExprKind::Int(_)
+        | ExprKind::Float(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Wildcard
+        | ExprKind::Continue
+        | ExprKind::RegionValue { .. }
+        | ExprKind::UnsafeC { .. } => None,
+        ExprKind::Str(literal) => literal.parts.iter().find_map(|part| match part {
+            StrPart::Interp(interp) => walk_expr_assigns(&interp.expr, env),
+            StrPart::Text(_) => None,
+        }),
+        ExprKind::StructLit { fields, .. } => fields
+            .iter()
+            .filter_map(|field| field.value.as_ref())
+            .find_map(|value| walk_expr_assigns(value, env)),
+        ExprKind::Tuple(items) => items.iter().find_map(|item| walk_expr_assigns(item, env)),
+        ExprKind::Group(inner)
+        | ExprKind::Try(inner)
+        | ExprKind::FromEnd(inner)
+        | ExprKind::Freeze(inner)
+        | ExprKind::Unary { operand: inner, .. }
+        | ExprKind::Cast { expr: inner, .. } => walk_expr_assigns(inner, env),
+        ExprKind::Block(block)
+        | ExprKind::Loop { body: block }
+        | ExprKind::RegionSugar { body: block, .. }
+        | ExprKind::Scope { body: block, .. }
+        | ExprKind::Unsafe { body: block } => walk_block_assigns(block, env),
+        ExprKind::Binary { lhs, rhs, .. } => {
+            walk_expr_assigns(lhs, env).or_else(|| walk_expr_assigns(rhs, env))
+        }
+        ExprKind::Call { callee, args } => walk_expr_assigns(callee, env).or_else(|| {
+            args.iter()
+                .find_map(|arg| walk_expr_assigns(&arg.expr, env))
+        }),
+        ExprKind::BracketApply { base, args } => walk_expr_assigns(base, env).or_else(|| {
+            args.iter().find_map(|arg| match arg {
+                crate::ast::IndexArg::Value(arg) => walk_expr_assigns(&arg.expr, env),
+                crate::ast::IndexArg::Type(_) => None,
+            })
+        }),
+        ExprKind::Member { base, .. } => walk_expr_assigns(base, env),
+        ExprKind::ModedReceiver { place, .. } => walk_expr_assigns(place, env),
+        ExprKind::Range { start, end, .. } => start
+            .as_ref()
+            .and_then(|s| walk_expr_assigns(s, env))
+            .or_else(|| end.as_ref().and_then(|e| walk_expr_assigns(e, env))),
+        ExprKind::ElseDefault {
+            expr: inner,
+            handler,
+        } => walk_expr_assigns(inner, env).or_else(|| match &**handler {
+            crate::ast::ElseHandler::Block(block) => walk_block_assigns(block, env),
+            crate::ast::ElseHandler::Expr(expr) => walk_expr_assigns(expr, env),
+            crate::ast::ElseHandler::Handler { pattern, body } => {
+                env.scopes.push(Vec::new());
+                declare_pattern(pattern, true, env);
+                let diag = walk_expr_assigns(body, env);
+                env.scopes.pop();
+                diag
+            }
+        }),
+        ExprKind::If {
+            cond,
+            then,
+            otherwise,
+        } => walk_expr_assigns(cond, env)
+            .or_else(|| walk_block_assigns(then, env))
+            .or_else(|| otherwise.as_ref().and_then(|e| walk_expr_assigns(e, env))),
+        ExprKind::Match { scrutinee, arms } => walk_expr_assigns(scrutinee, env).or_else(|| {
+            arms.iter().find_map(|arm| {
+                env.scopes.push(Vec::new());
+                declare_pattern(&arm.pattern, true, env);
+                let diag = arm
+                    .guard
+                    .as_ref()
+                    .and_then(|guard| walk_expr_assigns(guard, env))
+                    .or_else(|| walk_expr_assigns(&arm.body, env));
+                env.scopes.pop();
+                diag
+            })
+        }),
+        ExprKind::For {
+            pattern,
+            iter,
+            body,
+        } => walk_expr_assigns(iter, env).or_else(|| {
+            env.scopes.push(Vec::new());
+            declare_pattern(pattern, true, env);
+            let diag = walk_block_assigns(body, env);
+            env.scopes.pop();
+            diag
+        }),
+        ExprKind::While { cond, body } => {
+            walk_expr_assigns(cond, env).or_else(|| walk_block_assigns(body, env))
+        }
+        ExprKind::Return(value) | ExprKind::Break(value) => {
+            value.as_ref().and_then(|v| walk_expr_assigns(v, env))
+        }
+        ExprKind::Closure { params, body, .. } => {
+            env.scopes.push(Vec::new());
+            for param in params {
+                env.declare(&param.name.name, true);
+            }
+            let diag = walk_expr_assigns(body, env);
+            env.scopes.pop();
+            diag
+        }
+        ExprKind::In { region, body } => {
+            walk_expr_assigns(region, env).or_else(|| walk_block_assigns(body, env))
+        }
+        ExprKind::SpawnProc { args, .. } => args
+            .iter()
+            .find_map(|arg| walk_expr_assigns(&arg.expr, env)),
+        ExprKind::Select { arms } => arms.iter().find_map(|arm| {
+            env.scopes.push(Vec::new());
+            let diag = match &arm.kind {
+                crate::ast::SelectArmKind::Recv { pattern, channel } => {
+                    let diag = walk_expr_assigns(channel, env);
+                    declare_pattern(pattern, true, env);
+                    diag
+                }
+                crate::ast::SelectArmKind::Timeout(expr) => walk_expr_assigns(expr, env),
+            }
+            .or_else(|| walk_expr_assigns(&arm.body, env));
+            env.scopes.pop();
+            diag
+        }),
+        ExprKind::When { operands, body } => {
+            operands
+                .iter()
+                .find_map(|op| walk_expr_assigns(op, env))
+                .or_else(|| {
+                    // A `when` body addresses its operands *unlocked*
+                    // (`[conc.when.body]`): `when (a, b) { a += 10 }` assigns
+                    // through the acquired cell, not to the binding, so the
+                    // operand names are assignable inside the body whatever
+                    // introduced them (`corpus/conc/when_multi.lu` pins this).
+                    env.scopes.push(Vec::new());
+                    for op in operands {
+                        // A single operand arrives grouped (`when (a) { … }`
+                        // parses the parens as a group); unwrap to the place.
+                        let mut place = op;
+                        while let ExprKind::Group(inner) = &*place.kind {
+                            place = inner;
+                        }
+                        if let ExprKind::Path(path) = &*place.kind
+                            && path.is_single()
+                            && let Some(head) = path.segments.first()
+                        {
+                            env.declare(&head.name, true);
+                        }
+                    }
+                    let diag = walk_block_assigns(body, env);
+                    env.scopes.pop();
+                    diag
+                })
+        }
+        ExprKind::Asm { template, operands } => template
+            .parts
+            .iter()
+            .find_map(|part| match part {
+                StrPart::Interp(interp) => walk_expr_assigns(&interp.expr, env),
+                StrPart::Text(_) => None,
+            })
+            .or_else(|| {
+                operands
+                    .iter()
+                    .find_map(|op| walk_expr_assigns(&op.value, env))
+            }),
+        ExprKind::Borrow { place, from } => {
+            walk_expr_assigns(place, env).or_else(|| walk_expr_assigns(from, env))
+        }
+    }
 }
 
 // -- the reference walker ---------------------------------------------------
@@ -981,14 +1422,6 @@ fn collect_pattern_refs(pattern: &Pattern, scope: &mut FileScope) {
                 collect_pattern_refs(field, scope);
             }
         }
-        PatKind::Path(path) => {
-            if let Some(head) = path.segments.first() {
-                scope.refs.push(PathRef {
-                    head: head.name.clone(),
-                    tail: None,
-                });
-            }
-        }
         PatKind::Tuple(items) => {
             for item in items {
                 collect_pattern_refs(item, scope);
@@ -1109,5 +1542,85 @@ mod tests {
         };
         assert_eq!(file, "t.lu");
         assert_eq!(diag.code, crate::diag::E_LEADING_OPERATOR);
+    }
+
+    // -- E0410: `let` reassignment at the resolve rung (issue #8) -----------
+
+    fn resolve(source: &str) -> Option<Diag> {
+        let program = load_source("t.lu", source).expect("loads");
+        resolve_check(&program)
+    }
+
+    #[test]
+    fn let_reassignment_is_e0410_at_the_place() {
+        let source = "fn main() -> !int {\n    let x = 1\n    x = 2\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0410");
+        // The counterparty's span discipline (pin a0c4564): the assigned
+        // place alone, not the whole statement.
+        let covered = &source[diag.span.start..diag.span.end];
+        assert_eq!(covered, "x");
+        assert!(diag.span.start > source.find("let x").expect("present"));
+    }
+
+    #[test]
+    fn compound_assignment_is_assignment() {
+        // `[gram.expr.assign]` routes `+=` through the same place rules.
+        let source = "fn main() -> !int {\n    let total = 40\n    total += 2\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0410");
+        assert_eq!(&source[diag.span.start..diag.span.end], "total");
+    }
+
+    #[test]
+    fn the_non_cases_stay_clean() {
+        // `var` reassigns; a second `let` shadows; a `var` shadowing a `let`
+        // is assignable again; a parameter is the mode system's business.
+        assert!(
+            resolve(
+                "fn bump(n: int) -> int {\n    var m = n\n    m = m + 1\n    m\n}\n\
+                 fn main() -> !int {\n    var a = 1\n    a += 2\n    let b = bump(a)\n    \
+                 let b = b + 1\n    var b = b\n    b = 0\n    b\n}\n"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn a_when_body_assigns_through_the_acquired_cell_not_the_binding() {
+        // `[conc.when.body]` — `corpus/conc/when_multi.lu`'s shape: the
+        // operand names are assignable inside the body whatever introduced
+        // them.
+        assert!(
+            resolve(
+                "fn main() -> !int {\n    let a = Mutex(1)\n    let b = Mutex(2)\n    \
+                 when (a, b) { a += 10; b += 10 }\n    0\n}\n"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn a_let_captured_by_a_closure_still_rejects_assignment() {
+        let source = "fn main() -> !int {\n    let x = 1\n    \
+                      let f = fn() { x = 2 }\n    f()\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0410");
+    }
+
+    // -- the variant table (issue #5) ---------------------------------------
+
+    #[test]
+    fn enum_variants_are_collected_per_module() {
+        let program = load_source(
+            "t.lu",
+            "enum Ordering { Less, Equal, Greater }\nfn main() -> int { 0 }\n",
+        )
+        .expect("loads");
+        assert_eq!(
+            program.root().variants.get("Greater"),
+            Some(&vec!["Ordering".to_owned()])
+        );
+        assert!(!program.root().variants.contains_key("Ordering"));
     }
 }

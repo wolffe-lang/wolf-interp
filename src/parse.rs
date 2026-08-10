@@ -1523,7 +1523,21 @@ impl<'a> Parser<'a> {
                 } else if path.is_single() {
                     PatKind::Binding(path.segments.into_iter().next().expect("single"))
                 } else {
-                    PatKind::Path(path)
+                    // `[gram.pat]` has no bare `path` production: a dotted
+                    // path in a pattern exists only with a payload
+                    // (`path '(' pattern,* ')'`). The counterparty rejects
+                    // this at parse with E0201 and a zero-width span at the
+                    // token after the path (observed at pin a0c4564), and so
+                    // does this machine — accepting it was the out-of-grammar
+                    // mirror image of issue #5's bare-pattern bug.
+                    let at = self.tok().map_or(self.eof, |_| self.span()).start;
+                    return Err(Diag::new(
+                        diag::E_UNEXPECTED_TOKEN,
+                        Span::new(at, at),
+                        anchor,
+                        "a dotted path in a pattern must carry a payload, like `io.Error(e)`"
+                            .to_owned(),
+                    ));
                 }
             }
             _ => return Err(self.unexpected(anchor, "a pattern")),
@@ -3313,6 +3327,21 @@ mod tests {
             "fn main() -> !int {\n    let who = \"wolf\"\n    print(\"hello, {who}\")\n    0\n}\n",
         );
         assert_eq!(unit.items.len(), 1);
+    }
+
+    #[test]
+    fn a_bare_dotted_path_pattern_is_rejected_like_the_counterparty() {
+        // `[gram.pat]` has no bare `path` production — a dotted path in a
+        // pattern exists only with a payload. Accepting it was the
+        // out-of-grammar mirror image of issue #5's bare-pattern bug; the
+        // counterparty answers E0201 with a zero-width span at the token
+        // after the path (observed at pin a0c4564), and so does this parser.
+        let d = rejects("fn f(o: int) -> int {\n    match o { Ordering.Less => 1, _ => 0 }\n}\n");
+        assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
+        assert_eq!(
+            d.span.start, d.span.end,
+            "zero-width, at the token after the path"
+        );
     }
 
     #[test]

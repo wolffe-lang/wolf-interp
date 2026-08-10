@@ -1043,7 +1043,11 @@ impl Machine {
             let frame = self.frames.get_mut(path.frame)?;
             let mut found = None;
             for scope in frame.scopes.iter_mut().rev() {
-                if let Some(index) = scope.locals.iter().position(|(n, _)| *n == path.base) {
+                // `rposition`: a second `let x` in the same scope *shadows* the
+                // first, so the latest entry is the one every later read and
+                // write means (`upstream/corpus/typecheck/let_shadow_var_ok.lu`
+                // pins this).
+                if let Some(index) = scope.locals.iter().rposition(|(n, _)| *n == path.base) {
                     found = Some(&mut scope.locals[index].1);
                     break;
                 }
@@ -1185,6 +1189,7 @@ impl Machine {
                 scope
                     .locals
                     .iter()
+                    .rev()
                     .find(|(n, _)| *n == path.base)
                     .map(|(_, slot)| slot)
             })?
@@ -2040,7 +2045,8 @@ impl Machine {
             })
             .collect();
         self.frames.pop();
-        self.prov().drop_frame(frame);
+        let task = self.task;
+        self.prov().drop_frame(task, frame);
 
         let value = match result {
             Ok(value) | Err(Signal::Return(value)) => value,
@@ -3443,7 +3449,57 @@ impl Machine {
         match &*pattern.kind {
             PatKind::Wildcard => Ok(true),
             PatKind::Binding(ident) => {
-                self.declare(&ident.name, Slot::live(value.clone()));
+                let name = &ident.name;
+                // The checker's resolution rule, dynamically (issue #5,
+                // wolf-std F-0007): a bare identifier that names an in-scope
+                // enum variant is a *variant pattern* — it matches that case
+                // and binds nothing. Otherwise, over a tag-shaped scrutinee, a
+                // capitalized identifier is a structural row-tag pattern (D30
+                // rows need no declaration, and this machine already reads
+                // unresolved capitalized names as tags in expression
+                // position). Everything else binds, as before — including a
+                // capitalized name over a non-error scrutinee, which the
+                // counterparty also treats as a binding (observed at pin
+                // a0c4564: `match 3 { Zed => Zed, _ => 9 }` warns E0802 on
+                // the `_` arm).
+                let module = self
+                    .frames
+                    .last()
+                    .map(|f| f.module.clone())
+                    .unwrap_or_default();
+                if let Some(enums) = self
+                    .shared
+                    .program
+                    .modules
+                    .get(&module)
+                    .and_then(|m| m.variants.get(name))
+                {
+                    let matched = matches!(value, Value::Error(e) if e.payload.is_empty()
+                    && (e.tag == *name
+                        || enums.iter().any(|en| {
+                            e.tag.len() == en.len() + 1 + name.len()
+                                && e.tag.starts_with(en.as_str())
+                                && e.tag.as_bytes()[en.len()] == b'.'
+                                && e.tag.ends_with(name.as_str())
+                        })));
+                    self.fire(
+                        Rule::Flow,
+                        pattern.span,
+                        &format!("`{name}` resolves to an enum variant: a variant pattern"),
+                    );
+                    return Ok(matched);
+                }
+                if name.starts_with(char::is_uppercase)
+                    && let Value::Error(e) = value
+                {
+                    self.fire(
+                        Rule::ErrRows,
+                        pattern.span,
+                        &format!("`{name}` over a tag value: a row-tag pattern"),
+                    );
+                    return Ok(e.payload.is_empty() && e.tag == *name);
+                }
+                self.declare(name, Slot::live(value.clone()));
                 Ok(true)
             }
             PatKind::Literal(expr) => {
@@ -3452,15 +3508,6 @@ impl Machine {
                     (Value::Int(a, _), Value::Int(b, _)) => a == b,
                     _ => literal == *value,
                 })
-            }
-            PatKind::Path(path) => {
-                let tag = path
-                    .segments
-                    .iter()
-                    .map(|s| s.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(".");
-                Ok(matches!(value, Value::Error(e) if e.tag == tag && e.payload.is_empty()))
             }
             PatKind::Variant { path, fields } => {
                 let tag = path
@@ -3472,7 +3519,44 @@ impl Machine {
                 let Value::Error(err) = value else {
                     return Ok(false);
                 };
-                if err.tag != tag || err.payload.len() != fields.len() {
+                // The same resolution rule as bare identifiers (issue #5): a
+                // payload pattern spelled `Rgb(…)` matches a value built as
+                // `Color.Rgb(…)` when `Rgb` is an in-scope variant, and the
+                // enum-qualified spelling matches the bare-built value — the
+                // checker equates the two through the scrutinee's type; this
+                // machine equates them through the variant table.
+                let matched = err.tag == tag || {
+                    let module = self
+                        .frames
+                        .last()
+                        .map(|f| f.module.clone())
+                        .unwrap_or_default();
+                    let variants = self
+                        .shared
+                        .program
+                        .modules
+                        .get(&module)
+                        .map(|m| &m.variants);
+                    match path.segments.as_slice() {
+                        [single] => {
+                            variants
+                                .and_then(|v| v.get(&single.name))
+                                .is_some_and(|enums| {
+                                    enums
+                                        .iter()
+                                        .any(|en| err.tag == format!("{en}.{}", single.name))
+                                })
+                        }
+                        [qualifier, name] => {
+                            err.tag == name.name
+                                && variants
+                                    .and_then(|v| v.get(&name.name))
+                                    .is_some_and(|enums| enums.contains(&qualifier.name))
+                        }
+                        _ => false,
+                    }
+                };
+                if !matched || err.payload.len() != fields.len() {
                     return Ok(false);
                 }
                 let payload = err.payload.clone();
@@ -3649,7 +3733,8 @@ impl Machine {
                 let frame = self.frame();
                 self.access.release_frame(frame);
                 self.frames.pop();
-                self.prov().drop_frame(frame);
+                let task = self.task;
+                self.prov().drop_frame(task, frame);
                 match result {
                     Ok(value) | Err(Signal::Return(value)) => Ok(plain(value)),
                     Err(other) => Err(other),

@@ -200,7 +200,11 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("rows/open_row_growth.lu", "exit(0)"),
     ("typecheck/cast_set.lu", "exit(0)"),
     ("typecheck/coerce_no_widening.lu", "exit(0)"),
-    ("typecheck/match_missing.lu", "exit(0)"),
+    // exit(1) since 0.1.2: `Signal.Slow` dispatches to the `Slow` arm now
+    // that bare identifiers resolve as variant patterns (issue #5) — the old
+    // exit(0) was the first-arm-always bug's coincidence. The pinned
+    // fail(E0801) stays the compiler's half (conservatism).
+    ("typecheck/match_missing.lu", "exit(1)"),
     ("typecheck/match_unreachable.lu", "exit(0)"),
     ("typecheck/pattern_shape.lu", "exit(0)"),
     // -- is07 (pin 79ceec6) --------------------------------------------------
@@ -233,6 +237,20 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/region_multiopen_values_ok.lu", "exit(0)"),
     ("memory/region_open_ancestor.lu", "trap(region-fault)"),
     ("memory/region_transfer_open.lu", "trap(region-fault)"),
+    // -- 0.1.2 (pin a0c4564) -------------------------------------------------
+    // The pin's new unsafe/checked litmuses run clean (`unsafe_raw_outside`
+    // and `unsafe_sig` pin static rejections E1301/E1302 — conservatism;
+    // their Tier-0 bodies run). `let_shadow_var_ok` is E0410's ok-twin: it
+    // runs `exit(0)` now that same-scope `let` shadowing reads the *latest*
+    // binding (the `rposition` repair) — its fail-twins `let_reassign` and
+    // `let_compound_assign` stop at `resolve` with E0410 and so never enter
+    // this ledger.
+    ("memory/checked_unsigned.lu", "exit(0)"),
+    ("memory/unsafe_creation_not_use.lu", "exit(0)"),
+    ("memory/unsafe_raw_outside.lu", "exit(0)"),
+    ("memory/unsafe_sig.lu", "exit(0)"),
+    ("memory/unsafe_trusted.lu", "exit(0)"),
+    ("typecheck/let_shadow_var_ok.lu", "exit(0)"),
 ];
 
 #[test]

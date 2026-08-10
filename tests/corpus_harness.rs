@@ -115,14 +115,26 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             `typecheck`. The same pin renders the §3.2 operator climb
     //             into `spec/grammar.ebnf` — checked against our is01
     //             transcription in `tests/spec_extract.rs`.)
+    //   a0c4564 → 175 files (0.1.2: the pin taken for issue #8's fail-files.
+    //             `corpus/typecheck/` grew 3 — `let_reassign.lu` +
+    //             `let_compound_assign.lu` pin E0410 and
+    //             `let_shadow_var_ok.lu` is the ok-twin (wolf-lang#2's
+    //             missing pin). `corpus/memory/` grew 8 — the unsafe/checked
+    //             tier: `checked_unsigned.lu`, `unsafe_assume_malformed.lu`,
+    //             `unsafe_creation_not_use.lu`, `unsafe_door_borrow.lu`,
+    //             `unsafe_door_misuse.lu`, `unsafe_raw_outside.lu`,
+    //             `unsafe_sig.lu`, `unsafe_trusted.lu` — plus a `wolf.pkg`
+    //             manifest, which is not a source file and moves nothing
+    //             here. A handful of existing files changed only their
+    //             `phase:` directive as the compiler's wir rung landed.)
     let report = report();
     assert_eq!(
         report.total(),
-        164,
+        175,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 148);
+    assert_eq!(report.entries(), 159);
     assert_eq!(report.members(), 16);
 }
 

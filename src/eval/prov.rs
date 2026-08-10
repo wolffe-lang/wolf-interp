@@ -831,15 +831,22 @@ impl Provenance {
         self.pruned_at = self.tags.len();
     }
 
-    /// Forgets every place of `frame` and deeper: a frame's locals dying takes
-    /// their tags with them.
-    pub fn drop_frame(&mut self, frame: usize) {
-        let prefix = format!("{frame}:");
+    /// Forgets every place of `task`'s frame `frame` and deeper: a frame's
+    /// locals dying takes their tags with them.
+    ///
+    /// Keys are `t<task>:<frame>:<path>` (`Machine::place_key`). Until 0.1.2
+    /// this parsed the pre-task `<frame>:<path>` shape and so retained
+    /// *everything*: a callee's parameter binding survived its call, and the
+    /// next call reusing that frame index and parameter name resolved its
+    /// accesses through the stale (possibly Disabled) tag — the false
+    /// `ub(mem.ub)` pair of issue #7 (wolf-std F-0013).
+    pub fn drop_frame(&mut self, task: usize, frame: usize) {
+        let prefix = format!("t{task}:");
         self.places.retain(|key, _| {
-            key.split_once(':')
+            key.strip_prefix(&prefix)
+                .and_then(|rest| rest.split_once(':'))
                 .and_then(|(f, _)| f.parse::<usize>().ok())
                 .is_none_or(|f| f < frame)
-                && !key.starts_with(&prefix)
         });
     }
 
@@ -1532,6 +1539,38 @@ mod tests {
             elem: 1,
             signed: false,
         }
+    }
+
+    #[test]
+    fn drop_frame_forgets_the_tasks_frame_and_deeper_and_nothing_else() {
+        // Issue #7 (wolf-std F-0013): a callee's parameter binding must die
+        // with its frame. Keys are `t<task>:<frame>:<path>`; the 0.1.1
+        // parser read the pre-task `<frame>:<path>` shape and retained
+        // *everything*, so the next call reusing the frame index and
+        // parameter name resolved its accesses through the stale — possibly
+        // Disabled — tag, which is both filed false-`ub(mem.ub)` shapes.
+        let mut prov = Provenance::new();
+        let (alloc, tag) = prov.retag_place("t0:1:xs", RetagKind::Mutable, false, span());
+        prov.bind_place("t0:2:xs", alloc, tag);
+        prov.bind_place("t0:3:tmp", alloc, tag);
+        prov.bind_place("t1:2:xs", alloc, tag);
+        prov.drop_frame(0, 2);
+        assert!(
+            prov.place("t0:2:xs").is_none(),
+            "the callee binding dies with its frame"
+        );
+        assert!(
+            prov.place("t0:3:tmp").is_none(),
+            "deeper frames of the same task die too"
+        );
+        assert!(
+            prov.place("t0:1:xs").is_some(),
+            "the caller's own place survives"
+        );
+        assert!(
+            prov.place("t1:2:xs").is_some(),
+            "another task's frames are not this task's to drop"
+        );
     }
 
     #[test]

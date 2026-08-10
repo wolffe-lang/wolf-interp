@@ -939,6 +939,6 @@ fn collect_bound_names(pattern: &Pattern, out: &mut Vec<String>) {
                 collect_bound_names(alternative, out);
             }
         }
-        PatKind::Wildcard | PatKind::Literal(_) | PatKind::Path(_) => {}
+        PatKind::Wildcard | PatKind::Literal(_) => {}
     }
 }

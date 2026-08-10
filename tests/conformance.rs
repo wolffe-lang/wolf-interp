@@ -200,13 +200,25 @@ fn every_parseable_file_resolves_under_sema_lite() {
     // `resolve` is this implementation's sema-lite rung (see `frontend`'s
     // ladder mapping). It takes signatures at face value and checks nothing a
     // type checker would, so *every* file that parses must also resolve —
-    // a resolve failure here would mean the module machinery broke, not that a
-    // program is ill-typed.
+    // with one carve-out: since 0.1.2 the rung owns E0410 (`let`
+    // reassignment, issue #8), so a file that *pins* fail(E0410) fails here
+    // exactly as the corpus says. Any other resolve failure would mean the
+    // module machinery broke, not that a program is ill-typed.
     for case in cases() {
         if case.ledger_phase.is_some_and(|p| p < Phase::Parse) || is_filed_divergence(&case.path) {
             continue;
         }
         let observation = frontend::observe(&case.source, Some(Phase::Resolve));
+        if pinned_code(case.check.as_ref()) == Some("E0410") {
+            assert_eq!(
+                observation.verdict,
+                Verdict::Fail("E0410".to_owned()),
+                "{}",
+                case.path
+            );
+            assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
+            continue;
+        }
         assert_eq!(observation.verdict, Verdict::Pass, "{}", case.path);
         assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
         assert!(observation.diagnostics.is_empty(), "{}", case.path);
@@ -219,12 +231,24 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
     // `mem` and `wir` are the compiler's half of the split — asked for them,
     // this implementation reports the deepest rung it *did* complete and says
     // `unsupported`, which is what keeps the conservatism ledger truthful.
+    // A file the resolve rung itself rejects (E0410) never gets that far:
+    // it fails at resolve whatever deeper rung was requested.
     for case in cases() {
         if case.ledger_phase.is_some_and(|p| p < Phase::Parse) || is_filed_divergence(&case.path) {
             continue;
         }
         for rung in [Phase::Typecheck, Phase::Mem, Phase::Wir] {
             let observation = frontend::observe(&case.source, Some(rung));
+            if pinned_code(case.check.as_ref()) == Some("E0410") {
+                assert_eq!(
+                    observation.verdict,
+                    Verdict::Fail("E0410".to_owned()),
+                    "{}",
+                    case.path
+                );
+                assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
+                continue;
+            }
             assert_eq!(observation.verdict, Verdict::Unsupported, "{}", case.path);
             assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
             assert!(observation.diagnostics.is_empty(), "{}", case.path);

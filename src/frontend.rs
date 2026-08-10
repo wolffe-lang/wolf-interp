@@ -146,6 +146,7 @@ pub fn observe(source: &[u8], requested: Option<Phase>) -> Observation {
         crate::eval::Trace::Off,
         &SchedRequest::Default,
         false,
+        None,
     )
 }
 
@@ -158,8 +159,17 @@ pub fn observe_file(
     requested: Option<Phase>,
     trace: crate::eval::Trace,
     request: &SchedRequest,
+    std_root: Option<&Path>,
 ) -> Observation {
-    observe_with(Some(file), source, requested, trace, request, false)
+    observe_with(
+        Some(file),
+        source,
+        requested,
+        trace,
+        request,
+        false,
+        std_root,
+    )
 }
 
 /// The is12 front door: run the program (its module graph when `file` names
@@ -167,8 +177,21 @@ pub fn observe_file(
 /// stdout passed through live. The observation still carries the buffered
 /// copy; the caller maps the verdict onto the documented exit codes.
 #[must_use]
-pub fn observe_live(file: Option<&Path>, source: &[u8], request: &SchedRequest) -> Observation {
-    observe_with(file, source, None, crate::eval::Trace::Off, request, true)
+pub fn observe_live(
+    file: Option<&Path>,
+    source: &[u8],
+    request: &SchedRequest,
+    std_root: Option<&Path>,
+) -> Observation {
+    observe_with(
+        file,
+        source,
+        None,
+        crate::eval::Trace::Off,
+        request,
+        true,
+        std_root,
+    )
 }
 
 /// As [`observe`], with a schedule request: the stdin record surface
@@ -186,9 +209,11 @@ pub fn observe_buffer(
         crate::eval::Trace::Off,
         request,
         false,
+        None,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn observe_with(
     file: Option<&Path>,
     source: &[u8],
@@ -196,6 +221,7 @@ fn observe_with(
     trace: crate::eval::Trace,
     request: &SchedRequest,
     live: bool,
+    std_root: Option<&Path>,
 ) -> Observation {
     if requested == Some(Phase::None) {
         return Observation::clean(Phase::None, Verdict::Pass);
@@ -236,7 +262,7 @@ fn observe_with(
 
     // -- resolve (sema-lite) ----------------------------------------------
     let program = match file {
-        Some(file) => sema::load(file),
+        Some(file) => sema::load_with(file, std_root),
         None => sema::load_source("<buffer>", std::str::from_utf8(source).unwrap_or_default()),
     };
     let program = match program {

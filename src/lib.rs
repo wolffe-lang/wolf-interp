@@ -172,7 +172,7 @@ pub fn observe_record_seeded(
     seed: Option<u64>,
 ) -> (ObservationRecord, Observed) {
     let request = seed.map_or(eval::SchedRequest::Default, eval::SchedRequest::Seed);
-    observe_record_scheduled(file, source, requested_phase, trace, &request)
+    observe_record_scheduled(file, source, requested_phase, trace, &request, None)
 }
 
 /// As [`observe_record_seeded`], with the full schedule-request surface:
@@ -188,8 +188,10 @@ pub fn observe_record_scheduled(
     requested_phase: Option<Phase>,
     trace: crate::eval::Trace,
     request: &eval::SchedRequest,
+    std_root: Option<&std::path::Path>,
 ) -> (ObservationRecord, Observed) {
-    let observation = frontend::observe_file(file, source, requested_phase, trace, request);
+    let observation =
+        frontend::observe_file(file, source, requested_phase, trace, request, std_root);
     record_of(slash_path(file), observation, request)
 }
 

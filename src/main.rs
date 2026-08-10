@@ -64,7 +64,7 @@ fn default_spec_root() -> PathBuf {
     Path::new(upstream_root()).join("spec")
 }
 
-/// `--version`'s tail: `lupin 0.1.1 (wolf-interp, pin cbde620)` — the crate
+/// `--version`'s tail: `lupin 0.1.2 (wolf-interp, pin a0c4564)` — the crate
 /// version, the package this binary is built from, and the upstream
 /// spec/corpus pin every observation is made against.
 fn version_string() -> &'static str {
@@ -156,6 +156,11 @@ struct RunArgs {
     /// record carries the outcome and the tool exits 0).
     #[arg(long)]
     json: bool,
+    /// Resolve `use std.X[.Y]` against `<DIR>/X[/Y]/` — the std tree's root.
+    /// Falls back to the `LUPIN_STD` environment variable (the compiler's
+    /// `--std-root`/`WOLF_STD` mechanism, interpreter half).
+    #[arg(long, value_name = "DIR")]
+    std_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -170,6 +175,10 @@ struct CheckArgs {
     /// any rejection.
     #[arg(required = true)]
     files: Vec<PathBuf>,
+    /// Resolve `use std.X[.Y]` against `<DIR>/X[/Y]/` — the std tree's root.
+    /// Falls back to the `LUPIN_STD` environment variable.
+    #[arg(long, value_name = "DIR")]
+    std_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -241,6 +250,11 @@ struct ConformRunArgs {
     /// Emit the machine-readable observation record.
     #[arg(long)]
     json: bool,
+    /// Resolve `use std.X[.Y]` against `<DIR>/X[/Y]/` — the std tree's root.
+    /// Falls back to the `LUPIN_STD` environment variable (the compiler's
+    /// `--std-root`/`WOLF_STD` mechanism, interpreter half; issue #6).
+    #[arg(long, value_name = "DIR")]
+    std_root: Option<PathBuf>,
     /// Log evaluation rules as they fire, with their clause anchors, to
     /// stderr. `--trace` logs all of them; `--trace=mem` keeps only the
     /// memory-model rules — every region event (create/open/suspend/freeze/
@@ -400,6 +414,8 @@ fn main() -> ExitCode {
             seed: None,
             schedule: None,
             json: false,
+            // The bare front door has no flags; `LUPIN_STD` still applies.
+            std_root: None,
         }),
         (None, None, None) => run_repl(&ReplArgs {
             script: None,
@@ -486,6 +502,7 @@ fn run_run(args: &RunArgs) -> u8 {
                 None,
                 wolf_interp::eval::Trace::Off,
                 &request,
+                args.std_root.as_deref(),
             )
         };
         let value = match serde_json::to_value(&record) {
@@ -510,7 +527,8 @@ fn run_run(args: &RunArgs) -> u8 {
         wolf_interp::slash_path(&args.file)
     };
     let file = (!stdin).then_some(args.file.as_path());
-    let observation = wolf_interp::frontend::observe_live(file, &source, &request);
+    let observation =
+        wolf_interp::frontend::observe_live(file, &source, &request, args.std_root.as_deref());
     match &observation.verdict {
         // The program's own exit status is the process's.
         Verdict::Exit(status) => *status,
@@ -592,6 +610,7 @@ fn run_check(args: &CheckArgs) -> u8 {
             Some(Phase::Resolve),
             wolf_interp::eval::Trace::Off,
             &wolf_interp::eval::SchedRequest::Default,
+            args.std_root.as_deref(),
         );
         let display = wolf_interp::slash_path(file);
         match &observation.verdict {
@@ -1095,6 +1114,7 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
         args.phase,
         args.trace.unwrap_or_default(),
         &request,
+        args.std_root.as_deref(),
     );
 
     // Never emit a record this implementation's own validator would reject.
