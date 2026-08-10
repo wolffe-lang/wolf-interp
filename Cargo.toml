@@ -1,6 +1,6 @@
 [package]
 name = "wolf-interp"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.97.1"
 license = "MIT OR Apache-2.0"
@@ -15,8 +15,10 @@ publish = false
 name = "wolf_interp"
 path = "src/lib.rs"
 
+# The package (and repository) stay `wolf-interp`; the binary a user runs
+# is `lupin` (is12 — the user decree of 2026-08-10).
 [[bin]]
-name = "wolf-interp"
+name = "lupin"
 path = "src/main.rs"
 
 [dependencies]
