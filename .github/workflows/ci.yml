@@ -208,17 +208,48 @@ jobs:
           # inline `asm`, which no pinned document gives a meaning.
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/ffi.lu --json)
           echo "$out" | grep -q '"verdict":"unsupported",.*asm'
-          # `regions.lu` gained `build_config` at pin ecea37c, closing half of
-          # is03's §5.5 finding. The other half stands: `frozen.get(config)` and
-          # `.is_valid()` are specified nowhere, so `run(exit=0)` is still
-          # unsatisfiable. See docs/approximation-contract.md §5.5.
+          # `regions.lu` RUNS at pin 8b04edf: the tail now uses only specified
+          # semantics (frozen data readable forever, [mem.region.freeze.1]),
+          # closing the rest of is03's §5.5 finding. The seed corpus's flagship
+          # memory program reaching `run` was two pins in the making — keep it.
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/regions.lu --json)
-          echo "$out" | grep -q '"verdict":"unsupported",.*get'
+          echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"'
 
       # The fixtures are the protocol's own tests ([proto.harness.fixtures]).
       - name: protocol fixtures
         run: |
           cargo run -- protocol validate vendor/upstream/corpus/protocol/valid.json vendor/upstream/corpus/protocol/with-extensions.json
+
+      # The is05 differential lane. CI has no counterparty by construction —
+      # the vendored snapshot ships no crates/ and the private submodule
+      # cannot clone — so the lane must SKIP *loudly*: structured detection,
+      # `notice:` lines naming what was tried and why that is expected, exit
+      # 0. `--require-counterparty` is the hard-fail form for environments
+      # that promise a compiler (nightly local runs; the wolf-lang side from
+      # s23). Both behaviors are asserted, not assumed.
+      - name: differential lane (SKIP without a counterparty)
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(cargo run --quiet -- diff-run 2>&1) || {
+            echo "::error::diff-run must exit 0 when it SKIPs"; exit 1; }
+          echo "$out" | grep -q 'notice: differential lane SKIPPED'
+          echo "$out" | grep -q 'notice: tried'
+          echo "$out" | grep -q 'cargo build -p wolf_driver'
+          if cargo run --quiet -- diff-run --require-counterparty 2>/dev/null; then
+            echo "::error::--require-counterparty must hard-fail without a compiler"; exit 1
+          fi
+
+      # A bounded, seeded fuzz smoke in self-oracle mode: defined-by-
+      # construction programs must exit 0; no unsafe-free program may report
+      # ub. The full campaign (10k+, against a built counterparty) is a
+      # local/nightly affair — its record lives in docs/divergence-log.md.
+      - name: fuzz smoke (self-oracle)
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(cargo run --quiet -- fuzz --count 100 --seed 5381 --compiler does/not/exist 2>&1)
+          echo "$out" | grep -q '0 finding(s)'
 
   # The independence doctrine as a CI law: no wolf-lang code, ever.
   independence:

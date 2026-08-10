@@ -212,7 +212,25 @@ cargo run -- conform-run <file.lu> [--phase=<p>] [--seed=N] [--json] [--trace[=a
 cargo run -- lex   <file.lu> [--dump]
 cargo run -- parse <file.lu> [--dump]
 cargo run -- protocol validate <record.json>...
+cargo run -- diff-run [--corpus <dir>] [--compiler <wolf>] [--report <f.jsonl>] \
+                      [--ledger <f.jsonl>] [--json] [--filing] [--require-counterparty]
+cargo run -- fuzz [--count N] [--seed S] [--mode defined|boundary|mixed] \
+                  [--compiler <wolf>] [--out <dir>] [--require-counterparty]
 ```
+
+`diff-run` is is05's corpus-wide differential: both implementations'
+`conform-run --json` records per entry file, compared phase-aware per
+`[proto.cmp]` (see `src/differ.rs` for the pre-M1 posture), divergences
+ordered by `[proto.cmp.severity]`, the conservatism ledger tracked beside
+them, and every finding routed through `docs/divergence-log.md`. `fuzz` is
+the generator arm: seeded, deterministic, defined-by-construction or
+boundary-poking, with AST-aware reduction of anything divergent. Without a
+counterparty binary both commands say so in `notice:` lines and degrade
+honestly — `diff-run` SKIPs, `fuzz` runs its self-oracle — and
+`--require-counterparty` hard-fails instead. Building the pinned compiler
+(`cargo build -p wolf_driver` inside `upstream/`) is legitimate binary
+acquisition; reading its source remains forbidden (the integrator ruling —
+`docs/divergence-log.md`).
 
 `lex --dump` prints the token stream, `parse --dump` prints a production trace
 and `conform-run --trace` prints the evaluation rules as they fire — each line
