@@ -52,9 +52,9 @@ smoke test of the whole path:
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":79,"anchors_total":281,"bundle_sha256":"…","files":216,"forward_tags":90,"out":"target/bundle","pin":"cbde62012f10bbdf63e4ec1e2ebeeed026973d23","programs":201,"records":185}
+{"anchors_covered":79,"anchors_total":281,"bundle_sha256":"…","files":218,"forward_tags":90,"out":"target/bundle","pin":"cbde62012f10bbdf63e4ec1e2ebeeed026973d23","programs":203,"records":187}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 185 entries compared, 0 member(s) exercised through their entries
+differential: 187 entries compared, 0 member(s) exercised through their entries
 divergences: 0
 conservatism ledger: 86 entries
   unsupported(counterparty): 43

@@ -46,7 +46,7 @@ defines — the unit of comparison between implementations:
 
 ```console
 $ lupin conform-run examples/squares.lu --json
-{"protocol":1,"impl":"lupin","impl_version":"0.1.0","commit":"…","file":"examples/squares.lu","phase_reached":"run","seeded":false,"diagnostics":[],"verdict":"exit(0)","stdout_sha256":"42857004c6eb56e7ff16c5e877d9f83f2f8a280e2ae98ae6e13c20174c303ddb","stdout_inline":"sum of squares: 30\n"}
+{"protocol":1,"impl":"lupin","impl_version":"0.1.1","commit":"…","file":"examples/squares.lu","phase_reached":"run","seeded":false,"diagnostics":[],"verdict":"exit(0)","stdout_sha256":"42857004c6eb56e7ff16c5e877d9f83f2f8a280e2ae98ae6e13c20174c303ddb","stdout_inline":"sum of squares: 30\n"}
 ```
 
 Field by field:

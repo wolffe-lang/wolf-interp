@@ -266,6 +266,25 @@ This is why the use-after-free litmus is written with a `handle`: at Tier 1 with
 affine region values, there is no way to *write* a dangling plain reference. A
 Tier-3 raw pointer is the other way, and it is is04's.
 
+One consequence of the copy model used to leak past `[mem.region.freeze.1]`:
+a write *through* a struct built inside a `freeze region { … }` landed on the
+value-tree copy and executed, where wolfc rejects the program E1012
+(wolf-interp#2 — dynamic conservatism in the wrong direction). Struct values
+now carry the region charged at their allocation site (`Value::Struct::home`;
+`[mem.model.alloc]` lands in the current region), and `write_path` refuses a
+write whose path passes through a container homed in a `Frozen` region — the
+value-path half of the check the granule paths always ran, faulting
+`region-fault [mem.region.freeze.1]` before anything is mutated. Reads stay
+legal forever, and rebinding the *binding* stays legal (it replaces what the
+binding holds; no frozen storage is touched) —
+`tests/faults/region_freeze_value_write.lu` and its twin
+`ok/region_freeze_rebind_ok.lu` pin both directions. The remaining
+approximation: only **struct** composites carry a home, so a bare list or map
+frozen the same way still takes the write on its copy; no pinned corpus or
+book program performs one, and the E1012 ⇄ `region-fault` pairing stays out
+of `ledger::dynamic_meaning` until `[conf.trap.map]` states it (the
+E1004/E1005 precedent).
+
 ### 6.2 The edge check runs at the stores this machine has
 
 §3 says "on **every** store of a reference". The destinations that are region
@@ -597,6 +616,13 @@ at the conflicting interleaving the schedule realized. Detection is per
 byte range (raw) and per slot (pools): no over-approximation, so the
 forbidden direction (faulting a compiler-accepted program wrongly) stays
 closed.
+
+The silent-write-loss face of this choice — a task closure writes its
+captured copy and the enclosing state never sees it — is now formally
+routed upstream as **S-10** (divergence log; wolf-interp#4): spec/03
+states E1101 as a compile error only, `[conf.trap.map]` gives it no
+runtime meaning, and this machine will not invent one. If an amendment
+lands (the E1004/E1005 precedent), the realignment happens then.
 
 ### 10.3 The killed-proc sequence, and what "no user code" means
 

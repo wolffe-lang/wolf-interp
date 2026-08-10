@@ -108,6 +108,29 @@ adopted and where this machine realigned. S-9 remains open.
   approximation-contract §10.6) stands until the Phase A doc lands; the
   compiler runtime's format has priority and this side re-pins to it.
 
+- **S-10 (lupin 0.1.1, wolf-interp#4) — `[conc.task.spawn]`'s dynamic half
+  is unstated: a task closure's write to a captured copy is silently
+  task-local.** The clause makes capturing a `mut` borrow of enclosing
+  state a *compile error* (E1101), and `[conf.trap.map]` states no dynamic
+  meaning for E1101 (its table is E1001/E1002/E1004/E1005 — the E1004/E1005
+  precedent is exactly how such a meaning gets added). This machine
+  captures by value (`[gram.expr.closure]`; approximation-contract §10.2),
+  so the E1101 shape *runs*, each task writes its own copy, and the
+  cross-task write is lost without a fault — a wrong-looking answer, not a
+  trap. The corpus and the book agree with the machine today:
+  `conc/store_buffer.lu` is the pinned exemplar (exit 0, task-local
+  effects, the standing conservatism class), and wolf-book ch13/appendix
+  exercises document "exit 0 — captures by value" with the static E1101
+  rejection pending on the compiler side. The s20 S-batch did not speak to
+  it, and DIV-2026-008 (`freeze_publish`) was this family's first costume.
+  **Not fixed here, deliberately**: a spawn-time capture-analysis trap
+  would be this implementation legislating a dynamic meaning the spec
+  never states — the same line `ledger::dynamic_meaning` refuses to cross.
+  Routed upstream: spec/03 (or `[conf.trap.map]`) should either state
+  E1101's runtime meaning (kind + clause, as the E1004/E1005 amendment
+  did) or bless capture-by-copy as the defined interpreter-tier semantics.
+  Until then §10.2 stands as the documented behavior.
+
 ## Resolved findings
 
 ### S-1..S-8 — the is06 harvest — **resolved upstream, pin `843174f` (the s20 S-batch)**
