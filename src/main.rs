@@ -63,10 +63,9 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Walk the pinned corpus and report each file's directives.
+    /// Walk the pinned corpus and check every directive against this implementation.
     Corpus(CorpusArgs),
-    /// The conformance suite as a publishable artifact (is09): export the
-    /// versioned bundle, or check an implementation against one.
+    /// Export the versioned conformance bundle, or check an implementation against one.
     Conformance {
         #[command(subcommand)]
         command: ConformanceCommand,
@@ -77,20 +76,16 @@ enum Command {
     Lex(FrontendArgs),
     /// Parse one program (`spec/01` §2-§6).
     Parse(FrontendArgs),
-    /// Protocol utilities.
+    /// Validate observation records against the spec/06 schema.
     Protocol {
         #[command(subcommand)]
         command: ProtocolCommand,
     },
-    /// The corpus-wide differential runner: this implementation against the
-    /// pinned compiler, compared through spec/06 (is05).
+    /// Compare this implementation against the pinned compiler, corpus-wide.
     DiffRun(DiffRunArgs),
-    /// Fuzzer-driven differential testing: generated programs through the
-    /// same comparison, with AST-aware reduction of anything divergent.
+    /// Differential testing over generated programs, with reduction of anything divergent.
     Fuzz(FuzzArgs),
-    /// The line REPL over the interpreter (is08): persistent session state,
-    /// `:mem`/`:trace` memory-model introspection, and the transcript format
-    /// the wolf-book's no-rot guarantee replays (`--script`).
+    /// Interactive session; `--script` replays a recorded transcript.
     Repl(ReplArgs),
 }
 

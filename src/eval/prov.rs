@@ -1083,6 +1083,9 @@ impl Provenance {
 
     /// One access through one tag, against the whole tree. Returns the
     /// transitions to apply, or the row it violates.
+    // The Ok arm is a list of (tag, offset, permission) transitions consumed
+    // immediately by the two access paths; naming the triple would add a type
+    // for one line of destructuring.
     #[allow(clippy::type_complexity)]
     fn plan(
         &self,
@@ -1487,6 +1490,7 @@ impl Provenance {
         let lo = ptr.offset.max(0) as usize;
         for (i, off) in (lo..lo + len).enumerate() {
             if let Some(byte) = alloc.bytes.get_mut(off) {
+                // Masked to one byte the line above; the truncation is the point.
                 #[allow(clippy::cast_possible_truncation)]
                 {
                     *byte = ((value >> (8 * i)) & 0xff) as u8;

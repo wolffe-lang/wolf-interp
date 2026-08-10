@@ -62,14 +62,9 @@ pub const IMPL_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// `unknown` when built outside a checkout.
 pub const COMMIT: &str = env!("WOLF_INTERP_COMMIT");
 
-/// Renders a path with `/` separators on every platform.
-///
-/// Records travel between machines and get diffed; a Windows `\` in the `file`
-/// field would make identical observations compare unequal (and, compiler-side,
-/// once fed an unvetted seed space).
-#[must_use]
 /// Upstream root: the live submodule when initialized, else the tracked
 /// vendored snapshot (vendor/README.md — private-submodule CI fallback).
+#[must_use]
 pub fn upstream_root() -> &'static str {
     if Path::new("upstream/corpus").is_dir() {
         "upstream"
@@ -78,6 +73,12 @@ pub fn upstream_root() -> &'static str {
     }
 }
 
+/// Renders a path with `/` separators on every platform.
+///
+/// Records travel between machines and get diffed; a Windows `\` in the `file`
+/// field would make identical observations compare unequal (and, compiler-side,
+/// once fed an unvetted seed space).
+#[must_use]
 pub fn slash_path(path: &Path) -> String {
     path.components()
         .map(|c| c.as_os_str().to_string_lossy().into_owned())

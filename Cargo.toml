@@ -4,8 +4,11 @@ version = "0.0.1"
 edition = "2024"
 rust-version = "1.97.1"
 license = "MIT OR Apache-2.0"
-description = "The wolf reference interpreter: an independent implementation of the wolf specification and the compiler's differential-testing oracle."
+description = "The reference interpreter for the wolf language: an independent, executable reading of the specification, and the compiler's differential-testing oracle."
+keywords = ["wolf", "interpreter", "reference-implementation", "differential-testing"]
+categories = ["development-tools"]
 repository = "https://github.com/tenseleyFlow/wolf-interp"
+readme = "README.md"
 publish = false
 
 [lib]
