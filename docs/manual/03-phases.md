@@ -6,7 +6,7 @@ The canonical phase ladder is the compiler's pipeline: `none`, `lex`,
 `parse`, `resolve`, `typecheck`, `mem`, `wir`, `run`. This implementation
 completes four of those rungs and enforces the rest dynamically:
 
-| rung | wolf-interp |
+| rung | lupin |
 |---|---|
 | `lex`, `parse` | the frontend, written from `spec/01` alone |
 | `resolve` | sema-lite: the module graph and visibility, nothing more |
@@ -26,7 +26,7 @@ Asking for a phase this implementation does not perform yields the deepest
 rung that *completed*, verdict `unsupported`, and the reason:
 
 ```console
-$ wolf-interp conform-run examples/squares.lu --phase=typecheck
+$ lupin conform-run examples/squares.lu --phase=typecheck
 examples/squares.lu: verdict=unsupported phase_reached=resolve seeded=false
   unsupported: `--phase=typecheck` asks this implementation to stop after a phase it does not perform: the type checker, the borrow/region checkers and the IR are the compiler's half of the split. Every property they prove statically is enforced dynamically at `run` instead
 note: --phase=typecheck requested; this implementation completes `resolve` and does not perform the static phases beyond it — they are enforced dynamically at `run` instead (see the ladder mapping in `frontend`)
@@ -45,8 +45,8 @@ executions.
 defines — the unit of comparison between implementations:
 
 ```console
-$ wolf-interp conform-run examples/squares.lu --json
-{"protocol":1,"impl":"wolf-interp","impl_version":"0.0.1","commit":"…","file":"examples/squares.lu","phase_reached":"run","seeded":false,"diagnostics":[],"verdict":"exit(0)","stdout_sha256":"42857004c6eb56e7ff16c5e877d9f83f2f8a280e2ae98ae6e13c20174c303ddb","stdout_inline":"sum of squares: 30\n"}
+$ lupin conform-run examples/squares.lu --json
+{"protocol":1,"impl":"lupin","impl_version":"0.1.0","commit":"…","file":"examples/squares.lu","phase_reached":"run","seeded":false,"diagnostics":[],"verdict":"exit(0)","stdout_sha256":"42857004c6eb56e7ff16c5e877d9f83f2f8a280e2ae98ae6e13c20174c303ddb","stdout_inline":"sum of squares: 30\n"}
 ```
 
 Field by field:
@@ -69,5 +69,5 @@ Field by field:
   finding. They participate in comparison only when both records carry
   them.
 
-`wolf-interp protocol validate <record.json>…` checks any record — from
+`lupin protocol validate <record.json>…` checks any record — from
 this implementation or another — against the same schema.

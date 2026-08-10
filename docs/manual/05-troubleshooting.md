@@ -8,8 +8,8 @@ tools from the repository root. When neither `upstream/corpus` nor
 and say what to do:
 
 ```console
-$ wolf-interp corpus --root does/not/exist
-wolf-interp: corpus root `does/not/exist` is not a directory
+$ lupin corpus --root does/not/exist
+lupin: corpus root `does/not/exist` is not a directory
   hint: run `git submodule update --init upstream` (or use the tracked vendor/upstream snapshot)
 ```
 

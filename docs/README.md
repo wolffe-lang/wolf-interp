@@ -34,5 +34,5 @@ byte-compared after the repo's normalizations (LF line endings,
 alone on a line it stands for zero or more elided lines; inside a line it
 stands for a span that legitimately varies (a build commit, a bundle
 hash). Blocks fenced `sh` or `text` are not executed. A `console` block
-whose command is `wolf-interp repl` is replayed as a piped session and
-compared as a transcript.
+whose command is `lupin repl` — or bare `lupin`, which opens the REPL — is
+replayed as a piped session and compared as a transcript.

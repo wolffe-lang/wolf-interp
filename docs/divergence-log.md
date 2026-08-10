@@ -11,7 +11,7 @@ citation, and then the entry moves to the *resolved* section.
 ## The triage workflow (`[proto.cmp.triage]`)
 
 The runner emits, for each unfiled divergence, a filing template (visible
-with `wolf-interp diff-run --filing`): the program, both verdicts, the class,
+with `lupin diff-run --filing`): the program, both verdicts, the class,
 the rung the comparison fired at. A human then walks the decision tree —
 **the spec document is the defendant first**:
 
@@ -240,5 +240,5 @@ sema) *and* this machine's run tier, with the two frontends in exact
 agreement on all of them. The generator's semantic-plausibility layer is
 doing its job; the next campaign should turn the boundary dial harder
 (deeper nesting, adversarial-but-legal spellings) precisely because this one
-found nothing. Replay: `wolf-interp fuzz --count 10000 --seed 5381 --compiler
+found nothing. Replay: `lupin fuzz --count 10000 --seed 5381 --compiler
 upstream/target/debug/wolf`.

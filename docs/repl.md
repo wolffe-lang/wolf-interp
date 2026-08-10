@@ -1,6 +1,6 @@
-# The wolf-interp REPL — session semantics and the transcript format
+# The lupin REPL — session semantics and the transcript format
 
-`wolf-interp repl` is a line REPL over the reference interpreter: the
+`lupin repl` (or bare `lupin`) is a line REPL over the reference interpreter: the
 wolf-book's teaching vehicle and the first interactive wolf that exists (the
 compiler has no REPL and never will). Its differentiating feature is
 memory-model introspection — `:mem` and `:trace` turn D10's tiers from prose
@@ -99,11 +99,11 @@ wolf> :quit
 
 - A line starting `wolf> ` is an input at the top level; `....> ` is a
   continuation line of the same input. Everything else is expected output.
-- **Producing** a transcript: `wolf-interp repl < inputs.txt > t.transcript`
+- **Producing** a transcript: `lupin repl < inputs.txt > t.transcript`
   (pipe mode echoes inputs after the prompt, so captured stdout *is* the
   transcript). Interactive mode renders identically, the terminal itself
   showing the typing.
-- **Replaying**: `wolf-interp repl --script t.transcript` feeds the input
+- **Replaying**: `lupin repl --script t.transcript` feeds the input
   lines to a fresh session, re-renders the whole transcript, and
   byte-compares. Any drift prints the first differing line and exits 1;
   byte-identity prints `replay: OK (N input(s), byte-identical)` and exits

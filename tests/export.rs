@@ -302,7 +302,7 @@ fn the_cli_speaks_the_bundle_end_to_end() {
     let root = crate_root();
     let out = root.join("target/test-bundle-cli");
     let run = |args: &[&str]| {
-        std::process::Command::new(env!("CARGO_BIN_EXE_wolf-interp"))
+        std::process::Command::new(env!("CARGO_BIN_EXE_lupin"))
             .args(args)
             .current_dir(&root)
             .output()

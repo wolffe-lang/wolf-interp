@@ -15,8 +15,9 @@ cd wolf-interp
 cargo build --release
 ```
 
-The binary lands at `target/release/wolf-interp`. The manual spells it
-`wolf-interp`; substitute the path, or put `target/release` on `PATH`.
+The binary lands at `target/release/lupin` (the wolf-interp package builds
+a binary named `lupin`). The manual spells it `lupin`; substitute the path,
+or put `target/release` on `PATH`.
 
 ## The pinned spec and corpus
 
@@ -58,13 +59,13 @@ this implementation and prints the ledger; its last line counts mismatches,
 and the count is zero on a healthy checkout:
 
 ```console
-$ wolf-interp corpus
+$ lupin corpus
 …
 
 164 file(s) under upstream/corpus: 148 entries, 16 member(s), 0 failure(s)
 163 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-wolf-interp: 96 entries reach the `run` rung; 70 match their `check:` expectation, 5 are the dynamic counterpart of the static code the corpus pins, 30 are static-conservatism entries (the compiler rejects statically what this machine never checks), 43 are out of scope, 0 mismatch
+lupin: 96 entries reach the `run` rung; 70 match their `check:` expectation, 5 are the dynamic counterpart of the static code the corpus pins, 30 are static-conservatism entries (the compiler rejects statically what this machine never checks), 43 are out of scope, 0 mismatch
 ```
 
 ## Bumping the pin

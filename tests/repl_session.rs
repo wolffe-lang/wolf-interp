@@ -3,7 +3,7 @@
 //! The claims, each a section:
 //!
 //! 1. **The pinned transcripts replay byte-identically** — every file under
-//!    `tests/repl/` through `wolf-interp repl --script`, on all three OSes
+//!    `tests/repl/` through `lupin repl --script`, on all three OSes
 //!    (the repo forces `eol=lf`, so bytes are bytes). This is the book's
 //!    no-rot gate: bs00's runner consumes the same files unchanged.
 //! 2. **Replay is deterministic** — the same input stream through two fresh
@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn binary() -> &'static str {
-    env!("CARGO_BIN_EXE_wolf-interp")
+    env!("CARGO_BIN_EXE_lupin")
 }
 
 fn transcript_dir() -> PathBuf {

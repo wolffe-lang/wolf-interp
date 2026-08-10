@@ -11,8 +11,8 @@ building either's test harness. Schema version 1 is **frozen**: any
 change to the layout or the manifest contract below is version 2, never
 a quiet edit.
 
-Produced by `wolf-interp conformance export`; consumed by
-`wolf-interp conformance check <bundle> --impl <cmd>` (or any tool that
+Produced by `lupin conformance export`; consumed by
+`lupin conformance check <bundle> --impl <cmd>` (or any tool that
 reimplements this document). Publication is a tarball of this directory
 on a GitHub release — no hosted infrastructure.
 

@@ -19,7 +19,7 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 fn wolf_interp(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_wolf-interp"))
+    Command::new(env!("CARGO_BIN_EXE_lupin"))
         .args(args)
         .output()
         .expect("the binary runs")
@@ -44,7 +44,7 @@ fn the_self_differential_is_empty() {
         "--corpus",
         &corpus,
         "--compiler",
-        env!("CARGO_BIN_EXE_wolf-interp"),
+        env!("CARGO_BIN_EXE_lupin"),
     ]);
     let stdout = stdout_of(&output);
     assert_eq!(
@@ -66,7 +66,7 @@ fn the_jsonl_report_of_a_self_differential_is_an_empty_file() {
         "--corpus",
         &corpus,
         "--compiler",
-        env!("CARGO_BIN_EXE_wolf-interp"),
+        env!("CARGO_BIN_EXE_lupin"),
         "--report",
         &report.to_string_lossy(),
     ]);

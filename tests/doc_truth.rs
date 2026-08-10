@@ -8,10 +8,11 @@
 //! `vendor/upstream/` reported as `upstream/`). `…` is the only placeholder:
 //! alone on a line it matches zero or more elided lines; inside a line it
 //! matches a span that legitimately varies (a build commit, a bundle hash).
-//! A block whose command is `wolf-interp repl` is replayed as a piped
-//! session: the `wolf> `/`....> ` lines are fed as input and the whole block
-//! is the expected transcript. Blocks fenced `sh` or `text` are never
-//! executed. The conventions are documented in `docs/README.md`.
+//! A block whose command is `lupin repl` — or bare `lupin`, which opens the
+//! REPL — is replayed as a piped session: the `wolf> `/`....> ` lines are fed
+//! as input and the whole block is the expected transcript. Blocks fenced
+//! `sh` or `text` are never executed. The conventions are documented in
+//! `docs/README.md`.
 //!
 //! Commands may write only under `target/`, so a run leaves the tree clean.
 
@@ -24,7 +25,7 @@ fn manifest_dir() -> PathBuf {
 }
 
 fn binary() -> &'static str {
-    env!("CARGO_BIN_EXE_wolf-interp")
+    env!("CARGO_BIN_EXE_lupin")
 }
 
 /// The scanned set: the README and every manual page, in a stable order.
@@ -107,8 +108,8 @@ fn pairs(block: &Block) -> Vec<Pair> {
             let argv: Vec<String> = command.split_whitespace().map(str::to_owned).collect();
             assert_eq!(
                 argv.first().map(String::as_str),
-                Some("wolf-interp"),
-                "{} line {}: every checked command invokes `wolf-interp`",
+                Some("lupin"),
+                "{} line {}: every checked command invokes `lupin`",
                 block.file,
                 block.line
             );
@@ -188,7 +189,8 @@ fn match_line(expected: &str, actual: &str) -> bool {
 
 /// Runs one documented command; returns the observed output, normalized.
 fn run_pair(pair: &Pair) -> String {
-    if pair.argv[1..] == ["repl"] {
+    // `lupin repl` and bare `lupin` (the front door's REPL) are transcripts.
+    if pair.argv[1..] == ["repl"] || pair.argv.len() == 1 {
         return run_repl(pair);
     }
     let output = Command::new(binary())
@@ -199,8 +201,9 @@ fn run_pair(pair: &Pair) -> String {
     format!("{}{}", normalize(&output.stdout), normalize(&output.stderr))
 }
 
-/// A `wolf-interp repl` pair is a transcript: feed the prompt lines as
-/// input, expect the piped session to render the block byte-for-byte.
+/// A REPL pair is a transcript: feed the prompt lines as input, expect the
+/// piped session to render the block byte-for-byte. Replayed through the
+/// documented argv (`lupin repl` or bare `lupin` — both open the REPL).
 fn run_repl(pair: &Pair) -> String {
     let inputs: Vec<&str> = pair
         .expected
@@ -211,7 +214,7 @@ fn run_repl(pair: &Pair) -> String {
         })
         .collect();
     let mut child = Command::new(binary())
-        .arg("repl")
+        .args(&pair.argv[1..])
         .current_dir(manifest_dir())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -261,8 +264,8 @@ fn every_documented_output_is_the_binary_output() {
     assert!(checked >= 12, "only {checked} pair(s) extracted");
 }
 
-/// The manual's command tour and `wolf-interp --help` state the same
-/// one-liners (is11: help text and manual may not drift apart).
+/// The manual's command tour and `lupin --help` state the same one-liners
+/// (is11: help text and manual may not drift apart).
 #[test]
 fn the_command_tour_matches_help() {
     let manual = std::fs::read_to_string(manifest_dir().join("docs/manual/README.md"))
@@ -288,7 +291,7 @@ fn the_command_tour_matches_help() {
         .arg("--help")
         .current_dir(manifest_dir())
         .output()
-        .expect("wolf-interp --help runs");
+        .expect("lupin --help runs");
     let help = normalize(&output.stdout);
     let mut commands = Vec::new();
     let mut in_commands = false;

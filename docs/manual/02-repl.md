@@ -1,18 +1,19 @@
 # 2 — The REPL
 
-`wolf-interp repl` is a line REPL over the interpreter, and the first
-interactive wolf that exists (the compiler has none). Expressions evaluate
-and print `value : type`; declarations persist; `print` output appears in
-order, before the value line of the expression that printed it. Its
-distinguishing feature is memory-model introspection: `:mem`, `:regions`
-and `:trace` show the machine's state live.
+Bare `lupin` opens a line REPL over the interpreter (`lupin repl` is the
+explicit spelling), and the first interactive wolf that exists (the
+compiler has none). Expressions evaluate and print `value : type`;
+declarations persist; `print` output appears in order, before the value
+line of the expression that printed it. Its distinguishing feature is
+memory-model introspection: `:mem`, `:regions` and `:trace` show the
+machine's state live.
 
 ## A session
 
 Everything below is one real session, replayed against the binary in CI.
 
 ```console
-$ wolf-interp repl
+$ lupin
 wolf> struct Config { limit: int }
 defined type `Config`
 wolf> let r = region(rc)
@@ -58,7 +59,7 @@ under the `....>` prompt while a delimiter is open or the last token cannot
 end a statement.
 
 ```console
-$ wolf-interp repl
+$ lupin repl
 wolf> fn double(x: int) -> int {
 ....>     x * 2
 ....> }
@@ -66,6 +67,18 @@ defined fn `double`
 wolf> double(21)
 42 : i64
 wolf> :quit
+```
+
+## One-shot evaluation
+
+`lupin eval 'CODE'` (short spelling `-e`) evaluates a snippet in a fresh
+session, prints exactly what the REPL would print, and exits — with the
+front door's exit codes (chapter 1): `0` clean, `2` on a rejected snippet,
+`3` on a trap or UB finding, `4` on `unsupported`.
+
+```console
+$ lupin eval 1+1
+2 : i32
 ```
 
 ## Directives
@@ -96,9 +109,9 @@ format, are specified in [../repl.md](../repl.md).
 
 ## Transcripts
 
-A transcript is exactly what a piped session prints. `wolf-interp repl
+A transcript is exactly what a piped session prints. `lupin repl
 < inputs.txt > session.transcript` produces one;
-`wolf-interp repl --script session.transcript` replays the inputs against a
+`lupin repl --script session.transcript` replays the inputs against a
 fresh session and byte-compares the whole rendering, exiting `1` on any
 drift. The pinned suite lives in `tests/repl/*.transcript`, and the
 sessions printed in this chapter are checked the same way.
