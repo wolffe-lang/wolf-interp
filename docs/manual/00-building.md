@@ -10,7 +10,7 @@ git commit.
 ## Clone and build
 
 ```sh
-git clone https://github.com/tenseleyFlow/wolf-interp
+git clone https://github.com/wolffe-lang/wolf-interp
 cd wolf-interp
 cargo build --release
 ```
@@ -62,10 +62,10 @@ and the count is zero on a healthy checkout:
 $ lupin corpus
 …
 
-199 file(s) under upstream/corpus: 181 entries, 18 member(s), 0 failure(s)
-176 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
+221 file(s) under upstream/corpus: 203 entries, 18 member(s), 0 failure(s)
+183 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 126 entries reach the `run` rung; 106 match their `check:` expectation, 5 are the dynamic counterpart of the static code the corpus pins, 33 are static-conservatism entries (the compiler rejects statically what this machine never checks), 37 are out of scope, 0 mismatch
+lupin: 140 entries reach the `run` rung; 126 match their `check:` expectation, 5 are the dynamic counterpart of the static code the corpus pins, 31 are static-conservatism entries (the compiler rejects statically what this machine never checks), 41 are out of scope, 0 mismatch
 ```
 
 ## Bumping the pin

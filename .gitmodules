@@ -1,3 +1,3 @@
 [submodule "upstream"]
 	path = upstream
-	url = https://github.com/tenseleyFlow/wolf-lang.git
+	url = https://github.com/wolffe-lang/wolf-lang.git

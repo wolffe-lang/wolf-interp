@@ -4,7 +4,7 @@
 
 The reference interpreter for the wolf language: an independent, executable
 reading of the specification, and the oracle the compiler
-([wolf-lang](https://github.com/tenseleyFlow/wolf-lang)) is differentially
+([wolf-lang](https://github.com/wolffe-lang/wolf-lang)) is differentially
 tested against. The two implementations share no code — only the pinned spec
 and corpus, and the observation protocol they are compared through. Wolf
 source files use the `.lu` extension. wolf-interp builds a binary named
@@ -15,7 +15,7 @@ Dual-licensed MIT or Apache-2.0.
 ## Building
 
 ```sh
-git clone https://github.com/tenseleyFlow/wolf-interp
+git clone https://github.com/wolffe-lang/wolf-interp
 cd wolf-interp
 cargo build --release
 ```
@@ -30,7 +30,7 @@ identities — the binary, the package, and the pin:
 
 ```console
 $ lupin --version
-lupin 0.1.5 (wolf-interp, pin …)
+lupin 0.1.6 (wolf-interp, pin …)
 ```
 
 ## Running a program
