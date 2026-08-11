@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.1.6 — 2026-08-11
+
+The wave-four re-pin and the lint wave (issues #19, #20). Pin bumped
+`f0da6e6` → `13b811f` (#41 capture law, #42 checked-lane determinism,
+s34 procs, s35 io reactor, s39/s40/#40 native str/List/fs, s68 lints:
+the corpus grows `lints/` ×12, `conc/` ×3, `projects/` ×3, `net/` ×2,
+`comptime/` ×1, `test/` ×1 — 199 → 221 files; the registry grows
+`[conc.chan.default]` and `[mem.region.freeze.4]` — 303 → 305 anchors,
+and the `test` namespace joins the reserved forward set). Two issues
+closed, one divergence family filed, one closed.
+
+- **#20 — reads through frozen containers are legal.** The spec ruled
+  (`[mem.region.freeze.4]`, appended for exactly this defect): every
+  read through frozen data is an ordinary read, and a value-semantics
+  machine must not count writing back an *unmodified* method receiver
+  as a write. `eval_method`'s write-back is now conditional on the
+  receiver actually changing, so the book's ch10 shape
+  (`frozen[0].body.words()`) reads legally where 0.1.5 trapped
+  `region-fault`; a genuinely mutating method through a frozen home
+  still traps (`region_freeze_write.lu` unchanged).
+- **#19 — the s68 lint wave.** This machine now runs warning analyses:
+  the eleven shared-analysis lints (W0304–W0309, W0401, W0602, W1101,
+  W1102, W1302) plus the `#[allow]` self-lints W0302/W0303, in the new
+  `lint` module — every fixture span byte-identical to the counterparty
+  at the pin, `#[allow]` suppressing identically (item- and
+  statement-granular), the record's `warnings` array populated per
+  `[proto.record.warn]` and the same observations riding `diagnostics`
+  at warning severity. The compiler-only four (W0402, W0601, W0801,
+  W1001) stay honest-absent, written down in `lint::HONEST_ABSENT`; the
+  corpus `warns:` ledgers are enforced for the implemented set. The
+  same walk carries the pin's static realignments: **E1101/E1102/E1103**
+  (the #41 capture law — a task's write to a captured name with `when`
+  bodies exempt, a spelled `List`/`Map` channel payload, a lexically
+  nested `when`) and **E0004** (`1.e5` stays an *error*, the s68
+  correction) all reject at this machine's resolve rung with the
+  counterparty's codes and spans — `store_buffer`/`chan_unsendable`/
+  `when_nested` leave the run ledger for the fail column, and the last
+  E000x unsupported(interp) conservatism row closes. §7.8's
+  `[ub.assume.noalias]` citation is confirmed `[mem.unsafe.raw.2]`,
+  with W1302 as its compile-time face.
+- **Realignments at the pin:** `[conc.chan.default]` adopts this
+  machine's rendezvous default as normative (`channel[T]()` was already
+  capacity 0 here — the clause cites the behavior, the ctor now cites
+  the clause); E0412/E0413 spans realign to the counterparty's `:spec`
+  shape; the `test` anchor namespace lands (`test/assert_test.lu`
+  walks); the s34 proc pair and two of the three P-project witnesses
+  run (`projects/count.lu` needs the fs tier this machine declines by
+  design).
+- Tenth differential: 203 entries, **11 divergences, all filed, every
+  one the same finding** — same code, same span, this machine at
+  resolve vs wolfc at typecheck/mem (DIV-2026-011/-012/-014, plus new
+  **DIV-2026-015** for the four realigned statics; one `[proto.cmp]`
+  ruling closes all four families). **DIV-2026-013 closes** (wolfc's
+  s38 conform-run wiring landed; `unsupported` there now, never a
+  divergence). 325 conservatism entries. Bundle: 258 programs, 240
+  records (the issue #20 freeze-read twin joins the suite tier);
+  coverage ratchet raised 90 → 96 over 305 anchors.
+
 ## 0.1.5 — 2026-08-11
 
 The unsafe-tier batch (issue #18, the book's ch09 differential) and the
