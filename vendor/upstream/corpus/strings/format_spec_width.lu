@@ -1,0 +1,18 @@
+//! check: run(exit=0, stdout="[hi      ]\n[      42]\n[******42]")
+//! phase: run
+//! conforms: str.interp
+//!
+//! The fill/align/width core of the format-spec grammar (wolf-lang#28's
+//! candidate §7.4): width in bytes, numbers default right, strings
+//! default left. Since s38 the native lane lowers the spec as a
+//! comptime-packed immediate to the `__wolf_rt_write_*` shims — this
+//! file runs natively, byte-identical with the checked executor.
+
+fn main() -> !int {
+    let s = "hi"
+    let n = 42
+    print("[{s:8}]")
+    print("[{n:8}]")
+    print("[{n:*>8}]")
+    0
+}
