@@ -1,0 +1,26 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.region.freeze.4, mem.region.edge.imm
+//! The issue #20 regression (the book's ch10 ledger shape): a read-only
+//! method call through a frozen container is an ordinary read —
+//! `[mem.region.freeze.4]` rules that writing back an UNMODIFIED receiver
+//! must not count as a write. Through 0.1.5 `eval_method`'s unconditional
+//! receiver write-back trapped `region-fault` here; the fault twin
+//! (`region_freeze_write.lu`) still traps, because its method actually
+//! mutates.
+
+struct Entry { body: str }
+
+fn build() -> List[Entry] {
+    var xs = List[Entry]()
+    (mut xs).push(Entry { body: "pay the wolf" })
+    xs
+}
+
+fn main() -> !int {
+    let r = region(rc)
+    let entries = in r { build() }
+    let frozen = freeze r
+    let ws = entries[0].body.words()
+    if ws.len == 3 { 0 } else { 1 }
+}

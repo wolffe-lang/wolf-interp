@@ -33,6 +33,9 @@ struct Entry {
     phase: Phase,
     stdout: String,
     judgement: Judgement,
+    /// The record's `warnings` array (`[proto.record.warn]`): `None` when
+    /// the analyses did not run (the program never loaded).
+    warnings: Option<Vec<wolf_interp::protocol::Warning>>,
 }
 
 fn entries() -> Vec<Entry> {
@@ -61,6 +64,7 @@ fn entries() -> Vec<Entry> {
                 phase: record.phase_reached,
                 stdout,
                 judgement,
+                warnings: record.warnings,
             })
         })
         .collect()
@@ -137,14 +141,16 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // exit(1) against the corpus's exit=0 through pin `67c977f`; pin `79ceec6`
     // paid both debts (DIV-2026-008: the file reports through a channel now;
     // DIV-2026-009: the expected total is 223) and both run exit(0).
-    // `chan_unsendable` and `store_buffer` run clean where the compiler
-    // rejects statically (E1102/E1101 conservatism).
+    // `chan_unsendable` and `store_buffer` ran clean through 0.1.5 where the
+    // compiler rejects statically (E1102/E1101 conservatism); since 0.1.6
+    // (the 13b811f re-pin, issue #19) this machine rejects them at its
+    // resolve rung with the counterparty's codes and spans, so they left
+    // this ledger for the fail column — the conservatism rows became
+    // agreements.
     ("conc/cancel_sibling.lu", "exit(0)"),
-    ("conc/chan_unsendable.lu", "exit(0)"),
     ("conc/freeze_publish.lu", "exit(0)"),
     ("conc/message_passing.lu", "exit(0)"),
     ("conc/select_seeded.lu", "exit(0)"),
-    ("conc/store_buffer.lu", "exit(0)"),
     ("conc/when_multi.lu", "exit(0)"),
     // `channel` exists now, so the E1005 dynamic-counterpart case finally
     // RUNS: the open region cannot be transferred, trap(region-fault) citing
@@ -330,6 +336,38 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("strings/format_spec_width.lu", "exit(0)"),
     ("strings/interp_value_position.lu", "exit(0)"),
     ("strings/slice_oob_trap.lu", "trap(bounds)"),
+    // -- 0.1.6 (pin 13b811f) -------------------------------------------------
+    // The wave-four pin's witnesses, on this machine's rungs:
+    //
+    // The s68 lint fixtures run their programs — every one is advisory, the
+    // program legal — and this machine now populates the `warnings` array
+    // over them (the eleven shared-analysis lints plus W0302/W0303; the
+    // compiler-only four stay honest-absent, so `binder_capitalized`,
+    // `discarded_result`, `float_zero_minus` and `region_never_allocates`
+    // run warning-clean *here* while their `warns:` ledgers name codes this
+    // machine does not observe).
+    //
+    // The s34 proc pair runs: cancellation defers fire under kill teardown,
+    // and a linked exit delivers through the mailbox channel.
+    //
+    // Two of the three P-project witnesses run natively (`rpn`, `wordtree`);
+    // `count` needs the fs tier this machine declines by design.
+    ("conc/proc_cancel_defers.lu", "exit(0)"),
+    ("conc/proc_link.lu", "exit(0)"),
+    ("lints/assume_reassigned.lu", "exit(0)"),
+    ("lints/binder_capitalized.lu", "exit(0)"),
+    ("lints/discarded_result.lu", "exit(0)"),
+    ("lints/else_comparison.lu", "exit(0)"),
+    ("lints/float_zero_minus.lu", "exit(0)"),
+    ("lints/mut_in_interp.lu", "exit(0)"),
+    ("lints/narrowing_literal.lu", "exit(0)"),
+    ("lints/prefix_statement.lu", "exit(0)"),
+    ("lints/raw_interp_braces.lu", "exit(0)"),
+    ("lints/region_never_allocates.lu", "exit(0)"),
+    ("lints/shadow_prelude.lu", "exit(0)"),
+    ("lints/tag_name_collision.lu", "exit(0)"),
+    ("projects/rpn.lu", "exit(0)"),
+    ("projects/wordtree.lu", "exit(0)"),
 ];
 
 #[test]
@@ -350,6 +388,50 @@ fn no_corpus_file_mismatches_its_expectation() {
         "the corpus and this implementation disagree. `[proto.cmp.triage]`: the spec document \
          is the defendant first — triage each of these, do NOT edit the corpus:\n{}",
         mismatches.join("\n")
+    );
+}
+
+#[test]
+fn the_warns_ledger_is_enforced_for_the_analyses_this_machine_runs() {
+    // `warns:` is the exact set of warning codes an entry is expected to
+    // produce; its absence is the empty set (a file with no `warns:` must be
+    // warning-clean). An implementation enforces the directive only for the
+    // analyses it actually runs — `[proto.cmp.warn]`'s honest-absent rule
+    // makes a missing analysis a scope gap, never a divergence — so both
+    // sides of the comparison are filtered to `lint::IMPLEMENTED` here.
+    let implemented: std::collections::BTreeSet<&str> =
+        wolf_interp::lint::IMPLEMENTED.iter().copied().collect();
+    let mut problems = Vec::new();
+    for entry in entries() {
+        let Some(warnings) = &entry.warnings else {
+            // The analyses never ran (the program did not load) — nothing
+            // to enforce, honestly.
+            continue;
+        };
+        let expected: std::collections::BTreeSet<&str> = entry
+            .directives
+            .warns
+            .iter()
+            .map(String::as_str)
+            .filter(|code| implemented.contains(code))
+            .collect();
+        let observed: std::collections::BTreeSet<&str> = warnings
+            .iter()
+            .map(|warning| warning.code.as_str())
+            .filter(|code| implemented.contains(code))
+            .collect();
+        if expected != observed {
+            problems.push(format!(
+                "  {}: warns ledger {expected:?}, observed {observed:?}",
+                entry.path
+            ));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "the corpus `warns:` ledgers and this machine's lint pass disagree over the \
+         implemented codes:\n{}",
+        problems.join("\n")
     );
 }
 

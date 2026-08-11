@@ -66,6 +66,11 @@ pub struct Observation {
     /// The diagnostic behind a `fail`, with its message and clause anchor —
     /// for humans, never for the wire.
     pub detail: Option<Diag>,
+    /// The warning observations (`[proto.record.warn]`, s68 — issue #19):
+    /// `Some` once the lint pass has run (the program loaded), `None` before
+    /// it could — honest-absent, never an empty array the analyses did not
+    /// stand behind.
+    pub warnings: Option<Vec<crate::protocol::Warning>>,
     /// The program's output, when it ran.
     pub stdout: Vec<u8>,
     /// Why the verdict is `unsupported`. Rides `x-unsupported`; never the
@@ -106,6 +111,7 @@ impl Observation {
             verdict,
             diagnostics: Vec::new(),
             detail: None,
+            warnings: None,
             stdout: Vec::new(),
             reason: None,
             trap: None,
@@ -282,26 +288,43 @@ fn observe_with(
             );
         }
     };
+    // The lint pass (s68, issue #19) and the pin-13b811f statics run the
+    // moment the program is loaded: every observation from here on carries
+    // the warnings array — `[proto.record.warn]`'s "includes the array
+    // whenever it runs warning analyses", and it now does.
+    let analysis = crate::lint::analyze(&program);
+    let warnings = Some(analysis.warnings);
+    let attach = |mut observation: Observation| {
+        observation.warnings = warnings.clone();
+        observation
+    };
     // The module laws the resolve rung owns (D32, E0302–E0305) — added at
     // is06, closing DIV-2026-002..005: claiming a rung on the ladder means
     // performing it (`[proto.record.phase]`).
     if let Some(diag) = sema::resolve_check(&program) {
-        return Observation::failed(Phase::Resolve, diag);
+        return attach(Observation::failed(Phase::Resolve, diag));
+    }
+    // The pin-13b811f statics (E0004; the E11xx capture law — issue #19's
+    // realignment): rejections sema-lite can see, at this machine's resolve
+    // rung with the counterparty's codes and spans (the E0410/E1007
+    // pattern). First in source order wins, like every rejection here.
+    if let Some(diag) = analysis.statics.into_iter().next() {
+        return attach(Observation::failed(Phase::Resolve, diag));
     }
     // The eager raise check (issue #12(c)): an unresolvable bare lowercase
     // tag at a raise site is a diagnostic about the program at resolve time,
     // never a property of which paths the input happens to take.
     if let Some(reason) = sema::raise_check(&program) {
-        return Observation::unsupported(Phase::Resolve, reason);
+        return attach(Observation::unsupported(Phase::Resolve, reason));
     }
     if requested == Some(Phase::Resolve) {
-        return Observation::clean(Phase::Resolve, Verdict::Pass);
+        return attach(Observation::clean(Phase::Resolve, Verdict::Pass));
     }
 
     // -- typecheck / mem / wir: not this implementation's -------------------
     if matches!(requested, Some(Phase::Typecheck | Phase::Mem | Phase::Wir)) {
         let asked = requested.expect("checked");
-        return Observation::unsupported(
+        return attach(Observation::unsupported(
             DEEPEST_STATIC,
             format!(
                 "`--phase={asked}` asks this implementation to stop after a phase it does not \
@@ -309,7 +332,7 @@ fn observe_with(
                  compiler's half of the split. Every property they prove statically is enforced \
                  dynamically at `run` instead"
             ),
-        );
+        ));
     }
 
     // -- run ---------------------------------------------------------------
@@ -337,6 +360,7 @@ fn observe_with(
         // `[proto.record.phase]` names.
         Outcome::Unsupported(reason) => Observation::unsupported(DEEPEST_STATIC, reason),
     };
+    observation.warnings = warnings;
     observation.stdout = run.stdout;
     observation.trace = run.trace;
     observation.leaks = run.leaks;

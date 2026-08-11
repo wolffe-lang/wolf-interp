@@ -96,6 +96,22 @@ pub struct DupDef {
     pub file: String,
 }
 
+/// One parsed source file, retained beside the collected definitions.
+///
+/// The lint pass (s68, issue #19) needs what [`collect`] drops: item and
+/// statement attributes (`#[allow]` — spec/01 §9.3, part of the program),
+/// statement shapes, and the file's own bytes for the spans that extend
+/// through a statement terminator or point inside a literal.
+#[derive(Debug, Clone)]
+pub struct SourceUnit {
+    pub file: String,
+    pub source: String,
+    pub unit: Unit,
+    /// Loaded through the configured std root. The std tree is exempt from
+    /// the shadow lint (W0304) per the s68 triage.
+    pub from_std: bool,
+}
+
 /// One module: a directory's worth of `.lu` files.
 #[derive(Debug, Clone, Default)]
 pub struct Module {
@@ -140,6 +156,8 @@ pub struct Module {
     /// identifier pattern over a tag-shaped scrutinee that names a *declared*
     /// tag is a row-tag pattern; everything else still binds.
     pub row_tags: std::collections::BTreeSet<String>,
+    /// The module's parsed files, in load order — the lint pass's input.
+    pub units: Vec<SourceUnit>,
 }
 
 /// One impl-block method: `impl Iter for RangeIter { fn next(…) }` records
@@ -245,10 +263,11 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
         String::new(),
         package_root.clone(),
         Some(entry.to_path_buf()),
+        false,
     )];
     let mut loaded: Vec<String> = Vec::new();
 
-    while let Some((name, dir, entry)) = queue.pop() {
+    while let Some((name, dir, entry, from_std)) = queue.pop() {
         if loaded.contains(&name) {
             // An import cycle is a compile error the compiler owns (E0303).
             // Here it is simply a module already loaded — the graph is walked
@@ -257,7 +276,7 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
         }
         loaded.push(name.clone());
 
-        let module = load_module(&name, &dir, entry.as_deref(), &mut program.files)?;
+        let module = load_module(&name, &dir, entry.as_deref(), &mut program.files, from_std)?;
         let mut queued: Vec<String> = Vec::new();
         for (bound, segments) in &module.use_paths {
             if loaded.contains(bound) || queued.contains(bound) {
@@ -273,14 +292,14 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
                     candidate.push(segment);
                 }
                 if candidate.is_dir() {
-                    queue.push((bound.clone(), candidate, None));
+                    queue.push((bound.clone(), candidate, None, true));
                     queued.push(bound.clone());
                     continue;
                 }
             }
             let candidate = package_root.join(bound);
             if candidate.is_dir() {
-                queue.push((bound.clone(), candidate, None));
+                queue.push((bound.clone(), candidate, None, false));
                 queued.push(bound.clone());
             }
         }
@@ -290,7 +309,7 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
         for used in &module.uses {
             let candidate = package_root.join(used);
             if candidate.is_dir() && !loaded.contains(used) && !queued.contains(used) {
-                queue.push((used.clone(), candidate, None));
+                queue.push((used.clone(), candidate, None, false));
                 queued.push(used.clone());
             }
         }
@@ -316,6 +335,12 @@ pub fn load_source(name: &str, source: &str) -> Result<Program, LoadError> {
         ..Module::default()
     };
     collect(&parsed.unit, &mut module, name, source);
+    module.units.push(SourceUnit {
+        file: name.to_owned(),
+        source: source.to_owned(),
+        unit: parsed.unit,
+        from_std: false,
+    });
     let mut modules = BTreeMap::new();
     modules.insert(String::new(), module);
     Ok(Program {
@@ -330,6 +355,7 @@ fn load_module(
     dir: &Path,
     entry: Option<&Path>,
     files: &mut Vec<String>,
+    from_std: bool,
 ) -> Result<Module, LoadError> {
     let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
         .map_err(|e| LoadError::Io(format!("{}: {e}", dir.display())))?
@@ -365,6 +391,12 @@ fn load_module(
         let display = crate::slash_path(&path);
         files.push(display.clone());
         collect(&parsed.unit, &mut module, &display, &source);
+        module.units.push(SourceUnit {
+            file: display,
+            source,
+            unit: parsed.unit,
+            from_std,
+        });
     }
     Ok(module)
 }
@@ -1545,12 +1577,22 @@ impl TierWalk {
             if !literal_only {
                 continue;
             }
+            // The diagnostic spans the `:spec` — from the colon after the
+            // hole's expression through the spec's last byte, `}` excluded
+            // (observed at pin 13b811f: `[530,534]` = `:>08` on
+            // `format_spec_malformed.lu`, `[414,417]` = `:.2` on
+            // `format_spec_mismatch.lu`). 0.1.5 spanned the whole hole;
+            // realigned for span parity at the re-pin.
+            let spec_span = Span::new(
+                interp.expr.span.end,
+                interp.span.end.saturating_sub(1).max(interp.expr.span.end),
+            );
             let spec = match crate::fmtspec::parse(&text) {
                 Ok(spec) => spec,
                 Err(error) => {
                     return Some(Diag::new(
                         "E0412",
-                        interp.span,
+                        spec_span,
                         "str.interp",
                         format!("malformed format spec `{text}`: {}", error.message()),
                     ));
@@ -1568,7 +1610,7 @@ impl TierWalk {
             {
                 return Some(Diag::new(
                     "E0413",
-                    interp.span,
+                    spec_span,
                     "str.interp",
                     format!(
                         "format spec `{text}` does not fit this hole: {}",

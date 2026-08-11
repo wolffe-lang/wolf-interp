@@ -68,6 +68,7 @@ satisfies "the fault programs fault"; only the twin shows the check is
 |---|---|
 | `region_edge_intra_ok.lu` | intra-region back-edges are safe (`[mem.region.intra.1]`) — the cross-region twin of `region_edge_cross.lu` |
 | `region_freeze_read_ok.lu` | frozen data reads from anywhere, forever (`[mem.region.edge.imm]`) |
+| `region_freeze_method_read_ok.lu` | a read-only method through a frozen container is a read, not a write-back (`[mem.region.freeze.4]` — the issue #20 regression, the book's ch10 shape) |
 | `region_freeze_rebind_ok.lu` | rebinding the binding that held a frozen value is legal; only writes *through* the value fault |
 | `region_reopen_ok.lu` | re-entering an already-open region is a no-op |
 | `region_transfer_closed_ok.lu` | a **closed** subtree transfers, establishing one owning edge |

@@ -23,13 +23,17 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 /// job. Never lower this without the closeout-level negotiation the sprint
 /// requires. Raised 86 → 90 at pin `f0da6e6` (0.1.5): the strings tier
 /// cites `mem.str.get` and the lints tier `diag.level.attr` and
-/// `mem.boundary.doc`, among the wave's new clauses.
-const RATCHET_FLOOR: usize = 90;
+/// `mem.boundary.doc`, among the wave's new clauses. Raised 90 → 95 at pin
+/// `13b811f` (0.1.6): the s68 lint fixtures, the s34 proc pair, the
+/// P-project witnesses and the issue #20 freeze-read twin cite
+/// `conc.when.nonest`, `conc.chan.default`, `mem.region.freeze.4` and the
+/// wave's other new clauses.
+const RATCHET_FLOOR: usize = 96;
 
-/// The registry size at pin `f0da6e6` (290 → 303: the s67 `diag.*` block,
-/// `mem.str.get`, `proto.record.warn`/`proto.cmp.warn`). Moves only with a
-/// pin bump, and then deliberately.
-const ANCHORS_TOTAL: usize = 303;
+/// The registry size at pin `13b811f` (303 → 305: `conc.chan.default` and
+/// `mem.region.freeze.4`, the wave-four amendments). Moves only with a pin
+/// bump, and then deliberately.
+const ANCHORS_TOTAL: usize = 305;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -136,23 +140,24 @@ fn the_bundle_opens_verified_and_its_records_reference_bundled_programs() {
 
 #[test]
 fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
-    // The count ledger, lupin 0.1.5 edition (pin `f0da6e6`): 199 corpus
-    // files (181 entries + 18 members) + 36 suite programs (7 UB triggers,
+    // The count ledger, lupin 0.1.6 edition (pin `13b811f`): 221 corpus
+    // files (203 entries + 18 members) + 37 suite programs (7 UB triggers,
     // 8 twins, 9 fault litmuses + 7 twins, 5 witnesses — the T1 pair and
     // P1's protector form retired with issue #18: their `as bool` and `*u8`
     // signatures are outside the language now, see `UbRow::coverage` and
-    // `tests/ub/`) = 235 programs, 217 entries conform-run into reference
-    // records. The pin brought the five-lane fan-out: the strings tier
-    // (s37 + §7.4 format specs), the lints tier (s67 — the `warns:`
-    // directive and `[proto.record.warn]`), and the fs/io tier (s38 —
-    // fs unsupported-by-design here, `eprint` running) — see the
-    // corpus-harness ledger. A pin bump or a new suite file moves these
+    // `tests/ub/`, plus the issue #20 freeze-read twin) = 258 programs,
+    // 240 entries conform-run into reference
+    // records. The pin brought wave four: the s68 lint fixtures (the eleven
+    // shared-analysis warnings this machine now runs — issue #19), the
+    // E11xx capture-law fail files, the s34 proc pair, the P-project
+    // witnesses and the s35 net tier (sockets outside this machine by
+    // design) — see the corpus-harness ledger. A pin bump or a new suite file moves these
     // numbers — move them *deliberately*, here and in the corpus-harness
     // ledger.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "f0da6e67158292e962c93268973d9e927fe703a0");
-    assert_eq!(summary.programs, 235);
-    assert_eq!(summary.records, 217);
+    assert_eq!(summary.pin, "13b811ffc03092c78873bed1cc9b400d166f04fd");
+    assert_eq!(summary.programs, 258);
+    assert_eq!(summary.records, 240);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

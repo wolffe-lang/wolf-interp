@@ -283,9 +283,13 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         }
         // -- spec/03: the concurrency constructors (is06) ------------------
         "channel" => {
-            // `channel[T](n)`: capacity n ≥ 1 buffers, n = 0 (or absent) is
-            // rendezvous (`[conc.chan.buf]`). The type argument was consumed
-            // by the bracket application; sendability is E1102's static half.
+            // `channel[T](n)`: capacity n ≥ 1 buffers, n = 0 is rendezvous
+            // (`[conc.chan.buf]`); an ABSENT capacity is rendezvous by
+            // `[conc.chan.default]` — the clause the 13b811f pin added to
+            // adopt this machine's behavior as normative (the bs06 ledger's
+            // spec-gap row: this default predates the clause).
+            // The type argument was consumed by the bracket application;
+            // sendability is E1102's static half.
             let cap = match args.first() {
                 None => 0,
                 Some(Value::Int(n, _)) if *n >= 0 => usize::try_from(*n).unwrap_or(0),

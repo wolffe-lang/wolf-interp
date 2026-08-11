@@ -4268,6 +4268,10 @@ impl Machine {
         let previous = receiver_tag
             .as_ref()
             .map(|(key, alloc, child)| self.prov().rebind_place(key, *alloc, *child));
+        // Kept for the `[mem.region.freeze.4]` comparison below: a method
+        // that returns its receiver unmodified performed only reads, and an
+        // unmodified write-back must not count as a write.
+        let original_receiver = value.clone();
         let mut receiver_value = value;
         let mut final_args = evaluated.values.clone();
         // An impl-block method wins over the builtin surface for the types
@@ -4313,12 +4317,21 @@ impl Machine {
         // A `(take c)` receiver is consumed instead (`[mem.tier0.mode.take]` →
         // `[mem.tier0.move.1]`): no writeback, and the place is moved-from
         // afterwards, so a later use traps `use-after-move`.
+        //
+        // `[mem.region.freeze.4]` (issue #20): a write-back of an UNMODIFIED
+        // receiver is not a write. A method that only read its receiver is an
+        // ordinary read — legal through frozen data to any depth, per
+        // `[mem.region.edge.imm]` — so the store (and its exclusive-access
+        // check and freeze guard) happens only when the method actually
+        // changed the value. `frozen[0].body.words()` reads; it must not trap.
         let written = match (&path, &result) {
             (Some(path), Ok(_)) if mode == Some(ParamMode::Take) => {
                 self.fire(Rule::ModeTake, span, &format!("`take {path}` (receiver)"));
                 self.move_path(path, span).map(|_| ())
             }
-            (Some(path), Ok(_)) => self.write_path(path, receiver_value, span),
+            (Some(path), Ok(_)) if receiver_value != original_receiver => {
+                self.write_path(path, receiver_value, span)
+            }
             _ => Ok(()),
         };
         if let Some((key, _, child)) = receiver_tag {

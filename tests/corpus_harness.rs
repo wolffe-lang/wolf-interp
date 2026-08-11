@@ -160,14 +160,25 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             `[mem.str.get]`, `[proto.record.warn]`/`[proto.cmp.warn]`,
     //             and the directive-matcher trailing-newline allowance in
     //             `[conf.directive.check]`.)
+    //   13b811f → 221 files (0.1.6: the wave-four pin — #41 capture law,
+    //             s34 procs, s35 io reactor, s39/s40/#40 native str/List/fs.
+    //             The corpus grows 22: `lints/` ×12 (the s68 shared-analysis
+    //             wave, every file a `warns:` ledger), `conc/` ×3
+    //             (`when_nested.lu` E1103 and the s34 proc pair),
+    //             `projects/` ×3 (count, rpn, wordtree — the P-project
+    //             witnesses), `net/` ×2 (s35; sockets are outside this
+    //             machine by design), `comptime/sandbox_net_socket.lu` and
+    //             `test/assert_test.lu` (the s39 `test` namespace). The
+    //             spec grows `[mem.region.freeze.4]`, `[conc.chan.default]`
+    //             and the s34/s35 schedule points.)
     let report = report();
     assert_eq!(
         report.total(),
-        199,
+        221,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 181);
+    assert_eq!(report.entries(), 203);
     assert_eq!(report.members(), 18);
 }
 

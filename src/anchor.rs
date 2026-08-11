@@ -24,9 +24,13 @@ pub const REGISTERED_NAMESPACES: [&str; 7] =
 
 /// Namespaces reserved for spec documents not yet written; tags in them are
 /// legal and counted as *forward* (`[conf.anchor.ns]`).
-pub const RESERVED_NAMESPACES: [&str; 15] = [
+pub const RESERVED_NAMESPACES: [&str; 16] = [
     "str", "err", "task", "proc", "sync", "generics", "arith", "ffi", "unsafe", "comptime", "perf",
     "mod", "std", "ty",
+    // `test` appended 2026-08-11 by s39 (pin 13b811f) for the built-in test
+    // framework's litmus tier — `[conf.anchor.ns]`'s own additive contract,
+    // D34/D36 own the future spec document.
+    "test",
     // is08: the REPL-spec notes' own namespace (`docs/repl.md`). The REPL
     // extends the spec — its incremental-definition rules are deliberately
     // NOT spec/01..05 clauses — and is09 exports the notes.

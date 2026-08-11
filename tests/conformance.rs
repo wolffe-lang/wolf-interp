@@ -208,8 +208,11 @@ fn every_parseable_file_resolves_under_sema_lite() {
     // E1301/E1302 (the unsafe ring and its signature boundary — those two
     // corpus files are DIV-2026-012, filtered as filed), E0805 (the cast
     // matrix's bool column), E0411 (`s[i]`), E0412/E0413 (format specs,
-    // comptime-known at the literal). A file that *pins* one of these codes
-    // fails here exactly as the corpus says. Any other resolve failure
+    // comptime-known at the literal). Since 0.1.6 (the 13b811f re-pin,
+    // issue #19) it owns E0004 (`1.e5` — `int` has no member `e5`) and the
+    // E11xx capture law: E1101 (a task writes to a captured name), E1102
+    // (a visibly unsendable channel payload), E1103 (nested `when`). A file
+    // that *pins* one of these codes fails here exactly as the corpus says. Any other resolve failure
     // would mean the module machinery broke, not that a program is
     // ill-typed.
     for case in cases() {
@@ -217,8 +220,10 @@ fn every_parseable_file_resolves_under_sema_lite() {
             continue;
         }
         let observation = frontend::observe(&case.source, Some(Phase::Resolve));
-        if let Some(code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413")) =
-            pinned_code(case.check.as_ref())
+        if let Some(
+            code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E1101"
+            | "E1102" | "E1103"),
+        ) = pinned_code(case.check.as_ref())
         {
             assert_eq!(
                 observation.verdict,
@@ -250,8 +255,10 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
         }
         for rung in [Phase::Typecheck, Phase::Mem, Phase::Wir] {
             let observation = frontend::observe(&case.source, Some(rung));
-            if let Some(code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413")) =
-                pinned_code(case.check.as_ref())
+            if let Some(
+                code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
+                | "E1101" | "E1102" | "E1103"),
+            ) = pinned_code(case.check.as_ref())
             {
                 assert_eq!(
                     observation.verdict,

@@ -101,6 +101,20 @@ use crate::schema;
 /// is its only static tier) with the counterparty's codes and spans, while
 /// wolfc's emissions live at its mem rung — the DIV-2026-011 shape again,
 /// same open `[proto.cmp]` question, one filing covering both files.
+///
+/// DIV-2026-013 CLOSED at pin `13b811f` (0.1.6): wolfc's conform-run no
+/// longer E0301-rejects its own s38 fs/io files — it reports
+/// `unsupported@wir` there, which is never a divergence, so the three
+/// entries retired. DIV-2026-014's wiring half closed the same way (wolfc
+/// emits E0411/E0412/E0413 now); its residue is the rung question, and the
+/// entries stay with updated summaries.
+///
+/// DIV-2026-015 (0.1.6, pin `13b811f`): the E11xx capture-law fail files
+/// plus `intdot_exponent.lu` — issue #19's realignment put E1101/E1102/
+/// E1103/E0004 at this machine's resolve rung with the counterparty's codes
+/// and spans (byte-identical, observed at the pin), while wolfc's emissions
+/// live at its typecheck rung. The DIV-2026-011 `[proto.cmp]` question,
+/// fourth filing; one ruling will resolve all four families at once.
 pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
     (
         "memory/mode_missing_mut.lu",
@@ -127,42 +141,52 @@ pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
          wolfc's record places the emission at typecheck — the DIV-2026-011 rung question",
     ),
     (
-        "fs/error_row.lu",
-        "DIV-2026-013",
-        "wolfc's conform-run at the pin rejects its own s38 corpus file (E0301: `fs_read_text` \
-         not in scope) — the checked-lane builtins exist but the conform-run wiring landed \
-         after f0da6e6; counterparty suspected, resolves at the next pin bump",
-    ),
-    (
-        "fs/roundtrip.lu",
-        "DIV-2026-013",
-        "wolfc's conform-run at the pin rejects its own s38 corpus file (E0301: `fs_write_text` \
-         not in scope) — same conform-run wiring lag; counterparty suspected",
-    ),
-    (
-        "io/eprint.lu",
-        "DIV-2026-013",
-        "wolfc's conform-run at the pin rejects its own s38 corpus file (E0301: `eprint` not in \
-         scope) while this machine runs it to the pinned stdout; counterparty suspected",
-    ),
-    (
         "strings/char_index_fail.lu",
         "DIV-2026-014",
-        "the corpus pins fail(E0411) and this machine rejects so; wolfc's conform-run at the \
-         pin reports unsupported@resolve instead of its own pinned code — counterparty \
-         suspected (the emission is not wired into conform-run at f0da6e6)",
+        "same fail(E0411), same span [420,424]; the 0.1.5 wiring lag resolved at pin 13b811f \
+         (wolfc emits its pinned code now, at typecheck) and the residue is the DIV-2026-011 \
+         rung question",
     ),
     (
         "strings/format_spec_malformed.lu",
         "DIV-2026-014",
-        "the corpus pins fail(E0412) and this machine rejects so; wolfc's conform-run at the \
-         pin reports unsupported@wir — counterparty suspected, same wiring lag",
+        "same fail(E0412), same span [530,534] (the `:>08` spec — this machine realigned its \
+         span at 0.1.6); wolfc emits at typecheck — the DIV-2026-011 rung question",
     ),
     (
         "strings/format_spec_mismatch.lu",
         "DIV-2026-014",
-        "the corpus pins fail(E0413) and this machine rejects so; wolfc's conform-run at the \
-         pin reports unsupported@wir — counterparty suspected, same wiring lag",
+        "same fail(E0413), same span [414,417] (the `:.2` spec — realigned at 0.1.6); wolfc \
+         emits at typecheck — the DIV-2026-011 rung question",
+    ),
+    (
+        "conc/store_buffer.lu",
+        "DIV-2026-015",
+        "same fail(E1101), same span [438,439] (the first captured write, `x`), and the \
+         W1101/W1102 warning sets agree; this machine rejects at resolve (its only static \
+         tier) where wolfc's record places the emission at typecheck — the DIV-2026-011 \
+         rung question, fourth family",
+    ),
+    (
+        "conc/chan_unsendable.lu",
+        "DIV-2026-015",
+        "same fail(E1102), same span [275,284] (the `List[int]` payload); this machine \
+         rejects at resolve where wolfc's record places the emission at typecheck — the \
+         DIV-2026-011 rung question",
+    ),
+    (
+        "conc/when_nested.lu",
+        "DIV-2026-015",
+        "same fail(E1103), same span [642,755] (the whole inner `when`); this machine \
+         rejects at resolve where wolfc's record places the emission at typecheck — the \
+         DIV-2026-011 rung question",
+    ),
+    (
+        "grammar/intdot_exponent.lu",
+        "DIV-2026-015",
+        "same fail(E0004), same span [291,295] (`1.e5`, whole expression); this machine \
+         rejects at resolve (issue #19's s68 correction: the code stays an error) where \
+         wolfc's record places the emission at typecheck — the DIV-2026-011 rung question",
     ),
 ];
 
@@ -1145,8 +1169,24 @@ mod tests {
         // same rung question for the two unsafe-tier fail-files issue #18
         // closed: E1301/E1302 at resolve here, at mem there, codes and spans
         // byte-identical — one filing, two files, resolved by whatever
-        // ruling closes DIV-2026-011.
-        assert_eq!(FILED_DIVERGENCES.len(), 10);
+        // ruling closes DIV-2026-011. DIV-2026-013 CLOSED at the 0.1.6
+        // re-pin (`13b811f`): wolfc's s38 conform-run wiring landed and its
+        // three entries retired. DIV-2026-014's residue rides DIV-2026-011,
+        // and DIV-2026-015 (0.1.6, issue #19) files the four realigned
+        // statics — E1101/E1102/E1103/E0004 at resolve here, typecheck
+        // there, codes and spans byte-identical. Eleven entries: one (011)
+        // + three (012) + three (014) + four (015).
+        assert_eq!(FILED_DIVERGENCES.len(), 11);
+        assert_eq!(
+            filed("upstream/corpus/conc/store_buffer.lu").map(|(id, _)| id),
+            Some("DIV-2026-015")
+        );
+        assert_eq!(
+            filed("upstream/corpus/grammar/intdot_exponent.lu").map(|(id, _)| id),
+            Some("DIV-2026-015")
+        );
+        assert_eq!(filed("upstream/corpus/fs/error_row.lu"), None);
+        assert_eq!(filed("upstream/corpus/io/eprint.lu"), None);
         assert_eq!(
             filed("upstream/corpus/memory/mode_missing_mut.lu").map(|(id, _)| id),
             Some("DIV-2026-011")

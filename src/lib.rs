@@ -39,6 +39,7 @@ pub mod frontend;
 pub mod fuzz;
 pub mod ledger;
 pub mod lex;
+pub mod lint;
 pub mod parse;
 pub mod phase;
 pub mod protocol;
@@ -287,6 +288,22 @@ fn record_of(
         extensions.insert("x-ub-tree".to_owned(), serde_json::json!(finding.tree));
     }
 
+    // `[proto.record.warn]`: since 0.1.6 this implementation runs warning
+    // analyses (the s68 subset — `lint::IMPLEMENTED`), so a record whose
+    // program loaded carries the array, and the same observations ride
+    // `diagnostics` with `"severity": "warning"` — after the error, whose
+    // first position `[proto.cmp.phase]` compares. A program that never
+    // loaded (lex/parse failure) still omits the array: the analyses did
+    // not run, and honest-absent is the posture.
+    let mut diagnostics = observation.diagnostics;
+    if let Some(warns) = &observation.warnings {
+        diagnostics.extend(warns.iter().map(|warning| protocol::Diagnostic {
+            code: warning.code.clone(),
+            span: warning.span,
+            severity: "warning".to_owned(),
+        }));
+    }
+
     let record = ObservationRecord {
         protocol: PROTOCOL_VERSION,
         impl_name: IMPL_NAME.to_owned(),
@@ -295,11 +312,8 @@ fn record_of(
         file,
         phase_reached: observation.phase_reached,
         seeded: request.is_seeded(),
-        diagnostics: observation.diagnostics,
-        // Honest-absent (`[proto.record.warn]`): this implementation runs no
-        // warning analyses yet, so no record carries the array — an empty
-        // array would claim analyses it does not run.
-        warnings: None,
+        diagnostics,
+        warnings: observation.warnings.clone(),
         verdict: observation.verdict,
         stdout_sha256: digest,
         stdout_inline: inline,

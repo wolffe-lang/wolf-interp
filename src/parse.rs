@@ -85,9 +85,13 @@ pub const CHOICES: &[(&str, &str)] = &[
     ),
     (
         "gram.lex.number",
-        "E0004 is unreachable: `[gram.amb.intdot]` requires `1.e5` to *parse* as \
-         member access on `1`, so nothing at the parse tier can reject it. The code \
-         belongs to a lint, not to this rung.",
+        "E0004 is unreachable *at this rung*: `[gram.amb.intdot]` requires `1.e5` \
+         to *parse* as member access on `1`, so nothing at the parse tier can \
+         reject it. The code stays an ERROR, never a lint (issue #19's s68 \
+         correction): `int` has no member `e5`, so the expression has no meaning \
+         ([diag.sev.error]) — sema produces E0004 at the resolve rung \
+         (`lint::analyze`), closing the last E000x unsupported(interp) \
+         conservatism row.",
     ),
     (
         "gram.expr.unsafe",
