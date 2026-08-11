@@ -37,6 +37,31 @@ interleaving. The closed v1 set:
   set's ids. (Appended 2026-08-11 by s33: `[conc.when.order]` and
   sched-ev/0 kind 5 already name `acquire`; this list omitted it only
   because s32 had no sync objects.)
+- `proc.spawn` — a proc comes up under the root supervisor
+  (`[conc.task.root]`; subject: the packed generational proc id).
+- `proc.kill` — kill teardown is requested for a proc
+  (`[conc.proc.kill]` step 1 begins; this is also `--chaos`'s s36
+  kill-injection point).
+- `proc.exit` — a proc's exit reason is determined (sched-ev/0 kind
+  8's native twin; subject carries the proc id and the reason class
+  per `[conc.proc.exit]`). Monitor and link DELIVERIES ride ordinary
+  `chan.send` edges, so delivery order is already recorded without a
+  separate kind. (All three appended 2026-08-11 by s34 per
+  `[sched.stable]`'s append rule — the module's "proc events join in
+  s34" reservation, activated; cross-version comparison stays by
+  verdict.)
+- `io.arrive` — a pending io completion is delivered to its parked
+  waiter (s35's reactor; subject: the submission token). WHICH
+  pending completion is delivered next, and when, is the
+  interleaving decision; s36's `--chaos` delay/reorder injection
+  lands on this seam, and the simulated reactor implements it.
+  `timer.fire` gains the reactor's timer wheel as a second producer
+  — same activated kind, inherited per this section's rule; a fired
+  io deadline is a `timer.fire` event. (Appended 2026-08-11 by s35
+  per `[sched.stable]`'s append rule — the net module's reserved
+  "completion-arrival appends its own kind" note, activated;
+  sched-ev/0 has no counterpart, and cross-version comparison is by
+  verdict, so the append is safe.)
 
 ## 2. The hook shape `[sched.point.hook]`
 
