@@ -149,9 +149,10 @@ jobs:
           # P1's witness is the corpus (memory/unsafe_ub_uaf.lu, checked
           # by the run-rung block above); the protector shape is a unit
           # test (tests/prov_machine.rs) since the v0.1.5 suite rebuild.
+          # T1 retired to Unreachable at v0.1.5 (as-bool is a static
+          # rejection now); the loop is the directory's actual contents.
           for row in p2_frozen_write p3_out_of_bounds p4_region_freed \
-                     p5_false_noalias p6_false_door l1_uninitialized l2_dangling \
-                     t1_invalid_bool; do
+                     p5_false_noalias p6_false_door l1_uninitialized l2_dangling; do
             id=$(echo "$row" | cut -c1-2 | tr '[:lower:]' '[:upper:]')
             out=$(cargo run --quiet -- conform-run "tests/ub/$row.lu" --json)
             echo "$out" | grep -q "\"verdict\":\"ub(mem.ub)\"" \
