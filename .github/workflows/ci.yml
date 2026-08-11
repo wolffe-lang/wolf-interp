@@ -99,17 +99,17 @@ jobs:
 
           # resolve: sema-lite completes on every well-formed file.
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/regions.lu --phase=resolve --json)
-          echo "$out" | grep -q '"phase_reached":"resolve","seeded":false,"diagnostics":\[\],"verdict":"pass"'
+          echo "$out" | grep -Eq '"phase_reached":"resolve","seeded":false,"diagnostics":\[\],("warnings":\[\],)?"verdict":"pass"'
 
           # typecheck: NOT performed. The honest answer is the deepest completed
           # rung plus `unsupported` — never a claim of `typecheck`.
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --phase=typecheck --json)
-          echo "$out" | grep -q '"phase_reached":"resolve","seeded":false,"diagnostics":\[\],"verdict":"unsupported"'
+          echo "$out" | grep -Eq '"phase_reached":"resolve","seeded":false,"diagnostics":\[\],("warnings":\[\],)?"verdict":"unsupported"'
 
           # run: files from the first-run ledger, by verdict — one per rung of
           # the trap vocabulary this implementation reaches.
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --json)
-          echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"'
+          echo "$out" | grep -Eq '"phase_reached":"run","seeded":false,"diagnostics":\[\],("warnings":\[\],)?"verdict":"exit(0)"'
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/hello.lu --json)
           echo "$out" | grep -q '"stdout_inline":"hello, wolf'
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/overflow.lu --json)
@@ -122,7 +122,7 @@ jobs:
           for f in region_ambient_ok region_multiopen_ok region_multiopen_swap \
                    region_iso_edge_ok shared_ok; do
             out=$(cargo run --quiet -- conform-run "vendor/upstream/corpus/memory/$f.lu" --json)
-            echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"' \
+            echo "$out" | grep -Eq '"phase_reached":"run","seeded":false,"diagnostics":\[\],("warnings":\[\],)?"verdict":"exit(0)"' \
               || { echo "::error::memory/$f.lu no longer reaches run cleanly"; exit 1; }
           done
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/memory/handle_stale.lu --json)
@@ -133,9 +133,9 @@ jobs:
           # ([mem.unsafe.raw.2]), and the use-after-free one is the oracle's
           # verdict rather than a trap ([proto.record.verdict]).
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/memory/unsafe_noalias.lu --json)
-          echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"'
+          echo "$out" | grep -Eq '"phase_reached":"run","seeded":false,"diagnostics":\[\],("warnings":\[\],)?"verdict":"exit(0)"'
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/memory/unsafe_ub_uaf.lu --json)
-          echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"ub(mem.ub)"'
+          echo "$out" | grep -Eq '"phase_reached":"run","seeded":false,"diagnostics":\[\],("warnings":\[\],)?"verdict":"ub(mem.ub)"'
           # [proto.record.ub]: the row id rides `x-ub-row`, and the D2 pairing —
           # the optimization the row licenses — rides the record too, because a
           # UB rule that licenses nothing is one this language does not have.
@@ -162,7 +162,7 @@ jobs:
           done
           while IFS= read -r f; do
             out=$(cargo run --quiet -- conform-run "$f" --json)
-            echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"' \
+            echo "$out" | grep -Eq '"phase_reached":"run","seeded":false,"diagnostics":\[\],("warnings":\[\],)?"verdict":"exit(0)"' \
               || { echo "::error::$f is a near-miss twin and must run clean: $out"; exit 1; }
           done < <(find tests/ub/ok -name '*.lu' | sort)
 
@@ -170,7 +170,7 @@ jobs:
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/faults/overflow_add.lu --json)
           echo "$out" | grep -q '"verdict":"trap(overflow)"'
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/comptime/norm_linear.lu --json)
-          echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"'
+          echo "$out" | grep -Eq '"phase_reached":"run","seeded":false,"diagnostics":\[\],("warnings":\[\],)?"verdict":"exit(0)"'
 
           # `--trace=mem` is a filter over the rule registry: every line it
           # keeps cites a `mem.*` clause, and the region events are all there.
@@ -215,7 +215,7 @@ jobs:
           # scheduler. Unseeded records declare seeded:false and run FIFO.
           for f in conc/cancel_sibling conc/message_passing conc/select_seeded; do
             out=$(cargo run --quiet -- conform-run "vendor/upstream/corpus/$f.lu" --json)
-            echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"'               || { echo "::error::$f.lu no longer reaches run cleanly: $out"; exit 1; }
+            echo "$out" | grep -Eq '"phase_reached":"run","seeded":false,"diagnostics":\[\],("warnings":\[\],)?"verdict":"exit(0)"'               || { echo "::error::$f.lu no longer reaches run cleanly: $out"; exit 1; }
           done
           # `--seed=N` requests the spec/03 §5 deterministic schedule, the
           # record declares it ([proto.seed.flag]), and the same seed replays
@@ -238,7 +238,7 @@ jobs:
           # closing the rest of is03's §5.5 finding. The seed corpus's flagship
           # memory program reaching `run` was two pins in the making — keep it.
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/regions.lu --json)
-          echo "$out" | grep -q '"phase_reached":"run","seeded":false,"diagnostics":\[\],"verdict":"exit(0)"'
+          echo "$out" | grep -Eq '"phase_reached":"run","seeded":false,"diagnostics":\[\],("warnings":\[\],)?"verdict":"exit(0)"'
 
       # is07: the schedule explorer, bounded, over the whole conc litmus tier
       # — verdict stability (the DRF-SC promise, D14) as a process assertion
