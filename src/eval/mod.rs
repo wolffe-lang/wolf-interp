@@ -324,6 +324,11 @@ struct Scope {
 struct Frame {
     module: String,
     scopes: Vec<Scope>,
+    /// The enclosing function's declared return-row tags — what a bare
+    /// lowercase name at a raise site resolves against (issue #12, the
+    /// interpreter half of wolf-lang#4): `return none` under
+    /// `-> int ! {none}` produces the tag value `none`.
+    row: Vec<String>,
 }
 
 /// The state every task of one program run shares, behind locks.
@@ -601,6 +606,7 @@ impl Machine {
         self.frames.push(Frame {
             module: String::new(),
             scopes: vec![Scope::default()],
+            row: Vec::new(),
         });
 
         // Item-level `let`/`var`/`const` evaluate once, in declaration order.
@@ -1992,6 +1998,7 @@ impl Machine {
         self.frames.push(Frame {
             module: module.to_owned(),
             scopes: vec![Scope::default()],
+            row: crate::sema::declared_raise_tags(decl),
         });
         let retags = std::mem::take(&mut self.pending_retags);
         let frame = self.frames.len() - 1;
@@ -2578,6 +2585,15 @@ impl Machine {
                 Ok(match key {
                     Value::Int(i, _) => path.project(Proj::Index(i)),
                     Value::Str(s) => path.project(Proj::Key(s)),
+                    // A slice expression is a *value*, not a place (issue
+                    // #10, wolf-std F-0021): refusing here sends
+                    // `d[0..1].upper()` down the by-value receiver path,
+                    // exactly where `"abc"[0..1].upper()` already runs.
+                    Value::Range { .. } => {
+                        return unsupported(
+                            "a slice expression denotes a value, not a place".to_owned(),
+                        );
+                    }
                     other => path.project(Proj::Key(other.to_string())),
                 })
             }
@@ -2984,6 +3000,26 @@ impl Machine {
             // rows need no declaration (`[err.rows]`).
             if name.starts_with(char::is_uppercase) {
                 self.fire(Rule::ErrRows, expr.span, &format!("error tag `{name}`"));
+                return Ok(Value::Error(Box::new(ErrorValue {
+                    tag: name.clone(),
+                    payload: Vec::new(),
+                })));
+            }
+            // A lowercase bare tag resolves against the enclosing function's
+            // declared row (issue #12, the interpreter half of wolf-lang#4):
+            // `return none` under `-> int ! {none}` raises the tag. The
+            // eager half lives in sema's `raise_check` — by the time this
+            // runs, an unresolvable raise has already been refused.
+            if self
+                .frames
+                .last()
+                .is_some_and(|frame| frame.row.iter().any(|tag| tag == name))
+            {
+                self.fire(
+                    Rule::ErrRows,
+                    expr.span,
+                    &format!("declared-row tag `{name}`"),
+                );
                 return Ok(Value::Error(Box::new(ErrorValue {
                     tag: name.clone(),
                     payload: Vec::new(),
@@ -3401,7 +3437,7 @@ impl Machine {
                 .map(|(key, slot)| Value::Tuple(vec![Slot::live(key), slot]))
                 .collect(),
             other => {
-                return unsupported(format!("`for` cannot iterate {}", other.kind()));
+                return self.eval_for_iter(other, pattern, body, span);
             }
         };
 
@@ -3422,6 +3458,132 @@ impl Machine {
             }
         }
         Ok(Value::Unit)
+    }
+
+    /// `[mem.iter.for]` — `for pat in e { body }` over an `Iter[T]`
+    /// implementor desugars to the explicit drive loop:
+    ///
+    /// ```text
+    /// var it = e
+    /// loop {
+    ///     let pat = (mut it).next() else { break }
+    ///     body
+    /// }
+    /// ```
+    ///
+    /// `next(mut self) -> T ! {done}` is called through the same
+    /// call-by-value-result machinery as every method: the iterator value is
+    /// the receiver, its post-call `self` is the next iteration's iterator.
+    /// The desugar's bare `else { break }` catches *any* raise — `done` and
+    /// anything else the row carries — exactly as spelled.
+    fn eval_for_iter(
+        &mut self,
+        iterable: Value,
+        pattern: &Pattern,
+        body: &Block,
+        span: Span,
+    ) -> EResult<Value> {
+        let Some((module, decl)) = self.iter_next_of(&iterable) else {
+            if let Some((module, _)) = self.method_of(&iterable, "next") {
+                let _ = module;
+                return unsupported(format!(
+                    "`for` iterates `Iter` implementors by name ([mem.iter.impl]): {} has a \
+                     `next` method, but no `impl Iter for …` block declares it",
+                    iterable.kind()
+                ));
+            }
+            return unsupported(format!("`for` cannot iterate {}", iterable.kind()));
+        };
+        self.fire(
+            Rule::Flow,
+            span,
+            "for over an `Iter` implementor: the [mem.iter.for] drive loop",
+        );
+        let mut it = iterable;
+        loop {
+            self.step()?;
+            // `let pat = (mut it).next() else { break }`
+            self.pending_retags = Vec::new();
+            let applied = self.call_fn(&decl, &module, vec![it], span)?;
+            it = applied.params.into_iter().next().unwrap_or(Value::Unit);
+            if applied.value.is_error() {
+                self.fire(Rule::ErrElse, span, "the drive loop's `else { break }`");
+                break;
+            }
+            self.push_scope();
+            let bound = self.bind_pattern(pattern, applied.value);
+            let result = match bound {
+                Ok(()) => self.eval_block(body),
+                Err(signal) => Err(signal),
+            };
+            self.pop_scope();
+            match result {
+                Ok(_) | Err(Signal::Continue) => {}
+                Err(Signal::Break(value)) => return Ok(value),
+                Err(other) => return Err(other),
+            }
+        }
+        Ok(Value::Unit)
+    }
+
+    /// The `next` an `impl Iter for <type>` block declares for this value's
+    /// type, if any — trait conformance is by name (`[mem.iter.impl]`), so an
+    /// inherent `next` does not qualify.
+    fn iter_next_of(&self, value: &Value) -> Option<(String, Box<crate::ast::FnDecl>)> {
+        let (module, defs) = self.method_defs_of(value, "next")?;
+        defs.iter()
+            .find(|def| def.trait_name.as_deref() == Some("Iter"))
+            .map(|def| (module, def.decl.clone()))
+    }
+
+    /// An impl-block method for this value's type, by name, in the s17
+    /// resolution order: the type's own impl wins over a trait's — no
+    /// fallback chains (`[ty.method.order]`).
+    fn method_of(&self, value: &Value, method: &str) -> Option<(String, Box<crate::ast::FnDecl>)> {
+        let (module, defs) = self.method_defs_of(value, method)?;
+        defs.iter()
+            .find(|def| def.trait_name.is_none())
+            .or_else(|| defs.first())
+            .map(|def| (module, def.decl.clone()))
+    }
+
+    /// The trait-qualified form: `Speak.speak(d)` reaches trait `Speak`'s
+    /// method for `d`'s type even where an inherent method shadows it
+    /// (`[ty.trait.qualified-call]`).
+    fn trait_method_of(
+        &self,
+        trait_name: &str,
+        method: &str,
+        value: &Value,
+    ) -> Option<(String, Box<crate::ast::FnDecl>)> {
+        let (module, defs) = self.method_defs_of(value, method)?;
+        defs.iter()
+            .find(|def| def.trait_name.as_deref() == Some(trait_name))
+            .map(|def| (module, def.decl.clone()))
+    }
+
+    fn method_defs_of(
+        &self,
+        value: &Value,
+        method: &str,
+    ) -> Option<(String, Vec<crate::sema::MethodDef>)> {
+        let Value::Struct { name, .. } = value else {
+            return None;
+        };
+        // REPL generations (`Point#2`) impl under their base name.
+        let name = name.split('#').next().unwrap_or(name);
+        let current = self
+            .frames
+            .last()
+            .map(|f| f.module.clone())
+            .unwrap_or_default();
+        let modules = &self.shared.program.modules;
+        std::iter::once(&current)
+            .chain(modules.keys().filter(|k| **k != current))
+            .find_map(|m| {
+                let defs = modules.get(m)?.methods.get(name)?.get(method)?;
+                Some((m.clone(), defs.clone()))
+            })
     }
 
     fn eval_closure(&mut self, params: &[ClosureParam], body: &Expr, span: Span) -> EResult<Value> {
@@ -3496,6 +3658,30 @@ impl Machine {
                         Rule::ErrRows,
                         pattern.span,
                         &format!("`{name}` over a tag value: a row-tag pattern"),
+                    );
+                    return Ok(e.payload.is_empty() && e.tag == *name);
+                }
+                // The lowercase mirror (issue #12, wolf-lang#4's other
+                // half): over a tag-shaped scrutinee, a lowercase identifier
+                // that names a tag some signature of the module *declares*
+                // in a row is a row-tag pattern — `match err { empty => …,
+                // negative => … }` under `-> int ! {empty, negative}`
+                // dispatches on the tag. An undeclared lowercase name still
+                // binds (`else |err| …` keeps its binder), which is the
+                // sema-lite reading of the checker's row-typed resolution.
+                if name.starts_with(char::is_lowercase)
+                    && let Value::Error(e) = value
+                    && self
+                        .shared
+                        .program
+                        .modules
+                        .get(&module)
+                        .is_some_and(|m| m.row_tags.contains(name))
+                {
+                    self.fire(
+                        Rule::ErrRows,
+                        pattern.span,
+                        &format!("`{name}` names a declared row tag: a row-tag pattern"),
                     );
                     return Ok(e.payload.is_empty() && e.tag == *name);
                 }
@@ -3612,6 +3798,74 @@ impl Machine {
             return self.eval_method(&receiver, &method, mode, args, span);
         }
 
+        // `assert` is an **intrinsic**, one name in both tiers, and is never
+        // shadowed by a library function (`[conf.trap.assert]`; wolf-std
+        // F-0009 observed a module-level `assert` severing callers from the
+        // trap). The two-argument form's `msg` is evaluated **only** on the
+        // failing path — which is why the intrinsic is handled here, before
+        // the argument row is evaluated.
+        if let ExprKind::Path(path) = &*callee.kind
+            && path.is_single()
+            && path.segments[0].name == "assert"
+            && !self.local_exists("assert")
+        {
+            return self.eval_assert(args, span);
+        }
+
+        // `Speak.speak(d)` — the trait-qualified call reaches the trait's
+        // method for the first argument's type, even where an inherent
+        // method shadows it (`[ty.trait.qualified-call]`, the s17 resolution
+        // order's explicit escape).
+        if let ExprKind::Path(path) = &*callee.kind
+            && path.segments.len() == 2
+            && !self.local_exists(&path.segments[0].name)
+            && !self.globals.contains_key(&path.segments[0].name)
+        {
+            let module = self
+                .frames
+                .last()
+                .map(|f| f.module.clone())
+                .unwrap_or_default();
+            let head = path.segments[0].name.clone();
+            let is_trait = matches!(
+                self.shared.program.lookup(&module, &head, false),
+                Some(Def::Opaque("trait"))
+            );
+            if is_trait {
+                let method = path.segments[1].name.clone();
+                let evaluated = self.eval_args(args)?;
+                let Some(first) = evaluated.values.first() else {
+                    return unsupported(format!(
+                        "`{head}.{method}` is a trait-qualified call; the receiver is the \
+                         first argument, and there is none"
+                    ));
+                };
+                let dispatched = match self.trait_method_of(&head, &method, first) {
+                    Some((impl_module, decl)) => {
+                        self.pending_retags = Vec::new();
+                        self.call_fn(&decl, &impl_module, evaluated.values.clone(), span)
+                    }
+                    None => unsupported(format!(
+                        "`{head}.{method}` does not resolve to an `impl {head} for …` \
+                         method of {}",
+                        first.kind()
+                    )),
+                };
+                let finals = match &dispatched {
+                    Ok(applied) => applied.params.clone(),
+                    Err(_) => evaluated.values,
+                };
+                self.finish_args(
+                    &evaluated.writebacks,
+                    &finals,
+                    evaluated.held,
+                    &evaluated.protectors,
+                    span,
+                );
+                return dispatched.map(|applied| applied.value);
+            }
+        }
+
         let target = self.eval(callee)?;
         let evaluated = self.eval_args_for(args, Callee::of(&target))?;
         // Handed to `call_fn` across `apply`, which performs no evaluation of
@@ -3635,6 +3889,48 @@ impl Machine {
             span,
         );
         result.map(|applied| applied.value)
+    }
+
+    /// `assert(cond)` / `assert(cond, msg)` — the intrinsic's own arities
+    /// (`[conf.trap.assert]`). Silent and effect-free when the condition
+    /// holds; on the failing path `msg` is evaluated, rendered as one line to
+    /// stdout, and the `assert` trap fires at the call's own span.
+    fn eval_assert(&mut self, args: &[Arg], span: Span) -> EResult<Value> {
+        let (cond, msg) = match args {
+            [cond] => (cond, None),
+            [cond, msg] => (cond, Some(msg)),
+            _ => {
+                return unsupported(format!(
+                    "`assert` is the intrinsic's own arity: a condition and an optional \
+                     message, not {} argument(s)",
+                    args.len()
+                ));
+            }
+        };
+        let value = self.eval(&cond.expr)?;
+        let Some(holds) = value.as_bool() else {
+            return unsupported(format!(
+                "`assert` takes a bool condition, got {}",
+                value.kind()
+            ));
+        };
+        if holds {
+            // Silent and effect-free — the message is *not* a second
+            // condition and is never evaluated on the passing path
+            // (the counterparty's #19 shape).
+            self.fire(Rule::Assert, span, "assert holds; the message stays cold");
+            return Ok(Value::Unit);
+        }
+        if let Some(msg) = msg {
+            let rendered = self.eval(&msg.expr)?;
+            self.out(&format!("{rendered}\n"));
+        }
+        self.fault(
+            TrapKind::Assert,
+            Rule::Assert,
+            span,
+            "assertion failed".to_owned(),
+        )
     }
 
     /// Splits a callee into `(receiver, method, receiver mode)` when it is a
@@ -3722,6 +4018,14 @@ impl Machine {
                         .map(|f| f.module.clone())
                         .unwrap_or_default(),
                     scopes: vec![Scope::default()],
+                    // A closure body raising a bare tag reads the enclosing
+                    // function's declared row — the closure has no row of
+                    // its own to declare.
+                    row: self
+                        .frames
+                        .last()
+                        .map(|f| f.row.clone())
+                        .unwrap_or_default(),
                 });
                 for (name, value) in &closure.captures {
                     self.declare(name, Slot::live(value.clone()));
@@ -3801,16 +4105,38 @@ impl Machine {
             .as_ref()
             .map(|(key, alloc, child)| self.prov().rebind_place(key, *alloc, *child));
         let mut receiver_value = value;
-        let result = builtin::method(
-            self,
-            &mut receiver_value,
-            method,
-            evaluated.values.clone(),
-            span,
-        );
+        let mut final_args = evaluated.values.clone();
+        // An impl-block method wins over the builtin surface for the types
+        // that have one (user structs); the receiver is `self`, and its
+        // post-call value is the writeback — call-by-value-result, the same
+        // contract as every `mut` parameter.
+        let result = match self.method_of(&receiver_value, method) {
+            Some((module, decl)) => {
+                let mut call_args = Vec::with_capacity(evaluated.values.len() + 1);
+                call_args.push(receiver_value.clone());
+                call_args.extend(evaluated.values.iter().cloned());
+                self.pending_retags = Vec::new();
+                self.call_fn(&decl, &module, call_args, span)
+                    .map(|applied| {
+                        let mut params = applied.params.into_iter();
+                        if let Some(next_self) = params.next() {
+                            receiver_value = next_self;
+                        }
+                        final_args = params.collect();
+                        applied.value
+                    })
+            }
+            None => builtin::method(
+                self,
+                &mut receiver_value,
+                method,
+                evaluated.values.clone(),
+                span,
+            ),
+        };
         self.finish_args(
             &evaluated.writebacks,
-            &evaluated.values,
+            &final_args,
             evaluated.held,
             &evaluated.protectors,
             span,
@@ -4200,6 +4526,117 @@ impl Machine {
                     .to_owned(),
             );
         }
+
+        // The closed cast set's numeric family (`[ty.cast.closed-set]`,
+        // issue #11 — wolf-std F-0022): `as` between numeric types
+        // **converts**. It never merely retags: `3 as f64` is `3.0`, and a
+        // value outside the target's range is an X3 trap (checked semantics
+        // in every profile), not a silent re-label. `wrapping[T]` /
+        // `saturating[T]` targets reduce by their own mode instead of
+        // trapping — the cast into a wrapping type is how intended overflow
+        // is spelled. Approximation-contract §6.9 records the float model
+        // (every float is an f64; `as f32` rounds through f32 precision).
+        let target_float = matches!(target.as_str(), "f32" | "f64");
+        match value {
+            Value::Bool(_) if target_float || IntTy::named(&target).is_some() => {
+                return unsupported(
+                    "`bool` does not cast to a numeric type: there is no truthiness bridge \
+                     (the compiler's E0805); write the value out, e.g. `if b { 1 } else { 0 }`"
+                        .to_owned(),
+                );
+            }
+            Value::Int(v, _) if target_float => {
+                #[allow(clippy::cast_precision_loss)]
+                let wide = v as f64;
+                let converted = if target == "f32" {
+                    #[allow(clippy::cast_possible_truncation)]
+                    f64::from(wide as f32)
+                } else {
+                    wide
+                };
+                self.fire(
+                    Rule::EvalOrder,
+                    span,
+                    &format!("`{v} as {target}` converts to {converted}"),
+                );
+                return Ok(Value::Float(converted));
+            }
+            Value::Float(f) => {
+                if target_float {
+                    let converted = if target == "f32" {
+                        #[allow(clippy::cast_possible_truncation)]
+                        f64::from(f as f32)
+                    } else {
+                        f
+                    };
+                    return Ok(Value::Float(converted));
+                }
+                if let Some(int_ty) = IntTy::named(&target) {
+                    // Truncation toward zero, range-checked: a float that
+                    // does not fit the target — NaN and the infinities
+                    // included — traps rather than saturating silently.
+                    let truncated = f.trunc();
+                    #[allow(clippy::cast_precision_loss)]
+                    let fits = truncated.is_finite()
+                        && truncated >= int_ty.range().0 as f64
+                        && truncated <= int_ty.range().1 as f64;
+                    if !fits {
+                        return self.trap(
+                            TrapKind::Overflow,
+                            Rule::ArithChecked,
+                            span,
+                            format!(
+                                "`{f} as {target}` does not fit `{target}` — numeric casts \
+                                 are checked conversions in every profile (X3)"
+                            ),
+                            None,
+                        );
+                    }
+                    #[allow(clippy::cast_possible_truncation)]
+                    return Ok(Value::Int(truncated as i128, int_ty));
+                }
+                if target == "str" {
+                    return unsupported(
+                        "`as` does not bridge numbers and `str` (the compiler's E0805); \
+                         interpolation `\"{x}\"` is the rendering surface"
+                            .to_owned(),
+                    );
+                }
+            }
+            Value::Int(v, from) => {
+                if target == "str" {
+                    return unsupported(
+                        "`as` does not bridge numbers and `str` (the compiler's E0805); \
+                         interpolation `\"{x}\"` is the rendering surface"
+                            .to_owned(),
+                    );
+                }
+                let coerced = coerce(Value::Int(v, from), Some(ty));
+                if let Value::Int(v2, to) = coerced {
+                    // A named integer target converts with a range check;
+                    // wrapping/saturating targets reduce by their mode.
+                    return match to.reduce(v2) {
+                        Some(reduced) => Ok(Value::Int(reduced, to)),
+                        None => self.trap(
+                            TrapKind::Overflow,
+                            Rule::ArithChecked,
+                            span,
+                            format!(
+                                "`{v2} as {}` is outside `{}` — numeric casts are checked \
+                                 conversions in every profile (X3); spell intended overflow \
+                                 `wrapping[{}]`",
+                                to.name(),
+                                to.name(),
+                                to.name()
+                            ),
+                            None,
+                        ),
+                    };
+                }
+                return Ok(coerced);
+            }
+            _ => {}
+        }
         Ok(coerce(value, Some(ty)))
     }
 
@@ -4531,7 +4968,9 @@ fn type_name(ty: &Type) -> String {
             .last()
             .map(|segment| segment.name.clone())
             .unwrap_or_default(),
-        TypeKind::Prefixed { ty, .. } | TypeKind::ErrorUnion(ty) => type_name(ty),
+        TypeKind::Prefixed { ty, .. }
+        | TypeKind::ErrorUnion(ty)
+        | TypeKind::Fallible { ty, .. } => type_name(ty),
         _ => "_".to_owned(),
     }
 }
@@ -4570,6 +5009,12 @@ fn coerce(value: Value, ty: Option<&Type>) -> Value {
             Value::Float(v)
         }
         (TypeKind::ErrorUnion(inner), value) => coerce(value, Some(inner)),
+        // `T ! {row}` checks the ok payload against `T`; an error value is
+        // already row-shaped and passes through untouched.
+        (TypeKind::Fallible { ty: inner, .. }, value) => match value {
+            Value::Error(_) => value,
+            value => coerce(value, Some(inner)),
+        },
         (_, value) => value,
     }
 }

@@ -127,14 +127,23 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             manifest, which is not a source file and moves nothing
     //             here. A handful of existing files changed only their
     //             `phase:` directive as the compiler's wir rung landed.)
+    //   d147a54 → 177 files (0.1.3: the s27+s28 pin — the spec grows
+    //             `[mem.iter.*]`, `[mem.str.*]`, `[conf.trap.assert]` and the
+    //             postfix-row type grammar (290 anchors). The corpus grows 2:
+    //             `rows/qmark_defer.lu` (the s27 control witness — `?`, defer
+    //             chains, or-patterns under guards) and
+    //             `faults/assert_msg_holds.lu` (the #19 regression witness —
+    //             a two-arg assert whose message is not a second condition).
+    //             Many existing files advance their `phase:` to `wir` as the
+    //             compiler's backend landed.)
     let report = report();
     assert_eq!(
         report.total(),
-        175,
+        177,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 159);
+    assert_eq!(report.entries(), 161);
     assert_eq!(report.members(), 16);
 }
 

@@ -81,6 +81,23 @@ fn programs() -> Vec<(String, String)> {
         names.len(),
         "a fault program exists both locally and upstream; the vendored copy is the source of          truth (tests/faults/README.md)"
     );
+    // Since pin d147a54, `corpus/faults/` also holds a *holds* witness —
+    // `assert_msg_holds.lu` pins `run(exit=0)` (the #19 regression: a
+    // two-arg assert whose message is not a second condition). This file's
+    // claims are about programs that TRAP, so only trap-pinned programs
+    // belong here; the holds witness is the corpus walk's and run-ledger's
+    // business (`tests/run_corpus.rs`).
+    out.retain(|(name, source)| {
+        let directives =
+            wolf_interp::directive::parse_header(source).unwrap_or_else(|e| panic!("{name}: {e}"));
+        matches!(
+            directives.check,
+            Some(Check::Run {
+                exit: ExitSpec::Trap(_),
+                ..
+            })
+        )
+    });
     out
 }
 

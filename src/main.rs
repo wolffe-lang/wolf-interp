@@ -64,7 +64,7 @@ fn default_spec_root() -> PathBuf {
     Path::new(upstream_root()).join("spec")
 }
 
-/// `--version`'s tail: `lupin 0.1.2 (wolf-interp, pin a0c4564)` — the crate
+/// `--version`'s tail: `lupin 0.1.3 (wolf-interp, pin d147a54)` — the crate
 /// version, the package this binary is built from, and the upstream
 /// spec/corpus pin every observation is made against.
 fn version_string() -> &'static str {

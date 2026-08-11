@@ -251,6 +251,35 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/unsafe_sig.lu", "exit(0)"),
     ("memory/unsafe_trusted.lu", "exit(0)"),
     ("typecheck/let_shadow_var_ok.lu", "exit(0)"),
+    // -- 0.1.3 (pin d147a54) -------------------------------------------------
+    // The s27 realignment's run-rung gains, two families:
+    //
+    // The pin's own new witnesses run to their pinned exit —
+    // `rows/qmark_defer.lu` (postfix rows, `?` across defer chains, lowercase
+    // declared tags dispatching in `match`) and `faults/assert_msg_holds.lu`
+    // (the two-arg assert whose holding message stays cold).
+    //
+    // Impl-block methods dispatch now (`[mem.iter.for]` needed `next`; the
+    // rest came with it): the method-shaped files that were `unsupported`
+    // reach `run`. `method_inherent` prints both resolution orders
+    // (inherent wins; `Speak.speak(d)` reaches the shadowed trait method);
+    // `receiver_modes`, `exclusivity`, `view_set_norm`, `assoc_rewrite`
+    // (`exit(7)` is its own pinned arithmetic) and `show_bound` run clean.
+    // `method_ambiguous`, `method_scope/main`, `view_set_violation` and
+    // `receiver_bare_mut` run where the compiler statically rejects — the
+    // standing conservatism class, not divergences.
+    ("faults/assert_msg_holds.lu", "exit(0)"),
+    ("memory/exclusivity.lu", "exit(0)"),
+    ("memory/view_set_norm.lu", "exit(0)"),
+    ("memory/view_set_violation.lu", "exit(0)"),
+    ("rows/qmark_defer.lu", "exit(0)"),
+    ("traits/assoc_rewrite.lu", "exit(7)"),
+    ("traits/show_bound.lu", "exit(0)"),
+    ("typecheck/method_ambiguous.lu", "exit(0)"),
+    ("typecheck/method_inherent.lu", "exit(0)"),
+    ("typecheck/method_scope/main.lu", "exit(0)"),
+    ("typecheck/receiver_bare_mut.lu", "exit(42)"),
+    ("typecheck/receiver_modes.lu", "exit(0)"),
 ];
 
 #[test]

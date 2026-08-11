@@ -1341,11 +1341,26 @@ impl<'a> Parser<'a> {
             _ => return Err(self.unexpected(anchor, "a type")),
         };
 
-        Ok(Type {
+        let mut ty = Type {
             kind: Box::new(kind),
             span: Span::new(start, self.prev_span().end),
             anchor: "gram.type",
-        })
+        };
+        // `type ::= type '!' error_row` — the postfix row, first-class in
+        // every type position since the s27 grammar (wolf-lang#3). Two-token
+        // lookahead keeps `!` unambiguous: only `! {` continues a type —
+        // `!=` lexes as one token, and a bare `!` after a type is the next
+        // construct's business (`[gram.amb.bang]`).
+        while self.at(&Tok::Bang) && self.tok_at(1) == Some(&Tok::LBrace) {
+            self.advance();
+            let row = self.parse_error_row()?;
+            ty = Type {
+                span: Span::new(start, self.prev_span().end),
+                kind: Box::new(TypeKind::Fallible { ty, row }),
+                anchor: "gram.type",
+            };
+        }
+        Ok(ty)
     }
 
     /// `type_args ::= '[' type_arg (',' type_arg)* ','? ']'` where

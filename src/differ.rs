@@ -93,12 +93,12 @@ pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
     (
         "typecheck/let_reassign.lu",
         "DIV-2026-010",
-        "same fail(E0410), same span; wolfc's record says typecheck where the corpus pins phase:          resolve — rung placement routed upstream",
+        "same fail(E0410), same span; wolfc's record says typecheck where the corpus pins phase:          resolve — rung placement routed upstream (fix in flight as s29's letcheck)",
     ),
     (
         "typecheck/let_compound_assign.lu",
         "DIV-2026-010",
-        "same fail(E0410), same span; wolfc's record says typecheck where the corpus pins phase:          resolve — rung placement routed upstream",
+        "same fail(E0410), same span; wolfc's record says typecheck where the corpus pins phase:          resolve — rung placement routed upstream (fix in flight as s29's letcheck)",
     ),
 ];
 
@@ -1071,10 +1071,13 @@ mod tests {
     fn the_filed_list_resolves_and_annotates() {
         // DIV-2026-001..009 all resolved: 001..006 at is06 (pin 67c977f + the
         // resolve-rung work), 007..009 at is07 (pin 79ceec6 paid the is06
-        // debts). DIV-2026-010 is open at 0.1.2: the E0410 rung-placement
-        // inconsistency between the counterparty's record (`typecheck`) and
-        // the corpus's own `phase: resolve` directive — codes and spans
-        // agree, so it is filed, visible, and non-gating.
+        // debts). DIV-2026-010 is still open at 0.1.3, re-verified against a
+        // CLEAN d147a54 build: wolfc reports E0410 at `typecheck` where the
+        // corpus pins `phase: resolve` — codes and spans agree, so it stays
+        // filed, visible, and non-gating. The fix is in flight upstream
+        // (s29's `letcheck` moves the emission to resolve; wolf-lang#21
+        // carries this machine's heads-up that the new walker must exempt
+        // `when` bodies per [conc.when.body]).
         assert_eq!(FILED_DIVERGENCES.len(), 2);
         assert_eq!(
             filed("upstream/corpus/typecheck/let_reassign.lu").map(|(id, _)| id),

@@ -374,6 +374,14 @@ pub enum TypeKind {
     },
     /// `'!' type` — the error-union constructor (D30, `[gram.amb.bang]`).
     ErrorUnion(Type),
+    /// `type '!' error_row` — the postfix row, first-class in **every** type
+    /// position since the s27 grammar (`[gram.type]`, adopted from wolf-std
+    /// F-0002 / wolf-lang#3): `fn or(v: int ! {none}, d: int)`,
+    /// `let a: int ! {none} = miss()`.
+    Fallible {
+        ty: Type,
+        row: ErrorRow,
+    },
     Prefixed {
         kw: PrefixTypeKw,
         ty: Type,

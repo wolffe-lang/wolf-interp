@@ -34,36 +34,39 @@ fn unsupported(reason: impl Into<String>) -> BResult {
     Err(Signal::Unsupported(reason.into()))
 }
 
+/// Ambient single-segment names — the std stub this machine resolves against.
+/// Public because sema's eager raise check must know what resolves.
+pub const AMBIENT_NAMES: &[&str] = &[
+    // Implemented here.
+    "print",
+    "print_raw",
+    "List",
+    "Map",
+    "min",
+    "max",
+    "assert",
+    // `Pool[T]()` is pinned: `[mem.shared.handle.1]` fixes the two-phase
+    // shape ("`reserve()` yields a handle; `init(h, v)` fills it") and the
+    // corpus locks the spelling, so is03 implements it.
+    "Pool",
+    // In the stub, and deliberately not implemented: their semantics are
+    // not in any pinned document, so this machine declines rather than
+    // guesses. Naming them still resolves the *name*, which keeps the
+    // failure "unsupported feature" instead of "unknown name".
+    "Mutex",
+    "channel",
+    "worker",
+    "acquire",
+    "release",
+    "zip",
+    "region",
+];
+
 /// Ambient single-segment names. `None` means "not in the stub", which the
 /// caller reports as an unresolved name.
 #[must_use]
 pub fn ambient(name: &str) -> Option<Value> {
-    const NAMES: &[&str] = &[
-        // Implemented here.
-        "print",
-        "print_raw",
-        "List",
-        "Map",
-        "min",
-        "max",
-        "assert",
-        // `Pool[T]()` is pinned: `[mem.shared.handle.1]` fixes the two-phase
-        // shape ("`reserve()` yields a handle; `init(h, v)` fills it") and the
-        // corpus locks the spelling, so is03 implements it.
-        "Pool",
-        // In the stub, and deliberately not implemented: their semantics are
-        // not in any pinned document, so this machine declines rather than
-        // guesses. Naming them still resolves the *name*, which keeps the
-        // failure "unsupported feature" instead of "unknown name".
-        "Mutex",
-        "channel",
-        "worker",
-        "acquire",
-        "release",
-        "zip",
-        "region",
-    ];
-    NAMES
+    AMBIENT_NAMES
         .iter()
         .find(|candidate| **candidate == name)
         .map(|candidate| Value::Builtin(candidate))
@@ -206,9 +209,17 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             }
         }
         "assert" => {
+            // The indirect spelling (`assert` as a value, applied late). The
+            // intrinsic's lazy-message form lives in `eval_call`
+            // (`[conf.trap.assert]`); by the time a value application lands
+            // here the arguments are already evaluated, so all that is left
+            // of the contract is the failing-path rendering.
             let ok = args.first().and_then(Value::as_bool).unwrap_or(false);
             if ok {
                 return Ok(Value::Unit);
+            }
+            if let Some(msg) = args.get(1) {
+                machine.out(&format!("{msg}\n"));
             }
             machine.fault(
                 TrapKind::Assert,

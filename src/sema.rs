@@ -126,6 +126,28 @@ pub struct Module {
     /// std root (issue #6, wolf-std F-0010) instead of only trying the flat
     /// `<package root>/<last segment>` directory.
     pub use_paths: Vec<(String, Vec<String>)>,
+    /// Impl-block methods: subject type name → method name → every decl of
+    /// that name, with the trait each impl names (`None` for an inherent
+    /// impl). All of them are kept because the s17 resolution order is
+    /// positional — the type's own impl wins over a trait's, and the
+    /// trait-qualified form (`Speak.speak(d)`) reaches the shadowed one
+    /// explicitly. `[mem.iter.for]` dispatch needs the trait too: user types
+    /// implement `Iter` **by name** — no structural conformance.
+    pub methods: BTreeMap<String, BTreeMap<String, Vec<MethodDef>>>,
+    /// Every lowercase tag a function signature of this module declares in an
+    /// error row (return rows and postfix rows alike). The pattern-resolution
+    /// rule (issue #12, the interpreter half of wolf-lang#4): a lowercase
+    /// identifier pattern over a tag-shaped scrutinee that names a *declared*
+    /// tag is a row-tag pattern; everything else still binds.
+    pub row_tags: std::collections::BTreeSet<String>,
+}
+
+/// One impl-block method: `impl Iter for RangeIter { fn next(…) }` records
+/// `next → MethodDef { decl, trait_name: Some("Iter") }` under `RangeIter`.
+#[derive(Debug, Clone)]
+pub struct MethodDef {
+    pub decl: Box<FnDecl>,
+    pub trait_name: Option<String>,
 }
 
 /// A whole program: the root module plus every module reachable through `use`.
@@ -384,6 +406,75 @@ fn same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
+/// The head name of a type, for impl-subject and trait naming: the path's
+/// last segment, through prefix keywords. `None` for shapes an impl subject
+/// does not take at this machine's depth (tuples, fn types, …).
+fn type_head_name(ty: &Type) -> Option<String> {
+    match &*ty.kind {
+        TypeKind::Path { path, .. } => path.segments.last().map(|s| s.name.clone()),
+        TypeKind::Prefixed { ty, .. }
+        | TypeKind::ErrorUnion(ty)
+        | TypeKind::Fallible { ty, .. } => type_head_name(ty),
+        _ => None,
+    }
+}
+
+/// Collects every single-segment tag name a type's postfix rows declare —
+/// `int ! {none}` yields `none`; rows nest ( `(int ! {none}) ! {stale}` ).
+fn type_row_tags(ty: &Type, out: &mut Vec<String>) {
+    match &*ty.kind {
+        TypeKind::Fallible { ty, row } => {
+            for entry in &row.entries {
+                if let [segment] = entry.path.segments.as_slice() {
+                    out.push(segment.name.clone());
+                }
+            }
+            type_row_tags(ty, out);
+        }
+        TypeKind::ErrorUnion(inner)
+        | TypeKind::Prefixed { ty: inner, .. }
+        | TypeKind::RawPointer(inner) => type_row_tags(inner, out),
+        TypeKind::Tuple(items) => {
+            for item in items {
+                type_row_tags(item, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The tags a `raise` inside `decl` may name: the declared *return* row —
+/// `-> int ! {none}` in either spelling (`ret_type`'s own `'!' error_row` or
+/// the postfix-row type). Parameter rows describe arguments, not raises.
+#[must_use]
+pub fn declared_raise_tags(decl: &FnDecl) -> Vec<String> {
+    let mut tags = Vec::new();
+    if let Some(ret) = &decl.ret {
+        if let Some(row) = &ret.row {
+            for entry in &row.entries {
+                if let [segment] = entry.path.segments.as_slice() {
+                    tags.push(segment.name.clone());
+                }
+            }
+        }
+        type_row_tags(&ret.ty, &mut tags);
+    }
+    tags
+}
+
+/// Every row tag a signature declares — return row and parameter rows alike —
+/// into the module's pattern-resolution vocabulary.
+fn collect_signature_tags(decl: &FnDecl, out: &mut std::collections::BTreeSet<String>) {
+    out.extend(declared_raise_tags(decl));
+    for param in &decl.params {
+        if let crate::ast::ParamKind::Named { ty, .. } = &param.kind {
+            let mut tags = Vec::new();
+            type_row_tags(ty, &mut tags);
+            out.extend(tags);
+        }
+    }
+}
+
 fn collect(unit: &Unit, module: &mut Module, file: &str, source: &str) {
     let mut scope = FileScope {
         file: file.to_owned(),
@@ -394,6 +485,7 @@ fn collect(unit: &Unit, module: &mut Module, file: &str, source: &str) {
         collect_item_refs(item, &mut scope);
         match &item.kind {
             ItemKind::Fn(decl) => {
+                collect_signature_tags(decl, &mut module.row_tags);
                 define(
                     module,
                     decl.name.name.clone(),
@@ -482,7 +574,35 @@ fn collect(unit: &Unit, module: &mut Module, file: &str, source: &str) {
                     file,
                 );
             }
-            ItemKind::Impl(_) => {}
+            ItemKind::Impl(def) => {
+                // `impl X { … }` is an inherent impl; `impl Iter for X { … }`
+                // implements the trait by name (`[gram.item.trait]`,
+                // `[mem.iter.impl]`). Methods land under the subject type's
+                // name; nothing here checks a type (D27 — face value).
+                let subject = def.subject.as_ref().unwrap_or(&def.trait_or_subject);
+                let trait_name = def
+                    .subject
+                    .is_some()
+                    .then(|| type_head_name(&def.trait_or_subject))
+                    .flatten();
+                if let Some(subject) = type_head_name(subject) {
+                    for member in &def.members {
+                        if let ItemKind::Fn(decl) = &member.kind {
+                            collect_signature_tags(decl, &mut module.row_tags);
+                            module
+                                .methods
+                                .entry(subject.clone())
+                                .or_default()
+                                .entry(decl.name.name.clone())
+                                .or_default()
+                                .push(MethodDef {
+                                    decl: decl.clone(),
+                                    trait_name: trait_name.clone(),
+                                });
+                        }
+                    }
+                }
+            }
             ItemKind::Use(decl) => collect_use(decl, module, &mut scope, source),
             ItemKind::ImportC(header) => {
                 let name = header
@@ -772,6 +892,23 @@ fn unused_check(program: &Program) -> Option<Diag> {
 /// bindings in `match`/`for`/`else |pat|`/`select` arms are not `let`
 /// bindings either. Only the latest binding of a name in scope speaks.
 fn reassign_check(program: &Program) -> Option<Diag> {
+    body_walk(program, false).0
+}
+
+/// The eager raise check (issue #12(c), the correction to wolf-std's sc02
+/// claim): row-tag resolution used to be lazy — a `return none` on a branch
+/// the input never took produced no diagnostic at all, so a verification that
+/// only exercised the hit path certified a raise site that did not work. A
+/// bare lowercase `return` name now resolves at the resolve rung: as a
+/// binding in scope, a module-level name, or a tag of the enclosing
+/// function's declared row — and an unresolvable one is a diagnostic about
+/// the *program*, not a property of the input. The refusal is `unsupported`
+/// (name resolution beyond the module laws is the checker's), never a guess.
+pub fn raise_check(program: &Program) -> Option<String> {
+    body_walk(program, true).1
+}
+
+fn body_walk(program: &Program, raises: bool) -> (Option<Diag>, Option<String>) {
     for module in program.modules.values() {
         // Module-level bindings are in scope in every function of the module.
         let mut globals: Vec<(String, bool)> = Vec::new();
@@ -780,33 +917,87 @@ fn reassign_check(program: &Program) -> Option<Diag> {
                 globals.push((name.clone(), binding.kind == crate::ast::BindingKind::Var));
             }
         }
-        for (def, _) in module.items.values() {
-            let diag = match def {
-                Def::Fn(decl) => {
-                    let mut env = Env {
-                        scopes: vec![globals.clone()],
-                    };
-                    walk_fn_assigns(decl, &mut env)
-                }
-                Def::Binding(binding) => {
-                    let mut env = Env {
-                        scopes: vec![globals.clone()],
-                    };
-                    walk_expr_assigns(&binding.value, &mut env)
-                }
-                Def::Struct(_) | Def::Opaque(_) | Def::Ambiguous => None,
+        let known = raises.then(|| {
+            let mut known: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            known.extend(module.items.keys().cloned());
+            known.extend(program.modules.keys().cloned());
+            known.extend(module.uses.iter().cloned());
+            known.extend(module.variants.keys().cloned());
+            for ambient in crate::eval::builtin::AMBIENT_NAMES {
+                known.insert((*ambient).to_owned());
+            }
+            if !module.c_headers.is_empty() {
+                known.insert("c".to_owned());
+            }
+            known
+        });
+        let decls = module
+            .items
+            .values()
+            .filter_map(|(def, _)| match def {
+                Def::Fn(decl) => Some(&**decl),
+                _ => None,
+            })
+            .chain(
+                module
+                    .methods
+                    .values()
+                    .flat_map(|methods| methods.values().flatten().map(|m| &*m.decl)),
+            );
+        for decl in decls {
+            let mut env = Env {
+                scopes: vec![globals.clone()],
+                raise: known.clone().map(|known| RaiseCtx {
+                    row: Vec::new(),
+                    known,
+                    refusal: None,
+                }),
             };
+            let diag = walk_fn_assigns(decl, &mut env);
+            if let Some(ctx) = env.raise
+                && let Some(refusal) = ctx.refusal
+            {
+                return (None, Some(refusal));
+            }
             if diag.is_some() {
-                return diag;
+                return (diag, None);
+            }
+        }
+        for (def, _) in module.items.values() {
+            if let Def::Binding(binding) = def {
+                let mut env = Env {
+                    scopes: vec![globals.clone()],
+                    raise: None,
+                };
+                let diag = walk_expr_assigns(&binding.value, &mut env);
+                if diag.is_some() {
+                    return (diag, None);
+                }
             }
         }
     }
-    None
+    (None, None)
 }
 
 /// The lexical environment of the reassignment walk: name → is it assignable.
 struct Env {
     scopes: Vec<Vec<(String, bool)>>,
+    /// Present when the walk is also the eager raise check ([`raise_check`]):
+    /// a `return <bare lowercase name>` must resolve *somewhere* — binding,
+    /// item, or the enclosing function's declared row — at resolve time.
+    raise: Option<RaiseCtx>,
+}
+
+/// What the eager raise check resolves a bare lowercase `return` name
+/// against, beyond the lexical scopes the walk already tracks.
+struct RaiseCtx {
+    /// The enclosing function's declared return-row tags.
+    row: Vec<String>,
+    /// Module-level names: items, sibling modules, `use` bindings, enum
+    /// variants, the ambient builtins.
+    known: std::collections::BTreeSet<String>,
+    /// The first unresolvable raise site, as the `unsupported` reason.
+    refusal: Option<String>,
 }
 
 impl Env {
@@ -860,6 +1051,10 @@ fn declare_pattern(pattern: &Pattern, assignable: bool, env: &mut Env) {
 fn walk_fn_assigns(decl: &FnDecl, env: &mut Env) -> Option<Diag> {
     let body = decl.body.as_ref()?;
     env.scopes.push(Vec::new());
+    let outer_row = match &mut env.raise {
+        Some(ctx) => Some(std::mem::replace(&mut ctx.row, declared_raise_tags(decl))),
+        None => None,
+    };
     for param in &decl.params {
         match &param.kind {
             crate::ast::ParamKind::Named { name, .. } => env.declare(&name.name, true),
@@ -867,6 +1062,9 @@ fn walk_fn_assigns(decl: &FnDecl, env: &mut Env) -> Option<Diag> {
         }
     }
     let diag = walk_block_assigns(body, env);
+    if let (Some(ctx), Some(row)) = (&mut env.raise, outer_row) {
+        ctx.row = row;
+    }
     env.scopes.pop();
     diag
 }
@@ -936,8 +1134,11 @@ fn walk_stmt_assigns(stmt: &Stmt, env: &mut Env) -> Option<Diag> {
             ItemKind::Fn(decl) => {
                 let mut nested = Env {
                     scopes: vec![env.scopes.first().cloned().unwrap_or_default()],
+                    raise: env.raise.take(),
                 };
-                walk_fn_assigns(decl, &mut nested)
+                let diag = walk_fn_assigns(decl, &mut nested);
+                env.raise = nested.raise;
+                diag
             }
             _ => None,
         },
@@ -1042,9 +1243,30 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
         ExprKind::While { cond, body } => {
             walk_expr_assigns(cond, env).or_else(|| walk_block_assigns(body, env))
         }
-        ExprKind::Return(value) | ExprKind::Break(value) => {
+        ExprKind::Return(value) => {
+            // The eager raise check (issue #12(c)): a bare lowercase `return`
+            // name must resolve now — binding, module-level name, or a tag of
+            // the enclosing function's declared row. Uppercase names are D30
+            // structural tags and need no declaration (`[err.rows]`).
+            if let Some(value) = value
+                && let ExprKind::Path(path) = &*value.kind
+                && let [segment] = path.segments.as_slice()
+                && segment.name.starts_with(char::is_lowercase)
+                && env.assignable(&segment.name).is_none()
+                && let Some(ctx) = &mut env.raise
+                && ctx.refusal.is_none()
+                && !ctx.known.contains(&segment.name)
+                && !ctx.row.contains(&segment.name)
+            {
+                ctx.refusal = Some(format!(
+                    "`{}` does not resolve at this raise site: it is not a binding, not a \
+                     module-level name, and not a tag of the enclosing function's declared row",
+                    segment.name
+                ));
+            }
             value.as_ref().and_then(|v| walk_expr_assigns(v, env))
         }
+        ExprKind::Break(value) => value.as_ref().and_then(|v| walk_expr_assigns(v, env)),
         ExprKind::Closure { params, body, .. } => {
             env.scopes.push(Vec::new());
             for param in params {
@@ -1456,7 +1678,8 @@ fn collect_type_refs(ty: &Type, scope: &mut FileScope) {
         }
         TypeKind::ErrorUnion(inner)
         | TypeKind::Prefixed { ty: inner, .. }
-        | TypeKind::RawPointer(inner) => collect_type_refs(inner, scope),
+        | TypeKind::RawPointer(inner)
+        | TypeKind::Fallible { ty: inner, .. } => collect_type_refs(inner, scope),
         TypeKind::Dyn(path) => {
             if let Some(head) = path.segments.first() {
                 scope.refs.push(PathRef {

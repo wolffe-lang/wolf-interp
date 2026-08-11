@@ -255,6 +255,7 @@ impl Machine {
         self.frames.push(Frame {
             module,
             scopes: vec![Scope::default()],
+            row: Vec::new(),
         });
         for (name, value) in &closure.captures {
             self.declare(name, Slot::live(value.clone()));
@@ -385,6 +386,7 @@ impl Machine {
         self.frames.push(Frame {
             module: module.to_owned(),
             scopes: vec![Scope::default()],
+            row: Vec::new(),
         });
         let result = self
             .call_fn(decl, module, args, span)

@@ -288,6 +288,12 @@ fn observe_with(
     if let Some(diag) = sema::resolve_check(&program) {
         return Observation::failed(Phase::Resolve, diag);
     }
+    // The eager raise check (issue #12(c)): an unresolvable bare lowercase
+    // tag at a raise site is a diagnostic about the program at resolve time,
+    // never a property of which paths the input happens to take.
+    if let Some(reason) = sema::raise_check(&program) {
+        return Observation::unsupported(Phase::Resolve, reason);
+    }
     if requested == Some(Phase::Resolve) {
         return Observation::clean(Phase::Resolve, Verdict::Pass);
     }

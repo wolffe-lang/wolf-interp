@@ -106,6 +106,7 @@ impl Session {
         machine.frames.push(Frame {
             module: String::new(),
             scopes: vec![Scope::default()],
+            row: Vec::new(),
         });
         Session {
             machine,
