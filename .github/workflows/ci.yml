@@ -146,7 +146,10 @@ jobs:
           # Every §7 row this tier detects, from the authored programs, with the
           # near-miss twin proving the check discriminates. `tests/ub_coverage.rs`
           # is the matrix; this is the same claim through the process contract.
-          for row in p1_protector p2_frozen_write p3_out_of_bounds p4_region_freed \
+          # P1's witness is the corpus (memory/unsafe_ub_uaf.lu, checked
+          # by the run-rung block above); the protector shape is a unit
+          # test (tests/prov_machine.rs) since the v0.1.5 suite rebuild.
+          for row in p2_frozen_write p3_out_of_bounds p4_region_freed \
                      p5_false_noalias p6_false_door l1_uninitialized l2_dangling \
                      t1_invalid_bool; do
             id=$(echo "$row" | cut -c1-2 | tr '[:lower:]' '[:upper:]')
@@ -180,9 +183,11 @@ jobs:
           # `--trace=prov` is the same mechanism one tier up: the Tier-3 subset,
           # §5 `mem.unsafe.*` + §6 `mem.prov.*` + §7 `mem.ub*`, plus the FFI
           # boundary clause. Derived from the anchor, never a hand-kept list.
-          trace=$(cargo run --quiet -- conform-run tests/ub/p1_protector.lu \
+          # protector trace lines are pinned by tests/prov_machine.rs in
+          # the test lane; here the licensed-pairing and namespace checks
+          # run on a current suite file.
+          trace=$(cargo run --quiet -- conform-run tests/ub/p4_region_freed.lu \
             --trace=prov 2>&1 >/dev/null)
-          echo "$trace" | grep -q 'ProvTag \[mem.prov.tag\].*PROTECTED'
           echo "$trace" | grep -q 'UbLicensed \[mem.ub.closed\]'
           if echo "$trace" | grep '^trace ' \
                | grep -vE '\[mem\.(prov|unsafe|ub|boundary)' ; then
