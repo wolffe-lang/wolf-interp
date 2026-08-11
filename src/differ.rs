@@ -83,24 +83,25 @@ use crate::schema;
 ///
 /// Every entry is `(file, id, one-line summary)`; the id resolves in the log.
 ///
-/// DIV-2026-010 (0.1.2, pin `a0c4564`): the E0410 fail-files. Both sides
-/// reject with the same code at the same span; the counterparty's record
-/// places the rejection at `typecheck` while the corpus files themselves pin
-/// `phase: resolve` — a rung-placement inconsistency between the compiler's
-/// record and its own corpus, routed upstream. Not a soundness candidate;
-/// the verdicts agree.
-pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
-    (
-        "typecheck/let_reassign.lu",
-        "DIV-2026-010",
-        "same fail(E0410), same span; wolfc's record says typecheck where the corpus pins phase:          resolve — rung placement routed upstream (fix in flight as s29's letcheck)",
-    ),
-    (
-        "typecheck/let_compound_assign.lu",
-        "DIV-2026-010",
-        "same fail(E0410), same span; wolfc's record says typecheck where the corpus pins phase:          resolve — rung placement routed upstream (fix in flight as s29's letcheck)",
-    ),
-];
+/// DIV-2026-010 (the E0410 fail-files) CLOSED at pin `ad6cef7`: s29 moved
+/// wolfc's emission to the resolve rung and re-pinned the corpus `phase:`
+/// directives resolve → parse, so both sides now reject at `resolve` with
+/// the same code and span — the eighth round compares clean and the
+/// entries are retired from this table.
+///
+/// DIV-2026-011 (0.1.4, pin `ad6cef7`): `memory/mode_missing_mut.lu`. Both
+/// sides reject with E1007 at the same span ([405,408], the argument); this
+/// machine's only static tier is resolve (sema-lite, where the callee's
+/// signature is visible — issue #15's fix), while wolfc's emission lives at
+/// its mem rung. Rung placement only; the verdicts agree. Routed upstream
+/// for a `[proto.cmp]` ruling on same-code-same-span rejections at
+/// different rungs across implementations of unequal pipeline depth.
+pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[(
+    "memory/mode_missing_mut.lu",
+    "DIV-2026-011",
+    "same fail(E1007), same span [405,408]; this machine rejects at resolve (its only static \
+     tier) where wolfc's record places the emission at mem — rung placement routed upstream",
+)];
 
 /// The filing id for a corpus file, when its divergence is already filed.
 #[must_use]
@@ -1071,21 +1072,21 @@ mod tests {
     fn the_filed_list_resolves_and_annotates() {
         // DIV-2026-001..009 all resolved: 001..006 at is06 (pin 67c977f + the
         // resolve-rung work), 007..009 at is07 (pin 79ceec6 paid the is06
-        // debts). DIV-2026-010 is still open at 0.1.3, re-verified against a
-        // CLEAN d147a54 build: wolfc reports E0410 at `typecheck` where the
-        // corpus pins `phase: resolve` — codes and spans agree, so it stays
-        // filed, visible, and non-gating. The fix is in flight upstream
-        // (s29's `letcheck` moves the emission to resolve; wolf-lang#21
-        // carries this machine's heads-up that the new walker must exempt
-        // `when` bodies per [conc.when.body]).
-        assert_eq!(FILED_DIVERGENCES.len(), 2);
+        // debts). DIV-2026-010 CLOSED at the 0.1.4 re-pin (`ad6cef7`): s29
+        // moved wolfc's E0410 to the resolve rung and the corpus re-pinned
+        // its `phase:` directives resolve → parse — the eighth round
+        // compares the two files clean. DIV-2026-011 is the wave's one
+        // opening: E1007 at resolve (this machine, issue #15) vs mem
+        // (wolfc), same code and span, routed upstream.
+        assert_eq!(FILED_DIVERGENCES.len(), 1);
         assert_eq!(
-            filed("upstream/corpus/typecheck/let_reassign.lu").map(|(id, _)| id),
-            Some("DIV-2026-010")
+            filed("upstream/corpus/memory/mode_missing_mut.lu").map(|(id, _)| id),
+            Some("DIV-2026-011")
         );
+        assert_eq!(filed("upstream/corpus/typecheck/let_reassign.lu"), None);
         assert_eq!(
-            filed("upstream/corpus/typecheck/let_compound_assign.lu").map(|(id, _)| id),
-            Some("DIV-2026-010")
+            filed("upstream/corpus/typecheck/let_compound_assign.lu"),
+            None
         );
         assert_eq!(filed("upstream/corpus/conc/freeze_publish.lu"), None);
         assert_eq!(filed("upstream/corpus/hello.lu"), None);

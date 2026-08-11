@@ -36,8 +36,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use crate::ast::{
-    Block, Expr, ExprKind, FnDecl, Item, ItemKind, PatKind, Pattern, Stmt, StmtKind, StrLit,
-    StrPart, StructDef, Type, TypeArg, TypeKind, Unit,
+    Arg, Block, Expr, ExprKind, FnDecl, Item, ItemKind, ParamMode, PatKind, Pattern, Stmt,
+    StmtKind, StrLit, StrPart, StructDef, Type, TypeArg, TypeKind, Unit,
 };
 use crate::diag::{Diag, Span};
 
@@ -709,10 +709,10 @@ fn define(
 /// failure as a protocol-shaped diagnostic.
 ///
 /// Check order is fixed and deterministic: cycle (E0303), duplicate (E0302),
-/// private access (E0304), unused import (E0305), `let` reassignment (E0410).
-/// Each corpus law file exercises exactly one; a program violating several
-/// reports the first in this order, which is a defensible choice the spec
-/// does not pin.
+/// private access (E0304), unused import (E0305), `let` reassignment (E0410),
+/// call-site mode (E1007). Each corpus law file exercises exactly one; a
+/// program violating several reports the first in this order, which is a
+/// defensible choice the spec does not pin.
 #[must_use]
 pub fn resolve_check(program: &Program) -> Option<Diag> {
     cycle_check(program)
@@ -720,6 +720,7 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| private_check(program))
         .or_else(|| unused_check(program))
         .or_else(|| reassign_check(program))
+        .or_else(|| mode_check(program))
 }
 
 /// `[mod.cycle]` (D32): imports form a DAG. E0303 at the `use` that closes
@@ -892,7 +893,31 @@ fn unused_check(program: &Program) -> Option<Diag> {
 /// bindings in `match`/`for`/`else |pat|`/`select` arms are not `let`
 /// bindings either. Only the latest binding of a name in scope speaks.
 fn reassign_check(program: &Program) -> Option<Diag> {
-    body_walk(program, false).0
+    body_walk(program, false, false).0
+}
+
+/// The X1 call-site mode law, statically (issue #15, the book's ch07 catch —
+/// bs03 ba:blocker): a call missing (or misspelling) the mode the signature
+/// demands must not run to a wrong answer. E1007 is the static rule and
+/// `[conf.trap.map]` gives it **no** dynamic meaning — there is no
+/// mode-mismatch trap kind, and unlike E1001/E1002 the s04 tables state no
+/// runtime semantics for the disagreement — so the honest place to stop is
+/// the rung where the signature is visible: this machine's resolve tier,
+/// exactly as E0410 (issue #8). Code, span (the argument expression), and
+/// message shape match the counterparty's, observed at pin `ad6cef7`
+/// (`corpus/memory/mode_missing_mut.lu` and the three probe shapes: missing
+/// mode, extra mode, wrong mode word).
+///
+/// Scope discipline: only callees whose signature the resolve rung can
+/// actually see — a bare name naming a function item of the current module,
+/// or `module.fn` naming one of a sibling module — and never a name a local
+/// binding shadows (the callee is then a *value*; its signature is dynamic).
+/// Method calls are the receiver-mode rule's business (E0804, ledgered
+/// conservatism), not this check's. The dynamic residue — calls through
+/// function values — is refused at run time (`eval_call`), never executed to
+/// a wrong answer.
+fn mode_check(program: &Program) -> Option<Diag> {
+    body_walk(program, false, true).0
 }
 
 /// The eager raise check (issue #12(c), the correction to wolf-std's sc02
@@ -905,10 +930,35 @@ fn reassign_check(program: &Program) -> Option<Diag> {
 /// the *program*, not a property of the input. The refusal is `unsupported`
 /// (name resolution beyond the module laws is the checker's), never a guess.
 pub fn raise_check(program: &Program) -> Option<String> {
-    body_walk(program, true).1
+    body_walk(program, true, false).1
 }
 
-fn body_walk(program: &Program, raises: bool) -> (Option<Diag>, Option<String>) {
+fn body_walk(program: &Program, raises: bool, modes: bool) -> (Option<Diag>, Option<String>) {
+    // The signature map of the mode pass: every function item of every
+    // module, keyed `(module, name)`, valued by its parameters' declared
+    // modes. Visibility is E0304's business and ran earlier in the chain.
+    let sigs = modes.then(|| {
+        let mut sigs = SigMap::new();
+        for (module_name, module) in &program.modules {
+            for (item_name, (def, _)) in &module.items {
+                if let Def::Fn(decl) = def {
+                    let params = decl
+                        .params
+                        .iter()
+                        .map(|param| {
+                            let name = match &param.kind {
+                                crate::ast::ParamKind::Named { name, .. } => name.name.clone(),
+                                crate::ast::ParamKind::SelfParam { .. } => "self".to_owned(),
+                            };
+                            (param.mode, name)
+                        })
+                        .collect();
+                    sigs.insert((module_name.clone(), item_name.clone()), params);
+                }
+            }
+        }
+        sigs
+    });
     for module in program.modules.values() {
         // Module-level bindings are in scope in every function of the module.
         let mut globals: Vec<(String, bool)> = Vec::new();
@@ -952,6 +1002,10 @@ fn body_walk(program: &Program, raises: bool) -> (Option<Diag>, Option<String>) 
                     known,
                     refusal: None,
                 }),
+                modes: sigs.clone().map(|sigs| ModeCtx {
+                    module: module.name.clone(),
+                    sigs,
+                }),
             };
             let diag = walk_fn_assigns(decl, &mut env);
             if let Some(ctx) = env.raise
@@ -968,6 +1022,10 @@ fn body_walk(program: &Program, raises: bool) -> (Option<Diag>, Option<String>) 
                 let mut env = Env {
                     scopes: vec![globals.clone()],
                     raise: None,
+                    modes: sigs.clone().map(|sigs| ModeCtx {
+                        module: module.name.clone(),
+                        sigs,
+                    }),
                 };
                 let diag = walk_expr_assigns(&binding.value, &mut env);
                 if diag.is_some() {
@@ -986,6 +1044,25 @@ struct Env {
     /// a `return <bare lowercase name>` must resolve *somewhere* — binding,
     /// item, or the enclosing function's declared row — at resolve time.
     raise: Option<RaiseCtx>,
+    /// Present when the walk is the call-site mode check ([`mode_check`]):
+    /// the module the walked body lives in, and every function item's
+    /// declared parameter modes.
+    modes: Option<ModeCtx>,
+}
+
+/// One declared parameter of a visible signature: its mode and its name.
+type SigParam = (Option<ParamMode>, String);
+
+/// The signature map of the mode pass: `(module, fn)` → the declared
+/// parameter row.
+type SigMap = BTreeMap<(String, String), Vec<SigParam>>;
+
+/// What the mode check resolves a callee against: `(module, fn)` → the
+/// declared `(mode, parameter name)` row of the signature.
+#[derive(Clone)]
+struct ModeCtx {
+    module: String,
+    sigs: SigMap,
 }
 
 /// What the eager raise check resolves a bare lowercase `return` name
@@ -1135,9 +1212,11 @@ fn walk_stmt_assigns(stmt: &Stmt, env: &mut Env) -> Option<Diag> {
                 let mut nested = Env {
                     scopes: vec![env.scopes.first().cloned().unwrap_or_default()],
                     raise: env.raise.take(),
+                    modes: env.modes.take(),
                 };
                 let diag = walk_fn_assigns(decl, &mut nested);
                 env.raise = nested.raise;
+                env.modes = nested.modes;
                 diag
             }
             _ => None,
@@ -1179,10 +1258,12 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
         ExprKind::Binary { lhs, rhs, .. } => {
             walk_expr_assigns(lhs, env).or_else(|| walk_expr_assigns(rhs, env))
         }
-        ExprKind::Call { callee, args } => walk_expr_assigns(callee, env).or_else(|| {
-            args.iter()
-                .find_map(|arg| walk_expr_assigns(&arg.expr, env))
-        }),
+        ExprKind::Call { callee, args } => walk_expr_assigns(callee, env)
+            .or_else(|| {
+                args.iter()
+                    .find_map(|arg| walk_expr_assigns(&arg.expr, env))
+            })
+            .or_else(|| check_call_modes(callee, args, env)),
         ExprKind::BracketApply { base, args } => walk_expr_assigns(base, env).or_else(|| {
             args.iter().find_map(|arg| match arg {
                 crate::ast::IndexArg::Value(arg) => walk_expr_assigns(&arg.expr, env),
@@ -1341,6 +1422,90 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
         ExprKind::Borrow { place, from } => {
             walk_expr_assigns(place, env).or_else(|| walk_expr_assigns(from, env))
         }
+    }
+}
+
+/// One call site against one visible signature — [`mode_check`]'s working
+/// half. `None` is "nothing to say": an invisible signature is *skipped*,
+/// never guessed at, so every emission here is a disagreement between an
+/// argument's spelling and a declaration the resolve rung actually resolved.
+fn check_call_modes(callee: &Expr, args: &[Arg], env: &Env) -> Option<Diag> {
+    let ctx = env.modes.as_ref()?;
+    // `f[T](…)` — generic application is one postfix form; the callee under
+    // the brackets is still the named function.
+    let mut base = callee;
+    if let ExprKind::BracketApply { base: b, .. } = &*base.kind {
+        base = b;
+    }
+    let ExprKind::Path(path) = &*base.kind else {
+        return None;
+    };
+    // A local binding shadowing the head makes the callee a value; its
+    // signature is not this rung's to see.
+    if let Some(head) = path.segments.first()
+        && env.assignable(&head.name).is_some()
+    {
+        return None;
+    }
+    let (fn_name, key) = match path.segments.as_slice() {
+        [single] => (
+            single.name.as_str(),
+            (ctx.module.clone(), single.name.clone()),
+        ),
+        // `module.fn` — the head must actually be a module for the lookup to
+        // land; a trait-qualified call (`Speak.speak(d)`) or an enum path
+        // simply finds no signature and is skipped.
+        [head, member] => (
+            member.name.as_str(),
+            (head.name.clone(), member.name.clone()),
+        ),
+        _ => return None,
+    };
+    let sig = ctx.sigs.get(&key)?;
+    for (arg, (declared, param)) in args.iter().zip(sig) {
+        if arg.mode == *declared {
+            continue;
+        }
+        // Message and span shapes match the counterparty's E1007, observed
+        // at pin ad6cef7: the primary span is the argument's expression.
+        let (anchor, message) = match (declared, arg.mode) {
+            (Some(mode), None) => (
+                mode_anchor(*mode),
+                format!(
+                    "`{fn_name}` declares `{param}` as `{}`, but the call site does not say so",
+                    mode_word(*mode)
+                ),
+            ),
+            (None, Some(_)) => (
+                "mem.tier0.mode.read",
+                format!("`{fn_name}` takes `{param}` as plain `read` — no mode is written for it"),
+            ),
+            (Some(mode), Some(given)) => (
+                mode_anchor(*mode),
+                format!(
+                    "`{fn_name}` declares `{param}` as `{}`, but the call site says `{}`",
+                    mode_word(*mode),
+                    mode_word(given)
+                ),
+            ),
+            (None, None) => unreachable!("equal modes were skipped above"),
+        };
+        return Some(Diag::new("E1007", arg.expr.span, anchor, message));
+    }
+    None
+}
+
+const fn mode_word(mode: ParamMode) -> &'static str {
+    match mode {
+        ParamMode::Mut => "mut",
+        ParamMode::Take => "take",
+    }
+}
+
+const fn mode_anchor(mode: ParamMode) -> &'static str {
+    match mode {
+        ParamMode::Mut => "mem.tier0.mode.mut",
+        ParamMode::Take => "mem.tier0.mode.take",
     }
 }
 
@@ -1829,6 +1994,72 @@ mod tests {
                       let f = fn() { x = 2 }\n    f()\n    0\n}\n";
         let diag = resolve(source).expect("rejected");
         assert_eq!(diag.code, "E0410");
+    }
+
+    // -- E1007: the call-site mode law at the resolve rung (issue #15) ------
+
+    #[test]
+    fn a_missing_call_site_mut_is_e1007_at_the_argument() {
+        // `corpus/memory/mode_missing_mut.lu`'s shape. The span is the
+        // argument's expression, matching the counterparty at pin ad6cef7.
+        let source = "struct P { x: int, y: int }\n\
+                      fn bump(mut n: int) { n += 1 }\n\
+                      fn main() -> !int {\n    var p = P { x: 1, y: 2 }\n    \
+                      bump(p.x)\n    if p.x == 2 { 0 } else { 1 }\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E1007");
+        assert_eq!(&source[diag.span.start..diag.span.end], "p.x");
+    }
+
+    #[test]
+    fn the_books_ch07_repro_is_rejected_not_run_to_a_wrong_answer() {
+        // wolf-book ch07 §7.4's failing program (bs03 ba:blocker): `add`
+        // declares `mut s` and the call site does not say so. Running this
+        // used to return a wrong answer silently.
+        let source = "struct Doc { title: str, words: int }\n\
+                      struct Shelf { docs: List[Doc] }\n\
+                      fn add(mut s: Shelf, d: Doc) {\n    (mut s.docs).push(d)\n}\n\
+                      fn main() -> !int {\n    \
+                      var shelf = Shelf { docs: List[Doc]() }\n    \
+                      add(shelf, Doc { title: \"regions\", words: 900 })\n    \
+                      print(\"{shelf.docs.len}\")\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E1007");
+        assert_eq!(&source[diag.span.start..diag.span.end], "shelf");
+    }
+
+    #[test]
+    fn an_extra_mode_and_a_wrong_mode_word_are_e1007_too() {
+        // The counterparty's other three fixture shapes (e1007_extra_mut,
+        // e1007_missing_take, e1007_take_where_mut), probed at ad6cef7.
+        let extra = "fn look(n: int) -> int { n }\n\
+                     fn main() -> !int {\n    var x = 1\n    look(mut x)\n    0\n}\n";
+        let diag = resolve(extra).expect("rejected");
+        assert_eq!(diag.code, "E1007");
+        let take = "fn eat(take n: int) -> int { n }\n\
+                    fn main() -> !int {\n    var x = 1\n    eat(x)\n    0\n}\n";
+        let diag = resolve(take).expect("rejected");
+        assert_eq!(diag.code, "E1007");
+        let wrong = "fn bump(mut n: int) { n += 1 }\n\
+                     fn main() -> !int {\n    var x = 1\n    bump(take x)\n    0\n}\n";
+        let diag = resolve(wrong).expect("rejected");
+        assert_eq!(diag.code, "E1007");
+    }
+
+    #[test]
+    fn spelled_modes_and_invisible_signatures_stay_clean() {
+        // Agreement passes; a locally shadowed name is a *value* whose
+        // signature this rung cannot see, so it is skipped, not guessed at.
+        assert!(
+            resolve(
+                "fn bump(mut n: int) { n += 1 }\n\
+                 fn eat(take n: int) -> int { n }\n\
+                 fn main() -> !int {\n    var x = 1\n    bump(mut x)\n    \
+                 let y = eat(take x)\n    let bump = fn(n: int) { n }\n    \
+                 let z = bump(y)\n    z - z\n}\n"
+            )
+            .is_none()
+        );
     }
 
     // -- the variant table (issue #5) ---------------------------------------

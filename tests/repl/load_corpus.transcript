@@ -3,5 +3,5 @@ loaded `vendor/upstream/corpus/hello.lu`
 defined fn `main`
 wolf> main()
 hello, wolf
-0 : i32
+0 : i64
 wolf> :quit

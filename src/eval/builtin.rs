@@ -259,7 +259,25 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         }
         // -- Tier 3: the modelled C intrinsics (see `c_intrinsic`) ---------
         "c.malloc" | "c.calloc" => {
-            let size = c_size(&args, name)?;
+            // `malloc(size)` is one byte count; `calloc(n, size)` is a COUNT
+            // and an ELEMENT SIZE — the allocation is `n * size` bytes
+            // (issue #13: modeling it as `n` bytes made `calloc(8, 8)` an
+            // 8-byte block, and s29's native differential caught the 64-byte
+            // memcpy that real glibc accepts).
+            let size = if name == "c.calloc" {
+                let count = c_size(&args, name)?;
+                let elem = c_len(&args, 1, name)?;
+                count.checked_mul(elem).ok_or_else(|| {
+                    // Real calloc reports this overflow by returning NULL;
+                    // the model has no null-returning surface pinned, so the
+                    // honest verdict is unsupported, not an invented block.
+                    Signal::Unsupported(format!(
+                        "`c.calloc({count}, {elem})` overflows the size computation"
+                    ))
+                })?
+            } else {
+                c_size(&args, name)?
+            };
             let region = machine.current_region();
             let ptr = machine.prov().host_alloc(size, region, span);
             if name == "c.calloc" {
@@ -270,7 +288,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             machine.note(
                 Rule::BoundaryFfi,
                 span,
-                &format!("`{name}({size})` → {ptr}, exposed per the FFI posture"),
+                &format!("`{name}` allocates {size} byte(s) → {ptr}, exposed per the FFI posture"),
             );
             Ok(Value::Raw(ptr))
         }

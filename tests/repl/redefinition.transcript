@@ -4,9 +4,9 @@ wolf> let g = fn() { f() }
 wolf> fn f() -> int { 2 }
 redefined fn `f` — shadowing, not mutation: existing captures keep the previous definition [repl.def.shadow]
 wolf> f()
-2 : i32
+2 : i64
 wolf> g()
-1 : i32
+1 : i64
 wolf> struct Point { x: int, y: int }
 defined type `Point`
 wolf> let a = Point { x: 1, y: 2 }

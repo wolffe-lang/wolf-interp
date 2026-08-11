@@ -116,6 +116,19 @@ impl IntTy {
         literal: true,
         ..IntTy::I32
     };
+    /// A literal that has passed through arithmetic and is *still*
+    /// unconstrained (issue #14): `-9223372036854775807 - 1` must stay
+    /// writable, so literal-only arithmetic is checked at the width the
+    /// machine computes in (i128) and the `[arith.literal.default]` i32 rule
+    /// is applied where the value finally meets its context — an
+    /// unannotated binding — not at the operator, where the declared type
+    /// of a binding, const, or concrete operand may still arrive to type it.
+    pub const LITERAL_WIDE: IntTy = IntTy {
+        bits: 128,
+        signed: true,
+        mode: ArithMode::Checked,
+        literal: true,
+    };
 
     /// Names the spec spells: `i8…i128`, `u8…u128`, `int`, `uint`, plus the
     /// `wrapping[T]`/`saturating[T]` wrappers applied separately.
@@ -202,6 +215,12 @@ impl IntTy {
     /// The spelling used in messages.
     #[must_use]
     pub fn name(self) -> String {
+        if self.literal {
+            // An unconstrained literal *reads* as its `[arith.literal.default]`
+            // default in every message and REPL context — its carried width is
+            // the machine's computing width, not a name the language has.
+            return "i32".to_owned();
+        }
         let base = format!("{}{}", if self.signed { 'i' } else { 'u' }, self.bits);
         match self.mode {
             ArithMode::Checked => base,

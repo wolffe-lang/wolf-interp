@@ -22,7 +22,7 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 /// losing a `conforms:` line — fails here, which is the ratchet doing its
 /// job. Never lower this without the closeout-level negotiation the sprint
 /// requires.
-const RATCHET_FLOOR: usize = 84;
+const RATCHET_FLOOR: usize = 86;
 
 /// The registry size at pin `cbde620`. Moves only with a pin bump, and then
 /// deliberately.
@@ -133,18 +133,21 @@ fn the_bundle_opens_verified_and_its_records_reference_bundled_programs() {
 
 #[test]
 fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
-    // The count ledger, lupin 0.1.3 edition (pin `d147a54`): 177 corpus
-    // files (161 entries + 16 members) + 39 suite programs (9 UB triggers +
-    // 9 twins, 9 fault litmuses + 7 twins, 5 witnesses) = 216 programs, 200
-    // entries conform-run into reference records. The pin brought the s27
-    // spec realignments and two witnesses — `rows/qmark_defer.lu` and
-    // `faults/assert_msg_holds.lu` (see the corpus-harness ledger). A pin
-    // bump or a new suite file moves these numbers — move them
-    // *deliberately*, here and in the corpus-harness ledger.
+    // The count ledger, lupin 0.1.4 edition (pin `ad6cef7`): 183 corpus
+    // files (165 entries + 18 members) + 39 suite programs (9 UB triggers +
+    // 9 twins, 9 fault litmuses + 7 twins, 5 witnesses) = 222 programs, 204
+    // entries conform-run into reference records. The pin brought s29+s30:
+    // the native C-set litmus (`memory/unsafe_c_alloc_native.lu`, issue
+    // #13's witness), the erring-main pin (`rows/eu_main_err_exit.lu`), the
+    // NaN-compare witness (`typecheck/float_nan_cmp.lu`, wolf-lang#22) and
+    // the same-name two-module case (`resolve/same_name/`, wolf-lang#26) —
+    // see the corpus-harness ledger. A pin bump or a new suite file moves
+    // these numbers — move them *deliberately*, here and in the
+    // corpus-harness ledger.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "d147a548fa114052fb070e5a7815acd0500fb3d9");
-    assert_eq!(summary.programs, 216);
-    assert_eq!(summary.records, 200);
+    assert_eq!(summary.pin, "ad6cef7fc97701accde0997594e62cf9c63ec5e5");
+    assert_eq!(summary.programs, 222);
+    assert_eq!(summary.records, 204);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

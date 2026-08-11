@@ -136,15 +136,26 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             a two-arg assert whose message is not a second condition).
     //             Many existing files advance their `phase:` to `wir` as the
     //             compiler's backend landed.)
+    //   ad6cef7 → 183 files (0.1.4: the s29+s30 pin. The corpus grows 6:
+    //             `memory/unsafe_c_alloc_native.lu` (the C-set native litmus —
+    //             the c.calloc(n,size) witness, issue #13),
+    //             `rows/eu_main_err_exit.lu` (the erring-`!int`-main pin:
+    //             `error: <tag>` + exit 1), `typecheck/float_nan_cmp.lu`
+    //             (IEEE ordered/unordered comparison — `nan != nan` is TRUE;
+    //             wolf-lang#22), and `resolve/same_name/` — an entry plus two
+    //             members whose `len`s share a name and a signature
+    //             (wolf-lang#26). The two E0410 fail-files re-pin their
+    //             `phase:` resolve → parse as s29 moves the emission to the
+    //             resolve rung — DIV-2026-010 closes.)
     let report = report();
     assert_eq!(
         report.total(),
-        177,
+        183,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 161);
-    assert_eq!(report.members(), 16);
+    assert_eq!(report.entries(), 165);
+    assert_eq!(report.members(), 18);
 }
 
 #[test]

@@ -188,8 +188,11 @@ fn a_shadowed_fn_keeps_the_old_capture_and_a_trap_keeps_the_session() {
          let xs = List[int]()\nxs[3]\n1 + 1\n:quit\n",
     );
     let text = String::from_utf8_lossy(&stdout);
-    assert!(text.contains("2 : i32"), "{text}");
-    assert!(text.contains("1 : i32"), "{text}");
+    // `f` declares `-> int`, so its result is typed by the signature since
+    // 0.1.4 (issue #14) and renders at int's width; the bare `1 + 1` after
+    // the trap is still an unconstrained literal and keeps the i32 default.
+    assert!(text.contains("2 : i64"), "{text}");
+    assert!(text.contains("1 : i64"), "{text}");
     assert!(text.contains("trap(bounds)"), "{text}");
     assert!(text.contains("[repl.trap.alive]"), "{text}");
     // The session answered after the trap.

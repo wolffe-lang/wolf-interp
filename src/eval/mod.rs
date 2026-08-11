@@ -2059,6 +2059,15 @@ impl Machine {
             Ok(value) | Err(Signal::Return(value)) => value,
             Err(other) => return Err(other),
         };
+        // The declared return type types the value it returns (issue #14's
+        // third shape): `math.int_max() - 1` is `int` arithmetic because
+        // `int_max` says `-> int`, wherever the callee lives. Without this a
+        // returned literal stayed a literal and the caller's operator
+        // defaulted it.
+        let value = match &decl.ret {
+            Some(ret) => coerce(value, Some(&ret.ty)),
+            None => value,
+        };
         Ok(Applied { value, params })
     }
 
@@ -2425,7 +2434,46 @@ impl Machine {
         // Initialization moves (`[mem.tier0.move.1]`) unless the source is a
         // `Copy`-shaped value or is not a place at all.
         let value = self.eval_for_init(&binding.value)?;
+        let was_literal = matches!(&value, Value::Int(_, ty) if ty.literal);
         let value = coerce(value, binding.ty.as_ref());
+        // A literal meets its context HERE (issue #14): the annotation types
+        // it (coerce above), or `[arith.literal.default]`'s i32 rule applies.
+        // Either way the value is range-checked against the type it just
+        // took, which is where `let x: i32 = 4_503_599_627_370_496` stops —
+        // the checker's E0401 statically; the overflow trap is the closest
+        // dynamic reading, never a silent out-of-range retag.
+        let value = match value {
+            Value::Int(v, ty) if was_literal => {
+                let ty = if ty.literal {
+                    self.fire(
+                        Rule::LiteralDefault,
+                        binding.value.span,
+                        "literals default to i32",
+                    );
+                    IntTy::I32
+                } else {
+                    ty
+                };
+                if ty.holds(v) {
+                    Value::Int(v, ty)
+                } else {
+                    return self
+                        .trap(
+                            TrapKind::Overflow,
+                            Rule::ArithChecked,
+                            binding.value.span,
+                            format!(
+                                "the literal {v} is outside `{}`, the binding's type — checked \
+                                 arithmetic traps in every profile (X3)",
+                                ty.name()
+                            ),
+                            None,
+                        )
+                        .map(|_: Value| ());
+                }
+            }
+            value => value,
+        };
         self.bind_pattern(&binding.pattern, value)
     }
 
@@ -2513,7 +2561,26 @@ impl Machine {
             let value = self.eval_for_init(value)?;
             // Keep the place's integer type: `x += 1` and `x = x + 1` agree.
             let value = match (self.slot_mut(&path).map(|s| s.value.clone()), value) {
-                (Some(Value::Int(_, ty)), Value::Int(v, lit)) if lit.literal => Value::Int(v, ty),
+                (Some(Value::Int(_, ty)), Value::Int(v, lit)) if lit.literal => {
+                    if !ty.literal && !ty.holds(v) {
+                        // The place's type is this literal's context (issue
+                        // #14): adopting it range-checks, like any checked op.
+                        return self
+                            .trap(
+                                TrapKind::Overflow,
+                                Rule::ArithChecked,
+                                span,
+                                format!(
+                                    "the literal {v} is outside `{}`, the place's type — checked \
+                                     arithmetic traps in every profile (X3)",
+                                    ty.name()
+                                ),
+                                None,
+                            )
+                            .map(|_: Value| ());
+                    }
+                    Value::Int(v, ty)
+                }
                 (_, value) => value,
             };
             return self.write_path(&path, value, span);
@@ -3153,6 +3220,13 @@ impl Machine {
                 other => unsupported(format!("`!` needs a bool, got {}", other.kind())),
             },
             UnOp::Neg => match self.eval(operand)? {
+                // Negating a still-unconstrained literal keeps it one
+                // (issue #14): `-9223372036854775808` is a value of `int`,
+                // and checking the negation at the i32 default before the
+                // binding's declared type can arrive made it unwritable.
+                Value::Int(v, ty) if ty.literal => {
+                    self.checked(IntTy::LITERAL_WIDE, v.checked_neg(), span, "negation")
+                }
                 Value::Int(v, ty) => self.checked(ty, v.checked_neg(), span, "negation"),
                 Value::Float(v) => Ok(Value::Float(-v)),
                 other => unsupported(format!("`-` needs a number, got {}", other.kind())),
@@ -3329,16 +3403,17 @@ impl Machine {
         };
         let (a, b) = (*a, *b);
         // Literal defaulting and checking-context propagation
-        // (`[arith.literal.default]`): an unconstrained literal adopts the other
-        // operand's type; two literals default to i32.
+        // (`[arith.literal.default]`): an unconstrained literal adopts the
+        // other operand's type. Two literals stay a literal (issue #14):
+        // the i32 default is applied where the value meets its context — an
+        // unannotated binding — because a declared type may still arrive to
+        // type the whole expression (`let d: int = -9223372036854775807 - 1`
+        // is INT_MIN, not an i32 overflow).
         let ty = match (ta.literal, tb.literal) {
             (true, false) => *tb,
             (false, true) | (false, false) => *ta,
-            (true, true) => IntTy::I32,
+            (true, true) => IntTy::LITERAL_WIDE,
         };
-        if ta.literal && tb.literal {
-            self.fire(Rule::LiteralDefault, span, "literals default to i32");
-        }
 
         match op {
             Lt => return Ok(Value::Bool(a < b)),
@@ -3867,6 +3942,34 @@ impl Machine {
         }
 
         let target = self.eval(callee)?;
+        // The X1 mode law's dynamic residue (issue #15): a direct call whose
+        // spelling disagrees with the signature was already rejected at
+        // resolve (sema's E1007 half), so a disagreement surviving to here
+        // came through a function *value* the static tier could not see.
+        // `[conf.trap.map]` gives E1007 no runtime meaning — no trap kind
+        // exists for it — and running would compute a wrong answer (an
+        // unspelled `mut` argument passes by value and the writeback never
+        // happens), so the honest verdict is a refusal.
+        if let Value::Fn(qualified) = &target
+            && let (module, name) = split_qualified(qualified)
+            && let Some(Def::Fn(decl)) = self.shared.program.lookup(&module, &name, false)
+        {
+            for (param, arg) in decl.params.iter().zip(args) {
+                if param.mode != arg.mode {
+                    let param_name = match &param.kind {
+                        ParamKind::Named { name, .. } => name.name.as_str(),
+                        ParamKind::SelfParam { .. } => "self",
+                    };
+                    return unsupported(format!(
+                        "`{name}` declares `{param_name}` with a call-site mode this call does \
+                         not spell (X1); the disagreement is E1007's static rule, \
+                         `[conf.trap.map]` gives it no dynamic meaning, and running it would \
+                         produce a wrong answer — a call through a function value is refused, \
+                         not guessed"
+                    ));
+                }
+            }
+        }
         let evaluated = self.eval_args_for(args, Callee::of(&target))?;
         // Handed to `call_fn` across `apply`, which performs no evaluation of
         // its own between here and the callee's parameter binding.

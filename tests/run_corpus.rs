@@ -210,10 +210,12 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // -- is07 (pin 79ceec6) --------------------------------------------------
     // The three region-inference demonstrations run with zero annotations —
     // the machine's dynamic region semantics needed nothing new. The E1004/
-    // E1010 litmuses and `mode_missing_mut` pin *static* rejections
-    // (`fail(E1004)`/`fail(E1010)`/`fail(E1007)`); their Tier-0 bodies run
-    // here and ledger as conservatism.
-    ("memory/mode_missing_mut.lu", "exit(1)"),
+    // E1010 litmuses pin *static* rejections (`fail(E1004)`/`fail(E1010)`);
+    // their Tier-0 bodies run here and ledger as conservatism.
+    // (`mode_missing_mut.lu` ran `exit(1)` here from is07 through 0.1.3 —
+    // the X1 disagreement executing to a silently wrong answer. Since 0.1.4
+    // it stops at `resolve` with E1007 (issue #15) and leaves this ledger,
+    // exactly as the E0410 fail-files did.)
     ("memory/region_conflict_params.lu", "exit(0)"),
     ("memory/region_escape_local.lu", "exit(0)"),
     ("memory/region_infer_list_builder.lu", "exit(0)"),
@@ -280,6 +282,20 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("typecheck/method_scope/main.lu", "exit(0)"),
     ("typecheck/receiver_bare_mut.lu", "exit(42)"),
     ("typecheck/receiver_modes.lu", "exit(0)"),
+    // -- 0.1.4 (pin ad6cef7) -------------------------------------------------
+    // The s29+s30 witnesses run to their pinned outcomes on this machine's
+    // rungs too: the native C-set litmus (`c.calloc(8, 8)` is 64 bytes —
+    // issue #13's fix; the modelled heap now agrees with real glibc), the
+    // erring-`!int` main (`error: Boom` + exit 1, bit-for-bit with the
+    // native rung), the IEEE comparison witness (`nan != nan` is TRUE —
+    // wolf-lang#22 was the compiler's half; this machine's f64 model was
+    // already IEEE), and the same-name two-module program (wolf-lang#26 —
+    // `lista.len` and `stra.len` stay distinct functions here as they do
+    // as mangled WIR names).
+    ("memory/unsafe_c_alloc_native.lu", "exit(0)"),
+    ("resolve/same_name/main.lu", "exit(0)"),
+    ("rows/eu_main_err_exit.lu", "exit(1)"),
+    ("typecheck/float_nan_cmp.lu", "exit(0)"),
 ];
 
 #[test]

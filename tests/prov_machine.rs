@@ -443,6 +443,39 @@ fn main() -> !int {
 }
 
 #[test]
+fn calloc_allocates_count_times_size_bytes_and_zeroes_all_of_them() {
+    // Issue #13, found by s29's native differential: `c.calloc(n, size)` is
+    // `n * size` bytes in C, and the model gave it `n`. `calloc(8, 8)` must
+    // be a 64-byte block — writable at byte 63, zeroed over the whole range
+    // (the zeroing is observable: reading byte 63 uninitialized would be
+    // §7/L1). `corpus/memory/unsafe_c_alloc_native.lu` pins the same law
+    // against real glibc; this litmus pins it without the corpus.
+    let source = "\
+import c \"stdlib.h\"
+import c \"string.h\"
+
+fn main() -> !int {
+    unsafe {
+        let q = c.calloc(8, 8) as *u8
+        let zero = q[63] as int
+        c.memset(q, 5, 64)
+        let five = q[63] as int
+        c.free(q)
+        if zero == 0 && five == 5 { 0 } else { 1 }
+    }
+}
+";
+    let observation = frontend::observe(source.as_bytes(), None);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "{:?} {:?}",
+        observation.reason,
+        observation.ub.map(|f| f.to_string())
+    );
+}
+
+#[test]
 fn unfreed_c_allocations_are_reported_and_never_faulted() {
     // `[mem.ub.defined]`: "Memory leak (`shared` kept alive, region never freed)
     // → defined, safe". The C heap is no different — the report exists so

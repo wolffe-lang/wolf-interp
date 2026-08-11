@@ -1245,3 +1245,89 @@ fn same_scope_let_shadowing_reads_the_latest_binding() {
         Outcome::Exit(0)
     );
 }
+
+// -- integer literals meet their context (issue #14) ------------------------
+
+#[test]
+fn int_min_is_writable_in_every_annotated_spelling() {
+    // wolf-std F-0025 shape 1: every spelling of -2^63 with an `int`/`i64`
+    // context is the value, not an i32 overflow. The literal stays
+    // unconstrained through negation and literal-only arithmetic
+    // (`[arith.literal.default]` applies at the binding, not the operator).
+    assert_eq!(
+        outcome(
+            "fn main() -> int {\n\
+             \x20   const A: int = -9223372036854775808\n\
+             \x20   let b: int = -9223372036854775807 - 1\n\
+             \x20   let c: int = 0 - 9223372036854775807 - 1\n\
+             \x20   let d: i64 = -9223372036854775808\n\
+             \x20   if A == b { if b == c { if c == d { return 0 } } }\n\
+             \x20   1\n\
+             }\n"
+        ),
+        Outcome::Exit(0)
+    );
+}
+
+#[test]
+fn an_annotated_binding_widens_where_the_default_would_not() {
+    // Shape 2 is a RULE, not a bug (wolfc agrees at pin ad6cef7: `var k = 0`
+    // lowers to an i32 constant): the binding is the defaulting context, so
+    // a literal that does not fit i32 traps THERE, and an annotation is the
+    // spelling that widens it.
+    assert_eq!(
+        outcome("fn main() -> int {\n\x20   let x: int = 4503599627370496\n\x20   x - x\n}\n"),
+        Outcome::Exit(0),
+    );
+}
+
+#[test]
+fn a_literal_outside_i32_traps_at_the_unannotated_binding() {
+    let trap = trap_of("fn main() -> int {\n\x20   var k = 4503599627370496\n\x20   k - k\n}\n");
+    assert_eq!(trap.kind, TrapKind::Overflow);
+}
+
+#[test]
+fn the_declared_return_type_types_the_returned_literal() {
+    // Shape 3: `int_max() - 1` is `int` arithmetic because the signature
+    // says `-> int` — the same-file and cross-module cases go through the
+    // same coercion, so the module boundary cannot lose the type again.
+    assert_eq!(
+        outcome(
+            "fn int_max() -> int {\n\
+             \x20   9223372036854775807\n\
+             }\n\
+             fn main() -> int {\n\
+             \x20   let m = int_max() - 1\n\
+             \x20   if m == 9223372036854775806 { 0 } else { 1 }\n\
+             }\n"
+        ),
+        Outcome::Exit(0)
+    );
+}
+
+// -- the X1 mode law's dynamic residue (issue #15) --------------------------
+
+#[test]
+fn a_fn_value_call_missing_the_declared_mut_is_refused_not_run_wrong() {
+    // The static E1007 half lives in sema (resolve rejects direct calls);
+    // a call through a function *value* is the residue the static tier
+    // cannot see. Running it would copy the argument and lose the
+    // writeback — a silently wrong answer — and `[conf.trap.map]` gives
+    // E1007 no trap kind, so the machine refuses.
+    let outcome = outcome(
+        "fn bump(mut n: int) { n += 1 }\n\
+         fn main() -> int {\n\
+         \x20   let f = bump\n\
+         \x20   var x = 1\n\
+         \x20   f(x)\n\
+         \x20   x - 1\n\
+         }\n",
+    );
+    match outcome {
+        Outcome::Unsupported(reason) => {
+            assert!(reason.contains("E1007"), "{reason}");
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+}
