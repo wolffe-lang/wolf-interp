@@ -1,5 +1,75 @@
 # Changelog
 
+## 0.1.3 — 2026-08-10
+
+The rows half, and the s27/s28 catch-up. Pin bumped `a0c4564` →
+`d147a54` (the corpus grows `rows/qmark_defer.lu` and
+`faults/assert_msg_holds.lu`: 175 → 177 files; the spec grows
+`[mem.iter.*]`, `[mem.str.*]`, `[conf.trap.assert]` and the postfix-row
+type grammar: 281 → 290 anchors). Three issues closed, one divergence
+resolved, one filed.
+
+- **#12 — postfix rows, all three halves.** `type ::= type '!' error_row`
+  parses in **every** type position (param, `let`/`var` annotation,
+  nested); a bare lowercase name at a raise site resolves against the
+  enclosing function's declared return row (`return none` under
+  `-> int ! {none}` raises the tag); and resolution is **eager** — sema's
+  `raise_check` refuses an unresolvable tag at the resolve rung whatever
+  path the input takes, so the sc02 false-certification trap
+  (`unsupported` only when the raise was *hit*) is structurally closed.
+  Lowercase identifiers over tag-shaped scrutinees dispatch as row-tag
+  patterns when they name a module-declared row tag; `else |err|` keeps
+  its binder. The acceptance: wolf-std `std.option`'s six helpers — `or`,
+  `expect`, `flatten`, `to_list`, `exists`, `is_none`, the F-0002 family,
+  unwritable since sc01 — execute under lupin, lowercase `none` included
+  (`tests/rows_option.rs`).
+- **#11 (silent-wrong) — numeric casts convert.** `n as f64` produced an
+  int that compared equal to ints and unequal to the float it claimed to
+  be. `as` between numeric types now converts in every direction:
+  int→float exact, float→int truncating toward zero with an X3 range
+  check (NaN/∞/out-of-range trap `overflow`), int→int narrowing
+  range-checks, `wrapping[T]`/`saturating[T]` targets reduce by their
+  mode, `as f32` rounds through f32 precision (the one-f64 float model,
+  approximation-contract §6.9). The non-bridges refuse like wolfc's
+  E0805 (no truthiness, no `int as str`). `tests/cast_matrix.rs` pins
+  the matrix, both directions of every pair.
+- **#10 — slice-of-binding receivers.** `d[0..1].upper()` refused at
+  resolve (`d["0..1"]` does not denote a place) because the range key was
+  stringified into a map-key projection. A slice expression is a value,
+  not a place: `place_of` refuses it, the method call falls into the
+  by-value receiver path, and `binding[range].method()` runs exactly like
+  `literal[range].method()` always did.
+- **The s27 spec realignments.** `[mem.iter.for]`: `for` over an
+  `impl Iter for T` value desugars to the clause's drive loop
+  (`next(mut self) -> T ! {done}` through call-by-value-result; range-for
+  unchanged) — impl-block **method dispatch** lands with it, s17
+  resolution order included (inherent wins; `Speak.speak(d)` reaches the
+  shadowed trait method; trait default bodies stay `unsupported`).
+  `[conf.trap.assert]`: `assert` is an intrinsic — never shadowed by a
+  module fn, two-arg form's message evaluated **only** on the failing
+  path, rendered to stdout before the trap (the counterparty's #19
+  shape, from this side). `[mem.str.order]`: the executed byte-
+  lexicographic ordering is now clause-backed and witness-tested. Twelve
+  more corpus entries reach the run rung than at 0.1.2 (114 of 161;
+  matches 76 → 84, out-of-scope 46 → 36, 0 mismatch).
+- **DIV-2026-010 re-verified: still open at this pin.** A CLEAN wolfc
+  build at `d147a54` reports `fail(E0410)@typecheck` where the corpus
+  pins `phase: resolve` — the sixth round's two divergences stand
+  unchanged, filed and non-gating. The fix is in flight upstream (s29's
+  resolve-rung `letcheck`, landed past this pin with CI still running at
+  the close of this pass);
+  wolf-lang#21 carries this machine's heads-up that the new walker must
+  exempt `when`-body assignments per `[conc.when.body]` (its draft
+  E0410-rejects `when (a, b) { a += 10 }` on `let`-bound Mutex operands
+  that `conc/when_multi.lu` and `procs.lu` pin `run(exit=0)`). The
+  seventh corpus differential is GREEN-with-filing: 161 entries, 2
+  divergences, both DIV-2026-010.
+- Bundle: 216 programs, 200 records, 290 anchors, ratchet floor 84
+  (coverage +1: `[mem.model.order]` through `qmark_defer`'s own
+  `conforms:` line; the nine new s27 anchors enter the debt list —
+  their behaviors are exercised in `tests/`, and lifting them into
+  `conforms:`-tagged suite programs is the next bundle's work).
+
 ## 0.1.2 — 2026-08-10
 
 The lupin maintenance pass: five filed issues, four fixed, one routed

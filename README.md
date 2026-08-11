@@ -28,7 +28,7 @@ identities — the binary, the package, and the pin:
 
 ```console
 $ lupin --version
-lupin 0.1.2 (wolf-interp, pin …)
+lupin 0.1.3 (wolf-interp, pin …)
 ```
 
 ## Running a program
