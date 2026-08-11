@@ -46,6 +46,75 @@ differential lane detects the absence, prints `notice:` lines, and SKIPs;
 
 ## Open findings
 
+Ninth corpus differential: lupin 0.1.5, pin `f0da6e6` (the five-lane
+fan-out — s32 tasks, s33 channels, s37 str core, s38 fmt/io/fs, s67
+warnings; 181 entries compared, 18 members through their entries,
+counterparty built CLEAN at `f0da6e6`), **10 divergences, all filed,
+none a soundness candidate**: DIV-2026-011 holds; issue #18's tier
+statics open **DIV-2026-012** (four files, the DIV-2026-011 rung
+question again — same code, same span, this machine at resolve where
+wolfc's emissions live at mem/typecheck); and the pin exposes a
+counterparty *surface* lag filed as **DIV-2026-013**/**DIV-2026-014**:
+wolfc's conform-run at `f0da6e6` rejects or declines six of its own new
+corpus files (the s38 fs/io builtins E0301-unresolved; the strings
+statics reported `unsupported`) while its own corpus and checked-lane
+tests pin them — the conform-run wiring landed upstream after this pin.
+289 conservatism-ledger entries (60 rejects-beyond by the counterparty,
+89 run-unmatched, 103 counterparty-unsupported, 37 interp-unsupported).
+
+### DIV-2026-012 — the 0.1.5 tier statics — **open, rides DIV-2026-011**
+
+Filed 2026-08-11 (lupin 0.1.5, CLEAN wolfc build at `f0da6e6`). Four
+files, one class: verdict (rung placement only), codes and spans
+byte-identical where both sides emit.
+
+- `memory/unsafe_raw_outside.lu` — both fail(E1301), span `[384,395]`
+  (the `c.malloc(8)` call); a at `resolve`, b at `mem`.
+- `memory/unsafe_sig.lu` — both fail(E1302), span `[329,330]` (the
+  parameter `p`); a at `resolve`, b at `mem`.
+- `typecheck/cast_bad.lu` — both fail(E0805); a at `resolve`, b at
+  `typecheck`.
+- (`memory/mode_missing_mut.lu` remains DIV-2026-011, the original
+  filing of the question.)
+
+Triage: the spec is the defendant first, and it is *silent* — spec/06
+compares `phase_reached` without ruling on same-code-same-span
+rejections across implementations of unequal pipeline depth. Routed
+upstream with DIV-2026-011; whatever `[proto.cmp]` ruling closes that
+filing closes this one. Sema-lite is this machine's only static tier
+(issue #18: the unsafe ring, its signature boundary, and the cast
+matrix's bool column now reject at resolve with the counterparty's
+codes and spans, observed at this pin).
+
+### DIV-2026-013 — the s38 fs/io files — **open, counterparty suspected**
+
+`fs/error_row.lu`, `fs/roundtrip.lu`, `io/eprint.lu`. wolfc's
+conform-run at the pin answers `fail(E0301)` — `fs_read_text`,
+`fs_write_text`, `eprint` "not in scope" — on files its own corpus pins
+at `mem`/`run` and its own checked-lane tests execute. The spec is
+clear (`[conf.directive.phase]`: the directive is the truthful ledger)
+and the corpus is upstream's own contract, so the *conform-run surface*
+is the defendant: the s38 builtins exist on the checked lane but the
+conform-run wiring landed after `f0da6e6`. This machine runs
+`io/eprint.lu` to the pinned stdout (stderr is the human channel,
+never hashed) and declines the fs tier honestly (no filesystem by
+design — `[proto.record.unsupported]`). Expected to resolve at the
+next pin bump; if it does not, the filing escalates to a wolf-lang
+issue.
+
+### DIV-2026-014 — the strings statics — **open, counterparty suspected**
+
+`strings/char_index_fail.lu` (pins fail(E0411)),
+`strings/format_spec_malformed.lu` (fail(E0412)),
+`strings/format_spec_mismatch.lu` (fail(E0413)). This machine rejects
+all three with the pinned codes at its resolve rung; wolfc's
+conform-run at the pin reports `unsupported` (`@resolve` for E0411,
+`@wir` for the spec files) — the emissions its corpus pins are not
+reachable through its conform-run surface at `f0da6e6`. Same defendant
+and same expected closure as DIV-2026-013.
+
+---
+
 Eighth corpus differential: lupin 0.1.4, pin `ad6cef7` (s29+s30: real
 glibc behind the unsafe tier, the erring-main pin, `fcmp.ne` as IEEE
 unordered, module-path-qualified WIR names; 165 entries compared, 18
