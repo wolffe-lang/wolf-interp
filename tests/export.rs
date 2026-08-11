@@ -21,12 +21,15 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 /// floor; a PR that drops it below the floor — deleting a tagged test,
 /// losing a `conforms:` line — fails here, which is the ratchet doing its
 /// job. Never lower this without the closeout-level negotiation the sprint
-/// requires.
-const RATCHET_FLOOR: usize = 86;
+/// requires. Raised 86 → 90 at pin `f0da6e6` (0.1.5): the strings tier
+/// cites `mem.str.get` and the lints tier `diag.level.attr` and
+/// `mem.boundary.doc`, among the wave's new clauses.
+const RATCHET_FLOOR: usize = 90;
 
-/// The registry size at pin `cbde620`. Moves only with a pin bump, and then
-/// deliberately.
-const ANCHORS_TOTAL: usize = 290;
+/// The registry size at pin `f0da6e6` (290 → 303: the s67 `diag.*` block,
+/// `mem.str.get`, `proto.record.warn`/`proto.cmp.warn`). Moves only with a
+/// pin bump, and then deliberately.
+const ANCHORS_TOTAL: usize = 303;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -133,21 +136,23 @@ fn the_bundle_opens_verified_and_its_records_reference_bundled_programs() {
 
 #[test]
 fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
-    // The count ledger, lupin 0.1.4 edition (pin `ad6cef7`): 183 corpus
-    // files (165 entries + 18 members) + 39 suite programs (9 UB triggers +
-    // 9 twins, 9 fault litmuses + 7 twins, 5 witnesses) = 222 programs, 204
-    // entries conform-run into reference records. The pin brought s29+s30:
-    // the native C-set litmus (`memory/unsafe_c_alloc_native.lu`, issue
-    // #13's witness), the erring-main pin (`rows/eu_main_err_exit.lu`), the
-    // NaN-compare witness (`typecheck/float_nan_cmp.lu`, wolf-lang#22) and
-    // the same-name two-module case (`resolve/same_name/`, wolf-lang#26) —
-    // see the corpus-harness ledger. A pin bump or a new suite file moves
-    // these numbers — move them *deliberately*, here and in the
-    // corpus-harness ledger.
+    // The count ledger, lupin 0.1.5 edition (pin `f0da6e6`): 199 corpus
+    // files (181 entries + 18 members) + 36 suite programs (7 UB triggers,
+    // 8 twins, 9 fault litmuses + 7 twins, 5 witnesses — the T1 pair and
+    // P1's protector form retired with issue #18: their `as bool` and `*u8`
+    // signatures are outside the language now, see `UbRow::coverage` and
+    // `tests/ub/`) = 235 programs, 217 entries conform-run into reference
+    // records. The pin brought the five-lane fan-out: the strings tier
+    // (s37 + §7.4 format specs), the lints tier (s67 — the `warns:`
+    // directive and `[proto.record.warn]`), and the fs/io tier (s38 —
+    // fs unsupported-by-design here, `eprint` running) — see the
+    // corpus-harness ledger. A pin bump or a new suite file moves these
+    // numbers — move them *deliberately*, here and in the corpus-harness
+    // ledger.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "ad6cef7fc97701accde0997594e62cf9c63ec5e5");
-    assert_eq!(summary.programs, 222);
-    assert_eq!(summary.records, 204);
+    assert_eq!(summary.pin, "f0da6e67158292e962c93268973d9e927fe703a0");
+    assert_eq!(summary.programs, 235);
+    assert_eq!(summary.records, 217);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

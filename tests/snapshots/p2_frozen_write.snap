@@ -7,10 +7,9 @@ row:       §7/P2
 clause:    [mem.prov.state]
 what:      write through a Frozen tag
 licenses:  O2: `read` params are immutable-for-the-call — loads hoist/CSE across opaque calls (the SB "holy grail"); `imm` data const-propagates
-message:   write through tag#1 (parameter), which is Frozen at alloc#0[0] — a `read`-mode borrow is immutable for its whole extent
+message:   write through tag#0 (c.malloc(8)#root), which is Frozen at alloc#0[0] — a `read`-mode borrow is immutable for its whole extent
 access:    `p[0] = 9`
-tag from:  `p`
+tag from:  `c.malloc(8)`
 tree:
-  alloc#0 `c.malloc(8)` 8 byte(s), live, owned by region #0
-    tag#0 c.malloc(8)#root Active exposed
-      tag#1 parameter Frozen PROTECTED
+  alloc#0 `c.malloc(8)` 8 byte(s), live, owned by region #1
+    tag#0 c.malloc(8)#root Frozen exposed

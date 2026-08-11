@@ -797,6 +797,58 @@ fn a_slice_that_splits_a_code_point_traps() {
 }
 
 #[test]
+fn the_s37_str_surface_answers_the_corpus_shapes() {
+    // `corpus/strings/builtin_methods.lu`'s gauntlet, as a unit litmus:
+    // `[mem.str.get]`'s domain law (oob and split-code-point are the same
+    // `none` miss, a hit is bit-identical to the checked slice), `^n`
+    // end-relative slicing, byte-offset `find`, and the probe/view set.
+    assert_eq!(
+        stdout(
+            "fn main() -> int {\n\
+             \x20   let s = \"the wolf runs\"\n\
+             \x20   let head = s[..8]\n\
+             \x20   let tail = s[^4..]\n\
+             \x20   let mid = s.get(4..8) else \"?\"\n\
+             \x20   let miss = s.get(0..99) else \"?\"\n\
+             \x20   let split = \"é\".get(0..1) else \"?\"\n\
+             \x20   let off = s.find(\"wolf\") else 0 - 1\n\
+             \x20   let gone = s.find(\"fox\") else 0 - 1\n\
+             \x20   let words = s.words()\n\
+             \x20   print(\"{head}|{tail}|{mid}|{miss}|{split}|{off}|{gone}|{words.len}\")\n\
+             \x20   0\n\
+             }\n"
+        ),
+        "the wolf|runs|wolf|?|?|4|-1|3\n"
+    );
+    // The rest of the 18-method set, each through its row where it has one.
+    assert_eq!(
+        stdout(
+            "fn main() -> int {\n\
+             \x20   let s = \"  three wolves  \"\n\
+             \x20   let a = s.trim_start().trim_end()\n\
+             \x20   let b = a.strip_prefix(\"three \") else \"?\"\n\
+             \x20   let c = a.strip_suffix(\"three\") else \"missed\"\n\
+             \x20   let parts = a.split(\" \")\n\
+             \x20   let n = a.count(\"e\")\n\
+             \x20   let r = a.replace(\"wolves\", \"wolf\")\n\
+             \x20   let e = a.ends_with(\"wolves\")\n\
+             \x20   let bytes = a.bytes()\n\
+             \x20   print(\"{b}|{c}|{parts.len}|{n}|{r}|{e}|{bytes.len}|{bytes[0]}\")\n\
+             \x20   0\n\
+             }\n"
+        ),
+        "wolves|missed|2|3|three wolf|true|12|116\n"
+    );
+    // A negative repeat is a defined `bounds` fault, never a modular wrap.
+    assert_eq!(
+        trap_kind(
+            "fn main() -> int {\n    let n = 0 - 2\n    let s = \"ab\".repeat(n)\n    0\n}\n"
+        ),
+        TrapKind::Bounds
+    );
+}
+
+#[test]
 fn debug_and_release_agree_because_there_is_only_one_semantics() {
     // X3/D2: one semantics everywhere. The machine has no profile switch at
     // all, which is the strongest form of the guarantee — this test exists to

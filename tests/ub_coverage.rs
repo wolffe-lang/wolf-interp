@@ -198,9 +198,21 @@ fn the_deferred_and_unreachable_rows_are_listed_with_their_reasons() {
         .collect();
     assert_eq!(
         deferred,
-        vec!["T2", "C1"],
+        vec!["T1", "T2", "C1"],
         "the set of rows this tier cannot reach moved; say why in `UbRow::coverage`"
     );
+
+    // T1 retired at pin f0da6e6 (issue #18 item 2): the one modelled
+    // production door — `int as bool` in unsafe code — is statically outside
+    // the language now that the cast matrix's bool column closed (E0805 at
+    // resolve, matching the counterparty, which rejects the cast inside
+    // `unsafe` too). The trigger/twin pair left with it; the detection logic
+    // remains for frontend-bypassing callers.
+    let Coverage::Unreachable(reason) = UbRow::T1.coverage() else {
+        panic!("T1 is unreachable from source since the bool cast column closed")
+    };
+    assert!(reason.contains("E0805"), "{reason}");
+    assert!(reason.contains("as bool"), "{reason}");
 
     // C1 is the sprint's `deferred(concurrency)` mark: spec/03's model, ic03's
     // machine, and the row's own wording says the pairing lives in spec/03.

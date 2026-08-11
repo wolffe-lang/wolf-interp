@@ -33,8 +33,9 @@ pub const REQUIRED_FIELDS: [&str; 9] = [
 ];
 
 /// Fields that are optional, but reserved: `null` or a value of the right
-/// shape, never a stranger key.
-pub const OPTIONAL_FIELDS: [&str; 2] = ["stdout_sha256", "stdout_inline"];
+/// shape, never a stranger key. `warnings` is `[proto.record.warn]` (s67,
+/// additive within protocol 1): validators accept records with or without it.
+pub const OPTIONAL_FIELDS: [&str; 3] = ["stdout_sha256", "stdout_inline", "warnings"];
 
 /// `[proto.record.fields]`: `stdout_inline` is included up to 4096 bytes.
 pub const STDOUT_INLINE_LIMIT: usize = 4096;
@@ -206,6 +207,7 @@ pub fn validate(value: &Value) -> Result<(), SchemaErrors> {
     }
 
     validate_diagnostics(&mut checker, object.get("diagnostics"));
+    validate_warnings(&mut checker, object.get("warnings"));
     validate_stdout(&mut checker, object);
 
     if checker.errors.is_empty() {
@@ -254,6 +256,59 @@ fn validate_diagnostics(checker: &mut Checker, entry: Option<&Value>) {
                     {
                         checker.err(pointer, "must not be empty");
                     }
+                }
+            }
+        }
+        match fields.get("span") {
+            None => checker.err(format!("{base}/span"), "required field is missing"),
+            Some(span) => validate_span(checker, &format!("{base}/span"), span),
+        }
+    }
+}
+
+/// `[proto.record.warn]` — an optional array of `{code, span}` entries,
+/// nothing else. Severity is never repeated here (the array is warnings by
+/// definition), and honest-absent means omission: an implementation that runs
+/// no warning analyses leaves the key out entirely.
+fn validate_warnings(checker: &mut Checker, entry: Option<&Value>) {
+    let Some(entry) = entry else { return };
+    let Some(items) = entry.as_array() else {
+        checker.err(
+            "/warnings",
+            format!(
+                "expected an array of {{code, span}} entries, found {}",
+                kind_of(entry)
+            ),
+        );
+        return;
+    };
+
+    for (index, item) in items.iter().enumerate() {
+        let base = format!("/warnings/{index}");
+        let Some(fields) = item.as_object() else {
+            checker.err(
+                base.clone(),
+                format!("expected an object, found {}", kind_of(item)),
+            );
+            continue;
+        };
+        for key in fields.keys() {
+            if !matches!(key.as_str(), "code" | "span") {
+                checker.err(
+                    format!("{base}/{key}"),
+                    "a warning observation carries only `code` and `span` — severity is \
+                     not repeated ([proto.record.warn])",
+                );
+            }
+        }
+        match fields.get("code") {
+            None => checker.err(format!("{base}/code"), "required field is missing"),
+            Some(value) => {
+                let pointer = format!("{base}/code");
+                if let Some(text) = checker.string(&pointer, value)
+                    && text.is_empty()
+                {
+                    checker.err(pointer, "must not be empty");
                 }
             }
         }

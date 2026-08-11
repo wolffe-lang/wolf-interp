@@ -150,6 +150,31 @@ pub fn compare(a: &ObservationRecord, b: &ObservationRecord) -> Option<Divergenc
         });
     }
 
+    // `[proto.cmp.warn]` (s67): when BOTH records carry the `warnings` array,
+    // the sorted `{code, span}` sets must agree. Absent on either side is
+    // never a divergence — `[proto.record.warn]`'s honest-absent, so parity
+    // grows lint-by-lint as each implementation builds its analyses.
+    if let (Some(wa), Some(wb)) = (&a.warnings, &b.warnings) {
+        let sorted = |w: &[crate::protocol::Warning]| {
+            let mut v: Vec<(String, [u64; 2])> =
+                w.iter().map(|x| (x.code.clone(), x.span)).collect();
+            v.sort();
+            v
+        };
+        let (sa, sb) = (sorted(wa), sorted(wb));
+        if sa != sb {
+            return Some(Divergence {
+                file,
+                class: Class::SpanOrCodeMismatch,
+                a: format!("{sa:?}"),
+                b: format!("{sb:?}"),
+                detail: "both sides carry the warnings array and the sorted {code, span} \
+                         sets differ ([proto.cmp.warn])"
+                    .to_owned(),
+            });
+        }
+    }
+
     None
 }
 
@@ -178,6 +203,7 @@ mod tests {
             phase_reached: phase,
             seeded: false,
             diagnostics: Vec::new(),
+            warnings: None,
             verdict,
             stdout_sha256: None,
             stdout_inline: None,
@@ -258,6 +284,48 @@ mod tests {
         let a = record("wolf-interp", Phase::Run, Verdict::Trap(TrapKind::Bounds));
         let b = record("wolfc", Phase::Run, Verdict::Trap(TrapKind::Bounds));
         assert_eq!(compare(&a, &b), None);
+    }
+
+    #[test]
+    fn warnings_absent_on_either_side_is_never_a_divergence() {
+        use crate::protocol::Warning;
+        let mut a = record("wolf-interp", Phase::Run, Verdict::Exit(0));
+        let b = record("wolfc", Phase::Run, Verdict::Exit(0));
+        a.warnings = Some(vec![Warning {
+            code: "W1301".to_owned(),
+            span: [356, 362],
+        }]);
+        // `[proto.record.warn]` honest-absent: b runs no warning analyses.
+        assert_eq!(compare(&a, &b), None);
+        assert_eq!(compare(&b, &a), None);
+    }
+
+    #[test]
+    fn warnings_compare_as_sorted_sets_when_both_carry_the_array() {
+        use crate::protocol::Warning;
+        let w = |code: &str, span: [u64; 2]| Warning {
+            code: code.to_owned(),
+            span,
+        };
+        let mut a = record("wolf-interp", Phase::Run, Verdict::Exit(0));
+        let mut b = record("wolfc", Phase::Run, Verdict::Exit(0));
+        // Same set, different order: agreement.
+        a.warnings = Some(vec![w("W1301", [10, 20]), w("W0302", [1, 5])]);
+        b.warnings = Some(vec![w("W0302", [1, 5]), w("W1301", [10, 20])]);
+        assert_eq!(compare(&a, &b), None);
+        // A differing span in the set: span-or-code divergence.
+        b.warnings = Some(vec![w("W0302", [1, 6]), w("W1301", [10, 20])]);
+        assert_eq!(
+            compare(&a, &b).map(|d| d.class),
+            Some(Class::SpanOrCodeMismatch)
+        );
+        // An empty array against a non-empty one: both stand behind their
+        // analyses, so the disagreement is real.
+        b.warnings = Some(Vec::new());
+        assert_eq!(
+            compare(&a, &b).map(|d| d.class),
+            Some(Class::SpanOrCodeMismatch)
+        );
     }
 
     #[test]

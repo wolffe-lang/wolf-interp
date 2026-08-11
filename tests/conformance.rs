@@ -201,18 +201,25 @@ fn every_parseable_file_resolves_under_sema_lite() {
     // ladder mapping). It takes signatures at face value and checks nothing a
     // type checker would, so *every* file that parses must also resolve —
     // with two carve-outs: since 0.1.2 the rung owns E0410 (`let`
-    // reassignment, issue #8), and since 0.1.4 it owns E1007 (the X1
+    // reassignment, issue #8), since 0.1.4 it owns E1007 (the X1
     // call-site mode law, issue #15 — running the disagreement computes a
-    // wrong answer, and `[conf.trap.map]` gives it no dynamic meaning), so a
-    // file that *pins* either code fails here exactly as the corpus says.
-    // Any other resolve failure would mean the module machinery broke, not
-    // that a program is ill-typed.
+    // wrong answer, and `[conf.trap.map]` gives it no dynamic meaning), and
+    // since 0.1.5 it owns the pin-f0da6e6 tier statics (issue #18):
+    // E1301/E1302 (the unsafe ring and its signature boundary — those two
+    // corpus files are DIV-2026-012, filtered as filed), E0805 (the cast
+    // matrix's bool column), E0411 (`s[i]`), E0412/E0413 (format specs,
+    // comptime-known at the literal). A file that *pins* one of these codes
+    // fails here exactly as the corpus says. Any other resolve failure
+    // would mean the module machinery broke, not that a program is
+    // ill-typed.
     for case in cases() {
         if case.ledger_phase.is_some_and(|p| p < Phase::Parse) || is_filed_divergence(&case.path) {
             continue;
         }
         let observation = frontend::observe(&case.source, Some(Phase::Resolve));
-        if let Some(code @ ("E0410" | "E1007")) = pinned_code(case.check.as_ref()) {
+        if let Some(code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413")) =
+            pinned_code(case.check.as_ref())
+        {
             assert_eq!(
                 observation.verdict,
                 Verdict::Fail(code.to_owned()),
@@ -234,15 +241,18 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
     // `mem` and `wir` are the compiler's half of the split — asked for them,
     // this implementation reports the deepest rung it *did* complete and says
     // `unsupported`, which is what keeps the conservatism ledger truthful.
-    // A file the resolve rung itself rejects (E0410, E1007) never gets that
-    // far: it fails at resolve whatever deeper rung was requested.
+    // A file the resolve rung itself rejects (E0410, E1007, and the 0.1.5
+    // tier statics) never gets that far: it fails at resolve whatever
+    // deeper rung was requested.
     for case in cases() {
         if case.ledger_phase.is_some_and(|p| p < Phase::Parse) || is_filed_divergence(&case.path) {
             continue;
         }
         for rung in [Phase::Typecheck, Phase::Mem, Phase::Wir] {
             let observation = frontend::observe(&case.source, Some(rung));
-            if let Some(code @ ("E0410" | "E1007")) = pinned_code(case.check.as_ref()) {
+            if let Some(code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413")) =
+                pinned_code(case.check.as_ref())
+            {
                 assert_eq!(
                     observation.verdict,
                     Verdict::Fail(code.to_owned()),

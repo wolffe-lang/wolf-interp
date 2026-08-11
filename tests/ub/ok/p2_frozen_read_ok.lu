@@ -1,25 +1,21 @@
 //! check: run(exit=0)
 //! phase: resolve
-//! conforms: mem.tier0.mode.read, mem.prov.state
-//! The twin of `p2_frozen_write.lu`: a Frozen tag *reads* perfectly well, twice,
-//! across an opaque call in between. `[mem.prov.state]` says Frozen permits
-//! child reads and foreign reads alike — the state exists to make read-read
-//! reordering legal, not to forbid reading.
+//! conforms: mem.region.freeze.1, mem.prov.state
+//! The twin of `p2_frozen_write.lu`: a Frozen tag *reads* perfectly well,
+//! twice. `[mem.prov.state]` says Frozen permits child reads and foreign
+//! reads alike — the state exists to make read-read reordering legal, not to
+//! forbid reading.
 
 import c "stdlib.h"
 
-fn peek(p: *u8) -> int {
-    let a = p[0] as int
-    let b = p[0] as int
-    a + b
-}
-
 fn main() -> !int {
+    let r = region()
     unsafe {
-        let p = c.malloc(8) as *u8
+        let p = in r { c.malloc(8) as *u8 }
         p[0] = 21
-        let n = peek(p)
-        c.free(p)
-        if n == 42 { 0 } else { 1 }
+        let frozen = freeze r
+        let a = p[0] as int
+        let b = p[0] as int
+        if a + b == 42 { 0 } else { 1 }
     }
 }

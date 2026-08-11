@@ -240,17 +240,19 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/region_open_ancestor.lu", "trap(region-fault)"),
     ("memory/region_transfer_open.lu", "trap(region-fault)"),
     // -- 0.1.2 (pin a0c4564) -------------------------------------------------
-    // The pin's new unsafe/checked litmuses run clean (`unsafe_raw_outside`
-    // and `unsafe_sig` pin static rejections E1301/E1302 — conservatism;
-    // their Tier-0 bodies run). `let_shadow_var_ok` is E0410's ok-twin: it
+    // The pin's new unsafe/checked litmuses ran clean here through 0.1.4
+    // (`unsafe_raw_outside` and `unsafe_sig` pin static rejections
+    // E1301/E1302, which this machine did not perform — their Tier-0
+    // bodies ran as ledgered conservatism). At 0.1.5 issue #18 closed the
+    // ring: both files now stop at resolve with the counterparty's codes
+    // and spans, and leave this ledger (DIV-2026-012 carries the
+    // rung-placement residue). `let_shadow_var_ok` is E0410's ok-twin: it
     // runs `exit(0)` now that same-scope `let` shadowing reads the *latest*
     // binding (the `rposition` repair) — its fail-twins `let_reassign` and
     // `let_compound_assign` stop at `resolve` with E0410 and so never enter
     // this ledger.
     ("memory/checked_unsigned.lu", "exit(0)"),
     ("memory/unsafe_creation_not_use.lu", "exit(0)"),
-    ("memory/unsafe_raw_outside.lu", "exit(0)"),
-    ("memory/unsafe_sig.lu", "exit(0)"),
     ("memory/unsafe_trusted.lu", "exit(0)"),
     ("typecheck/let_shadow_var_ok.lu", "exit(0)"),
     // -- 0.1.3 (pin d147a54) -------------------------------------------------
@@ -296,6 +298,38 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("resolve/same_name/main.lu", "exit(0)"),
     ("rows/eu_main_err_exit.lu", "exit(1)"),
     ("typecheck/float_nan_cmp.lu", "exit(0)"),
+    // -- 0.1.5 (pin f0da6e6) -------------------------------------------------
+    // The five-lane fan-out pin's witnesses, on this machine's rungs:
+    //
+    // The strings tier runs — the s37 builtin surface with `[mem.str.get]`
+    // and `^n` end-relative offsets (`builtin_methods`), the §7.4 format
+    // specs rendering byte-exact with the corpus pins (`format_spec_width`,
+    // `format_spec_full`, `float_format` — shortest-round-trip floats,
+    // zero-pad after the sign, sign-magnitude bases), the value-position
+    // interpolation the native lane still refuses (`interp_value_position`),
+    // and D25's first defined fault (`slice_oob_trap` traps `bounds`).
+    //
+    // The lints tier runs its programs: `#[allow(…)]` attributes parse and
+    // the bodies execute. This machine runs no warning analyses, so its
+    // records carry no `warnings` array — `[proto.record.warn]`'s
+    // honest-absent, never a divergence — and the `warns:` directives are
+    // accepted, enforced only for analyses an implementation has.
+    //
+    // `io/eprint.lu` runs: `eprint`/`eprint_raw` render through the same
+    // fmt machinery onto stderr, and stdout stays clean — which is the pin.
+    // The fs tier stays out by design (no filesystem in this machine); both
+    // fs files are `unsupported` naming their construct.
+    ("io/eprint.lu", "exit(0)"),
+    ("lints/allow_item.lu", "exit(0)"),
+    ("lints/allow_nothing.lu", "exit(0)"),
+    ("lints/allow_unknown_code.lu", "exit(0)"),
+    ("lints/safety_comment_missing.lu", "exit(0)"),
+    ("strings/builtin_methods.lu", "exit(0)"),
+    ("strings/float_format.lu", "exit(0)"),
+    ("strings/format_spec_full.lu", "exit(0)"),
+    ("strings/format_spec_width.lu", "exit(0)"),
+    ("strings/interp_value_position.lu", "exit(0)"),
+    ("strings/slice_oob_trap.lu", "trap(bounds)"),
 ];
 
 #[test]

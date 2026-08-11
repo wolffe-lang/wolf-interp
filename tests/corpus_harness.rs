@@ -147,14 +147,27 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             (wolf-lang#26). The two E0410 fail-files re-pin their
     //             `phase:` resolve → parse as s29 moves the emission to the
     //             resolve rung — DIV-2026-010 closes.)
+    //   f0da6e6 → 199 files (0.1.5: the five-lane fan-out pin — s32 tasks,
+    //             s33 channels, s37 str core, s38 fmt/io/fs, s67 warnings.
+    //             The corpus grows 16, all entries: `strings/` ×9 (the s37
+    //             builtin surface + `[mem.str.get]`, E0411, and the §7.4
+    //             format-spec suite — E0412/E0413 and three rendering pins),
+    //             `lints/` ×4 (the s67 `#[allow]` granularity files and the
+    //             W1301 safety-comment lint, carrying the new `warns:`
+    //             directive), `fs/` ×2 and `io/` ×1 (the s38 fs/io tier —
+    //             fs is unsupported-by-design here; `eprint` runs). The
+    //             spec grows the `diag` namespace (303 anchors),
+    //             `[mem.str.get]`, `[proto.record.warn]`/`[proto.cmp.warn]`,
+    //             and the directive-matcher trailing-newline allowance in
+    //             `[conf.directive.check]`.)
     let report = report();
     assert_eq!(
         report.total(),
-        183,
+        199,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 165);
+    assert_eq!(report.entries(), 181);
     assert_eq!(report.members(), 18);
 }
 

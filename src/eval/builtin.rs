@@ -40,6 +40,11 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // Implemented here.
     "print",
     "print_raw",
+    // The s38 stderr writers: same fmt machinery, the OTHER stream —
+    // stdout stays clean (`corpus/io/eprint.lu` is the pin; the record
+    // hashes stdout only, stderr is the rich human channel, spec/06).
+    "eprint",
+    "eprint_raw",
     "List",
     "Map",
     "min",
@@ -60,6 +65,15 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "release",
     "zip",
     "region",
+    // The s38 io/fs surface (wolf-interp#18 item 6): the names resolve so
+    // the refusal is "unsupported feature", never "unknown name" — this
+    // machine has no filesystem by design (see `call`'s fs arm).
+    "fs_read_text",
+    "fs_write_text",
+    "fs_open",
+    "fs_remove",
+    "fs_exists",
+    "read_line",
 ];
 
 /// Ambient single-segment names. `None` means "not in the stub", which the
@@ -151,6 +165,45 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 .join("");
             machine.out(&text);
             Ok(Value::Unit)
+        }
+        // The s38 stderr writers (`corpus/io/eprint.lu`): `eprint` mirrors
+        // `print` (trailing newline; `eprint_raw` appends nothing) onto the
+        // OTHER stream. One fmt machinery, two fds — the argument was
+        // rendered by the same interpolation path `print`'s was. stderr is
+        // the rich human channel and is never hashed or compared (spec/06),
+        // so it follows stdout's pass-through discipline: the host stream is
+        // written under `lupin run`'s live mode and stays quiet inside
+        // embedded observers (the corpus walk, the differ, the explorer) —
+        // a harness's own stderr is not the program's channel.
+        "eprint" => {
+            let text = args
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" ");
+            machine.err_out(&format!("{text}\n"));
+            Ok(Value::Unit)
+        }
+        "eprint_raw" => {
+            let text = args
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("");
+            machine.err_out(&text);
+            Ok(Value::Unit)
+        }
+        // The s38 fs family and `read_line` (wolf-interp#18 item 6): this
+        // machine has no filesystem and no stdin by design — an interpreter
+        // observing the HOST's filesystem would put the host into a
+        // differential comparison, and `[proto.cmp.defined-divergence]`
+        // already rules that surface out. The honest verdict is
+        // `unsupported` with the construct named, never a mock.
+        "fs_read_text" | "fs_write_text" | "fs_open" | "fs_remove" | "fs_exists" | "read_line" => {
+            unsupported(format!(
+                "`{name}` is the s38 io/fs surface; this machine has no filesystem (or \
+                 injectable stdin) by design, so the fs tier is declined rather than mocked"
+            ))
         }
         // Collection constructors are allocation sites (`[mem.model.alloc]`),
         // so they land in the current region (`[mem.region.create.3]`).
@@ -258,7 +311,16 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             Ok(Value::MutexRef(id))
         }
         // -- Tier 3: the modelled C intrinsics (see `c_intrinsic`) ---------
+        //
+        // The modelled set's real signatures (wolf-interp#18 item 4):
+        // `malloc(size)`, `calloc(count, size)`, `free(ptr)`,
+        // `memset(ptr, byte, len)`, `memcpy(dst, src, len)` — exact arity,
+        // `size_t` arguments are non-negative integers, pointer arguments
+        // are raw pointers. A call shaped otherwise is refused with the
+        // shape named; C would have coerced silently, and silently is how
+        // the ch09 differential caught this machine accepting it.
         "c.malloc" | "c.calloc" => {
+            c_arity(name, &args, if name == "c.calloc" { 2 } else { 1 })?;
             // `malloc(size)` is one byte count; `calloc(n, size)` is a COUNT
             // and an ELEMENT SIZE — the allocation is `n * size` bytes
             // (issue #13: modeling it as `n` bytes made `calloc(8, 8)` an
@@ -293,6 +355,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             Ok(Value::Raw(ptr))
         }
         "c.free" => {
+            c_arity(name, &args, 1)?;
             let Some(Value::Raw(ptr)) = args.first().copied_raw() else {
                 return unsupported("`c.free` takes a raw pointer".to_owned());
             };
@@ -318,10 +381,19 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             )
         }
         "c.memset" => {
+            c_arity(name, &args, 3)?;
             let Some(Value::Raw(ptr)) = args.first().copied_raw() else {
                 return unsupported("`c.memset` takes a raw pointer".to_owned());
             };
-            let byte = args.get(1).and_then(Value::as_int).unwrap_or(0);
+            // The byte is an `int` in the modelled signature; defaulting a
+            // non-int to 0 was the silent coercion #18 item 4 retired.
+            let Some(byte) = args.get(1).and_then(Value::as_int) else {
+                return unsupported(format!(
+                    "`c.memset`'s byte argument must be an integer, got {}",
+                    args.get(1)
+                        .map_or_else(|| "nothing".to_owned(), Value::kind)
+                ));
+            };
             let len = c_len(&args, 2, name)?;
             machine.raw_fill(ptr, byte, len, span)?;
             machine.note(
@@ -332,6 +404,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             Ok(Value::Unit)
         }
         "c.memcpy" => {
+            c_arity(name, &args, 3)?;
             let (Some(Value::Raw(dst)), Some(Value::Raw(src))) =
                 (args.first().copied_raw(), args.get(1).copied_raw())
             else {
@@ -467,6 +540,12 @@ pub fn method(
                 .collect(),
         )),
 
+        // -- the s37 builtin `str` surface (D24/D25) -----------------------
+        //
+        // `corpus/strings/builtin_methods.lu` is the witness: `len` is bytes
+        // and says so, probes take `str` needles, offsets out are BYTE
+        // offsets, absence is a row (`none`), never a sentinel, and views
+        // materialize `List`s at v0.
         (Value::Str(s), "len") => Ok(Value::Int(s.len() as i128, IntTy::INT)),
         (Value::Str(s), "is_empty") => Ok(Value::Bool(s.is_empty())),
         (Value::Str(s), "upper") => Ok(Value::Str(s.to_uppercase())),
@@ -475,10 +554,48 @@ pub fn method(
             Some(Value::Str(cut)) => s.trim_matches(|c| cut.contains(c)).to_owned(),
             _ => s.trim().to_owned(),
         })),
+        (Value::Str(s), "trim_start") => Ok(Value::Str(s.trim_start().to_owned())),
+        (Value::Str(s), "trim_end") => Ok(Value::Str(s.trim_end().to_owned())),
+        (Value::Str(s), "get") => {
+            // `[mem.str.get]` — the boundary primitive, when the range
+            // arrived as an evaluated value (`s.get(a..b)`, `s.get(r)`).
+            // Open-ended and `^n` endpoints have no value shape; those
+            // spellings are read off the syntax in `eval_method` and land
+            // in `str_get` directly.
+            let Some(Value::Range {
+                start,
+                end,
+                inclusive,
+                ..
+            }) = args.first()
+            else {
+                return unsupported("`str.get` takes a byte range, like `s.get(4..8)`".to_owned());
+            };
+            str_get(machine, s, Some(*start), Some(*end), *inclusive, span)
+        }
+        (Value::Str(s), "bytes") => {
+            // The byte view, materialized at v0 (D25 licenses byte indexing
+            // on `bytes`; `b[i]` rides List indexing).
+            Ok(Value::List(
+                s.bytes()
+                    .map(|b| Slot::live(Value::Int(i128::from(b), IntTy::INT)))
+                    .collect(),
+            ))
+        }
         (Value::Str(s), "repeat") => {
             let Some(Value::Int(n, _)) = args.first() else {
                 return unsupported("`repeat` takes a count".to_owned());
             };
+            if *n < 0 {
+                // A negative repeat is D25's first defined fault, not a
+                // modular wrap: deterministic `bounds`, never UB.
+                return machine.fault(
+                    TrapKind::Bounds,
+                    Rule::Bounds,
+                    span,
+                    format!("`repeat({n})`: a repeat count cannot be negative"),
+                );
+            }
             Ok(Value::Str(
                 s.repeat(usize::try_from(*n).unwrap_or_default()),
             ))
@@ -491,6 +608,84 @@ pub fn method(
             Some(Value::Str(prefix)) => s.starts_with(prefix.as_str()),
             _ => false,
         })),
+        (Value::Str(s), "ends_with") => {
+            let Some(Value::Str(suffix)) = args.first() else {
+                return unsupported("`ends_with` takes a `str` needle".to_owned());
+            };
+            Ok(Value::Bool(s.ends_with(suffix.as_str())))
+        }
+        (Value::Str(s), "find" | "rfind") => {
+            // Byte offsets out; absence is a row, not a sentinel
+            // (`s.find("wolf") else 0 - 1` is the caller's choice, not ours).
+            let Some(Value::Str(needle)) = args.first() else {
+                return unsupported(format!("`{name}` takes a `str` needle"));
+            };
+            let hit = if name == "find" {
+                s.find(needle.as_str())
+            } else {
+                s.rfind(needle.as_str())
+            };
+            match hit {
+                Some(offset) => Ok(Value::Int(offset as i128, IntTy::INT)),
+                None => {
+                    machine.note(Rule::ErrUnion, span, "`find` yields the `none` row");
+                    Ok(error("none"))
+                }
+            }
+        }
+        (Value::Str(s), "count") => {
+            let Some(Value::Str(needle)) = args.first() else {
+                return unsupported("`count` takes a `str` needle".to_owned());
+            };
+            if needle.is_empty() {
+                // An empty needle matches everywhere and nowhere; no pinned
+                // answer exists, so no answer is invented.
+                return unsupported("`count` of an empty needle".to_owned());
+            }
+            Ok(Value::Int(
+                s.matches(needle.as_str()).count() as i128,
+                IntTy::INT,
+            ))
+        }
+        (Value::Str(s), "split") => {
+            let Some(Value::Str(sep)) = args.first() else {
+                return unsupported("`split` takes a `str` separator".to_owned());
+            };
+            if sep.is_empty() {
+                return unsupported("`split` on an empty separator".to_owned());
+            }
+            Ok(Value::List(
+                s.split(sep.as_str())
+                    .map(|part| Slot::live(Value::Str(part.to_owned())))
+                    .collect(),
+            ))
+        }
+        (Value::Str(s), "strip_prefix" | "strip_suffix") => {
+            let Some(Value::Str(needle)) = args.first() else {
+                return unsupported(format!("`{name}` takes a `str` needle"));
+            };
+            let stripped = if name == "strip_prefix" {
+                s.strip_prefix(needle.as_str())
+            } else {
+                s.strip_suffix(needle.as_str())
+            };
+            match stripped {
+                Some(rest) => Ok(Value::Str(rest.to_owned())),
+                None => {
+                    machine.note(Rule::ErrUnion, span, "`strip` yields the `none` row");
+                    Ok(error("none"))
+                }
+            }
+        }
+        (Value::Str(s), "replace") => {
+            let (Some(Value::Str(from)), Some(Value::Str(to))) = (args.first(), args.get(1)) else {
+                return unsupported("`replace` takes two `str` arguments".to_owned());
+            };
+            if from.is_empty() {
+                return unsupported("`replace` of an empty needle".to_owned());
+            }
+            Ok(Value::Str(s.replace(from.as_str(), to.as_str())))
+        }
         (Value::Str(s), "words") => Ok(Value::List(
             s.split_whitespace()
                 .map(|word| Slot::live(Value::Str(word.to_owned())))
@@ -896,6 +1091,65 @@ pub fn slice(
         }
         other => unsupported(format!("{} cannot be sliced", other.kind())),
     }
+}
+
+/// `s.get(a..b) -> str ! {none}` — `[mem.str.get]`, the boundary
+/// primitive (s37, the core of wolf-lang#17).
+///
+/// Answers the same question as the checked slice `s[a..b]` with the same
+/// domain: **exactly** the inputs on which `s[a..b]` faults `bounds` — an
+/// offset outside `0..=s.len`, `b < a`, or an offset that splits a UTF-8
+/// code point — answer the tag `none`, and every other input answers the
+/// slice value `s[a..b]` would produce, bit-identical. No third outcome
+/// exists: `get` never faults on any input. End-relative endpoints (`^n`)
+/// and open ends were resolved by the caller before the domain question
+/// is asked, exactly as in `s[a..b]`.
+///
+/// # Errors
+///
+/// None from the range itself — that is the whole point. `Err` here is
+/// only the machine's own signal plumbing.
+pub fn str_get(
+    machine: &mut Machine,
+    s: &str,
+    start: Option<i128>,
+    end: Option<i128>,
+    inclusive: bool,
+    span: Span,
+) -> BResult {
+    let len = s.len() as i128;
+    let from = start.unwrap_or(0);
+    let to = end.map_or(len, |e| if inclusive { e + 1 } else { e });
+    let miss = |machine: &mut Machine| {
+        machine.note(
+            Rule::ErrUnion,
+            span,
+            "`str.get` answers the `none` row — oob and split-code-point are the same miss",
+        );
+        Ok(error("none"))
+    };
+    if from < 0 || to > len || from > to {
+        return miss(machine);
+    }
+    let (from, to) = (from as usize, to as usize);
+    if !s.is_char_boundary(from) || !s.is_char_boundary(to) {
+        return miss(machine);
+    }
+    Ok(Value::Str(s[from..to].to_owned()))
+}
+
+/// Exact arity for a modelled C intrinsic (wolf-interp#18 item 4): C
+/// would coerce or ignore extras silently; the model refuses with the
+/// shape named instead.
+fn c_arity(name: &str, args: &[Value], want: usize) -> Result<(), Signal> {
+    if args.len() == want {
+        return Ok(());
+    }
+    Err(Signal::Unsupported(format!(
+        "`{name}` takes exactly {want} argument(s), got {} — the modelled signature is the \
+         real one (approximation-contract §8)",
+        args.len()
+    )))
 }
 
 /// A `size_t`-shaped argument.

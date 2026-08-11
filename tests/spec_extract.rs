@@ -378,7 +378,17 @@ fn the_float_counter_example_lexes_as_member_access() {
 #[test]
 fn the_section_nine_code_reservations_are_the_ones_we_emit() {
     // §9 lists them as `E0001 (leading-operator continuation), E0002 (…), …`.
-    let prose = section(&grammar(), "9. Diagnostics IOUs");
+    // At pin f0da6e6 the heading grew the `[diag]` anchor and s67's
+    // subsections (§9.1 severity, §9.2 families, §9.3 levels) — the
+    // reservations stay in the section head, so the scan stops at §9.1
+    // (the warning families cite codes, W0301/E0802, that are not E000x
+    // reservations and are not this machine's to emit).
+    let full = section(&grammar(), "9. Diagnostics");
+    let prose = full
+        .split("### 9.1")
+        .next()
+        .expect("the section head precedes its subsections")
+        .to_owned();
     let mut reserved: Vec<String> = Vec::new();
     let mut rest = prose.as_str();
     while let Some(at) = rest.find('E') {

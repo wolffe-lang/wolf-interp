@@ -34,6 +34,7 @@ pub mod directive;
 pub mod eval;
 pub mod explore;
 pub mod export;
+pub mod fmtspec;
 pub mod frontend;
 pub mod fuzz;
 pub mod ledger;
@@ -295,6 +296,10 @@ fn record_of(
         phase_reached: observation.phase_reached,
         seeded: request.is_seeded(),
         diagnostics: observation.diagnostics,
+        // Honest-absent (`[proto.record.warn]`): this implementation runs no
+        // warning analyses yet, so no record carries the array — an empty
+        // array would claim analyses it does not run.
+        warnings: None,
         verdict: observation.verdict,
         stdout_sha256: digest,
         stdout_inline: inline,
@@ -349,6 +354,7 @@ pub fn unsupported_record(file: &Path) -> ObservationRecord {
         phase_reached: Phase::None,
         seeded: false,
         diagnostics: Vec::new(),
+        warnings: None,
         verdict: Verdict::Unsupported,
         stdout_sha256: None,
         stdout_inline: None,

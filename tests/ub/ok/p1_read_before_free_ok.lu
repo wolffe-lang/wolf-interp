@@ -1,0 +1,22 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.prov.tag, mem.prov.state
+//! P1's near-miss twin: the same allocate-write-read-free shape as the
+//! corpus's own P1 witness (`memory/unsafe_ub_uaf.lu`), with the read moved
+//! BEFORE the free. Disabling is forever, but it has a start: until `c.free`
+//! runs, the tag is Active and the read is defined. (The protector form of
+//! this pair retired at pin f0da6e6: its `*u8` parameters are outside the
+//! language — E1302, `[mem.unsafe.scope]` — so the call-extent story now
+//! belongs to safe `mut` parameters, which this tier does not model.)
+
+import c "stdlib.h"
+
+fn main() -> !int {
+    unsafe {
+        let p = c.malloc(8) as *u8
+        p[0] = 42
+        let x = p[0] as int
+        c.free(p)
+        if x == 42 { 0 } else { 1 }
+    }
+}

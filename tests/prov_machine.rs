@@ -215,8 +215,31 @@ fn the_retag_then_opaque_call_program_demonstrates_the_protector() {
     // The sprint's named acceptance program: "interpreter trace demonstrates the
     // protector guarantee (foreign write during protected extent → UB), and the
     // paired licensed-optimization note names the fold."
-    let source = ub_program("p1_protector.lu");
-    let program = wolf_interp::sema::load_source("t.lu", &source).expect("parses");
+    // The retired `p1_protector.lu`, inline: at pin f0da6e6 its `*u8`
+    // parameters are outside the language (E1302), so the frontend rejects
+    // it — but the machine's protector logic is intact, and this test is
+    // the sprint's named acceptance evidence for it, run frontend-free
+    // (`load_source` + `Machine::run` perform no resolve_check).
+    let source = "\
+import c \"stdlib.h\"
+
+fn observe(a: *u8, mut b: *u8) -> int {
+    b[0] = 3
+    a[0] as int
+}
+
+fn main() -> !int {
+    unsafe {
+        let p = c.malloc(8) as *u8
+        p[0] = 1
+        var q = p
+        let n = observe(p, mut q)
+        c.free(p)
+        n
+    }
+}
+";
+    let program = wolf_interp::sema::load_source("t.lu", source).expect("parses");
     let run = wolf_interp::eval::Machine::new(&program)
         .tracing(Trace::Provenance)
         .run();
@@ -302,8 +325,13 @@ fn every_ub_report_carries_two_spans_a_tree_and_the_optimization_it_licenses() {
     // as the source they cover rather than as byte offsets — the is03 rule:
     // a snapshot full of offsets churns on whitespace and tells nobody
     // anything, while slicing the source with those offsets keeps them exact.
+    // P1's program is the corpus's own witness (`memory/unsafe_ub_uaf.lu`):
+    // the protector-form trigger retired at pin f0da6e6 — its `*u8`
+    // parameters are E1302 now — and T1's trigger left with the bool cast
+    // column (E0805); both retirements are `Coverage::Unreachable` entries
+    // with their reasons in `UbRow::coverage`.
     for name in [
-        "p1_protector.lu",
+        "unsafe_ub_uaf.lu",
         "p2_frozen_write.lu",
         "p3_out_of_bounds.lu",
         "p4_region_freed.lu",
@@ -311,9 +339,12 @@ fn every_ub_report_carries_two_spans_a_tree_and_the_optimization_it_licenses() {
         "p6_false_door.lu",
         "l1_uninitialized.lu",
         "l2_dangling.lu",
-        "t1_invalid_bool.lu",
     ] {
-        let source = ub_program(name);
+        let source = if name == "unsafe_ub_uaf.lu" {
+            corpus("memory/unsafe_ub_uaf.lu")
+        } else {
+            ub_program(name)
+        };
         let observation = frontend::observe(source.as_bytes(), None);
         let finding = observation
             .ub

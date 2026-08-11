@@ -44,6 +44,7 @@ fn counterparty(ours: &ObservationRecord) -> ObservationRecord {
         phase_reached: ours.phase_reached,
         seeded: false,
         diagnostics: ours.diagnostics.clone(),
+        warnings: ours.warnings.clone(),
         verdict: ours.verdict.clone(),
         stdout_sha256: None,
         stdout_inline: None,

@@ -427,13 +427,11 @@ impl fmt::Display for Value {
             Value::Bool(b) => write!(f, "{b}"),
             Value::Int(v, _) => write!(f, "{v}"),
             Value::Float(v) => {
-                // A float that is integral still prints a decimal point, so
-                // `1.0` never renders as `1` and silently reads as an int.
-                if v.fract() == 0.0 && v.is_finite() {
-                    write!(f, "{v:.1}")
-                } else {
-                    write!(f, "{v}")
-                }
+                // The SHORTEST decimal that reads back as the same bits, in
+                // the layout `corpus/strings/float_format.lu` pins (s38) —
+                // `3.0` renders `3`, `0.5` renders `0.5`, division by zero
+                // is `inf` (a value, never a trap: X3 is integer law).
+                f.write_str(&crate::fmtspec::f64_shortest(*v))
             }
             Value::Str(s) => f.write_str(s),
             Value::Tuple(items) => {
@@ -523,80 +521,6 @@ impl fmt::Display for Value {
     }
 }
 
-/// Applies a format spec to a rendered value: `{words:>3}`, `{n:<14}`.
-///
-/// The subset D26 needs for the pinned corpus — fill, align, width. Precision,
-/// sign, radix and type codes are not implemented, and a spec this does not
-/// understand is a sema-lite gap the caller turns into `unsupported` rather than
-/// silently ignoring: a format spec that does nothing is a wrong answer.
-///
-/// # Errors
-///
-/// The unsupported part of the spec, for the caller's `x-` reason string.
-pub fn apply_format(rendered: &str, spec: &str) -> Result<String, String> {
-    if spec.is_empty() {
-        return Ok(rendered.to_owned());
-    }
-    let chars: Vec<char> = spec.chars().collect();
-    let mut at = 0usize;
-
-    // `[[fill]align]` — align is one of `<^>`, and a fill character may precede
-    // it.
-    let mut fill = ' ';
-    let mut align = None;
-    if chars.len() >= 2 && matches!(chars[1], '<' | '^' | '>') {
-        fill = chars[0];
-        align = Some(chars[1]);
-        at = 2;
-    } else if !chars.is_empty() && matches!(chars[0], '<' | '^' | '>') {
-        align = Some(chars[0]);
-        at = 1;
-    }
-
-    let digits: String = chars[at..]
-        .iter()
-        .take_while(|c| c.is_ascii_digit())
-        .collect();
-    at += digits.chars().count();
-    if at != chars.len() {
-        return Err(format!(
-            "format spec `{spec}`: only `[[fill]align][width]` is implemented"
-        ));
-    }
-    let width: usize = digits.parse().unwrap_or(0);
-
-    let len = rendered.chars().count();
-    if len >= width {
-        return Ok(rendered.to_owned());
-    }
-    let pad = width - len;
-    // Default alignment: right for numbers, left for everything else — the
-    // convention every f-string dialect shares.
-    let align = align.unwrap_or_else(|| {
-        if rendered
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_digit() || c == '-')
-        {
-            '>'
-        } else {
-            '<'
-        }
-    });
-    Ok(match align {
-        '<' => format!("{rendered}{}", fill.to_string().repeat(pad)),
-        '>' => format!("{}{rendered}", fill.to_string().repeat(pad)),
-        _ => {
-            let left = pad / 2;
-            format!(
-                "{}{rendered}{}",
-                fill.to_string().repeat(left),
-                fill.to_string().repeat(pad - left)
-            )
-        }
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -662,28 +586,15 @@ mod tests {
     }
 
     #[test]
-    fn format_specs_pad_and_align() {
-        assert_eq!(apply_format("6", ">3").as_deref(), Ok("  6"));
-        assert_eq!(apply_format("ab", "<14").as_deref(), Ok("ab            "));
-        assert_eq!(apply_format("ab", "^6").as_deref(), Ok("  ab  "));
-        assert_eq!(apply_format("7", "08").as_deref(), Ok("       7"));
-        assert_eq!(apply_format("x", "").as_deref(), Ok("x"));
-        // Wider than the width: untouched.
-        assert_eq!(apply_format("abcdef", ">3").as_deref(), Ok("abcdef"));
-        // Numbers right-align by default, text left-aligns.
-        assert_eq!(apply_format("42", "5").as_deref(), Ok("   42"));
-        assert_eq!(apply_format("hi", "5").as_deref(), Ok("hi   "));
-    }
-
-    #[test]
-    fn an_unimplemented_format_spec_is_reported_not_ignored() {
-        assert!(apply_format("1", ".2f").is_err());
-        assert!(apply_format("1", ">3x").is_err());
-    }
-
-    #[test]
-    fn floats_never_render_as_integers() {
-        assert_eq!(Value::Float(1.0).to_string(), "1.0");
+    fn floats_render_shortest_round_trip() {
+        // The s38 realignment: the 0.1.4 "integral floats keep a `.0`"
+        // reading retired when `corpus/strings/float_format.lu` pinned the
+        // shortest-decimal layout. The full grammar and its pins live in
+        // `crate::fmtspec`; this asserts only that `Display` routes there.
+        assert_eq!(Value::Float(1.0).to_string(), "1");
         assert_eq!(Value::Float(1.5).to_string(), "1.5");
+        assert_eq!(Value::Float(0.5).to_string(), "0.5");
+        assert_eq!(Value::Float(f64::INFINITY).to_string(), "inf");
+        assert_eq!(Value::Float(-0.0).to_string(), "-0");
     }
 }

@@ -3008,23 +3008,57 @@ impl Machine {
 
     fn eval_interp(&mut self, interp: &Interpolation) -> EResult<String> {
         let value = self.eval(&interp.expr)?;
-        let rendered = value.to_string();
         let Some(parts) = &interp.format else {
-            return Ok(rendered);
+            return Ok(value.to_string());
         };
-        let mut spec = String::new();
+        // A nested `{w}` inside the spec evaluates to text first
+        // (`{m[k]:>{w}}`); the assembled text then parses as one spec.
+        let mut text = String::new();
         for part in parts {
             match part {
-                crate::ast::FmtPart::Text(text) => spec.push_str(text),
+                crate::ast::FmtPart::Text(part) => text.push_str(part),
                 crate::ast::FmtPart::Interp(expr) => {
                     let value = self.eval(expr)?;
-                    spec.push_str(&value.to_string());
+                    text.push_str(&value.to_string());
                 }
             }
         }
-        match value::apply_format(&rendered, &spec) {
-            Ok(text) => Ok(text),
-            Err(reason) => unsupported(reason),
+        if text.is_empty() {
+            return Ok(value.to_string());
+        }
+        // §7.4 (wolf-lang#28): parse, fit, render — never silently ignore
+        // (#10). A malformed spec is statically E0412 and a fit failure
+        // E0413; a program that reaches here anyway (sema-lite could not
+        // see the literal or classify the hole) is refused, not guessed.
+        let spec = match crate::fmtspec::parse(&text) {
+            Ok(spec) => spec,
+            Err(error) => {
+                return unsupported(format!(
+                    "format spec `{text}` is malformed (statically E0412): {}",
+                    error.message()
+                ));
+            }
+        };
+        let fmt_value = match &value {
+            Value::Str(s) => Some(crate::fmtspec::FmtValue::Str(s)),
+            Value::Bool(b) => Some(crate::fmtspec::FmtValue::Bool(*b)),
+            Value::Int(v, _) => Some(crate::fmtspec::FmtValue::Int(*v)),
+            Value::Float(v) => Some(crate::fmtspec::FmtValue::F64(*v)),
+            _ => None,
+        };
+        let Some(fmt_value) = fmt_value else {
+            return unsupported(format!(
+                "format spec `{text}` on {} — the spec grammar speaks about strings, bools \
+                 and numbers, and this machine will not guess what it means elsewhere",
+                value.kind()
+            ));
+        };
+        match crate::fmtspec::apply(&spec, fmt_value) {
+            Ok(rendered) => Ok(rendered),
+            Err(mismatch) => unsupported(format!(
+                "format spec `{text}` does not fit its hole (statically E0413): {}",
+                mismatch.message()
+            )),
         }
     }
 
@@ -4184,6 +4218,33 @@ impl Machine {
             }
             Receiver::Expr(expr) => (None, self.eval(expr)?),
         };
+        // `[mem.str.get]`: the boundary primitive's argument is a RANGE
+        // whose endpoints may be open (`s.get(..2)`) or `^n` end-relative —
+        // shapes no `Value` carries — so, exactly as `eval_bracket` does for
+        // slices, the range is read off the syntax before ordinary argument
+        // evaluation would refuse it. `get` never mutates its receiver, so
+        // the two-phase retag machinery below has nothing to observe here.
+        if method == "get"
+            && let Value::Str(s) = &value
+            && let [arg] = args
+            && let ExprKind::Range {
+                start,
+                end,
+                inclusive,
+            } = &*arg.expr.kind
+        {
+            let len = Some(s.len() as i128);
+            let s = s.clone();
+            let from = match start {
+                Some(expr) => Some(self.eval_index_endpoint(expr, len)?),
+                None => None,
+            };
+            let to = match end {
+                Some(expr) => Some(self.eval_index_endpoint(expr, len)?),
+                None => None,
+            };
+            return builtin::str_get(self, &s, from, to, *inclusive, span);
+        }
         // The receiver of a method call is a `mut` argument in all but
         // spelling, so it retags first — and the retag happens *before* the
         // arguments are evaluated, which is the whole of the two-phase shape:
@@ -4336,20 +4397,22 @@ impl Machine {
             return unsupported("indexing takes exactly one argument".to_owned());
         };
         // A range in index position is a *slice*, and its endpoints are
-        // optional (`s[..8]`, `s[4..]`) — which no `Value` shape carries, so
-        // the range is read off the syntax here rather than evaluated to one.
+        // optional (`s[..8]`, `s[4..]`) or end-relative (`s[^4..]`) — shapes
+        // no `Value` carries, so the range is read off the syntax here
+        // rather than evaluated to one.
         if let ExprKind::Range {
             start,
             end,
             inclusive,
         } = &*arg.expr.kind
         {
+            let len = slice_len_of(&target);
             let start = match start {
-                Some(expr) => Some(self.eval_index_endpoint(expr)?),
+                Some(expr) => Some(self.eval_index_endpoint(expr, len)?),
                 None => None,
             };
             let end = match end {
-                Some(expr) => Some(self.eval_index_endpoint(expr)?),
+                Some(expr) => Some(self.eval_index_endpoint(expr, len)?),
                 None => None,
             };
             return builtin::slice(self, &target, start, end, *inclusive, span);
@@ -4367,7 +4430,26 @@ impl Machine {
         builtin::index(self, &target, &index, span)
     }
 
-    fn eval_index_endpoint(&mut self, expr: &Expr) -> EResult<i128> {
+    fn eval_index_endpoint(&mut self, expr: &Expr, len: Option<i128>) -> EResult<i128> {
+        // `^n` counts from the end (D25): it resolves to `len - n` BEFORE
+        // the bounds/boundary question is asked, exactly as `[mem.str.get]`
+        // words it for the recoverable twin.
+        if let ExprKind::FromEnd(inner) = &*expr.kind {
+            let Some(len) = len else {
+                return Err(Signal::Unsupported(
+                    "`^n` counts from the end of a string or List; this target has no length \
+                     to count from"
+                        .to_owned(),
+                ));
+            };
+            return match self.eval(inner)? {
+                Value::Int(n, _) => Ok(len - n),
+                other => Err(Signal::Unsupported(format!(
+                    "`^n` takes an integer, got {}",
+                    other.kind()
+                ))),
+            };
+        }
         match self.eval(expr)? {
             Value::Int(v, _) => Ok(v),
             other => Err(Signal::Unsupported(format!(
@@ -4874,6 +4956,21 @@ impl Machine {
         self.write_out(text);
     }
 
+    /// The stderr half of the s38 writers: live pass-through only. stderr
+    /// is never part of the observation record (`[proto.record]` hashes
+    /// stdout alone), so there is nothing to capture — but an embedded run
+    /// (corpus walk, differ, explorer) must not scribble on the HARNESS's
+    /// stderr, so the write follows the same live gate as stdout's
+    /// pass-through.
+    pub(crate) fn err_out(&mut self, text: &str) {
+        if self.shared.live_stdout {
+            use std::io::Write;
+            let mut err = std::io::stderr();
+            let _ = err.write_all(text.as_bytes());
+            let _ = err.flush();
+        }
+    }
+
     pub(crate) fn fault<T>(
         &mut self,
         kind: TrapKind,
@@ -4908,6 +5005,17 @@ impl Machine {
 
 /// The first `depth` projections of a path, rendered — the place that actually
 /// moved when a read of a deeper place traps.
+/// The byte/element length a `^n` endpoint counts back from, when the
+/// slicing target has one (D25: `str` counts bytes, collections count
+/// elements).
+fn slice_len_of(target: &Value) -> Option<i128> {
+    match target {
+        Value::Str(s) => Some(s.len() as i128),
+        Value::List(items) | Value::Tuple(items) => Some(items.len() as i128),
+        _ => None,
+    }
+}
+
 fn prefix(path: &Path, depth: usize) -> Path {
     let mut prefix = path.clone();
     prefix.projections.truncate(depth);

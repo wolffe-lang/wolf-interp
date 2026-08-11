@@ -1,66 +1,67 @@
 ---
 source: tests/frontend_snapshots.rs
+assertion_line: 125
 expression: "tokens_of(&corpus(\"grammar/interp_nested.lu\"))"
 ---
-  191..193   kw fn
-  194..198   ident main
-  198..199   punct (
-  199..200   punct )
-  201..203   punct ->
-  204..205   punct !
-  205..208   ident int
-  209..210   punct {
-  215..218   kw let
-  219..220   ident n
-  221..222   punct =
-  223..224   int 3
-  224..224   term nl
-  229..234   ident print
-  234..235   punct (
-  235..236   str-open plain
-  236..237     interp-open
-  237..238       str-open plain
-  238..239         text "#"
-  239..240       str-close
-  240..241       punct .
-  241..247       ident repeat
-  247..248       punct (
-  248..249       ident n
-  249..250       punct )
-  250..251     interp-close
-  251..252   str-close
-  252..253   punct )
-  297..297   term nl
-  302..307   ident print
-  307..308   punct (
-  308..309   str-open plain
-  309..329     text "{not interpolated}"
-  329..330   str-close
-  330..331   punct )
-  361..361   term nl
-  366..369   kw let
-  370..375   ident inner
-  376..377   punct =
-  378..379   str-open plain
-  379..380     text "x"
-  380..381   str-close
-  381..381   term nl
-  386..391   ident print
-  391..392   punct (
-  392..393   str-open plain
-  393..394     interp-open
-  395..396       str-open plain
-  396..401         text "wrap-"
-  401..402         interp-open
-  402..407           ident inner
-  407..408         interp-close
-  408..413         text "-wrap"
-  413..414       str-close
-  415..416     interp-close
-  416..417   str-close
-  417..418   punct )
-  452..452   term nl
-  457..458   int 0
-  458..458   term nl
-  459..460   punct }
-  460..460   term nl
+  187..189   kw fn
+  190..194   ident main
+  194..195   punct (
+  195..196   punct )
+  197..199   punct ->
+  200..201   punct !
+  201..204   ident int
+  205..206   punct {
+  211..214   kw let
+  215..216   ident n
+  217..218   punct =
+  219..220   int 3
+  220..220   term nl
+  225..230   ident print
+  230..231   punct (
+  231..232   str-open plain
+  232..233     interp-open
+  233..234       str-open plain
+  234..235         text "#"
+  235..236       str-close
+  236..237       punct .
+  237..243       ident repeat
+  243..244       punct (
+  244..245       ident n
+  245..246       punct )
+  246..247     interp-close
+  247..248   str-close
+  248..249   punct )
+  293..293   term nl
+  298..303   ident print
+  303..304   punct (
+  304..305   str-open plain
+  305..325     text "{not interpolated}"
+  325..326   str-close
+  326..327   punct )
+  357..357   term nl
+  362..365   kw let
+  366..371   ident inner
+  372..373   punct =
+  374..375   str-open plain
+  375..376     text "x"
+  376..377   str-close
+  377..377   term nl
+  382..387   ident print
+  387..388   punct (
+  388..389   str-open plain
+  389..390     interp-open
+  391..392       str-open plain
+  392..397         text "wrap-"
+  397..398         interp-open
+  398..403           ident inner
+  403..404         interp-close
+  404..409         text "-wrap"
+  409..410       str-close
+  411..412     interp-close
+  412..413   str-close
+  413..414   punct )
+  448..448   term nl
+  453..454   int 0
+  454..454   term nl
+  455..456   punct }
+  456..456   term nl

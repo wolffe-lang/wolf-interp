@@ -286,6 +286,7 @@ mod tests {
             phase_reached: Phase::Run,
             seeded: false,
             diagnostics: Vec::new(),
+            warnings: None,
             verdict,
             stdout_sha256: None,
             stdout_inline: None,

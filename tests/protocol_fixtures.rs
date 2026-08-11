@@ -40,6 +40,15 @@ fn with_extensions_json_is_accepted() {
 }
 
 #[test]
+fn with_warnings_json_is_accepted() {
+    // `[proto.record.warn]` (s67, additive within protocol 1): the fixture
+    // carries the `warnings` array beside the same observations in
+    // `diagnostics` with `"severity": "warning"` — validators accept
+    // records with or without the array.
+    assert_eq!(schema::validate(&fixture("with-warnings.json")), Ok(()));
+}
+
+#[test]
 fn wrong_version_json_is_rejected() {
     let errors = schema::validate(&fixture("wrong-version.json")).expect_err("must be rejected");
     assert!(
@@ -81,6 +90,7 @@ fn the_fixture_set_is_the_one_the_spec_names() {
             "missing-field.json",
             "valid.json",
             "with-extensions.json",
+            "with-warnings.json",
             "wrong-version.json"
         ]
     );

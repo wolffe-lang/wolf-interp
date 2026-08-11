@@ -134,6 +134,17 @@ pub struct Diagnostic {
     pub severity: String,
 }
 
+/// One warning observation: `{code, span}` (`[proto.record.warn]`, s67).
+///
+/// Severity is not repeated — the array is warnings by definition. The same
+/// observations ride `diagnostics` with `"severity": "warning"`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Warning {
+    pub code: String,
+    /// Byte-offset half-open span `[start, end)`.
+    pub span: [u64; 2],
+}
+
 /// One observation record — the JSON object `conform-run --json` writes to
 /// stdout (`[proto.record]`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -148,6 +159,13 @@ pub struct ObservationRecord {
     pub phase_reached: Phase,
     pub seeded: bool,
     pub diagnostics: Vec<Diagnostic>,
+    /// `[proto.record.warn]` (additive within protocol 1): the warning
+    /// observations after source-level `#[allow]` suppression. `None` is
+    /// **honest-absent** — the implementation runs no warning analyses for
+    /// this record and stands behind no empty array; absence on either side
+    /// is never a divergence (`[proto.cmp.warn]`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warnings: Option<Vec<Warning>>,
     pub verdict: Verdict,
     #[serde(default)]
     pub stdout_sha256: Option<String>,
@@ -250,6 +268,7 @@ mod tests {
                 span: [120, 133],
                 severity: "error".to_owned(),
             }],
+            warnings: None,
             verdict: Verdict::Unsupported,
             stdout_sha256: None,
             stdout_inline: None,

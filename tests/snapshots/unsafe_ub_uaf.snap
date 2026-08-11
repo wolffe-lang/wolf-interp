@@ -1,0 +1,15 @@
+---
+source: tests/prov_machine.rs
+---
+program:   unsafe_ub_uaf.lu
+verdict:   ub(mem.ub)
+row:       §7/P1
+clause:    [mem.prov.state]
+what:      access through a Disabled tag (use-after-free, use of an invalidated borrow), or a foreign write to a protected tag
+licenses:  O1: `mut` params lower to `noalias` + `dereferenceable`; unique-tag stores forward without memory checks
+message:   read through tag#0 (c.malloc(8)#root), which is Disabled at alloc#0[0]
+access:    `p[0]`
+tag from:  `c.malloc(8)`
+tree:
+  alloc#0 `c.malloc(8)` 8 byte(s), FREED, owned by region #0
+    tag#0 c.malloc(8)#root Disabled exposed

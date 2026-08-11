@@ -710,8 +710,11 @@ fn define(
 ///
 /// Check order is fixed and deterministic: cycle (E0303), duplicate (E0302),
 /// private access (E0304), unused import (E0305), `let` reassignment (E0410),
-/// call-site mode (E1007). Each corpus law file exercises exactly one; a
-/// program violating several reports the first in this order, which is a
+/// call-site mode (E1007), then the pin-`f0da6e6` tier statics — raw
+/// signature boundary (E1302), the unsafe ring plus the cast matrix's bool
+/// column, char indexing and format specs (E1301/E0805/E0411/E0412/E0413,
+/// one source-order body walk). Each corpus law file exercises exactly one;
+/// a program violating several reports the first in this order, which is a
 /// defensible choice the spec does not pin.
 #[must_use]
 pub fn resolve_check(program: &Program) -> Option<Diag> {
@@ -721,6 +724,8 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| unused_check(program))
         .or_else(|| reassign_check(program))
         .or_else(|| mode_check(program))
+        .or_else(|| unsafe_sig_check(program))
+        .or_else(|| tier_check(program))
 }
 
 /// `[mod.cycle]` (D32): imports form a DAG. E0303 at the `use` that closes
@@ -918,6 +923,712 @@ fn reassign_check(program: &Program) -> Option<Diag> {
 /// a wrong answer.
 fn mode_check(program: &Program) -> Option<Diag> {
     body_walk(program, false, true).0
+}
+
+// ---------------------------------------------------------------------------
+// The unsafe-tier statics (issue #18, pin `f0da6e6`): E1302, E1301, E0805,
+// E0411 — wolfc-parity code+span at this machine's only static rung
+// ---------------------------------------------------------------------------
+//
+// The book's ch09 differential (bs05) found the unsafe ring unenforced: raw
+// operations ran outside `unsafe` blocks the counterparty rejects. Like
+// E0410 and E1007 before them, these checks live at the resolve rung —
+// sema-lite is this machine's only static tier — while wolfc's emissions
+// live deeper (E1301/E1302 at its mem rung, E0805 at typecheck). The rung
+// placement is the DIV-2026-011 question again, filed as DIV-2026-012;
+// codes and spans match the counterparty, observed at pin `f0da6e6`.
+//
+// Sema-lite has no types, so the walk tracks the little state the rules
+// need: which locals *syntactically* hold raw pointers (bound from an
+// `as *T` cast, a `c.malloc`/`c.calloc` call, or an `unsafe { … }` block
+// whose tail is one of those — the book's "laundered pointer" shape), and
+// which locals have a literal-known class (E0411's "this receiver is a
+// `str`"). Unknown stays unknown and is never diagnosed — the checks fire
+// only on what the resolve rung can actually see, the E1007 discipline.
+
+/// What a local is syntactically known to hold, for the tier statics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LitClass {
+    Str,
+    Int,
+    Float,
+    Bool,
+    Raw,
+    Unknown,
+}
+
+/// The tier walk's lexical state: one pass per function body, source order,
+/// first finding wins (`[proto.cmp.phase]` compares the first diagnostic).
+struct TierWalk {
+    /// Whether this module `import c`s — bound once from the module's own
+    /// header list, so the answer cannot drift from the map key.
+    imports_c: bool,
+    unsafe_depth: usize,
+    scopes: Vec<Vec<(String, LitClass)>>,
+}
+
+impl TierWalk {
+    fn lookup(&self, name: &str) -> LitClass {
+        for scope in self.scopes.iter().rev() {
+            for (n, class) in scope.iter().rev() {
+                if n == name {
+                    return *class;
+                }
+            }
+        }
+        LitClass::Unknown
+    }
+
+    fn declare(&mut self, name: &str, class: LitClass) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.push((name.to_owned(), class));
+        }
+    }
+
+    fn in_unsafe(&self) -> bool {
+        self.unsafe_depth > 0
+    }
+
+    /// The syntactic class of an expression, conservatively. `Unknown` means
+    /// "say nothing" — the walk never guesses.
+    fn classify(&self, expr: &Expr) -> LitClass {
+        match &*expr.kind {
+            ExprKind::Int(_) => LitClass::Int,
+            ExprKind::Float(_) => LitClass::Float,
+            ExprKind::Bool(_) => LitClass::Bool,
+            ExprKind::Str(_) => LitClass::Str,
+            ExprKind::Group(inner) => self.classify(inner),
+            ExprKind::Path(path) if path.is_single() => self.lookup(&path.segments[0].name),
+            ExprKind::Unary { operand, .. } => match self.classify(operand) {
+                c @ (LitClass::Int | LitClass::Float) => c,
+                _ => LitClass::Unknown,
+            },
+            ExprKind::Binary { op, lhs, rhs } => {
+                use crate::ast::BinOp;
+                if !matches!(
+                    op,
+                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem
+                ) {
+                    return LitClass::Unknown;
+                }
+                match (self.classify(lhs), self.classify(rhs)) {
+                    (LitClass::Int, LitClass::Int) => LitClass::Int,
+                    (LitClass::Float, LitClass::Float) => LitClass::Float,
+                    _ => LitClass::Unknown,
+                }
+            }
+            ExprKind::Cast { ty, .. } if type_contains_raw(ty) => LitClass::Raw,
+            ExprKind::Call { callee, .. } if self.c_alloc_name(callee).is_some() => LitClass::Raw,
+            // The book's laundering shape: `let p = unsafe { … as *u8 }` —
+            // the VALUE that leaves the block is raw; holding it is free,
+            // using it outside the ring is not.
+            ExprKind::Unsafe { body } => {
+                body.tail
+                    .as_deref()
+                    .map_or(LitClass::Unknown, |tail| match self.classify(tail) {
+                        LitClass::Raw => LitClass::Raw,
+                        _ => LitClass::Unknown,
+                    })
+            }
+            _ => LitClass::Unknown,
+        }
+    }
+
+    /// `c.NAME` when the module imports C and `c` is not locally shadowed —
+    /// the resolution rule the machine applies dynamically, statically. A
+    /// dotted name parses as a two-segment *path* (`[gram.expr.primary]`),
+    /// the same shape the machine's own `c.*` dispatch reads.
+    fn c_member_name(&self, callee: &Expr) -> Option<String> {
+        let ExprKind::Path(path) = &*callee.kind else {
+            return None;
+        };
+        if path.segments.len() != 2
+            || path.segments[0].name != "c"
+            || self.lookup("c") != LitClass::Unknown
+            || !self.imports_c
+        {
+            return None;
+        }
+        Some(path.segments[1].name.clone())
+    }
+
+    fn c_alloc_name(&self, callee: &Expr) -> Option<String> {
+        self.c_member_name(callee)
+            .filter(|name| matches!(name.as_str(), "malloc" | "calloc"))
+    }
+}
+
+/// Does this type mention `*T` anywhere the signature's reader can see?
+fn type_contains_raw(ty: &Type) -> bool {
+    match &*ty.kind {
+        TypeKind::RawPointer(_) => true,
+        TypeKind::ErrorUnion(inner) | TypeKind::Prefixed { ty: inner, .. } => {
+            type_contains_raw(inner)
+        }
+        TypeKind::Fallible { ty: inner, .. } => type_contains_raw(inner),
+        TypeKind::Tuple(items) => items.iter().any(type_contains_raw),
+        TypeKind::Fn { params, ret } => {
+            params.iter().any(type_contains_raw)
+                || ret.as_ref().is_some_and(|r| type_contains_raw(&r.ty))
+        }
+        _ => false,
+    }
+}
+
+/// Every function of a module, items first then impl methods — the same
+/// deterministic order as [`body_walk`].
+fn each_fn(module: &Module) -> impl Iterator<Item = &FnDecl> {
+    module
+        .items
+        .values()
+        .filter_map(|(def, _)| match def {
+            Def::Fn(decl) => Some(&**decl),
+            _ => None,
+        })
+        .chain(
+            module
+                .methods
+                .values()
+                .flat_map(|methods| methods.values().flatten().map(|m| &*m.decl)),
+        )
+}
+
+/// `[mem.unsafe.scope]` (s22's boundary law): unsafety never crosses a
+/// signature — there are no `unsafe fn`s, so a `*T` in a parameter or return
+/// type would smuggle the raw tier into every caller's audit surface. E1302
+/// at the parameter *name* (the counterparty's span, observed at pin
+/// `f0da6e6`: `corpus/memory/unsafe_sig.lu`, span `[329,330]` — the `p` of
+/// `fn peek(p: *u8)`); a raw return type reports at the type's span (no
+/// pinned witness — this machine's documented choice).
+fn unsafe_sig_check(program: &Program) -> Option<Diag> {
+    for module in program.modules.values() {
+        for decl in each_fn(module) {
+            for param in &decl.params {
+                if let crate::ast::ParamKind::Named { name, ty } = &param.kind
+                    && type_contains_raw(ty)
+                {
+                    return Some(Diag::new(
+                        "E1302",
+                        name.span,
+                        "mem.unsafe.scope",
+                        format!(
+                            "`{}`'s parameter `{}` carries a raw pointer, but this boundary \
+                             stays fully safe: there are no `unsafe fn`s — the proof lives \
+                             at the `unsafe` block and the module is the audit granule. Pass \
+                             a `handle` or a region value, or keep the `*T` in a \
+                             module-private field",
+                            decl.name.name, name.name
+                        ),
+                    ));
+                }
+            }
+            if let Some(ret) = &decl.ret
+                && type_contains_raw(&ret.ty)
+            {
+                return Some(Diag::new(
+                    "E1302",
+                    ret.ty.span,
+                    "mem.unsafe.scope",
+                    format!(
+                        "`{}`'s return type carries a raw pointer, but this boundary stays \
+                         fully safe: there are no `unsafe fn`s — keep the `*T` inside the \
+                         module and hand out a `handle` or a region value",
+                        decl.name.name
+                    ),
+                ));
+            }
+        }
+    }
+    None
+}
+
+/// The tier body walk: E1301 (the unsafe ring), E0805 (the cast matrix's
+/// `bool` column), E0411 (`s[i]` char indexing), E0412/E0413 (format specs,
+/// s38). One deterministic pass per function body; the first finding wins.
+fn tier_check(program: &Program) -> Option<Diag> {
+    for module in program.modules.values() {
+        for decl in each_fn(module) {
+            let mut walk = TierWalk {
+                imports_c: !module.c_headers.is_empty(),
+                unsafe_depth: 0,
+                scopes: vec![Vec::new()],
+            };
+            for param in &decl.params {
+                if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
+                    walk.declare(&name.name, class_of_type(ty));
+                }
+            }
+            if let Some(body) = &decl.body
+                && let Some(diag) = walk.block(body)
+            {
+                return Some(diag);
+            }
+        }
+        for (def, _) in module.items.values() {
+            if let Def::Binding(binding) = def {
+                let mut walk = TierWalk {
+                    imports_c: !module.c_headers.is_empty(),
+                    unsafe_depth: 0,
+                    scopes: vec![Vec::new()],
+                };
+                if let Some(diag) = walk.expr(&binding.value) {
+                    return Some(diag);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// The class an *annotated* type names, for parameters (`greet(name: str)`).
+fn class_of_type(ty: &Type) -> LitClass {
+    match &*ty.kind {
+        TypeKind::RawPointer(_) => LitClass::Raw,
+        TypeKind::Path { path, args } if path.is_single() && args.is_empty() => {
+            match path.segments[0].name.as_str() {
+                "str" => LitClass::Str,
+                "bool" => LitClass::Bool,
+                "f32" | "f64" => LitClass::Float,
+                "int" | "uint" | "i8" | "i16" | "i32" | "i64" | "i128" | "u8" | "u16" | "u32"
+                | "u64" | "u128" => LitClass::Int,
+                _ => LitClass::Unknown,
+            }
+        }
+        _ => LitClass::Unknown,
+    }
+}
+
+impl TierWalk {
+    fn block(&mut self, block: &Block) -> Option<Diag> {
+        self.scopes.push(Vec::new());
+        for stmt in &block.stmts {
+            if let Some(diag) = self.stmt(stmt) {
+                self.scopes.pop();
+                return Some(diag);
+            }
+        }
+        let out = block.tail.as_deref().and_then(|tail| self.expr(tail));
+        self.scopes.pop();
+        out
+    }
+
+    fn stmt(&mut self, stmt: &Stmt) -> Option<Diag> {
+        match &stmt.kind {
+            StmtKind::Binding(binding) => {
+                if let Some(diag) = self.expr(&binding.value) {
+                    return Some(diag);
+                }
+                if let PatKind::Binding(ident) = &*binding.pattern.kind {
+                    let class = binding
+                        .ty
+                        .as_ref()
+                        .map(class_of_type)
+                        .filter(|c| *c != LitClass::Unknown)
+                        .unwrap_or_else(|| self.classify(&binding.value));
+                    self.declare(&ident.name, class);
+                }
+                None
+            }
+            StmtKind::Assign { place, value, .. } => {
+                // A write through a raw local — `p[0] = 1` — is the ring's
+                // op; the span is the place, the counterparty's shape
+                // (observed `[452,456]` on `unsafe_raw_outside.lu`).
+                if let ExprKind::BracketApply { base, .. } = &*place.kind
+                    && let ExprKind::Path(path) = &*base.kind
+                    && path.is_single()
+                    && self.lookup(&path.segments[0].name) == LitClass::Raw
+                    && !self.in_unsafe()
+                {
+                    return Some(ring_diag("a raw pointer write", place.span));
+                }
+                self.expr(place).or_else(|| self.expr(value))
+            }
+            StmtKind::AssumeNoalias(operands) => {
+                if !self.in_unsafe() {
+                    return Some(ring_diag("`assume noalias`", stmt.span));
+                }
+                operands.iter().find_map(|operand| self.expr(operand))
+            }
+            StmtKind::Defer { expr, .. } => self.expr(expr),
+            StmtKind::Expr(expr) => self.expr(expr),
+            StmtKind::Item(item) => match &item.kind {
+                ItemKind::Binding(binding) => self.expr(&binding.value),
+                ItemKind::Fn(decl) => decl.body.as_ref().and_then(|body| self.block(body)),
+                _ => None,
+            },
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn expr(&mut self, expr: &Expr) -> Option<Diag> {
+        match &*expr.kind {
+            ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Bool(_) | ExprKind::Wildcard => None,
+            ExprKind::Path(_) => None,
+            ExprKind::Str(lit) => self.str_lit(lit),
+            ExprKind::Group(inner)
+            | ExprKind::Try(inner)
+            | ExprKind::FromEnd(inner)
+            | ExprKind::Freeze(inner) => self.expr(inner),
+            ExprKind::Unary { operand, .. } => self.expr(operand),
+            ExprKind::Binary { lhs, rhs, .. } => self.expr(lhs).or_else(|| self.expr(rhs)),
+            ExprKind::Cast { expr: operand, ty } => {
+                if let Some(diag) = self.expr(operand) {
+                    return Some(diag);
+                }
+                // The cast matrix's `bool` column (issue #18 item 2): `as`
+                // is not a truthiness bridge, and the counterparty rejects
+                // in unsafe code too (observed at pin `f0da6e6`: E0805 at
+                // the whole cast expression, `ty.cast.closed-set`).
+                if is_bool_type(ty) {
+                    return Some(Diag::new(
+                        "E0805",
+                        expr.span,
+                        "ty.cast.closed-set",
+                        "this does not cast to `bool` — `as` is outside the cast set here; \
+                         there is no truthiness bridge. Compare instead: `x != 0` is the \
+                         `bool` you meant",
+                    ));
+                }
+                // The other side of the bridge (`corpus/typecheck/cast_bad.lu`,
+                // the row this rung can see): a `bool` casts to nothing.
+                if self.classify(operand) == LitClass::Bool {
+                    return Some(Diag::new(
+                        "E0805",
+                        expr.span,
+                        "ty.cast.closed-set",
+                        "`bool` does not cast — `as` is outside the cast set here; write the \
+                         value out instead, e.g. `if b { 1 } else { 0 }`",
+                    ));
+                }
+                // And `as` is not a stringifier: nothing casts to `str`.
+                if is_str_type(ty) {
+                    return Some(Diag::new(
+                        "E0805",
+                        expr.span,
+                        "ty.cast.closed-set",
+                        "nothing casts to `str` — `as` is outside the cast set here; build \
+                         strings with interpolation: \"{value}\" formats any primitive",
+                    ));
+                }
+                // The int→pointer door outside the ring: `42 as *u8` forges
+                // provenance. Retyping a value that is ALREADY raw (a c
+                // allocator call, a raw local, a laundering unsafe block) is
+                // inert — the counterparty flags the call, never the cast
+                // (observed: `c.malloc(8) as *u8` carries one E1301, on the
+                // call), so this fires only on non-raw operands.
+                if type_contains_raw(ty)
+                    && !self.in_unsafe()
+                    && self.classify(operand) != LitClass::Raw
+                {
+                    return Some(ring_diag("an integer-to-pointer cast", expr.span));
+                }
+                None
+            }
+            ExprKind::Call { callee, args } => {
+                // The C call itself is the ring's op; its span is the whole
+                // call (observed `[384,395]`, `c.malloc(8)`).
+                if let Some(name) = self.c_member_name(callee) {
+                    if !self.in_unsafe() {
+                        return Some(ring_diag(&format!("the C call `c.{name}`"), expr.span));
+                    }
+                } else if let ExprKind::Path(path) = &*callee.kind
+                    && path.segments.len() == 2
+                    && self.lookup(&path.segments[0].name) == LitClass::Raw
+                    && matches!(
+                        path.segments[1].name.as_str(),
+                        "addr" | "with_addr" | "expose" | "with_exposed"
+                    )
+                    && !self.in_unsafe()
+                {
+                    // The provenance surface of `*T` (spec/02 §6) is
+                    // ring-gated with the operation named.
+                    return Some(ring_diag(
+                        &format!("the provenance operation `{}`", path.segments[1].name),
+                        expr.span,
+                    ));
+                }
+                if let Some(diag) = self.expr(callee) {
+                    return Some(diag);
+                }
+                args.iter().find_map(|arg| self.expr(&arg.expr))
+            }
+            ExprKind::BracketApply { base, args } => {
+                if let ExprKind::Path(path) = &*base.kind
+                    && path.is_single()
+                {
+                    let class = self.lookup(&path.segments[0].name);
+                    // A read through a raw local outside the ring.
+                    if class == LitClass::Raw && !self.in_unsafe() {
+                        return Some(ring_diag("a raw pointer read", expr.span));
+                    }
+                    // E0411 — no `s[i]` character indexing exists (D25): a
+                    // single index cannot honestly name "a character".
+                    if class == LitClass::Str
+                        && let [crate::ast::IndexArg::Value(arg)] = args.as_slice()
+                        && !matches!(&*arg.expr.kind, ExprKind::Range { .. })
+                    {
+                        return Some(Diag::new(
+                            "E0411",
+                            expr.span,
+                            "str.slice",
+                            "there is no `s[i]` character indexing in wolf (D25): a single \
+                             index cannot honestly name \"a character\". Slice bytes with \
+                             `s[a..b]`, take the byte view with `s.bytes()`, or find offsets \
+                             with `s.find(…)`",
+                        ));
+                    }
+                }
+                if let Some(diag) = self.expr(base) {
+                    return Some(diag);
+                }
+                args.iter().find_map(|arg| match arg {
+                    crate::ast::IndexArg::Value(arg) => self.expr(&arg.expr),
+                    crate::ast::IndexArg::Type(_) => None,
+                })
+            }
+            ExprKind::Member { base, .. } | ExprKind::ModedReceiver { place: base, .. } => {
+                self.expr(base)
+            }
+            ExprKind::StructLit { fields, .. } => fields
+                .iter()
+                .find_map(|field| field.value.as_ref().and_then(|value| self.expr(value))),
+            ExprKind::Tuple(items) => items.iter().find_map(|item| self.expr(item)),
+            ExprKind::Block(block) | ExprKind::Loop { body: block } => self.block(block),
+            ExprKind::Range { start, end, .. } => start
+                .as_ref()
+                .and_then(|s| self.expr(s))
+                .or_else(|| end.as_ref().and_then(|e| self.expr(e))),
+            ExprKind::ElseDefault {
+                expr: inner,
+                handler,
+            } => {
+                if let Some(diag) = self.expr(inner) {
+                    return Some(diag);
+                }
+                self.else_handler(handler)
+            }
+            ExprKind::If {
+                cond,
+                then,
+                otherwise,
+            } => self
+                .expr(cond)
+                .or_else(|| self.block(then))
+                .or_else(|| otherwise.as_ref().and_then(|e| self.expr(e))),
+            ExprKind::Match { scrutinee, arms } => {
+                if let Some(diag) = self.expr(scrutinee) {
+                    return Some(diag);
+                }
+                arms.iter().find_map(|arm| {
+                    self.scopes.push(Vec::new());
+                    declare_pattern_classes(&arm.pattern, self);
+                    let out = arm
+                        .guard
+                        .as_ref()
+                        .and_then(|guard| self.expr(guard))
+                        .or_else(|| self.expr(&arm.body));
+                    self.scopes.pop();
+                    out
+                })
+            }
+            ExprKind::For {
+                pattern,
+                iter,
+                body,
+            } => {
+                if let Some(diag) = self.expr(iter) {
+                    return Some(diag);
+                }
+                self.scopes.push(Vec::new());
+                declare_pattern_classes(pattern, self);
+                let out = self.block(body);
+                self.scopes.pop();
+                out
+            }
+            ExprKind::While { cond, body } => self.expr(cond).or_else(|| self.block(body)),
+            ExprKind::Return(value) | ExprKind::Break(value) => {
+                value.as_ref().and_then(|v| self.expr(v))
+            }
+            ExprKind::Continue => None,
+            ExprKind::Closure { params, body, .. } => {
+                self.scopes.push(Vec::new());
+                for param in params {
+                    let class = param
+                        .ty
+                        .as_ref()
+                        .map(class_of_type)
+                        .unwrap_or(LitClass::Unknown);
+                    self.declare(&param.name.name, class);
+                }
+                let out = self.expr(body);
+                self.scopes.pop();
+                out
+            }
+            ExprKind::RegionSugar { body, .. } | ExprKind::Scope { body, .. } => self.block(body),
+            ExprKind::In { region, body } => self.expr(region).or_else(|| self.block(body)),
+            ExprKind::RegionValue { .. } => None,
+            ExprKind::SpawnProc { args, .. } => args.iter().find_map(|arg| self.expr(&arg.expr)),
+            ExprKind::Select { arms } => arms.iter().find_map(|arm| {
+                let opening = match &arm.kind {
+                    crate::ast::SelectArmKind::Recv { channel, .. } => self.expr(channel),
+                    crate::ast::SelectArmKind::Timeout(expr) => self.expr(expr),
+                };
+                opening.or_else(|| self.expr(&arm.body))
+            }),
+            ExprKind::When { operands, body } => operands
+                .iter()
+                .find_map(|operand| self.expr(operand))
+                .or_else(|| self.block(body)),
+            ExprKind::Unsafe { body } => {
+                self.unsafe_depth += 1;
+                let out = self.block(body);
+                self.unsafe_depth -= 1;
+                out
+            }
+            ExprKind::UnsafeC { .. } => None,
+            ExprKind::Asm { operands, .. } => operands
+                .iter()
+                .find_map(|operand| self.expr(&operand.value)),
+            ExprKind::Borrow { place, from } => {
+                if !self.in_unsafe() {
+                    return Some(ring_diag("`borrow … from`", expr.span));
+                }
+                self.expr(place).or_else(|| self.expr(from))
+            }
+        }
+    }
+
+    fn else_handler(&mut self, handler: &crate::ast::ElseHandler) -> Option<Diag> {
+        use crate::ast::ElseHandler;
+        match handler {
+            ElseHandler::Block(block) => self.block(block),
+            ElseHandler::Expr(expr) => self.expr(expr),
+            ElseHandler::Handler { pattern, body } => {
+                self.scopes.push(Vec::new());
+                declare_pattern_classes(pattern, self);
+                let out = self.expr(body);
+                self.scopes.pop();
+                out
+            }
+        }
+    }
+
+    /// E0412/E0413 — every *literal* format spec is comptime-known (s38), so
+    /// a malformed one, or a well-formed one that cannot fit the hole's
+    /// class, rejects at the literal. A spec with interpolated parts
+    /// (`{x:>{w}}`) or a hole whose class this rung cannot see is left to
+    /// run time — the walk never guesses.
+    fn str_lit(&mut self, lit: &StrLit) -> Option<Diag> {
+        for part in &lit.parts {
+            let StrPart::Interp(interp) = part else {
+                continue;
+            };
+            if let Some(diag) = self.expr(&interp.expr) {
+                return Some(diag);
+            }
+            let Some(parts) = &interp.format else {
+                continue;
+            };
+            let mut text = String::new();
+            let mut literal_only = true;
+            for fmt_part in parts {
+                match fmt_part {
+                    crate::ast::FmtPart::Text(t) => text.push_str(t),
+                    crate::ast::FmtPart::Interp(inner) => {
+                        literal_only = false;
+                        if let Some(diag) = self.expr(inner) {
+                            return Some(diag);
+                        }
+                    }
+                }
+            }
+            if !literal_only {
+                continue;
+            }
+            let spec = match crate::fmtspec::parse(&text) {
+                Ok(spec) => spec,
+                Err(error) => {
+                    return Some(Diag::new(
+                        "E0412",
+                        interp.span,
+                        "str.interp",
+                        format!("malformed format spec `{text}`: {}", error.message()),
+                    ));
+                }
+            };
+            let class = match self.classify(&interp.expr) {
+                LitClass::Str => Some(crate::fmtspec::HoleClass::Str),
+                LitClass::Bool => Some(crate::fmtspec::HoleClass::Bool),
+                LitClass::Int => Some(crate::fmtspec::HoleClass::Int),
+                LitClass::Float => Some(crate::fmtspec::HoleClass::Float),
+                LitClass::Raw | LitClass::Unknown => None,
+            };
+            if let Some(class) = class
+                && let Err(mismatch) = crate::fmtspec::validate(&spec, class)
+            {
+                return Some(Diag::new(
+                    "E0413",
+                    interp.span,
+                    "str.interp",
+                    format!(
+                        "format spec `{text}` does not fit this hole: {}",
+                        mismatch.message()
+                    ),
+                ));
+            }
+        }
+        None
+    }
+}
+
+/// E1301's one shape: the operation named, the ring stated, no moralizing —
+/// the raw tier is simpler, not scarier (D11).
+fn ring_diag(what: &str, span: Span) -> Diag {
+    Diag::new(
+        "E1301",
+        span,
+        "mem.unsafe.scope",
+        format!(
+            "{what} needs an `unsafe` block: raw pointers are inert data anywhere — only the \
+             tier's operations need the ring. Wrap this in `unsafe {{ }}` and state the \
+             invariant in a `# Safety:` comment"
+        ),
+    )
+}
+
+/// Is this type literally `bool`?
+fn is_bool_type(ty: &Type) -> bool {
+    matches!(&*ty.kind, TypeKind::Path { path, args }
+        if args.is_empty() && path.is_single() && path.segments[0].name == "bool")
+}
+
+/// Is this type literally `str`?
+fn is_str_type(ty: &Type) -> bool {
+    matches!(&*ty.kind, TypeKind::Path { path, args }
+        if args.is_empty() && path.is_single() && path.segments[0].name == "str")
+}
+
+/// Pattern bindings enter the scope as `Unknown` — honest ignorance beats a
+/// wrong class.
+fn declare_pattern_classes(pattern: &Pattern, walk: &mut TierWalk) {
+    match &*pattern.kind {
+        PatKind::Binding(ident) => walk.declare(&ident.name, LitClass::Unknown),
+        PatKind::Variant { fields, .. } => {
+            for field in fields {
+                declare_pattern_classes(field, walk);
+            }
+        }
+        PatKind::Tuple(items) => {
+            for item in items {
+                declare_pattern_classes(item, walk);
+            }
+        }
+        PatKind::At { name, pattern } => {
+            walk.declare(&name.name, LitClass::Unknown);
+            declare_pattern_classes(pattern, walk);
+        }
+        _ => {}
+    }
 }
 
 /// The eager raise check (issue #12(c), the correction to wolf-std's sc02
@@ -2076,5 +2787,117 @@ mod tests {
             Some(&vec!["Ordering".to_owned()])
         );
         assert!(!program.root().variants.contains_key("Ordering"));
+    }
+
+    // ---- the pin-f0da6e6 tier statics (issue #18) -------------------------
+
+    #[test]
+    fn a_c_call_outside_the_ring_is_e1301_at_the_call() {
+        // `corpus/memory/unsafe_raw_outside.lu`'s first offender; the span is
+        // the whole call, matching the counterparty at pin f0da6e6
+        // ([384,395] there — `c.malloc(8)`).
+        let source = "import c \"stdlib.h\"\n\nfn main() -> !int {\n    \
+                      let p = c.malloc(8) as *u8\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E1301");
+        assert_eq!(&source[diag.span.start..diag.span.end], "c.malloc(8)");
+    }
+
+    #[test]
+    fn a_raw_write_and_a_raw_read_outside_the_ring_are_e1301_at_the_place() {
+        // The write: span is the place (`p[0]`), the counterparty's shape.
+        let source = "import c \"stdlib.h\"\n\nfn main() -> !int {\n    \
+                      let p = unsafe { c.malloc(8) as *u8 }\n    p[0] = 1\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E1301");
+        assert_eq!(&source[diag.span.start..diag.span.end], "p[0]");
+
+        // The read, through the book's laundering shape (ch09 exercise 9-4):
+        // binding a pointer OUT of an unsafe block is free; reading through
+        // it outside the ring is the op.
+        let source = "import c \"stdlib.h\"\n\nfn main() -> !int {\n    \
+                      let p = unsafe { c.malloc(8) as *u8 }\n    let x = p[0]\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E1301");
+        assert_eq!(&source[diag.span.start..diag.span.end], "p[0]");
+    }
+
+    #[test]
+    fn the_ring_ops_inside_unsafe_are_clean() {
+        let source = "import c \"stdlib.h\"\n\nfn main() -> !int {\n    unsafe {\n        \
+                      let p = c.malloc(8) as *u8\n        p[0] = 1\n        \
+                      let x = p[0]\n        c.free(p)\n    }\n    0\n}\n";
+        assert_eq!(resolve(source), None);
+    }
+
+    #[test]
+    fn an_int_to_pointer_cast_outside_the_ring_is_e1301() {
+        // Forging provenance from an integer is the exposed-door cast;
+        // retyping an already-raw value is inert (the counterparty flags the
+        // allocator call, never `… as *u8` over it — observed at f0da6e6).
+        let source = "fn main() -> !int {\n    let p = 42 as *u8\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E1301");
+    }
+
+    #[test]
+    fn a_raw_pointer_signature_is_e1302_at_the_parameter_name() {
+        // `corpus/memory/unsafe_sig.lu`: span [329,330] there is the `p` of
+        // `fn peek(p: *u8)` — the parameter NAME, the counterparty's choice.
+        let source = "fn peek(p: *u8) -> int {\n    0\n}\n\nfn main() -> !int {\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E1302");
+        assert_eq!(&source[diag.span.start..diag.span.end], "p");
+    }
+
+    #[test]
+    fn a_cast_to_bool_is_e0805_at_the_cast_expression() {
+        // The cast matrix's bool column (issue #18 item 2). Observed at pin
+        // f0da6e6: the whole cast expression, in unsafe code too.
+        let source = "fn main() -> !int {\n    let n = 3\n    let b = n as bool\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0805");
+        assert_eq!(&source[diag.span.start..diag.span.end], "n as bool");
+    }
+
+    #[test]
+    fn str_char_indexing_is_e0411_and_slicing_is_not() {
+        // `corpus/strings/char_index_fail.lu`'s shape (D25).
+        let source = "fn main() -> !int {\n    let s = \"wolf\"\n    let i = 2\n    \
+                      let c = s[i]\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0411");
+        assert_eq!(&source[diag.span.start..diag.span.end], "s[i]");
+
+        let sliced = "fn main() -> !int {\n    let s = \"wolf\"\n    \
+                      let h = s[0..2]\n    0\n}\n";
+        assert_eq!(resolve(sliced), None);
+    }
+
+    #[test]
+    fn a_malformed_literal_spec_is_e0412_and_a_mismatched_one_is_e0413() {
+        // `corpus/strings/format_spec_malformed.lu`: the zero FLAG after an
+        // explicit alignment; comptime-known, so it rejects at the literal.
+        let source = "fn main() -> !int {\n    let n = 42\n    \
+                      print(\"[{n:>08}]\")\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0412");
+
+        // `corpus/strings/format_spec_mismatch.lu`: `.2` on an integer hole.
+        let source = "fn main() -> !int {\n    let n = 42\n    \
+                      print(\"[{n:.2}]\")\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0413");
+
+        // `{n:0>8}` is fill `0` + align — legal; an unknown hole class is
+        // never guessed at; a dynamic-width spec is left to run time.
+        for clean in [
+            "fn main() -> !int {\n    let n = 42\n    print(\"[{n:0>8}]\")\n    0\n}\n",
+            "fn f(x: List[int]) -> str { \"{x:.2}\" }\nfn main() -> !int {\n    0\n}\n",
+            "fn main() -> !int {\n    let n = 42\n    let w = 8\n    \
+             print(\"[{n:>{w}}]\")\n    0\n}\n",
+        ] {
+            assert_eq!(resolve(clean), None, "{clean}");
+        }
     }
 }

@@ -1,26 +1,24 @@
 //! check: run(exit=trap(ub))
 //! phase: resolve
-//! conforms: mem.tier0.mode.read, mem.prov.state, mem.ub
-//! §7/P2: a write through a Frozen tag. A `read`-mode parameter is immutable
-//! for the whole call (`[mem.tier0.mode.read]`), which `[mem.prov.tag]` makes
-//! operational as a **Frozen child tag** — so the callee writing through it has
-//! no defined behavior. This is the row that licenses O2, the Stacked-Borrows
-//! "holy grail": a load may be hoisted or CSE'd across an opaque call because
-//! the call cannot have written.
+//! conforms: mem.region.freeze.1, mem.prov.state, mem.ub
+//! §7/P2: a write through a Frozen tag. `freeze r` transitions every tag of
+//! every allocation the region owns to Frozen (`[mem.region.freeze.1]` made
+//! operational by `[mem.prov.state]`) — so a later raw write through a
+//! pointer into the frozen region has no defined behavior. This is the row
+//! that licenses O2: a load from frozen data may be hoisted or CSE'd across
+//! anything, because nothing defined can have written. (The read-mode
+//! parameter form of this trigger retired at pin f0da6e6: its `*u8`
+//! parameter is outside the language — E1302, `[mem.unsafe.scope]`.)
 
 import c "stdlib.h"
 
-fn poke(p: *u8) -> int {
-    p[0] = 9
-    0
-}
-
 fn main() -> !int {
+    let r = region()
     unsafe {
-        let p = c.malloc(8) as *u8
+        let p = in r { c.malloc(8) as *u8 }
         p[0] = 1
-        let n = poke(p)
-        c.free(p)
-        n
+        let frozen = freeze r
+        p[0] = 9
+        0
     }
 }

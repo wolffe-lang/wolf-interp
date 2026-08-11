@@ -339,7 +339,12 @@ pub fn cross_check_registry(
         }
         let text = String::from_utf8_lossy(&bytes).into_owned();
         for token in bracketed_tokens(&text) {
-            if anchor::classify(&token) == Ok(Namespace::Registered) {
+            // A bare namespace token names the namespace, not a clause —
+            // spec/01 §9's heading writes `[diag]` (s67) and the registry
+            // keys clauses only, so the cross-check compares dotted anchors.
+            // (Whether the registry should ALSO key bare namespaces is
+            // routed upstream with the #18 closure notes.)
+            if anchor::classify(&token) == Ok(Namespace::Registered) && token.contains('.') {
                 extracted.insert(token, ());
             }
         }

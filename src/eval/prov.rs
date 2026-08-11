@@ -255,8 +255,22 @@ impl UbRow {
             | UbRow::P5
             | UbRow::P6
             | UbRow::L1
-            | UbRow::L2
-            | UbRow::T1 => Coverage::Detected,
+            | UbRow::L2 => Coverage::Detected,
+            // T1's only modelled production door was `int as bool`, and the
+            // cast matrix's bool column closed statically at pin f0da6e6
+            // (E0805 at resolve, issue #18 item 2 — the counterparty rejects
+            // the cast in unsafe code too, observed on the retired trigger).
+            // The detection logic stays (`eval_cast`'s §7/T1 path still
+            // reports the row for a frontend-bypassing caller), but no source
+            // program reaches it: an invalid bool now needs a Tier-3
+            // typed-raw door this machine does not model.
+            UbRow::T1 => Coverage::Unreachable(
+                "the one production door this machine modelled, `int as bool` in unsafe code, is \
+                 statically outside the language since the cast matrix's bool column closed \
+                 (E0805 at resolve, pin f0da6e6); an invalid bool now needs a Tier-3 typed-raw \
+                 door that is not modelled here — the detection logic remains for callers that \
+                 bypass the frontend",
+            ),
             // A tear needs a *second observer* of a wide store mid-flight.
             // This machine executes one thread with atomic whole-value stores
             // (`[mem.model.value]`: a store transfers the whole value), and the

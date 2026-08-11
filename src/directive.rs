@@ -18,6 +18,7 @@
 //! phase:    none | lex | parse | resolve | typecheck | mem | wir | run
 //! conforms: anchor, anchor, …
 //! member:   true | false
+//! warns:    CODE, CODE, …
 //! ```
 //!
 //! `kind` is drawn from the closed twelve-kind vocabulary of
@@ -43,8 +44,17 @@ use crate::anchor;
 use crate::phase::Phase;
 use crate::trap::TrapKind;
 
-/// The four directive keys. Anything else on a `//!` line is prose.
-pub const KEYS: [&str; 4] = ["check", "phase", "conforms", "member"];
+/// The five directive keys. Anything else on a `//!` line is prose.
+///
+/// `warns:` joined at pin `f0da6e6` (s67, the warning ledger): the exact set
+/// of warning codes an entry file is expected to produce —
+/// `[proto.record.warn]` observations by another name. Its ABSENCE is the
+/// empty set: a file with no `warns:` must be warning-clean
+/// (`corpus/lints/allow_item.lu` says so in prose). An implementation
+/// enforces the directive only for the warning analyses it actually runs,
+/// because `[proto.cmp.warn]`'s honest-absent rule makes a missing analysis
+/// a scope gap, never a divergence.
+pub const KEYS: [&str; 5] = ["check", "phase", "conforms", "member", "warns"];
 
 /// What a corpus file is expected to do (`check:`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,6 +112,11 @@ pub struct Directives {
     pub phase: Option<Phase>,
     /// `conforms:` — clause anchors, in source order. May be empty.
     pub conforms: Vec<String>,
+    /// `warns:` — the expected warning codes, in source order. Empty when
+    /// the directive is absent: directive-absence IS the empty set (the file
+    /// must be warning-clean), unlike `[proto.record.warn]`'s wire array
+    /// where absence means "no analyses ran".
+    pub warns: Vec<String>,
     /// `member: true` — belongs to a multi-file module case.
     pub member: bool,
     /// Non-directive `//!` lines, in source order, `//!` and one leading space
@@ -170,6 +185,7 @@ pub fn parse_header(source: &str) -> Result<Directives, DirectiveError> {
     let mut check: Option<Seen<Check>> = None;
     let mut phase: Option<Seen<Phase>> = None;
     let mut conforms: Option<Seen<Vec<String>>> = None;
+    let mut warns: Option<Seen<Vec<String>>> = None;
     let mut member: Option<Seen<bool>> = None;
     let mut prose = Vec::new();
 
@@ -213,6 +229,13 @@ pub fn parse_header(source: &str) -> Result<Directives, DirectiveError> {
                 reject_duplicate(conforms.as_ref(), "conforms", lineno)?;
                 conforms = Some(Seen {
                     value: parse_conforms(value).map_err(|m| DirectiveError::at(lineno, m))?,
+                    line: lineno,
+                });
+            }
+            "warns" => {
+                reject_duplicate(warns.as_ref(), "warns", lineno)?;
+                warns = Some(Seen {
+                    value: parse_warns(value).map_err(|m| DirectiveError::at(lineno, m))?,
                     line: lineno,
                 });
             }
@@ -264,10 +287,19 @@ pub fn parse_header(source: &str) -> Result<Directives, DirectiveError> {
         }
     }
 
+    if is_member && let Some(seen) = &warns {
+        return Err(DirectiveError::at(
+            seen.line,
+            "a `member: true` file is exercised through its module's entry file and is never \
+             conform-run directly, so it carries no `warns:`",
+        ));
+    }
+
     Ok(Directives {
         check: check.map(|s| s.value),
         phase: phase.map(|s| s.value),
         conforms: conforms.map(|s| s.value).unwrap_or_default(),
+        warns: warns.map(|s| s.value).unwrap_or_default(),
         member: is_member,
         prose,
     })
@@ -493,6 +525,36 @@ fn parse_conforms(value: &str) -> Result<Vec<String>, String> {
     Ok(anchors)
 }
 
+/// `warns: E0802, W1301` — expected warning codes, alphanumeric, no
+/// duplicates. The empty value is an error: the empty SET is spelled by
+/// omitting the directive, so an explicit-but-empty `warns:` can only be a
+/// mistake.
+fn parse_warns(value: &str) -> Result<Vec<String>, String> {
+    if value.trim().is_empty() {
+        return Err(
+            "`warns:` needs at least one code; the empty set is spelled by omitting the directive"
+                .to_owned(),
+        );
+    }
+    let mut codes = Vec::new();
+    for raw in value.split(',') {
+        let code = raw.trim();
+        if code.is_empty() {
+            return Err("empty code in `warns:` (stray comma?)".to_owned());
+        }
+        if !code.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(format!(
+                "`warns:` code `{code}` is not alphanumeric; codes look like `W1301` or `E0802`"
+            ));
+        }
+        if codes.contains(&code.to_owned()) {
+            return Err(format!("code `{code}` listed twice in `warns:`"));
+        }
+        codes.push(code.to_owned());
+    }
+    Ok(codes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -658,6 +720,44 @@ mod tests {
         let message = err("//! check: pass\n//! phase: codegen\n");
         assert!(message.contains("unknown phase `codegen`"), "{message}");
         assert!(message.contains("canonical ladder"), "{message}");
+    }
+
+    // ---- warns: -----------------------------------------------------------
+
+    #[test]
+    fn warns_is_a_comma_separated_code_list() {
+        let d = ok("//! check: run(exit=0)\n//! phase: run\n//! warns: E0802, W1301\n");
+        assert_eq!(d.warns, vec!["E0802", "W1301"]);
+    }
+
+    #[test]
+    fn warns_absent_is_the_empty_set() {
+        assert!(ok("//! check: pass\n//! phase: parse\n").warns.is_empty());
+    }
+
+    #[test]
+    fn warns_rejects_what_cannot_be_a_code_set() {
+        // The empty set is spelled by omission, never by an empty directive.
+        assert!(
+            err("//! check: pass\n//! phase: parse\n//! warns:\n").contains("at least one code")
+        );
+        assert!(
+            err("//! check: pass\n//! phase: parse\n//! warns: W1301,,W0302\n")
+                .contains("empty code")
+        );
+        assert!(
+            err("//! check: pass\n//! phase: parse\n//! warns: W 13\n").contains("alphanumeric")
+        );
+        assert!(
+            err("//! check: pass\n//! phase: parse\n//! warns: W1301, W1301\n")
+                .contains("listed twice")
+        );
+    }
+
+    #[test]
+    fn members_carry_no_warns() {
+        let message = err("//! member: true\n//! warns: W1301\n");
+        assert!(message.contains("no `warns:`"), "{message}");
     }
 
     // ---- conforms: --------------------------------------------------------

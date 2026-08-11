@@ -17,7 +17,10 @@
 use std::fmt;
 
 /// Namespaces with an owning spec document today (`[conf.anchor.ns]`).
-pub const REGISTERED_NAMESPACES: [&str; 6] = ["gram", "mem", "conc", "abi", "conf", "proto"];
+/// `diag` joined at the f0da6e6 pin (s67 — `[diag.sev]`/`[diag.level]`
+/// land in spec/01 §9 and the anchor registry).
+pub const REGISTERED_NAMESPACES: [&str; 7] =
+    ["gram", "mem", "conc", "abi", "conf", "proto", "diag"];
 
 /// Namespaces reserved for spec documents not yet written; tags in them are
 /// legal and counted as *forward* (`[conf.anchor.ns]`).
