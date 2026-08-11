@@ -46,7 +46,7 @@ defines — the unit of comparison between implementations:
 
 ```console
 $ lupin conform-run examples/squares.lu --json
-{"protocol":1,"impl":"lupin","impl_version":"0.1.5","commit":"…","file":"examples/squares.lu","phase_reached":"run","seeded":false,"diagnostics":[],"verdict":"exit(0)","stdout_sha256":"42857004c6eb56e7ff16c5e877d9f83f2f8a280e2ae98ae6e13c20174c303ddb","stdout_inline":"sum of squares: 30\n"}
+{"protocol":1,"impl":"lupin","impl_version":"0.1.6","commit":"…","file":"examples/squares.lu","phase_reached":"run","seeded":false,"diagnostics":[],"warnings":[],"verdict":"exit(0)","stdout_sha256":"42857004c6eb56e7ff16c5e877d9f83f2f8a280e2ae98ae6e13c20174c303ddb","stdout_inline":"sum of squares: 30\n"}
 ```
 
 Field by field:
@@ -57,8 +57,13 @@ Field by field:
 - `file` — the program, always with `/` separators, on every platform.
 - `phase_reached` — the deepest rung that completed, never more.
 - `seeded` — `true` exactly when a deterministic schedule was requested.
-- `diagnostics` — on a rejection, exactly one entry (code, span, severity):
-  there is no error recovery, so there is never a second.
+- `diagnostics` — on a rejection, the failing entry first (code, span,
+  severity): there is no error recovery, so there is never a second error.
+  Warning observations follow it with `"severity": "warning"`.
+- `warnings` — the warning observations as `{code, span}` after `#[allow]`
+  suppression (`[proto.record.warn]`, since 0.1.6: the s68 shared-analysis
+  subset). Present once the program loads; absent when the analyses never
+  ran — honest-absent, never an empty claim.
 - `verdict` — `pass`, `fail(CODE)`, `exit(N)`, `trap(kind)`, `ub(anchor)`,
   or `unsupported`. A verdict never carries a payload beyond its
   constructor; reasons ride `x-` extension keys.

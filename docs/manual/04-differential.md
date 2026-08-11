@@ -15,15 +15,16 @@ is not). Output from a checkout with the counterparty built:
 
 ```text
 notice: counterparty compiler: upstream/target/debug/wolf
-differential: 165 entries compared, 18 member(s) exercised through their entries
-divergences: 1
-  verdict: 1
-conservatism ledger: 268 entries
-  rejects-beyond(counterparty): 63
-  run-unmatched: 79
-  unsupported(counterparty): 90
-  unsupported(interp): 36
+differential: 203 entries compared, 18 member(s) exercised through their entries
+divergences: 11
+  verdict: 11
+conservatism ledger: 325 entries
+  rejects-beyond(counterparty): 61
+  run-unmatched: 103
+  unsupported(counterparty): 120
+  unsupported(interp): 41
 verdict  upstream/corpus/memory/mode_missing_mut.lu  a=fail(E1007)@resolve  b=fail(E1007)@mem  resolve [filed: DIV-2026-011]
+…
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
 ```
 
@@ -54,15 +55,15 @@ smoke test of the whole path:
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":90,"anchors_total":303,"bundle_sha256":"…","files":252,"forward_tags":91,"out":"target/bundle","pin":"f0da6e67158292e962c93268973d9e927fe703a0","programs":235,"records":217}
+{"anchors_covered":96,"anchors_total":305,"bundle_sha256":"…","files":275,"forward_tags":93,"out":"target/bundle","pin":"13b811ffc03092c78873bed1cc9b400d166f04fd","programs":258,"records":240}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 217 entries compared, 0 member(s) exercised through their entries
+differential: 240 entries compared, 0 member(s) exercised through their entries
 divergences: 0
-conservatism ledger: 74 entries
-  unsupported(counterparty): 37
-  unsupported(interp): 37
+conservatism ledger: 82 entries
+  unsupported(counterparty): 41
+  unsupported(interp): 41
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin f0da6e67158292e962c93268973d9e927fe703a0 verified (bundle_sha256 …)
+notice: bundle target/bundle at pin 13b811ffc03092c78873bed1cc9b400d166f04fd verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the

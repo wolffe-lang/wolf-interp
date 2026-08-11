@@ -658,7 +658,14 @@ somewhere to live.
 The sprint file names an anchor `[ub.assume.noalias]` for this row. No such
 anchor exists in the pinned `spec/02`, which puts it at §7/P5 and states the
 rule at `[mem.unsafe.raw.2]`; those are what the machine cites. Recorded so the
-mismatch is a known one rather than a citation this repo invented.
+mismatch is a known one rather than a citation this repo invented — and
+confirmed by the s68 mining pass (issue #19): the clause is
+`[mem.unsafe.raw.2]`, full stop. **W1302** is the compile-time face of the
+same hole: since 0.1.6 the lint pass warns at a whole-name reassignment of a
+standing `assume noalias` operand (`corpus/lints/assume_reassigned.lu`,
+counterparty span parity), which is exactly the `p = q` evasion this
+paragraph describes — surfaced now as a warning at the assignment, while the
+dynamic re-check remains unimplemented as stated.
 
 ## 8. The C library, modelled — the host-intrinsic approximation
 
@@ -770,10 +777,16 @@ does the heavy lifting: a spawned task writes its own copies, globals are
 snapshotted per task, region transfer is checked at the send, frozen data
 is immutable, and `Mutex` payloads move through the scheduler. The shapes
 the compiler rejects statically (E1101/E1102) therefore mostly *cannot
-misbehave* here — they run, with task-local effects (the standing
-conservatism class; `conc/store_buffer.lu` is the exemplar, and
-`conc/freeze_publish.lu`'s reliance on the forbidden shape is
-DIV-2026-008). The two memories two tasks CAN share mutably are **pool
+misbehave* here. Through 0.1.5 they ran, with task-local effects (the
+then-standing conservatism class; `conc/store_buffer.lu` was the exemplar,
+and `conc/freeze_publish.lu`'s reliance on the forbidden shape was
+DIV-2026-008). Since 0.1.6 (the 13b811f re-pin) the *visible* shapes are
+rejected at this machine's resolve rung with the counterparty's codes and
+spans — E1101 (a task writes a captured bare name; `when` bodies exempt),
+E1102 (a spelled `List`/`Map` channel payload), E1103 (lexically nested
+`when`) — and capture-by-value remains the runtime semantics for everything
+the static walk cannot see, which is the sema-lite posture: track what is
+visible, never guess. The two memories two tasks CAN share mutably are **pool
 slots in an unmoved region** and **raw allocations** — exactly
 `[conc.mm.race.1]`'s reachability — and both are watched by a
 vector-clock race detector that traps `race` (`[conc.mm.race.3]`) exactly
@@ -783,11 +796,16 @@ forbidden direction (faulting a compiler-accepted program wrongly) stays
 closed.
 
 The silent-write-loss face of this choice — a task closure writes its
-captured copy and the enclosing state never sees it — is now formally
-routed upstream as **S-10** (divergence log; wolf-interp#4): spec/03
-states E1101 as a compile error only, `[conf.trap.map]` gives it no
-runtime meaning, and this machine will not invent one. If an amendment
-lands (the E1004/E1005 precedent), the realignment happens then.
+captured copy and the enclosing state never sees it — was formally routed
+upstream as **S-10** (divergence log; wolf-interp#4): spec/03 states E1101
+as a compile error only, `[conf.trap.map]` gives it no runtime meaning, and
+this machine will not invent one. The realignment happened at pin `13b811f`
+(0.1.6, the #41 capture-law wave): the pinned fail-files carry the
+rejection, and this machine now produces E1101 statically at its resolve
+rung — a program that would silently lose writes is rejected before it can
+run, which retires the observable half of S-10 for the pinned corpus. The
+clause still states no *runtime* meaning, so the dynamic question stays
+open exactly as filed.
 
 ### 10.3 The killed-proc sequence, and what "no user code" means
 

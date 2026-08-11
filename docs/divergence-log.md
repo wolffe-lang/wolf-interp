@@ -46,6 +46,53 @@ differential lane detects the absence, prints `notice:` lines, and SKIPs;
 
 ## Open findings
 
+Tenth corpus differential: lupin 0.1.6, pin `13b811f` (wave four — the
+#41 capture law, s34 procs, s35 io reactor, s39/s40/#40 native
+str/List/fs, the s68 lint corpus; 203 entries compared, 18 members
+through their entries, counterparty built CLEAN at `13b811f`), **11
+divergences, all filed, none a soundness candidate** — and every one is
+the same finding: same code, same span, this machine at `resolve` where
+wolfc's emission lives at `typecheck`/`mem`. DIV-2026-011 holds;
+DIV-2026-012 holds; **DIV-2026-013 CLOSES** (wolfc's conform-run no
+longer misrejects its own s38 fs/io files — `unsupported@wir` there now,
+never a divergence); **DIV-2026-014's** wiring half closes the same way
+(wolfc emits E0411/E0412/E0413 at `typecheck` now; this machine
+realigned its E0412/E0413 spans to the counterparty's `:spec` shape) and
+its residue rides DIV-2026-011; issue #19's realignment opens
+**DIV-2026-015** (E1101/E1102/E1103/E0004 statically at this machine's
+resolve rung, byte-identical codes and spans — the fourth family of the
+one rung question). The `warnings` arrays agree wherever both sides
+carry them (`store_buffer`'s W1101×4 + W1102 set is byte-identical).
+325 conservatism-ledger entries (61 rejects-beyond by the counterparty,
+103 run-unmatched, 120 counterparty-unsupported, 41 interp-unsupported —
+the fs tier, sockets, procs-adjacent comptime, and the compiler-only
+analyses).
+
+### DIV-2026-015 — the E11xx capture law + E0004 — **open, rides DIV-2026-011**
+
+Filed 2026-08-11 (lupin 0.1.6, CLEAN wolfc build at `13b811f`). Four
+files, one class: verdict (rung placement only), codes and spans
+byte-identical.
+
+- `conc/store_buffer.lu` — both fail(E1101), span `[438,439]` (the
+  first captured write, `x`); a at `resolve`, b at `typecheck`. The
+  warning sets also agree: W1101 at `[438,439]`, `[445,447]`,
+  `[511,512]`, `[518,520]`, W1102 at `[511,517]`.
+- `conc/chan_unsendable.lu` — both fail(E1102), span `[275,284]` (the
+  `List[int]` payload); a at `resolve`, b at `typecheck`.
+- `conc/when_nested.lu` — both fail(E1103), span `[642,755]` (the whole
+  inner `when`); a at `resolve`, b at `typecheck`.
+- `grammar/intdot_exponent.lu` — both fail(E0004), span `[291,295]`
+  (`1.e5`); a at `resolve`, b at `typecheck`. Issue #19's correction:
+  the code stays an error (`int` has no member `e5`), and producing it
+  here closed the last E000x unsupported(interp) conservatism row.
+
+Triage: same as DIV-2026-011/-012/-014 — the spec is silent on
+same-code-same-span rejections across implementations of unequal
+pipeline depth; one `[proto.cmp]` ruling closes all four families.
+
+---
+
 Ninth corpus differential: lupin 0.1.5, pin `f0da6e6` (the five-lane
 fan-out — s32 tasks, s33 channels, s37 str core, s38 fmt/io/fs, s67
 warnings; 181 entries compared, 18 members through their entries,
@@ -86,7 +133,14 @@ filing closes this one. Sema-lite is this machine's only static tier
 matrix's bool column now reject at resolve with the counterparty's
 codes and spans, observed at this pin).
 
-### DIV-2026-013 — the s38 fs/io files — **open, counterparty suspected**
+### DIV-2026-013 — the s38 fs/io files — **RESOLVED upstream, pin `13b811f` (0.1.6)**
+
+Resolution: exactly the predicted closure. wolfc's conform-run at
+`13b811f` no longer E0301-rejects its own s38 files — it reports
+`unsupported@wir` on `fs/error_row.lu`, `fs/roundtrip.lu` and
+`io/eprint.lu`, which `[proto.cmp.defined-divergence]` makes a ledger
+row, never a divergence. The three FILED_DIVERGENCES entries retired
+with this note. The original filing:
 
 `fs/error_row.lu`, `fs/roundtrip.lu`, `io/eprint.lu`. wolfc's
 conform-run at the pin answers `fail(E0301)` — `fs_read_text`,
@@ -102,16 +156,21 @@ design — `[proto.record.unsupported]`). Expected to resolve at the
 next pin bump; if it does not, the filing escalates to a wolf-lang
 issue.
 
-### DIV-2026-014 — the strings statics — **open, counterparty suspected**
+### DIV-2026-014 — the strings statics — **open, rides DIV-2026-011 since pin `13b811f`**
 
 `strings/char_index_fail.lu` (pins fail(E0411)),
 `strings/format_spec_malformed.lu` (fail(E0412)),
-`strings/format_spec_mismatch.lu` (fail(E0413)). This machine rejects
-all three with the pinned codes at its resolve rung; wolfc's
-conform-run at the pin reports `unsupported` (`@resolve` for E0411,
-`@wir` for the spec files) — the emissions its corpus pins are not
-reachable through its conform-run surface at `f0da6e6`. Same defendant
-and same expected closure as DIV-2026-013.
+`strings/format_spec_mismatch.lu` (fail(E0413)). As filed (0.1.5): this
+machine rejects all three with the pinned codes at its resolve rung;
+wolfc's conform-run at `f0da6e6` reported `unsupported` — the emissions
+were not reachable through its conform-run surface. **Status update,
+pin `13b811f` (0.1.6):** the wiring half closed as predicted — wolfc
+emits all three pinned codes at its `typecheck` rung now. Spans:
+E0411 agreed already (`[420,424]`); for E0412/E0413 this machine
+realigned to the counterparty's `:spec` shape (`[530,534]` = `:>08`,
+`[414,417]` = `:.2` — 0.1.5 spanned the whole hole). What remains is
+rung placement only — the DIV-2026-011 question, resolved by the same
+future `[proto.cmp]` ruling.
 
 ---
 
@@ -281,6 +340,14 @@ adopted and where this machine realigned. S-9, S-10 and S-11 remain open.
   E1101's runtime meaning (kind + clause, as the E1004/E1005 amendment
   did) or bless capture-by-copy as the defined interpreter-tier semantics.
   Until then §10.2 stands as the documented behavior.
+  **Status update, pin `13b811f` (0.1.6, issue #19):** the #41 capture-law
+  wave hardened the *static* half — `conc/store_buffer.lu` re-pinned to
+  `fail(E1101)` and this machine now rejects it at resolve with the
+  counterparty's code and span (DIV-2026-015), so the E1101 shape no
+  longer runs here and the silent-write-loss face is unreachable through
+  the pinned corpus. The clause still states no runtime meaning, so the
+  dynamic question stays open exactly as filed; capture-by-value remains
+  §10.2's documented semantics for the shapes the static walk cannot see.
 
 - **S-11 (lupin 0.1.2, wolf-interp#9 / wolf-std F-0014 / wolf-lang#15) —
   container mutation during `for` iteration has no governing clause.**
