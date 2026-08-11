@@ -80,7 +80,7 @@ jobs:
       - name: conform-run rungs
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           fail=0
           while IFS= read -r f; do
             out=$(cargo run --quiet -- conform-run "$f" --phase=lex --json)
@@ -248,7 +248,7 @@ jobs:
       - name: schedule explorer (bounded)
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           for f in cancel_sibling chan_unsendable freeze_publish message_passing \
                    proc_kill_defers select_seeded store_buffer when_multi; do
             out=$(cargo run --quiet -- conform-run "vendor/upstream/corpus/conc/$f.lu" --explore=500) \
@@ -289,7 +289,7 @@ jobs:
       - name: differential lane (SKIP without a counterparty)
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           out=$(cargo run --quiet -- diff-run 2>&1) || {
             echo "::error::diff-run must exit 0 when it SKIPs"; exit 1; }
           echo "$out" | grep -q 'notice: differential lane SKIPPED'
@@ -306,7 +306,7 @@ jobs:
       - name: fuzz smoke (self-oracle)
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           out=$(cargo run --quiet -- fuzz --count 100 --seed 5381 --compiler does/not/exist 2>&1)
           echo "$out" | grep -q '0 finding(s)'
 
@@ -322,7 +322,7 @@ jobs:
       - name: conformance bundle (determinism + dry run)
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           cargo run --quiet -- conformance export --out target/bundle-a --json | tee bundle-a.json
           cargo run --quiet -- conformance export --out target/bundle-b >/dev/null
           if ! diff -r target/bundle-a target/bundle-b; then
@@ -359,7 +359,7 @@ jobs:
           pattern: bundle-manifest-*
       - name: compare the three manifests byte-for-byte
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           ls -R
           for os in macos-latest windows-latest; do
             if ! diff bundle-manifest-ubuntu-latest/MANIFEST.json \
