@@ -1,5 +1,7 @@
 # wolf-interp
 
+<img src="assets/wolf-logo.svg" alt="the wolf mark" width="120" align="right"/>
+
 The reference interpreter for the wolf language: an independent, executable
 reading of the specification, and the oracle the compiler
 ([wolf-lang](https://github.com/tenseleyFlow/wolf-lang)) is differentially
