@@ -1,5 +1,81 @@
 # Changelog
 
+## 0.1.5 — 2026-08-11
+
+The unsafe-tier batch (issue #18, the book's ch09 differential) and the
+five-lane re-pin. Pin bumped `ad6cef7` → `f0da6e6` (s32 tasks, s33
+channels, s37 str core, s38 fmt/io/fs, s67 warnings: the corpus grows
+`strings/` ×9, `lints/` ×4, `fs/` ×2, `io/` ×1 — 183 → 199 files; the
+registry grows the `diag.*` block, `[mem.str.get]` and
+`[proto.record.warn]`/`[proto.cmp.warn]` — 290 → 303 anchors). One
+issue closed (#18, six items), three divergences filed.
+
+- **#18 (1) — the unsafe ring is enforced.** Raw-tier operations
+  outside `unsafe` blocks reject at this machine's resolve rung with
+  the counterparty's code and span: C calls (E1301 at the call —
+  `[384,395]` on `unsafe_raw_outside.lu`, byte-identical), raw reads
+  and writes through pointer-holding locals (the place, `[452,456]`
+  shape), int→pointer casts, `borrow … from`, `assume noalias`, and
+  the provenance operations. Sema-lite tracks what it can *see* —
+  literal-bound locals, allocator calls, the book's laundered
+  `unsafe { … }` initializer — and never guesses. Rung placement vs
+  wolfc's mem emission is **DIV-2026-012** (the DIV-2026-011 question).
+- **#18 (2) — nothing casts to `bool`.** The cast matrix's bool column
+  closed: `n as bool` is E0805 at the whole cast expression, inside
+  `unsafe` too (observed parity at the pin). §7/T1's one modelled
+  production door closes with it — the T1 trigger/twin retired,
+  `UbRow::T1` is `Coverage::Unreachable` with its reason, and the
+  detection logic stays for frontend-bypassing callers. `bool as _`
+  and `_ as str` reject statically where the class is visible
+  (`typecheck/cast_bad.lu` now matches its pin). P1's protector-form
+  suite pair retired with its `*u8` signatures; the protector
+  acceptance evidence moved inline (machine-direct), and P2's
+  trigger/twin rebuilt on `freeze r` — in-language, same row.
+- **#18 (3) — `*T` never crosses a signature.** E1302 at the parameter
+  name (`[329,330]` on `unsafe_sig.lu`, byte-identical), return types
+  at the type span. Also DIV-2026-012.
+- **#18 (4) — the C intrinsics check their arguments.** Exact arity
+  for the modelled five; size/count arguments must be non-negative
+  integers; `c.memset`'s byte argument no longer defaults silently —
+  every refusal names the construct.
+- **#18 (5) — the §7.4 format specs, to parity.** New `fmtspec`
+  module: `[[fill]align][+][0][width][.precision][type]` — zero-pad
+  AFTER the sign (`{n:08}` is the flag plus width; the absorb-into-
+  width reading was the filed bug), `+` with zero taking it,
+  sign-magnitude bases, `e`/`E` signed two-digit exponents, str
+  precision on code-point boundaries, shortest-round-trip f64 default
+  (the `std.fmt.decimal.to_str` layout; floats render `3`, not `3.0`).
+  Malformed specs are **E0412** and type-mismatched specs **E0413**,
+  statically at the literal where sema-lite sees the hole's class;
+  E0411 statically refuses `s[i]` char indexing. The three corpus
+  fail-files match their pins; wolfc's conform-run at this pin cannot
+  reach its own emissions there — **DIV-2026-014**, counterparty
+  suspected.
+- **#18 (6) — the fs/io posture.** No filesystem by design: the s38
+  `fs_*` family and `read_line` resolve and decline with the construct
+  named. `eprint`/`eprint_raw` are real — one fmt machinery, two fds,
+  stderr live-gated like stdout's pass-through and never hashed;
+  `io/eprint.lu` runs to its pinned stdout. wolfc's conform-run at the
+  pin E0301-rejects its own s38 files — **DIV-2026-013**.
+- **Realignment:** the s37 str surface lands in full (`get` — the
+  `[mem.str.get]` boundary primitive, oob = reversed = split-code-point
+  = `none`, hits bit-identical to the checked slice — `find`/`rfind`,
+  `bytes`, `split`/`count`/`replace`, `strip_prefix`/`strip_suffix`,
+  `trim_start`/`trim_end`, `ends_with`, negative `repeat` trapping
+  `bounds`), `^n` end-relative endpoints resolve before the domain
+  question, and `[proto.record.warn]` is wire-complete: the additive
+  `warnings` array (schema, comparison per `[proto.cmp.warn]`,
+  honest-absent — this machine runs no warning analyses yet and says
+  so by omission), the `warns:` corpus directive, and the `diag`
+  anchor namespace. The lints tier runs warning-clean; spec/01 §9's
+  bare `[diag]` heading token is exempted from the registry
+  cross-check as a namespace, not a clause (routed upstream).
+- Ninth differential: 181 entries, 18 members, **10 divergences, all
+  filed** (011 open; 012 rung placement ×4; 013/014 the counterparty's
+  conform-run surface lagging its own corpus at the pin), 289
+  conservatism entries. Bundle: 235 programs, 217 records; coverage
+  ratchet raised 86 → 90.
+
 ## 0.1.4 — 2026-08-10
 
 The held maintenance wave, released once s30 shipped upstream. Pin
