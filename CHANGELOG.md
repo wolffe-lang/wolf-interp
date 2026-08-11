@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.1.4 — 2026-08-10
+
+The held maintenance wave, released once s30 shipped upstream. Pin
+bumped `d147a54` → `ad6cef7` (s29+s30: the corpus grows
+`memory/unsafe_c_alloc_native.lu`, `rows/eu_main_err_exit.lu`,
+`typecheck/float_nan_cmp.lu` and `resolve/same_name/` — 177 → 183 files;
+anchors hold at 290; the two E0410 fail-files re-pin `phase:` resolve →
+parse). Four issues closed, one divergence resolved, one filed.
+
+- **#15 (silent-wrong, ba:blocker) — the X1 call-site mode law has its
+  missing half.** `f(x)` where the signature demands `f(mut x)` ran to a
+  wrong answer silently (the writeback never happened) — the book caught
+  it teaching chapter 7. E1007's static rule is now sema-lite's at the
+  resolve rung, all four disagreement shapes (missing `mut`/`take`,
+  extra mode, wrong word), matching wolfc's code, span, and message
+  shapes, exactly as E0410 in 0.1.2; `[conf.trap.map]` gives E1007 no
+  dynamic meaning, and a wrong answer is not a semantics candidate, so
+  rejection is the honest stop. The dynamic residue — calls through
+  function values — is refused at the call, never run wrong.
+  `memory/mode_missing_mut.lu` leaves the run ledger; the book's ch07
+  repro is a regression test. Rung placement vs wolfc's `mem` emission
+  is **DIV-2026-011** (same code, same span; routed upstream).
+- **#13 — `c.calloc(n, size)` allocates `n * size` bytes.** The modelled
+  C heap gave it `n`; s29's native differential (real glibc) caught the
+  disagreement — the first soundness candidate it produced, and a lupin
+  bug. Overflow in the size computation is `unsupported` (real calloc
+  says NULL; no null surface is pinned). `malloc`/`memset`/`memcpy`
+  audited correct. `unsafe_c_alloc_native.lu` runs `exit(0)`.
+- **#14 — integer literals consult their context.** `-9223372036854775808`
+  is writable in every annotated spelling: literals stay unconstrained
+  through negation and literal-only arithmetic (i128-checked), a
+  declared return type types the value a call returns, and
+  `[arith.literal.default]`'s i32 rule (with a range check) applies
+  where the literal meets its binding. `var k = 0` remains i32 — the
+  rule wolfc implements, now documented (approximation-contract §6.11).
+- **#11 — closed after the sc04 reopen.** The 0.1.3 cast matrix holds at
+  this pin: the reopening program prints `3.0` / `converts` and exits 0;
+  `(3 as f64) == 3` is false. What the reopen's evidence showed the
+  matrix still misses — cast target types are not *resolved* (`s as
+  nonsense` no-ops) — is filed separately as #17.
+- **DIV-2026-010 closed.** s29 moved wolfc's E0410 to the resolve rung
+  (with the `[conc.when.body]` exemption this machine flagged as
+  wolf-lang#21) and re-pinned the corpus directives; the eighth
+  differential compares both files clean. Eighth round: 165 entries, 18
+  members, **1 divergence** (DIV-2026-011, filed), 268 conservatism
+  entries.
+- Realignment: `float_nan_cmp.lu` (IEEE `!=` is unordered — this
+  machine's f64 model already agreed; wolf-lang#22 was the compiler's
+  half), `eu_main_err_exit.lu` (`error: Boom` + exit 1, agreeing with
+  the native shim bit-for-bit), `resolve/same_name/` (two `len`s stay
+  distinct). Bundle: 222 programs, 204 records; coverage ratchet raised
+  84 → 86.
+
 ## 0.1.3 — 2026-08-10
 
 The rows half, and the s27/s28 catch-up. Pin bumped `a0c4564` →
