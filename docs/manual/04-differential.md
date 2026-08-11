@@ -15,13 +15,15 @@ is not). Output from a checkout with the counterparty built:
 
 ```text
 notice: counterparty compiler: upstream/target/debug/wolf
-differential: 148 entries compared, 16 member(s) exercised through their entries
-divergences: 0
-conservatism ledger: 246 entries
-  rejects-beyond(counterparty): 59
-  run-unmatched: 64
-  unsupported(counterparty): 80
-  unsupported(interp): 43
+differential: 165 entries compared, 18 member(s) exercised through their entries
+divergences: 1
+  verdict: 1
+conservatism ledger: 268 entries
+  rejects-beyond(counterparty): 63
+  run-unmatched: 79
+  unsupported(counterparty): 90
+  unsupported(interp): 36
+verdict  upstream/corpus/memory/mode_missing_mut.lu  a=fail(E1007)@resolve  b=fail(E1007)@mem  resolve [filed: DIV-2026-011]
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
 ```
 
@@ -52,15 +54,15 @@ smoke test of the whole path:
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":84,"anchors_total":290,"bundle_sha256":"…","files":232,"forward_tags":90,"out":"target/bundle","pin":"d147a548fa114052fb070e5a7815acd0500fb3d9","programs":216,"records":200}
+{"anchors_covered":86,"anchors_total":290,"bundle_sha256":"…","files":238,"forward_tags":91,"out":"target/bundle","pin":"ad6cef7fc97701accde0997594e62cf9c63ec5e5","programs":222,"records":204}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 200 entries compared, 0 member(s) exercised through their entries
+differential: 204 entries compared, 0 member(s) exercised through their entries
 divergences: 0
 conservatism ledger: 72 entries
   unsupported(counterparty): 36
   unsupported(interp): 36
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin d147a548fa114052fb070e5a7815acd0500fb3d9 verified (bundle_sha256 …)
+notice: bundle target/bundle at pin ad6cef7fc97701accde0997594e62cf9c63ec5e5 verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the

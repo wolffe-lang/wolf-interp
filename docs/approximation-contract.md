@@ -463,6 +463,47 @@ The s27 spec realignments, and the sema-lite depth each one gets:
   names are the program's own scope, and the clause speaks only of
   library functions.
 
+### 6.11 The X1 call-site mode law, integer-literal contexts, and `calloc`'s arithmetic (0.1.4)
+
+The lupin v0.1.4 maintenance wave, three semantic repairs:
+
+- **E1007 at resolve (issue #15)** — a call whose argument spelling
+  disagrees with the callee's declared parameter mode (`mut`/`take`
+  missing, extra, or wrong) is rejected at the resolve rung, where
+  sema-lite can see the signature: a bare name naming a function item of
+  the current module, or `module.fn` naming a sibling module's. Code,
+  span (the argument expression), and message shapes match the
+  counterparty's. The reasoning is E0410's: running the disagreement
+  computed a **silently wrong answer** (an unspelled `mut` argument
+  passed by value and the writeback never happened), and
+  `[conf.trap.map]` gives E1007 no dynamic meaning to trap with. The
+  dynamic residue — a call through a function *value* whose declared
+  mode the static tier could not see — is refused (`unsupported`) at the
+  call, never run wrong. Method receivers stay E0804's business
+  (ledgered conservatism); closures declare no modes this machine reads.
+  Rung placement vs wolfc's `mem` emission is DIV-2026-011.
+- **Integer literals meet their context (issue #14)** — an unconstrained
+  literal stays unconstrained through negation and literal-only
+  arithmetic (checked at i128, the machine's computing width), adopts a
+  concrete operand's type as before, and is typed by the declared return
+  type of any call it comes back from. It meets `[arith.literal.default]`
+  where it finally lands: a binding annotation types it (and range-checks
+  it — out of range traps `overflow`, the dynamic reading of the
+  checker's E0401), an unannotated binding defaults it to **i32** and
+  range-checks the same way (`var k = 0` is i32 — wolfc agrees, to the
+  WIR constant), and assignment into an existing place adopts the
+  place's type, range-checked. Net: `-9223372036854775808` is writable
+  in every annotated spelling, and `int_max() - 1` is `int` arithmetic
+  wherever `int_max` lives.
+- **`c.calloc(n, size)` is `n * size` bytes (issue #13)** — the modelled
+  C heap allocated `n`. Real glibc through s29's native rung disagreed
+  (the first soundness candidate the native differential produced —
+  a lupin bug). The multiplication is overflow-checked; real calloc
+  reports that overflow by returning NULL, and the model has no
+  null-returning surface pinned, so the overflow case is `unsupported`
+  rather than an invented block. `malloc`/`memset`/`memcpy` take one
+  size or an explicit length and were audited correct.
+
 ## 7. Deliberate approximations in the **provenance** machine (is04)
 
 `src/eval/prov.rs` is `spec/02` §6 made executable: per-allocation tag trees,

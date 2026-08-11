@@ -46,6 +46,48 @@ differential lane detects the absence, prints `notice:` lines, and SKIPs;
 
 ## Open findings
 
+Eighth corpus differential: lupin 0.1.4, pin `ad6cef7` (s29+s30: real
+glibc behind the unsafe tier, the erring-main pin, `fcmp.ne` as IEEE
+unordered, module-path-qualified WIR names; 165 entries compared, 18
+members through their entries, counterparty built CLEAN at `ad6cef7`),
+**1 divergence, filed as DIV-2026-011** — and **DIV-2026-010 CLOSES**:
+s29 moved wolfc's E0410 emission to the resolve rung (with the
+`[conc.when.body]` exemption wolf-lang#21 carried from this machine) and
+re-pinned the two corpus `phase:` directives resolve → parse, so
+`typecheck/let_reassign.lu` and `typecheck/let_compound_assign.lu` now
+reject on both sides at `resolve`, same code, same span — the eighth
+round compares them clean, exactly the closure condition the seventh
+round wrote down. The new filing is the same *shape* in the opposite
+direction: `memory/mode_missing_mut.lu` rejects with **E1007 at the same
+span on both sides** ([405,408], the argument), this machine at
+`resolve` (issue #15's fix — sema-lite is its only static tier and the
+signature is visible there), wolfc at `mem` (where mode checking lives
+in its pipeline). 268 conservatism-ledger entries (63 rejects-beyond by
+the counterparty, 79 run-unmatched — the wave's new run-rung witnesses
+land ahead of the counterparty's run tier — 90 counterparty-unsupported,
+36 interp-unsupported).
+
+### DIV-2026-011 — `memory/mode_missing_mut.lu` — **open, routed upstream**
+
+Filed 2026-08-10 (lupin 0.1.4, CLEAN wolfc build at `ad6cef7`).
+
+- Class: verdict (rung placement only). Codes and spans byte-identical
+  (`E1007` at `[405,408]` — the argument expression).
+- a (lupin): `fail(E1007)@resolve` — issue #15's fix. The X1 call-site
+  mode law's disagreement ran to a silently wrong answer here;
+  `[conf.trap.map]` gives E1007 no dynamic meaning, so the honest stop
+  is the rung where the callee's signature is visible, which for this
+  machine is sema-lite at `resolve` (the E0410 precedent).
+- b (wolfc ad6cef7): `fail(E1007)@mem` — mode checking is its memory
+  tier's, after typecheck completes.
+- Triage: **spec first defendant** — `[proto.cmp]` has no allowance for
+  same-code-same-span rejections at different rungs across
+  implementations of unequal pipeline depth, and DIV-2026-010 already
+  spent one round on exactly this shape. Routed upstream for either a
+  comparison-rule clause (same code + same span ⇒ agreement, rung
+  recorded) or a rung ruling for E1007; whichever lands, one side's
+  surface moves (or the comparison absorbs it) and this entry closes.
+
 Seventh corpus differential: lupin 0.1.3, pin `d147a54` (s27+s28: the
 spec's `[mem.iter.*]`/`[mem.str.*]`/`[conf.trap.assert]`/postfix-row
 grammar land compiler-side and this machine realigns; 161 entries
@@ -85,23 +127,6 @@ this machine's placement follows the corpus. 261 conservatism-ledger
 entries (64 rejects-beyond by the counterparty — the E1301/E1302 unsafe
 tier landed — 67 run-unmatched, 84 counterparty-unsupported, 46
 interp-unsupported).
-
-### DIV-2026-010 — `typecheck/let_reassign.lu` + `typecheck/let_compound_assign.lu` — **open, routed upstream; fix in flight (s29)**
-
-Re-verified 2026-08-10 (lupin 0.1.3, CLEAN wolfc build at `d147a54`):
-still `fail(E0410)@typecheck` on the counterparty, so the filing stands
-unchanged at this pin. The upstream fix is in flight — s29's `letcheck`
-moves the emission to resolve — and wolf-lang#21 carries the `when`-body
-exemption it must include. The original filing follows.
-
-- Class: verdict (rung placement only). Codes and spans byte-identical
-  (`E0410` at `[444,445]` / `[307,312]`).
-- a (lupin): `fail(E0410)@resolve` — the rung this machine performs and
-  the one the corpus directive pins.
-- b (wolfc a0c4564): `fail(E0410)@typecheck` — sema's diagnostic surfaces
-  after its resolve rung reports complete.
-- Owed fix: upstream ruling on which rung E0410 belongs to; whichever way
-  it lands, one side's surface moves and this entry closes.
 
 Fifth corpus differential: is09, pin `cbde620` (s21's shared tier — nine
 files advance to `mem`, `prov_holy_grail.lu` to `typecheck`; spec-extract
@@ -219,6 +244,20 @@ adopted and where this machine realigned. S-9, S-10 and S-11 remain open.
   `wolfc = fail(E1001)`. Compiler half: wolf-lang#15.
 
 ## Resolved findings
+
+### DIV-2026-010 — `typecheck/let_reassign.lu` + `typecheck/let_compound_assign.lu` — **resolved upstream, pin `ad6cef7` (s29)**
+
+Closed 2026-08-10 at the 0.1.4 re-pin, by exactly the closure condition
+the filing wrote down: s29's `letcheck` moves wolfc's E0410 emission to
+the **resolve** rung (carrying the `[conc.when.body]` exemption this
+machine flagged as wolf-lang#21 — `when (a, b) { a += 10 }` over
+`let`-bound Mutex operands stays legal), and the corpus re-pins both
+files' `phase:` directives resolve → parse with the rationale in the
+files themselves. Eighth round: both sides `fail(E0410)@resolve`, same
+span, 0 divergences on these files. The original filing (0.1.2, pin
+`a0c4564`): class verdict, rung placement only — codes and spans
+byte-identical (`E0410` at `[444,445]` / `[307,312]`), lupin at
+`resolve`, wolfc at `typecheck`.
 
 ### S-1..S-8 — the is06 harvest — **resolved upstream, pin `843174f` (the s20 S-batch)**
 
