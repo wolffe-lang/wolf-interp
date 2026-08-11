@@ -395,6 +395,74 @@ names would be this machine legislating. wolf-std keeps the divergence
 visible: `tests/list/mutate_while_iterating.lu`, ledgered
 `lupin = run` / `wolfc = fail(E1001)`.
 
+### 6.9 Numeric casts convert; the float model is one f64 (0.1.3)
+
+Issue #11 (wolf-std F-0022) found `n as f64` *retagging* rather than
+converting — the value stayed an integer, silently. Since 0.1.3, `as`
+between numeric types is a **conversion** in every direction, and the
+approximations are these:
+
+- **Every float value is an `f64`.** There is no separate f32
+  representation: `x as f32` converts through f32 precision and widens
+  back, so the *value* is what an f32 would hold, carried in the one
+  float shape this machine has. `16777217 as f32 == 16777216.0` reads
+  true; nothing distinguishes an "f32-typed" value afterward — width
+  tracking on floats is the checker's, like every other type.
+- **int → float** converts exactly where f64 can represent the integer;
+  beyond ±2^53 it rounds to the nearest representable, as the target
+  demands. No trap: the conversion is total.
+- **float → int** truncates toward zero and range-checks: NaN, the
+  infinities and values outside the target's range trap `overflow` (X3 —
+  checked semantics in every profile; no silent saturation). The
+  compiler currently refuses these dynamically ("int↔float casts, no
+  conversion op yet" at its wir rung), so this is lupin executing ahead
+  of the counterparty, not against it.
+- **int → int** narrowing range-checks and traps `overflow`;
+  `wrapping[T]` / `saturating[T]` *targets* reduce by their own mode
+  instead — the cast into a wrapping type is how intended overflow is
+  spelled. The compiler defers narrowing ("range-check semantics, s27"),
+  which is the same reading, unexecuted.
+- **The non-bridges stay refused** (`unsupported`, mirroring wolfc's
+  E0805): no truthiness (`bool as int`), no stringly casts (`int as
+  str`). Adapter (`distinct`) casts stay free and bidirectional.
+
+`tests/cast_matrix.rs` pins the whole matrix. Mixed-type *comparison*
+(`1.0 == 1`) keeps its 6.7-era reading — distinct values, `false` — where
+wolfc rejects the comparison statically (E0401): the standing
+conservatism class, visible in every differential, not a divergence.
+
+### 6.10 `Iter` dispatch, row-tag patterns, and the `assert` intrinsic (0.1.3)
+
+The s27 spec realignments, and the sema-lite depth each one gets:
+
+- **`[mem.iter.for]`** — `for` over a non-builtin operand looks up `next`
+  among impl-block methods of the operand's *struct type name*, and only
+  an `impl Iter for T` block qualifies (`[mem.iter.impl]`: by name, no
+  structural conformance). The drive loop is the clause's desugar
+  verbatim — `var it = e; loop { let pat = (mut it).next() else { break };
+  body }` — so *any* raise from `next` ends the loop, not just `done`,
+  exactly as the bare `else` reads. Method dispatch is dynamic (by the
+  receiver's runtime type); the s17 resolution *order* is honored
+  (inherent wins, `Trait.method(x)` reaches the shadowed one), and trait
+  default bodies remain `unsupported`.
+- **Lowercase row tags** (issue #12) — at a raise site, a bare lowercase
+  name resolves against the enclosing function's *declared return row*
+  (checked eagerly at resolve: an unresolvable tag refuses whatever path
+  the input takes). In a pattern over a tag-shaped scrutinee, a lowercase
+  identifier is a row-tag pattern iff it names a tag some signature of
+  the module declares in a row — the sema-lite stand-in for the
+  checker's row-typed resolution; an undeclared name still binds, which
+  keeps `else |err|` a binder. A tag declared only in a *body-level*
+  annotation is outside the vocabulary — a false bind is possible there
+  and accepted; the checker's half is exact.
+- **`[conf.trap.assert]`** — `assert` is intercepted before argument
+  evaluation: the intrinsic wins over any module-level `assert` (the
+  clause's no-shadowing rule), the two-arg form's message is evaluated
+  **only** on the failing path, rendered as one line to stdout before
+  the trap. A *local binding* named `assert` still shadows — binding
+  names are the program's own scope, and the clause speaks only of
+  library functions.
+
 ## 7. Deliberate approximations in the **provenance** machine (is04)
 
 `src/eval/prov.rs` is `spec/02` §6 made executable: per-allocation tag trees,

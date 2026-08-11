@@ -46,6 +46,27 @@ differential lane detects the absence, prints `notice:` lines, and SKIPs;
 
 ## Open findings
 
+Seventh corpus differential: lupin 0.1.3, pin `d147a54` (s27+s28: the
+spec's `[mem.iter.*]`/`[mem.str.*]`/`[conf.trap.assert]`/postfix-row
+grammar land compiler-side and this machine realigns; 161 entries
+compared, 16 members through their entries, counterparty built CLEAN at
+the pin), **2 divergences, both still DIV-2026-010** — unchanged from
+the sixth round: same E0410, same spans, wolfc's record says `typecheck`
+where the corpus pins `phase: resolve`. **Re-verified at d147a54: the
+fix has NOT landed at this pin.** It is in flight upstream — s29 work
+moving the emission into a resolve-rung `letcheck` (and re-pinning the
+corpus `phase:` directives resolve → parse) landed on trunk after this
+pin (`626175b`/`6bfff9a`, CI still running at the close of this pass); this machine's heads-up that the new
+walker must exempt `when`-body assignments per `[conc.when.body]`
+(`when (a, b) { a += 10 }` on `let`-bound Mutex operands —
+`conc/when_multi.lu` and `procs.lu` pin `run(exit=0)`) is filed as
+wolf-lang#21. The entry closes when s29 lands and the eighth round
+compares clean. 261 conservatism-ledger entries (64 rejects-beyond by
+the counterparty, 75 run-unmatched, 86 counterparty-unsupported, 36
+interp-unsupported — down from 46: impl-method dispatch, postfix rows,
+numeric casts and the iterator protocol moved ten files onto this
+machine's run rung).
+
 Sixth corpus differential: lupin 0.1.2, pin `a0c4564` (the E0410
 fail-files and the unsafe/checked memory tier land; 159 entries compared,
 16 members through their entries), **2 divergences, both filed as
@@ -65,7 +86,13 @@ entries (64 rejects-beyond by the counterparty — the E1301/E1302 unsafe
 tier landed — 67 run-unmatched, 84 counterparty-unsupported, 46
 interp-unsupported).
 
-### DIV-2026-010 — `typecheck/let_reassign.lu` + `typecheck/let_compound_assign.lu` — **open, routed upstream**
+### DIV-2026-010 — `typecheck/let_reassign.lu` + `typecheck/let_compound_assign.lu` — **open, routed upstream; fix in flight (s29)**
+
+Re-verified 2026-08-10 (lupin 0.1.3, CLEAN wolfc build at `d147a54`):
+still `fail(E0410)@typecheck` on the counterparty, so the filing stands
+unchanged at this pin. The upstream fix is in flight — s29's `letcheck`
+moves the emission to resolve — and wolf-lang#21 carries the `when`-body
+exemption it must include. The original filing follows.
 
 - Class: verdict (rung placement only). Codes and spans byte-identical
   (`E0410` at `[444,445]` / `[307,312]`).

@@ -102,7 +102,7 @@ one requires revising the spec:
 
 | kind | fault |
 |---|---|
-| `overflow` | checked arithmetic left the type's range |
+| `overflow` | checked arithmetic left the type's range — numeric `as` casts included (a narrowing or float→int cast that does not fit traps here) |
 | `div-zero` | division or remainder by zero |
 | `bounds` | index outside a sequence |
 | `use-after-move` | read of a moved-out binding |
@@ -110,7 +110,7 @@ one requires revising the spec:
 | `region-fault` | a region operation its state forbids |
 | `stale-handle` | a generational pool handle outlived its slot |
 | `alloc-contract` | an allocation contract violated |
-| `assert` | a failed assertion |
+| `assert` | a failed assertion; `assert(cond, msg)` prints `msg` to stdout first, and only evaluates it on the failing path (`[conf.trap.assert]`) |
 | `race` | a data race the dynamic machine observed |
 | `ub` | the UB oracle's finding, when pinned as a trap expectation |
 | `deadlock` | every task blocked with no runnable successor |
