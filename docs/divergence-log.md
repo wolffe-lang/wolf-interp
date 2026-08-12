@@ -46,6 +46,53 @@ differential lane detects the absence, prints `notice:` lines, and SKIPs;
 
 ## Open findings
 
+Twelfth corpus differential: lupin 0.1.8, pin `26fa98e` (wave seven —
+r01 prep + s71 release polish, then the one lawful mid-pass re-pin when
+s72's mode teeth merged; 240 entries compared, 22 members through their
+entries, counterparty built CLEAN at `26fa98e`), **1 divergence, filed
+as DIV-2026-016, not a soundness candidate**. 394 conservatism-ledger
+entries (65 rejects-beyond by the counterparty, 130 run-unmatched, 152
+counterparty-unsupported, 47 interp-unsupported — the fs/net/proc-spawn
+tiers, comptime, and the compiler-only analyses). The D39/D40 dynamic
+mirrors landed this round with their spec text in the pin
+(`[mem.iter.excl]`; the trap map's E1013 row): s72's three fail-files —
+`memory/read_param_write.lu` (E1014), `memory/mut_read_overlap.lu`
+(E1002), `memory/list_mutate_while_iter.lu` (E1013) — each produce this
+machine's `trap(exclusivity)`, ledgered as the expected static/dynamic
+counterpart pairing (the corpus walk counts them so via
+`ledger::dynamic_meaning`; the differ ledgers the rung difference as
+conservatism, never a divergence). One nit routed with the round: the
+pinned `[conf.trap.map]` prose names E1013 in the `exclusivity` row but
+not E1014 — `dynamic_meaning`'s comment carries the citation argument
+until the map gains the row.
+
+### DIV-2026-016 — `rows/negative/handler_uncovered.lu` — wolfgang's conform-run contradicts its own E0809 pin
+
+Filed 2026-08-11 (lupin 0.1.8, CLEAN wolfgang build at `3d5cee6`;
+re-verified unchanged against the CLEAN `26fa98e` build after the s72
+re-pin). Class: `verdict`. One file, the s71 row-coverage fail-file.
+
+- The corpus directive pins `check: fail(E0809)` at `phase: resolve`
+  (s71, wolf-lang#43: an `else` handler pattern must cover the
+  operand's whole row).
+- **a (lupin)**: `fail(E0809)@resolve`, span `[518,523]` (the `Io(e)`
+  handler pattern) — agreeing with the pin.
+- **b (wolfgang)**: `fail(E0806)@typecheck`, the *generic*
+  refutable-binding diagnostic ("this pattern can fail to match, but a
+  binding cannot"), same span `[518,523]`; its `--phase=resolve` record
+  is `pass`. `[proto.cmp.rung]` cannot bridge different *codes*, so the
+  records genuinely diverge.
+- Triage (`[proto.cmp.triage]`): the clause is not ambiguous — the
+  corpus file wolfgang itself ships pins E0809 and names the rule; the
+  else-handler position takes `closed_pattern` by grammar
+  (`[gram.pat]`), so a refutability complaint about the handler pattern
+  is the wrong diagnostic there twice over. **The counterparty is the
+  defendant**: its E0809 emission (s71's #43/#59 work) evidently does
+  not reach the ladder its `conform-run` door runs — the generic
+  E0806 refutability check fires first at its typecheck rung. Filed
+  upstream as **wolf-lang#61**, both records attached verbatim; the
+  entry closes when wolfgang's conform-run answers its own pin.
+
 Eleventh corpus differential: lupin 0.1.7, pin `e94b879` (wave six — s40
 os/time/json, s70 match tier + X3 value paths, s69 idiom lints; 232
 entries compared, 22 members through their entries, counterparty built
@@ -347,7 +394,9 @@ spec/03 had never been executed before is06. The machine was the first
 executable test of it, and the harvest was routed upstream, not patched
 around. **The s20 S-batch (pin `843174f`) paid S-1 through S-8** — the
 eight entries now live under *Resolved findings* below with what the spec
-adopted and where this machine realigned. S-9, S-10 and S-11 remain open.
+adopted and where this machine realigned. S-9 and S-10 remain open;
+S-11 was RESOLVED by ruling D40 (2026-08-12) — see its entry's status
+update below.
 
 - **S-9 (is07) — the seed↔schedule encoding has no normative home.**
   `[conc.det.seed]` defines `--replay=SEED` behaviorally and `[proto.seed]`
@@ -420,6 +469,21 @@ adopted and where this machine realigned. S-9, S-10 and S-11 remain open.
   conservative extension). wolf-std keeps the divergence visible in CI:
   `tests/list/mutate_while_iterating.lu`, ledgered `lupin = run` /
   `wolfc = fail(E1001)`. Compiler half: wolf-lang#15.
+  **RESOLVED by ruling D40 (2026-08-12; lupin 0.1.8).** The designers
+  picked the third reading: `for x in xs` holds a **read claim** on the
+  container for the loop's extent; a mut use inside is a static
+  exclusivity-family error in wolfgang (new code E1013, fix-it teaching
+  collect-then-apply or the index loop — deliberately never the
+  accidental E1001-reads-as-moves story) and a dynamic
+  `trap(exclusivity)` here, per `[conf.trap.map]` (which gains the E1013
+  row). One rule, two enforcement modes; `[proto.cmp.rung]` makes the
+  static/dynamic pair an agreement. This machine implements the claim at
+  0.1.8 (`eval_for` holds `Access::Shared` on the iterated container's
+  place; the conflict trap names the loop and the fix). The spec text
+  itself lands with wolf-lang s72 — implemented here ahead of the pin on
+  the ruling's authority, the noted drift of the 0.1.8 release-pairing
+  pass. approximation-contract §6.8 rewritten to the ruled semantics.
+  wolf-interp#9 closes as fixed; compiler half remains wolf-lang#15/s72.
 
 ## Resolved findings
 

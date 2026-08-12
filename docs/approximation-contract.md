@@ -373,27 +373,29 @@ checker's (E0801 has no dynamic half): a match no arm of which applies is
 are outside `[gram.pat]` and rejected at parse with the counterparty's
 E0201 shape.
 
-### 6.8 `for` iterates a loop-entry snapshot; the spec is silent (S-11)
+### 6.8 `for` holds a read claim on the container it iterates (D40, 0.1.8)
 
-`loop_expr ::= 'for' pattern 'in' expr block` is all the pinned spec says
-about `for` (`[gram.expr.flow]`): no clause in spec/01 or spec/02 states
-whether the loop holds an access on the iterated container for its extent,
-moves it, or copies it. This machine evaluates the operand **once, at loop
-entry**, and iterates that value — under MVS the natural reading — so a
-body that mutates the container (`for x in xs { xs.push(x) }`) executes,
-the mutation lands, and the iteration never observes it. No trap fires.
+Ruled, after two pins filed as S-11: `for x in xs` holds a **read claim**
+on the container for the loop's whole extent (ruling D40, 2026-08-12 —
+the resolution of wolf-interp#9 / wolf-std F-0014 / wolf-lang#15). The
+operand is still evaluated once, at loop entry, and the loop iterates
+that value; the new half is the claim. A mut use of the container inside
+the body — `xs.push(x)`, an element write, a whole-container assignment,
+a `mut` pass — conflicts with the claim in the exclusivity machinery and
+is `trap(exclusivity)` **at the mutation**, with the trap message naming
+the loop and teaching the ruled fix-its (collect-then-apply, or the index
+loop). wolfgang enforces the same rule statically as its new E1013
+(deliberately not the old accidental E1001-reads-as-moves story), and
+`[conf.trap.map]` gains the E1013 row, so `[proto.cmp.rung]` reads the
+static-fail/dynamic-trap pair as agreement.
 
-wolfc rejects the same program statically with **E1001** (use-after-move:
-its lowering moves the operand into the loop), and `[conf.trap.map]`'s
-comparison alphabet would predict an `exclusivity` trap if the spec gave
-the loop a `mut`-grade hold it never states. Three mutually consistent
-readings, zero clauses: filed as **S-11** in `docs/divergence-log.md`
-(issue #9, wolf-std F-0014; compiler half wolf-lang#15) rather than
-legislated here — a snapshot loop cannot produce a spurious fault, which
-is the one direction §1 forbids, and inventing a trap the spec never
-names would be this machine legislating. wolf-std keeps the divergence
-visible: `tests/list/mutate_while_iterating.lu`, ledgered
-`lupin = run` / `wolfc = fail(E1001)`.
+The claim attaches when the operand is a side-effect-free place
+expression naming a live `List`/`Map` (`xs`, `state.items`); a call
+result, a literal, or an indexed element iterates a value with no
+caller-visible place, and no claim exists to violate. Reads of the
+container inside the body stay legal (read beside read). The D40 spec
+text itself lands with wolf-lang s72; this machine implements the ruling
+at 0.1.8 ahead of that pin — the 0.1.8 pass's noted drift.
 
 ### 6.9 Numeric casts convert; the float model is one f64 (0.1.3)
 
@@ -514,6 +516,27 @@ The lupin v0.1.4 maintenance wave, three semantic repairs:
   rather than an invented block. `malloc`/`memset`/`memcpy` take one
   size or an explicit length and were audited correct.
 
+### 6.12 A write through a read-mode parameter traps (D39, 0.1.8)
+
+`[mem.tier0.mode.read]` always said the callee "reads a value that is
+immutable for the whole call"; the gap was enforcement (ruling D39,
+2026-08-12 — wolf-lang#27's dynamic half). This machine used to run such
+a write against the callee's own copy — MVS made it invisible to the
+caller and therefore silent. Now every call frame carries its read-mode
+parameter list, and `write_path` traps a write whose base resolves to one
+— whole-parameter stores, projections (`p.x = 9`), compound assigns, and
+a mutating method's receiver write-back alike — with kind
+**`exclusivity`**: `[conf.trap.map]`'s family for mode violations
+(`[mem.tier0.excl.1]` already gives every read/write conflict that kind,
+and D39 names no new one). The trap's second span is the parameter's
+declaration; the message teaches `mut` + the X1 call-site spelling. A
+body-scope local shadowing the parameter's name is an ordinary local and
+writes freely. wolfgang's static half (a new memory-family code, s72) is
+the same rule at the other rung; the caller-side overlap half
+(`f(mut a, a.x)`) was already trapped here and stays. The D39 spec text
+lands with s72 — implemented ahead of the pin on the ruling's authority,
+the 0.1.8 pass's noted drift (with §6.8's D40).
+
 ## 7. Deliberate approximations in the **provenance** machine (is04)
 
 `src/eval/prov.rs` is `spec/02` §6 made executable: per-allocation tag trees,
@@ -588,7 +611,9 @@ call-by-value-result writes the result back), `read` does not. The Frozen child
 still exists, still protected for the call's extent, as the **witness** of the
 caller-side promise `[mem.tier0.mode.read]` makes — which is what a foreign
 write during the call violates, and what O2's load-hoisting is licensed by.
-`corpus/memory/prov_holy_grail.lu`'s trace shows it.
+`corpus/memory/prov_holy_grail.lu`'s trace shows it. (Since 0.1.8 the
+callee-side write itself is unreachable anyway: D39's write barrier traps it
+`exclusivity` before any slot is touched — §6.12.)
 
 Raw pointers are different and simpler: their tag travels *in* the value, so
 both modes retag the pointer and the callee's accesses genuinely go through the
