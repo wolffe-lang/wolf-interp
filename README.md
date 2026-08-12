@@ -31,7 +31,7 @@ interpreter** at the stated upstream pin:
 
 ```console
 $ lupin --version
-lupin 0.1.8 (wolf-interp, reference interpreter at pin …)
+lupin 0.1.9 (wolf-interp, reference interpreter at pin …)
 ```
 
 ## Running a program

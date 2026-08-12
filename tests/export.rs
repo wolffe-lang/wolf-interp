@@ -147,22 +147,22 @@ fn the_bundle_opens_verified_and_its_records_reference_bundled_programs() {
 
 #[test]
 fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
-    // The count ledger, lupin 0.1.8 edition (pin `26fa98e`): 262 corpus
-    // files (240 entries + 22 members) + 37 suite programs (7 UB triggers,
+    // The count ledger, lupin 0.1.9 edition (pin `0b4e79c`): 263 corpus
+    // files (241 entries + 22 members) + 37 suite programs (7 UB triggers,
     // 8 twins, 9 fault litmuses + 7 twins, 5 witnesses — the T1 pair and
     // P1's protector form retired with issue #18: their `as bool` and `*u8`
     // signatures are outside the language now, see `UbRow::coverage` and
-    // `tests/ub/`, plus the issue #20 freeze-read twin) = 299 programs,
-    // 277 entries conform-run into reference records. The pin brought wave
-    // seven and s72: the s71 str rulings, the else-handler row-coverage
-    // pair, the ctfe fold witness, and the D39/D40 mode-teeth fail-files —
-    // see the corpus-harness ledger. A pin bump or a new suite file moves
-    // these numbers — move them *deliberately*, here and in the
-    // corpus-harness ledger.
+    // `tests/ub/`, plus the issue #20 freeze-read twin) = 300 programs,
+    // 278 entries conform-run into reference records. The pin brought the
+    // c09 wave: s41/s51/s73 — one new corpus file (the s73 schedules
+    // witness) and the nine conc headers' advance to `run` — see the
+    // corpus-harness ledger. A pin bump or a new suite file moves these
+    // numbers — move them *deliberately*, here and in the corpus-harness
+    // ledger.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "26fa98e73a72b13f5650c475330dd83427077860");
-    assert_eq!(summary.programs, 299);
-    assert_eq!(summary.records, 277);
+    assert_eq!(summary.pin, "0b4e79c5deb48e93468d58971ae32b3ad8fed9b9");
+    assert_eq!(summary.programs, 300);
+    assert_eq!(summary.records, 278);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

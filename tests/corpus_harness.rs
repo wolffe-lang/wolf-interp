@@ -203,14 +203,27 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             machine's trap(exclusivity) dynamic counterpart. The
     //             spec grows `[mem.str.empty]`, `[mem.str.repeat]`,
     //             §10 `[gram.version]` (grammar/1) and `[mem.iter.excl]`.)
+    //   0b4e79c → 263 files (0.1.9: the c09-wave pin — s41 release tier,
+    //             s51 package manager, s73 NATIVE CONCURRENCY. The corpus
+    //             grows 1: `test/conc_schedules_test.lu` (the s73
+    //             `--schedules=N` dogfood witness). Nine files' headers
+    //             advance to phase `run` (8× `conc/` + `procs.lu` — the
+    //             compiler executes conc natively now; this machine's
+    //             claims were already `run`, so both machines execute the
+    //             tier), `memory/prov_holy_grail.lu` moves typecheck → mem,
+    //             and `conc/proc_cancel_defers.lu`/`conc/proc_link.lu`
+    //             gain `-> !int` rows (`?` needs the row, E0604/D30). The
+    //             spec's only delta: `[conf.trap.map]`'s exclusivity row
+    //             now names E1014's read-mode write barrier — 0.1.8's
+    //             filed nit, closed upstream. Anchors stay 315.)
     let report = report();
     assert_eq!(
         report.total(),
-        262,
+        263,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 240);
+    assert_eq!(report.entries(), 241);
     assert_eq!(report.members(), 22);
 }
 

@@ -46,6 +46,38 @@ differential lane detects the absence, prints `notice:` lines, and SKIPs;
 
 ## Open findings
 
+Thirteenth corpus differential: lupin 0.1.9, pin `0b4e79c` (the c09
+wave — s41 release tier, s51 package manager, s73 native concurrency;
+241 entries compared, 22 members through their entries, counterparty
+built CLEAN at `0b4e79c` with `libwolf_rt.a` provisioned), **0
+divergences** — `FILED_DIVERGENCES` is empty again: **DIV-2026-016
+CLOSES** (the CLEAN build answers `fail(E0809)@typecheck`, span
+`[518,523]`; `[proto.cmp.rung]` agreement with this machine's resolve
+rung — see the entry). 395 conservatism-ledger entries (66
+rejects-beyond by the counterparty, 130 run-unmatched, 152
+counterparty-unsupported, 47 interp-unsupported).
+
+THE CONC TIER RAN ON BOTH MACHINES this round — the first corpus tier
+where both implementations *execute* concurrency (s73 advanced nine
+files' headers to phase `run`: 8× `conc/` + `procs.lu`; the pin adds
+`test/conc_schedules_test.lu`, also `run`). The harness's diff-run lane
+still invokes plain `conform-run`, where wolfgang's deepest rung is
+`wir` (the native rung is opt-in: `--native`/`WOLF_NATIVE=1`), so the
+ten files ledger as counterparty-unsupported there — conservatism,
+never divergence. The machine-to-machine comparison was therefore run
+directly: `wolf conform-run --native --seed=N` vs
+`lupin conform-run --seed=N`, seeds {0, 42}, all ten files. **10 of 10
+agree — verdict, exit and output bytes, at both seeds, both records
+`"seeded": true`** — a `[proto.seed.equal]` comparison (equal seeds ⇒
+comparable observations including output bytes). Honest scope: two
+seeds, one platform (linux x86-64), debug tier; the seeded-tie-break
+files (`conc/select_seeded.lu`, `test/conc_schedules_test.lu`) agree at
+these seeds and both their outcomes are conforming by design. Zero
+semantic divergence between the two schedulers' observable behavior on
+the pinned witnesses.
+
+---
+
 Twelfth corpus differential: lupin 0.1.8, pin `26fa98e` (wave seven —
 r01 prep + s71 release polish, then the one lawful mid-pass re-pin when
 s72's mode teeth merged; 240 entries compared, 22 members through their
@@ -66,7 +98,23 @@ pinned `[conf.trap.map]` prose names E1013 in the `exclusivity` row but
 not E1014 — `dynamic_meaning`'s comment carries the citation argument
 until the map gains the row.
 
-### DIV-2026-016 — `rows/negative/handler_uncovered.lu` — wolfgang's conform-run contradicts its own E0809 pin
+### DIV-2026-016 — `rows/negative/handler_uncovered.lu` — **RESOLVED at pin `0b4e79c` (0.1.9): unreproducible against a CLEAN build**
+
+Resolution, 2026-08-12 (lupin 0.1.9): the CLEAN wolfgang build at
+`0b4e79c` answers `fail(E0809)@typecheck`, span `[518,523]` — the same
+code and span as this machine's `fail(E0809)@resolve`, which is
+`[proto.cmp.rung]` agreement; the file compares clean in the
+thirteenth differential. The E0806 answer does not reproduce, matching
+wolf-lang#61's own reproduction attempt at the s72 trunk (E0809 on
+both the plain and `--checked` invocations). Verdict on the filing:
+the 0.1.8 observation came from a wolfgang built at the intermediate
+first-pin state (`3d5cee6`) — where it was real and re-filed verbatim
+— and the "re-verified at `26fa98e`" claim is now attributed to a
+stale scratch build, an evidence-hygiene lesson (rebuild the
+counterparty from a clean target on every re-pin, which this round's
+lane now does). Not a semantic finding; no reproducer exists at any
+sha since the release. wolf-lang#61 closed with this evidence. The
+original filing follows verbatim.
 
 Filed 2026-08-11 (lupin 0.1.8, CLEAN wolfgang build at `3d5cee6`;
 re-verified unchanged against the CLEAN `26fa98e` build after the s72

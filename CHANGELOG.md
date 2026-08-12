@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.1.9 — 2026-08-12
+
+THE CONC TIER RUNS ON BOTH MACHINES: the c09-wave re-pin. Pin bumped
+`26fa98e` → `0b4e79c` (latest green trunk — the wave landed s41
+(release tier), s51 (package manager), s73 (native concurrency) and
+four fmt idempotence fixes; trunk head `17ea078` is CI-red on both test
+lanes and was not taken). The corpus grows 1: 262 → 263 files
+(`test/conc_schedules_test.lu`, the s73 `--schedules=N` dogfood
+witness); nine files' headers advance to phase `run` (8× `conc/` +
+`procs.lu` — wolfgang executes concurrency natively now; this machine's
+run-ledger claims for all nine predate the wave, so both machines now
+execute the tier), `memory/prov_holy_grail.lu` moves typecheck → mem,
+and two conc files gain `-> !int` rows (E0604/D30). Anchors stay 315,
+ratchet stays 102; bundle 300 programs / 278 records.
+
+- **The conc tier, machine to machine: 10 of 10 agree.** The wave's
+  headline comparison — the first corpus tier where BOTH
+  implementations execute concurrency. `wolf conform-run --native
+  --seed=N` vs `lupin conform-run --seed=N` over all ten run-phase
+  conc-tier files at seeds {0, 42}: every pair agrees on verdict, exit
+  and output bytes, both records `"seeded": true` — a
+  `[proto.seed.equal]` comparison, honored end to end. Honest scope:
+  two seeds, linux x86-64, wolfgang's debug tier; the harness's own
+  diff-run lane still invokes plain `conform-run` (wolfgang's native
+  rung is opt-in) and ledgers the ten as counterparty-unsupported
+  conservatism — the native comparison ran direct, documented in the
+  thirteenth differential entry.
+- **Thirteenth corpus differential: 241 entries, 0 divergences.**
+  Counterparty built CLEAN at the pin with `libwolf_rt.a` provisioned;
+  395 conservatism-ledger entries (66 rejects-beyond, 130
+  run-unmatched, 152 counterparty-unsupported, 47 interp-unsupported).
+  `FILED_DIVERGENCES` is empty again.
+- **DIV-2026-016 RESOLVED; wolf-lang#61 closed.** The CLEAN build
+  answers `fail(E0809)@typecheck`, same span `[518,523]` — the E0806
+  answer does not reproduce at the release sha or this pin, agreeing
+  with the issue's own reproduction attempt. `[proto.cmp.rung]`
+  agreement with this machine's resolve rung; the 0.1.8 observation is
+  attributed to a stale/intermediate-pin counterparty build. An
+  evidence-hygiene lesson (fresh counterparty target per re-pin), not
+  a semantics one.
+- **E1014's trap-map row landed upstream — 0.1.8's filed nit, closed.**
+  The pinned `[conf.trap.map]` exclusivity row now names "E1014's
+  read-mode write barrier, D39" outright, so this machine's D39 trap
+  mapping (`ledger::dynamic_meaning` E1014 → `exclusivity`) is
+  document-stated rather than family-inferred. No behavior change;
+  the citation argument in the comment retired.
+- **Surfaces:** `--version` prints
+  `lupin 0.1.9 (wolf-interp, reference interpreter at pin 0b4e79c)`.
+  Corpus walk 263 files / 0 mismatch (154 match, 8 dynamic
+  counterparts, 32 conservatism, 47 out-of-scope); bundle 300 programs /
+  278 records, anchors covered 102 of 315; differential lane GREEN
+  with an empty filing list. Open lupin issues #16/#17 re-verified at
+  this pin: #16's shape now fails loud (`unsupported` at the else
+  handler) but the handler still fires on the value path — open; #17's
+  unknown-`as`-target pass-through still reproduces — open.
+
 ## 0.1.8 — 2026-08-11
 
 The v0.1.0 RELEASE PAIRING build: this is the version wolf 0.1.0's

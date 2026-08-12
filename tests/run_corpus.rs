@@ -434,6 +434,11 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/list_mutate_while_iter.lu", "trap(exclusivity)"),
     ("memory/mut_read_overlap.lu", "trap(exclusivity)"),
     ("memory/read_param_write.lu", "trap(exclusivity)"),
+    // The c09-wave pin, `0b4e79c` (0.1.9, s73): the corpus grows one —
+    // the `--schedules=N` dogfood witness. Both select arms are conforming
+    // ([conc.det.events]); either seed's choice exits 0 on this machine
+    // exactly as it does natively now that wolfgang runs conc too.
+    ("test/conc_schedules_test.lu", "exit(0)"),
 ];
 
 #[test]

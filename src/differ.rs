@@ -123,21 +123,18 @@ use crate::schema;
 /// and all four families closed in `docs/divergence-log.md` with the clause
 /// cited.
 ///
-/// DIV-2026-016 (0.1.8, pin `3d5cee6`): the s71 E0809 fail-file. The
-/// corpus pins `fail(E0809)` (the else-handler row-coverage rule; this
-/// machine agrees at its resolve rung, span `[518,523]`), but wolfgang's
-/// own `conform-run` reports `fail(E0806)@typecheck` — the generic
-/// refutable-binding diagnostic, same span — on the file its own corpus
-/// pins E0809 for. The counterparty is the defendant (the clause and the
-/// pin are unambiguous; its E0809 emission evidently does not reach the
-/// protocol door's ladder). Filed upstream; the divergence stays visible
-/// in every report until wolfgang's conform-run agrees with its own pin.
-pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[(
-    "rows/negative/handler_uncovered.lu",
-    "DIV-2026-016",
-    "corpus pins fail(E0809); wolfgang conform-run answers fail(E0806)@typecheck (refutability \
-     shadowing its own row-coverage code); this machine matches the pin at resolve",
-)];
+/// DIV-2026-016 CLOSED at pin `0b4e79c` (0.1.9): wolfgang's conform-run
+/// answers `fail(E0809)@typecheck`, same span `[518,523]`, on
+/// `rows/negative/handler_uncovered.lu` — the E0806 answer does not
+/// reproduce at the release sha or the c09-wave pin (wolf-lang#61's own
+/// reproduction attempt had already failed at the s72 trunk; this
+/// round's CLEAN build confirms). Codes agree; the rung difference
+/// (resolve vs typecheck) is `[proto.cmp.rung]` agreement. The 0.1.8
+/// observation is attributed to a wolfgang built at the intermediate
+/// first-pin state (`3d5cee6`) or a stale scratch build — an evidence
+/// lesson, not a semantics one. The list is empty: every filing in the
+/// log's history is resolved.
+pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[];
 
 /// The filing id for a corpus file, when its divergence is already filed.
 #[must_use]
@@ -1214,13 +1211,16 @@ mod tests {
         // entries at 0.1.6 — CLOSED at the 0.1.7 re-pin (`e94b879`):
         // `[proto.cmp.rung]` landed in spec/06 and `compare_deep` implements
         // it, so fail parity (code + span) at any shared-ladder rung is
-        // agreement and the eleven files compare clean. One entry stands at
-        // 0.1.8: DIV-2026-016 — wolfgang's conform-run answers E0806 on the
-        // file its own corpus pins E0809 for (the s71 row-coverage rule).
-        assert_eq!(FILED_DIVERGENCES.len(), 1);
+        // agreement and the eleven files compare clean. DIV-2026-016 —
+        // wolfgang's conform-run answering E0806 on the file its own corpus
+        // pins E0809 for — CLOSED at the 0.1.9 pin (`0b4e79c`): the CLEAN
+        // build answers E0809, and the file compares clean under
+        // `[proto.cmp.rung]`. The list is empty; these asserts resume the
+        // moment anything is filed.
+        assert_eq!(FILED_DIVERGENCES.len(), 0);
         assert_eq!(
-            filed("upstream/corpus/rows/negative/handler_uncovered.lu").map(|(id, _)| id),
-            Some("DIV-2026-016")
+            filed("upstream/corpus/rows/negative/handler_uncovered.lu"),
+            None
         );
         assert_eq!(filed("upstream/corpus/conc/store_buffer.lu"), None);
         assert_eq!(filed("upstream/corpus/memory/mode_missing_mut.lu"), None);

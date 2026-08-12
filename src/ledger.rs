@@ -243,14 +243,15 @@ pub fn dynamic_meaning(code: &str) -> Option<TrapKind> {
         // as conservatism; they are counterparts now, because the document says
         // so rather than because this implementation guessed.
         "E1004" | "E1005" => Some(TrapKind::RegionFault),
-        // The s72 mode teeth (pin `26fa98e`). **E1013** (D40 iteration
-        // exclusivity): `[conf.trap.map]` names it in the `exclusivity` row
-        // and `[mem.iter.excl.2]` states the dynamic meaning outright.
-        // **E1014** (D39, a callee-side write through a read binding): the
-        // pinned map text does not enumerate it — a documentation gap worth
-        // a row — but the D39 ruling itself assigns lupin the dynamic
-        // mirror in the exclusivity family, and `[mem.tier0.excl.1]`'s
-        // "the dynamic machine traps with kind `exclusivity`" is the family
+        // The s72 mode teeth. **E1013** (D40 iteration exclusivity):
+        // `[conf.trap.map]` names it in the `exclusivity` row and
+        // `[mem.iter.excl.2]` states the dynamic meaning outright.
+        // **E1014** (D39, a callee-side write through a read binding): at
+        // pin `26fa98e` the map text did not enumerate it (0.1.8 filed the
+        // gap as an upstream-worthy nit); pin `0b4e79c` closes it — the
+        // `[conf.trap.map]` exclusivity row now names "E1014's read-mode
+        // write barrier, D39" outright. Both rows are document-stated,
+        // not family-inferred; `[mem.tier0.excl.1]` remains the family
         // rule the code instantiates.
         "E1013" | "E1014" => Some(TrapKind::Exclusivity),
         _ => None,
