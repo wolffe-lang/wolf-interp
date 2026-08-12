@@ -121,8 +121,23 @@ use crate::schema;
 /// verdict wide. `compare_deep` implements the clause, the eleven
 /// rung-placement divergences (DIV-2026-011/-012/-014/-015) compare clean,
 /// and all four families closed in `docs/divergence-log.md` with the clause
-/// cited. The table is empty until a new divergence is triaged and filed.
-pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[];
+/// cited.
+///
+/// DIV-2026-016 (0.1.8, pin `3d5cee6`): the s71 E0809 fail-file. The
+/// corpus pins `fail(E0809)` (the else-handler row-coverage rule; this
+/// machine agrees at its resolve rung, span `[518,523]`), but wolfgang's
+/// own `conform-run` reports `fail(E0806)@typecheck` — the generic
+/// refutable-binding diagnostic, same span — on the file its own corpus
+/// pins E0809 for. The counterparty is the defendant (the clause and the
+/// pin are unambiguous; its E0809 emission evidently does not reach the
+/// protocol door's ladder). Filed upstream; the divergence stays visible
+/// in every report until wolfgang's conform-run agrees with its own pin.
+pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[(
+    "rows/negative/handler_uncovered.lu",
+    "DIV-2026-016",
+    "corpus pins fail(E0809); wolfgang conform-run answers fail(E0806)@typecheck (refutability \
+     shadowing its own row-coverage code); this machine matches the pin at resolve",
+)];
 
 /// The filing id for a corpus file, when its divergence is already filed.
 #[must_use]
@@ -1199,9 +1214,14 @@ mod tests {
         // entries at 0.1.6 — CLOSED at the 0.1.7 re-pin (`e94b879`):
         // `[proto.cmp.rung]` landed in spec/06 and `compare_deep` implements
         // it, so fail parity (code + span) at any shared-ladder rung is
-        // agreement and the eleven files compare clean. The table is empty;
-        // nothing waives, nothing gates by filing.
-        assert!(FILED_DIVERGENCES.is_empty());
+        // agreement and the eleven files compare clean. One entry stands at
+        // 0.1.8: DIV-2026-016 — wolfgang's conform-run answers E0806 on the
+        // file its own corpus pins E0809 for (the s71 row-coverage rule).
+        assert_eq!(FILED_DIVERGENCES.len(), 1);
+        assert_eq!(
+            filed("upstream/corpus/rows/negative/handler_uncovered.lu").map(|(id, _)| id),
+            Some("DIV-2026-016")
+        );
         assert_eq!(filed("upstream/corpus/conc/store_buffer.lu"), None);
         assert_eq!(filed("upstream/corpus/memory/mode_missing_mut.lu"), None);
         assert_eq!(filed("upstream/corpus/typecheck/cast_bad.lu"), None);

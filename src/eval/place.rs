@@ -144,13 +144,29 @@ impl fmt::Display for Access {
     }
 }
 
-/// An access held open for some extent: a call's, or a borrow binding's.
+/// Why an access is held open — the detail a conflict trap names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeldWhy {
+    /// A call argument's extent (`mut`/`read` passing).
+    Call,
+    /// A local borrow binding's extent.
+    Borrow,
+    /// D40: `for x in xs` holds a read claim on the container for the
+    /// loop's whole extent, so a mut use inside the body is the
+    /// `exclusivity` trap (`[conf.trap.map]`'s E1013 row) at the mutation.
+    Iteration,
+}
+
+/// An access held open for some extent: a call's, a borrow binding's, or a
+/// `for` loop's (D40).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Held {
     pub path: Path,
     pub access: Access,
     /// Where the access was taken — the second span a fault prints.
     pub span: Span,
+    /// What holds it — decides the story a conflict trap tells.
+    pub why: HeldWhy,
 }
 
 /// The set of accesses currently held (`[mem.tier0.excl.1]`).
@@ -278,6 +294,7 @@ mod tests {
             path: p("a", &["x"]),
             access: Access::Exclusive,
             span: Span::new(0, 1),
+            why: HeldWhy::Call,
         });
         assert!(set.disjoint_sibling(&p("a", &["y"])).is_some());
         assert!(set.disjoint_sibling(&p("a", &["x"])).is_none());
@@ -298,6 +315,7 @@ mod tests {
             path: p("a", &[]),
             access: Access::Shared,
             span: Span::new(0, 1),
+            why: HeldWhy::Call,
         });
         assert!(set.conflict(&p("a", &[]), Access::Shared).is_none());
         assert!(set.conflict(&p("a", &[]), Access::Exclusive).is_some());
@@ -307,6 +325,7 @@ mod tests {
             path: p("a", &["x"]),
             access: Access::Exclusive,
             span: Span::new(0, 1),
+            why: HeldWhy::Call,
         });
         assert!(set.conflict(&p("a", &["x"]), Access::Shared).is_some());
         assert!(set.conflict(&p("a", &["y"]), Access::Exclusive).is_none());
@@ -320,11 +339,13 @@ mod tests {
             path: Path::local(0, "outer"),
             access: Access::Exclusive,
             span: Span::new(0, 1),
+            why: HeldWhy::Borrow,
         });
         set.push(Held {
             path: Path::local(1, "inner"),
             access: Access::Exclusive,
             span: Span::new(2, 3),
+            why: HeldWhy::Borrow,
         });
         set.release_frame(1);
         assert_eq!(set.len(), 1);

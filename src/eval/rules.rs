@@ -620,7 +620,11 @@ impl Rule {
                 "str.interp",
                 "every string literal is an f-string; each interpolation evaluates in place",
             ),
-            Rule::Assert => ("conf.trap.map", "a failed user assertion traps `assert`"),
+            Rule::Assert => (
+                "conf.trap.map",
+                "a failed user assertion, or a ruled caller-contract violation of a builtin \
+                 surface (`[mem.str.repeat]`), traps `assert`",
+            ),
             Rule::TrapVocabulary => (
                 "conf.trap.set",
                 "every fault this machine raises is one of the closed twelve kinds",

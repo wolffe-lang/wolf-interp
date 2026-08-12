@@ -107,6 +107,7 @@ impl Session {
             module: String::new(),
             scopes: vec![Scope::default()],
             row: Vec::new(),
+            read_params: Vec::new(),
         });
         Session {
             machine,

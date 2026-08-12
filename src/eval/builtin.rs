@@ -746,13 +746,20 @@ pub fn method(
                 return unsupported("`repeat` takes a count".to_owned());
             };
             if *n < 0 {
-                // A negative repeat is D25's first defined fault, not a
-                // modular wrap: deterministic `bounds`, never UB.
+                // `[mem.str.repeat]` (s71, #57): a negative count is a caller
+                // contract violation — the deterministic `assert` trap on
+                // every lane. Not `bounds` (no access is out of range), and
+                // not the empty string (the sc03-era answer, retired by the
+                // clause); `[conf.trap.map]`'s `assert` row names ruled
+                // caller-contract violations of builtin surfaces now.
                 return machine.fault(
-                    TrapKind::Bounds,
-                    Rule::Bounds,
+                    TrapKind::Assert,
+                    Rule::Assert,
                     span,
-                    format!("`repeat({n})`: a repeat count cannot be negative"),
+                    format!(
+                        "`repeat({n})`: a negative repeat count is a caller contract violation \
+                         (`[mem.str.repeat]`)"
+                    ),
                 );
             }
             Ok(Value::Str(
@@ -797,9 +804,10 @@ pub fn method(
                 return unsupported("`count` takes a `str` needle".to_owned());
             };
             if needle.is_empty() {
-                // An empty needle matches everywhere and nowhere; no pinned
-                // answer exists, so no answer is invented.
-                return unsupported("`count` of an empty needle".to_owned());
+                // `[mem.str.empty]` (s71, #56): the searching family is
+                // DEFINED on an empty needle — it matches nothing, so the
+                // count is 0 on every lane.
+                return Ok(Value::Int(0, IntTy::INT));
             }
             Ok(Value::Int(
                 s.matches(needle.as_str()).count() as i128,
@@ -811,7 +819,9 @@ pub fn method(
                 return unsupported("`split` takes a `str` separator".to_owned());
             };
             if sep.is_empty() {
-                return unsupported("`split` on an empty separator".to_owned());
+                // `[mem.str.empty]`: an empty separator matches nothing, so
+                // the split yields the whole string as its one piece.
+                return Ok(Value::List(vec![Slot::live(Value::Str(s.clone()))], None));
             }
             Ok(Value::List(
                 s.split(sep.as_str())
@@ -842,7 +852,9 @@ pub fn method(
                 return unsupported("`replace` takes two `str` arguments".to_owned());
             };
             if from.is_empty() {
-                return unsupported("`replace` of an empty needle".to_owned());
+                // `[mem.str.empty]`: an empty needle matches nothing, so the
+                // replacement is the identity.
+                return Ok(Value::Str(s.clone()));
             }
             Ok(Value::Str(s.replace(from.as_str(), to.as_str())))
         }

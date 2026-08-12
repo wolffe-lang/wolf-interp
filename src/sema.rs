@@ -744,8 +744,9 @@ fn define(
 /// private access (E0304), unused import (E0305), `let` reassignment (E0410),
 /// call-site mode (E1007), then the pin-`f0da6e6` tier statics — raw
 /// signature boundary (E1302), the unsafe ring plus the cast matrix's bool
-/// column, char indexing and format specs (E1301/E0805/E0411/E0412/E0413,
-/// one source-order body walk). Each corpus law file exercises exactly one;
+/// column, char indexing, format specs, and the s71 `else` handler
+/// row-coverage rule (E1301/E0805/E0411/E0412/E0413/E0809, one source-order
+/// body walk). Each corpus law file exercises exactly one;
 /// a program violating several reports the first in this order, which is a
 /// defensible choice the spec does not pin.
 #[must_use]
@@ -989,17 +990,26 @@ enum LitClass {
     Unknown,
 }
 
+/// A function's declared **closed** error row, for the E0809 handler-coverage
+/// rule: the tag names, and a compact rendering for the diagnostic.
+struct RowInfo {
+    tags: Vec<String>,
+    render: String,
+}
+
 /// The tier walk's lexical state: one pass per function body, source order,
 /// first finding wins (`[proto.cmp.phase]` compares the first diagnostic).
-struct TierWalk {
+struct TierWalk<'a> {
     /// Whether this module `import c`s — bound once from the module's own
     /// header list, so the answer cannot drift from the map key.
     imports_c: bool,
     unsafe_depth: usize,
     scopes: Vec<Vec<(String, LitClass)>>,
+    /// The module's function items' declared closed rows, for E0809.
+    rows: &'a BTreeMap<String, RowInfo>,
 }
 
-impl TierWalk {
+impl TierWalk<'_> {
     fn lookup(&self, name: &str) -> LitClass {
         for scope in self.scopes.iter().rev() {
             for (n, class) in scope.iter().rev() {
@@ -1179,11 +1189,49 @@ fn unsafe_sig_check(program: &Program) -> Option<Diag> {
 /// s38). One deterministic pass per function body; the first finding wins.
 fn tier_check(program: &Program) -> Option<Diag> {
     for module in program.modules.values() {
+        // The E0809 signature map: every function item's declared closed row.
+        // An open row (`..`) is never judged — a handler cannot enumerate it.
+        let mut rows: BTreeMap<String, RowInfo> = BTreeMap::new();
+        for (name, (def, _)) in &module.items {
+            // `-> int ! {…}`: `parse_type` folds the postfix row into the
+            // type itself (`Fallible`), so the row lives there; `RetType::row`
+            // carries one only for the shapes `parse_type` cannot swallow.
+            if let Def::Fn(decl) = def
+                && let Some(ret) = &decl.ret
+                && let Some(row) = (match &ret.row {
+                    Some(row) => Some(row),
+                    None => match &*ret.ty.kind {
+                        TypeKind::Fallible { row, .. } => Some(row),
+                        _ => None,
+                    },
+                })
+                && !row.open
+            {
+                let mut tags = Vec::new();
+                let mut parts = Vec::new();
+                for entry in &row.entries {
+                    let [segment] = entry.path.segments.as_slice() else {
+                        continue;
+                    };
+                    tags.push(segment.name.clone());
+                    parts.push(if entry.payload.is_empty() {
+                        segment.name.clone()
+                    } else {
+                        format!("{}(…)", segment.name)
+                    });
+                }
+                if tags.len() == row.entries.len() && !tags.is_empty() {
+                    let render = format!("{{{}}}", parts.join(", "));
+                    rows.insert(name.clone(), RowInfo { tags, render });
+                }
+            }
+        }
         for decl in each_fn(module) {
             let mut walk = TierWalk {
                 imports_c: !module.c_headers.is_empty(),
                 unsafe_depth: 0,
                 scopes: vec![Vec::new()],
+                rows: &rows,
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
@@ -1202,6 +1250,7 @@ fn tier_check(program: &Program) -> Option<Diag> {
                     imports_c: !module.c_headers.is_empty(),
                     unsafe_depth: 0,
                     scopes: vec![Vec::new()],
+                    rows: &rows,
                 };
                 if let Some(diag) = walk.expr(&binding.value) {
                     return Some(diag);
@@ -1230,7 +1279,7 @@ fn class_of_type(ty: &Type) -> LitClass {
     }
 }
 
-impl TierWalk {
+impl TierWalk<'_> {
     fn block(&mut self, block: &Block) -> Option<Diag> {
         self.scopes.push(Vec::new());
         for stmt in &block.stmts {
@@ -1437,6 +1486,9 @@ impl TierWalk {
                 if let Some(diag) = self.expr(inner) {
                     return Some(diag);
                 }
+                if let Some(diag) = self.else_cover(inner, handler) {
+                    return Some(diag);
+                }
                 self.else_handler(handler)
             }
             ExprKind::If {
@@ -1528,6 +1580,65 @@ impl TierWalk {
                 self.expr(place).or_else(|| self.expr(from))
             }
         }
+    }
+
+    /// E0809 (s71, wolf-lang#43): an `else` handler runs for **every** error
+    /// its operand can carry, so a pattern in handler position must cover the
+    /// operand's whole row. Judged only where this rung can see the row — a
+    /// direct, unshadowed call to a same-module function item with a
+    /// declared closed row — the E1007 discipline: the walk never guesses.
+    fn else_cover(&self, inner: &Expr, handler: &crate::ast::ElseHandler) -> Option<Diag> {
+        let crate::ast::ElseHandler::Handler { pattern, .. } = handler else {
+            return None;
+        };
+        let ExprKind::Call { callee, .. } = &*inner.kind else {
+            return None;
+        };
+        let ExprKind::Path(path) = &*callee.kind else {
+            return None;
+        };
+        if !path.is_single() || self.is_local(&path.segments[0].name) {
+            return None;
+        }
+        let row = self.rows.get(&path.segments[0].name)?;
+        let Cover::Tags(covered) = handler_cover(pattern, &row.tags) else {
+            return None;
+        };
+        let missing: Vec<&str> = row
+            .tags
+            .iter()
+            .map(String::as_str)
+            .filter(|tag| !covered.contains(*tag))
+            .collect();
+        if missing.is_empty() {
+            return None;
+        }
+        let missing = missing
+            .iter()
+            .map(|tag| format!("`{tag}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Some(Diag::new(
+            "E0809",
+            pattern.span,
+            "err.else",
+            format!(
+                "this `else` handler pattern leaves {missing} unhandled: the operand's error \
+                 row is `{}`, and an `else` handler runs for every error its operand can carry \
+                 — cover the whole row here, or `match` over the row to handle its cases \
+                 separately",
+                row.render
+            ),
+        ))
+    }
+
+    /// Whether `name` is bound in any lexical scope of this walk — every
+    /// `let`/`var`/parameter/pattern binding is declared here, so a hit means
+    /// a call through `name` does not reach the module item of that name.
+    fn is_local(&self, name: &str) -> bool {
+        self.scopes
+            .iter()
+            .any(|scope| scope.iter().any(|(n, _)| n == name))
     }
 
     fn else_handler(&mut self, handler: &crate::ast::ElseHandler) -> Option<Diag> {
@@ -1652,7 +1763,55 @@ fn is_str_type(ty: &Type) -> bool {
 
 /// Pattern bindings enter the scope as `Unknown` — honest ignorance beats a
 /// wrong class.
-fn declare_pattern_classes(pattern: &Pattern, walk: &mut TierWalk) {
+/// What an `else` handler pattern covers, for E0809.
+enum Cover {
+    /// A binder or wildcard: the whole row, whatever it is.
+    All,
+    /// Exactly these tags.
+    Tags(std::collections::BTreeSet<String>),
+    /// A shape this rung declines to judge (qualified paths, literals,
+    /// tuples, capitalized names outside the row). Never diagnosed.
+    Opaque,
+}
+
+/// The tag set an `else` handler pattern covers, against a known row.
+fn handler_cover(pattern: &Pattern, row: &[String]) -> Cover {
+    match &*pattern.kind {
+        PatKind::Wildcard => Cover::All,
+        PatKind::Binding(ident) => {
+            let name = &ident.name;
+            if row.iter().any(|tag| tag == name) {
+                // A bare name that IS a row tag is a row-tag pattern — the
+                // machine's own pattern resolution rule, statically.
+                Cover::Tags(std::iter::once(name.clone()).collect())
+            } else if name.starts_with(char::is_lowercase) {
+                // `else |err| …`: a binder covers the row entire.
+                Cover::All
+            } else {
+                Cover::Opaque
+            }
+        }
+        PatKind::Variant { path, .. } => match path.segments.as_slice() {
+            [segment] => Cover::Tags(std::iter::once(segment.name.clone()).collect()),
+            _ => Cover::Opaque,
+        },
+        PatKind::At { pattern, .. } => handler_cover(pattern, row),
+        PatKind::Or(alternatives) => {
+            let mut tags = std::collections::BTreeSet::new();
+            for alternative in alternatives {
+                match handler_cover(alternative, row) {
+                    Cover::All => return Cover::All,
+                    Cover::Opaque => return Cover::Opaque,
+                    Cover::Tags(sub) => tags.extend(sub),
+                }
+            }
+            Cover::Tags(tags)
+        }
+        PatKind::Literal(_) | PatKind::Tuple(_) => Cover::Opaque,
+    }
+}
+
+fn declare_pattern_classes(pattern: &Pattern, walk: &mut TierWalk<'_>) {
     match &*pattern.kind {
         PatKind::Binding(ident) => walk.declare(&ident.name, LitClass::Unknown),
         PatKind::Variant { fields, .. } => {

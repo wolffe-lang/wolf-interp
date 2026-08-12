@@ -64,8 +64,8 @@ fn default_spec_root() -> PathBuf {
     Path::new(upstream_root()).join("spec")
 }
 
-/// `--version`'s tail: `lupin 0.1.7 (wolf-interp, reference interpreter at
-/// pin e94b879)` — the crate version, the package this binary is built
+/// `--version`'s tail: `lupin 0.1.8 (wolf-interp, reference interpreter at
+/// pin 26fa98e)` — the crate version, the package this binary is built
 /// from, and the pairing posture r01 row 7 asks the version line to name:
 /// this binary is the wolf reference interpreter AT the stated upstream
 /// spec/corpus pin, the sha every observation is made against.

@@ -839,12 +839,14 @@ fn the_s37_str_surface_answers_the_corpus_shapes() {
         ),
         "wolves|missed|2|3|three wolf|true|12|116\n"
     );
-    // A negative repeat is a defined `bounds` fault, never a modular wrap.
+    // A negative repeat is a caller contract violation: the deterministic
+    // `assert` trap on every lane, never a modular wrap ([mem.str.repeat],
+    // s71 — the sc03-era `bounds` spelling retired with the clause).
     assert_eq!(
         trap_kind(
             "fn main() -> int {\n    let n = 0 - 2\n    let s = \"ab\".repeat(n)\n    0\n}\n"
         ),
-        TrapKind::Bounds
+        TrapKind::Assert
     );
 }
 

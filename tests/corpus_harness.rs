@@ -186,14 +186,31 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             `typecheck/method_scope/` ×2 members(+entry counted),
     //             `comptime/sandbox_exec.lu` (the s40 exec category). The
     //             spec grows `[proto.cmp.rung]` — 306 anchors.)
+    //   26fa98e → 262 files (0.1.8: the wave-seven + s72 pin, the v0.1.0
+    //             pairing — one lawful mid-pass re-pin when s72 merged.
+    //             s71 grows 5: `strings/empty_needle.lu` +
+    //             `faults/repeat_negative.lu` (the `[mem.str.empty]`/
+    //             `[mem.str.repeat]` rulings, #56/#57),
+    //             `rows/else_tag_payload.lu` +
+    //             `rows/negative/handler_uncovered.lu` (the `else |Tag(p)|`
+    //             row-coverage rule E0809, #43/#59), and
+    //             `comptime/fold_reaches_lane.lu` (the ctfe fold table —
+    //             the compiler's engine; this machine still declines
+    //             comptime by name). s72 grows 3 — the D39/D40 mode-teeth
+    //             fail-files `memory/read_param_write.lu` (E1014),
+    //             `memory/mut_read_overlap.lu` (E1002) and
+    //             `memory/list_mutate_while_iter.lu` (E1013), each this
+    //             machine's trap(exclusivity) dynamic counterpart. The
+    //             spec grows `[mem.str.empty]`, `[mem.str.repeat]`,
+    //             §10 `[gram.version]` (grammar/1) and `[mem.iter.excl]`.)
     let report = report();
     assert_eq!(
         report.total(),
-        254,
+        262,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 232);
+    assert_eq!(report.entries(), 240);
     assert_eq!(report.members(), 22);
 }
 

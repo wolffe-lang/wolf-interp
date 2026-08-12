@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: repeat_negative.lu
+trap:    assert
+clause:  [conf.trap.map]
+rule:    Assert
+message: `repeat(-1)`: a negative repeat count is a caller contract violation (`[mem.str.repeat]`)
+at:      13:14 `"ab".repeat(n)`
+because: (single-span fault)

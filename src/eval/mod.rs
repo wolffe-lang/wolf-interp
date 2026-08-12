@@ -47,7 +47,7 @@ use crate::diag::Span;
 use crate::sema::{Def, Program};
 use crate::trap::TrapKind;
 
-use place::{Access, AccessSet, Held, Path, Proj};
+use place::{Access, AccessSet, Held, HeldWhy, Path, Proj};
 use prov::{AccessKind, Prov, Provenance, RawPtr, RetagKind, UbFinding, UbRow};
 use region::{Edge, Ref, RegionId, RegionState, Store, Strategy};
 use rules::Rule;
@@ -335,6 +335,12 @@ struct Frame {
     /// interpreter half of wolf-lang#4): `return none` under
     /// `-> int ! {none}` produces the tag value `none`.
     row: Vec<String>,
+    /// The parameters this activation bound in the default (unwritten) mode
+    /// — read bindings, immutable for the whole call
+    /// (`[mem.tier0.mode.read]`). D39's callee-side write barrier watches
+    /// this list: a write through one traps `exclusivity`. Each entry
+    /// carries the parameter's declaration span, the trap's second span.
+    read_params: Vec<(String, Span)>,
 }
 
 /// The state every task of one program run shares, behind locks.
@@ -623,6 +629,7 @@ impl Machine {
             module: String::new(),
             scopes: vec![Scope::default()],
             row: Vec::new(),
+            read_params: Vec::new(),
         });
 
         // Item-level `let`/`var`/`const` evaluate once, in declaration order.
@@ -1130,8 +1137,30 @@ impl Machine {
     /// (`[mem.tier0.excl.1]`).
     fn check_access(&mut self, path: &Path, access: Access, span: Span) -> EResult<()> {
         if let Some(held) = self.access.conflict(path, access) {
-            let (held_path, held_access, held_span) =
-                (held.path.to_string(), held.access, held.span);
+            let (held_path, held_access, held_span, held_why) =
+                (held.path.to_string(), held.access, held.span, held.why);
+            // D40's ruling: the `for` loop's read claim makes mutation during
+            // iteration THIS trap — one rule, two enforcement modes (wolfgang's
+            // static E1013, `[conf.trap.map]`'s E1013 row here). The message
+            // teaches what the fix-it teaches: collect-then-apply, or the
+            // index loop.
+            if held_why == HeldWhy::Iteration {
+                return self.trap(
+                    TrapKind::Exclusivity,
+                    Rule::Exclusivity,
+                    span,
+                    format!(
+                        "`{path}` is mutated while a `for` loop iterates `{held_path}`: the loop \
+                         holds a read claim on the container for its whole extent (D40; \
+                         wolfgang's E1013) — collect the changes and apply them after the loop, \
+                         or use an index loop"
+                    ),
+                    Some((
+                        held_span,
+                        format!("the `for` loop's read claim on `{held_path}`"),
+                    )),
+                );
+            }
             let rule = if path.projections.is_empty() && held_path == path.to_string() {
                 Rule::Exclusivity
             } else {
@@ -1263,9 +1292,56 @@ impl Machine {
             .find(|id| store.state(*id) == Some(RegionState::Frozen))
     }
 
+    /// D39's callee-side write barrier (`[mem.tier0.mode.read]`): the span of
+    /// the read-mode parameter `path` writes through, when it writes through
+    /// one. The innermost binding of the base decides — scope 0 of a call
+    /// frame holds exactly the parameters, so a body-scope shadow of the name
+    /// is an ordinary local and passes.
+    fn read_param_write(&self, path: &Path) -> Option<Span> {
+        let frame = self.frames.get(path.frame)?;
+        let scope_index = frame
+            .scopes
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, scope)| scope.locals.iter().any(|(n, _)| *n == path.base))
+            .map(|(index, _)| index)?;
+        if scope_index != 0 {
+            return None;
+        }
+        frame
+            .read_params
+            .iter()
+            .find(|(name, _)| *name == path.base)
+            .map(|(_, span)| *span)
+    }
+
     /// Writes through a path, making the place live again if it was moved from
     /// (`[mem.tier0.move.4]`).
     fn write_path(&mut self, path: &Path, value: Value, span: Span) -> EResult<()> {
+        // D39's dynamic mirror: a write through a read-mode binding traps in
+        // the exclusivity family (`[conf.trap.map]`), the kind
+        // `[mem.tier0.excl.1]` already gives every read/write conflict —
+        // wolfgang rejects the same write statically (s72's memory-family
+        // code); one rule, two enforcement modes.
+        if let Some(param_span) = self.read_param_write(path) {
+            return self.trap(
+                TrapKind::Exclusivity,
+                Rule::ModeRead,
+                span,
+                format!(
+                    "write to `{path}` through the read-mode parameter `{}`: the default \
+                     (unwritten) mode reads a value that is immutable for the whole call \
+                     (`[mem.tier0.mode.read]`, D39) — declare the parameter `mut` and pass \
+                     `f(mut …)` at the call site to write through it",
+                    path.base
+                ),
+                Some((
+                    param_span,
+                    format!("`{}` bound in read mode here", path.base),
+                )),
+            );
+        }
         self.check_access(path, Access::Exclusive, span)?;
         // `[mem.region.freeze.1]`: frozen data is immutable forever, through
         // value paths as much as through granules. Checked before the slot is
@@ -2031,10 +2107,26 @@ impl Machine {
         }
 
         self.fire(Rule::Call, span, &format!("call `{}`", decl.name.name));
+        // D39 (`[mem.tier0.mode.read]`): parameters whose mode is unwritten
+        // are read bindings — immutable for the whole call. The frame carries
+        // the watch list for the callee-side write barrier in `write_path`.
+        let read_params: Vec<(String, Span)> = decl
+            .params
+            .iter()
+            .filter(|param| param.mode.is_none())
+            .map(|param| {
+                let name = match &param.kind {
+                    ParamKind::Named { name, .. } => name.name.clone(),
+                    ParamKind::SelfParam { .. } => "self".to_owned(),
+                };
+                (name, param.span)
+            })
+            .collect();
         self.frames.push(Frame {
             module: module.to_owned(),
             scopes: vec![Scope::default()],
             row: crate::sema::declared_raise_tags(decl),
+            read_params,
         });
         let retags = std::mem::take(&mut self.pending_retags);
         let frame = self.frames.len() - 1;
@@ -2157,6 +2249,7 @@ impl Machine {
                         path: path.clone(),
                         access: Access::Exclusive,
                         span: arg.span,
+                        why: HeldWhy::Call,
                     });
                     held += 1;
                     // `[mem.prov.tag]`: `mut` parameter entry is a retag point,
@@ -2216,6 +2309,7 @@ impl Machine {
                                 path,
                                 access: Access::Shared,
                                 span: arg.span,
+                                why: HeldWhy::Call,
                             });
                             value
                         }
@@ -3322,7 +3416,12 @@ impl Machine {
                     span,
                     &format!("borrow `{path}` as `{access}`"),
                 );
-                self.access.push(Held { path, access, span });
+                self.access.push(Held {
+                    path,
+                    access,
+                    span,
+                    why: HeldWhy::Borrow,
+                });
                 Ok(value)
             }
             UnOp::Deref => {
@@ -3560,6 +3659,7 @@ impl Machine {
             self.fire(Rule::Flow, span, "for over a channel");
             return self.eval_for_chan(chan, pattern, body, iter.span);
         }
+        let is_container = matches!(&iterable, Value::List(..) | Value::Map(..));
         let items: Vec<Value> = match iterable {
             Value::Range {
                 start,
@@ -3587,8 +3687,34 @@ impl Machine {
         };
 
         self.fire(Rule::Flow, span, "for");
+        // D40 (resolves S-11): `for x in xs` holds a READ claim on the
+        // container for the loop's whole extent, so a mut use of the
+        // container inside the body — push/pop/clear, an element write, a
+        // `mut` pass — conflicts in `check_access` and traps `exclusivity`
+        // at the mutation. One rule, two enforcement modes: wolfgang's
+        // static E1013 and this claim ([conf.trap.map]'s E1013 row); the
+        // held s68 for-over-mutated lint died by promotion.
+        let depth = self.access.len();
+        if is_container && let Some(path) = self.iterated_container(iter) {
+            self.check_access(&path, Access::Shared, iter.span)?;
+            self.fire(
+                Rule::Exclusivity,
+                iter.span,
+                &format!("`{path}`: the `for` loop's read claim, held for its extent (D40)"),
+            );
+            self.access.push(Held {
+                path,
+                access: Access::Shared,
+                span: iter.span,
+                why: HeldWhy::Iteration,
+            });
+        }
+        let mut outcome = Ok(Value::Unit);
         for item in items {
-            self.step()?;
+            if let Err(signal) = self.step() {
+                outcome = Err(signal);
+                break;
+            }
             self.push_scope();
             let bound = self.bind_pattern(pattern, item);
             let result = match bound {
@@ -3598,11 +3724,38 @@ impl Machine {
             self.pop_scope();
             match result {
                 Ok(_) | Err(Signal::Continue) => {}
-                Err(Signal::Break(value)) => return Ok(value),
-                Err(other) => return Err(other),
+                Err(Signal::Break(value)) => {
+                    outcome = Ok(value);
+                    break;
+                }
+                Err(other) => {
+                    outcome = Err(other);
+                    break;
+                }
             }
         }
-        Ok(Value::Unit)
+        // The claim's extent ends with the loop, on every exit path.
+        self.access.release(self.access.len().saturating_sub(depth));
+        outcome
+    }
+
+    /// The container place a `for` loop iterates, when its operand is a
+    /// side-effect-free place expression (`xs`, `state.items`) — the shape
+    /// D40's read claim attaches to. Anything else (a call, a literal, an
+    /// indexed element) iterates a value with no caller-visible place.
+    fn iterated_container(&mut self, expr: &Expr) -> Option<Path> {
+        fn placelike(expr: &Expr) -> bool {
+            match &*expr.kind {
+                ExprKind::Path(path) => path.is_single(),
+                ExprKind::Member { base, .. } => placelike(base),
+                ExprKind::Group(inner) => placelike(inner),
+                _ => false,
+            }
+        }
+        if !placelike(expr) {
+            return None;
+        }
+        self.live_place(expr).unwrap_or_default()
     }
 
     /// `[mem.iter.for]` — `for pat in e { body }` over an `Iter[T]`
@@ -4207,6 +4360,9 @@ impl Machine {
                         .last()
                         .map(|f| f.row.clone())
                         .unwrap_or_default(),
+                    // Closure parameters carry no declared modes; D39's
+                    // barrier watches `fn` parameters only.
+                    read_params: Vec::new(),
                 });
                 for (name, value) in &closure.captures {
                     self.declare(name, Slot::live(value.clone()));

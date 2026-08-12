@@ -256,6 +256,7 @@ impl Machine {
             module,
             scopes: vec![Scope::default()],
             row: Vec::new(),
+            read_params: Vec::new(),
         });
         for (name, value) in &closure.captures {
             self.declare(name, Slot::live(value.clone()));
@@ -393,6 +394,7 @@ impl Machine {
             module: module.to_owned(),
             scopes: vec![Scope::default()],
             row: Vec::new(),
+            read_params: Vec::new(),
         });
         let result = self
             .call_fn(decl, module, args, span)

@@ -418,6 +418,22 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("rows/handler_match_tags.lu", "exit(0)"),
     ("strings/match_str_dispatch.lu", "exit(0)"),
     ("typecheck/match_str_nonexhaustive.lu", "exit(0)"),
+    // The wave-seven pin, `3d5cee6` (0.1.8, s71): the empty needle is
+    // DEFINED (`[mem.str.empty]` — count 0, split one whole piece, replace
+    // identity; two former declines run now), a negative repeat traps
+    // `assert` per `[mem.str.repeat]`, and `else |Tag(p)|` binds the
+    // payload on a total single-tag row (the run half of the E0809 pair —
+    // its negative twin fails at resolve and never reaches this ledger).
+    ("faults/repeat_negative.lu", "trap(assert)"),
+    ("rows/else_tag_payload.lu", "exit(0)"),
+    ("strings/empty_needle.lu", "exit(0)"),
+    // The s72 mode-teeth fail-files (same pin): each pins a static code
+    // whose dynamic meaning is exclusivity, and this machine traps it —
+    // D39's write barrier (E1014), the caller-side overlap rule (E1002),
+    // and D40's iteration claim (E1013). Dynamic counterparts, all three.
+    ("memory/list_mutate_while_iter.lu", "trap(exclusivity)"),
+    ("memory/mut_read_overlap.lu", "trap(exclusivity)"),
+    ("memory/read_param_write.lu", "trap(exclusivity)"),
 ];
 
 #[test]
