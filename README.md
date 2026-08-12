@@ -25,12 +25,13 @@ The binary lands at `target/release/lupin`; the transcripts below spell it
 corpus come from a pinned wolf-lang checkout — the `upstream/` submodule
 when initialized, otherwise the tracked snapshot under `vendor/upstream/` — so
 a bare clone works without touching submodules
-([manual](docs/manual/00-building.md)). `--version` names all three
-identities — the binary, the package, and the pin:
+([manual](docs/manual/00-building.md)). `--version` names the pairing:
+the binary, the package, and the posture — this is the wolf **reference
+interpreter** at the stated upstream pin:
 
 ```console
 $ lupin --version
-lupin 0.1.6 (wolf-interp, pin …)
+lupin 0.1.7 (wolf-interp, reference interpreter at pin …)
 ```
 
 ## Running a program

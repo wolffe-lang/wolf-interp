@@ -1,5 +1,75 @@
 # Changelog
 
+## 0.1.7 — 2026-08-11
+
+The release-runway pass for r01 (wolf v0.1.0 names this version as the
+reference interpreter). Pin bumped `13b811f` → `e94b879` (wave six: s40
+os/time/json, s70 match tier + X3 value paths, s69 idiom lints — the
+corpus grows `lints/` ×15, `os/` ×4, `json/` ×2, `faults/` ×5,
+`time/` ×1 and the match-tier witnesses: 221 → 254 files; the registry
+grows `[proto.cmp.rung]` — 305 → 306 anchors, ratchet 96 → 97). Two
+issues closed, every open divergence family closed, the differential
+compares CLEAN.
+
+- **#21 — container-element literals adopt `int`, and `List[i32]`
+  checks its writes.** Both directions of the s70 reassignment: a
+  literal pushed into a `List` adopts the locked 64-bit `int` (the
+  `Range` precedent) instead of staying literal and defaulting `i32` at
+  the pop-binding — `push(2147483647); pop; +1` prints `2147483648` now,
+  as wolfgang does — and the constructor's bracket type argument
+  (`List[i32]()`, read off the callee's syntax; also `List[T]`
+  annotations through `coerce`) travels on the value, so pushes
+  range-check at the element's width, element loads feed checked
+  arithmetic at `i32`, and the compound `l[0] *= 2` traps BEFORE the
+  write lands. The five `faults/overflow_*` litmuses and
+  `memory/list_elem_assign.lu` all pin, both lanes.
+- **#22 — the explorer runs the same admission ladder as `run`.** The
+  `--explore` path bypassed the E11xx statics and certified programs
+  "observably deterministic" that the same binary refuses to run
+  (rp01's finding; the ch13 lost-update shape). `frontend::admit` is
+  now the ONE admission question — module laws, then the pin statics,
+  then the raise check — asked by `observe_with`, `explore_file` and
+  `explore_source` alike, so `conform-run --explore` refuses
+  `store_buffer`/`chan_unsendable`/`when_nested` with the run door's
+  own diagnostics (exit 2, no certificate). `--explore` also honors
+  `--std-root` now.
+- **`[proto.cmp.rung]` adopted; DIV-2026-011/-012/-014/-015 ALL
+  CLOSE.** The ruling the last four rounds routed upstream landed in
+  spec/06: fail(code+span) parity at any shared-ladder rung is
+  agreement, exactly one verdict wide. `compare_deep` and
+  `compare::compare` implement the clause, the eleven rung-placement
+  divergences compare clean, and `FILED_DIVERGENCES` is EMPTY for the
+  first time since the fourth round. En route the fail comparison
+  learned to read the first **error**-severity diagnostic — a
+  counterparty may interleave lints ahead of its rejection in
+  `diagnostics` (`[proto.record.warn]`), and a lint's span is
+  `[proto.cmp.warn]`'s surface, never the rejection's (the
+  `resolve/cycle` shape at this pin).
+- **The s69 idiom lints.** Ten of the eleven run here with
+  counterparty-identical spans — W0310–W0315 (naming, docs, module
+  shape), W0603/W0604 (rows), W1002/W1003 (mode hygiene) — plus
+  E0802's literal-precise dead-arm analysis (duplicated str/bool/int
+  literals, `_` after bool's two literals, the `pattern_shape`
+  degradation). W0316 (ancestor import) is honest-absent: its only
+  witness shape needs the dotted nested-module loading this machine's
+  loader does not perform.
+- **The s40 tier, postured.** env and time are implemented on the
+  checked-lane posture — overlay env (never the host's), empty argv
+  (the stdin posture mirrored), cwd as process state, X12 monotonic
+  time, and `os_exit`'s defer-skipping termination (`Signal::Exit`) —
+  so `os/args_cwd`, `os/env_roundtrip`, `os/exit_code` and
+  `time/monotonic` run to their pinned outputs. The process trio is
+  exec surface declined by design; the json kernels are the
+  counterparty's reference parser, declined rather than guessed. All
+  fifteen names resolve, so every refusal is "unsupported feature",
+  never "unknown name".
+- **Counts.** 254 corpus files, 232 entries: 149 match, 5 dynamic
+  counterparts, 32 conservatism, 46 out of scope, 0 mismatches.
+  diff-run at the pin (CLEAN wolfc build at `e94b879`): 232 entries,
+  **0 divergences**. Bundle: 291 programs, 269 records, 97/306 anchors.
+- **Surfaces.** `--version` names the pairing posture per r01 row 7:
+  `lupin 0.1.7 (wolf-interp, reference interpreter at pin e94b879)`.
+
 ## 0.1.6 — 2026-08-11
 
 The wave-four re-pin and the lint wave (issues #19, #20). Pin bumped
