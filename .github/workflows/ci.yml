@@ -249,8 +249,20 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          for f in cancel_sibling chan_unsendable freeze_publish message_passing \
-                   proc_kill_defers select_seeded store_buffer when_multi; do
+          # The E11xx fail files are REFUSED by the unified admission
+          # ladder since v0.1.7 (#22): explore refuses what run refuses.
+          for f in chan_unsendable store_buffer; do
+            set +e
+            out=$(cargo run --quiet -- conform-run "vendor/upstream/corpus/conc/$f.lu" --explore=500 2>&1)
+            code=$?
+            set -e
+            test "$code" -eq 2 \
+              || { echo "::error::conc/$f.lu must be refused at admission (got $code)"; exit 1; }
+            echo "$out" | grep -qE 'E110[123]' \
+              || { echo "::error::conc/$f.lu refusal must name its E11xx code: $out"; exit 1; }
+          done
+          for f in cancel_sibling freeze_publish message_passing \
+                   proc_kill_defers select_seeded when_multi; do
             out=$(cargo run --quiet -- conform-run "vendor/upstream/corpus/conc/$f.lu" --explore=500) \
               || { echo "::error::conc/$f.lu failed exploration: $out"; exit 1; }
             echo "$out" | grep -q 'observably deterministic' \
