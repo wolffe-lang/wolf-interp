@@ -1,12 +1,12 @@
-# The lupin REPL — session semantics and the transcript format
+# The lupin REPL: session semantics and the transcript format
 
-`lupin repl` (or bare `lupin`) is a line REPL over the reference interpreter: the
-wolf-book's teaching vehicle and the first interactive wolf that exists (the
-compiler has no REPL and never will). Its differentiating feature is
-memory-model introspection — `:mem` and `:trace` turn D10's tiers from prose
-into something a learner can poke — and its second deliverable, equally
-binding, is the **transcript format** below: every REPL session printed in
-the book is CI-replayed against this binary, and drift fails.
+`lupin repl` (or bare `lupin`) is a line REPL over the reference interpreter.
+It is the wolf-book's teaching vehicle and the first interactive wolf that
+exists; the compiler has no REPL and is not getting one. `:mem` and `:trace`
+are the memory-model introspection, and they turn D10's tiers into something a
+learner can poke. The second deliverable, equally binding, is the **transcript
+format** below: every REPL session printed in the book is CI-replayed against
+this binary, and drift fails.
 
 ## 1. The loop
 
@@ -26,42 +26,43 @@ the book is CI-replayed against this binary, and drift fails.
   Spans index the input line as typed. The Elm-grade catalog stays the
   compiler's (D22); the clause id is what the book cites.
 
-## 2. Incremental definitions — the `[repl.*]` notes
+## 2. Incremental definitions: the `[repl.*]` notes
 
 The compiler's module rules (directory = module, no cycles, interface
-files) do not apply at a prompt; the REPL is **one implicit module growing
-over time**. These rules are REPL-spec notes with their own tag namespace —
-deliberately *not* spec/01..05 clauses: the REPL extends the spec, it does
-not fork it. is09 exports them with the rest of the doc surface.
+files) do not apply at a prompt. The REPL is **one implicit module growing
+over time**. These rules are REPL-spec notes with their own tag namespace,
+deliberately outside spec/01..05: the REPL extends the spec, it does not
+fork it. is09 exports them with the rest of the doc surface.
 
-- **`[repl.def.shadow]`** — Redefinition is shadowing, not mutation. A new
+- **`[repl.def.shadow]`.** Redefinition is shadowing, not mutation. A new
   `fn f` binds fresh; closures and values that captured the old `f` keep
-  it. No live-patching of existing values — that is I14's compiled-world
-  story. (Mechanism: every prompt definition gets a generational internal
-  name `f#N`; the surface name is a session binding to the current
-  generation, and closures capture by value per `[gram.expr.closure]`.)
-- **`[repl.type.gen]`** — Types are generational. Redefining `Point` mints
+  it. There is no live-patching of existing values, which is I14's
+  compiled-world story. (Mechanism: every prompt definition gets a
+  generational internal name `f#N`; the surface name is a session binding
+  to the current generation, and closures capture by value per
+  `[gram.expr.closure]`.)
+- **`[repl.type.gen]`.** Types are generational. Redefining `Point` mints
   a new nominal type; existing values keep their old identity and print
   with a stale-generation marker (`Point#1`). Values of the *current*
   generation print bare.
-- **`[repl.type.mix]`** — Mixing generations is a type error with a hint:
+- **`[repl.type.mix]`.** Mixing generations is a type error with a hint:
   comparing a `Point#1` against the current `Point` reports that
   redefinition minted a new nominal type and suggests rebuilding the older
   value.
-- **`[repl.let.rebind]`** — `let` rebinding drops the old binding; owned
-  resources (regions, `shared` counts) drop per the normal death rules —
-  visible in `:mem` immediately, which is itself a teaching moment.
-- **`[repl.module]`** — D31/D32 do not apply at the prompt. `use` is
-  refused with this note; `:load file.lu` is textual inclusion into the
+- **`[repl.let.rebind]`.** `let` rebinding drops the old binding. Owned
+  resources (regions, `shared` counts) drop per the normal death rules,
+  and `:mem` shows that immediately, which is itself a teaching moment.
+- **`[repl.module]`.** D31/D32 do not apply at the prompt. `use` is
+  refused with this note. `:load file.lu` is textual inclusion into the
   implicit module, nothing more. (`import c "…"` is the C membrane, D17,
-  not a module rule — it works at the prompt so the is04 provenance
+  and not a module rule. It works at the prompt, so the is04 provenance
   machine is reachable from a `:trace` session.)
-- **`[repl.trap.alive]`** — A trap, UB finding, or diagnostic prints and
-  the session survives. The world is whatever the fault left behind — no
-  rollback — and `:mem` shows exactly that state, which is a teaching
+- **`[repl.trap.alive]`.** A trap, UB finding, or diagnostic prints and
+  the session survives. The world is whatever the fault left behind, with
+  no rollback, and `:mem` shows exactly that state. That is a teaching
   surface, not a bug. `:reset` is the fresh start.
 
-## 3. The directive surface (v1 — additions take corpus-directive review)
+## 3. The directive surface (v1: additions take corpus-directive review)
 
 ```
 :type e            evaluate e, report its type
@@ -77,15 +78,15 @@ not fork it. is09 exports them with the rest of the doc surface.
 :quit              leave
 ```
 
-`:mem` output is deterministic — stable ids, sorted iteration — so
+`:mem` output is deterministic (stable ids, sorted iteration), so
 transcripts snapshot. Regions print as `#id `name` strategy state=… objects=…
-[parent=…] [owner=…]`; `shared` cells print strong/weak counts; pool slots
+[parent=…] [owner=…]`. `shared` cells print strong/weak counts. Pool slots
 print generation and life stage, so a stale handle is *visible* before it
 faults. `:trace` events carry source spans and clause ids; with the is04
 machine engaged (`import c` + raw pointers) the Tree-Borrows
 retag/read/write/invalidate events are on it.
 
-## 4. The transcript format — the book contract
+## 4. The transcript format: the book contract
 
 A transcript is exactly what a **piped** session prints: prompts, echoed
 inputs, and output lines, LF-terminated (the repo forces `eol=lf`).
@@ -122,19 +123,19 @@ wolf> :quit
 `tests/repl/region_lifecycle.transcript` is the committed exemplar: the
 region lifecycle exactly as a book chapter would stage it.
 
-1. `struct Config { limit: int }` — a type for the session
+1. `struct Config { limit: int }` defines a type for the session
    (`defined type `Config``).
-2. `let r = region(rc)` then `:regions` — the region exists (`rc`,
+2. `let r = region(rc)` then `:regions`. The region exists (`rc`,
    `state=suspended`, 0 objects): creating a region does not open it.
-3. `let cfg = in r { Config { limit: 42 } }` then `:mem` — the open window
+3. `let cfg = in r { Config { limit: 42 } }` then `:mem`. The open window
    allocated into it (`objects=1`), and it is suspended again after the
    block: `[mem.region.open.1]` live.
-4. `let frozen = freeze r` then `:mem` — `state=frozen`. The affine region
-   value was *consumed* (`[mem.region.freeze.1]`); reading `cfg.limit`
-   still answers 42 — frozen data is readable forever
+4. `let frozen = freeze r` then `:mem`, and `state=frozen`. The affine
+   region value was *consumed* (`[mem.region.freeze.1]`). Reading
+   `cfg.limit` still answers 42, because frozen data is readable forever
    (`[mem.region.edge.imm]`), including after `frozen` is rebound away.
 5. A second region `q` is built and then dropped by rebinding
-   (`[repl.let.rebind]`): `:regions` shows it gone — a region dies as a
+   (`[repl.let.rebind]`), and `:regions` shows it gone. A region dies as a
    unit, wholesale (`[mem.region.intra.2]`).
 
 Every step is one input line plus one small `:mem` block: an author can
@@ -143,9 +144,10 @@ session against the binary so the chapter cannot rot.
 
 ## 6. What the REPL is not
 
-No completion or syntax highlighting beyond stock line editing (delta from
-the contract's "rustyline-class editing": no external line-editing crate is
-vendored — the dependency policy outweighs polish until book feedback asks
-for it; recorded for the ic04 closeout). Not a debugger: `:trace` is a log,
-not a control surface. No compiler-parity modules at the prompt. No session
-persistence across restarts.
+No completion or syntax highlighting beyond stock line editing. That is a
+delta from the contract's "rustyline-class editing": no external
+line-editing crate is vendored, because the dependency policy outweighs
+polish until book feedback asks for it. Recorded for the ic04 closeout.
+Not a debugger: `:trace` is a log, not a control surface. No
+compiler-parity modules at the prompt. No session persistence across
+restarts.

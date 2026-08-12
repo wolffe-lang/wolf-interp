@@ -2,13 +2,13 @@
 
 <img src="assets/wolf-logo.svg" alt="the wolf mark" width="120" align="right"/>
 
-The reference interpreter for the wolf language: an independent, executable
-reading of the specification, and the oracle the compiler
+The reference interpreter for the wolf language. It is an independent,
+executable reading of the specification, and the oracle the compiler
 ([wolf-lang](https://github.com/wolffe-lang/wolf-lang)) is differentially
-tested against. The two implementations share no code — only the pinned spec
-and corpus, and the observation protocol they are compared through. Wolf
-source files use the `.lu` extension. wolf-interp builds a binary named
-`lupin`.
+tested against. The two implementations share no code. What they share is the
+pinned spec, the pinned corpus, and the observation protocol they are
+compared through. Wolf source files use the `.lu` extension. This repo builds
+a binary named `lupin`.
 
 Licensed under [GPL-3.0-or-later](LICENSE).
 
@@ -20,14 +20,13 @@ cd wolf-interp
 cargo build --release
 ```
 
-The binary lands at `target/release/lupin`; the transcripts below spell it
-`lupin`. The toolchain is pinned by `rust-toolchain.toml`. The spec and
-corpus come from a pinned wolf-lang checkout — the `upstream/` submodule
-when initialized, otherwise the tracked snapshot under `vendor/upstream/` — so
-a bare clone works without touching submodules
-([manual](docs/manual/00-building.md)). `--version` names the pairing:
-the binary, the package, and the posture — this is the wolf **reference
-interpreter** at the stated upstream pin:
+The binary lands at `target/release/lupin`, which is how the transcripts
+below spell it. The toolchain is pinned by `rust-toolchain.toml`. The spec
+and corpus come from a pinned wolf-lang checkout: the `upstream/` submodule
+when it is initialized, otherwise the tracked snapshot under
+`vendor/upstream/`. A bare clone works without touching submodules
+([manual](docs/manual/00-building.md)). `--version` names the pairing, which
+is the binary, the package, and the posture, at the stated upstream pin:
 
 ```console
 $ lupin --version
@@ -56,8 +55,8 @@ fn main() -> !int {
 }
 ```
 
-Running the file is one word (`lupin FILE.lu` needs no subcommand); the
-program's output passes through and its `exit(N)` is the process exit code:
+Running the file takes no subcommand. The program's output passes through,
+and its `exit(N)` becomes the process exit code:
 
 ```console
 $ lupin examples/squares.lu
@@ -65,9 +64,9 @@ sum of squares: 30
 ```
 
 Honest failure output is part of the product. `examples/overflow.lu`
-overflows an `i32`; arithmetic is checked in every build profile, so the
-program traps — the diagnostic cites the spec clause it enforces, prints to
-stderr, and the process exits `3`:
+overflows an `i32`. Arithmetic is checked in every build profile, so the
+program traps. The diagnostic goes to stderr and cites the spec clause it
+enforces. The process exits `3`:
 
 ```console
 $ lupin examples/overflow.lu
@@ -79,9 +78,9 @@ The exit codes are documented in the
 `2` on a static-phase rejection, `3` on a trap, `4` on `unsupported`.
 `lupin -` reads a program from stdin the same way.
 
-The `//!` header is a conformance directive: the file states its own
+The `//!` header is a conformance directive. The file states its own
 expected outcome, in the grammar the corpus uses. `conform-run` is the
-protocol surface — it runs the program and reports what it observed:
+protocol surface. It runs the program and reports what it observed:
 
 ```console
 $ lupin conform-run examples/squares.lu
@@ -89,13 +88,13 @@ examples/squares.lu: verdict=exit(0) phase_reached=run seeded=false
 sum of squares: 30
 ```
 
-The first line is the observation — the verdict and the deepest pipeline
+The first line is the observation: the verdict, and the deepest pipeline
 phase that completed. The rest is the program's output.
 
 ## The REPL
 
-Bare `lupin` starts an interactive session (`lupin repl` is the explicit
-spelling); declarations persist, traps do not end the session, and `:mem`,
+Bare `lupin` starts an interactive session, and `lupin repl` is the explicit
+spelling. Declarations persist, and a trap does not end the session. `:mem`,
 `:regions` and `:trace` show the memory model live. A walkthrough is in the
 [manual](docs/manual/02-repl.md). `lupin eval 'CODE'` (or `-e`) evaluates
 one snippet the same way and exits.
@@ -136,22 +135,23 @@ transcripts.
 
 ## Scope
 
-The interpreter implements the dynamic semantics in full and only the static
-analysis needed to run programs. The type checker, borrow checker and region
-checker are the compiler's half; every property they prove statically is
-enforced dynamically here, so an ownership violation is a runtime trap rather
-than a compile error ([manual](docs/manual/03-phases.md)). Of the 148 entry
-files in the pinned corpus, 96 currently reach the `run` phase; the corpus
-walk (`lupin corpus`) prints the exact ledger.
+The interpreter implements the dynamic semantics in full, and only the
+static analysis needed to run programs. The type checker, borrow checker and
+region checker are the compiler's half. Every property they prove statically
+is enforced dynamically here, so an ownership violation surfaces as a runtime
+trap where the compiler would refuse the program outright
+([manual](docs/manual/03-phases.md)). Of the 241 entry files in the pinned
+corpus, 171 reach the `run` rung. The corpus walk (`lupin corpus`) prints the
+exact ledger.
 
 ## Documentation
 
 `docs/README.md` is the index. User-facing material lives in
-[docs/manual/](docs/manual/README.md); the engineering documents — the
-approximation contract, the divergence log, the bundle format — live beside
-it in `docs/`. Every command/output pair in the README and the manual is real
-output from the pinned build, enforced by a test. The spec is normative; this
-implementation is one reading of it.
+[docs/manual/](docs/manual/README.md). The engineering documents (the
+approximation contract, the divergence log, the bundle format) live beside it
+in `docs/`. Every command/output pair in this README and in the manual is
+real output from the pinned build, enforced by a test. The spec is normative.
+This implementation is one reading of it.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the independence doctrine, the
 gates, and the commit conventions.
