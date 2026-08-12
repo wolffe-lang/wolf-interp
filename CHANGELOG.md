@@ -1,5 +1,83 @@
 # Changelog
 
+## 0.1.8 — 2026-08-11
+
+The v0.1.0 RELEASE PAIRING build: this is the version wolf 0.1.0's
+`--version` line names as its reference interpreter. Pin bumped
+`e94b879` → `3d5cee6` (wave seven: r01 prep + s71 release polish — the
+corpus grows 5: the `[mem.str.empty]`/`[mem.str.repeat]` witnesses, the
+`else |Tag(p)|` pair, the ctfe fold witness; the spec grows
+`[mem.str.empty]`, `[mem.str.repeat]` and §10 `[gram.version]`
+(grammar/1)) — then the ONE lawful mid-pass re-pin `3d5cee6` → `26fa98e`
+when s72's mode teeth merged upstream (the corpus grows 3 more: the
+D39/D40/overlap fail-files `memory/read_param_write.lu` E1014,
+`memory/mut_read_overlap.lu` E1002, `memory/list_mutate_while_iter.lu`
+E1013; the spec grows `[mem.iter.excl]` and the trap map's E1013 row).
+Net: 254 → 262 files, 306 → 315 anchors, ratchet 97 → 102. The D39/D40
+mirrors below were built on the rulings' authority (wolf planning
+02-decisions.md, 2026-08-12) while s72 ran concurrently; the re-pin
+brought their spec text and fail-files into the pin, and all three
+fail-files pair with this machine's traps as dynamic counterparts
+(`ledger::dynamic_meaning` gains E1013/E1014 → `exclusivity`; the
+pinned map prose names E1013 but not yet E1014 — noted upstream-worthy
+nit).
+
+- **D39's dynamic mirror — a write through a read-mode binding traps
+  `exclusivity`.** Every call frame now carries its read-mode parameter
+  list and `write_path` is the barrier: whole-parameter stores,
+  projection writes (`p.x = 9`), compound assigns, and a mutating
+  method's receiver write-back all trap with the parameter's declaration
+  as the second span and a `mut`-plus-call-site-spelling teach. The kind
+  is `exclusivity` — `[conf.trap.map]`'s family for mode violations
+  (`[mem.tier0.excl.1]` already gives every read/write conflict that
+  kind; D39 names no new one). A body local shadowing the parameter's
+  name stays an ordinary local. The caller-side overlap half
+  (`f(mut a, a.x)`) was verified and kept. approximation-contract §6.12.
+- **D40's dynamic mirror — mutating a container while a `for` loop
+  iterates it traps `exclusivity` at the mutation (S-11 RESOLVED;
+  closes wolf-interp#9 as fixed).** `for x in xs` holds a read claim on
+  the container's place for the loop's whole extent; push/pop/clear, an
+  element write, a whole-container assignment, or a `mut` pass inside
+  the body conflicts with it and traps, the message naming the loop and
+  teaching D40's fix-its (collect-then-apply, or the index loop —
+  wolfgang's E1013 row in `[conf.trap.map]`). The wolf-interp#9 program
+  that ran `exit(0)` over the loop-entry snapshot traps now; reads
+  beside the claim stay legal; the claim dies with the loop on every
+  exit path. approximation-contract §6.8 rewritten to the ruled
+  semantics; the S-11 filing closes in docs/divergence-log.md.
+- **The s71 clause backlog.** `[mem.str.empty]`: the searching family is
+  defined on an empty needle — `count("")` is 0, `split("")` yields the
+  whole string as one piece, `replace("", t)` is the identity; the three
+  `unsupported` declines die. `[mem.str.repeat]`: a negative repeat
+  count is a caller contract violation — the deterministic `assert`
+  trap, retiring the sc03-era `bounds` spelling (the 0.1.7 corpus
+  mismatch on `faults/repeat_negative.lu` closes). E0809 at the resolve
+  rung: an `else` handler pattern must cover the operand's whole error
+  row, judged where sema-lite can see the row (a direct unshadowed call
+  to a same-module fn with a declared closed row — the E1007
+  discipline); `rows/negative/handler_uncovered.lu` pins it, and the
+  payload-binding run half (`rows/else_tag_payload.lu`) already agreed.
+- **comptime posture unchanged, verified at the new pin:** every corpus
+  comptime file that calls a `comptime fn` declines loudly and by name
+  (`` `expand` is a `comptime fn`; … the compiler's engine (s16) ``) —
+  including the new `comptime/fold_reaches_lane.lu`. The fold table is
+  the compiler's; nothing here half-implements it.
+- **One divergence found, filed: DIV-2026-016 / wolf-lang#61.**
+  wolfgang's own `conform-run` answers `fail(E0806)@typecheck` (the
+  generic refutability diagnostic) on `rows/negative/
+  handler_uncovered.lu` — the file its own corpus pins `fail(E0809)`
+  for; this machine matches the pin at resolve, same span. Codes
+  differ, so `[proto.cmp.rung]` cannot bridge it; the counterparty is
+  the defendant (both records attached to the issue). The lane is
+  GREEN with the filing; the entry closes when wolfgang's conform-run
+  answers its own pin.
+- **Surfaces:** `--version` prints
+  `lupin 0.1.8 (wolf-interp, reference interpreter at pin 26fa98e)`.
+  Corpus walk 262 files / 0 mismatch (153 match, 8 dynamic
+  counterparts, 32 conservatism, 47 out-of-scope); bundle 299 programs /
+  277 records, anchors covered 102 of 315; differential lane GREEN —
+  the one divergence is DIV-2026-016, filed.
+
 ## 0.1.7 — 2026-08-11
 
 The release-runway pass for r01 (wolf v0.1.0 names this version as the
