@@ -131,6 +131,39 @@ impl Observation {
     }
 }
 
+/// One admission refusal: the program never gets to run (or to explore).
+#[derive(Debug)]
+pub enum Refusal {
+    /// A static rejection — `fail` at this machine's resolve rung.
+    Reject(Box<crate::diag::Diag>),
+    /// Outside this implementation's scope (`[proto.record.unsupported]`).
+    Unsupported(String),
+}
+
+/// The static admission ladder every door that evaluates a program must
+/// clear (issue #22): the module laws the resolve rung owns (D32,
+/// E0302–E0305), then the pin statics (E0004; the E11xx capture law), then
+/// the eager raise check. `run`, the record surface, and the explorer all
+/// ask THIS question — an E1101 rejection refuses exploration exactly as it
+/// refuses running, because a schedule space only exists for an admitted
+/// program.
+#[must_use]
+pub fn admit(program: &sema::Program) -> Option<Refusal> {
+    admit_with(program, crate::lint::analyze(program).statics)
+}
+
+/// [`admit`] over an already-computed lint analysis, so `observe_with` (which
+/// also needs the warnings half) runs the walk once.
+fn admit_with(program: &sema::Program, statics: Vec<crate::diag::Diag>) -> Option<Refusal> {
+    if let Some(diag) = sema::resolve_check(program) {
+        return Some(Refusal::Reject(Box::new(diag)));
+    }
+    if let Some(diag) = statics.into_iter().next() {
+        return Some(Refusal::Reject(Box::new(diag)));
+    }
+    sema::raise_check(program).map(Refusal::Unsupported)
+}
+
 /// The deepest rung this implementation can reach on a well-formed program it
 /// can evaluate.
 pub const DEEPEST_SUPPORTED: Phase = Phase::Run;
@@ -298,24 +331,20 @@ fn observe_with(
         observation.warnings = warnings.clone();
         observation
     };
-    // The module laws the resolve rung owns (D32, E0302–E0305) — added at
-    // is06, closing DIV-2026-002..005: claiming a rung on the ladder means
-    // performing it (`[proto.record.phase]`).
-    if let Some(diag) = sema::resolve_check(&program) {
-        return attach(Observation::failed(Phase::Resolve, diag));
-    }
-    // The pin-13b811f statics (E0004; the E11xx capture law — issue #19's
-    // realignment): rejections sema-lite can see, at this machine's resolve
-    // rung with the counterparty's codes and spans (the E0410/E1007
-    // pattern). First in source order wins, like every rejection here.
-    if let Some(diag) = analysis.statics.into_iter().next() {
-        return attach(Observation::failed(Phase::Resolve, diag));
-    }
-    // The eager raise check (issue #12(c)): an unresolvable bare lowercase
-    // tag at a raise site is a diagnostic about the program at resolve time,
-    // never a property of which paths the input happens to take.
-    if let Some(reason) = sema::raise_check(&program) {
-        return attach(Observation::unsupported(Phase::Resolve, reason));
+    // The shared admission ladder (issue #22): the module laws the resolve
+    // rung owns (D32, E0302–E0305; DIV-2026-002..005), then the pin
+    // statics (E0004; the E11xx capture law — issue #19's realignment) at
+    // this machine's resolve rung with the counterparty's codes and spans,
+    // first in source order, then the eager raise check (issue #12(c)).
+    // The explorer asks the same function, so the two doors cannot drift.
+    match admit_with(&program, analysis.statics) {
+        Some(Refusal::Reject(diag)) => {
+            return attach(Observation::failed(Phase::Resolve, *diag));
+        }
+        Some(Refusal::Unsupported(reason)) => {
+            return attach(Observation::unsupported(Phase::Resolve, reason));
+        }
+        None => {}
     }
     if requested == Some(Phase::Resolve) {
         return attach(Observation::clean(Phase::Resolve, Verdict::Pass));

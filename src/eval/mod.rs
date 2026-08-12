@@ -99,6 +99,12 @@ pub enum Signal {
     /// included, which is the decided D14 distinction from cancellation
     /// (`[conc.cancel.defer]`: cancellation is polite; kill is structural).
     ProcKilled,
+    /// `os_exit(code)` (s40): immediate termination with the code —
+    /// everything printed so far stands, nothing after runs, defers do NOT
+    /// run (the documented contract; supervised teardown is the proc
+    /// tier's, `[conc.proc.kill]`). The code is already masked to the
+    /// process range (`rem_euclid(256)`, identical on both lanes).
+    Exit(u8),
     /// The provenance oracle reached a row of `[mem.ub]`'s closed enumeration.
     ///
     /// Distinct from [`Signal::Trap`] on purpose: a trap is a fault of a
@@ -372,6 +378,14 @@ struct Shared {
     /// *current* generation (`Point#2`), so values created before a
     /// redefinition keep their old nominal identity exactly.
     repl_types: Arc<Mutex<BTreeMap<String, u32>>>,
+    /// s40 env v0: the machine-local environment OVERLAY — `env_set` writes
+    /// here and `env_get` reads here, never the host's real environment
+    /// (the checked-lane posture: the same program observes the same
+    /// answers on any machine).
+    env: Arc<Mutex<BTreeMap<String, String>>>,
+    /// s40 time v0 (X12): `time_now_ms`'s process-local monotonic anchor —
+    /// values compare and subtract; they are never wall timestamps.
+    epoch: std::time::Instant,
 }
 
 /// The abstract machine — one **task's** view of the program run.
@@ -469,6 +483,8 @@ impl Machine {
             tracing: Trace::Off,
             live_stdout: false,
             repl_types: Arc::new(Mutex::new(BTreeMap::new())),
+            env: Arc::new(Mutex::new(BTreeMap::new())),
+            epoch: std::time::Instant::now(),
         };
         Machine::for_task(shared, 0, BTreeMap::new())
     }
@@ -636,7 +652,7 @@ impl Machine {
         let args = if main.params.is_empty() {
             Vec::new()
         } else {
-            vec![Value::List(Vec::new())]
+            vec![Value::List(Vec::new(), None)]
         };
         let result = self
             .call_fn(&main, "", args, main.span)
@@ -670,6 +686,7 @@ impl Machine {
             Err(Signal::Break(_) | Signal::Continue) => {
                 Outcome::Unsupported("`break`/`continue` outside a loop".to_owned())
             }
+            Err(Signal::Exit(code)) => Outcome::Exit(code),
             Err(Signal::ProcKilled) => {
                 // `[conc.proc.root]`: the root supervisor's domain is the
                 // process. A linked partner's abnormal exit reached it, so
@@ -689,6 +706,25 @@ impl Machine {
     }
 
     // -- bookkeeping -------------------------------------------------------
+
+    /// s40 env v0: one overlay read (never the host environment).
+    pub(crate) fn env_read(&self, name: &str) -> Option<String> {
+        self.shared.env.lock().expect("env lock").get(name).cloned()
+    }
+
+    /// s40 env v0: one overlay write (never the host environment).
+    pub(crate) fn env_write(&self, name: &str, value: &str) {
+        self.shared
+            .env
+            .lock()
+            .expect("env lock")
+            .insert(name.to_owned(), value.to_owned());
+    }
+
+    /// s40 time v0: milliseconds since the process-local monotonic anchor.
+    pub(crate) fn monotonic_ms(&self) -> i128 {
+        i128::try_from(self.shared.epoch.elapsed().as_millis()).unwrap_or(i128::MAX)
+    }
 
     fn fire(&mut self, rule: Rule, span: Span, detail: &str) {
         if self.tracing.keeps(rule) {
@@ -1071,7 +1107,7 @@ impl Machine {
                     let index = fields.iter().position(|(f, _)| f == name)?;
                     &mut fields[index].1
                 }
-                (Value::Tuple(items) | Value::List(items), Proj::Index(i)) => {
+                (Value::Tuple(items) | Value::List(items, _), Proj::Index(i)) => {
                     let index = usize::try_from(*i).ok()?;
                     items.get_mut(index)?
                 }
@@ -1211,7 +1247,7 @@ impl Machine {
                 (Value::Struct { fields, .. }, Proj::Field(name)) => {
                     fields.iter().find(|(f, _)| f == name).map(|(_, slot)| slot)
                 }
-                (Value::Tuple(items) | Value::List(items), Proj::Index(i)) => {
+                (Value::Tuple(items) | Value::List(items, _), Proj::Index(i)) => {
                     usize::try_from(*i).ok().and_then(|index| items.get(index))
                 }
                 (Value::Map(pairs), Proj::Key(key)) => pairs
@@ -2346,7 +2382,7 @@ impl Machine {
         // `defer`/`errdefer` included. Contrast cancellation, which flows
         // through the ordinary error-value paths below and runs them
         // (`[conc.cancel.defer]`).
-        if matches!(result, Err(Signal::ProcKilled)) {
+        if matches!(result, Err(Signal::ProcKilled | Signal::Exit(_))) {
             self.pop_scope();
             return result;
         }
@@ -2355,7 +2391,7 @@ impl Machine {
         let errored = match &result {
             Ok(value) => value.is_error(),
             Err(Signal::Return(value)) => value.is_error(),
-            Err(Signal::ProcKilled) => unreachable!("returned above"),
+            Err(Signal::ProcKilled | Signal::Exit(_)) => unreachable!("returned above"),
             Err(Signal::Trap(_) | Signal::Ub(_) | Signal::Unsupported(_)) => true,
             Err(Signal::Break(_) | Signal::Continue) => false,
         };
@@ -3540,7 +3576,7 @@ impl Machine {
                 }
                 out
             }
-            Value::List(slots) => slots.into_iter().map(|s| s.value).collect(),
+            Value::List(slots, _) => slots.into_iter().map(|s| s.value).collect(),
             Value::Map(pairs) => pairs
                 .into_iter()
                 .map(|(key, slot)| Value::Tuple(vec![Slot::live(key), slot]))
@@ -4025,7 +4061,15 @@ impl Machine {
             &evaluated.protectors,
             span,
         );
-        result.map(|applied| applied.value)
+        result.map(|applied| match applied.value {
+            // Issue #21: `List[i32]()` — the constructor's bracket type
+            // argument is the element's checking context. `eval_bracket`
+            // erases type arguments from values, so the annotation is read
+            // off the callee's own syntax here and stamped onto the fresh
+            // container.
+            Value::List(items, None) => Value::List(items, list_elem_of(callee)),
+            value => value,
+        })
     }
 
     /// `assert(cond)` / `assert(cond, msg)` — the intrinsic's own arities
@@ -5024,7 +5068,7 @@ impl Machine {
 fn slice_len_of(target: &Value) -> Option<i128> {
     match target {
         Value::Str(s) => Some(s.len() as i128),
-        Value::List(items) | Value::Tuple(items) => Some(items.len() as i128),
+        Value::List(items, _) | Value::Tuple(items) => Some(items.len() as i128),
         _ => None,
     }
 }
@@ -5065,7 +5109,7 @@ fn spelling(op: BinOp) -> &'static str {
 pub(crate) fn value_eq(left: &Value, right: &Value) -> bool {
     match (left, right) {
         (Value::Int(a, _), Value::Int(b, _)) => a == b,
-        (Value::Tuple(a) | Value::List(a), Value::Tuple(b) | Value::List(b)) => {
+        (Value::Tuple(a) | Value::List(a, _), Value::Tuple(b) | Value::List(b, _)) => {
             a.len() == b.len() && a.iter().zip(b).all(|(x, y)| value_eq(&x.value, &y.value))
         }
         (
@@ -5199,10 +5243,57 @@ fn type_name(ty: &Type) -> String {
     }
 }
 
+/// The integer type a type annotation names, when it names one.
+fn int_of_type(ty: &Type) -> Option<IntTy> {
+    match &*ty.kind {
+        TypeKind::Path { path, .. } => {
+            IntTy::named(path.segments.last().map_or("", |s| s.name.as_str()))
+        }
+        _ => None,
+    }
+}
+
+/// `List[i32]()` — the element checking context on a `List` constructor's
+/// callee, read off the syntax (issue #21): `eval_bracket` erases bracket
+/// type arguments from values, so this is where the annotation survives.
+fn list_elem_of(callee: &Expr) -> Option<IntTy> {
+    if let ExprKind::BracketApply { base, args } = &*callee.kind
+        && let ExprKind::Path(path) = &*base.kind
+        && path.segments.last().is_some_and(|s| s.name == "List")
+        && let [arg] = &args[..]
+    {
+        // `e[…]` is one production and type-vs-value is sema's call (D29),
+        // so `List[i32]`'s element annotation arrives as a *value-position*
+        // path; the `IndexArg::Type` arm covers the prefix-keyword forms.
+        return match arg {
+            IndexArg::Type(ty) => int_of_type(ty),
+            IndexArg::Value(arg) => match &*arg.expr.kind {
+                ExprKind::Path(path) if path.is_single() => {
+                    IntTy::named(path.segments[0].name.as_str())
+                }
+                _ => None,
+            },
+        };
+    }
+    None
+}
+
 /// Applies a declared type to a value: the checking context sema-lite provides.
 fn coerce(value: Value, ty: Option<&Type>) -> Value {
     let Some(ty) = ty else { return value };
     match (&*ty.kind, value) {
+        // A `List[T]` annotation stamps the element checking context onto an
+        // untagged container (issue #21) — `var l: List[i32] = …`, and the
+        // declared type of a `mut`/`take` parameter.
+        (TypeKind::Path { path, args }, Value::List(items, None))
+            if path.segments.last().is_some_and(|s| s.name == "List") =>
+        {
+            let elem = args.iter().find_map(|arg| match arg {
+                TypeArg::Type(inner) => int_of_type(inner),
+                TypeArg::Expr(_) => None,
+            });
+            Value::List(items, elem)
+        }
         (TypeKind::Path { path, args }, Value::Int(v, current)) => {
             let name = path.segments.last().map(|s| s.name.as_str()).unwrap_or("");
             let mode = match name {

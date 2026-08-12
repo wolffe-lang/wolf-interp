@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: overflow_field_read.lu
+trap:    overflow
+clause:  [arith.checked]
+rule:    ArithChecked
+message: the literal 4294967294 is outside `i32`, the binding's type — checked arithmetic traps in every profile (X3)
+at:      15:13 `g.level * 2`
+because: (single-span fault)

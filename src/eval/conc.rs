@@ -291,6 +291,12 @@ impl Machine {
             Err(Signal::Ub(finding)) => TaskEnd::Ub(finding),
             Err(Signal::Unsupported(reason)) => TaskEnd::Unsupported(reason),
             Err(Signal::ProcKilled) => TaskEnd::Killed,
+            // `os_exit` inside a spawned task: the builtin refuses before
+            // this point (`machine.concurrent()`); reaching here anyway is
+            // conservatism, not a guess.
+            Err(Signal::Exit(code)) => {
+                TaskEnd::Unsupported(format!("`os_exit({code})` escaped a task body"))
+            }
             Err(Signal::Break(_) | Signal::Continue) => {
                 TaskEnd::Unsupported("`break`/`continue` escaped a task body".to_owned())
             }

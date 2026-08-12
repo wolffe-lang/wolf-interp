@@ -612,18 +612,29 @@ pub fn explore(program: &Program, options: &Options) -> Report {
     report
 }
 
-/// As [`explore`], over a single in-memory source (the tests' door).
+/// As [`explore`], over a single in-memory source (the tests' door). Runs the
+/// same admission ladder as every other evaluating door (issue #22).
 ///
 /// # Errors
 ///
-/// The load error, when the source does not lex or parse.
-pub fn explore_source(
-    name: &str,
-    source: &str,
-    options: &Options,
-) -> Result<Report, crate::sema::LoadError> {
-    let program = crate::sema::load_source(name, source)?;
-    Ok(explore(&program, options))
+/// The rendered load error or admission refusal.
+pub fn explore_source(name: &str, source: &str, options: &Options) -> Result<Report, String> {
+    let program = match crate::sema::load_source(name, source) {
+        Ok(program) => program,
+        Err(crate::sema::LoadError::Syntax { file, diag }) => {
+            return Err(format!("{file}: {diag}"));
+        }
+        Err(crate::sema::LoadError::Io(message)) => return Err(message),
+    };
+    match crate::frontend::admit(&program) {
+        Some(crate::frontend::Refusal::Reject(diag)) => Err(format!(
+            "{diag} — statically rejected; the explorer runs the same admission ladder as `run`"
+        )),
+        Some(crate::frontend::Refusal::Unsupported(reason)) => {
+            Err(format!("unsupported — {reason}"))
+        }
+        None => Ok(explore(&program, options)),
+    }
 }
 
 /// Renders the human report for `conform-run --explore`.

@@ -24,7 +24,7 @@ fn corpus_root() -> PathBuf {
 
 fn explore_file(relative: &str, options: &Options) -> explore::Report {
     let path = corpus_root().join(relative);
-    wolf_interp::explore_file(&path, options)
+    wolf_interp::explore_file(&path, options, None)
         .unwrap_or_else(|e| panic!("{relative}: cannot explore: {e}"))
 }
 
@@ -42,7 +42,6 @@ fn dpor() -> Options {
 /// message; a file leaving green is a finding.
 const CONC_LEDGER: &[(&str, u64, u64, &str)] = &[
     ("conc/cancel_sibling.lu", 2, 2, "exit(0)"),
-    ("conc/chan_unsendable.lu", 1, 1, "exit(0)"),
     ("conc/freeze_publish.lu", 2, 2, "exit(0)"),
     ("conc/message_passing.lu", 1, 1, "exit(0)"),
     // Self-contained since the s20 S-batch (S-5 resolved): it RUNS, and the
@@ -50,11 +49,36 @@ const CONC_LEDGER: &[(&str, u64, u64, &str)] = &[
     // `released` prints, on every schedule.
     ("conc/proc_kill_defers.lu", 1, 1, "exit(0)"),
     ("conc/select_seeded.lu", 2, 2, "exit(0)"),
-    // Two tasks writing their own captured copies: the orders commute, so
-    // DPOR proves one class where naive DFS walks both orders.
-    ("conc/store_buffer.lu", 1, 2, "exit(0)"),
     ("conc/when_multi.lu", 2, 2, "exit(0)"),
 ];
+
+/// The `conc/` files the corpus pins as STATIC rejections (`fail(E11xx)`).
+/// Issue #22: the explorer runs the same admission ladder as `run`, so these
+/// refuse exploration with the run door's own diagnostic — the same binary
+/// must never certify a program it refuses to run. (`store_buffer` and
+/// `chan_unsendable` sat in the ledger above until 0.1.7, explored through
+/// the bypass this test now pins shut.)
+const CONC_REFUSED: &[(&str, &str)] = &[
+    ("conc/chan_unsendable.lu", "E1102"),
+    ("conc/store_buffer.lu", "E1101"),
+    ("conc/when_nested.lu", "E1103"),
+];
+
+#[test]
+fn statically_rejected_conc_files_refuse_exploration() {
+    for (relative, code) in CONC_REFUSED {
+        let path = corpus_root().join(relative);
+        let err = wolf_interp::explore_file(&path, &dpor(), None).expect_err(relative);
+        assert!(
+            err.contains(code),
+            "{relative}: the refusal must carry the run door's {code}, got: {err}"
+        );
+        assert!(
+            err.contains("same admission ladder"),
+            "{relative}: the refusal names the unified ladder, got: {err}"
+        );
+    }
+}
 
 #[test]
 fn every_conc_litmus_is_schedule_independent_within_a_closed_frontier() {

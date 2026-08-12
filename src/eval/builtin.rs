@@ -34,6 +34,11 @@ fn unsupported(reason: impl Into<String>) -> BResult {
     Err(Signal::Unsupported(reason.into()))
 }
 
+/// s40 env v0: a name the platform can hold — nonempty, no `=`, no NUL.
+fn env_name_valid(name: &str) -> bool {
+    !name.is_empty() && !name.contains('=') && !name.contains('\0')
+}
+
 /// Ambient single-segment names — the std stub this machine resolves against.
 /// Public because sema's eager raise check must know what resolves.
 pub const AMBIENT_NAMES: &[&str] = &[
@@ -74,6 +79,26 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "fs_remove",
     "fs_exists",
     "read_line",
+    // The s40 os/env/time tier (0.1.7): env and time are implemented (the
+    // checked-lane posture — overlay env, empty argv, X12 monotonic
+    // anchor); the process trio is exec surface this machine declines by
+    // design; the json kernels are wolf_mem's reference and are declined
+    // rather than reimplemented-and-guessed.
+    "env_args",
+    "env_get",
+    "env_set",
+    "os_cwd",
+    "os_exit",
+    "os_spawn",
+    "os_wait",
+    "os_kill",
+    "time_now_ms",
+    "time_sleep_ms",
+    "time_unix_ms",
+    "json_valid",
+    "json_get",
+    "json_type",
+    "json_len",
 ];
 
 /// Ambient single-segment names. `None` means "not in the stub", which the
@@ -205,11 +230,113 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                  injectable stdin) by design, so the fs tier is declined rather than mocked"
             ))
         }
+        // -- the s40 os/env/time tier (0.1.7) ------------------------------
+        //
+        // env v0: the machine-local OVERLAY — `env_set` writes here and
+        // `env_get` reads here, never the host's real environment, so the
+        // same program observes the same answers on any machine (the
+        // checked-lane posture; wolfgang's checked machine does the same).
+        // argv defaults empty (the stdin posture, mirrored — real argv is
+        // `wolf run file.lu a b c`'s, a surface this embedding lacks).
+        "env_args" => Ok(Value::List(Vec::new(), None)),
+        "env_get" => {
+            let Some(Value::Str(name)) = args.first() else {
+                return unsupported("`env_get` takes a variable name".to_owned());
+            };
+            if !env_name_valid(name) {
+                machine.note(Rule::ErrUnion, span, "`env_get` yields the `invalid` row");
+                return Ok(error("invalid"));
+            }
+            match machine.env_read(name) {
+                Some(value) => Ok(Value::Str(value)),
+                None => {
+                    machine.note(Rule::ErrUnion, span, "`env_get` yields the `missing` row");
+                    Ok(error("missing"))
+                }
+            }
+        }
+        "env_set" => {
+            let (Some(Value::Str(name)), Some(Value::Str(value))) = (args.first(), args.get(1))
+            else {
+                return unsupported("`env_set` takes a name and a value".to_owned());
+            };
+            if !env_name_valid(name) {
+                machine.note(Rule::ErrUnion, span, "`env_set` yields the `invalid` row");
+                return Ok(error("invalid"));
+            }
+            machine.env_write(name, value);
+            Ok(Value::Unit)
+        }
+        // The current directory is process state like env, not the fs tier:
+        // no file is opened or observed. The corpus asserts predicates over
+        // it, never paths (host independence).
+        "os_cwd" => match std::env::current_dir() {
+            Ok(dir) => Ok(Value::Str(dir.to_string_lossy().into_owned())),
+            Err(_) => {
+                machine.note(Rule::ErrUnion, span, "`os_cwd` yields the `io` row");
+                Ok(error("io"))
+            }
+        },
+        // `os_exit` (s40): immediate termination with the code — defers do
+        // NOT run (the documented contract), and the code masks to the
+        // process range identically on both lanes. Inside a task tier the
+        // builtin refuses: supervised teardown is the proc tier's job.
+        "os_exit" => {
+            let Some(Value::Int(code, _)) = args.first() else {
+                return unsupported("`os_exit` takes an integer status".to_owned());
+            };
+            if machine.concurrent() {
+                return unsupported(
+                    "`os_exit` inside the task tier: supervised teardown is the proc                      tier's job ([conc.proc.kill])"
+                        .to_owned(),
+                );
+            }
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            Err(Signal::Exit(code.rem_euclid(256) as u8))
+        }
+        // The process trio is exec surface: this machine spawns, reaps and
+        // signals no processes by design — the checked-lane twins live in
+        // the counterparty's test tier. Declined, never mocked.
+        "os_spawn" | "os_wait" | "os_kill" => unsupported(format!(
+            "`{name}` is the s40 process trio (exec surface); this machine runs no child \
+             processes by design, so the tier is declined rather than mocked"
+        )),
+        // time v0 (s40, the X12 posture): monotonic ms from a process-local
+        // anchor — values compare and subtract, never wall timestamps.
+        "time_now_ms" => Ok(Value::Int(machine.monotonic_ms(), IntTy::INT)),
+        "time_sleep_ms" => {
+            let Some(Value::Int(ms, _)) = args.first() else {
+                return unsupported("`time_sleep_ms` takes a duration in ms".to_owned());
+            };
+            if *ms > 0 {
+                let capped = u64::try_from(*ms).unwrap_or(u64::MAX);
+                std::thread::sleep(std::time::Duration::from_millis(capped));
+            }
+            Ok(Value::Unit)
+        }
+        "time_unix_ms" => {
+            let ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i128)
+                .unwrap_or(0);
+            Ok(Value::Int(ms, IntTy::INT))
+        }
+        // std.x.json's kernels are wolf_mem's reference parser, pinned by
+        // its module doc — a surface this machine declines rather than
+        // reimplements-and-guesses ([proto.record.unsupported]).
+        "json_valid" | "json_get" | "json_type" | "json_len" => unsupported(format!(
+            "`{name}` is std.x.json's s40 query tier; its reference kernel is the \
+             counterparty's `wolf_mem::json`, and this machine declines the surface rather \
+             than risk a second, guessed RFC 8259 reading"
+        )),
         // Collection constructors are allocation sites (`[mem.model.alloc]`),
         // so they land in the current region (`[mem.region.create.3]`).
         "List" => {
             machine.allocate(span, "List");
-            Ok(Value::List(Vec::new()))
+            // The element checking context (issue #21) is stamped by the
+            // caller (`eval_call`), which alone sees the constructor's
+            // bracket type argument.
+            Ok(Value::List(Vec::new(), None))
         }
         "Map" => {
             machine.allocate(span, "Map");
@@ -434,7 +561,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
 pub fn property(machine: &mut Machine, receiver: &Value, name: &str, span: Span) -> BResult {
     let _ = span;
     match (receiver, name) {
-        (Value::List(items), "len") => Ok(Value::Int(items.len() as i128, IntTy::INT)),
+        (Value::List(items, _), "len") => Ok(Value::Int(items.len() as i128, IntTy::INT)),
         (Value::Map(pairs), "len") => Ok(Value::Int(pairs.len() as i128, IntTy::INT)),
         // D25: `str` is bytes, and `len` is a byte count — the same unit
         // slicing uses, so `s[..s.len]` is the whole string.
@@ -502,14 +629,40 @@ pub fn method(
 ) -> BResult {
     // A closure or function stored in a field is called, not dispatched.
     match (&mut *receiver, name) {
-        (Value::List(items), "push") => {
+        (Value::List(items, elem), "push") => {
+            // Issue #21 (the #53 mechanism): a container-element literal
+            // adopts the container's element type — or `int` (64-bit,
+            // locked: `[arith.literal.default]`'s container half) when the
+            // container carries none — like every other int literal meeting
+            // its context. A literal outside the adopted width traps here,
+            // before the write lands (X3).
+            let elem = *elem;
             for arg in args {
+                let arg = match arg {
+                    Value::Int(v, ty) if ty.literal => {
+                        let target = elem.unwrap_or(IntTy::INT);
+                        if !target.holds(v) {
+                            return machine.fault(
+                                TrapKind::Overflow,
+                                Rule::ArithChecked,
+                                span,
+                                format!(
+                                    "`push` stored {v}, outside `{}` — checked arithmetic \
+                                     traps in every profile (X3)",
+                                    target.name()
+                                ),
+                            );
+                        }
+                        Value::Int(v, target)
+                    }
+                    arg => arg,
+                };
                 items.push(Slot::live(arg));
             }
             machine.note(Rule::Alloc, span, "List.push");
             Ok(Value::Unit)
         }
-        (Value::List(items), "pop") => match items.pop() {
+        (Value::List(items, _), "pop") => match items.pop() {
             Some(slot) => Ok(slot.value),
             None => machine.fault(
                 TrapKind::Bounds,
@@ -518,9 +671,9 @@ pub fn method(
                 "`pop` on an empty List".to_owned(),
             ),
         },
-        (Value::List(items), "len" | "count") => Ok(Value::Int(items.len() as i128, IntTy::INT)),
-        (Value::List(items), "is_empty") => Ok(Value::Bool(items.is_empty())),
-        (Value::List(items), "get") => {
+        (Value::List(items, _), "len" | "count") => Ok(Value::Int(items.len() as i128, IntTy::INT)),
+        (Value::List(items, _), "is_empty") => Ok(Value::Bool(items.is_empty())),
+        (Value::List(items, _), "get") => {
             let Some(Value::Int(index, _)) = args.first() else {
                 return unsupported("`get` takes an integer index".to_owned());
             };
@@ -542,6 +695,7 @@ pub fn method(
                     ]))
                 })
                 .collect(),
+            None,
         )),
 
         // -- the s37 builtin `str` surface (D24/D25) -----------------------
@@ -584,6 +738,7 @@ pub fn method(
                 s.bytes()
                     .map(|b| Slot::live(Value::Int(i128::from(b), IntTy::INT)))
                     .collect(),
+                Some(IntTy::INT),
             ))
         }
         (Value::Str(s), "repeat") => {
@@ -662,6 +817,7 @@ pub fn method(
                 s.split(sep.as_str())
                     .map(|part| Slot::live(Value::Str(part.to_owned())))
                     .collect(),
+                None,
             ))
         }
         (Value::Str(s), "strip_prefix" | "strip_suffix") => {
@@ -694,11 +850,13 @@ pub fn method(
             s.split_whitespace()
                 .map(|word| Slot::live(Value::Str(word.to_owned())))
                 .collect(),
+            None,
         )),
         (Value::Str(s), "lines") => Ok(Value::List(
             s.lines()
                 .map(|line| Slot::live(Value::Str(line.to_owned())))
                 .collect(),
+            None,
         )),
         (Value::Str(s), "to_int") => {
             // `-> !int`: a value, tagged. There is no unwinding (`[err.union]`).
@@ -992,7 +1150,7 @@ pub fn method(
 /// split-code-point slice (D25) → trap `bounds`"), `unsupported` otherwise.
 pub fn index(machine: &mut Machine, target: &Value, index: &Value, span: Span) -> BResult {
     match (target, index) {
-        (Value::List(items) | Value::Tuple(items), Value::Int(i, _)) => {
+        (Value::List(items, _) | Value::Tuple(items), Value::Int(i, _)) => {
             match usize::try_from(*i).ok().and_then(|i| items.get(i)) {
                 Some(slot) => Ok(slot.value.clone()),
                 None => machine.fault(
@@ -1079,7 +1237,7 @@ pub fn slice(
             }
             Ok(Value::Str(s[from..to].to_owned()))
         }
-        Value::List(items) => {
+        Value::List(items, elem) => {
             let len = items.len() as i128;
             let from = start.unwrap_or(0);
             let to = end.map_or(len, |e| if inclusive { e + 1 } else { e });
@@ -1091,7 +1249,10 @@ pub fn slice(
                     format!("range {from}..{to} is outside a {len}-element List"),
                 );
             }
-            Ok(Value::List(items[from as usize..to as usize].to_vec()))
+            Ok(Value::List(
+                items[from as usize..to as usize].to_vec(),
+                *elem,
+            ))
         }
         other => unsupported(format!("{} cannot be sliced", other.kind())),
     }

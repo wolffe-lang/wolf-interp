@@ -132,7 +132,7 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = stdout_of(&output);
-    assert!(stdout.contains("221 file(s)"), "{stdout}");
+    assert!(stdout.contains("254 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -141,7 +141,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 221);
+    assert_eq!(value["total"], 254);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
@@ -179,6 +179,27 @@ fn conform_run_explore_reports_and_gates_on_stability() {
     assert_eq!(value["green"], true);
     assert_eq!(value["frontier_open"], false);
     assert_eq!(value["mode"], "dpor");
+}
+
+#[test]
+fn conform_run_explore_refuses_a_statically_rejected_program() {
+    // Issue #22: `--explore` runs the SAME admission ladder as `run`. A
+    // program the run door rejects with E1101 gets no exploration and no
+    // certificate — before 0.1.7 this exact invocation printed "observably
+    // deterministic" for a program the same binary refused to run.
+    let file = format!(
+        "{}/corpus/conc/store_buffer.lu",
+        wolf_interp::upstream_root()
+    );
+    let output = lupin(&["conform-run", &file, "--explore=100"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stdout_of(&output));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("E1101"), "{stderr}");
+    assert!(stderr.contains("same admission ladder"), "{stderr}");
+    assert!(
+        !stdout_of(&output).contains("observably deterministic"),
+        "a refused program must not be certified"
+    );
 }
 
 #[test]
@@ -436,7 +457,7 @@ fn run_json_is_the_record_surface_and_the_tool_exits_zero() {
         serde_json::from_str(stdout_of(&output).trim()).expect("one JSON object");
     assert_eq!(schema::validate(&value), Ok(()));
     assert_eq!(value["impl"], "lupin");
-    assert_eq!(value["impl_version"], "0.1.6");
+    assert_eq!(value["impl_version"], "0.1.7");
     assert_eq!(value["verdict"], "trap(overflow)");
 
     // The stdin record reports `-` as the file — the only spelling it had.
@@ -569,11 +590,13 @@ fn a_subcommand_name_wins_over_a_file_of_the_same_name() {
 }
 
 #[test]
-fn version_names_the_binary_the_package_and_the_pin() {
+fn version_names_the_binary_the_package_and_the_pairing() {
+    // r01 row 7: the version line names the pairing posture — the binary,
+    // the package, and "reference interpreter at pin <sha>".
     let output = lupin(&["--version"]);
     assert_eq!(output.status.code(), Some(0));
     let text = stdout_of(&output).trim_end();
-    let prefix = "lupin 0.1.6 (wolf-interp, pin ";
+    let prefix = "lupin 0.1.7 (wolf-interp, reference interpreter at pin ";
     assert!(text.starts_with(prefix), "{text}");
     let pin = text
         .strip_prefix(prefix)

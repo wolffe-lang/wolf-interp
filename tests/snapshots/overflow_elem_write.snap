@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: overflow_elem_write.lu
+trap:    overflow
+clause:  [arith.checked]
+rule:    ArithChecked
+message: `*` produced 4294967294, outside `i32` — checked arithmetic traps in every profile (X3); spell intended overflow `wrapping[i32]`
+at:      12:5 `l[0] *= 2   // the element's checked multiply traps`
+because: (single-span fault)

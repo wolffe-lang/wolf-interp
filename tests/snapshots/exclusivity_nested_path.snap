@@ -6,5 +6,5 @@ trap:    exclusivity
 clause:  [mem.model.path.disjoint]
 rule:    PathDisjoint
 message: `p.a.n` is accessed as `mut` while `p.a` is held as `mut`; the paths conflict
-at:      20:19 `mut p.a.n`
-because: 20:10 `mut p.a` — `p.a` held here
+at:      21:19 `mut p.a.n`
+because: 21:10 `mut p.a` — `p.a` held here

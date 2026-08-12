@@ -368,6 +368,56 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("lints/tag_name_collision.lu", "exit(0)"),
     ("projects/rpn.lu", "exit(0)"),
     ("projects/wordtree.lu", "exit(0)"),
+    // -- 0.1.7 (pin e94b879) -------------------------------------------------
+    // The wave-six pin's witnesses, on this machine's rungs:
+    //
+    // The five X3 value-path overflow litmuses trap — issue #21's fix:
+    // container-element literals adopt the element's checking context
+    // (`List[i32]`'s annotation travels on the value; a pushed literal with
+    // no context adopts `int`, 64-bit, like every other literal), so
+    // element loads, compound element writes, call results and field loads
+    // all feed checked arithmetic at the sema width.
+    //
+    // The s69 idiom-lint fixtures run their programs (all advisory); the
+    // eleven idiom analyses are compiler-side, honest-absent here (see
+    // `lint::HONEST_ABSENT`), so the files run warning-clean on this
+    // machine while their `warns:` ledgers name compiler observations.
+    //
+    // The s70 match tier: str-literal matches dispatch by equality
+    // (`match_str_dispatch`), a duplicated literal arm is advisory
+    // (`match_str_arm_unreachable`), and `match_str_nonexhaustive` runs
+    // here as conservatism (E0801 exhaustiveness is the compiler's);
+    // `handler_match_tags` pins the #48 tag-before-binding rule this
+    // machine's handler matches already implement.
+    ("faults/overflow_call_result.lu", "trap(overflow)"),
+    ("faults/overflow_elem_read.lu", "trap(overflow)"),
+    ("faults/overflow_elem_write.lu", "trap(overflow)"),
+    ("faults/overflow_field_read.lu", "trap(overflow)"),
+    ("faults/overflow_interp_operand.lu", "trap(overflow)"),
+    ("lints/as_view_consuming.lu", "exit(0)"),
+    ("lints/get_prefix.lu", "exit(0)"),
+    ("lints/get_without_row.lu", "exit(0)"),
+    ("lints/match_str_arm_unreachable.lu", "exit(0)"),
+    ("lints/mut_param_unwritten.lu", "exit(0)"),
+    ("lints/one_item_module/main.lu", "exit(0)"),
+    ("lints/pkg_item_unused/main.lu", "exit(0)"),
+    ("lints/predicate_shape.lu", "exit(0)"),
+    ("lints/pub_undocumented.lu", "exit(0)"),
+    ("lints/tag_case_payload.lu", "exit(0)"),
+    ("lints/take_returned.lu", "exit(0)"),
+    ("memory/list_elem_assign.lu", "exit(0)"),
+    // The s40 env/time tier runs (0.1.7): overlay env (never the host's),
+    // empty argv (the stdin posture mirrored), cwd as process state, X12
+    // monotonic time, and `os_exit`'s defer-skipping termination. The
+    // process trio and the json kernels decline honestly (exec surface /
+    // the counterparty's reference parser) and stay out of scope.
+    ("os/args_cwd.lu", "exit(0)"),
+    ("os/env_roundtrip.lu", "exit(0)"),
+    ("os/exit_code.lu", "exit(7)"),
+    ("time/monotonic.lu", "exit(0)"),
+    ("rows/handler_match_tags.lu", "exit(0)"),
+    ("strings/match_str_dispatch.lu", "exit(0)"),
+    ("typecheck/match_str_nonexhaustive.lu", "exit(0)"),
 ];
 
 #[test]

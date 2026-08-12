@@ -122,8 +122,14 @@ pub fn compare(a: &ObservationRecord, b: &ObservationRecord) -> Option<Divergenc
     // compiler-quality concern and are never compared — which this
     // implementation gets for free, having only ever produced one.
     if matches!(a.verdict, Verdict::Fail(_)) && a.phase_reached <= Phase::Mem {
-        let first_a = a.diagnostics.first();
-        let first_b = b.diagnostics.first();
+        // The diagnostic that carries the `fail` is the first **error**:
+        // `[proto.record.warn]` lets warning observations ride `diagnostics`
+        // at warning severity, and `[proto.cmp.warn]` below owns those.
+        fn first_error(r: &ObservationRecord) -> Option<&crate::protocol::Diagnostic> {
+            r.diagnostics.iter().find(|d| d.severity != "warning")
+        }
+        let first_a = first_error(a);
+        let first_b = first_error(b);
         match (first_a, first_b) {
             (Some(x), Some(y)) if x.code == y.code && x.span == y.span => {}
             _ => {

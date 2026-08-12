@@ -27,13 +27,15 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 /// `13b811f` (0.1.6): the s68 lint fixtures, the s34 proc pair, the
 /// P-project witnesses and the issue #20 freeze-read twin cite
 /// `conc.when.nonest`, `conc.chan.default`, `mem.region.freeze.4` and the
-/// wave's other new clauses.
-const RATCHET_FLOOR: usize = 96;
+/// wave's other new clauses. Raised 96 → 97 at pin `e94b879` (0.1.7): the
+/// wave-six corpus (s69 idiom lints, s70 match tier + X3 value paths, s40
+/// os/time/json) lands with its `conforms:` citations.
+const RATCHET_FLOOR: usize = 97;
 
-/// The registry size at pin `13b811f` (303 → 305: `conc.chan.default` and
-/// `mem.region.freeze.4`, the wave-four amendments). Moves only with a pin
-/// bump, and then deliberately.
-const ANCHORS_TOTAL: usize = 305;
+/// The registry size at pin `e94b879` (305 → 306: `proto.cmp.rung`, the
+/// s70 rung-tolerance ruling). Moves only with a pin bump, and then
+/// deliberately.
+const ANCHORS_TOTAL: usize = 306;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -140,24 +142,22 @@ fn the_bundle_opens_verified_and_its_records_reference_bundled_programs() {
 
 #[test]
 fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
-    // The count ledger, lupin 0.1.6 edition (pin `13b811f`): 221 corpus
-    // files (203 entries + 18 members) + 37 suite programs (7 UB triggers,
+    // The count ledger, lupin 0.1.7 edition (pin `e94b879`): 254 corpus
+    // files (232 entries + 22 members) + 37 suite programs (7 UB triggers,
     // 8 twins, 9 fault litmuses + 7 twins, 5 witnesses — the T1 pair and
     // P1's protector form retired with issue #18: their `as bool` and `*u8`
     // signatures are outside the language now, see `UbRow::coverage` and
-    // `tests/ub/`, plus the issue #20 freeze-read twin) = 258 programs,
-    // 240 entries conform-run into reference
-    // records. The pin brought wave four: the s68 lint fixtures (the eleven
-    // shared-analysis warnings this machine now runs — issue #19), the
-    // E11xx capture-law fail files, the s34 proc pair, the P-project
-    // witnesses and the s35 net tier (sockets outside this machine by
-    // design) — see the corpus-harness ledger. A pin bump or a new suite file moves these
-    // numbers — move them *deliberately*, here and in the corpus-harness
-    // ledger.
+    // `tests/ub/`, plus the issue #20 freeze-read twin) = 291 programs,
+    // 269 entries conform-run into reference records. The pin brought wave
+    // six: the s69 idiom-lint fixtures, the s70 match tier and its X3
+    // value-path overflow litmuses (issue #21's witnesses), and the s40
+    // os/time/json tier — see the corpus-harness ledger. A pin bump or a
+    // new suite file moves these numbers — move them *deliberately*, here
+    // and in the corpus-harness ledger.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "13b811ffc03092c78873bed1cc9b400d166f04fd");
-    assert_eq!(summary.programs, 258);
-    assert_eq!(summary.records, 240);
+    assert_eq!(summary.pin, "e94b8790c738f05082d64a8c4a12e10ced914b45");
+    assert_eq!(summary.programs, 291);
+    assert_eq!(summary.records, 269);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

@@ -298,7 +298,14 @@ pub enum Value {
         /// meaningful forever.
         home: Option<RegionId>,
     },
-    List(Vec<Slot>),
+    /// A `List`. The second field is the element's integer checking context,
+    /// when one is known: `List[i32]()` carries `Some(i32)`, `List[int]()`
+    /// `Some(int)`, `List[str]()`/`List()` `None`. A pushed literal adopts
+    /// this type — or `int` when none is known, exactly as every other
+    /// unconstrained literal meeting a container does (issue #21, the #53
+    /// mechanism) — so element loads feed checked arithmetic at the
+    /// element's width (X3).
+    List(Vec<Slot>, Option<IntTy>),
     /// Insertion-ordered; wolf's `Map` has no specified iteration order, and
     /// insertion order is the one that makes output reproducible.
     Map(Vec<(Value, Slot)>),
@@ -378,7 +385,7 @@ impl Value {
             Value::Str(_) => "str".to_owned(),
             Value::Tuple(items) => format!("a {}-tuple", items.len()),
             Value::Struct { name, .. } => name.clone(),
-            Value::List(_) => "List".to_owned(),
+            Value::List(..) => "List".to_owned(),
             Value::Map(_) => "Map".to_owned(),
             Value::Range { .. } => "a range".to_owned(),
             Value::Fn(name) => format!("fn {name}"),
@@ -454,7 +461,7 @@ impl fmt::Display for Value {
                 }
                 f.write_str(" }")
             }
-            Value::List(items) => {
+            Value::List(items, _) => {
                 f.write_str("[")?;
                 for (i, item) in items.iter().enumerate() {
                     if i > 0 {

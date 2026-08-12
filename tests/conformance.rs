@@ -205,8 +205,9 @@ fn every_parseable_file_resolves_under_sema_lite() {
     // call-site mode law, issue #15 — running the disagreement computes a
     // wrong answer, and `[conf.trap.map]` gives it no dynamic meaning), and
     // since 0.1.5 it owns the pin-f0da6e6 tier statics (issue #18):
-    // E1301/E1302 (the unsafe ring and its signature boundary — those two
-    // corpus files are DIV-2026-012, filtered as filed), E0805 (the cast
+    // E1301/E1302 (the unsafe ring and its signature boundary — DIV-2026-012
+    // while it was open; the [proto.cmp.rung] closure at 0.1.7 emptied the
+    // filed list, so the two files assert here directly now), E0805 (the cast
     // matrix's bool column), E0411 (`s[i]`), E0412/E0413 (format specs,
     // comptime-known at the literal). Since 0.1.6 (the 13b811f re-pin,
     // issue #19) it owns E0004 (`1.e5` — `int` has no member `e5`) and the
@@ -222,7 +223,7 @@ fn every_parseable_file_resolves_under_sema_lite() {
         let observation = frontend::observe(&case.source, Some(Phase::Resolve));
         if let Some(
             code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E1101"
-            | "E1102" | "E1103"),
+            | "E1102" | "E1103" | "E1301" | "E1302"),
         ) = pinned_code(case.check.as_ref())
         {
             assert_eq!(
@@ -257,7 +258,7 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
             let observation = frontend::observe(&case.source, Some(rung));
             if let Some(
                 code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
-                | "E1101" | "E1102" | "E1103"),
+                | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
             ) = pinned_code(case.check.as_ref())
             {
                 assert_eq!(

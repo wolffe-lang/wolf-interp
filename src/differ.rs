@@ -115,80 +115,14 @@ use crate::schema;
 /// and spans (byte-identical, observed at the pin), while wolfc's emissions
 /// live at its typecheck rung. The DIV-2026-011 `[proto.cmp]` question,
 /// fourth filing; one ruling will resolve all four families at once.
-pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
-    (
-        "memory/mode_missing_mut.lu",
-        "DIV-2026-011",
-        "same fail(E1007), same span [405,408]; this machine rejects at resolve (its only static \
-         tier) where wolfc's record places the emission at mem — rung placement routed upstream",
-    ),
-    (
-        "memory/unsafe_raw_outside.lu",
-        "DIV-2026-012",
-        "same fail(E1301), same span [384,395] (the `c.malloc(8)` call); this machine rejects at \
-         resolve where wolfc's record places the emission at mem — the DIV-2026-011 rung question",
-    ),
-    (
-        "memory/unsafe_sig.lu",
-        "DIV-2026-012",
-        "same fail(E1302), same span [329,330] (the parameter `p`); this machine rejects at \
-         resolve where wolfc's record places the emission at mem — the DIV-2026-011 rung question",
-    ),
-    (
-        "typecheck/cast_bad.lu",
-        "DIV-2026-012",
-        "same fail(E0805); this machine rejects at resolve (the 0.1.5 tier statics) where \
-         wolfc's record places the emission at typecheck — the DIV-2026-011 rung question",
-    ),
-    (
-        "strings/char_index_fail.lu",
-        "DIV-2026-014",
-        "same fail(E0411), same span [420,424]; the 0.1.5 wiring lag resolved at pin 13b811f \
-         (wolfc emits its pinned code now, at typecheck) and the residue is the DIV-2026-011 \
-         rung question",
-    ),
-    (
-        "strings/format_spec_malformed.lu",
-        "DIV-2026-014",
-        "same fail(E0412), same span [530,534] (the `:>08` spec — this machine realigned its \
-         span at 0.1.6); wolfc emits at typecheck — the DIV-2026-011 rung question",
-    ),
-    (
-        "strings/format_spec_mismatch.lu",
-        "DIV-2026-014",
-        "same fail(E0413), same span [414,417] (the `:.2` spec — realigned at 0.1.6); wolfc \
-         emits at typecheck — the DIV-2026-011 rung question",
-    ),
-    (
-        "conc/store_buffer.lu",
-        "DIV-2026-015",
-        "same fail(E1101), same span [438,439] (the first captured write, `x`), and the \
-         W1101/W1102 warning sets agree; this machine rejects at resolve (its only static \
-         tier) where wolfc's record places the emission at typecheck — the DIV-2026-011 \
-         rung question, fourth family",
-    ),
-    (
-        "conc/chan_unsendable.lu",
-        "DIV-2026-015",
-        "same fail(E1102), same span [275,284] (the `List[int]` payload); this machine \
-         rejects at resolve where wolfc's record places the emission at typecheck — the \
-         DIV-2026-011 rung question",
-    ),
-    (
-        "conc/when_nested.lu",
-        "DIV-2026-015",
-        "same fail(E1103), same span [642,755] (the whole inner `when`); this machine \
-         rejects at resolve where wolfc's record places the emission at typecheck — the \
-         DIV-2026-011 rung question",
-    ),
-    (
-        "grammar/intdot_exponent.lu",
-        "DIV-2026-015",
-        "same fail(E0004), same span [291,295] (`1.e5`, whole expression); this machine \
-         rejects at resolve (issue #19's s68 correction: the code stays an error) where \
-         wolfc's record places the emission at typecheck — the DIV-2026-011 rung question",
-    ),
-];
+///
+/// THE RULING LANDED at pin `e94b879` (0.1.7): `[proto.cmp.rung]` — fail
+/// parity (code + span) at any shared-ladder rung is agreement, exactly one
+/// verdict wide. `compare_deep` implements the clause, the eleven
+/// rung-placement divergences (DIV-2026-011/-012/-014/-015) compare clean,
+/// and all four families closed in `docs/divergence-log.md` with the clause
+/// cited. The table is empty until a new divergence is triaged and filed.
+pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[];
 
 /// The filing id for a corpus file, when its divergence is already filed.
 #[must_use]
@@ -428,6 +362,19 @@ fn counterparty_performs(_rung: Phase) -> bool {
     true
 }
 
+/// The diagnostic that carries a `fail` verdict: the first **error**-severity
+/// entry. `[proto.record.warn]` lets warning observations ride `diagnostics`
+/// at warning severity, and `[proto.cmp.warn]` owns their comparison — so a
+/// counterparty that interleaves lints ahead of its rejection (source order)
+/// must not have a lint's span compared against this machine's rejection.
+fn first_rejection(record: &ObservationRecord) -> Option<Diagnostic> {
+    record
+        .diagnostics
+        .iter()
+        .find(|d| d.severity != "warning")
+        .cloned()
+}
+
 fn claim(record: &ObservationRecord, rung: Phase, performs: impl Fn(Phase) -> bool) -> Claim {
     if !performs(rung) || rung == Phase::None {
         return Claim::Silent;
@@ -435,7 +382,7 @@ fn claim(record: &ObservationRecord, rung: Phase, performs: impl Fn(Phase) -> bo
     match &record.verdict {
         Verdict::Fail(code) => {
             if rung == record.phase_reached {
-                Claim::Rejected(code.clone(), record.diagnostics.first().cloned())
+                Claim::Rejected(code.clone(), first_rejection(record))
             } else if rung < record.phase_reached {
                 Claim::Passed
             } else {
@@ -500,6 +447,24 @@ pub fn compare_deep(
                 reason,
             });
         }
+    }
+
+    // `[proto.cmp.rung]` (s70, the DIV-2026-011 family's ruling): when both
+    // records reject with `fail` and the FIRST diagnostic's code and span
+    // agree, the records AGREE even when `phase_reached` names different
+    // rungs of the shared ladder — where on the ladder an implementation
+    // discovers a rejection is an architecture fact, not a semantic
+    // observation. The tolerance is exactly one verdict wide: any pairing
+    // that is not fail-against-fail falls through to the ladder walk below,
+    // so fail-vs-pass, fail-vs-run-outcome and fail-vs-silence keep their
+    // existing adjudication.
+    if let (Verdict::Fail(code_a), Verdict::Fail(code_b)) = (&a.verdict, &b.verdict)
+        && let (Some(da), Some(db)) = (first_rejection(a), first_rejection(b))
+        && code_a == code_b
+        && da.code == db.code
+        && da.span == db.span
+    {
+        return out;
     }
 
     // Walk the ladder shallowest-first; the first disagreement wins, exactly
@@ -1049,6 +1014,75 @@ mod tests {
         assert_eq!(d.rung, Some(Phase::Parse));
     }
 
+    /// `[proto.cmp.rung]`: same fail code, same first-diagnostic span, at
+    /// DIFFERENT rungs of the shared ladder — agreement, no ledger noise.
+    /// The DIV-2026-011 family's exact shape (E1007 resolve vs mem).
+    #[test]
+    fn fail_parity_at_different_rungs_is_agreement_under_proto_cmp_rung() {
+        let a = with_diag(
+            record(Phase::Resolve, Verdict::Fail("E1007".to_owned())),
+            "E1007",
+            [405, 408],
+        );
+        let b = with_diag(
+            record(Phase::Mem, Verdict::Fail("E1007".to_owned())),
+            "E1007",
+            [405, 408],
+        );
+        let out = compare_deep(&a, &b, false);
+        assert_eq!(out.divergence, None);
+        assert!(out.ledger.is_empty(), "{:?}", out.ledger);
+    }
+
+    /// The tolerance is exactly one verdict wide: same code but a different
+    /// span keeps the divergence, and fail-vs-run-outcome is untouched.
+    #[test]
+    fn the_rung_tolerance_never_covers_span_drift_or_other_verdicts() {
+        let a = with_diag(
+            record(Phase::Resolve, Verdict::Fail("E1007".to_owned())),
+            "E1007",
+            [405, 408],
+        );
+        let b = with_diag(
+            record(Phase::Mem, Verdict::Fail("E1007".to_owned())),
+            "E1007",
+            [500, 503],
+        );
+        assert!(compare_deep(&a, &b, false).divergence.is_some());
+
+        let b = record(Phase::Run, Verdict::Exit(0));
+        let d = compare_deep(&a, &b, false).divergence.expect("diverges");
+        assert_eq!(d.class, DeepClass::Verdict);
+    }
+
+    /// `[proto.record.warn]` lets a counterparty interleave warning-severity
+    /// entries ahead of its rejection in `diagnostics` (source order). The
+    /// fail comparison reads the first ERROR, so the lint's span is never
+    /// compared against the rejection's (the resolve/cycle finding, 0.1.7).
+    #[test]
+    fn a_warning_ahead_of_the_rejection_does_not_defeat_fail_parity() {
+        let a = with_diag(
+            record(Phase::Resolve, Verdict::Fail("E0303".to_owned())),
+            "E0303",
+            [18, 28],
+        );
+        let mut b = record(Phase::Resolve, Verdict::Fail("E0303".to_owned()));
+        b.diagnostics = vec![
+            Diagnostic {
+                code: "W0314".to_owned(),
+                span: [100, 104],
+                severity: "warning".to_owned(),
+            },
+            Diagnostic {
+                code: "E0303".to_owned(),
+                span: [18, 28],
+                severity: "error".to_owned(),
+            },
+        ];
+        let out = compare_deep(&a, &b, false);
+        assert_eq!(out.divergence, None);
+    }
+
     #[test]
     fn ub_on_an_unsafe_free_program_the_compiler_accepts_is_a_soundness_candidate() {
         let a = record(Phase::Run, Verdict::Ub("mem.ub".to_owned()));
@@ -1160,51 +1194,17 @@ mod tests {
     fn the_filed_list_resolves_and_annotates() {
         // DIV-2026-001..009 all resolved: 001..006 at is06 (pin 67c977f + the
         // resolve-rung work), 007..009 at is07 (pin 79ceec6 paid the is06
-        // debts). DIV-2026-010 CLOSED at the 0.1.4 re-pin (`ad6cef7`): s29
-        // moved wolfc's E0410 to the resolve rung and the corpus re-pinned
-        // its `phase:` directives resolve → parse — the eighth round
-        // compares the two files clean. DIV-2026-011 opened at 0.1.4: E1007
-        // at resolve (this machine, issue #15) vs mem (wolfc), same code and
-        // span, routed upstream. DIV-2026-012 (0.1.5, pin f0da6e6) is the
-        // same rung question for the two unsafe-tier fail-files issue #18
-        // closed: E1301/E1302 at resolve here, at mem there, codes and spans
-        // byte-identical — one filing, two files, resolved by whatever
-        // ruling closes DIV-2026-011. DIV-2026-013 CLOSED at the 0.1.6
-        // re-pin (`13b811f`): wolfc's s38 conform-run wiring landed and its
-        // three entries retired. DIV-2026-014's residue rides DIV-2026-011,
-        // and DIV-2026-015 (0.1.6, issue #19) files the four realigned
-        // statics — E1101/E1102/E1103/E0004 at resolve here, typecheck
-        // there, codes and spans byte-identical. Eleven entries: one (011)
-        // + three (012) + three (014) + four (015).
-        assert_eq!(FILED_DIVERGENCES.len(), 11);
-        assert_eq!(
-            filed("upstream/corpus/conc/store_buffer.lu").map(|(id, _)| id),
-            Some("DIV-2026-015")
-        );
-        assert_eq!(
-            filed("upstream/corpus/grammar/intdot_exponent.lu").map(|(id, _)| id),
-            Some("DIV-2026-015")
-        );
-        assert_eq!(filed("upstream/corpus/fs/error_row.lu"), None);
-        assert_eq!(filed("upstream/corpus/io/eprint.lu"), None);
-        assert_eq!(
-            filed("upstream/corpus/memory/mode_missing_mut.lu").map(|(id, _)| id),
-            Some("DIV-2026-011")
-        );
-        assert_eq!(
-            filed("upstream/corpus/memory/unsafe_raw_outside.lu").map(|(id, _)| id),
-            Some("DIV-2026-012")
-        );
-        assert_eq!(
-            filed("upstream/corpus/memory/unsafe_sig.lu").map(|(id, _)| id),
-            Some("DIV-2026-012")
-        );
-        assert_eq!(filed("upstream/corpus/typecheck/let_reassign.lu"), None);
-        assert_eq!(
-            filed("upstream/corpus/typecheck/let_compound_assign.lu"),
-            None
-        );
-        assert_eq!(filed("upstream/corpus/conc/freeze_publish.lu"), None);
+        // debts). DIV-2026-010 CLOSED at the 0.1.4 re-pin (`ad6cef7`).
+        // DIV-2026-011/-012/-014/-015 — the rung-placement family, eleven
+        // entries at 0.1.6 — CLOSED at the 0.1.7 re-pin (`e94b879`):
+        // `[proto.cmp.rung]` landed in spec/06 and `compare_deep` implements
+        // it, so fail parity (code + span) at any shared-ladder rung is
+        // agreement and the eleven files compare clean. The table is empty;
+        // nothing waives, nothing gates by filing.
+        assert!(FILED_DIVERGENCES.is_empty());
+        assert_eq!(filed("upstream/corpus/conc/store_buffer.lu"), None);
+        assert_eq!(filed("upstream/corpus/memory/mode_missing_mut.lu"), None);
+        assert_eq!(filed("upstream/corpus/typecheck/cast_bad.lu"), None);
         assert_eq!(filed("upstream/corpus/hello.lu"), None);
     }
 

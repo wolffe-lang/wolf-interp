@@ -64,14 +64,16 @@ fn default_spec_root() -> PathBuf {
     Path::new(upstream_root()).join("spec")
 }
 
-/// `--version`'s tail: `lupin 0.1.3 (wolf-interp, pin d147a54)` — the crate
-/// version, the package this binary is built from, and the upstream
-/// spec/corpus pin every observation is made against.
+/// `--version`'s tail: `lupin 0.1.7 (wolf-interp, reference interpreter at
+/// pin e94b879)` — the crate version, the package this binary is built
+/// from, and the pairing posture r01 row 7 asks the version line to name:
+/// this binary is the wolf reference interpreter AT the stated upstream
+/// spec/corpus pin, the sha every observation is made against.
 fn version_string() -> &'static str {
     static VERSION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     VERSION.get_or_init(|| {
         format!(
-            "{} (wolf-interp, pin {})",
+            "{} (wolf-interp, reference interpreter at pin {})",
             env!("CARGO_PKG_VERSION"),
             wolf_interp::upstream_pin_short()
         )
@@ -1192,7 +1194,7 @@ fn run_explore(args: &ConformRunArgs, budget: u64) -> u8 {
         paranoid: args.paranoid,
         ..wolf_interp::explore::Options::default()
     };
-    let report = match wolf_interp::explore_file(&args.file, &options) {
+    let report = match wolf_interp::explore_file(&args.file, &options, args.std_root.as_deref()) {
         Ok(report) => report,
         Err(message) => {
             return tool_error(&format!(

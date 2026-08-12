@@ -772,6 +772,12 @@ impl Session {
                 self.note_fault(SessionFault::Unsupported);
                 out.push(format!("unsupported: {reason}"));
             }
+            Signal::Exit(code) => {
+                self.note_fault(SessionFault::Dynamic);
+                out.push(format!(
+                    "the program asked to exit({code}) ([conf.trap.exit]); the session                      survives — :quit ends it"
+                ));
+            }
         }
     }
 

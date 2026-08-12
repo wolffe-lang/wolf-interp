@@ -334,25 +334,33 @@ fn record_of(
 
 /// Explores every inequivalent schedule of the program rooted at `file` —
 /// `conform-run --explore=N` (is07's systematic interleaving search; see
-/// [`explore`]). The program must clear the frontend first; a rejection comes
-/// back as `Err` with the diagnostic rendered, because a schedule space only
-/// exists for a program that runs.
+/// [`explore`]). The program must clear the SAME admission ladder `run`
+/// clears ([`frontend::admit`] — issue #22: the E11xx statics included); a
+/// rejection comes back as `Err` with the diagnostic rendered, because a
+/// schedule space only exists for an admitted program.
 ///
 /// # Errors
 ///
-/// The rendered frontend diagnostic or module-graph failure.
-pub fn explore_file(file: &Path, options: &explore::Options) -> Result<explore::Report, String> {
-    let program = match sema::load(file) {
+/// The rendered admission refusal or module-graph failure.
+pub fn explore_file(
+    file: &Path,
+    options: &explore::Options,
+    std_root: Option<&Path>,
+) -> Result<explore::Report, String> {
+    let program = match sema::load_with(file, std_root) {
         Ok(program) => program,
         Err(sema::LoadError::Syntax { file, diag }) => return Err(format!("{file}: {diag}")),
         Err(sema::LoadError::Io(message)) => {
             return Err(format!("the module graph could not be read: {message}"));
         }
     };
-    if let Some(diag) = sema::resolve_check(&program) {
-        return Err(diag.to_string());
+    match frontend::admit(&program) {
+        Some(frontend::Refusal::Reject(diag)) => Err(format!(
+            "{diag} — statically rejected; the explorer runs the same admission ladder as `run`"
+        )),
+        Some(frontend::Refusal::Unsupported(reason)) => Err(format!("unsupported — {reason}")),
+        None => Ok(explore::explore(&program, options)),
     }
-    Ok(explore::explore(&program, options))
 }
 
 /// The record for a program nothing has looked at — kept for callers that want

@@ -171,15 +171,30 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             `test/assert_test.lu` (the s39 `test` namespace). The
     //             spec grows `[mem.region.freeze.4]`, `[conc.chan.default]`
     //             and the s34/s35 schedule points.)
+    //   e94b879 → 254 files (0.1.7: the wave-six pin — s40 os/time/json,
+    //             s70 match tier + X3 value paths, s69 idiom lints. The
+    //             corpus grows 33: `lints/` ×15 (the s69 idiom-arbiter wave
+    //             — W0310–W0316, W0603/W0604, W1002/W1003 — plus the
+    //             literal-precise E0802 str-match file), `os/` ×4 and
+    //             `time/` ×1 and `json/` ×2 (the s40 tier), `faults/` ×5
+    //             (the X3 value-path overflow litmuses — issue #21's
+    //             witnesses), `memory/list_elem_assign.lu` (#55),
+    //             `strings/match_str_dispatch.lu` +
+    //             `typecheck/match_str_nonexhaustive.lu` (#54),
+    //             `rows/handler_match_tags.lu` (#48),
+    //             `traits/coherence_orphan/` ×3 and
+    //             `typecheck/method_scope/` ×2 members(+entry counted),
+    //             `comptime/sandbox_exec.lu` (the s40 exec category). The
+    //             spec grows `[proto.cmp.rung]` — 306 anchors.)
     let report = report();
     assert_eq!(
         report.total(),
-        221,
+        254,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 203);
-    assert_eq!(report.members(), 18);
+    assert_eq!(report.entries(), 232);
+    assert_eq!(report.members(), 22);
 }
 
 #[test]
