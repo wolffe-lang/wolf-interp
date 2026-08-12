@@ -62,10 +62,10 @@ and the count is zero on a healthy checkout:
 $ lupin corpus
 …
 
-221 file(s) under upstream/corpus: 203 entries, 18 member(s), 0 failure(s)
-183 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
+254 file(s) under upstream/corpus: 232 entries, 22 member(s), 0 failure(s)
+185 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 140 entries reach the `run` rung; 126 match their `check:` expectation, 5 are the dynamic counterpart of the static code the corpus pins, 31 are static-conservatism entries (the compiler rejects statically what this machine never checks), 41 are out of scope, 0 mismatch
+lupin: 164 entries reach the `run` rung; 149 match their `check:` expectation, 5 are the dynamic counterpart of the static code the corpus pins, 32 are static-conservatism entries (the compiler rejects statically what this machine never checks), 46 are out of scope, 0 mismatch
 ```
 
 ## Bumping the pin

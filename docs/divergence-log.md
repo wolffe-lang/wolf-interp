@@ -46,6 +46,30 @@ differential lane detects the absence, prints `notice:` lines, and SKIPs;
 
 ## Open findings
 
+Eleventh corpus differential: lupin 0.1.7, pin `e94b879` (wave six — s40
+os/time/json, s70 match tier + X3 value paths, s69 idiom lints; 232
+entries compared, 22 members through their entries, counterparty built
+CLEAN at `e94b879`), **0 divergences**. The ruling the last four rounds
+asked for landed in spec/06: **`[proto.cmp.rung]`** — when both records
+reject with `fail(CODE)` and the first diagnostic's code and span agree,
+the records AGREE even when `phase_reached` names different rungs of the
+shared ladder; exactly one verdict wide. `compare_deep` implements the
+clause, the eleven rung-placement divergences compare clean, and
+**DIV-2026-011, -012, -014 and -015 ALL CLOSE** with the clause cited —
+`FILED_DIVERGENCES` is empty for the first time since the fourth round.
+One new shape surfaced and resolved comparator-side, no filing needed:
+wolfc's `resolve/cycle/main.lu` record interleaves its new W0314 lint
+ahead of the E0303 rejection in `diagnostics` (source order, licensed by
+`[proto.record.warn]`'s "warning observations ride `diagnostics` at
+warning severity"), so the fail comparison now reads the first
+**error**-severity diagnostic — a lint's span is `[proto.cmp.warn]`'s
+surface, never the rejection's. 382 conservatism-ledger entries (63
+rejects-beyond by the counterparty, 122 run-unmatched, 147
+counterparty-unsupported, 50 interp-unsupported — the fs/net/proc-spawn
+tiers, comptime, and the compiler-only analyses).
+
+---
+
 Tenth corpus differential: lupin 0.1.6, pin `13b811f` (wave four — the
 #41 capture law, s34 procs, s35 io reactor, s39/s40/#40 native
 str/List/fs, the s68 lint corpus; 203 entries compared, 18 members
@@ -68,7 +92,11 @@ carry them (`store_buffer`'s W1101×4 + W1102 set is byte-identical).
 the fs tier, sockets, procs-adjacent comptime, and the compiler-only
 analyses).
 
-### DIV-2026-015 — the E11xx capture law + E0004 — **open, rides DIV-2026-011**
+### DIV-2026-015 — the E11xx capture law + E0004 — **RESOLVED by `[proto.cmp.rung]`, pin `e94b879` (0.1.7)**
+
+Resolution: the `[proto.cmp.rung]` ruling (spec/06, s70) — fail parity
+(code + span) at any shared-ladder rung is agreement, one verdict wide.
+All four files compare clean at the eleventh round. The original filing:
 
 Filed 2026-08-11 (lupin 0.1.6, CLEAN wolfc build at `13b811f`). Four
 files, one class: verdict (rung placement only), codes and spans
@@ -109,7 +137,10 @@ tests pin them — the conform-run wiring landed upstream after this pin.
 289 conservatism-ledger entries (60 rejects-beyond by the counterparty,
 89 run-unmatched, 103 counterparty-unsupported, 37 interp-unsupported).
 
-### DIV-2026-012 — the 0.1.5 tier statics — **open, rides DIV-2026-011**
+### DIV-2026-012 — the 0.1.5 tier statics — **RESOLVED by `[proto.cmp.rung]`, pin `e94b879` (0.1.7)**
+
+Resolution: the `[proto.cmp.rung]` ruling (spec/06, s70) — same closure
+as DIV-2026-011, which this filing rode. The original filing:
 
 Filed 2026-08-11 (lupin 0.1.5, CLEAN wolfc build at `f0da6e6`). Four
 files, one class: verdict (rung placement only), codes and spans
@@ -156,7 +187,11 @@ design — `[proto.record.unsupported]`). Expected to resolve at the
 next pin bump; if it does not, the filing escalates to a wolf-lang
 issue.
 
-### DIV-2026-014 — the strings statics — **open, rides DIV-2026-011 since pin `13b811f`**
+### DIV-2026-014 — the strings statics — **RESOLVED by `[proto.cmp.rung]`, pin `e94b879` (0.1.7)**
+
+Resolution: the `[proto.cmp.rung]` ruling (spec/06, s70) — the rung-
+placement residue was all that remained after the `13b811f` wiring
+closure, and the ruling absorbs it. The original filing:
 
 `strings/char_index_fail.lu` (pins fail(E0411)),
 `strings/format_spec_malformed.lu` (fail(E0412)),
@@ -195,7 +230,14 @@ the counterparty, 79 run-unmatched — the wave's new run-rung witnesses
 land ahead of the counterparty's run tier — 90 counterparty-unsupported,
 36 interp-unsupported).
 
-### DIV-2026-011 — `memory/mode_missing_mut.lu` — **open, routed upstream**
+### DIV-2026-011 — `memory/mode_missing_mut.lu` — **RESOLVED by `[proto.cmp.rung]`, pin `e94b879` (0.1.7)**
+
+Resolution: exactly the first branch the triage asked for — a
+comparison-rule clause. `[proto.cmp.rung]` (spec/06, s70): same code +
+same first-diagnostic span across `fail` records is agreement, the rung
+recorded, never compared; one verdict wide, so `fail` against any other
+verdict still diverges. The eleventh round compares this file clean at
+`E1007`/`[405,408]`, resolve here, mem there. The original filing:
 
 Filed 2026-08-10 (lupin 0.1.4, CLEAN wolfc build at `ad6cef7`).
 

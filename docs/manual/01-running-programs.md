@@ -143,4 +143,7 @@ selects the whole decision stream, the record declares `seeded: true`, and
 the same seed replays byte-identically. `--explore=N` runs every
 inequivalent schedule instead of one and reports whether the program's
 outcome is schedule-dependent; a dependent program is a finding and exits
-`1`. `conform-run --help` lists the exploration budgets.
+`1`. Exploration admits exactly what `run` admits: a program the static
+ladder rejects (an E11xx capture-law finding, say) refuses to explore
+with the same diagnostic and exit `2` — a schedule space only exists for
+an admitted program. `conform-run --help` lists the exploration budgets.

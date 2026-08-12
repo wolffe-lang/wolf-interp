@@ -494,7 +494,17 @@ The lupin v0.1.4 maintenance wave, three semantic repairs:
   WIR constant), and assignment into an existing place adopts the
   place's type, range-checked. Net: `-9223372036854775808` is writable
   in every annotated spelling, and `int_max() - 1` is `int` arithmetic
-  wherever `int_max` lives.
+  wherever `int_max` lives. **Containers joined at 0.1.7 (issue #21,
+  the #53 mechanism):** a `List` carries its element checking context —
+  `List[i32]()`'s bracket argument, read off the constructor's syntax,
+  or a `List[T]` annotation through `coerce` — so a pushed literal
+  adopts the element type (range-checked at the push; out of range
+  traps `overflow`), element loads feed checked arithmetic at the
+  element's width, and the compound `l[0] *= 2` is checked at that
+  width BEFORE the write lands. A container with no context gives a
+  pushed literal `int` (64-bit, locked) like every other literal
+  meeting a concrete home — never the i32 default, which is the
+  *unannotated binding's* rule, not the container's.
 - **`c.calloc(n, size)` is `n * size` bytes (issue #13)** — the modelled
   C heap allocated `n`. Real glibc through s29's native rung disagreed
   (the first soundness candidate the native differential produced —
@@ -888,12 +898,17 @@ root; where it **deviated**, the machine realigned. The ledger:
 
 ### 10.6 The schedule explorer (is07): what it proves, what it approximates
 
-**Status:** is07, pin `79ceec6`. The explorer (`src/explore.rs`,
-`conform-run --explore=N`) is stateless model checking over the reified
-`sched-ev/0` stream: replay from the root with a forced decision prefix,
-classic Flanagan–Godefroid DPOR with sleep sets, full branching over
-`select`-arm commits, budgets for schedules/steps/preemptions/wall clock.
-The choices it rests on, named:
+**Status:** is07, pin `79ceec6`; admission unified at 0.1.7 (issue
+#22). The explorer (`src/explore.rs`, `conform-run --explore=N`) is
+stateless model checking over the reified `sched-ev/0` stream: replay
+from the root with a forced decision prefix, classic Flanagan–Godefroid
+DPOR with sleep sets, full branching over `select`-arm commits, budgets
+for schedules/steps/preemptions/wall clock. **A program must clear the
+same admission ladder `run` clears** (`frontend::admit` — module laws,
+the E11xx/E0004 statics, the raise check): a statically rejected
+program has no schedule space, and before 0.1.7 the `--explore` door
+bypassed those checks and certified programs "observably deterministic"
+that the same binary refuses to run. The choices it rests on, named:
 
 - **The branch alphabet is two decision kinds.** Every schedule point of
   is06's enumeration funnels into `State::decide` at exactly two places:
