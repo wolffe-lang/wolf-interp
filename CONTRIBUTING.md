@@ -152,8 +152,6 @@ Mirroring the compiler track's conventions:
 - **Terse, imperative subjects**, under ~250 characters unless the change
   genuinely needs elaboration: `directive: reject unknown trap kinds`, not
   `Added some validation for the trap kinds so that we can...`.
-- **No trailers.** No `Co-Authored-By`, no `Generated with`, no tool
-  attribution of any kind.
 - Never `git checkout` files that were written but not yet committed. Stage or
   stash first. (This has eaten work before.)
 
