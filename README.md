@@ -10,7 +10,7 @@ and corpus, and the observation protocol they are compared through. Wolf
 source files use the `.lu` extension. wolf-interp builds a binary named
 `lupin`.
 
-Licensed under [MIT](LICENSE).
+Licensed under [GPL-3.0-or-later](LICENSE).
 
 ## Building
 
