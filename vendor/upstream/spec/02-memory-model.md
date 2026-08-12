@@ -117,6 +117,24 @@ law: `.docs/refs/papers/swift-ownership-manifesto.md`.
   scope-exit; the spec constrains observations, not the inference
   algorithm.
 
+### Iteration exclusivity `[mem.iter.excl]`
+
+(Added 2026-08-12 by ruling D40, resolving the S-11 `for`-operand
+question — wolf-lang#15 / wolf-interp#9.)
+
+- `[mem.iter.excl.1]` `for x in xs` over a place: the loop holds a
+  **read claim** on that place for the loop's whole extent. The claim
+  is a read, not a move — the place stays live behind the walk and
+  after the loop. A `Copy` iterable is copied at loop entry and
+  carries no claim (the same instant-read model as `Copy` call
+  arguments, `[mem.tier0.mode.mut]`'s leniency).
+- `[mem.iter.excl.2]` While the claim is live, a mutating use of the
+  claimed place or any conflicting path (`[mem.model.path.disjoint]`)
+  — a write or element write, a `mut` lend, a move — is a **compile
+  error** (E1013) in the safe tiers. Dynamic meaning (for the machine
+  that checks at runtime what the compiler proves statically): the
+  mutating operation traps with kind `exclusivity`.
+
 ## §3 Tier 1 — regions `[mem.region]`
 
 Lineage: `.docs/refs/papers/cyclone-regions.pdf` (identity as a static
@@ -462,6 +480,26 @@ writing it requires itself.)
   to the checked slice. End-relative endpoints (`^n`) and open ends
   resolve exactly as in `s[a..b]` before the domain question is
   asked.
+
+(Appended 2026-08-11, s71 — wolf-std F-0055/F-0056, issues #56/#57.
+Two lanes refused what one answered; a primitive whose meaning depends
+on which rung ran it cannot be delegated to. Both rulings adopt total
+definitions so `std.str` drops its guards and delegates.)
+
+- `[mem.str.empty]` The searching family is **defined** on an empty
+  needle, on every lane: an empty needle matches nothing.
+  `s.count("") == 0`; `s.split("")` yields the whole string as one
+  piece; `s.replace("", t) == s`. No lane refuses, no lane traps —
+  the three answers above are the only conforming ones. (These are
+  the answers the native runtime always gave; the checked lane and
+  the interpreter move to them.)
+- `[mem.str.repeat]` `s.repeat(n)` with `n < 0` is a caller contract
+  violation: the deterministic trap **`assert`** (`[conf.trap.map]`),
+  on every lane. It is not `bounds` — no access is out of range — and
+  it is not the empty string (the sc03-era interpreter answer, retired
+  deliberately here; the trap was already the executed behavior on all
+  three lanes, previously spelled `bounds` and cited against
+  `[mem.ub.defined]`, which never defined it). `n == 0` answers `""`.
 
 ---
 

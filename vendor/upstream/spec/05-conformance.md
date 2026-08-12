@@ -91,12 +91,16 @@ parser contract):
   runtime faults onto this single vocabulary — it is the comparison
   alphabet of spec 06. Sources: `overflow`/`div-zero`/`bounds` (s04
   defined-behavior table), `use-after-move`/`exclusivity` (s04 dynamic
-  meanings of E1001/E1002), `region-fault` (dynamic region-rule
+  meanings of E1001/E1002; `exclusivity` is also the dynamic meaning
+  of E1013's iteration claim — `[mem.iter.excl]`, D40), `region-fault`
+  (dynamic region-rule
   violations: the runtime meanings of E1004 — illegal cross-region
   edge — and E1005 — transfer of an open region — plus rule violations
   the static tier cannot see), `stale-handle`
   (`[mem.shared.handle.2]`), `alloc-contract` (I15 `#[noalloc]`-family
-  violations in checked builds), `assert` (user assertions), `race`
+  violations in checked builds), `assert` (user assertions, and
+  ruled caller-contract violations of builtin surfaces —
+  `[mem.str.repeat]`), `race`
   (`[conc.mm.race.3]` — detection permitted, not required), `ub`
   (oracle-detected UB; `[proto.record.ub]` gives it comparison
   semantics), `deadlock` (`[conc.deadlock.trap]` — every live task
