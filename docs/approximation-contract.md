@@ -533,6 +533,52 @@ stays. The D39 spec text lands with s72; this machine implements it ahead
 of the pin on the ruling's authority, which is the 0.1.8 pass's noted
 drift (with §6.8's D40).
 
+### 6.13 Containers are outside the region story on this machine (s76, 0.1.11)
+
+Found by the 0.1.11 re-pin's first probe, and the one place where the
+s74…s78 wave left this machine behind rather than confirming it.
+
+s76 moved the compiler's containers *into* the region story: a `List`
+allocates in the **ambient region at its allocation site**, dynamically
+scoped per D12, so a callee allocates into its caller's region and a
+container built inside `region r { }` is freed with `r`. Before s76 a
+container "opted out of the region story entirely", which is still this
+machine's posture.
+
+On every **defined** shape the two machines agree exactly, which is the
+useful half of the finding: a container built in a region and freed with
+it, a callee allocating into its caller's region, growth across several
+region chunks, `freeze` letting a container outlive its building block
+(`[mem.region.freeze.1]`), and nested regions all produce identical
+answers here and on `--native`/`--release`. This machine models regions
+dynamically and always placed a callee's allocation in the ambient
+region, so s76 moved *toward* this reading.
+
+The gap is the **escape**. Once a container is region-allocated, a
+container that outlives its region is a dangling pointer, and keeping it
+out is the region checker's job — E1010, which the compiler emits on
+every lane for `memory/region_escape_container.lu`. This machine does
+not make that static judgement, which alone would be ordinary
+conservatism (`ledger::dynamic_meaning`'s territory, and the corpus walk
+scores the file that way). What makes it worth declaring is that this
+machine does not catch it **dynamically** either: reading through the
+escaped container after its region closes answers with the old values
+rather than trapping, where the handle/pool escape one tier over
+(`tests/faults/region_uaf.lu`) correctly traps `region-fault`. The
+region machine's granules-with-identity rule (§6.1) is why — a `List`
+here is an ordinary value, not a region-homed granule, so it never
+acquires the identity the dangle check needs.
+
+Consequence, stated honestly: **no conforming program can observe this**,
+because the compiler rejects the shape statically and the corpus pins
+that rejection. It is not a divergence and it does not gate. It is a
+place where this machine would fail to be an oracle if the compiler's
+static check were ever wrong, which is exactly the situation the
+differential exists to catch — so it is recorded rather than left
+implied. Closing it means giving region-homed containers identity in the
+value model; that is a change to §6.1's rule, not a patch, and it is not
+made under a differential pass.
+
 ## 7. Deliberate approximations in the **provenance** machine (is04)
 
 `src/eval/prov.rs` is `spec/02` §6 made executable: per-allocation tag trees,

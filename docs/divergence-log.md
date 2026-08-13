@@ -51,41 +51,217 @@ against. Without it those lanes decline as a *tool* ("libwolf_rt.a not
 found next to the `wolf` binary"), which the runner reports as
 `ToolError` rather than degrading quietly to a shallower lane.
 
-## The counterparty's tiers (`--counterparty-tier`, 0.1.10)
+## The counterparty's tiers (`--counterparty-tier`, 0.1.10; re-measured 0.1.11)
 
 wolfgang's `conform-run` is one process contract over several engines,
 chosen by flag, and the flag decides how deep its record goes. The
 harness drives the choice with `diff-run --counterparty-tier=`:
 
-| tier | flag | counterparty reaches `run` on |
-| --- | --- | --- |
-| `default` | *(none)* | **0** of 245 entries |
-| `checked` | `--checked` | 120 |
-| `native` | `--native` | 113 |
-| `release` | `--release` | 104 |
+| tier | flag | counterparty reaches `run` on | both execute |
+| --- | --- | --- | --- |
+| `default` | *(none)* | **0** of 258 entries | **0** |
+| `checked` | `--checked` | 127 | 114 |
+| `native` | `--native` | 122 | 116 |
+| `release` | `--release` | 112 | 106 |
 
-Measured at pin `613c3dc`. The `default` row is why this table exists.
-Through 0.1.9 the runner passed no flag, so the compiler answered
-`unsupported` at `wir` on every run-tier program and the whole dynamic
-half of the corpus compared **nowhere** — 134 files ledgered as
-`run-unmatched` conservatism that were never compared at all. The gap
-was named for `--native` at 0.1.9 and stayed open a round; it covered
-`--checked` too, which nobody had noticed.
+Re-measured at pin `f8dca42` (0.1.11), and re-measured **independently
+of the runner** — the table is the lane's own audit, so deriving it from
+the lane it audits would be circular. Both columns come from invoking
+each side once per entry per tier and reading `phase_reached` off the
+records (`tests/`-external; the script and its four `tier-*.json`
+outputs are scratch, the numbers are here). The `default` row is why
+this table exists: through 0.1.9 the runner passed no flag, the compiler
+answered `unsupported` at `wir` on every run-tier program, and the whole
+dynamic half of the corpus compared **nowhere**. That row is still 0,
+and it is still correct that it is 0 — the audit confirms the lane
+reports honestly rather than that the gap reopened.
 
-Both machines *execute* 107 files at `checked` and `native`, and 98 at
-`release`. The release lane declines the whole conc tier by name (9
-files: 8× `conc/` + `procs.lu`, plus `test/conc_schedules_test.lu`),
-which is the compiler's documented posture — conc lowering belongs to
-the debug tier until c09 needs conc kernels — and is conservatism, never
-divergence.
+**The three run-reaching lanes are NOT nested, which the 0.1.10 table
+did not show.** `checked` reaches `run` on more files than `native`
+(127 vs 122) yet compares fewer (114 vs 116), because each lane declines
+a different tier:
 
-`release` is the lane that matters most now: it runs s42's mid-end and
-s43's whole-program layer, so comparing it against this machine is the
+- `checked` declines the whole conc tier — 11× `conc/` + `procs.lu` +
+  `test/conc_schedules_test.lu` + `rows/qmark_defer.lu` +
+  `typecheck/match_exhaustive.lu` (15 files `native` compares).
+- `native` declines most of the unsafe/region/shared tier — `regions.lu`,
+  `memory/unsafe_*` ×4, `memory/shared_ok.lu`,
+  `memory/handle_stale.lu`, `memory/region_multiopen_swap.lu`,
+  `comptime/norm_linear.lu`, `rows/coarsen.lu`, `traits/dyn_ok.lu`,
+  two `lints/` (13 files `checked` compares).
+- `release` declines the conc tier by name (10 files vs `native`), the
+  compiler's documented posture — conc lowering belongs to the debug
+  tier — and conservatism, never divergence.
+
+So the honest coverage figure is the **union: 129 files** compared at
+`run` by at least one lane, with 101 compared by all three. Running one
+lane and calling it "the run tier" would miss up to 15 files; this is
+why the pass runs all four. Of this machine's 185 run-reaching entries,
+**56 are met by no counterparty lane at all** (the `comptime/`, `fs/`,
+`net/`, `os/`, `json/` and `projects/` tiers, plus the analyses only one
+side performs) — the residue the differential still cannot see, and the
+number to drive down.
+
+`release` is the lane that matters most: it runs s42's mid-end and s43's
+whole-program layer, so comparing it against this machine is the
 falsifiable form of "optimization preserves observable behavior". Our
 own side is always invoked plainly — this machine has one engine, and
 the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
+
+Fifteenth corpus differential: lupin 0.1.11, pin `f8dca42` (**the
+largest semantic movement the compiler has had in one wave**: s74 the
+correctness cluster, s75 `List` element access as a load with
+caller-side bounds checks, s76 containers allocating in the ambient
+region per D12, s77 `s.bytes()` as a view over the receiver's own
+storage, s78 the affine relational channel, plus s53 script mode and
+D43/D44; 258 entries compared, 22 members through their entries;
+counterparty built CLEAN at the pin from a **deleted** `target/` with
+`libwolf_rt.a` provisioned). Run **four times**, once per counterparty
+tier.
+
+| tier | divergences | conservatism | both execute |
+| --- | --- | --- | --- |
+| `default` | 0 | 422 | 0 |
+| `checked` | 1 | 181 | 114 |
+| `native` | 1 | 184 | 116 |
+| `release` | **1** | 204 | **106** |
+
+**THE HEADLINE: the compiler moved its lowering out from under three
+semantic areas and this machine's independent reading already agreed on
+every one of them.** Ten of the wave's thirteen new corpus files reach
+`run` here at FIRST SIGHT, with no new semantics written on this side —
+including all four of the wave's own semantic witnesses. The one file in
+the wave that needed a reading here was s53's `[gram.lex.shebang]`, the
+wave's only `spec/` delta. The corpus-wide differential found **no new
+divergence**; the single one it reports is DIV-2026-017, unchanged.
+
+The three probes the re-pin was run to answer:
+
+1. **Region-scoped container lifetime (s76) — AGREE on every defined
+   shape, with one declared gap.** A container built in a region and
+   freed with it, a callee allocating into its *caller's* region (D12 —
+   the reason the ambient region is dynamic rather than lexical), growth
+   across several region chunks, `freeze` letting a container outlive
+   the block that built it, and nested regions: all identical on
+   `lupin`, `--native` and `--release`. This machine has always modelled
+   regions dynamically and has always placed a callee's allocation in
+   the ambient region, so s76 is a move *toward* this machine's reading.
+   The gap is the escape: `memory/region_escape_container.lu` is E1010
+   on every compiler lane and `exit(0)` here, because the escape is a
+   **static** region judgement this machine does not make — and, unlike
+   the handle/pool escape (`tests/faults/region_uaf.lu`, which traps
+   `region-fault`), this machine does not catch it dynamically either. A
+   read through the escaped container after its region closes answers
+   with the old values rather than trapping. That is conservatism in the
+   ledger's sense — no conforming program can observe it, since the
+   compiler rejects the shape statically — but it is a real modelling
+   gap and it is now declared in the approximation contract (§6.13)
+   rather than left implied.
+2. **Byte views and the slice domain (s77) — AGREE, exhaustively.**
+   `s.bytes()` is a view over the receiver's own storage on both sides:
+   unsigned 0..=255 (the two continuation bytes of `é` are 195 and 169,
+   never negative), length is the byte length, and the empty walk
+   allocates nothing. The slice domain was swept rather than sampled:
+   all 100 endpoint pairs of `s.get(a..b)` over the mixed-width `é€`
+   from −2 to 7 — **including the whole negative half the corpus file
+   does not reach** — are byte-identical on `lupin`, `--native` and
+   `--release`, with exactly the six defined pairs the domain admits and
+   a *miss* (never a wrap-around) for every negative endpoint, which is
+   the `lo <=u hi <=u len` unsigned reading agreeing on both sides. The
+   trapping form `s[a..b]` was swept over 29 ugly pairs — negative,
+   inverted, mid-codepoint, past-end, degenerate-empty, open-ended,
+   inclusive, and the `^n` from-end forms — and **28 of 29 agree
+   exactly**. The 29th is a new finding, below.
+3. **Line-atomic print (D43) — AGREE, and this machine was the prior
+   art.** The interpreter renders a whole line, interpolation and all,
+   and hands it to a single `out()` call; there has never been a yield
+   point inside a `print`, so it was line-atomic by construction before
+   D43 was ruled. Measured rather than asserted: eight tasks × 40 long
+   multi-segment interpolated lines, 20 runs of the compiler's `--native`
+   lane = **6400 lines, 0 torn, across 20 distinct interleavings** (the
+   interleavings differ every run, which is what proves the threads
+   really do race and the probe is not measuring a serialization). The
+   same program on this machine: 3200 lines, 0 torn, one interleaving —
+   the sim scheduler is deterministic by design. No tearing on either
+   side, so nothing to file.
+
+### DIV-2026-018 — `s[..]` — **OPEN, filed upstream: the compiler admits a bare `..` range the grammar excludes**
+
+Filed upstream as **wolf-lang#88**. Found 2026-08-13 (lupin 0.1.11,
+CLEAN wolfgang build at `f8dca42`) by the s77 boundary sweep, on the
+29th of 29 ugly endpoint pairs. Class **verdict** (accept-set: one side
+rejects what the other accepts); not a soundness candidate. **No corpus
+file witnesses it**, so it cannot take a `FILED_DIVERGENCES` entry —
+that list is keyed by corpus file — and it is recorded here until a
+witness exists, exactly as wolf-lang#71's stdout finding was.
+
+```
+program   let s = "é€" ; let t = s[..] ; print("ok {t.len}")
+lupin     fail(E0201)@parse — "expected an end of statement"
+wolfgang  exit(0), stdout "ok 5"   (identical on --checked/--native/--release)
+```
+
+Triage (`[proto.cmp.triage]`): **compiler bug**, decision-tree case 2 —
+spec clear, interpreter matches it. `[gram.expr.primary]` gives
+
+```ebnf
+range_expr ::= r_end (('..' | '..=') r_end?)? | ('..' | '..=') r_end
+```
+
+Two alternatives, and **neither admits a bare `..`**: the first requires
+a leading `r_end`, and the second requires a *trailing* one — the `?`
+that makes an endpoint optional appears only in the first. So `a..`,
+`..b` and `a..b` are expressions and `..` is not. That is very unlikely
+to be an oversight, because `..` already has a different meaning one
+production away (`error_row`'s rest marker, §1 line 167), which is
+exactly the ambiguity an unrestricted bare `..` would create.
+
+Extent, probed: the over-acceptance is in the **parser**, not the slice
+path. `s[..=]` is also admitted and answers `trap(bounds)`; `s.get(..)`,
+`let r = ..` and `xs[..]` on a `List` all parse on the compiler and
+decline later as `unsupported`@`resolve` with **no diagnostic**, which
+is the signature of a program that got past parse. Only `for i in ..`
+is rejected by both, at E0201. So one parser rule over-accepts and two
+spellings reach `run` with observable answers.
+
+Recorded counter-argument, because the human ruling may go the other
+way: `s[..]` meaning "the whole string" is what a reader would guess,
+and a language may well want it. But the pinned grammar does not have
+it, and the triage workflow makes the spec the defendant *first* — if
+the intended answer is that `..` should be admitted, the fix is a
+grammar clause landing before either implementation moves, which makes
+this case 1 and a spec bug. wolf-lang#88 carries both readings;
+this machine is not changing its parser ahead of that ruling, for the
+same reason it did not land E1101's lend spelling ahead of wolf-lang#71:
+conforming to an unwritten clause trades a clean rejection for a
+divergence.
+
+### The E1101 capture law: wolf-lang#71's interpreter half LANDED
+
+The 0.1.10 round left this open deliberately: "the interpreter half is
+to extend its capture analysis to treat a `(mut x)` receiver-lend of a
+captured binding as a write and emit E1101 there too… it lands once
+wolf-lang#71's fix fixes the span to match." s74 landed the compiler's
+half, so this round landed ours. `lint::Walk::capture_lend` routes both
+lend spellings — the X1 moded receiver `(mut xs).push(1)` and the
+call-site argument mode `f(mut n)` — through the same door as
+assignment, and the spans are the counterparty's byte for byte:
+`[913,915]` and `[562,563]` on the wave's two new files, `[545,546]` on
+the assignment twin. W1101 is deliberately NOT emitted for the lend
+spellings: its text is about a write landing on the task's own copy,
+which is an assignment's shape, and the counterparty emits E1101 alone
+there — as do the corpus headers, which carry `warns:` on the
+assignment file only.
+
+This also retires the second finding recorded under wolf-lang#71 at
+0.1.10 — the mut-lend program printing `0` here against wolfgang's `2`,
+because closures capture by value. **Neither machine runs the program
+now**; both reject it at their own rung with the same code and span, so
+the stdout divergence is unreachable and needs no witness.
+
+---
 
 Fourteenth corpus differential: lupin 0.1.10, pin `613c3dc` (the
 mid-end/whole-program wave: s42 the optimizer, s43 clusters + body dedup
@@ -174,6 +350,19 @@ Filed 2026-08-12 (lupin 0.1.10, CLEAN wolfgang build at `613c3dc`).
 Class **stdout**; not a soundness candidate. The first finding ever
 produced by a run-reaching counterparty lane, and it was waiting the
 whole time.
+
+**RE-CONFIRMED 2026-08-13 at pin `f8dca42`** (lupin 0.1.11, CLEAN
+wolfgang build from a deleted `target/`), which was this round's
+assignment for wolf-lang#76. Unchanged in every particular: still
+`exit(0)` on both sides, still `"{who}` there and `{who}` here, still
+**byte-identical shas to the original filing** (`7ff0fa2b…` /
+`2e5a9158…`), still the same answer on all three of the compiler's
+run-reaching tiers. The corpus file's header still reads
+`check: run(exit=0, stdout="{who}")` at `phase: wir`, so the pin still
+masks a bug that is now one-sided, and the corpus walk here still scores
+the file `match` at the `run` rung. wolf-lang#76 is OPEN and correctly
+so; the entry stays open with it. Nothing in the s74…s78 wave touched
+the lexer's literal decode.
 
 ```
 lupin    stdout = "{who}\n"   sha 2e5a915893921b688dce9a7c81a122308247a2cf28ea9b8540f3abdba265ad8e
