@@ -200,6 +200,7 @@ impl Machine {
     /// at construction (`[gram.expr.closure]`); D14's capture rules are the
     /// type checker's half (E1101), and the dynamic consequence — a task
     /// writes its own copies — is recorded in the approximation contract.
+    #[cfg_attr(target_family = "wasm", allow(unreachable_code))]
     pub(super) fn spawn_closure_task(
         &mut self,
         scope: ScopeId,
@@ -210,6 +211,18 @@ impl Machine {
             return unsupported(
                 "a spawned closure takes no parameters; passing values happens through captures \
                  or channels",
+            );
+        }
+        // A task is an OS thread here (`[conc.task.model]`'s dynamic reading),
+        // and wasm has none to spawn. Declining is the honest answer: the
+        // alternative is a second, guessed scheduler for one platform, and
+        // `[proto.record.unsupported]` exists for exactly this.
+        #[cfg(target_family = "wasm")]
+        {
+            let _ = (scope, span);
+            return unsupported(
+                "the task tier needs one OS thread per task, and this wasm build has none to \
+                 spawn; run the program under `lupin` for the concurrency rungs",
             );
         }
         let proc = self.shared.sched.proc_of(self.task);
@@ -313,12 +326,23 @@ impl Machine {
     /// `spawn proc worker(args)` (`[conc.proc.1]`, `[conc.task.root]`): a
     /// failure domain under the root supervisor, owning a fresh region its
     /// allocations land in.
+    #[cfg_attr(target_family = "wasm", allow(unreachable_code))]
     pub(super) fn eval_spawn_proc(
         &mut self,
         path: &crate::ast::Path,
         args: &[Arg],
         span: Span,
     ) -> EResult<Value> {
+        // A proc's root task is an OS thread, as a task's is; see
+        // `spawn_closure_task` for why wasm declines rather than mocks.
+        #[cfg(target_family = "wasm")]
+        {
+            let _ = (path, args, span);
+            return unsupported(
+                "the proc tier needs an OS thread per proc, and this wasm build has none to \
+                 spawn; run the program under `lupin` for the supervision rungs",
+            );
+        }
         let current_module = self
             .frames
             .last()

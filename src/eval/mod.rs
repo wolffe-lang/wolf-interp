@@ -391,6 +391,12 @@ struct Shared {
     env: Arc<Mutex<BTreeMap<String, String>>>,
     /// s40 time v0 (X12): `time_now_ms`'s process-local monotonic anchor —
     /// values compare and subtract; they are never wall timestamps.
+    ///
+    /// Absent on wasm, where `Instant::now` has no implementation to call and
+    /// aborts the module. The anchor cannot be faked without inventing a clock,
+    /// so `time_now_ms` reports `unsupported` there instead (see
+    /// [`super::eval::builtin`]) and the conservatism ledger stays truthful.
+    #[cfg(not(target_family = "wasm"))]
     epoch: std::time::Instant,
 }
 
@@ -490,6 +496,7 @@ impl Machine {
             live_stdout: false,
             repl_types: Arc::new(Mutex::new(BTreeMap::new())),
             env: Arc::new(Mutex::new(BTreeMap::new())),
+            #[cfg(not(target_family = "wasm"))]
             epoch: std::time::Instant::now(),
         };
         Machine::for_task(shared, 0, BTreeMap::new())
@@ -550,9 +557,25 @@ impl Machine {
     /// does not fold must come back as `unsupported`, not as a SIGSEGV. The
     /// reservation is address space; only the pages the descent touches are
     /// committed.
+    #[cfg_attr(
+        target_family = "wasm",
+        expect(dead_code, reason = "no thread to size")
+    )]
     const RUN_STACK: usize = 64 * 1024 * 1024;
 
+    /// Runs the program's `main`, on the ambient stack.
+    ///
+    /// The wasm half of the [`Machine::RUN_STACK`] bargain: there is no thread
+    /// to size, so the embedder reserves the stack at link time
+    /// (`-C link-arg=-zstack-size=…`) and a runaway program still meets the
+    /// machine's own 512-activation and fuel rails first.
+    #[cfg(target_family = "wasm")]
+    pub fn run(self) -> Run {
+        self.run_on_this_stack()
+    }
+
     /// Runs the program's `main`, on a stack this machine chose.
+    #[cfg(not(target_family = "wasm"))]
     pub fn run(self) -> Run {
         std::thread::scope(|scope| {
             std::thread::Builder::new()
@@ -729,6 +752,7 @@ impl Machine {
     }
 
     /// s40 time v0: milliseconds since the process-local monotonic anchor.
+    #[cfg(not(target_family = "wasm"))]
     pub(crate) fn monotonic_ms(&self) -> i128 {
         i128::try_from(self.shared.epoch.elapsed().as_millis()).unwrap_or(i128::MAX)
     }

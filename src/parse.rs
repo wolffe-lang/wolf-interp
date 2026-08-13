@@ -191,6 +191,10 @@ pub struct Parsed {
 /// 1 MiB on Windows), [`parse`] runs the descent on a thread whose stack it
 /// chose. The reservation is address space, not memory: only the pages the
 /// descent actually touches are ever committed.
+#[cfg_attr(
+    target_family = "wasm",
+    expect(dead_code, reason = "no thread to size")
+)]
 const PARSE_STACK: usize = 64 * 1024 * 1024;
 
 /// Parses an already-lexed token stream.
@@ -202,6 +206,18 @@ const PARSE_STACK: usize = 64 * 1024 * 1024;
 ///
 /// The first parse failure, as a `{code, span, anchor, message}` diagnostic.
 /// There is never a second: this parser does not recover.
+/// On wasm there is no thread to borrow a stack from: `std::thread::Builder`
+/// reports the operation unsupported and the `expect` below would abort the
+/// module. The descent runs on the ambient stack instead, and the embedder
+/// reserves it at link time (`-C link-arg=-zstack-size=…`), which is the same
+/// bargain — a chosen reservation rather than the platform's default — reached
+/// through the only lever wasm offers.
+#[cfg(target_family = "wasm")]
+pub fn parse(lexed: &Lexed) -> Result<Parsed, Diag> {
+    parse_on_this_stack(lexed)
+}
+
+#[cfg(not(target_family = "wasm"))]
 pub fn parse(lexed: &Lexed) -> Result<Parsed, Diag> {
     std::thread::scope(|scope| {
         std::thread::Builder::new()

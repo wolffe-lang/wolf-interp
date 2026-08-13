@@ -301,9 +301,22 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             "`{name}` is the s40 process trio (exec surface); this machine runs no child \
              processes by design, so the tier is declined rather than mocked"
         )),
+        // The time trio needs a clock and a way to block, and wasm has
+        // neither to call: `Instant`, `SystemTime` and `thread::sleep` all
+        // abort the module. A guessed clock would make the tier *look*
+        // present and report numbers no wolf program should trust, so the
+        // surface is declined here exactly as the process trio is declined
+        // above (`[proto.record.unsupported]`).
+        #[cfg(target_family = "wasm")]
+        "time_now_ms" | "time_sleep_ms" | "time_unix_ms" => unsupported(format!(
+            "`{name}` is s40's time v0; this wasm build has no clock to read and no way to \
+             block, so the tier is declined rather than mocked"
+        )),
         // time v0 (s40, the X12 posture): monotonic ms from a process-local
         // anchor — values compare and subtract, never wall timestamps.
+        #[cfg(not(target_family = "wasm"))]
         "time_now_ms" => Ok(Value::Int(machine.monotonic_ms(), IntTy::INT)),
+        #[cfg(not(target_family = "wasm"))]
         "time_sleep_ms" => {
             let Some(Value::Int(ms, _)) = args.first() else {
                 return unsupported("`time_sleep_ms` takes a duration in ms".to_owned());
@@ -314,6 +327,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             }
             Ok(Value::Unit)
         }
+        #[cfg(not(target_family = "wasm"))]
         "time_unix_ms" => {
             let ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
