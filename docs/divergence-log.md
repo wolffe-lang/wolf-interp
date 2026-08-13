@@ -364,6 +364,16 @@ the file `match` at the `run` rung. wolf-lang#76 is OPEN and correctly
 so; the entry stays open with it. Nothing in the s74…s78 wave touched
 the lexer's literal decode.
 
+**RE-CONFIRMED AGAIN 2026-08-13 at pin `4e316ad`** (lupin 0.1.12).
+Third confirmation, third pin, and nothing has moved: the same two
+shas (`7ff0fa2b…` / `2e5a9158…`), the same answer on `--checked`,
+`--native` and `--release`. What is new is the company it keeps —
+it is now the **only** divergence any of the three tiers reports,
+so the whole differential reduces to this one open upstream bug.
+s79 (bench integrity), s80 (the `region.foreign` aliasing fix) and
+s81 (str equality, `str_from_utf8`) touched neither the lexer nor
+its literal decode. Open across three more compiler sprints.
+
 ```
 lupin    stdout = "{who}\n"   sha 2e5a915893921b688dce9a7c81a122308247a2cf28ea9b8540f3abdba265ad8e
 wolfgang stdout = "\"{who}\n" sha 7ff0fa2be6e89ffbd94f02c39786d85d6f2ebfa013bd8ce869a68d6471dc6693

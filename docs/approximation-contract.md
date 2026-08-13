@@ -575,9 +575,80 @@ that rejection. It is not a divergence and it does not gate. It is a
 place where this machine would fail to be an oracle if the compiler's
 static check were ever wrong, which is exactly the situation the
 differential exists to catch — so it is recorded rather than left
-implied. Closing it means giving region-homed containers identity in the
-value model; that is a change to §6.1's rule, not a patch, and it is not
-made under a differential pass.
+implied.
+
+### 6.14.1 The escape, re-measured at `4e316ad`, and the design that closes it
+
+wolf-interp#25 named this as "containers lack identity in the value
+model". Measured again at this pin, that diagnosis is **half right**, and
+the other half is the more useful one:
+
+```console
+$ lupin run upstream/corpus/memory/region_escape_container.lu   # a List
+exit=0
+$ lupin run upstream/corpus/memory/region_escape_local.lu        # a struct
+exit=0
+```
+
+The struct sibling escapes too — and `Value::Struct` **already carries
+`home: Option<RegionId>`**, stamped at its allocation site. So the
+container's missing `home` is not the whole reason the escape goes
+uncaught; the deeper reason is that **nothing ever checks a tier-0
+value's `home` against its region's liveness**. `home` today has exactly
+one reader, `Machine::frozen_container`, and it asks one question —
+`[mem.region.freeze.1]`, is this write into frozen data — on the *write*
+path only. `RegionState::Freed` is consulted for pools and handles
+(`check_pool_region`) and never for a value. `region_escape_local.lu`'s
+own header says "dynamically this is a region-fault after the free"; this
+machine does not raise it.
+
+That makes the fix a bounded, three-part change rather than an open
+question, and it is written down here so a later sprint can execute it
+without re-deriving it:
+
+1. **Give `List` and `Map` a home.** `Value::List(Vec<Slot>,
+   Option<IntTy>)` and `Value::Map(Vec<(Value, Slot)>)` gain
+   `home: Option<RegionId>`, stamped by `builtin::call`'s `List`/`Map`
+   arms from `Machine::current_region` exactly as the struct literal's
+   is. This is the mechanical bulk of the work — `Value::List(..)` is
+   matched in scores of places — and is the reason this is a sprint, not
+   a patch.
+
+2. **Give `home` a second reader, on both paths.** Generalize
+   `frozen_container` into a `home_regions(path)` that returns every
+   region reachable along the path *including the leaf value's own*
+   (today it walks proper prefixes only, and returns `None` outright for
+   a projection-free path, which is why bare `keep` could never be
+   caught). Then consult it from `read_claim` as well as `write_path`:
+   a home in `RegionState::Freed` is a `region-fault` under `Rule::RegionFree`,
+   carrying the region's creation span, worded like `check_pool_region`'s
+   existing "freed wholesale; the slot died with the region". The frozen
+   and suspended answers stay write-only and unchanged.
+
+3. **Keep identity out of equality — both equalities.** The language's
+   `==` runs through `value_eq`, which already discards `home` via `..`
+   and must keep doing so. The *derived* `PartialEq` on `Value` does
+   **not**: it compares `Struct`'s `home`, and adding the field to
+   `List`/`Map` would extend that to containers. That derived impl is
+   what `eval_method`'s copy path compares a receiver against to decide
+   whether a method wrote (§`Lend`), so a home-only difference would
+   register as a write and trip `[mem.region.freeze.4]`. Hand-write
+   `PartialEq` for the three variants, as `ErrorValue` already does for
+   `enum_variant`, so the home is never a value's identity to anyone but
+   the region checker.
+
+The cost to be budgeted is not the code, it is the **re-differential**:
+this adds new dynamic faults, so every corpus entry that builds a
+container inside a region has to be re-compared on all three counterparty
+tiers, and any program that legitimately reads a container after its
+region closes — there should be none — becomes a finding to triage.
+
+**Decision, this pass: NOT DONE — a named design task, deliberately.**
+It is a change to §6.1's granules-with-identity rule, it changes the trap
+surface, and this pass already moved the pin and rewrote the method-call
+path for wolf-interp#24. Landing all three together would make any
+resulting divergence un-bisectable, which is the one thing an oracle
+cannot afford.
 
 ## 7. Deliberate approximations in the **provenance** machine (is04)
 
