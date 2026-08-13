@@ -3228,12 +3228,24 @@ impl Machine {
                 return Ok(builtin);
             }
             // An unresolved capitalized name is a structural error tag: D30's
-            // rows need no declaration (`[err.rows]`).
+            // rows need no declaration (`[err.rows]`). Unless an `enum` in
+            // scope declares it as a variant — then it is a VALUE of that
+            // enum, and calling it an error is wolf-interp#16.
             if name.starts_with(char::is_uppercase) {
-                self.fire(Rule::ErrRows, expr.span, &format!("error tag `{name}`"));
+                let variant = self.declares_variant(None, name);
+                self.fire(
+                    Rule::ErrRows,
+                    expr.span,
+                    &if variant {
+                        format!("enum variant `{name}`")
+                    } else {
+                        format!("error tag `{name}`")
+                    },
+                );
                 return Ok(Value::Error(Box::new(ErrorValue {
                     tag: name.clone(),
                     payload: Vec::new(),
+                    enum_variant: variant,
                 })));
             }
             // A lowercase bare tag resolves against the enclosing function's
@@ -3254,6 +3266,9 @@ impl Machine {
                 return Ok(Value::Error(Box::new(ErrorValue {
                     tag: name.clone(),
                     payload: Vec::new(),
+                    // A name reached through the enclosing function's declared
+                    // ROW is a raise by construction, whatever else it spells.
+                    enum_variant: false,
                 })));
             }
             return unsupported(format!("`{name}` does not resolve"));
@@ -3303,14 +3318,53 @@ impl Machine {
             return Ok(builtin);
         }
         if tail.starts_with(char::is_uppercase) {
+            // `W.Num` is an enum variant when `W` is an enum declaring `Num`,
+            // and a dotted error tag (`io.Error`) otherwise. wolf-interp#16:
+            // this is the construction site where an enum VALUE was being
+            // minted as a raise, so that every `-> W ! {none}` function's
+            // ordinary return read as an error at the call site.
+            let variant = self.declares_variant(Some(&head), &tail);
             let tag = format!("{head}.{tail}");
-            self.fire(Rule::ErrRows, expr.span, &format!("error tag `{tag}`"));
+            self.fire(
+                Rule::ErrRows,
+                expr.span,
+                &if variant {
+                    format!("enum variant `{tag}`")
+                } else {
+                    format!("error tag `{tag}`")
+                },
+            );
             return Ok(Value::Error(Box::new(ErrorValue {
                 tag,
                 payload: Vec::new(),
+                enum_variant: variant,
             })));
         }
         unsupported(format!("`{head}.{tail}` does not resolve"))
+    }
+
+    /// Does an `enum` in the current module declare `variant`, optionally
+    /// under the specific enum name `owner`?
+    ///
+    /// The map is sema's `Module::variants` (variant name → the enums that
+    /// declare it), the same table the variant-pattern rule reads, so a name
+    /// is a variant here exactly when it is a variant there. A module is a
+    /// directory (D32), which is why one module's map is the whole question.
+    fn declares_variant(&self, owner: Option<&str>, variant: &str) -> bool {
+        let module = self
+            .frames
+            .last()
+            .map(|frame| frame.module.clone())
+            .unwrap_or_default();
+        self.shared
+            .program
+            .modules
+            .get(&module)
+            .and_then(|m| m.variants.get(variant))
+            .is_some_and(|enums| match owner {
+                Some(owner) => enums.iter().any(|declared| declared == owner),
+                None => !enums.is_empty(),
+            })
     }
 
     fn value_of_def(&mut self, def: &Def, module: &str, name: &str, span: Span) -> EResult<Value> {
@@ -4383,15 +4437,24 @@ impl Machine {
             }
             Value::Error(tag) if tag.payload.is_empty() => {
                 // `BadDigit(payload)` — a structural row entry applied to its
-                // payload (`[err.rows]`).
+                // payload (`[err.rows]`) — or `W.Num(3)`, an enum variant
+                // applied to its. Applying a payload never changes WHICH of
+                // the two the callee was, so the flag rides through:
+                // wolf-interp#16's reproducer is the payload-carrying shape,
+                // and dropping it here would re-open the bug one call deeper.
                 self.fire(
                     Rule::ErrRows,
                     span,
-                    &format!("error `{}` with payload", tag.tag),
+                    &if tag.enum_variant {
+                        format!("enum variant `{}` with payload", tag.tag)
+                    } else {
+                        format!("error `{}` with payload", tag.tag)
+                    },
                 );
                 Ok(plain(Value::Error(Box::new(ErrorValue {
                     tag: tag.tag,
                     payload: args,
+                    enum_variant: tag.enum_variant,
                 }))))
             }
             Value::Builtin(name) => builtin::call(self, name, args, span).map(plain),
@@ -5034,6 +5097,30 @@ impl Machine {
                 return Ok(coerced);
             }
             _ => {}
+        }
+        // Issue #17 ask 2, the runtime half. The fallthrough below RETYPES
+        // without converting, which is right for an adapter cast (`m as
+        // Meters` is free and bidirectional, the D28 layout-identity fact)
+        // and wrong for a conversion the matrix does not define — there it
+        // handed the caller a value of the wrong kind and no diagnostic, the
+        // silent-wrong-answer this issue was filed for.
+        //
+        // sema-lite refuses the shapes it can see (`s as int` on a
+        // `str`-classified local, E0805, code and span identical to the
+        // counterparty's). It cannot see through a call return — that is the
+        // typecheck rung, which this machine does not perform — so the same
+        // program written `name() as int` arrives here. An honest decline is
+        // the answer the ladder allows: `unsupported`, naming the conversion,
+        // which the conservatism ledger records against the counterparty's
+        // E0805 instead of a wrong exit(0).
+        if matches!(value, Value::Str(_))
+            && (target == "bool" || target_float || IntTy::named(&target).is_some())
+        {
+            return unsupported(format!(
+                "`str as {target}` is not in the cast set — `as` converts between numeric \
+                 types and adapts `distinct` aliases; it does not parse text (the compiler's \
+                 E0805). Parse the string instead of retyping it"
+            ));
         }
         Ok(coerce(value, Some(ty)))
     }

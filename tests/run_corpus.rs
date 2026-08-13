@@ -439,6 +439,21 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // ([conc.det.events]); either seed's choice exits 0 on this machine
     // exactly as it does natively now that wolfgang runs conc too.
     ("test/conc_schedules_test.lu", "exit(0)"),
+    // The mid-end/whole-program pin, `613c3dc` (0.1.10, s42/s43/s63): four
+    // new files, and all four reach `run` here at first sight — no new
+    // semantics were needed, which is the point. `select_two_timeouts.lu`
+    // is wolfgang's #64 regression litmus (GVN hash-consing a second
+    // select's timeout sentinel onto the first's non-dominating
+    // definition); this machine has no GVN, so it is a plain oracle for
+    // the answer the optimizer must not change. The three `kernels/` files
+    // are s42's checked-arith and region-promotion shapes: every one of
+    // them is an optimization *target* upstream and an ordinary program
+    // here, which is exactly the differential's leverage over the
+    // mid-end.
+    ("conc/select_two_timeouts.lu", "exit(0)"),
+    ("kernels/churn_b3.lu", "exit(0)"),
+    ("kernels/hot_counter.lu", "exit(0)"),
+    ("kernels/hot_scale_versioned.lu", "exit(0)"),
 ];
 
 #[test]

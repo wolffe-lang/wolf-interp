@@ -134,7 +134,25 @@ use crate::schema;
 /// first-pin state (`3d5cee6`) or a stale scratch build — an evidence
 /// lesson, not a semantics one. The list is empty: every filing in the
 /// log's history is resolved.
-pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[];
+///
+/// DIV-2026-017 FILED at pin `613c3dc` (0.1.10): the first finding from a
+/// run-reaching counterparty lane. `lints/raw_interp_braces.lu` prints
+/// `{who}` here and `"{who}` on the compiler — the `r` prefix's opening
+/// quote survives its raw-literal decode. `[gram.lex.str.raw]` is explicit
+/// that `r"…"` carries the bytes between the quotes, the corpus header's own
+/// `stdout="{who}"` agrees with this machine, so the spec is clear and the
+/// compiler is the defendant (triage case 2). Identical on all three of the
+/// counterparty's run-reaching tiers (`--checked`, `--native`, `--release`),
+/// which is what makes it a front-end decode bug rather than anything the
+/// mid-end did. Filed upstream; the file's `phase: wir` pin — written when
+/// BOTH executors had the bug — should advance to `run` with the fix.
+pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[(
+    "lints/raw_interp_braces.lu",
+    "DIV-2026-017",
+    "the `r\"` prefix's opening quote survives the compiler's raw-literal \
+     decode: `{who}` here, `\"{who}` there ([gram.lex.str.raw]); same on \
+     --checked/--native/--release, so it is front-end, not mid-end",
+)];
 
 /// The filing id for a corpus file, when its divergence is already filed.
 #[must_use]
@@ -705,6 +723,69 @@ pub enum Invocation {
     ToolError(String),
 }
 
+/// Which of the counterparty's execution tiers a comparison drives.
+///
+/// wolfgang's `conform-run` is one process contract over *several* engines,
+/// selected by flag, and the choice decides how deep its record goes:
+///
+/// - [`Default`](CounterpartyTier::Default) — no flag. The compiler walks its
+///   static pipeline and stops: `unsupported` at `wir`. Every run-tier
+///   outcome this machine produces then has no counterparty claim to compare
+///   against and lands in the conservatism ledger. This was the ONLY lane the
+///   harness could drive through 0.1.9, which is why the run tier compared
+///   almost nowhere.
+/// - [`Checked`](CounterpartyTier::Checked) — `--checked`. The checked
+///   interpretation tier; reaches `run`.
+/// - [`Native`](CounterpartyTier::Native) — `--native`. The owned debug
+///   backend; reaches `run`.
+/// - [`Release`](CounterpartyTier::Release) — `--release`. The LLVM release
+///   backend, with s42's mid-end and s43's whole-program layer ON; reaches
+///   `run`.
+///
+/// The last three are what make this machine an oracle for a *transforming*
+/// compiler: an optimizer is only correct if it preserves observable
+/// behavior, so the same corpus compared against `Release` and against this
+/// machine is the falsifiable form of that claim. `--native`/`--release`
+/// additionally need `libwolf_rt.a` beside the `wolf` binary (`cargo build -p
+/// wolf_rt`); without it the compiler declines as a tool and the lane reports
+/// `ToolError` rather than silently degrading.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CounterpartyTier {
+    /// No flag: the compiler's static pipeline only (`unsupported` at `wir`).
+    #[default]
+    Default,
+    /// `--checked`: the checked interpretation tier.
+    Checked,
+    /// `--native`: the owned debug backend.
+    Native,
+    /// `--release`: the LLVM release backend (mid-end + whole-program ON).
+    Release,
+}
+
+impl CounterpartyTier {
+    /// The flags this tier adds to the `conform-run` invocation.
+    #[must_use]
+    pub fn flags(self) -> &'static [&'static str] {
+        match self {
+            Self::Default => &[],
+            Self::Checked => &["--checked"],
+            Self::Native => &["--native"],
+            Self::Release => &["--release"],
+        }
+    }
+
+    /// The lane's name for reports and notices.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Checked => "checked",
+            Self::Native => "native",
+            Self::Release => "release",
+        }
+    }
+}
+
 /// Runs `<program> conform-run <file> --json` with a wall-clock budget.
 ///
 /// Timeouts bound both sides; a timeout is a verdict, not an error. The wait
@@ -712,11 +793,27 @@ pub enum Invocation {
 /// platforms, no unix-only process groups.
 #[must_use]
 pub fn invoke(program: &Path, file: &Path, timeout: Duration) -> Invocation {
+    invoke_tier(program, file, timeout, CounterpartyTier::Default)
+}
+
+/// [`invoke`], driving a named counterparty tier.
+///
+/// This machine has exactly one engine, so its own side is always invoked at
+/// [`CounterpartyTier::Default`] — the tier selects which of the
+/// *counterparty's* engines answers, never which of ours.
+#[must_use]
+pub fn invoke_tier(
+    program: &Path,
+    file: &Path,
+    timeout: Duration,
+    tier: CounterpartyTier,
+) -> Invocation {
     let mut command = Command::new(program);
     command
         .arg("conform-run")
         .arg(file)
         .arg("--json")
+        .args(tier.flags())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
@@ -889,6 +986,46 @@ mod tests {
     use super::*;
     use crate::trap::TrapKind;
     use std::collections::BTreeMap;
+
+    /// The tier is a flag mapping and nothing more — but it is the mapping
+    /// that decides whether the run tier compares at all, so it is pinned.
+    /// `Default` MUST stay flagless: it is the lane every earlier round's
+    /// numbers were taken on, and silently giving it a flag would rewrite
+    /// history rather than extend it.
+    #[test]
+    fn each_counterparty_tier_maps_to_its_conform_run_flag() {
+        assert_eq!(CounterpartyTier::Default.flags(), &[] as &[&str]);
+        assert_eq!(CounterpartyTier::Checked.flags(), &["--checked"]);
+        assert_eq!(CounterpartyTier::Native.flags(), &["--native"]);
+        assert_eq!(CounterpartyTier::Release.flags(), &["--release"]);
+        assert_eq!(CounterpartyTier::default(), CounterpartyTier::Default);
+
+        // Every tier is labelled, and labels are distinct — a report that
+        // cannot name its lane is a report whose numbers cannot be compared.
+        let labels = [
+            CounterpartyTier::Default.label(),
+            CounterpartyTier::Checked.label(),
+            CounterpartyTier::Native.label(),
+            CounterpartyTier::Release.label(),
+        ];
+        let unique: std::collections::BTreeSet<&str> = labels.iter().copied().collect();
+        assert_eq!(unique.len(), labels.len(), "{labels:?}");
+        assert!(labels.iter().all(|l| !l.is_empty()));
+    }
+
+    /// `invoke` is the tier-free spelling and must stay identical to driving
+    /// `Default` explicitly: our own side is always invoked plainly, and a
+    /// hundred call sites depend on that equivalence.
+    #[test]
+    fn plain_invoke_is_the_default_tier() {
+        let missing = Path::new("does/not/exist/wolf");
+        let file = Path::new("does/not/exist.lu");
+        let budget = Duration::from_millis(50);
+        let a = invoke(missing, file, budget);
+        let b = invoke_tier(missing, file, budget, CounterpartyTier::Default);
+        assert!(matches!(a, Invocation::ToolError(_)), "{a:?}");
+        assert_eq!(a, b);
+    }
 
     fn record(phase: Phase, verdict: Verdict) -> ObservationRecord {
         ObservationRecord {
@@ -1217,7 +1354,10 @@ mod tests {
         // build answers E0809, and the file compares clean under
         // `[proto.cmp.rung]`. The list is empty; these asserts resume the
         // moment anything is filed.
-        assert_eq!(FILED_DIVERGENCES.len(), 0);
+        assert_eq!(FILED_DIVERGENCES.len(), 1);
+        let (id, _) = filed("upstream/corpus/lints/raw_interp_braces.lu")
+            .expect("DIV-2026-017 is filed against the raw-literal file");
+        assert_eq!(id, "DIV-2026-017");
         assert_eq!(
             filed("upstream/corpus/rows/negative/handler_uncovered.lu"),
             None

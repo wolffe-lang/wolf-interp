@@ -234,3 +234,144 @@ fn mixed_equality_stays_false() {
     exits_zero("if 1.0 == 1 { 1 } else { 0 }");
     exits_zero("if 3.0 == 3 { 1 } else { 0 }");
 }
+
+// -- issue #17: the target type is resolved, and `str` is not a source ---
+
+/// A cast target that names nothing is refused with the counterparty's code
+/// and span (issue #17 ask 1).
+///
+/// Through 0.1.9 `s as nonsense` ran to `exit(0)` with the string passed
+/// through unchanged: the type expression was never resolved, so a typo in a
+/// cast target was invisible. The span is the TYPE NAME, not the cast
+/// expression — verified against wolfgang at pin `613c3dc`, which answers
+/// `E0301` `[55,63]` for the `nonsense` case and `[55,60]` for `bytes`
+/// (`bytes` names no type in this language either; `[mem.str.cmp]` puts the
+/// string library in-library with no bytes accessor).
+#[test]
+fn a_cast_to_a_name_that_resolves_nowhere_is_refused() {
+    for (target, name) in [("nonsense", "nonsense"), ("bytes", "bytes")] {
+        let source = format!(
+            "fn main() -> int {{\n    let s = \"wolf\"\n    let x = s as {target}\n    0\n}}\n"
+        );
+        let observation = frontend::observe(source.as_bytes(), None);
+        assert_eq!(
+            observation.verdict,
+            Verdict::Fail("E0301".to_owned()),
+            "target `{target}`: {:?}",
+            observation.reason
+        );
+        assert_eq!(observation.phase_reached, Phase::Resolve, "{target}");
+        let diagnostic = observation
+            .diagnostics
+            .first()
+            .expect("the refusal carries its diagnostic");
+        let span = diagnostic.span;
+        let spanned = &source[span[0] as usize..span[1] as usize];
+        assert_eq!(spanned, name, "the span covers the type name alone");
+    }
+}
+
+/// The names that DO resolve keep working: every built-in scalar, and a type
+/// the module declares. This is the other half of ask 1 — a resolution check
+/// that refused real types would be worse than the bug.
+#[test]
+fn casts_to_resolvable_targets_are_untouched() {
+    for target in [
+        "int", "uint", "i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128",
+    ] {
+        exits_zero(&format!(
+            "if (3 as {target}) as int == 3 {{ 0 }} else {{ 1 }}"
+        ));
+    }
+    exits_zero("if (3 as f64) == 3.0 { 0 } else { 1 }");
+    exits_zero("if (3 as f32) == 3.0 { 0 } else { 1 }");
+
+    // A module-declared lower-case type name resolves like any other item —
+    // the check is on resolution, never on spelling.
+    let source = "\
+type meters = distinct int
+
+fn main() -> !int {
+    let m = 2 as meters
+    if m as int == 2 { 0 } else { 1 }
+}
+";
+    let observation = frontend::observe(source.as_bytes(), None);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "{:?}",
+        observation.reason
+    );
+
+    // An upper-case name is a nominal type this rung has no registry for, so
+    // it declines to judge rather than guessing (`x as T` in a generic body,
+    // a prelude type, an imported struct).
+    let source = "\
+fn id[T](x: T) -> T {
+    x as T
+}
+
+fn main() -> !int {
+    if id(7) == 7 { 0 } else { 1 }
+}
+";
+    let observation = frontend::observe(source.as_bytes(), None);
+    assert_ne!(
+        observation.verdict,
+        Verdict::Fail("E0301".to_owned()),
+        "a generic parameter is not an unresolved name: {:?}",
+        observation.reason
+    );
+}
+
+/// `str` is not a cast SOURCE (issue #17 ask 2). Where sema-lite can see the
+/// operand's class it refuses with the counterparty's E0805 and span; where
+/// it cannot — a call return is the typecheck rung, which this machine does
+/// not perform — the run rung declines by name instead of passing the string
+/// through as if it were a number.
+#[test]
+fn str_does_not_cast_to_a_number() {
+    for target in ["int", "i64", "u8", "f64", "bool"] {
+        let source = format!(
+            "fn main() -> int {{\n    let s = \"wolf\"\n    let x = s as {target}\n    0\n}}\n"
+        );
+        let observation = frontend::observe(source.as_bytes(), None);
+        assert_eq!(
+            observation.verdict,
+            Verdict::Fail("E0805".to_owned()),
+            "target `{target}`: {:?}",
+            observation.reason
+        );
+        let span = observation.diagnostics[0].span;
+        assert_eq!(
+            &source[span[0] as usize..span[1] as usize],
+            format!("s as {target}"),
+            "the span covers the whole cast expression"
+        );
+    }
+
+    // The shape sema-lite cannot classify: an honest decline, never exit(0)
+    // with a `str` standing in for a number.
+    let source = "\
+fn name() -> str {
+    \"wolf\"
+}
+
+fn main() -> int {
+    let x = name() as int
+    print(\"{x}\")
+    0
+}
+";
+    let observation = frontend::observe(source.as_bytes(), None);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Unsupported,
+        "{:?}",
+        observation.reason
+    );
+    let reason = observation.reason.unwrap_or_default();
+    assert!(reason.contains("not in the cast set"), "{reason}");
+    assert!(reason.contains("E0805"), "{reason}");
+}

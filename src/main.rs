@@ -64,8 +64,8 @@ fn default_spec_root() -> PathBuf {
     Path::new(upstream_root()).join("spec")
 }
 
-/// `--version`'s tail: `lupin 0.1.9 (wolf-interp, reference interpreter at
-/// pin 0b4e79c)` — the crate version, the package this binary is built
+/// `--version`'s tail: `lupin 0.1.10 (wolf-interp, reference interpreter at
+/// pin 613c3dc)` — the crate version, the package this binary is built
 /// from, and the pairing posture r01 row 7 asks the version line to name:
 /// this binary is the wolf reference interpreter AT the stated upstream
 /// spec/corpus pin, the sha every observation is made against.
@@ -290,6 +290,14 @@ struct DiffRunArgs {
     /// Hard-fail instead of SKIPping when no counterparty binary exists.
     #[arg(long)]
     require_counterparty: bool,
+    /// Which of the counterparty's engines answers. `default` drives no flag
+    /// and stops at its static pipeline (`unsupported` at `wir`), so the run
+    /// tier compares nowhere; `checked`, `native` and `release` each reach
+    /// `run`. `release` runs s42's mid-end and s43's whole-program layer, so
+    /// it is the lane that tests whether optimization preserves observable
+    /// behavior. `native`/`release` need `libwolf_rt.a` beside the binary.
+    #[arg(long, value_enum, default_value_t = CounterpartyTierArg::Default)]
+    counterparty_tier: CounterpartyTierArg,
     /// Wall-clock budget per invocation, either side. A timeout is a
     /// verdict, not an error.
     #[arg(long, default_value_t = 30_000)]
@@ -308,6 +316,27 @@ struct DiffRunArgs {
     /// divergence.
     #[arg(long)]
     filing: bool,
+}
+
+/// The CLI spelling of [`differ::CounterpartyTier`]. Separate because clap's
+/// derive belongs to the binary and the tier belongs to the library.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum CounterpartyTierArg {
+    Default,
+    Checked,
+    Native,
+    Release,
+}
+
+impl From<CounterpartyTierArg> for differ::CounterpartyTier {
+    fn from(arg: CounterpartyTierArg) -> Self {
+        match arg {
+            CounterpartyTierArg::Default => Self::Default,
+            CounterpartyTierArg::Checked => Self::Checked,
+            CounterpartyTierArg::Native => Self::Native,
+            CounterpartyTierArg::Release => Self::Release,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -1383,8 +1412,10 @@ fn diff_corpus(args: &DiffRunArgs, compiler: &Path) -> Result<DiffOutcome, u8> {
         let full = args.corpus.join(&file.path);
         let source = std::fs::read(&full).unwrap_or_default();
         let has_unsafe = source_has_unsafe(&source);
+        // Our side has one engine, so it is always invoked plainly; the tier
+        // selects which of the counterparty's engines answers.
         let a = differ::invoke(&this, &full, timeout);
-        let b = differ::invoke(compiler, &full, timeout);
+        let b = differ::invoke_tier(compiler, &full, timeout, args.counterparty_tier.into());
         let comparison = differ::compare_invocations(&file.path, &a, &b, has_unsafe);
         out.compared += 1;
         if let Some(divergence) = comparison.divergence {
@@ -1501,6 +1532,16 @@ fn run_diff_run(args: &DiffRunArgs) -> u8 {
         Ok(path) => path,
         Err(code) => return code,
     };
+    // The lane is part of the observation: the same corpus against `default`
+    // and against `release` are different claims, so a log must say which one
+    // it is looking at.
+    let tier: differ::CounterpartyTier = args.counterparty_tier.into();
+    eprintln!(
+        "notice: counterparty tier: {} (conform-run{}{})",
+        tier.label(),
+        if tier.flags().is_empty() { "" } else { " " },
+        tier.flags().join(" ")
+    );
     let outcome = match diff_corpus(args, &compiler) {
         Ok(outcome) => outcome,
         Err(code) => return code,

@@ -132,7 +132,7 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = stdout_of(&output);
-    assert!(stdout.contains("263 file(s)"), "{stdout}");
+    assert!(stdout.contains("267 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -141,7 +141,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 263);
+    assert_eq!(value["total"], 267);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
@@ -457,7 +457,7 @@ fn run_json_is_the_record_surface_and_the_tool_exits_zero() {
         serde_json::from_str(stdout_of(&output).trim()).expect("one JSON object");
     assert_eq!(schema::validate(&value), Ok(()));
     assert_eq!(value["impl"], "lupin");
-    assert_eq!(value["impl_version"], "0.1.9");
+    assert_eq!(value["impl_version"], "0.1.10");
     assert_eq!(value["verdict"], "trap(overflow)");
 
     // The stdin record reports `-` as the file — the only spelling it had.
@@ -596,7 +596,7 @@ fn version_names_the_binary_the_package_and_the_pairing() {
     let output = lupin(&["--version"]);
     assert_eq!(output.status.code(), Some(0));
     let text = stdout_of(&output).trim_end();
-    let prefix = "lupin 0.1.9 (wolf-interp, reference interpreter at pin ";
+    let prefix = "lupin 0.1.10 (wolf-interp, reference interpreter at pin ";
     assert!(text.starts_with(prefix), "{text}");
     let pin = text
         .strip_prefix(prefix)

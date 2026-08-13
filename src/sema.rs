@@ -32,7 +32,7 @@
 //! owns (types, arity, exhaustiveness) still is not here, and using it is
 //! still `unsupported`, never a guess.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use crate::ast::{
@@ -1007,6 +1007,10 @@ struct TierWalk<'a> {
     scopes: Vec<Vec<(String, LitClass)>>,
     /// The module's function items' declared closed rows, for E0809.
     rows: &'a BTreeMap<String, RowInfo>,
+    /// Every top-level name this module declares, for [`unknown_cast_target`].
+    /// A module is a directory (D32), so this is the whole namespace a bare
+    /// lower-case type name could resolve into.
+    declared: &'a BTreeSet<String>,
 }
 
 impl TierWalk<'_> {
@@ -1226,12 +1230,19 @@ fn tier_check(program: &Program) -> Option<Diag> {
                 }
             }
         }
+        // Every top-level name of the module, whatever it defines. A type
+        // name resolves into this namespace (D32: the directory is the
+        // module), and `Def` does not distinguish an alias from an enum —
+        // both arrive as `Opaque` — so the set is names, not kinds. Used
+        // only to decline judging a name that *does* resolve.
+        let declared: BTreeSet<String> = module.items.keys().cloned().collect();
         for decl in each_fn(module) {
             let mut walk = TierWalk {
                 imports_c: !module.c_headers.is_empty(),
                 unsafe_depth: 0,
                 scopes: vec![Vec::new()],
                 rows: &rows,
+                declared: &declared,
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
@@ -1251,6 +1262,7 @@ fn tier_check(program: &Program) -> Option<Diag> {
                     unsafe_depth: 0,
                     scopes: vec![Vec::new()],
                     rows: &rows,
+                    declared: &declared,
                 };
                 if let Some(diag) = walk.expr(&binding.value) {
                     return Some(diag);
@@ -1260,6 +1272,22 @@ fn tier_check(program: &Program) -> Option<Diag> {
     }
     None
 }
+
+/// Every built-in scalar type name the language spells in lower case.
+///
+/// One list, two readers: [`class_of_type`] classifies annotations with it and
+/// [`unknown_cast_target`] decides what "names nothing" means. Keeping them on
+/// one constant is the point — a name known to one and unknown to the other
+/// would make a cast both classified and unresolvable.
+///
+/// The language has no `char`, and no `bytes`: `[mem.str.cmp]`'s note that the
+/// string library is "in-library with **no bytes accessor**" is the closest the
+/// spec comes, and the counterparty answers E0301 for `as bytes` — the two
+/// agree that the name is not a type.
+const BUILTIN_SCALAR_TYPES: &[&str] = &[
+    "bool", "f32", "f64", "i128", "i16", "i32", "i64", "i8", "int", "str", "u128", "u16", "u32",
+    "u64", "u8", "uint",
+];
 
 /// The class an *annotated* type names, for parameters (`greet(name: str)`).
 fn class_of_type(ty: &Type) -> LitClass {
@@ -1277,6 +1305,46 @@ fn class_of_type(ty: &Type) -> LitClass {
         }
         _ => LitClass::Unknown,
     }
+}
+
+/// The span of a cast target that names nothing at all, or `None` when this
+/// rung cannot say (issue #17 ask 1).
+///
+/// The judgement is deliberately narrow, because "never guess" is this pass's
+/// whole discipline. It fires only on a **single, unqualified, lower-case**
+/// path with no generic arguments that is neither a built-in scalar nor a name
+/// this module declares. Everything else declines:
+///
+/// - An upper-case initial is a nominal type — a struct, an enum, a `distinct`
+///   alias, a generic parameter (`x as T`), or a prelude name this rung has no
+///   registry for. `typecheck/cast_set.lu`'s `2 as Meters` lives here, and so
+///   does every adapter cast.
+/// - A qualified path (`media.Song`) resolves through another module's items,
+///   which sema-lite does not walk for types.
+/// - Generic arguments (`wrapping[u32]`, `List[int]`) name a constructor, not a
+///   scalar.
+///
+/// What is left is exactly the issue's `s as nonsense` and `s as bytes` shape:
+/// a lower-case name that resolves nowhere. The counterparty answers E0301 at
+/// `resolve` spanning the **type name** (observed at pin `613c3dc`:
+/// `s as nonsense` → `E0301` `[55,63]`, the eight bytes of `nonsense`), so
+/// that is the code and the span this returns.
+fn unknown_cast_target(ty: &Type, declared: &BTreeSet<String>) -> Option<Span> {
+    let TypeKind::Path { path, args } = &*ty.kind else {
+        return None;
+    };
+    if !args.is_empty() || !path.is_single() {
+        return None;
+    }
+    let segment = &path.segments[0];
+    let name = segment.name.as_str();
+    if !name.starts_with(|c: char| c.is_lowercase()) {
+        return None;
+    }
+    if BUILTIN_SCALAR_TYPES.contains(&name) || declared.contains(name) {
+        return None;
+    }
+    Some(segment.span)
 }
 
 impl TierWalk<'_> {
@@ -1355,6 +1423,46 @@ impl TierWalk<'_> {
             ExprKind::Cast { expr: operand, ty } => {
                 if let Some(diag) = self.expr(operand) {
                     return Some(diag);
+                }
+                // Issue #17 ask 1: the target type is RESOLVED. A lower-case
+                // name that is neither a built-in scalar nor a name this
+                // module declares names nothing, and a cast to nothing was
+                // silently a no-op through 0.1.9 — the reported bug. E0301
+                // at the type name is the counterparty's answer, span for
+                // span.
+                if let Some(span) = unknown_cast_target(ty, self.declared) {
+                    return Some(Diag::new(
+                        "E0301",
+                        span,
+                        "mod.scope",
+                        "nothing with this name is in scope, so this cast names no target \
+                         type — a typo in a cast target used to pass the value through \
+                         unchanged, which is how a wrong type reaches the rest of the program",
+                    ));
+                }
+                // Issue #17 ask 2: `str` is not a cast SOURCE either. The
+                // matrix bridges numbers to numbers; `s as int` has no rule,
+                // and passing the string through unchanged (0.1.9's
+                // behavior) means the caller computes with a `str` where a
+                // number was meant and nothing ever fails. The counterparty
+                // answers E0805 at typecheck spanning the whole cast
+                // expression (observed at pin `613c3dc`: `[50,58]` for
+                // `s as int`); `[proto.cmp.rung]` makes our resolve-rung
+                // emission of the same code agreement.
+                if self.classify(operand) == LitClass::Str
+                    && matches!(
+                        class_of_type(ty),
+                        LitClass::Int | LitClass::Float | LitClass::Bool
+                    )
+                {
+                    return Some(Diag::new(
+                        "E0805",
+                        expr.span,
+                        "ty.cast.closed-set",
+                        "`str` does not cast to a numeric or `bool` type — `as` is outside \
+                         the cast set here, and it is not a parser: parse the text instead \
+                         of retyping it",
+                    ));
                 }
                 // The cast matrix's `bool` column (issue #18 item 2): `as`
                 // is not a truthiness bridge, and the counterparty rejects

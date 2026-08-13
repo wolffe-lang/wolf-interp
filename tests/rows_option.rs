@@ -276,3 +276,167 @@ fn main() -> !int {
         observation.reason
     );
 }
+
+// -- issue #16: an enum variant is a value, not a raise ------------------
+
+/// wolf-interp#16 (wolf-std F-0037), the whole shape.
+///
+/// A declared enum's variant and a structural row tag are both tag-shaped,
+/// and the machine used to build them as the same thing. So `fn id(v: W) -> W
+/// ! {none} { v }` — a function that raises nothing — had its ordinary return
+/// read as an error by the caller: `?` propagated it and `else` fired on the
+/// VALUE path, so the miss ALWAYS won and the two paths were
+/// indistinguishable. The worst class of bug: no diagnostic, wrong answer.
+///
+/// Verified against wolfgang at pin `613c3dc`, whose `--native` and
+/// `--release` lanes both print `kind num` for this program.
+#[test]
+fn an_enum_variant_returned_through_a_row_is_not_an_error() {
+    let source = "\
+enum W {
+    Num(int),
+    Obj(int),
+}
+
+fn mknum(n: int) -> W {
+    W.Num(n)
+}
+
+fn mkobj() -> W {
+    W.Obj(0)
+}
+
+fn id(v: W) -> W ! {none} {
+    v
+}
+
+fn kindof(v: W) -> str {
+    match v {
+        Num(n) => \"num\",
+        Obj(m) => \"obj\",
+    }
+}
+
+fn main() -> int {
+    let n = mknum(3)
+    let a = id(n) else mkobj()
+    print(\"kind {kindof(a)}\")
+    0
+}
+";
+    let observation = observe(source);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "{:?}",
+        observation.reason
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&observation.stdout).trim(),
+        "kind num",
+        "the `else` fired on the value path — wolf-interp#16 is back"
+    );
+}
+
+/// The fix must not cost the error paths. One program, four of them: a raise
+/// defaulted by `else`, a value passed through `else` untouched, a `?` that
+/// unwraps an ok, and a `?` that propagates a raise.
+#[test]
+fn raises_and_values_stay_distinguishable_through_rows() {
+    let source = "\
+enum W {
+    Num(int),
+    Obj(int),
+}
+
+fn raises(flag: bool) -> W ! {none} {
+    if flag { return none }
+    W.Num(7)
+}
+
+fn viaq(flag: bool) -> int ! {none} {
+    let w = raises(flag)?
+    match w {
+        Num(n) => n,
+        Obj(m) => 0,
+    }
+}
+
+fn main() -> int {
+    let a = raises(true) else W.Obj(1)
+    let ka = match a { Num(n) => \"num\", Obj(m) => \"obj\" }
+    let b = raises(false) else W.Obj(1)
+    let kb = match b { Num(n) => \"num\", Obj(m) => \"obj\" }
+    let c = viaq(false) else 99
+    let d = viaq(true) else 99
+    print(\"{ka} {kb} {c} {d}\")
+    0
+}
+";
+    let observation = observe(source);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "{:?}",
+        observation.reason
+    );
+    // obj: the raise was defaulted. num: the value survived `else`.
+    // 7: `?` unwrapped an ok. 99: `?` propagated a raise.
+    assert_eq!(
+        String::from_utf8_lossy(&observation.stdout).trim(),
+        "obj num 7 99"
+    );
+}
+
+/// A tag that is NOT a declared variant keeps its error reading — the D30
+/// structural row needs no declaration (`[err.rows]`), and narrowing that
+/// would trade one silent wrong answer for another.
+#[test]
+fn an_undeclared_tag_is_still_an_error() {
+    let source = "\
+fn misses() -> int ! {TooShort} {
+    return TooShort
+}
+
+fn main() -> int {
+    let v = misses() else 42
+    print(\"{v}\")
+    0
+}
+";
+    let observation = observe(source);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "{:?}",
+        observation.reason
+    );
+    assert_eq!(String::from_utf8_lossy(&observation.stdout).trim(), "42");
+}
+
+/// Equality ignores where a tag's name resolved: it is a fact about the
+/// program's declarations, not about the value.
+#[test]
+fn variant_equality_does_not_depend_on_the_construction_site() {
+    let source = "\
+enum W {
+    Num(int),
+    Obj(int),
+}
+
+fn mk(n: int) -> W {
+    W.Num(n)
+}
+
+fn main() -> !int {
+    if mk(3) == W.Num(3) { 0 } else { 1 }
+}
+";
+    let observation = observe(source);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "{:?}",
+        observation.reason
+    );
+}

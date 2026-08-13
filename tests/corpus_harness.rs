@@ -216,14 +216,32 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             spec's only delta: `[conf.trap.map]`'s exclusivity row
     //             now names E1014's read-mode write barrier — 0.1.8's
     //             filed nit, closed upstream. Anchors stay 315.)
+    //   613c3dc → 267 files (0.1.10: the mid-end/whole-program pin — s42
+    //             (the optimizer), s43 (clusters, body dedup, the frozen
+    //             summary index) and s63 (diagnostics polish: 144 codes /
+    //             30 warnings, the E-cascade cap and `--error-limit=N`).
+    //             The corpus grows 4, all entries, all `phase: run` with
+    //             `check: run(exit=0)`: `conc/select_two_timeouts.lu` (the
+    //             #64 GVN cross-arm-dominance regression litmus — two
+    //             timeout selects in one body) and the s42 kernel tier
+    //             `kernels/hot_counter.lu`, `kernels/hot_scale_versioned.lu`
+    //             and `kernels/churn_b3.lu` (the checked-arith elimination
+    //             and region-promotion shapes the mid-end's gates read).
+    //             All four run clean on this machine at first sight, so the
+    //             run ledger grows 4 and coverage ratchets 102 → 103:
+    //             `[conc.select.timeout]` is covered for the first time,
+    //             cited by the new select litmus alone. The spec is
+    //             UNCHANGED in this range — s42/s43 are compiler-internal
+    //             and s63's catalog lives outside `spec/` — so anchors stay
+    //             315 and no new clause needs a reading.)
     let report = report();
     assert_eq!(
         report.total(),
-        263,
+        267,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 241);
+    assert_eq!(report.entries(), 245);
     assert_eq!(report.members(), 22);
 }
 

@@ -1372,6 +1372,7 @@ fn error(tag: &str) -> Value {
     Value::Error(Box::new(super::value::ErrorValue {
         tag: tag.to_owned(),
         payload: Vec::new(),
+        enum_variant: false,
     }))
 }
 

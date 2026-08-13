@@ -230,16 +230,51 @@ impl IntTy {
     }
 }
 
-/// A structural error tag: `BadDigit(ParseError { … })`, `TooShort`,
-/// `io.Error(_)`.
+/// A tagged value: a structural error tag (`BadDigit(ParseError { … })`,
+/// `TooShort`, `io.Error(_)`) or a declared enum's variant (`W.Num(3)`).
 ///
 /// D30's rows are structural (`[err.rows]`), so a tag needs no declaration to
 /// exist — which is exactly what a dynamic machine wants: the tag *is* its name.
-#[derive(Debug, Clone, PartialEq)]
+/// An enum variant is tag-shaped too, and patterns treat the two alike, so one
+/// representation carries both.
+///
+/// The two are NOT alike to `?` and `else`, which is what
+/// [`enum_variant`](ErrorValue::enum_variant) exists to record — see
+/// [`Value::is_error`].
+#[derive(Debug, Clone, Default)]
 pub struct ErrorValue {
     /// The dotted tag path, e.g. `BadDigit` or `io.Error`.
     pub tag: String,
     pub payload: Vec<Value>,
+    /// True when this tag is a **declared enum's variant** rather than an
+    /// error-row tag: the name resolved against an `enum` item in scope.
+    ///
+    /// wolf-interp#16 (wolf-std F-0037) is what this field fixes. A declared
+    /// enum's variant and a structural error tag are both tag-shaped, so
+    /// `W.Num(3)` used to build a value indistinguishable from a raise: any
+    /// function returning an enum through an error row (`fn id(v: W) -> W !
+    /// {none} { v }`) had its every return read as an error, so `?`
+    /// propagated and `else` fired on the VALUE path. The miss always won,
+    /// silently — the caller could not tell a returned `W` from a raised one.
+    ///
+    /// Raise-ness belongs to the call, not to the value; this flag is where a
+    /// dynamic machine can put that fact without a second tagged
+    /// representation. Pattern matching, equality and rendering ignore it —
+    /// only [`Value::is_error`] reads it.
+    pub enum_variant: bool,
+}
+
+/// Equality is over the tag and its payload alone.
+///
+/// A variant and a row tag of the same name and payload are the same value:
+/// the flag records where the NAME resolved, which is a fact about the
+/// program's declarations, not about the value's identity. Letting it into
+/// `==` would make `W.Num(1) == W.Num(1)` depend on which of the two
+/// construction sites built each side.
+impl PartialEq for ErrorValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.tag == other.tag && self.payload == other.payload
+    }
 }
 
 /// A closure: parameters, body, and the environment it captured **by value**.
@@ -364,8 +399,22 @@ pub enum Value {
 
 impl Value {
     /// Is this an error value? The only question `?` and `else` need to ask.
+    ///
+    /// A **declared enum's variant** is tag-shaped but is not an error
+    /// (wolf-interp#16): `W.Num(3)` is a `W`, and a function returning it
+    /// through a `! {none}` row has raised nothing, so `?` must not propagate
+    /// it and `else` must not fire. See [`ErrorValue::enum_variant`].
     #[must_use]
     pub fn is_error(&self) -> bool {
+        matches!(self, Value::Error(e) if !e.enum_variant)
+    }
+
+    /// Is this a tag-shaped value at all — a row tag OR an enum variant?
+    ///
+    /// Pattern matching and rendering want this question; `?` and `else` want
+    /// [`is_error`](Value::is_error).
+    #[must_use]
+    pub fn is_tagged(&self) -> bool {
         matches!(self, Value::Error(_))
     }
 

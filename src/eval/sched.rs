@@ -327,6 +327,7 @@ impl ExitReason {
         Value::Error(Box::new(ErrorValue {
             tag: tag.to_owned(),
             payload,
+            enum_variant: false,
         }))
     }
 
@@ -1089,6 +1090,7 @@ impl State {
         let message = Value::Error(Box::new(ErrorValue {
             tag: "exit".to_owned(),
             payload: vec![reason.to_value()],
+            enum_variant: false,
         }));
         for chan in self.procs[proc].monitors.clone() {
             self.op(actor, ObjKey::Chan(chan), true);
@@ -1190,6 +1192,7 @@ fn closed_error() -> Value {
     Value::Error(Box::new(ErrorValue {
         tag: "Closed".to_owned(),
         payload: Vec::new(),
+        enum_variant: false,
     }))
 }
 
@@ -1197,6 +1200,7 @@ fn cancelled_error() -> Value {
     Value::Error(Box::new(ErrorValue {
         tag: "Cancelled".to_owned(),
         payload: Vec::new(),
+        enum_variant: false,
     }))
 }
 
@@ -1757,14 +1761,17 @@ impl Sched {
                     TaskEnd::Trapped(trap) => ExitReason::Error(Box::new(ErrorValue {
                         tag: "trap".to_owned(),
                         payload: vec![Value::Str(trap.kind.to_string())],
+                        enum_variant: false,
                     })),
                     TaskEnd::Ub(finding) => ExitReason::Error(Box::new(ErrorValue {
                         tag: "ub".to_owned(),
                         payload: vec![Value::Str(finding.anchor().to_owned())],
+                        enum_variant: false,
                     })),
                     TaskEnd::Unsupported(reason) => ExitReason::Error(Box::new(ErrorValue {
                         tag: "unsupported".to_owned(),
                         payload: vec![Value::Str(reason.clone())],
+                        enum_variant: false,
                     })),
                     TaskEnd::Cancelled => ExitReason::Cancelled,
                     TaskEnd::Killed => ExitReason::Killed,
@@ -2193,6 +2200,7 @@ impl Sched {
             let message = Value::Error(Box::new(ErrorValue {
                 tag: "exit".to_owned(),
                 payload: vec![reason.to_value()],
+                enum_variant: false,
             }));
             let root = state.procs[proc].root;
             let vc = state.task_vc(root);

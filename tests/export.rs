@@ -33,13 +33,19 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 /// at pin `26fa98e` (0.1.8): the s71 witnesses cite `[mem.str.empty]`,
 /// `[mem.str.repeat]`, the s72 mode-teeth fail-files cite
 /// `[mem.iter.excl.*]`, and the suite's D39/D40 programs land with
-/// theirs.
-const RATCHET_FLOOR: usize = 102;
+/// theirs. Raised 102 → 103 at pin `613c3dc` (0.1.10): the mid-end pin's
+/// `conc/select_two_timeouts.lu` — the #64 regression litmus, two timeout
+/// selects in one body — is the first program in the whole corpus to cite
+/// `[conc.select.timeout]`, and it runs clean here at first sight.
+const RATCHET_FLOOR: usize = 103;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
-/// grammar/1 declaration — and s72's `mem.iter.excl` family ×3). Moves
-/// only with a pin bump, and then deliberately.
+/// grammar/1 declaration — and s72's `mem.iter.excl` family ×3). Held at
+/// 315 by pin `613c3dc` (0.1.10), whose range touches no `spec/` file:
+/// s42/s43 are compiler-internal and s63's diagnostic catalog lives
+/// outside the spec tree. Moves only with a pin bump, and then
+/// deliberately.
 const ANCHORS_TOTAL: usize = 315;
 
 fn crate_root() -> PathBuf {
@@ -147,22 +153,22 @@ fn the_bundle_opens_verified_and_its_records_reference_bundled_programs() {
 
 #[test]
 fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
-    // The count ledger, lupin 0.1.9 edition (pin `0b4e79c`): 263 corpus
-    // files (241 entries + 22 members) + 37 suite programs (7 UB triggers,
+    // The count ledger, lupin 0.1.10 edition (pin `613c3dc`): 267 corpus
+    // files (245 entries + 22 members) + 37 suite programs (7 UB triggers,
     // 8 twins, 9 fault litmuses + 7 twins, 5 witnesses — the T1 pair and
     // P1's protector form retired with issue #18: their `as bool` and `*u8`
     // signatures are outside the language now, see `UbRow::coverage` and
-    // `tests/ub/`, plus the issue #20 freeze-read twin) = 300 programs,
-    // 278 entries conform-run into reference records. The pin brought the
-    // c09 wave: s41/s51/s73 — one new corpus file (the s73 schedules
-    // witness) and the nine conc headers' advance to `run` — see the
-    // corpus-harness ledger. A pin bump or a new suite file moves these
-    // numbers — move them *deliberately*, here and in the corpus-harness
-    // ledger.
+    // `tests/ub/`, plus the issue #20 freeze-read twin) = 304 programs,
+    // 282 entries conform-run into reference records. The pin brought the
+    // mid-end/whole-program wave: s42/s43/s63 — four new corpus files (the
+    // #64 select litmus and the three s42 kernels), all four running clean
+    // here — see the corpus-harness ledger. A pin bump or a new suite file
+    // moves these numbers — move them *deliberately*, here and in the
+    // corpus-harness ledger.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "0b4e79c5deb48e93468d58971ae32b3ad8fed9b9");
-    assert_eq!(summary.programs, 300);
-    assert_eq!(summary.records, 278);
+    assert_eq!(summary.pin, "613c3dc2bdec3b151c23fc200227f3a6230f68c4");
+    assert_eq!(summary.programs, 304);
+    assert_eq!(summary.records, 282);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
