@@ -36,17 +36,26 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 /// theirs. Raised 102 → 103 at pin `613c3dc` (0.1.10): the mid-end pin's
 /// `conc/select_two_timeouts.lu` — the #64 regression litmus, two timeout
 /// selects in one body — is the first program in the whole corpus to cite
-/// `[conc.select.timeout]`, and it runs clean here at first sight.
-const RATCHET_FLOOR: usize = 103;
+/// `[conc.select.timeout]`, and it runs clean here at first sight. Raised
+/// 103 → 107 at pin `f8dca42` (0.1.11): four clauses gain their first
+/// citing program in the s74…s78 wave — `[gram.lex.shebang]` (the new
+/// clause itself, by `grammar/shebang.lu`), `[conc.chan.close]` and
+/// `[mem.iter.range]` (both by `conc/chan_drain_after_inclusive_loop.lu`,
+/// the ch12 router shape) and `[mem.tier0.move]` (by
+/// `memory/mut_param_aggregate_store.lu`). All four run clean here.
+const RATCHET_FLOOR: usize = 107;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
 /// grammar/1 declaration — and s72's `mem.iter.excl` family ×3). Held at
 /// 315 by pin `613c3dc` (0.1.10), whose range touches no `spec/` file:
 /// s42/s43 are compiler-internal and s63's diagnostic catalog lives
-/// outside the spec tree. Moves only with a pin bump, and then
-/// deliberately.
-const ANCHORS_TOTAL: usize = 315;
+/// outside the spec tree. 315 → 316 at pin `f8dca42` (0.1.11): s53's
+/// `[gram.lex.shebang]`, the ONLY `spec/` delta in the whole wave — `#!`
+/// at byte offset zero, and at no other offset, is trivia, so an
+/// executable script is an ordinary translation unit. Moves only with a
+/// pin bump, and then deliberately.
+const ANCHORS_TOTAL: usize = 316;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -153,22 +162,25 @@ fn the_bundle_opens_verified_and_its_records_reference_bundled_programs() {
 
 #[test]
 fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
-    // The count ledger, lupin 0.1.10 edition (pin `613c3dc`): 267 corpus
-    // files (245 entries + 22 members) + 37 suite programs (7 UB triggers,
+    // The count ledger, lupin 0.1.11 edition (pin `f8dca42`): 280 corpus
+    // files (258 entries + 22 members) + 37 suite programs (7 UB triggers,
     // 8 twins, 9 fault litmuses + 7 twins, 5 witnesses — the T1 pair and
     // P1's protector form retired with issue #18: their `as bool` and `*u8`
     // signatures are outside the language now, see `UbRow::coverage` and
-    // `tests/ub/`, plus the issue #20 freeze-read twin) = 304 programs,
-    // 282 entries conform-run into reference records. The pin brought the
-    // mid-end/whole-program wave: s42/s43/s63 — four new corpus files (the
-    // #64 select litmus and the three s42 kernels), all four running clean
-    // here — see the corpus-harness ledger. A pin bump or a new suite file
+    // `tests/ub/`, plus the issue #20 freeze-read twin) = 317 programs,
+    // 295 entries conform-run into reference records. The pin brought the
+    // semantics wave: s74 (the correctness cluster), s75 (List element
+    // access as a load), s76 (containers in the ambient region), s77
+    // (`bytes()` as a view) and s78 (the relational range channel) — 13
+    // new corpus files, every one of them either running clean here at
+    // first sight or landing as the expected static-conservatism pairing
+    // — see the corpus-harness ledger. A pin bump or a new suite file
     // moves these numbers — move them *deliberately*, here and in the
     // corpus-harness ledger.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "613c3dc2bdec3b151c23fc200227f3a6230f68c4");
-    assert_eq!(summary.programs, 304);
-    assert_eq!(summary.records, 282);
+    assert_eq!(summary.pin, "f8dca42118a944a801b7a6d2709004ccfeb01572");
+    assert_eq!(summary.programs, 317);
+    assert_eq!(summary.records, 295);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

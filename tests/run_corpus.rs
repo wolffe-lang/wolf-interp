@@ -454,6 +454,57 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("kernels/churn_b3.lu", "exit(0)"),
     ("kernels/hot_counter.lu", "exit(0)"),
     ("kernels/hot_scale_versioned.lu", "exit(0)"),
+    // The semantics pin, `f8dca42` (0.1.11, s74…s78 + s53). The largest
+    // semantic movement the compiler has had in one wave, and ten of the
+    // thirteen new files reach `run` here at FIRST SIGHT — no new
+    // semantics were written on this side for any of them. That is the
+    // pass's headline, so be precise about what each one confirms:
+    //
+    // s76 (containers allocate in the AMBIENT region, dynamically scoped
+    // per D12): `region_container_reclaim.lu` builds a `List` in a callee
+    // that lands in its CALLER's region, grows it past the first chunk,
+    // and frees it wholesale sixteen times. This machine models regions
+    // dynamically and has always placed a callee's allocation in the
+    // ambient region, so the compiler's move — from "containers opt out
+    // of the region story" to "the ambient region at the allocation site"
+    // — is a move TOWARD this machine's reading, and the answer (2096128
+    // per round) is unchanged. `region_container_freeze_ok.lu` is the
+    // `freeze`-outlives half ([mem.region.freeze.1]).
+    // `region_escape_container.lu` runs to `exit(0)` here and is E1010
+    // upstream: the escape is a COMPILE-TIME region judgement this
+    // machine does not make, so it ledgers as static conservatism — the
+    // honest pairing, not a divergence. See the approximation contract.
+    //
+    // s77 (`s.bytes()` is a view over the receiver's own storage):
+    // `byte_view.lu` pins bytes UNSIGNED (`é` is 195, 169 — never
+    // negative) and the view's length as the byte length;
+    // `slice_boundary_sweep.lu` sweeps all 49 endpoint pairs of `é€` and
+    // counts exactly 6 defined and 15 in-range misses, which is the
+    // `lo <=u hi <=u len` domain plus a boundary probe per endpoint. Both
+    // agree here without a line of new code — the strongest evidence in
+    // the wave that the two slice domains are the same domain.
+    //
+    // s74 (the correctness cluster): `chan_drain_after_inclusive_loop.lu`,
+    // `select_single_arm_loop.lu`, `mut_param_aggregate_store.lu` and
+    // `match_narrow_scrutinee.lu` are all WIR/backend defects upstream —
+    // a cascading Braun trivial-φ, a printing-order block walk, a
+    // whole-aggregate store, an arm constant at the wrong width. This
+    // machine is a tree-walker with none of those mechanisms, so it is a
+    // clean oracle for every one of them, and it answers what the headers
+    // pin.
+    //
+    // s53: `shebang.lu` is the one file in the wave that DID need a
+    // reading here — `[gram.lex.shebang]`, the wave's only spec delta.
+    ("conc/chan_drain_after_inclusive_loop.lu", "exit(0)"),
+    ("conc/select_single_arm_loop.lu", "exit(0)"),
+    ("grammar/shebang.lu", "exit(0)"),
+    ("memory/mut_param_aggregate_store.lu", "exit(0)"),
+    ("memory/region_container_freeze_ok.lu", "exit(0)"),
+    ("memory/region_container_reclaim.lu", "exit(0)"),
+    ("memory/region_escape_container.lu", "exit(0)"),
+    ("strings/byte_view.lu", "exit(0)"),
+    ("strings/slice_boundary_sweep.lu", "exit(0)"),
+    ("typecheck/match_narrow_scrutinee.lu", "exit(0)"),
 ];
 
 #[test]

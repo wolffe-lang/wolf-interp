@@ -865,11 +865,30 @@ impl Walk<'_> {
             in_when: self.when_depth > 0,
         });
 
-        // E1101/W1101 — inside a task closure, a write to a name the closure
-        // did not declare is a write to captured state. `when` bodies are
-        // exempt (`[conc.when.body]` — the sync objects mediate). A name
-        // that resolves nowhere in the enclosing function (a module item, a
-        // prelude name) is not a capture; the walk never guesses about it.
+        // E1101/W1101 — assignment is the capture law's ASSIGNMENT spelling.
+        // W1101 rides along here and only here: it says the write "lands on
+        // the task's own copy", which is a claim about assignment to a
+        // by-value capture. The lend spellings (`(mut x).m()`, `f(mut x)`)
+        // report through the same door with `stays_inside = false` — see
+        // `capture_write`, and `conc/capture_mut_lend.lu`'s header, which
+        // pins E1101 with no `warns:` line.
+        self.capture_write(name, path.segments[0].span, true);
+    }
+
+    /// The capture law (`[conc.task.spawn]`, D14), one door for all three
+    /// spellings of a write to captured state.
+    ///
+    /// Inside a task closure, a write to a name the closure did not declare
+    /// is a write to captured state. `when` bodies are exempt
+    /// (`[conc.when.body]` — the sync objects mediate). A name that resolves
+    /// nowhere in the enclosing function (a module item, a prelude name) is
+    /// not a capture; the walk never guesses about it.
+    ///
+    /// `stays_inside` adds W1101, whose text is about an assignment landing
+    /// on the task's own copy. A `mut` lend is not that shape — it hands the
+    /// callee an exclusive window — so the lend spellings pass `false`, which
+    /// is also what the counterparty emits (E1101 alone, no W1101).
+    fn capture_write(&mut self, name: &str, span: Span, stays_inside: bool) {
         let capture = self.task_depth > 0 && self.when_depth == 0 && {
             let base = *self.task_scope_base.last().expect("task_depth > 0");
             let holds = |scopes: &[Vec<(String, bool)>]| {
@@ -879,20 +898,44 @@ impl Walk<'_> {
             };
             !holds(&self.scopes[base..]) && holds(&self.scopes[..base])
         };
-        if capture {
-            let span = path.segments[0].span;
-            self.statics.push(Diag::new(
-                "E1101",
-                span,
-                "conc.task.spawn",
-                format!(
-                    "this task writes to `{name}`, which it captures from the enclosing \
-                     function: unsynchronized mutable capture across tasks (D14 — copy, share \
-                     `imm`, or `move`; a `sync` type mediates shared writes)"
-                ),
-            ));
+        if !capture {
+            return;
+        }
+        self.statics.push(Diag::new(
+            "E1101",
+            span,
+            "conc.task.spawn",
+            format!(
+                "this task writes to `{name}`, which it captures from the enclosing \
+                 function: unsynchronized mutable capture across tasks (D14 — copy, share \
+                 `imm`, or `move`; a `sync` type mediates shared writes)"
+            ),
+        ));
+        if stays_inside {
             self.warn("W1101", span);
         }
+    }
+
+    /// A `mut` lend of a captured binding is a write (s74, wolf-lang#71).
+    ///
+    /// Both lend positions route here: the X1 moded receiver
+    /// `(mut xs).push(1)` and the call-site argument mode `f(mut n)`. The
+    /// judgement is deliberately narrow — a single-segment path, exactly the
+    /// shape `assign` judges — so `(mut xs[0]).m()` and every qualified path
+    /// still decline. `take` is not this law: it is a move, and no pinned
+    /// clause makes it a captured *write*.
+    fn capture_lend(&mut self, mode: ParamMode, place: &Expr) {
+        if mode != ParamMode::Mut {
+            return;
+        }
+        let ExprKind::Path(path) = &*place.kind else {
+            return;
+        };
+        if !path.is_single() {
+            return;
+        }
+        let name = path.segments[0].name.clone();
+        self.capture_write(&name, path.segments[0].span, false);
     }
 
     fn expr(&mut self, expr: &Expr) {
@@ -940,13 +983,16 @@ impl Walk<'_> {
                 self.intdot(expr, base, member);
                 self.expr(base);
             }
-            ExprKind::ModedReceiver { place, .. } => {
+            ExprKind::ModedReceiver { place, mode } => {
                 // `(mut l).push(…)` / `(take conn).close()` — the receiver
                 // surrenders exclusive or consuming access: W1002/W1003
                 // evidence for the head.
                 if let Some(head) = head_of(place) {
                     self.writes.push(head.to_owned());
                 }
+                // …and, inside a task closure, a `mut` receiver-lend of a
+                // captured binding is a write to captured state (E1101).
+                self.capture_lend(*mode, place);
                 self.expr(place);
             }
             ExprKind::Range { start, end, .. } => {
@@ -1170,6 +1216,13 @@ impl Walk<'_> {
         // through the argument (`[458,463]` = `mut a` on `mut_in_interp.lu`).
         if self.in_interp && arg.mode == Some(ParamMode::Mut) {
             self.warn("W0308", arg.span);
+        }
+        // …and, inside a task closure, a `mut` argument-lend of a captured
+        // binding is a write to captured state (E1101). Same law as the
+        // receiver spelling, so the same door — `f(mut n)` and `(mut n).m()`
+        // must never drift apart again (wolf-lang#71).
+        if let Some(mode) = arg.mode {
+            self.capture_lend(mode, &arg.expr);
         }
         self.expr(&arg.expr);
     }
@@ -1711,4 +1764,144 @@ fn parse_int_literal(text: &str) -> Option<i128> {
         (clean.as_str(), 10)
     };
     i128::from_str_radix(digits, radix).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every E-code the capture law raised over one program, with its span.
+    fn capture_codes(source: &str) -> Vec<(String, Span)> {
+        let program = crate::sema::load_source("t.lu", source).expect("loads");
+        analyze(&program)
+            .statics
+            .into_iter()
+            .filter(|d| d.code == "E1101")
+            .map(|d| (d.code.to_owned(), d.span))
+            .collect()
+    }
+
+    fn warn_codes(source: &str) -> Vec<String> {
+        let program = crate::sema::load_source("t.lu", source).expect("loads");
+        analyze(&program)
+            .warnings
+            .into_iter()
+            .map(|w| w.code)
+            .collect()
+    }
+
+    // ---- the capture law's three spellings (s74, wolf-lang#71) ------------
+    //
+    // The corpus pins the positive half at the pin's three `conc/capture_*`
+    // files. What it does NOT pin is the judgement's *narrowness*, and a
+    // capture check that fires too widely is how a false rejection ships.
+
+    #[test]
+    fn a_mut_receiver_lend_of_a_captured_binding_is_a_write() {
+        let found = capture_codes(
+            "fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() { (mut xs).push(1) })\n\
+             \x20   }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert_eq!(found.len(), 1, "the lend spelling raises E1101: {found:?}");
+    }
+
+    #[test]
+    fn a_mut_argument_lend_of_a_captured_binding_is_a_write() {
+        let found = capture_codes(
+            "fn bump(mut k: int) { k = k + 1 }\n\
+             fn main() -> !int {\n\
+             \x20   var n = 0\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() { bump(mut n) })\n\
+             \x20   }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert_eq!(found.len(), 1, "the arg spelling raises E1101: {found:?}");
+    }
+
+    #[test]
+    fn the_lend_spellings_raise_no_w1101() {
+        // W1101 says the write "lands on the task's own copy", which is a
+        // claim about ASSIGNMENT to a by-value capture. A `mut` lend is a
+        // different shape, the counterparty emits E1101 alone there, and the
+        // corpus headers carry `warns:` on the assignment file only.
+        let lend = warn_codes(
+            "fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() { (mut xs).push(1) })\n\
+             \x20   }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert!(
+            !lend.iter().any(|c| c == "W1101"),
+            "a lend is not a write-to-my-own-copy: {lend:?}"
+        );
+
+        let assign = warn_codes(
+            "fn main() -> !int {\n\
+             \x20   var n = 0\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() { n = 1 })\n\
+             \x20   }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert!(
+            assign.iter().any(|c| c == "W1101"),
+            "the assignment spelling still warns: {assign:?}"
+        );
+    }
+
+    #[test]
+    fn a_take_lend_is_not_this_law() {
+        // `take` is a move, not a captured *write*, and no pinned clause
+        // makes it one. Judging it here would be inventing a rule.
+        let found = capture_codes(
+            "fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() { (take xs).len })\n\
+             \x20   }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert!(found.is_empty(), "`take` is not the capture law: {found:?}");
+    }
+
+    #[test]
+    fn a_lend_of_the_closures_own_local_is_not_a_capture() {
+        let found = capture_codes(
+            "fn main() -> !int {\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() { var own = List[int]()\n\
+             \x20           (mut own).push(1) })\n\
+             \x20   }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert!(
+            found.is_empty(),
+            "a binding the closure declared is not captured: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_lend_outside_any_task_is_not_a_capture() {
+        let found = capture_codes(
+            "fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   (mut xs).push(1)\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert!(found.is_empty(), "no task, no capture law: {found:?}");
+    }
 }

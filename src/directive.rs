@@ -191,6 +191,13 @@ pub fn parse_header(source: &str) -> Result<Directives, DirectiveError> {
 
     for (index, raw) in source.lines().enumerate() {
         let lineno = index + 1;
+        // `[gram.lex.shebang]`: a `#!` line at byte offset 0 is trivia to the
+        // language, so it is trivia to the header too — an executable script
+        // still opens with a directive block, one line down. `index == 0` IS
+        // the offset test: only the first line of `lines()` begins at byte 0.
+        if index == 0 && raw.starts_with("#!") {
+            continue;
+        }
         // The block is the *leading* run of `//!` lines: the first line that
         // is not one ends it. (A stray `//!` deeper in the file is a comment,
         // not a directive.)
@@ -576,6 +583,33 @@ mod tests {
         let d = ok("//! check: pass\n//! phase: parse\n");
         assert_eq!(d.check, Some(Check::Pass));
         assert_eq!(d.phase, Some(Phase::Parse));
+    }
+
+    // ---- `[gram.lex.shebang]` (s53, pin `f8dca42`) ------------------------
+
+    #[test]
+    fn a_leading_shebang_is_trivia_to_the_header_too() {
+        // `grammar/shebang.lu`'s shape: the `#!` kernel line, then the
+        // ordinary directive block one line down. A shebang is trivia to the
+        // language, so it is trivia to the corpus tooling — otherwise an
+        // executable script could never be a corpus entry.
+        let d = ok("#!/usr/bin/env -S wolf run\n//! check: pass\n//! phase: run\n");
+        assert_eq!(d.check, Some(Check::Pass));
+        assert_eq!(d.phase, Some(Phase::Run));
+    }
+
+    #[test]
+    fn a_shebang_is_only_skipped_at_byte_zero() {
+        // Line two is not offset zero, so the `#!` ENDS the leading `//!`
+        // run exactly as any other non-directive line does — it does not
+        // silently resume the block after it. The `phase:` below it is
+        // therefore never seen, and an entry file without one is an error:
+        // the skip is surgical, not a general "ignore `#!` lines" rule.
+        let message = err("//! check: pass\n#!/usr/bin/env wolf\n//! phase: run\n");
+        assert!(
+            message.contains("phase"),
+            "the `phase:` under an off-byte-zero `#!` must not be read: {message}"
+        );
     }
 
     #[test]

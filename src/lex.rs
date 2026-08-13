@@ -510,6 +510,25 @@ impl<'a> Lexer<'a> {
             self.pos = 3;
         }
 
+        // `[gram.lex.shebang]`: a line beginning `#!` at byte offset 0 — and
+        // at no other offset — is trivia, consumed to the end of the line. It
+        // carries no meaning to the language; it exists so an executable
+        // script is an ordinary translation unit. The offset test is on
+        // `self.pos`, so a file that opened with a (rejected) BOM puts its
+        // `#!` at offset 3 and does NOT get one: "byte offset 0" is the
+        // clause's whole domain. The `\n` is left for `scan_normal`, exactly
+        // as a `//` line comment leaves it, so `[gram.lex.newline]`'s
+        // terminator machinery is untouched — and since no token precedes it,
+        // no terminator is inserted.
+        if self.pos == 0 && self.src.starts_with("#!") {
+            while let Some(ch) = self.peek() {
+                if ch == '\n' {
+                    break;
+                }
+                self.pos += ch.len_utf8();
+            }
+        }
+
         loop {
             match self.ctx.last() {
                 Some(Ctx::Str(_)) => {

@@ -71,3 +71,96 @@ fn no_corpus_file_needs_deep_interpolation_nesting() {
         assert!(lexed.max_str_depth <= 2, "{}", path.display());
     }
 }
+
+// ---------------------------------------------------------------------------
+// `[gram.lex.shebang]` (s53, pin `f8dca42`)
+//
+// The corpus witness `grammar/shebang.lu` pins the positive half: a `#!` line
+// at byte zero is trivia and the file underneath means what it always meant.
+// The clause's *other* half — "and at no other offset" — has no corpus file,
+// because a corpus file that carried a second `#!` would be a lex failure by
+// construction. Its own header says so: "A `#!` anywhere else in a file is
+// still the stray-byte error it always was, which is why this file has
+// exactly one." These pin the half the corpus cannot.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_shebang_at_byte_zero_is_trivia() {
+    let lexed = lex::lex("#!/usr/bin/env -S wolf run\nfn main() -> !int { 0 }\n");
+    assert!(
+        lexed.first_error().is_none(),
+        "a shebang at offset 0 is trivia: {:?}",
+        lexed.first_error()
+    );
+    // Trivia produces no token, so the first one is the `fn` keyword — and its
+    // span starts after the shebang line, which is what keeps every span in an
+    // executable script honest.
+    let first = lexed.tokens.first().expect("a token");
+    assert_eq!(first.span.start, 27, "the shebang line is consumed whole");
+}
+
+#[test]
+fn a_shebang_is_only_a_shebang_at_byte_zero() {
+    // One line down: `#` begins no token, so it is E0101 exactly as before.
+    let lexed = lex::lex("\n#!/usr/bin/env wolf\nfn main() -> !int { 0 }\n");
+    let first = lexed
+        .first_error()
+        .expect("a stray `#` off byte zero errors");
+    assert_eq!(first.code, wolf_interp::diag::E_UNEXPECTED_BYTE);
+
+    // Mid-file, after real code, likewise.
+    let lexed = lex::lex("fn main() -> !int { 0 }\n#!/usr/bin/env wolf\n");
+    assert_eq!(
+        lexed
+            .first_error()
+            .expect("a stray `#` mid-file errors")
+            .code,
+        wolf_interp::diag::E_UNEXPECTED_BYTE
+    );
+
+    // Not even indented by one space: "byte offset 0" is the whole domain.
+    let lexed = lex::lex(" #!/usr/bin/env wolf\nfn main() -> !int { 0 }\n");
+    assert_eq!(
+        lexed.first_error().expect("an indented `#!` errors").code,
+        wolf_interp::diag::E_UNEXPECTED_BYTE
+    );
+}
+
+#[test]
+fn a_byte_order_mark_pushes_the_shebang_off_byte_zero() {
+    // The BOM is rejected on its own account (`[gram.lex.source]`), and it
+    // also means the `#!` now starts at offset 3 — so it is NOT a shebang,
+    // and the stray `#` is a second diagnostic rather than a swallowed line.
+    let lexed = lex::lex("\u{feff}#!/usr/bin/env wolf\nfn main() -> !int { 0 }\n");
+    let codes: Vec<&str> = lexed.errors.iter().map(|d| d.code).collect();
+    assert_eq!(
+        codes.first().copied(),
+        Some(wolf_interp::diag::E_BYTE_ORDER_MARK)
+    );
+    assert!(
+        codes.contains(&wolf_interp::diag::E_UNEXPECTED_BYTE),
+        "the `#!` after a BOM is not at byte zero, so it stays a stray byte: {codes:?}"
+    );
+}
+
+#[test]
+fn a_shebang_only_file_is_empty_and_a_shebang_needs_no_trailing_newline() {
+    let lexed = lex::lex("#!/usr/bin/env wolf");
+    assert!(lexed.first_error().is_none());
+    assert!(
+        lexed.tokens.is_empty(),
+        "a file that is only a shebang has no tokens: {:?}",
+        lexed.tokens
+    );
+    // And the `\n` is left for the newline machinery rather than eaten, so a
+    // shebang inserts no terminator of its own before the first real token.
+    let lexed = lex::lex("#!/usr/bin/env wolf\nfn main() -> !int { 0 }\n");
+    assert!(
+        !matches!(
+            lexed.tokens.first().map(|t| &t.tok),
+            Some(lex::Tok::Term { .. })
+        ),
+        "no terminator is inserted before the first token: {:?}",
+        lexed.tokens.first()
+    );
+}

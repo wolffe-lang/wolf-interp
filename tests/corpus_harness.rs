@@ -234,14 +234,39 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             UNCHANGED in this range — s42/s43 are compiler-internal
     //             and s63's catalog lives outside `spec/` — so anchors stay
     //             315 and no new clause needs a reading.)
+    //   f8dca42 → 280 files (0.1.11: the semantics wave — s74 (the
+    //             correctness cluster), s75 (List element access lowers to
+    //             a load), s76 (containers allocate in the AMBIENT region,
+    //             dynamically scoped per D12), s77 (`s.bytes()` is a view
+    //             over the receiver's own storage) and s78 (an affine
+    //             relational channel in the range analysis), plus s53's
+    //             script mode. The corpus grows 13. Eleven run clean on
+    //             this machine at first sight — including all four of the
+    //             wave's semantic witnesses (`memory/region_container_
+    //             reclaim.lu`, `memory/region_container_freeze_ok.lu`,
+    //             `strings/byte_view.lu`, `strings/slice_boundary_sweep.lu`),
+    //             which is the differential's real finding: the compiler
+    //             moved its lowering and this machine's independent reading
+    //             already agreed. Two land as static conservatism
+    //             (`memory/region_escape_container.lu`'s E1010, a compile-
+    //             time region judgement this machine does not make; and
+    //             `conc/capture_mut_arg.lu`/`capture_mut_lend.lu` became
+    //             MATCHES this round when the capture law grew its lend
+    //             spellings — see `lint::Walk::capture_lend`). Coverage
+    //             ratchets 103 → 107 and anchors 315 → 316: s53's
+    //             `[gram.lex.shebang]` is the wave's only spec delta, and
+    //             it needed a reading here — a `#!` line at byte offset
+    //             zero is trivia to the lexer AND to the directive header
+    //             parser, which is why `grammar/shebang.lu` arriving broke
+    //             all 14 sibling files in `grammar/` until it was read.)
     let report = report();
     assert_eq!(
         report.total(),
-        267,
+        280,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 245);
+    assert_eq!(report.entries(), 258);
     assert_eq!(report.members(), 22);
 }
 

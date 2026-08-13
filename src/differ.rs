@@ -146,6 +146,17 @@ use crate::schema;
 /// which is what makes it a front-end decode bug rather than anything the
 /// mid-end did. Filed upstream; the file's `phase: wir` pin — written when
 /// BOTH executors had the bug — should advance to `run` with the fix.
+/// RE-CONFIRMED at pin `f8dca42` (0.1.11) against a counterparty rebuilt
+/// from a deleted `target/`: byte-identical stdout shas to the original
+/// filing, on all three tiers. wolf-lang#76 stays open.
+///
+/// DIV-2026-018 (0.1.11) is NOT in this list and cannot be: the list is
+/// keyed by corpus file and no corpus file witnesses it. `s[..]` — a bare
+/// range with neither endpoint — is `fail(E0201)`@parse here and `exit(0)`
+/// on all three counterparty tiers, where `[gram.expr.primary]`'s
+/// `range_expr` admits `a..`, `..b` and `a..b` but never a bare `..`. It
+/// lives in `docs/divergence-log.md` until a witness exists, as
+/// wolf-lang#71's stdout finding did. Filed upstream as wolf-lang#88.
 pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[(
     "lints/raw_interp_braces.lu",
     "DIV-2026-017",
