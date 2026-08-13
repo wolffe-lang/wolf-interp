@@ -1,5 +1,135 @@
 # Changelog
 
+## 0.1.11 — 2026-08-13
+
+THE ORACLE HELD: the semantics-wave re-pin. Pin bumped `613c3dc` →
+`f8dca42` (latest green trunk, CI run 31676830124; the two red runs in
+the range were not taken). This is the largest semantic movement the
+compiler has had in one wave — s74 (the correctness cluster), s75
+(`List` element access lowers to a load, bounds checks caller-side and
+eliminated when a relational range channel proves them), s76
+(containers allocate in the **ambient region** at the allocation site,
+dynamically scoped per D12), s77 (`s.bytes()` is a **view** over the
+receiver's own storage), s78 (an affine relational channel in the range
+analysis), plus s53 (script mode) and the D43/D44 rulings. The corpus
+grows 13: 267 → 280 files. Ratchet 103 → 107, anchors 315 → 316, bundle
+317 programs / 295 records.
+
+- **The wave moved the compiler's lowering out from under three
+  semantic areas, and this machine's independent reading already agreed
+  on all three.** Ten of the thirteen new corpus files reach `run` here
+  at FIRST SIGHT with no new semantics written on this side —
+  including all four of the wave's own semantic witnesses
+  (`memory/region_container_reclaim.lu`,
+  `memory/region_container_freeze_ok.lu`, `strings/byte_view.lu`,
+  `strings/slice_boundary_sweep.lu`). The corpus-wide differential
+  found **no new divergence** at any tier.
+- **Probe 1 — region-scoped container lifetime (s76): agree on every
+  defined shape, one gap declared.** A container freed with its region,
+  a callee allocating into its *caller's* region (D12), growth across
+  region chunks, `freeze` outliving the building block, nested regions:
+  identical on `lupin`, `--native` and `--release`. s76 moved *toward*
+  this machine's dynamic reading. The escape is the gap:
+  `memory/region_escape_container.lu` is E1010 on every compiler lane
+  and `exit(0)` here, and — unlike the handle/pool escape, which traps
+  `region-fault` — this machine does not catch it dynamically either.
+  Conservatism in the ledger's sense, since no conforming program can
+  observe it, but a real modelling gap, now declared as approximation
+  contract **§6.13** rather than left implied.
+- **Probe 2 — byte views and the slice domain (s77): agree,
+  exhaustively.** The domain was swept, not sampled: all 100 endpoint
+  pairs of `s.get(a..b)` over the mixed-width `é€` from −2 to 7,
+  **including the entire negative half the corpus file does not
+  reach**, are byte-identical across `lupin`/`--native`/`--release` —
+  six defined pairs, and a *miss* rather than a wrap-around for every
+  negative endpoint, which is the `lo <=u hi <=u len` unsigned reading
+  agreeing on both sides. The trapping form `s[a..b]` was swept over 29
+  ugly pairs (negative, inverted, mid-codepoint, past-end,
+  degenerate-empty, open-ended, inclusive, `^n` from-end): **28 of 29
+  agree exactly.** `bytes()` is unsigned 0..=255 on both, byte-length
+  on both.
+- **Probe 3 — line-atomic print (D43): agree, and this machine was the
+  prior art.** The interpreter renders a whole line and hands it to one
+  `out()` call, with no yield point inside a `print`, so it was
+  line-atomic by construction before D43 was ruled. Measured rather
+  than asserted: eight tasks × 40 long multi-segment interpolated
+  lines, 20 runs of `--native` = **6400 lines, 0 torn, across 20
+  DISTINCT interleavings** (the interleavings differ every run, which
+  is what proves the threads race and the probe is not measuring a
+  serialization). Same program here: 3200 lines, 0 torn, one
+  interleaving. Nothing to file.
+- **DIV-2026-018 FILED as wolf-lang#88 — the compiler admits a bare `..`
+  range that the grammar excludes.** The 29th ugly pair: `s[..]` is
+  `fail(E0201)`@parse here and `exit(0)` printing `ok 5` there, on all three
+  run-reaching tiers. `[gram.expr.primary]`'s
+  `range_expr ::= r_end (('..'|'..=') r_end?)? | ('..'|'..=') r_end`
+  has two alternatives and **neither admits a bare `..`** — the first
+  needs a leading endpoint, the second a trailing one. Triage case 2,
+  compiler bug, and the over-acceptance is in the **parser**, not the
+  slice path: `s[..=]` also parses and answers `trap(bounds)`, while
+  `s.get(..)`, `let r = ..` and `xs[..]` parse and then decline
+  `unsupported`@`resolve` with no diagnostic. Class `verdict`, not a
+  soundness candidate. No corpus file witnesses it, so it takes no
+  `FILED_DIVERGENCES` entry and is recorded in the log until one
+  exists. The counter-reading (that the grammar should gain `..`) is
+  recorded with it; this machine is not moving its parser ahead of the
+  ruling.
+- **wolf-lang#76 CONFIRMED, unchanged.** DIV-2026-017 re-verified at
+  the new pin against a counterparty rebuilt from a **deleted**
+  `target/`: still `"{who}` there and `{who}` here, **byte-identical
+  shas to the original filing**, still the same on `--checked`,
+  `--native` and `--release`. Nothing in the wave touched the lexer's
+  literal decode. Still one-sided in this machine's favour — the corpus
+  header's own `stdout="{who}"` agrees with us — and the file's
+  `phase: wir` pin still masks it.
+- **`[gram.lex.shebang]` READ — the one clause in the wave that needed
+  work here, and it broke fourteen files on arrival.** s53's new spec
+  delta makes a `#!` line at byte offset 0, and no other offset, trivia.
+  `grammar/shebang.lu` arriving meant the whole `grammar/` **directory
+  module** failed to resolve — every one of its 14 sibling files
+  answered `fail(E0101)` at the stray `#`, a 14-file corpus regression
+  from one unread clause. Read in two places, because a shebang is
+  trivia to the language *and* to the corpus tooling: the lexer skips it
+  to end-of-line, leaving the `\n` for `[gram.lex.newline]`'s terminator
+  machinery exactly as a `//` comment does; and
+  `directive::parse_header` skips it so the `//!` block can start one
+  line down. Both key on offset zero (`self.pos == 0` / `index == 0`),
+  so a file that opens with a rejected BOM puts its `#!` at offset 3 and
+  does not get one.
+- **wolf-lang#71's interpreter half LANDED.** 0.1.10 deferred it on
+  purpose — "it lands once wolf-lang#71's fix fixes the span to match".
+  s74 landed the compiler's half, so this round landed ours.
+  `lint::Walk::capture_lend` routes both lend spellings through the
+  same door as assignment: the X1 moded receiver `(mut xs).push(1)` and
+  the call-site argument mode `f(mut n)`, which "must never drift apart
+  again". Spans are the counterparty's byte for byte — `[913,915]`,
+  `[562,563]`, `[545,546]`. W1101 is deliberately NOT emitted for the
+  lend spellings (its text is about a write landing on the task's own
+  copy, an assignment's shape), matching both the counterparty and the
+  corpus headers' `warns:` lines. This also retires the second finding
+  recorded under #71: the mut-lend program printed `0` here and `2`
+  there, and **neither machine runs it now** — both reject it with the
+  same code and span, so the stdout divergence is unreachable.
+- **The `--counterparty-tier` lane audited, independently of itself.**
+  The lane that found the entire dynamic corpus going uncompared was
+  re-verified by measuring both sides' `phase_reached` per entry per
+  tier outside the runner — deriving the audit from the lane it audits
+  would be circular. It is still comparing what it claims. It also
+  showed something the 0.1.10 table did not: **the three run-reaching
+  lanes are not nested.** `checked` reaches `run` on more files than
+  `native` (127 vs 122) yet compares fewer (114 vs 116), because
+  `checked` declines the conc tier while `native` declines most of the
+  unsafe/region/shared tier. The honest coverage figure is the
+  **union — 129 files**, with 101 compared by all three; one lane alone
+  would miss up to 15. Of this machine's 185 run-reaching entries, **56
+  are met by no counterparty lane at all** — the residue to drive down.
+- **Surfaces:** `--version` prints `lupin 0.1.11 (wolf-interp, reference
+  interpreter at pin f8dca42)`. Corpus walk 280 files / 0 mismatch (170
+  match, 8 dynamic counterparts, 33 conservatism, 47 out-of-scope);
+  bundle 317 programs / 295 records, anchors covered 107 of 316;
+  differential GREEN at all four tiers, one filed divergence at the
+  three run-reaching ones. Full suite 588 tests green.
+
 ## 0.1.10 — 2026-08-12
 
 THE RUN TIER FINALLY COMPARES: the mid-end/whole-program re-pin. Pin
