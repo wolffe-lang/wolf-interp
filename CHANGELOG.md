@@ -1,5 +1,140 @@
 # Changelog
 
+## 0.1.12 — 2026-08-13
+
+THE OWN-LEDGER PASS, then the re-pin. Two of this machine's own defects
+first — wolf-interp#24 fixed, wolf-interp#25 measured and deliberately
+deferred — and then pin `f8dca42` → `4e316ad` (latest green trunk, CI
+run 31742412670, `headSha` matching). Corpus grows 3: 280 → 283 files.
+Ratchet holds 107, anchors hold 316 (the range touches **no** `spec/`
+file), bundle 320 programs / 298 records.
+
+- **wolf-interp#24 FIXED: `List.push` was quadratic, and the cost was
+  never in `push`.** `items.push(Slot::live(arg))` is an amortized O(1)
+  `Vec` append and always was. The cost was the *call*: `eval_method`
+  copied the receiver out of its slot (`read_path`), copied it a second
+  time to compare against (`original_receiver`), compared the two whole
+  values to decide whether the method had written, and copied the result
+  back — **four traversals of the whole list to append one element**. So
+  every `List`-returning std function was quadratic on the reference
+  lane, and wolf-std could not write around it.
+
+  The fix is to **lend** the receiver instead of copying it (`Lend` in
+  `src/eval/mod.rs`). A builtin container — `List`, `Map`, `str` —
+  always dispatches to `builtin::method` (`method_of` answers only for
+  `Value::Struct`), and no container arm of `builtin::method` re-enters
+  the machine, so the value can leave its slot for the duration of the
+  call and return to it. Nothing observable moves: the read is charged
+  at the same moment in the same order, and the lend is taken *after*
+  the arguments are evaluated so `xs.push(xs.len)` still reads `xs`
+  through its parent while the receiver's tag is Reserved
+  (`corpus/memory/prov_two_phase.lu`'s two-phase window, untouched).
+
+  Two details carry the correctness. Whether the lend ends in a *write*
+  is decided by an O(1) witness — `List.push` and `List.pop` are the
+  only two arms of `builtin::method` that mutate a receiver
+  (`builtin::mutates_receiver`), and both change the element count
+  exactly when they change the value — so `[mem.region.freeze.4]`
+  (issue #20, a read-only method must not write back) still holds
+  without the whole-value comparison. And a *mutating* lend asks
+  `writeback_would_trap` first: `write_path` faults before it stores, so
+  on that path the receiver must survive the call unchanged, which only
+  a copy can promise — the lend is declined there and the old path runs.
+  In a debug build the whole-value comparison is kept as a
+  `debug_assert_eq!` against the witness, so the entire test suite and
+  corpus check the classification on every method call rather than
+  trusting it.
+
+  Measured, same program at four sizes (`var xs = List[int]()`, N
+  pushes, release build, this box):
+
+  | N | before | after |
+  |---|---|---|
+  | 4 000 | 0.40 s | 0.038 s |
+  | 8 000 | 1.44 s | 0.055 s |
+  | 16 000 | 6.18 s | 0.100 s |
+  | 32 000 | 30.33 s | 0.191 s |
+
+  Quadratic (4× per doubling) to linear (~1.9× per doubling); **159× at
+  32k**, and the compiler's two run-reaching rungs do 32k in 0.14 s, so
+  the oracle is now within a small factor of the thing it is oracle for
+  instead of 200× off it. The gate that matters is not the clock: the
+  full `lupin corpus` report — human and `--json` — is **byte-identical
+  before and after the change**.
+
+- **wolf-interp#25 MEASURED, and deferred as a named design task.** A
+  container escaping its region still runs to `exit(0)` here and is
+  E1010 upstream. The issue diagnosed this as containers lacking
+  identity in the value model; re-measured, that is half the story, and
+  the other half is more useful: **the struct sibling escapes too**
+  (`memory/region_escape_local.lu`, also `exit(0)`), and
+  `Value::Struct` *already carries* `home: Option<RegionId>`. The real
+  gap is that nothing ever checks a tier-0 value's home against its
+  region's liveness — `home` has exactly one reader today
+  (`frozen_container`, on the write path, asking only about `freeze`),
+  and `RegionState::Freed` is consulted for pools and handles and never
+  for a value. `docs/approximation-contract.md` §6.14.1 now carries the
+  three-part design that closes it, concretely enough to execute:
+  give `List`/`Map` a `home`, give `home` a second reader on both the
+  read and write paths, and hand-write `PartialEq` so identity never
+  leaks into a value's equality. NOT done here on purpose — it changes
+  the trap surface, and landing it in the same pass as a rewritten
+  method-call path and a pin bump would make any resulting divergence
+  un-bisectable.
+
+- **The re-pin: `str_from_utf8` is the only implementation work the
+  wave asked for.** Three new corpus files, one per sprint. s80's
+  `memory/foreign_root_aliasing.lu` — the witness for a **real
+  miscompile**, where the release tier answered `x=5 y=5` for a program
+  whose answer is `x=5 y=7` — runs clean here at first sight and always
+  did: there was never a bug on this side, because the aliasing question
+  the optimizer got wrong is one an interpreter never has to ask. It is
+  the cleanest demonstration of what the oracle is for that this project
+  has produced. s81's `strings/equality_lanes.lu` likewise ran clean.
+- **`str_from_utf8`, implemented against a spec that does not mention
+  it.** s81 adds the language's first bytes-to-`str` path — the byte
+  SOURCE to match s77's byte VIEW — and it validates, because an
+  unchecked one is the forging hole for "every `str` is valid UTF-8".
+  It has **no `spec/` clause**: it is specified by its prelude signature
+  (`List[int] -> str ! {utf8}`), its doc comments, and one corpus
+  witness. That gap is declared rather than papered over. Beyond the
+  witness's seven refusals, **38 ugly inputs were probed against both
+  machines and all 38 agree byte for byte**: lone continuations (0x80,
+  0xBF), truncations at 2/3/4 bytes, overlongs (C0 AF, C1 BF, E0 80 AF,
+  F0 80 80 AF), surrogates (D800, DFFF) against valid U+D7FF,
+  past-U+10FFFF (F4 90 80 80, F5, F7), never-bytes (FE, FF, C0, F8),
+  non-byte elements (256, −1, −128, 1000000), interior NUL, the empty
+  list, and the boundary scalars U+0080/U+07FF/U+0800/U+FFFF/U+10000/
+  U+10FFFF. The failure is the `utf8` row with an empty payload — tag
+  identity confirmed on both machines, and the counterparty's own
+  unreachable-arm warning proves the row is exactly `{utf8}`.
+- **All three counterparty tiers GREEN, and the lanes grew.** `checked`,
+  `native` and `release` each report exactly one divergence, the same
+  one, byte for byte: DIV-2026-017. Both machines now execute **117**
+  (checked), **119** (native) and **109** (release) of the 261 entries,
+  up from 107/107/98 — the counterparty reaches `run` on 130/125/115,
+  up from 120/113/104. Upstream s82 consumes these numbers; they moved,
+  and the release lane moved most.
+- **Known, and NOT this release's doing: the mutation arm of `fuzz_smoke`
+  got slow at this pin.** `mutated_corpus_files_never_crash` mutates 3000
+  randomly picked corpus files and runs each through all four rungs; the
+  pinned seed is fixed but the FILE SET is not, so 280 → 283 files
+  reshuffles which mutants get generated, and this pin's draw includes
+  some that run to (or near) `Machine::FUEL`'s 50-million-step rail. It is
+  bounded — the rail is what stops them — but it now costs many minutes
+  where it used to be quick. Verified NOT to be the lend's doing by
+  re-running it with `src/` stashed at this same pin: equally slow. CI sets
+  no step timeout, so this slows the build rather than failing it. Worth a
+  look before the next pin: either a per-case wall-clock bound in
+  `exercise`, or a smaller `CASES` for the mutation arm.
+- **#76 (DIV-2026-017) re-confirmed OPEN and unchanged.**
+  `lints/raw_interp_braces.lu`: `r"{who}"` prints `{who}` here and
+  `"{who}` upstream, whose raw-literal decode keeps the opening quote of
+  the two-character `r"` delimiter. Identical on all three run-reaching
+  tiers, which is still how it is known not to be the mid-end's doing.
+  `[gram.lex.str.raw]` and the corpus header's own `stdout="{who}"` both
+  agree with this machine. Unfixed upstream across three sprints.
+
 ## 0.1.11 — 2026-08-13
 
 THE ORACLE HELD: the semantics-wave re-pin. Pin bumped `613c3dc` →
