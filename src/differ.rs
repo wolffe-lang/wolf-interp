@@ -148,7 +148,10 @@ use crate::schema;
 /// BOTH executors had the bug — should advance to `run` with the fix.
 /// RE-CONFIRMED at pin `f8dca42` (0.1.11) against a counterparty rebuilt
 /// from a deleted `target/`: byte-identical stdout shas to the original
-/// filing, on all three tiers. wolf-lang#76 stays open.
+/// filing, on all three tiers. RE-CONFIRMED AGAIN at pin `4e316ad`
+/// (0.1.12) — same two shas, same three tiers, and it is now the ONLY
+/// divergence any tier reports. wolf-lang#76 stays open across three
+/// more compiler sprints (s79, s80, s81).
 ///
 /// DIV-2026-018 (0.1.11) is NOT in this list and cannot be: the list is
 /// keyed by corpus file and no corpus file witnesses it. `s[..]` — a bare

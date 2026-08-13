@@ -190,6 +190,34 @@ enum Receiver {
     Expr(Expr),
 }
 
+/// A method receiver that is **lent** to the call instead of copied into it
+/// (issue #24).
+///
+/// Lending is not a semantic change; it is the same value semantics arranged
+/// so the machine stops paying for them. `[mem.model.value]` says a receiver's
+/// value passes whole and comes back whole, and it still does — the value
+/// leaves its slot for the duration of the call and returns to it, and the
+/// only thing that is *not* done is copying it twice and comparing the copies.
+/// What that costs is the difference between appending to a `List` and
+/// rebuilding it: `xs.push(v)` was four traversals of `xs`, so a loop of
+/// pushes was quadratic and every `List`-returning std function with it.
+///
+/// The receivers that can be lent are the builtin containers, which is the
+/// conjunction of three facts: [`Machine::method_of`] answers only for
+/// `Value::Struct`, so they always dispatch to [`builtin::method`]; no
+/// container arm of `builtin::method` re-enters the machine, so nothing can
+/// observe the slot while the value is out of it; and their copies are the
+/// expensive ones. An impl-block method keeps the copy — it runs arbitrary
+/// user code, which can reach the receiver's place by other names.
+#[derive(Debug, Clone, Copy)]
+struct Lend {
+    /// The method is one of the two arms of [`builtin::method`] that take the
+    /// receiver's elements mutably, per [`builtin::mutates_receiver`]. Only a
+    /// mutating lend can end in a write, and only a mutating lend has to ask
+    /// whether that write could fault.
+    mutating: bool,
+}
+
 /// What the `}` of a `region … { … }` block does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SugarExit {
@@ -1206,15 +1234,32 @@ impl Machine {
 
     /// Reads through a path: exclusivity first, then the slot's own state.
     fn read_path(&mut self, path: &Path, span: Span) -> EResult<Value> {
+        self.read_claim(path, span)?;
+        match self.resolve(path) {
+            Some((slot, _)) => Ok(slot.value.clone()),
+            // `read_claim` already answered for the place; it cannot vanish
+            // between the claim and the copy.
+            None => unsupported(format!("`{path}` does not denote a place at run time")),
+        }
+    }
+
+    /// Everything a read of `path` *does* — the exclusivity check, the
+    /// `Moved` trap, the rule fire, the provenance access — with the copy of
+    /// the value left out.
+    ///
+    /// [`read_path`] is this plus the copy. Splitting them is what lets a
+    /// method receiver be **lent** rather than copied (issue #24): the read
+    /// is charged at exactly the moment and in exactly the order it always
+    /// was, but a `List` receiver need not be deep-copied to be handed to
+    /// `List.push`. See [`Machine::lend_path`].
+    fn read_claim(&mut self, path: &Path, span: Span) -> EResult<()> {
         self.check_access(path, Access::Shared, span)?;
         let display = path.to_string();
         match self.resolve(path) {
             None => unsupported(format!("`{display}` does not denote a place at run time")),
-            Some((slot, None)) => {
-                let value = slot.value.clone();
+            Some((_, None)) => {
                 self.fire(Rule::PlacePath, span, &format!("read `{display}`"));
-                self.access_place(path, AccessKind::Read, span)?;
-                Ok(value)
+                self.access_place(path, AccessKind::Read, span)
             }
             Some((_, Some((moved_at, depth)))) => {
                 // Name the path that actually moved, which may be a *prefix* of
@@ -1231,6 +1276,52 @@ impl Machine {
                 )
             }
         }
+    }
+
+    /// Takes a lent receiver's value out of its slot, leaving [`Value::Unit`]
+    /// behind for the duration of the call.
+    ///
+    /// The placeholder is unobservable: a receiver is only lent when it is a
+    /// builtin container (`List`, `Map`, `str`), those dispatch to
+    /// [`builtin::method`] and never to an impl block ([`Machine::method_of`]
+    /// answers only for `Value::Struct`), and no container arm of
+    /// `builtin::method` re-enters the machine. The arguments have already
+    /// been evaluated by this point, so `xs.push(xs.len)` read `xs` through
+    /// its parent while the value was still home.
+    ///
+    /// The slot's [`SlotState`] is deliberately untouched: lending is not
+    /// moving. A receiver whose slot is `Moved` still lends its bytes, exactly
+    /// as the copy path would have copied them.
+    fn lend_path(&mut self, path: &Path) -> Value {
+        match self.resolve(path) {
+            Some((slot, _)) => std::mem::replace(&mut slot.value, Value::Unit),
+            None => Value::Unit,
+        }
+    }
+
+    /// Ends a lend that did not change the value: the bytes go back where they
+    /// came from, and *nothing else happens*. `[mem.region.freeze.4]` (issue
+    /// #20) says a method that only read its receiver performed a read, so
+    /// there is no write to check, to guard against a freeze, or to fire.
+    fn restore_lent(&mut self, path: &Path, value: Value) {
+        if let Some((slot, _)) = self.resolve(path) {
+            slot.value = value;
+        }
+    }
+
+    /// Whether [`write_path`](Machine::write_path) would fault *before* it
+    /// stored — the three guards it consults ahead of touching the slot.
+    ///
+    /// Pure: it reports, it never fires or traps. A lend is only taken when
+    /// this is false, which is what keeps the lend honest. `write_path`
+    /// faults before it writes, so on a faulting write-back the receiver has
+    /// to survive the call intact — and a lend, having handed the value to
+    /// the method, cannot produce the old one again. Asking first costs three
+    /// cheap lookups; being wrong would cost a wrong program.
+    fn writeback_would_trap(&self, path: &Path) -> bool {
+        self.read_param_write(path).is_some()
+            || self.access.conflict(path, Access::Exclusive).is_some()
+            || self.frozen_container(path).is_some()
     }
 
     /// Moves out of a path: the source place becomes uninitialized
@@ -4486,6 +4577,29 @@ impl Machine {
         }
     }
 
+    /// Whether this receiver can be lent to this call rather than copied into
+    /// it — see [`Lend`].
+    ///
+    /// `List`, `Map` and `str` qualify; everything else keeps the copy.
+    /// `str.get(a..b)` is excluded because it reads its range off the *syntax*
+    /// before ordinary argument evaluation, and so wants the value in hand
+    /// before the point a lend hands it over.
+    fn lendable(&mut self, path: &Path, method: &str, args: &[Arg]) -> Option<Lend> {
+        if method == "get"
+            && let [arg] = args
+            && matches!(&*arg.expr.kind, ExprKind::Range { .. })
+        {
+            return None;
+        }
+        let (slot, _) = self.resolve(path)?;
+        match &slot.value {
+            value @ (Value::List(..) | Value::Map(_) | Value::Str(_)) => Some(Lend {
+                mutating: builtin::mutates_receiver(value, method),
+            }),
+            _ => None,
+        }
+    }
+
     fn eval_method(
         &mut self,
         receiver: &Receiver,
@@ -4494,16 +4608,36 @@ impl Machine {
         args: &[Arg],
         span: Span,
     ) -> EResult<Value> {
+        // A receiver whose value is a builtin container is **lent** rather than
+        // copied: the read is charged here exactly as it always was, but the
+        // value stays in its slot until the arguments have been evaluated and
+        // then moves — it is never deep-copied (issue #24). Copying it was
+        // what made `xs.push(v)` cost the whole list: a copy out, a second
+        // copy to compare against, a whole-value comparison and a copy back,
+        // four traversals of `xs` for one element appended, so a loop of
+        // pushes was quadratic and every `List`-returning std function with
+        // it.
+        let lend = match receiver {
+            Receiver::Place(path) if mode != Some(ParamMode::Take) => {
+                self.lendable(path, method, args)
+            }
+            _ => None,
+        };
         let (path, value) = match receiver {
             Receiver::Place(path) if self.slot_mut(path).is_some() => {
-                let value = self.read_path(path, span)?;
-                (Some(path.clone()), value)
+                if lend.is_some() {
+                    self.read_claim(path, span)?;
+                    (Some(path.clone()), None)
+                } else {
+                    let value = self.read_path(path, span)?;
+                    (Some(path.clone()), Some(value))
+                }
             }
             Receiver::Place(path) => {
                 let display = path.to_string();
                 return unsupported(format!("`{display}` does not denote a place at run time"));
             }
-            Receiver::Expr(expr) => (None, self.eval(expr)?),
+            Receiver::Expr(expr) => (None, Some(self.eval(expr)?)),
         };
         // `[mem.str.get]`: the boundary primitive's argument is a RANGE
         // whose endpoints may be open (`s.get(..2)`) or `^n` end-relative —
@@ -4512,7 +4646,7 @@ impl Machine {
         // evaluation would refuse it. `get` never mutates its receiver, so
         // the two-phase retag machinery below has nothing to observe here.
         if method == "get"
-            && let Value::Str(s) = &value
+            && let Some(Value::Str(s)) = &value
             && let [arg] = args
             && let ExprKind::Range {
                 start,
@@ -4555,11 +4689,50 @@ impl Machine {
         let previous = receiver_tag
             .as_ref()
             .map(|(key, alloc, child)| self.prov().rebind_place(key, *alloc, *child));
+        // The lend's second half. It happens *here*, after the arguments were
+        // evaluated, so `xs.push(xs.len)` still reads the receiver through its
+        // parent while the receiver's fresh tag is Reserved — the two-phase
+        // window `corpus/memory/prov_two_phase.lu` pins is untouched by any of
+        // this.
+        //
+        // A mutating lend asks first whether the write-back can fault: it
+        // faults before it stores, so on that path the receiver must survive
+        // the call unchanged, which only the copy can promise. The question is
+        // asked now rather than at the read because `eval_args` is what
+        // establishes the `mut` arguments' held claims.
+        let mut lend = lend;
+        if let (Some(kind), Some(path)) = (lend, &path)
+            && kind.mutating
+            && self.writeback_would_trap(path)
+        {
+            lend = None;
+        }
+        let mut receiver_value = match (value, &path) {
+            (Some(value), _) => value,
+            (None, Some(path)) if lend.is_some() => self.lend_path(path),
+            // The lend was cancelled above; take the copy the general path
+            // wants. One deep copy, on a path that is about to fault anyway.
+            (None, Some(path)) => match self.resolve(path) {
+                Some((slot, _)) => slot.value.clone(),
+                None => Value::Unit,
+            },
+            (None, None) => unreachable!("a lend implies a place"),
+        };
+        // The lend's O(1) mutation witness, captured before the call.
+        let lent_len = lend.map(|_| builtin::list_len(&receiver_value));
         // Kept for the `[mem.region.freeze.4]` comparison below: a method
         // that returns its receiver unmodified performed only reads, and an
-        // unmodified write-back must not count as a write.
-        let original_receiver = value.clone();
-        let mut receiver_value = value;
+        // unmodified write-back must not count as a write. A lend answers the
+        // same question from the witness instead — except in a debug build,
+        // where it keeps the copy too and checks the two agree.
+        #[cfg(debug_assertions)]
+        let original_receiver = receiver_value.clone();
+        #[cfg(not(debug_assertions))]
+        let original_receiver = if lend.is_some() {
+            Value::Unit
+        } else {
+            receiver_value.clone()
+        };
         let mut final_args = evaluated.values.clone();
         // An impl-block method wins over the builtin surface for the types
         // that have one (user structs); the receiver is `self`, and its
@@ -4611,10 +4784,36 @@ impl Machine {
         // `[mem.region.edge.imm]` — so the store (and its exclusive-access
         // check and freeze guard) happens only when the method actually
         // changed the value. `frozen[0].body.words()` reads; it must not trap.
+        //
+        // A lent receiver ends its lend here, whatever the call did — a trap
+        // on `pop` of an empty `List` returns the list to its slot just as a
+        // successful `len` does. What is decided is only whether that return
+        // is *also* a write.
         let written = match (&path, &result) {
             (Some(path), Ok(_)) if mode == Some(ParamMode::Take) => {
                 self.fire(Rule::ModeTake, span, &format!("`take {path}` (receiver)"));
                 self.move_path(path, span).map(|_| ())
+            }
+            (Some(path), result) if lend.is_some() => {
+                let mutated = result.is_ok()
+                    && lend.is_some_and(|kind| kind.mutating)
+                    && lent_len.flatten() != builtin::list_len(&receiver_value);
+                debug_assert_eq!(
+                    mutated,
+                    result.is_ok() && receiver_value != original_receiver,
+                    "`builtin::mutates_receiver`/`list_len` disagreed with the whole-value \
+                     comparison for `{method}`"
+                );
+                let value = std::mem::replace(&mut receiver_value, Value::Unit);
+                if mutated {
+                    // `writeback_would_trap` said this store cannot fault
+                    // before it lands, so the slot never keeps the
+                    // placeholder.
+                    self.write_path(path, value, span)
+                } else {
+                    self.restore_lent(path, value);
+                    Ok(())
+                }
             }
             (Some(path), Ok(_)) if receiver_value != original_receiver => {
                 self.write_path(path, receiver_value, span)

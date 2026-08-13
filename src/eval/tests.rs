@@ -1385,3 +1385,94 @@ fn a_fn_value_call_missing_the_declared_mut_is_refused_not_run_wrong() {
         other => panic!("expected a refusal, got {other:?}"),
     }
 }
+
+// -- the lent receiver (issue #24) ------------------------------------------
+
+#[test]
+fn a_lent_receiver_is_the_same_machine_only_cheaper() {
+    // `List.push` used to cost the whole list: `read_path` copied it out,
+    // `eval_method` copied it again to compare against, the comparison walked
+    // it, and the write-back copied it back — four traversals per element
+    // appended, so a loop of pushes was quadratic. Lending the receiver
+    // (`Lend`) removes all four without moving a single observable: what this
+    // asserts is the *semantics*, and the corpus report being byte-identical
+    // across the change is what asserts the rest.
+    assert_eq!(
+        stdout(
+            "fn main() -> int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   var i = 0\n\
+             \x20   while i < 200 {\n\
+             \x20       (mut xs).push(i * 2)\n\
+             \x20       i = i + 1\n\
+             \x20   }\n\
+             \x20   print(\"{xs.len} {xs[0]} {xs[199]}\")\n\
+             \x20   0\n\
+             }\n",
+        ),
+        "200 0 398\n"
+    );
+}
+
+#[test]
+fn a_lend_hands_the_receiver_back_when_the_method_traps() {
+    // `pop` on an empty `List` faults `bounds`. The receiver was lent, so the
+    // slot held `Value::Unit` while the builtin ran — and a `defer` runs on
+    // the trap path (`[err.errdefer]`'s sibling), so it can SEE the slot. The
+    // list has to be back in it: were the placeholder left behind, `xs.len`
+    // below would refuse ("`()` has no member `len`") instead of printing 0.
+    let run = run("fn main() -> int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   (mut xs).push(1)\n\
+         \x20   defer print(\"after={xs.len}\")\n\
+         \x20   let a = (mut xs).pop()\n\
+         \x20   let b = (mut xs).pop()\n\
+         \x20   a + b\n\
+         }\n");
+    match &run.outcome {
+        Outcome::Trap(trap) => assert_eq!(trap.kind, TrapKind::Bounds),
+        other => panic!("expected the bounds trap, got {other:?}"),
+    }
+    assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "after=0\n");
+}
+
+#[test]
+fn a_two_phase_receiver_still_reads_itself_through_the_parent() {
+    // The lend is taken AFTER the arguments are evaluated, precisely so
+    // `xs.push(xs.len)` still reads `xs` through its parent while the
+    // receiver's fresh tag is Reserved (`corpus/memory/prov_two_phase.lu`).
+    // Taking it earlier would hand the argument a placeholder.
+    assert_eq!(
+        stdout(
+            "fn main() -> int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   (mut xs).push(7)\n\
+             \x20   (mut xs).push(xs.len)\n\
+             \x20   print(\"{xs[0]} {xs[1]} {xs.len}\")\n\
+             \x20   0\n\
+             }\n",
+        ),
+        "7 1 2\n"
+    );
+}
+
+#[test]
+fn a_read_only_method_on_a_lent_receiver_is_not_a_write() {
+    // `[mem.region.freeze.4]` (issue #20): a method that only read its
+    // receiver performed a read, legal through frozen data to any depth. The
+    // lend must not turn putting the value back into a write, or every
+    // `frozen.words()` would fault.
+    assert_eq!(
+        outcome(
+            "fn main() -> int {\n\
+             \x20   let held = freeze region r {\n\
+             \x20       var xs = List[int]()\n\
+             \x20       (mut xs).push(3)\n\
+             \x20       xs\n\
+             \x20   }\n\
+             \x20   held.len - 1\n\
+             }\n",
+        ),
+        Outcome::Exit(0)
+    );
+}

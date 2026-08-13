@@ -43,6 +43,10 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 /// `[mem.iter.range]` (both by `conc/chan_drain_after_inclusive_loop.lu`,
 /// the ch12 router shape) and `[mem.tier0.move]` (by
 /// `memory/mut_param_aggregate_store.lu`). All four run clean here.
+/// HELD at 107 by pin `4e316ad` (0.1.12): the s79/s80/s81 wave adds three
+/// corpus files and no new anchor citation — they cite `str.views`,
+/// `mem.str.get` and `mem.region.intra`, all already covered — and
+/// `str_from_utf8`, the wave's one new builtin, has no clause to cite.
 const RATCHET_FLOOR: usize = 107;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
@@ -53,8 +57,13 @@ const RATCHET_FLOOR: usize = 107;
 /// outside the spec tree. 315 → 316 at pin `f8dca42` (0.1.11): s53's
 /// `[gram.lex.shebang]`, the ONLY `spec/` delta in the whole wave — `#!`
 /// at byte offset zero, and at no other offset, is trivia, so an
-/// executable script is an ordinary translation unit. Moves only with a
-/// pin bump, and then deliberately.
+/// executable script is an ordinary translation unit. HELD at 316 by pin
+/// `4e316ad` (0.1.12), whose range touches no `spec/` file at all: s79 is
+/// bench infrastructure, s80 is a mid-end aliasing fix, and s81's
+/// `str_from_utf8` was added to the PRELUDE without a clause — it is
+/// specified by its signature, its doc comments and one corpus witness,
+/// which is a spec gap this machine implements against rather than a
+/// reading it can cite. Moves only with a pin bump, and then deliberately.
 const ANCHORS_TOTAL: usize = 316;
 
 fn crate_root() -> PathBuf {
@@ -162,25 +171,26 @@ fn the_bundle_opens_verified_and_its_records_reference_bundled_programs() {
 
 #[test]
 fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
-    // The count ledger, lupin 0.1.11 edition (pin `f8dca42`): 280 corpus
-    // files (258 entries + 22 members) + 37 suite programs (7 UB triggers,
+    // The count ledger, lupin 0.1.12 edition (pin `4e316ad`): 283 corpus
+    // files (261 entries + 22 members) + 37 suite programs (7 UB triggers,
     // 8 twins, 9 fault litmuses + 7 twins, 5 witnesses — the T1 pair and
     // P1's protector form retired with issue #18: their `as bool` and `*u8`
     // signatures are outside the language now, see `UbRow::coverage` and
-    // `tests/ub/`, plus the issue #20 freeze-read twin) = 317 programs,
-    // 295 entries conform-run into reference records. The pin brought the
-    // semantics wave: s74 (the correctness cluster), s75 (List element
-    // access as a load), s76 (containers in the ambient region), s77
-    // (`bytes()` as a view) and s78 (the relational range channel) — 13
-    // new corpus files, every one of them either running clean here at
-    // first sight or landing as the expected static-conservatism pairing
-    // — see the corpus-harness ledger. A pin bump or a new suite file
-    // moves these numbers — move them *deliberately*, here and in the
+    // `tests/ub/`, plus the issue #20 freeze-read twin) = 320 programs,
+    // 298 entries conform-run into reference records. The pin brought three
+    // compiler sprints and no spec delta: s79 (bench integrity), s80 (a
+    // real miscompile — `region.foreign` roots are role-scoped now) and
+    // s81 (str equality without a call, and `str_from_utf8`, the
+    // language's first bytes-to-str path) — 3 new corpus files, one per
+    // sprint. Two ran clean here at first sight; the third needed the
+    // `str_from_utf8` builtin, this pin's only implementation work — see
+    // the corpus-harness ledger. A pin bump or a new suite file moves
+    // these numbers — move them *deliberately*, here and in the
     // corpus-harness ledger.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "f8dca42118a944a801b7a6d2709004ccfeb01572");
-    assert_eq!(summary.programs, 317);
-    assert_eq!(summary.records, 295);
+    assert_eq!(summary.pin, "4e316ad7c4236be5bcf05231a16bbecadccc2018");
+    assert_eq!(summary.programs, 320);
+    assert_eq!(summary.records, 298);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

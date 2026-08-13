@@ -259,14 +259,36 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             zero is trivia to the lexer AND to the directive header
     //             parser, which is why `grammar/shebang.lu` arriving broke
     //             all 14 sibling files in `grammar/` until it was read.)
+    //   4e316ad → 283 files (0.1.12: three compiler sprints, one spec-silent
+    //             wave. s79 (bench integrity — the release runtime is now
+    //             actually linked into what the benchmarks measure), s80 (a
+    //             REAL MISCOMPILE fixed: `region.foreign` roots are
+    //             role-scoped, and the release tier had been folding a
+    //             program whose answer is `x=5 y=7` down to `x=5 y=5`), and
+    //             s81 (str equality lowers without a call; `str_from_utf8`
+    //             is the language's first bytes-to-str path, and it
+    //             validates). The corpus grows 3, one witness per sprint.
+    //             `memory/foreign_root_aliasing.lu` and
+    //             `strings/equality_lanes.lu` ran clean here at first sight
+    //             — the miscompile witness in particular, which is the
+    //             differential's finding in miniature: this machine never
+    //             had the bug there was to fix, on any tier.
+    //             `strings/from_utf8_border.lu` needed the builtin (see
+    //             `builtin::call`'s `str_from_utf8` arm), which is the only
+    //             implementation work this pin asked for. `spec/` is
+    //             UNCHANGED in the range — `str_from_utf8` has NO clause,
+    //             and is specified only by its prelude signature, its doc
+    //             comments and that witness — so anchors stay 316 and the
+    //             ratchet stays 107: the three new files cite `str.views`,
+    //             `mem.str.get` and `mem.region.intra`, all already covered.)
     let report = report();
     assert_eq!(
         report.total(),
-        280,
+        283,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 258);
+    assert_eq!(report.entries(), 261);
     assert_eq!(report.members(), 22);
 }
 

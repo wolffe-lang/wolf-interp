@@ -505,6 +505,33 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("strings/byte_view.lu", "exit(0)"),
     ("strings/slice_boundary_sweep.lu", "exit(0)"),
     ("typecheck/match_narrow_scrutinee.lu", "exit(0)"),
+    // The 0.1.12 pin, `4e316ad` (s79 + s80 + s81). Three files, one per
+    // sprint, and two of them reach `run` here at first sight.
+    //
+    // s80 (`region.foreign` roots are role-scoped, not region-scoped):
+    // `foreign_root_aliasing.lu` is a REAL MISCOMPILE's witness — the
+    // release tier was answering `x=5 y=5` for a program whose answer is
+    // `x=5 y=7`. This machine prints `x=5 y=7` and always did, on the one
+    // engine it has; there was never a bug here to fix, because the
+    // aliasing question the optimizer got wrong is one an interpreter
+    // never has to ask. It is the cleanest possible demonstration of what
+    // the oracle is FOR, and it now agrees on all three counterparty
+    // tiers including `--release`.
+    //
+    // s81 (the str-construction border): `equality_lanes.lu` pins that
+    // `==` on `str` is the same answer however it is lowered, and ran
+    // clean here at first sight. `from_utf8_border.lu` is the one file in
+    // this wave that needed a reading — `str_from_utf8` is a new prelude
+    // builtin with a `{utf8}` row and NO spec clause, so the implementation
+    // here is written against the prelude signature, the counterparty's
+    // doc comments and this witness (see `builtin::call`). Both machines
+    // agree on all 38 ugly inputs probed beyond the witness: lone
+    // continuations, truncations, overlongs, surrogates, past-U+10FFFF,
+    // never-bytes, non-byte elements (256, -1), interior NUL and the
+    // empty list.
+    ("memory/foreign_root_aliasing.lu", "exit(0)"),
+    ("strings/equality_lanes.lu", "exit(0)"),
+    ("strings/from_utf8_border.lu", "exit(0)"),
 ];
 
 #[test]

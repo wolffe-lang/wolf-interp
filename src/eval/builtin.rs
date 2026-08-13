@@ -99,6 +99,14 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "json_get",
     "json_type",
     "json_len",
+    // s81 (wolf-lang#58): the byte SOURCE. s77 gave the language a byte
+    // VIEW (`s.bytes()`) and deliberately no way back, because an unchecked
+    // bytes-to-str path is the forging hole — "every `str` is valid UTF-8"
+    // has to survive CONSTRUCTION, not only narrowing. This is the only
+    // entry in the language that builds a `str` out of arbitrary numbers,
+    // and it validates; its refusal is the `utf8` row, never a trap and
+    // never a cast. Pure — no capability, no sandbox category.
+    "str_from_utf8",
 ];
 
 /// Ambient single-segment names. `None` means "not in the stub", which the
@@ -343,6 +351,82 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
              counterparty's `wolf_mem::json`, and this machine declines the surface rather \
              than risk a second, guessed RFC 8259 reading"
         )),
+        // `str_from_utf8(b: List[int]) -> str ! {utf8}` (s81, wolf-lang#58) —
+        // the str-construction border, and the ONLY way a wolf program builds
+        // a `str` out of numbers.
+        //
+        // It VALIDATES, which is the whole reason it exists: s77 declined an
+        // unchecked bytes-to-str path because that is the forging hole, and
+        // every other str-producing entry only ever narrows an ALREADY-valid
+        // `str` on code-point boundaries. A cast would have made "every `str`
+        // is valid UTF-8" a hope instead of an invariant.
+        //
+        // Two refusals, in this order, and the order is observable because
+        // the first one is not UTF-8's:
+        //
+        // 1. An element outside `0..=255` is not a byte at all — `List[int]`
+        //    holds `int`s, so `300` and `-1` are reachable — and is refused
+        //    before the decoder ever sees the sequence.
+        // 2. The byte sequence then goes through Rust's `String::from_utf8`,
+        //    which is the same reference the counterparty uses on both of its
+        //    lanes (`wolf_mem::ubcheck::str_from_utf8` calls it; the native
+        //    lane's `__wolf_rt_str_from_utf8` calls `core::str::from_utf8`).
+        //    So the refused set here is exactly UTF-8's: a lone continuation
+        //    byte, a truncated multi-byte sequence, an overlong encoding, a
+        //    surrogate (U+D800..U+DFFF), and a scalar past U+10FFFF.
+        //
+        // An interior NUL is VALID text and is accepted — a wolf `str` carries
+        // its length, so nothing terminates — and the empty list decodes to
+        // the empty string. Both are pinned by
+        // `corpus/strings/from_utf8_border.lu`.
+        //
+        // The failure is the `utf8` ROW with an EMPTY payload, matching
+        // `Value::ErrTag { tag: "utf8", payload: Vec::new() }` on the checked
+        // lane and rc≠0 on the native one. Bytes off a socket are data, and
+        // mis-encoded data is an outcome a caller handles with `else`.
+        "str_from_utf8" => {
+            let Some(Value::List(items, _)) = args.first() else {
+                return unsupported("`str_from_utf8` takes a `List[int]` of bytes".to_owned());
+            };
+            let mut bytes: Vec<u8> = Vec::with_capacity(items.len());
+            for slot in items {
+                let Value::Int(n, _) = slot.value else {
+                    // Unreachable from typed source — sema types the argument
+                    // `List[int]` — so this is the counterparty's `refuse`
+                    // ("unmodelled"), NOT the `utf8` row. Conflating the two
+                    // would answer a row where the compiler answers nothing.
+                    return unsupported(format!(
+                        "`str_from_utf8` was given a list holding {}, not bytes",
+                        slot.value.kind()
+                    ));
+                };
+                match u8::try_from(n) {
+                    Ok(byte) => bytes.push(byte),
+                    Err(_) => {
+                        machine.note(
+                            Rule::ErrUnion,
+                            span,
+                            "`str_from_utf8` yields the `utf8` row",
+                        );
+                        return Ok(error("utf8"));
+                    }
+                }
+            }
+            match String::from_utf8(bytes) {
+                Ok(text) => {
+                    machine.allocate(span, "str_from_utf8");
+                    Ok(Value::Str(text))
+                }
+                Err(_) => {
+                    machine.note(
+                        Rule::ErrUnion,
+                        span,
+                        "`str_from_utf8` yields the `utf8` row",
+                    );
+                    Ok(error("utf8"))
+                }
+            }
+        }
         // Collection constructors are allocation sites (`[mem.model.alloc]`),
         // so they land in the current region (`[mem.region.create.3]`).
         "List" => {
@@ -623,6 +707,37 @@ pub fn property(machine: &mut Machine, receiver: &Value, name: &str, span: Span)
             }
         },
         (other, field) => unsupported(format!("{} has no member `{field}`", other.kind())),
+    }
+}
+
+/// Whether [`method`] can change `receiver` in place — that is, whether the
+/// arm it dispatches to takes the receiver's elements mutably.
+///
+/// Exactly two arms of [`method`] do: `List.push` and `List.pop`. Every other
+/// arm either reads its receiver and returns a fresh value, or changes
+/// *machine* state (the store, the provenance forest, the scheduler) behind a
+/// receiver that is an immutable id.
+///
+/// The caller uses this to know whether the end of a lend is a write. Both
+/// answers are safe in the direction that matters: the lend restores the
+/// value either way, so a method wrongly called read-only still lands its
+/// mutation — it would only skip the write's checks. The `debug_assertions`
+/// arm of [`Machine::eval_method`](super::Machine::eval_method) compares this
+/// against the whole-value comparison on every method call the test suite and
+/// the corpus make, so drift here is caught rather than deduced.
+#[must_use]
+pub fn mutates_receiver(receiver: &Value, name: &str) -> bool {
+    matches!((receiver, name), (Value::List(..), "push" | "pop"))
+}
+
+/// The O(1) witness for [`mutates_receiver`]'s two methods: `List.push` and
+/// `List.pop` change the element count exactly when they change the value, so
+/// the count is a complete stand-in for comparing the whole list.
+#[must_use]
+pub fn list_len(value: &Value) -> Option<usize> {
+    match value {
+        Value::List(items, _) => Some(items.len()),
+        _ => None,
     }
 }
 
