@@ -10,11 +10,13 @@ speaks `conform-run`.
 `diff-run` walks the corpus, collects both implementations' records per
 entry file, and compares them phase-aware per `[proto.cmp]`. The
 counterparty is the compiler built inside the submodule: `cargo build -p
-wolf_driver` in `upstream/`. Building it is legitimate; reading its source
-is not. Output from a checkout with the counterparty built:
+wolf_driver` in `upstream/`, plus `cargo build -p wolf_rt` for the
+`libwolf_rt.a` its native lanes link. Building them is legitimate; reading
+the source is not. Output from a checkout with the counterparty built:
 
 ```text
 notice: counterparty compiler: upstream/target/debug/wolf
+notice: counterparty tier: default (conform-run)
 differential: 203 entries compared, 18 member(s) exercised through their entries
 divergences: 11
   verdict: 11
@@ -31,6 +33,34 @@ differential: GREEN — every divergence is filed in docs/divergence-log.md and 
 (That block is not byte-checked in CI, because whether a counterparty
 exists depends on the environment. Without one, `diff-run` says so in
 `notice:` lines and SKIPs. `--require-counterparty` hard-fails instead.)
+
+### Which counterparty engine answers
+
+The compiler's `conform-run` is one process contract over several engines,
+chosen by flag, and `--counterparty-tier` picks which one the comparison
+drives. It matters more than it sounds:
+
+| tier | invokes | counterparty reaches `run` on |
+| --- | --- | --- |
+| `default` | `conform-run` | 0 of 245 entries |
+| `checked` | `conform-run --checked` | 120 |
+| `native` | `conform-run --native` | 113 |
+| `release` | `conform-run --release` | 104 |
+
+Measured at pin `613c3dc`. At `default` the compiler walks its static
+pipeline and stops — `unsupported` at `wir` — so no run-tier program has a
+counterparty claim to compare against and the whole dynamic half of the
+corpus lands in the conservatism ledger uncompared. Prefer `checked` or
+`native` for coverage, and `release` when the question is whether
+optimization preserved behavior: that lane runs the mid-end and the
+whole-program layer, so comparing it against this machine is the
+falsifiable form of that claim.
+
+`native` and `release` need `libwolf_rt.a` beside the `wolf` binary;
+without it the compiler declines as a tool and the runner reports it rather
+than quietly comparing a shallower lane. This machine has one engine, so
+its own side is always invoked plainly — the tier selects the
+counterparty's engine, never ours.
 
 A divergence is reported with its class, in descending severity:
 `soundness-candidate` (one side reports UB where the other runs defined),
@@ -55,15 +85,15 @@ smoke test of the whole path:
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":102,"anchors_total":315,"bundle_sha256":"…","files":317,"forward_tags":94,"out":"target/bundle","pin":"0b4e79c5deb48e93468d58971ae32b3ad8fed9b9","programs":300,"records":278}
+{"anchors_covered":103,"anchors_total":315,"bundle_sha256":"…","files":321,"forward_tags":94,"out":"target/bundle","pin":"613c3dc2bdec3b151c23fc200227f3a6230f68c4","programs":304,"records":282}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 278 entries compared, 0 member(s) exercised through their entries
+differential: 282 entries compared, 0 member(s) exercised through their entries
 divergences: 0
 conservatism ledger: 94 entries
   unsupported(counterparty): 47
   unsupported(interp): 47
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin 0b4e79c5deb48e93468d58971ae32b3ad8fed9b9 verified (bundle_sha256 …)
+notice: bundle target/bundle at pin 613c3dc2bdec3b151c23fc200227f3a6230f68c4 verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the

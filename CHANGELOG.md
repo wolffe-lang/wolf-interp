@@ -1,5 +1,128 @@
 # Changelog
 
+## 0.1.10 — 2026-08-12
+
+THE RUN TIER FINALLY COMPARES: the mid-end/whole-program re-pin. Pin
+bumped `0b4e79c` → `613c3dc` (latest green trunk, CI run 31651577695:
+the wave landed s42 (the mid-end optimizer), s43 (whole-program —
+clusters, body dedup, a frozen summary index) and s63 (diagnostics
+polish: 144 codes / 30 warnings, error cascades capped with
+`--error-limit=N`), plus the dv01 prose pass). The corpus grows 4:
+263 → 267 files (`conc/select_two_timeouts.lu`, the #64 GVN
+cross-arm-dominance litmus, and the s42 kernel tier
+`kernels/hot_counter.lu`, `kernels/hot_scale_versioned.lu`,
+`kernels/churn_b3.lu`). All four reach `run` on this machine at first
+sight and match their `check:`, so the run ledger grows 4. Coverage
+ratchets 102 → 103: `[conc.select.timeout]` is covered for the first
+time, by the new select litmus alone. `spec/` is UNCHANGED in this
+range — anchors stay 315 — so no clause needed a new reading. Bundle
+304 programs / 282 records.
+
+- **`diff-run --counterparty-tier=default|checked|native|release`, and
+  the gap it closes.** The counterparty's `conform-run` is one process
+  contract over several engines, selected by flag. The runner passed
+  **no flag** through 0.1.9, so the compiler stopped at `unsupported`
+  @`wir` and the counterparty reached `run` on **0 of 245 entries**:
+  the entire dynamic half of the corpus was ledgered as conservatism
+  without ever being compared. The gap was named for `--native` at
+  0.1.9 and stayed open a round; it covered `--checked` too, which
+  nobody had noticed. Now measured: the counterparty reaches `run` on
+  120 files at `checked`, 113 at `native`, 104 at `release`, and both
+  machines *execute* 107, 107 and 98 respectively. Our own side is
+  always invoked plainly — this machine has one engine.
+- **THE RELEASE LANE IS COMPARABLE, AND THE MID-END CHANGED NOTHING
+  OBSERVABLE.** `conform-run --release` runs s42's optimizer and s43's
+  whole-program layer; compared against this machine over all 98 files
+  both execute, it agrees everywhere, and the one divergence it reports
+  is the same one `--checked` and `--native` report, byte for byte. A
+  transformation that altered behavior would have surfaced as a
+  release-only finding; there is none. Honest scope: linux x86-64, one
+  platform, unseeded, and the `kernels/` tier is three programs — this
+  shows that 98 observable behaviors survived optimization, not that
+  the optimizer is correct. The release lane declines the conc tier by
+  name (9 files), the compiler's documented posture, conservatism never
+  divergence.
+- **DIV-2026-017 FILED — the first finding a run-reaching lane ever
+  produced.** `lints/raw_interp_braces.lu`: `r"{who}"` prints `{who}`
+  here and `"{who}` on the compiler, whose raw-literal decode keeps the
+  opening quote of the two-character `r"` delimiter.
+  `[gram.lex.str.raw]` is explicit and the corpus header's own
+  `stdout="{who}"` agrees with this machine, so triage case 2 —
+  compiler bug, filed upstream. Identical on all three of its
+  run-reaching tiers, which is how it is known not to be the mid-end's
+  doing. The file's `phase: wir` pin was written when BOTH executors had
+  the bug; it now masks a one-sided one and should advance to `run` with
+  the fix.
+- **wolf-interp#16 FIXED — an enum variant is a value, not a raise.**
+  The silent-wrong-answer of the pass. A declared enum's variant and a
+  structural error tag are both tag-shaped, and the machine built them
+  as the same value, so `fn id(v: W) -> W ! {none} { v }` had its
+  ordinary return read as an error: `?` propagated it and `else` fired
+  on the VALUE path, so the miss always won and the two paths were
+  indistinguishable to the caller. `ErrorValue` now records where its
+  name resolved (`enum_variant`), sema's `Module::variants` — the same
+  table the variant-pattern rule reads — decides it at the two
+  construction sites, the flag rides through payload application, and
+  `is_error` (the only question `?` and `else` ask) reads it. Equality,
+  patterns and rendering ignore it. Confirmed against wolfgang's
+  `--native` and `--release` lanes, which both print `kind num` for the
+  reproducer.
+- **wolf-interp#17 FIXED — the cast target is resolved, and `str` is not
+  a cast source.** `s as nonsense` ran to `exit(0)` with the string
+  passed through unchanged: the type expression was never resolved, so a
+  typo in a cast target was invisible. Now E0301 at `resolve` spanning
+  the **type name**, matching the counterparty span for span
+  (`[55,63]` for `nonsense`, `[55,60]` for `bytes` — no `bytes` type
+  exists in this language either). The judgement is narrow on purpose:
+  only a single unqualified lower-case path that is neither a built-in
+  scalar nor a name the module declares, so `2 as Meters`, `x as T` in a
+  generic body and every qualified path still decline to be judged.
+  `s as int` is E0805 at the whole cast expression (`[50,58]`, the
+  counterparty's span); the shape sema-lite cannot classify — a `str`
+  from a call return, which is the typecheck rung this machine does not
+  perform — declines loudly at `run` instead of passing a string off as
+  a number.
+- **wolf-lang#71's premise corrected: this machine never said E0202.**
+  The issue records lupin rejecting the `(mut xs).push(1)` two-task
+  program with E0202. `E0202` is this machine's `E_UNEXPECTED_EOF`
+  (`src/diag.rs:186`) — a *parse* code, never a capture-law verdict —
+  and at this pin lupin does not reject the program at all: it runs and
+  prints `0`. On the assignment spelling (`n = 1`) both machines already
+  answer **E1101**, at their own rungs, which `[proto.cmp.rung]` makes
+  agreement. **The proposal: E1101, on both sides** — this machine wants
+  no distinct code, and the interpreter half is to treat a `(mut x)`
+  receiver-lend of a captured binding as a write and emit E1101 there
+  too. Deliberately not done this round: the code is corpus-pinned and
+  landing a span before the compiler's would trade a missing diagnostic
+  for a span divergence. A second finding recorded as this machine's
+  own: closures capture by value, so the mut-lend program prints `0`
+  here against wolfgang's `2` — a real stdout divergence on a program no
+  corpus file witnesses.
+- **The record's `commit` stamp stops going stale.** `build.rs` watched
+  `.git/HEAD`, which on a branch holds `ref: refs/heads/<branch>` and
+  does not change when a commit lands, so the stamp froze at whatever
+  commit last forced a rebuild and records claimed a revision that had
+  not produced them — the dishonesty `[proto.record.fields]` asks that
+  file to prevent. It now also watches the ref HEAD points at, and
+  `packed-refs`, each only when present.
+- **The three s71 clauses, verified clause by clause at the new pin.**
+  `[mem.str.empty]`: `count("")` is 0, `split("")` yields one piece and
+  that piece is the whole string, `replace("", t)` is the identity,
+  `repeat(0)` is `""` — conforming, no lane refusing, no lane trapping.
+  `[mem.str.repeat]`: `repeat(-1)` is `trap(assert)`, not `bounds`. The
+  `else |Tag(p)|` row-coverage rule: `rows/negative/handler_uncovered.lu`
+  is `fail(E0809)`@`resolve` span `[518,523]` — the counterparty's span —
+  and the payload-binding run half `rows/else_tag_payload.lu` runs with
+  its exact expected bytes. All three conform; nothing needed changing.
+- **Surfaces:** `--version` prints `lupin 0.1.10 (wolf-interp, reference
+  interpreter at pin 613c3dc)`. Corpus walk 267 files / 0 mismatch (158
+  match, 8 dynamic counterparts, 32 conservatism, 47 out-of-scope);
+  bundle 304 programs / 282 records, anchors covered 103 of 315;
+  differential GREEN at `default` with an empty filing list, and
+  filed-green at the three run-reaching tiers. Noted, not acted on:
+  upstream's own `--version` still names `lupin 0.1.8 … pin 7886559` as
+  its paired reference interpreter, two releases behind.
+
 ## 0.1.9 — 2026-08-12
 
 THE CONC TIER RUNS ON BOTH MACHINES: the c09-wave re-pin. Pin bumped

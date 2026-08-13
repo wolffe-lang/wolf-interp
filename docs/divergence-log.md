@@ -45,7 +45,164 @@ clone, so the differential lane detects the absence, prints `notice:`
 lines, and SKIPs. `--require-counterparty` turns the skip into a hard
 failure.
 
+`cargo build -p wolf_rt` as well, since 0.1.10: it produces the
+`libwolf_rt.a` the compiler's `--native` and `--release` lanes link
+against. Without it those lanes decline as a *tool* ("libwolf_rt.a not
+found next to the `wolf` binary"), which the runner reports as
+`ToolError` rather than degrading quietly to a shallower lane.
+
+## The counterparty's tiers (`--counterparty-tier`, 0.1.10)
+
+wolfgang's `conform-run` is one process contract over several engines,
+chosen by flag, and the flag decides how deep its record goes. The
+harness drives the choice with `diff-run --counterparty-tier=`:
+
+| tier | flag | counterparty reaches `run` on |
+| --- | --- | --- |
+| `default` | *(none)* | **0** of 245 entries |
+| `checked` | `--checked` | 120 |
+| `native` | `--native` | 113 |
+| `release` | `--release` | 104 |
+
+Measured at pin `613c3dc`. The `default` row is why this table exists.
+Through 0.1.9 the runner passed no flag, so the compiler answered
+`unsupported` at `wir` on every run-tier program and the whole dynamic
+half of the corpus compared **nowhere** — 134 files ledgered as
+`run-unmatched` conservatism that were never compared at all. The gap
+was named for `--native` at 0.1.9 and stayed open a round; it covered
+`--checked` too, which nobody had noticed.
+
+Both machines *execute* 107 files at `checked` and `native`, and 98 at
+`release`. The release lane declines the whole conc tier by name (9
+files: 8× `conc/` + `procs.lu`, plus `test/conc_schedules_test.lu`),
+which is the compiler's documented posture — conc lowering belongs to
+the debug tier until c09 needs conc kernels — and is conservatism, never
+divergence.
+
+`release` is the lane that matters most now: it runs s42's mid-end and
+s43's whole-program layer, so comparing it against this machine is the
+falsifiable form of "optimization preserves observable behavior". Our
+own side is always invoked plainly — this machine has one engine, and
+the tier selects which of the *counterparty's* engines answers.
+
 ## Open findings
+
+Fourteenth corpus differential: lupin 0.1.10, pin `613c3dc` (the
+mid-end/whole-program wave: s42 the optimizer, s43 clusters + body dedup
++ the frozen summary index, s63 diagnostics polish; 245 entries
+compared, 22 members through their entries; counterparty built CLEAN at
+the pin with `libwolf_rt.a` provisioned). Run **four times**, once per
+counterparty tier — the first round in which the run tier compared at
+all.
+
+| tier | divergences | conservatism | both execute |
+| --- | --- | --- | --- |
+| `default` | 0 | 403 | 0 |
+| `checked` | 1 | 176 | 107 |
+| `native` | 1 | 183 | 107 |
+| `release` | **1** | 201 | **98** |
+
+**THE HEADLINE: the mid-end changed nothing observable.** The release
+lane — s42's optimizer and s43's whole-program layer both ON — produces
+the same answer as this machine on all 98 files both execute, and the
+single divergence it reports is the SAME one the `checked` and `native`
+lanes report, byte for byte. A transformation that altered behavior
+would have shown up here as a release-only finding; there is none. The
+comparison is what makes "check elimination 10 of 10, 58.2% corpus-wide,
+IR volume 84.6% of naive" a safety claim rather than a throughput one.
+
+Honest scope: linux x86-64, one platform, unseeded; the corpus's
+`kernels/` tier (the three files s42's own gates read) is three programs,
+so "the optimizer is correct" is not what this shows — "the optimizer did
+not change these 98 observable behaviors" is.
+
+The one divergence is **DIV-2026-017**, filed below: a raw-literal decode
+bug in the compiler's front end, identical on all three of its
+run-reaching tiers, which is precisely how it is known NOT to be the
+mid-end's doing.
+
+### wolf-lang#71's premise corrected: lupin never said E0202
+
+wolf-lang#71 (SOUNDNESS: E1101 misses `(mut x)` receiver-lends) records
+that "lupin rejects the same program with **E0202** (a different code, so
+the pair also disagree)". Re-verified at pin `613c3dc`, that is not what
+this machine does, and E0202 could not have meant what the issue reads
+into it: **`E0202` is this machine's `E_UNEXPECTED_EOF`**
+(`src/diag.rs:186`), a *parse* code. It was never a judgement about the
+capture law, so there is no code disagreement to reconcile — the
+observation was a parse failure on some earlier spelling of the program
+text, not lupin's verdict on the race.
+
+What the two machines actually do with the issue's two spellings:
+
+| program | lupin | wolfgang |
+| --- | --- | --- |
+| `n = 1` in two tasks (assignment) | `fail(E1101)` @resolve, span `[71,72]` | `fail(E1101)` @typecheck |
+| `(mut xs).push(1)` in two tasks (mut-lend) | `exit(0)`, prints `0` | `--native`: `exit(0)`, prints `2` |
+
+So on the assignment spelling the two **already agree on E1101**, at
+their own rungs, which `[proto.cmp.rung]` makes agreement outright. On
+the mut-lend spelling **neither** machine rejects: the hole is not
+lupin-versus-wolfgang, it is a hole in both, and this machine's is
+recorded here as its own gap rather than left implied by the issue.
+
+The proposal, for the fix in flight: **E1101, on both sides.** This
+machine does not want a distinct code and will not propose one — the
+capture law has a code, both implementations emit it for the spelling
+they do catch, and the corpus pins it (`conc/store_buffer.lu`,
+`conc/chan_unsendable.lu`, the E11xx admission ladder). The interpreter
+half is to extend its capture analysis to treat a `(mut x)`
+receiver-lend of a captured binding as a write and emit E1101 there too.
+Deliberately NOT done in this round: the code is corpus-pinned, and
+landing our span before the compiler's would trade a missing diagnostic
+for a span divergence. It lands once wolf-lang#71's fix fixes the span
+to match.
+
+A second, separate finding rides along, and it is this machine's own:
+the mut-lend program prints `0` here against wolfgang's `2` because
+closures capture free variables **by value**
+(`[gram.expr.closure]`, `docs/approximation-contract.md`), so each task
+mutates its own copy of `xs`. Whichever way the capture law lands, that
+is a real stdout divergence on a program no corpus file witnesses —
+the shared-gap class the issue itself names. It cannot be filed as a
+`FILED_DIVERGENCES` entry (that list is keyed by corpus file) and is
+recorded here until a witness exists.
+
+### DIV-2026-017 — `lints/raw_interp_braces.lu` — **OPEN, filed upstream: the `r"` prefix's quote survives the compiler's raw-literal decode**
+
+Filed 2026-08-12 (lupin 0.1.10, CLEAN wolfgang build at `613c3dc`).
+Class **stdout**; not a soundness candidate. The first finding ever
+produced by a run-reaching counterparty lane, and it was waiting the
+whole time.
+
+```
+lupin    stdout = "{who}\n"   sha 2e5a915893921b688dce9a7c81a122308247a2cf28ea9b8540f3abdba265ad8e
+wolfgang stdout = "\"{who}\n" sha 7ff0fa2be6e89ffbd94f02c39786d85d6f2ebfa013bd8ce869a68d6471dc6693
+```
+
+The program is `let s = r"{who}"` followed by `print(s)`. Identical on
+`--checked`, `--native` and `--release`, which places it in the shared
+front end (the lexer's literal decode) and rules out the mid-end.
+
+Triage: **compiler bug**, decision-tree case 2 (spec clear, interpreter
+matches it). `[gram.lex.str.raw]` is explicit — `r"…"`, `r#"…"#` carry
+the bytes between the quotes, no escapes, no interpolation — so
+`r"{who}"` is the six bytes `{who}`. The compiler's answer keeps the
+opening quote of the `r"` delimiter, which is the naive
+first/last-byte quote strip applied to a two-character opening
+delimiter. The corpus file's own header agrees with this machine:
+`check: run(exit=0, stdout="{who}")`.
+
+The file's `phase: wir` pin is the interesting part. Its header explains
+the pin: at s40 **both** executors had this bug, agreed with each other
+and disagreed with the header, so the file was pinned short of `run` to
+keep the disagreement out of the comparison. This machine has since
+fixed its decode; the compiler has not. The pin is therefore now
+masking a one-sided bug, and the corpus walk here already scores the file
+`match` at the `run` rung. With the fix, the header should advance to
+`phase: run`.
+
+---
 
 Thirteenth corpus differential: lupin 0.1.9, pin `0b4e79c` (the c09
 wave: s41 release tier, s51 package manager, s73 native concurrency;
