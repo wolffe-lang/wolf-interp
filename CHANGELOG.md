@@ -120,13 +120,18 @@ file), bundle 320 programs / 298 records.
   randomly picked corpus files and runs each through all four rungs; the
   pinned seed is fixed but the FILE SET is not, so 280 → 283 files
   reshuffles which mutants get generated, and this pin's draw includes
-  some that run to (or near) `Machine::FUEL`'s 50-million-step rail. It is
-  bounded — the rail is what stops them — but it now costs many minutes
-  where it used to be quick. Verified NOT to be the lend's doing by
-  re-running it with `src/` stashed at this same pin: equally slow. CI sets
-  no step timeout, so this slows the build rather than failing it. Worth a
-  look before the next pin: either a per-case wall-clock bound in
-  `exercise`, or a smaller `CASES` for the mutation arm.
+  some that run to `Machine::FUEL`'s 50-million-step rail. The rail is
+  the wrong size for a harness that runs 3000 programs: one mutant that
+  reaches it costs **6.1 s** in a release build and **37 s** in the debug
+  build `cargo test` actually uses, so ~40 runaways out of 3000 spend the
+  whole budget. Measured: the test does not finish inside 25 minutes.
+  Verified NOT to be the lend's doing by re-running it with `src/`
+  stashed at this same pin: equally slow. CI sets no step timeout, so it
+  slows the build rather than failing it, but `cargo test` is no longer a
+  gate anyone will wait out. Fix before the next pin: a per-case
+  wall-clock (or step) bound in `exercise`, well under the language's own
+  rail — the harness is testing that the frontend ANSWERS, not that the
+  fuel rail works, and `[gram.lex.rails]` has its own litmus for that.
 - **#76 (DIV-2026-017) re-confirmed OPEN and unchanged.**
   `lints/raw_interp_braces.lu`: `r"{who}"` prints `{who}` here and
   `"{who}` upstream, whose raw-literal decode keeps the opening quote of
