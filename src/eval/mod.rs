@@ -460,6 +460,9 @@ pub struct Machine {
     tracing: Trace,
 }
 
+/// Set by [`Machine::set_fuel_limit`]; zero means [`Machine::FUEL`].
+static FUEL_LIMIT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 impl Machine {
     /// Evaluation steps a program may take before the machine gives up.
     ///
@@ -467,6 +470,31 @@ impl Machine {
     /// offers none — so the machine declines rather than hangs a CI job. It is
     /// generous enough that nothing in the pinned corpus comes close.
     pub const FUEL: u64 = 50_000_000;
+
+    /// A tighter rail, for harnesses that run thousands of programs.
+    ///
+    /// [`Machine::FUEL`] is sized so nothing a person writes comes near it,
+    /// which is right for one program and wrong for three thousand: a single
+    /// mutant that reaches the rail costs about six seconds in release and
+    /// thirty-seven in debug, so a few dozen runaways eat a CI job whole. They
+    /// did — the fuzz smoke test took the interpreter's Windows lane past four
+    /// hours and had the other two cancelled at the six-hour limit.
+    ///
+    /// A harness sets this once, and gets the same guarantee the rail already
+    /// promises (decline rather than hang) at a bound it can afford. Zero means
+    /// the default.
+    pub fn set_fuel_limit(steps: u64) {
+        FUEL_LIMIT.store(steps, Ordering::Relaxed);
+    }
+
+    /// The rail in force: whatever a harness set, else [`Machine::FUEL`].
+    #[must_use]
+    pub fn fuel_limit() -> u64 {
+        match FUEL_LIMIT.load(Ordering::Relaxed) {
+            0 => Machine::FUEL,
+            n => n,
+        }
+    }
 
     #[must_use]
     pub fn new(program: &Program) -> Machine {
@@ -975,10 +1003,10 @@ impl Machine {
 
     fn step(&mut self) -> EResult<()> {
         let taken = self.shared.steps.fetch_add(1, Ordering::Relaxed);
-        if taken >= Machine::FUEL {
+        let limit = Machine::fuel_limit();
+        if taken >= limit {
             return unsupported(format!(
-                "the program did not terminate within {} evaluation steps",
-                Machine::FUEL
+                "the program did not terminate within {limit} evaluation steps"
             ));
         }
         Ok(())

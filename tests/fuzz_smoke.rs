@@ -289,6 +289,13 @@ fn token_soup_never_crashes_the_parser() {
 #[test]
 fn mutated_corpus_files_never_crash() {
     println!("seed = {SEED:#x}");
+    // This harness runs thousands of programs, and a mutant that reaches the
+    // default rail costs seconds apiece. The question here is whether any
+    // input crashes the machine, which a program answers long before fifty
+    // million steps; anything still running at a hundred thousand is a
+    // runaway, and a runaway declining early is the same evidence as a
+    // runaway declining late.
+    wolf_interp::eval::Machine::set_fuel_limit(100_000);
     let files = corpus_files();
     assert!(!files.is_empty());
     let mut rng = Rng(SEED ^ 0xC0FF_EE00);
