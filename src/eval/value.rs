@@ -262,6 +262,42 @@ pub struct ErrorValue {
     /// representation. Pattern matching, equality and rendering ignore it —
     /// only [`Value::is_error`] reads it.
     pub enum_variant: bool,
+    /// The **row this tag was raised through**: every tag the raising
+    /// function's declared return row names, recorded at the raise site and
+    /// carried by the value from there on.
+    ///
+    /// wolf-interp#29 (wolf-std F-0079) is what this field fixes. Whether a
+    /// bare lowercase identifier in a pattern is a *row-tag pattern* or a
+    /// *binding* is a question about the scrutinee's row, and the checker
+    /// answers it from the row type. This machine used to answer it from the
+    /// **matching module's own signatures** — so a handler in the entry file
+    /// over a row raised by an *imported* module found no declared tag, read
+    /// every arm's pattern as a fresh binding, and took its FIRST ARM for
+    /// every tag. Silently, with exit 0: the shape that reads correctly
+    /// answers the wrong question.
+    ///
+    /// A row that crosses a module boundary is still the same row, so the row
+    /// travels with the value instead of being looked up again on the far
+    /// side. Empty when there is no declared row behind the tag — an
+    /// uppercase structural tag (`[err.rows]` wants no declaration), an enum
+    /// variant, a tag the machine minted itself. Matching over those is
+    /// unchanged; the uppercase rule never needed a vocabulary.
+    ///
+    /// Equality and rendering ignore it, for the reason they ignore
+    /// [`enum_variant`](ErrorValue::enum_variant): it records where the name
+    /// came from, not what the value is.
+    pub row: Vec<String>,
+}
+
+impl ErrorValue {
+    /// A tag with no payload and no declared row behind it.
+    #[must_use]
+    pub fn bare(tag: impl Into<String>) -> Self {
+        Self {
+            tag: tag.into(),
+            ..Self::default()
+        }
+    }
 }
 
 /// Equality is over the tag and its payload alone.
@@ -270,7 +306,8 @@ pub struct ErrorValue {
 /// the flag records where the NAME resolved, which is a fact about the
 /// program's declarations, not about the value's identity. Letting it into
 /// `==` would make `W.Num(1) == W.Num(1)` depend on which of the two
-/// construction sites built each side.
+/// construction sites built each side. The declared row rides along on the
+/// same terms and stays out of `==` on the same grounds.
 impl PartialEq for ErrorValue {
     fn eq(&self, other: &Self) -> bool {
         self.tag == other.tag && self.payload == other.payload

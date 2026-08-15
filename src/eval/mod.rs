@@ -3389,6 +3389,7 @@ impl Machine {
                     tag: name.clone(),
                     payload: Vec::new(),
                     enum_variant: variant,
+                    row: Vec::new(),
                 })));
             }
             // A lowercase bare tag resolves against the enclosing function's
@@ -3396,10 +3397,11 @@ impl Machine {
             // `return none` under `-> int ! {none}` raises the tag. The
             // eager half lives in sema's `raise_check` — by the time this
             // runs, an unresolvable raise has already been refused.
-            if self
+            if let Some(row) = self
                 .frames
                 .last()
-                .is_some_and(|frame| frame.row.iter().any(|tag| tag == name))
+                .filter(|frame| frame.row.iter().any(|tag| tag == name))
+                .map(|frame| frame.row.clone())
             {
                 self.fire(
                     Rule::ErrRows,
@@ -3412,6 +3414,12 @@ impl Machine {
                     // A name reached through the enclosing function's declared
                     // ROW is a raise by construction, whatever else it spells.
                     enum_variant: false,
+                    // The row rides with the value (wolf-interp#29): the
+                    // handler's arm resolution asks the VALUE what row it came
+                    // through, not the matching module's own signatures, so a
+                    // module boundary between raise and handler changes
+                    // nothing about which arm wins.
+                    row,
                 })));
             }
             return unsupported(format!("`{name}` does not resolve"));
@@ -3481,6 +3489,7 @@ impl Machine {
                 tag,
                 payload: Vec::new(),
                 enum_variant: variant,
+                row: Vec::new(),
             })));
         }
         unsupported(format!("`{head}.{tail}` does not resolve"))
@@ -4158,20 +4167,32 @@ impl Machine {
                 }
                 // The lowercase mirror (issue #12, wolf-lang#4's other
                 // half): over a tag-shaped scrutinee, a lowercase identifier
-                // that names a tag some signature of the module *declares*
-                // in a row is a row-tag pattern — `match err { empty => …,
-                // negative => … }` under `-> int ! {empty, negative}`
-                // dispatches on the tag. An undeclared lowercase name still
-                // binds (`else |err| …` keeps its binder), which is the
-                // sema-lite reading of the checker's row-typed resolution.
+                // that names a declared row tag is a row-tag pattern —
+                // `match err { empty => …, negative => … }` under
+                // `-> int ! {empty, negative}` dispatches on the tag. An
+                // undeclared lowercase name still binds (`else |err| …` keeps
+                // its binder), which is the sema-lite reading of the checker's
+                // row-typed resolution.
+                //
+                // "Declared" is asked of the SCRUTINEE's own row first
+                // (wolf-interp#29): the row the value was raised through
+                // travels with it, so the answer is the same on either side of
+                // a module boundary. Asking only the matching module's own
+                // signatures — as this did — made every arm of a handler over
+                // an imported callee's row a fresh binding, so the first arm
+                // matched every tag and answered, silently, wrong. The
+                // module's own vocabulary stays in the union behind it: a tag
+                // the machine minted with no row still resolves where the
+                // matching module declares it.
                 if name.starts_with(char::is_lowercase)
                     && let Value::Error(e) = value
-                    && self
-                        .shared
-                        .program
-                        .modules
-                        .get(&module)
-                        .is_some_and(|m| m.row_tags.contains(name))
+                    && (e.row.iter().any(|tag| tag == name)
+                        || self
+                            .shared
+                            .program
+                            .modules
+                            .get(&module)
+                            .is_some_and(|m| m.row_tags.contains(name)))
                 {
                     self.fire(
                         Rule::ErrRows,
@@ -4598,6 +4619,10 @@ impl Machine {
                     tag: tag.tag,
                     payload: args,
                     enum_variant: tag.enum_variant,
+                    // The declared row survives the payload for the same
+                    // reason the flag does: applying a payload says nothing
+                    // about which row the tag was reached through.
+                    row: tag.row,
                 }))))
             }
             Value::Builtin(name) => builtin::call(self, name, args, span).map(plain),
@@ -4909,7 +4934,62 @@ impl Machine {
         }
     }
 
+    /// The place an index read can be **lent** from, when there is one — see
+    /// [`Lend`] and [`Machine::lendable`], of which this is the index-read
+    /// half (issue #28, wolf-std F-0078).
+    ///
+    /// The same three containers, on the same three facts: the base denotes a
+    /// stored place, so there is a slot to put the value back into;
+    /// [`builtin::index`] never re-enters the machine, so nothing can observe
+    /// the slot while the value is out of it; and their copies are the
+    /// expensive ones.
+    fn index_lend_place(&mut self, base: &Expr) -> Option<Path> {
+        let ExprKind::Path(path) = &*base.kind else {
+            return None;
+        };
+        let head = &path.segments[0].name;
+        if !(self.local_exists(head) || self.globals.contains_key(head)) {
+            return None;
+        }
+        let place = self.place_of(base).ok()?;
+        let (slot, _) = self.resolve(&place)?;
+        matches!(slot.value, Value::List(..) | Value::Map(_) | Value::Str(_)).then_some(place)
+    }
+
     fn eval_bracket(&mut self, base: &Expr, args: &[IndexArg], span: Span) -> EResult<Value> {
+        // The index-read lend (issue #28, wolf-std F-0078) — the other half of
+        // #24's shape. `xs[i]` evaluated `xs` in order to pick one element out
+        // of it, and evaluating a place-valued `xs` deep-copies the whole
+        // container: an indexed read cost O(n), an indexed walk O(n²) — four
+        // times the work per doubling, where the identical `for v in xs` cost
+        // twice. A read cannot observe a copy, so the value stays in its slot.
+        // The read is charged here at exactly the moment and in exactly the
+        // order it always was — `read_claim` before the index expression is
+        // evaluated, which is where `eval(base)` charged it — and the
+        // container steps out of its slot only for the length of one
+        // `builtin::index` call, which cannot re-enter the machine.
+        //
+        // Slices keep the copy: `s[a..b]` reads its endpoints off the *syntax*
+        // (`^n`, open ends), which is the same exclusion `lendable` makes for
+        // `str.get(a..b)`. So does a base that is not a plain place path —
+        // there would be nowhere to put the value back.
+        if let [IndexArg::Value(arg)] = args
+            && !matches!(&*arg.expr.kind, ExprKind::Range { .. })
+            && let Some(place) = self.index_lend_place(base)
+        {
+            // The base's own evaluation step, which the copy path charged on
+            // the way into `eval`. `index_lend_place` evaluates nothing — a
+            // path expression's place is read off the syntax — so charging it
+            // here keeps the fuel account identical step for step. A lend must
+            // not let a program run one step further than the copy would.
+            self.step()?;
+            self.read_claim(&place, base.span)?;
+            let index = self.eval(&arg.expr)?;
+            let value = self.lend_path(&place);
+            let element = builtin::index(self, &value, &index, span);
+            self.restore_lent(&place, value);
+            return element;
+        }
         let target = self.eval(base)?;
 
         // `e[…]` is one production (`[gram.amb.brackets]`): generic application

@@ -328,6 +328,7 @@ impl ExitReason {
             tag: tag.to_owned(),
             payload,
             enum_variant: false,
+            row: Vec::new(),
         }))
     }
 
@@ -1091,6 +1092,7 @@ impl State {
             tag: "exit".to_owned(),
             payload: vec![reason.to_value()],
             enum_variant: false,
+            row: Vec::new(),
         }));
         for chan in self.procs[proc].monitors.clone() {
             self.op(actor, ObjKey::Chan(chan), true);
@@ -1193,6 +1195,7 @@ fn closed_error() -> Value {
         tag: "Closed".to_owned(),
         payload: Vec::new(),
         enum_variant: false,
+        row: Vec::new(),
     }))
 }
 
@@ -1201,6 +1204,7 @@ fn cancelled_error() -> Value {
         tag: "Cancelled".to_owned(),
         payload: Vec::new(),
         enum_variant: false,
+        row: Vec::new(),
     }))
 }
 
@@ -1762,16 +1766,19 @@ impl Sched {
                         tag: "trap".to_owned(),
                         payload: vec![Value::Str(trap.kind.to_string())],
                         enum_variant: false,
+                        row: Vec::new(),
                     })),
                     TaskEnd::Ub(finding) => ExitReason::Error(Box::new(ErrorValue {
                         tag: "ub".to_owned(),
                         payload: vec![Value::Str(finding.anchor().to_owned())],
                         enum_variant: false,
+                        row: Vec::new(),
                     })),
                     TaskEnd::Unsupported(reason) => ExitReason::Error(Box::new(ErrorValue {
                         tag: "unsupported".to_owned(),
                         payload: vec![Value::Str(reason.clone())],
                         enum_variant: false,
+                        row: Vec::new(),
                     })),
                     TaskEnd::Cancelled => ExitReason::Cancelled,
                     TaskEnd::Killed => ExitReason::Killed,
@@ -2201,6 +2208,7 @@ impl Sched {
                 tag: "exit".to_owned(),
                 payload: vec![reason.to_value()],
                 enum_variant: false,
+                row: Vec::new(),
             }));
             let root = state.procs[proc].root;
             let vc = state.task_vc(root);

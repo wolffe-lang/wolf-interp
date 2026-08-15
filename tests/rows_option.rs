@@ -204,6 +204,122 @@ fn main() -> !int {
     );
 }
 
+/// wolf-interp#29 (wolf-std F-0079), the cross-module half of the test
+/// above — and the one that was wrong for as long as the rule existed.
+///
+/// The arm-resolution question ("is this lowercase name a tag or a
+/// binder?") used to be put to the **matching module's own signatures**.
+/// A handler in the entry file over a row raised in an imported module
+/// therefore found no declared tag, read every arm's pattern as a fresh
+/// binding, and took its FIRST ARM for every tag. No diagnostic, exit 0,
+/// wrong answer: `fwd` printed `10 10 10` and `rev` printed `30 30 30`,
+/// while wolfgang printed `10 20 30` on both rungs.
+///
+/// The row now travels with the value it was raised through, so the
+/// answer is the same on either side of a module boundary. The two arm
+/// orders are the experiment: under first-arm-wins, reversing the arms
+/// reverses the output, which is what separates "dispatch works" from
+/// "one tag happened to be right". `rest` and `binder` are the
+/// counterweight — a lowercase name the row does not declare still binds.
+///
+/// The corpus carries the same witness as `rows/cross_module_arms`, on
+/// both lanes; this is its unit-sized half, which does not wait on a pin.
+#[test]
+fn a_row_raised_across_a_module_boundary_still_dispatches_by_tag() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("cross_module_arms");
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).expect("stale scratch removed");
+    }
+    std::fs::create_dir_all(dir.join("scan")).expect("scratch created");
+    std::fs::write(
+        dir.join("scan/scan.lu"),
+        "\
+//! member: true
+
+pub fn miss(k: int) -> int ! {deep, overflow, syntax} {
+    if k == 0 { return syntax }
+    if k == 1 { return deep }
+    overflow
+}
+
+pub fn hop(k: int) -> int ! {deep, overflow, syntax} {
+    let v = miss(k)?
+    v
+}
+",
+    )
+    .expect("the member module is written");
+
+    let source = "\
+use scan
+
+fn fwd(k: int) -> int {
+    scan.miss(k) else |e| match e {
+        syntax => 10,
+        deep => 20,
+        overflow => 30,
+    }
+}
+
+fn rev(k: int) -> int {
+    scan.miss(k) else |e| match e {
+        overflow => 30,
+        deep => 20,
+        syntax => 10,
+    }
+}
+
+fn hop(k: int) -> int {
+    scan.hop(k) else |e| match e {
+        syntax => 10,
+        deep => 20,
+        overflow => 30,
+    }
+}
+
+fn rest(k: int) -> int {
+    scan.miss(k) else |e| match e {
+        deep => 20,
+        other => 99,
+    }
+}
+
+fn binder() -> int {
+    scan.miss(0) else |err| 77
+}
+
+fn main() -> !int {
+    print(\"fwd: {fwd(0)} {fwd(1)} {fwd(2)}\")
+    print(\"rev: {rev(0)} {rev(1)} {rev(2)}\")
+    print(\"hop: {hop(0)} {hop(1)} {hop(2)}\")
+    print(\"rest: {rest(0)} {rest(1)} {rest(2)}\")
+    print(\"binder: {binder()}\")
+    0
+}
+";
+    let entry = dir.join("main.lu");
+    std::fs::write(&entry, source).expect("the entry is written");
+
+    let observation = wolf_interp::frontend::observe_file(
+        &entry,
+        source.as_bytes(),
+        None,
+        wolf_interp::eval::Trace::Off,
+        &wolf_interp::eval::SchedRequest::Default,
+        None,
+    );
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "reason: {:?}",
+        observation.reason
+    );
+    assert_eq!(
+        String::from_utf8(observation.stdout).expect("utf-8"),
+        "fwd: 10 20 30\nrev: 10 20 30\nhop: 10 20 30\nrest: 99 20 99\nbinder: 77\n",
+    );
+}
+
 /// The sc02 trap, closed: a raise site whose tag resolves nowhere is
 /// refused at **resolve**, even though the input never takes the branch.
 /// Lazy resolution let exactly this program certify falsely.

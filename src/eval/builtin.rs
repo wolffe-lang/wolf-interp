@@ -1502,6 +1502,7 @@ fn error(tag: &str) -> Value {
         tag: tag.to_owned(),
         payload: Vec::new(),
         enum_variant: false,
+        row: Vec::new(),
     }))
 }
 

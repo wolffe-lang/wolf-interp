@@ -1255,6 +1255,103 @@ fn row_tags_dispatch_and_lowercase_still_binds() {
     );
 }
 
+// -- the index-read lend (issue #28) ---------------------------------------
+
+#[test]
+fn an_index_read_lends_the_container_and_leaves_it_where_it_was() {
+    // Issue #28: `xs[i]` used to deep-copy `xs` to pick one element out of
+    // it. The value now steps out of its slot for the length of one
+    // `builtin::index` call and steps back, so every later read of the
+    // container — and every nesting of one index inside another — sees it
+    // exactly as before. `xs[xs[0]]` is the load-bearing shape: the inner
+    // read runs while the outer lend has not been taken yet.
+    assert_eq!(
+        stdout(
+            "fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   xs.push(1)\n\
+             \x20   xs.push(2)\n\
+             \x20   xs.push(3)\n\
+             \x20   print(\"{xs[0]} {xs[xs[0]]} {xs[2]} {xs.len}\")\n\
+             \x20   var m = Map[str, int]()\n\
+             \x20   m[\"a\"] = 7\n\
+             \x20   print(\"{m[\"a\"]} {m[\"absent\"]} {m.len}\")\n\
+             \x20   0\n\
+             }\n"
+        ),
+        // An absent key is the zero value (`Unit` here), which renders `()`.
+        "1 2 3 3\n7 () 1\n"
+    );
+}
+
+#[test]
+fn an_out_of_bounds_index_still_traps_through_the_lend() {
+    // The lend ends before the trap is reported, so a faulting index read
+    // leaves the container in its slot rather than in the machine's hand.
+    assert_eq!(
+        trap_kind(
+            "fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   xs.push(1)\n\
+             \x20   print(\"{xs[3]}\")\n\
+             \x20   0\n\
+             }\n"
+        ),
+        TrapKind::Bounds
+    );
+}
+
+#[test]
+fn an_index_expression_that_mutates_the_container_reads_the_mutated_one() {
+    // The lend is taken *after* the index expression is evaluated — the
+    // same ordering the receiver lend uses (issue #24) — so a write hidden
+    // in the index is visible to the read it precedes. Pinned because it is
+    // the one shape the lend moved: the copy path snapshotted the container
+    // before evaluating the index, which made `xs[bump(mut xs) - 1]` trap
+    // `bounds` against the stale length in interpolation position while the
+    // identical `let v = xs[bump(mut xs) - 1]` answered 9. wolfgang answers
+    // 9 (`--checked`, trunk 13b811f); the two spellings now agree with it
+    // and with each other.
+    assert_eq!(
+        stdout(
+            "fn bump(mut ys: List[int]) -> int {\n\
+             \x20   ys.push(9)\n\
+             \x20   ys.len\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   xs.push(1)\n\
+             \x20   xs.push(2)\n\
+             \x20   let v = xs[bump(mut xs) - 1]\n\
+             \x20   print(\"{v} {xs[bump(mut xs) - 1]}\")\n\
+             \x20   0\n\
+             }\n"
+        ),
+        "9 9\n"
+    );
+}
+
+#[test]
+fn an_index_read_under_a_for_loops_read_claim_is_allowed() {
+    // D40's read claim over the iterated container is shared, so reading an
+    // element of it inside the body is a read against a read — the lend
+    // charges the same claim the copy did, at the same moment.
+    assert_eq!(
+        stdout(
+            "fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   xs.push(4)\n\
+             \x20   xs.push(5)\n\
+             \x20   for v in xs {\n\
+             \x20       print(\"{v} {xs[0]}\")\n\
+             \x20   }\n\
+             \x20   0\n\
+             }\n"
+        ),
+        "4 4\n5 4\n"
+    );
+}
+
 #[test]
 fn an_uppercase_name_over_a_non_error_scrutinee_binds_like_the_counterparty() {
     // Observed at pin a0c4564: `match 3 { Zed => Zed, _ => 9 }` — the
