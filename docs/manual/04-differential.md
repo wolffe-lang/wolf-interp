@@ -85,15 +85,15 @@ smoke test of the whole path:
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":107,"anchors_total":316,"bundle_sha256":"…","files":337,"forward_tags":94,"out":"target/bundle","pin":"4e316ad7c4236be5bcf05231a16bbecadccc2018","programs":320,"records":298}
+{"anchors_covered":114,"anchors_total":323,"bundle_sha256":"…","files":348,"forward_tags":95,"out":"target/bundle","pin":"02c1e88f23931d8258cb3ed3041baf8548dff3f2","programs":331,"records":308}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 298 entries compared, 0 member(s) exercised through their entries
+differential: 308 entries compared, 0 member(s) exercised through their entries
 divergences: 0
-conservatism ledger: 94 entries
-  unsupported(counterparty): 47
-  unsupported(interp): 47
+conservatism ledger: 100 entries
+  unsupported(counterparty): 50
+  unsupported(interp): 50
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin 4e316ad7c4236be5bcf05231a16bbecadccc2018 verified (bundle_sha256 …)
+notice: bundle target/bundle at pin 02c1e88f23931d8258cb3ed3041baf8548dff3f2 verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the

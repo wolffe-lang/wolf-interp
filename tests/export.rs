@@ -43,11 +43,12 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 /// `[mem.iter.range]` (both by `conc/chan_drain_after_inclusive_loop.lu`,
 /// the ch12 router shape) and `[mem.tier0.move]` (by
 /// `memory/mut_param_aggregate_store.lu`). All four run clean here.
-/// HELD at 107 by pin `4e316ad` (0.1.12): the s79/s80/s81 wave adds three
-/// corpus files and no new anchor citation — they cite `str.views`,
-/// `mem.str.get` and `mem.region.intra`, all already covered — and
-/// `str_from_utf8`, the wave's one new builtin, has no clause to cite.
-const RATCHET_FLOOR: usize = 107;
+/// RATCHETED to 114 by pin `02c1e88`: the s88/s89/s90 + is13 wave. s89
+/// wrote `[mem.str.view.lend]` before the code and cites it from two new
+/// corpus files; s90's fs builtins and s88's three holes bring the rest.
+/// A ratchet is a floor, not a target — it moves up when coverage does,
+/// and never down without the gap list on the table.
+const RATCHET_FLOOR: usize = 114;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -57,14 +58,12 @@ const RATCHET_FLOOR: usize = 107;
 /// outside the spec tree. 315 → 316 at pin `f8dca42` (0.1.11): s53's
 /// `[gram.lex.shebang]`, the ONLY `spec/` delta in the whole wave — `#!`
 /// at byte offset zero, and at no other offset, is trivia, so an
-/// executable script is an ordinary translation unit. HELD at 316 by pin
-/// `4e316ad` (0.1.12), whose range touches no `spec/` file at all: s79 is
-/// bench infrastructure, s80 is a mid-end aliasing fix, and s81's
-/// `str_from_utf8` was added to the PRELUDE without a clause — it is
-/// specified by its signature, its doc comments and one corpus witness,
-/// which is a spec gap this machine implements against rather than a
-/// reading it can cite. Moves only with a pin bump, and then deliberately.
-const ANCHORS_TOTAL: usize = 316;
+/// executable script is an ordinary translation unit. MOVED to 323 by pin
+/// `02c1e88`, the first bump in a while whose range does touch `spec/`:
+/// s89 added `[mem.str.view.lend]` to 02-memory-model.md — written before
+/// the lend analysis it governs — and the rest of the delta is the s90 fs
+/// surface. Moves only with a pin bump, and then deliberately.
+const ANCHORS_TOTAL: usize = 323;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -188,9 +187,9 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // these numbers — move them *deliberately*, here and in the
     // corpus-harness ledger.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "4e316ad7c4236be5bcf05231a16bbecadccc2018");
-    assert_eq!(summary.programs, 320);
-    assert_eq!(summary.records, 298);
+    assert_eq!(summary.pin, "02c1e88f23931d8258cb3ed3041baf8548dff3f2");
+    assert_eq!(summary.programs, 331);
+    assert_eq!(summary.records, 308);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

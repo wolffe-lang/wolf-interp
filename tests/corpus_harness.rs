@@ -284,12 +284,12 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     let report = report();
     assert_eq!(
         report.total(),
-        283,
+        294,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 261);
-    assert_eq!(report.members(), 22);
+    assert_eq!(report.entries(), 271);
+    assert_eq!(report.members(), 23);
 }
 
 #[test]

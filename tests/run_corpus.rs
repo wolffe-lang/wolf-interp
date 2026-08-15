@@ -111,6 +111,31 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("rows/negative/payload_mismatch.lu", "exit(0)"),
     ("rows/negative/pub_inferred.lu", "exit(1)"),
     ("rows/propagate/main.lu", "exit(0)"),
+    // is13's witness: three arms over an IMPORTED module's row, in both
+    // orders. lupin used to answer the FIRST arm for every tag here,
+    // silently and exit 0, because it asked the matching module's own
+    // fn headers what counted as a tag. Nothing else in the corpus
+    // takes a cross-module handler with named arms — rows/propagate
+    // above uses a wildcard binder — which is why it went unseen.
+    ("rows/cross_module_arms/main.lu", "exit(0)"),
+    // The s88/s89/s90 wave, reaching `run` as the pin advanced.
+    //
+    // Two of s88's: a `main` with no return type, and equality on two
+    // bools. lupin ran both before they were corpus files; they are
+    // here because wolfgang can now compile them too.
+    ("entry_no_return.lu", "exit(0)"),
+    ("typecheck/bool_cmp.lu", "exit(0)"),
+    ("strings/split_clause.lu", "exit(0)"),
+    ("kernels/hot_sum_reduce.lu", "exit(0)"),
+    // s89's escape witness, and it is NOT a clean pass: wolfgang
+    // REFUSES this file at `mem` with E1015 (a byte view outliving the
+    // call it was lent to), and lupin runs it to exit(0). Unlike the
+    // litmuses above — move_use_after traps use-after-move,
+    // excl_overlap traps exclusivity — E1015 has no dynamic
+    // counterpart here, so nothing catches it at either end. Same class
+    // as wolf-interp#25 and tracked with it; recorded as exit(0)
+    // because that is the truth, not because it is right.
+    ("memory/byte_view_escape.lu", "exit(0)"),
     // The grammar annex's accepted readings, now executed rather than parsed.
     ("grammar/bang_errunion.lu", "exit(0)"),
     ("grammar/bang_not.lu", "exit(0)"),

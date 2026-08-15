@@ -165,10 +165,12 @@ fn files_whose_ledger_stops_at_lex_fail_at_parse_with_their_pinned_code() {
     // pin bump drops one, the loss should be loud. E0210 joined at 8b04edf:
     // the §3.3 receiver ruling's detached-moded-receiver error, and the first
     // *spec-pinned* E02xx code (the rest of that family is implementation
-    // choice per `[mem.codes]`).
+    // choice per `[mem.codes]`). E0201 joined with wolf-lang's s88, which
+    // gave the corpus `grammar/range_bare.lu` — a range with no endpoint —
+    // and so took that code out of this implementation's UNPINNED_CODES.
     assert_eq!(
         seen.values().cloned().collect::<Vec<_>>(),
-        vec!["E0001", "E0210", "E0002", "E0006", "E0008"],
+        vec!["E0001", "E0201", "E0210", "E0002", "E0006", "E0008"],
         "the pinned grammar-tier codes changed: {seen:?}"
     );
 }

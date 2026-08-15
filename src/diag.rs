@@ -249,13 +249,12 @@ pub const UNPINNED_CODES: &[(&str, &str, &str)] = &[
         "gram.lex.str.escape",
         "bare `{`/`}` in string text",
     ),
-    (
-        E_UNEXPECTED_TOKEN,
-        "gram",
-        "token begins no legal continuation — also `when` arity's sentence \
-         ([gram.expr.conc]; wolf-interp#3 retired the competing E0203 in \
-         favor of wolfc's established assignment)",
-    ),
+    // E0201 sat here until wolf-lang's s88 landed `grammar/range_bare.lu`,
+    // which pins it: a range with no endpoint is `fail(E0201)` at parse in
+    // the corpus, so the code is the corpus's to define and no longer this
+    // implementation's to choose. Same sentence, same `when` arity duty
+    // ([gram.expr.conc]; wolf-interp#3 retired the competing E0203 in
+    // favour of wolfc's established assignment) — only the authority moved.
     (E_UNEXPECTED_EOF, "gram", "input ended inside a production"),
     (
         E_FN_NEEDS_BODY,
