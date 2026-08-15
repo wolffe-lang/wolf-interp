@@ -1,11 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.1.13 — 2026-08-15
 
 THE ARM-SELECTION PASS (sprint is13). One silent wrong answer and one
 complexity bug; no corpus verdict moves, and every entry file of the
 pinned corpus records byte-identically before and after — the only file
 whose record changes is the one added to catch the miss.
+
+Released against pin `02c1e88`, which advances `upstream` across the
+s88/s89/s90 wave: the corpus grows 283 -> 294 files, the bundle 298 ->
+308 records, anchors 316 -> 323, and coverage ratchets 107 -> 114.
+`grammar/range_bare.lu` pins E0201, so that code left this
+implementation's UNPINNED_CODES — the corpus is its authority now.
+The differential is GREEN at the new pin: 308 entries, 0 divergences.
 
 - **wolf-interp#29 FIXED (wolf-std F-0079): a multi-arm `else`-match
   handler took its FIRST ARM for every tag when the row was raised in an

@@ -30,7 +30,7 @@ is the binary, the package, and the posture, at the stated upstream pin:
 
 ```console
 $ lupin --version
-lupin 0.1.12 (wolf-interp, reference interpreter at pin …)
+lupin 0.1.13 (wolf-interp, reference interpreter at pin …)
 ```
 
 ## Running a program
