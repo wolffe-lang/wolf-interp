@@ -1,5 +1,98 @@
 # Changelog
 
+## Unreleased
+
+THE ARM-SELECTION PASS (sprint is13). One silent wrong answer and one
+complexity bug; no corpus verdict moves, and every entry file of the
+pinned corpus records byte-identically before and after — the only file
+whose record changes is the one added to catch the miss.
+
+- **wolf-interp#29 FIXED (wolf-std F-0079): a multi-arm `else`-match
+  handler took its FIRST ARM for every tag when the row was raised in an
+  imported module.** No diagnostic, exit 0, a confident wrong answer —
+  the shape that reads correctly answering the wrong question. The same
+  program gave `10 20 30` under wolfgang and `10 10 10` here.
+
+  Whether a bare lowercase identifier in a pattern is a *row-tag
+  pattern* or a *binding* is a question about the scrutinee's row, and
+  the checker answers it from the row type. This machine asked the
+  **matching module's own signatures** (`sema::Module::row_tags`,
+  collected per module from that module's own `fn` headers). A handler
+  in the entry file over `tagmod.miss()`'s row therefore found no
+  declared `alpha`, read every arm's pattern as a fresh binding — and a
+  binding matches anything — so the first arm won for every tag.
+  Reversing the arms reversed the output, which is what tells "first arm
+  always" from "one tag happened to be right".
+
+  The row now **travels with the value it was raised through**
+  (`ErrorValue::row`, recorded at the raise site from the enclosing
+  function's declared return row, and carried through `?`, through
+  payload application, through every copy). A row that crosses a module
+  boundary is still the same row, so arm resolution asks the value which
+  row it came from instead of asking the far side's declarations again.
+  The module's own vocabulary stays in the union behind it, so a tag
+  with no declared row still resolves where its module declares it — and
+  a lowercase name the row does *not* declare still binds: `else |err|`
+  keeps its binder and an `other =>` rest arm keeps catching.
+
+  `corpus/rows/cross_module_arms/` is the witness — three arms in both
+  orders over an imported module's row, a `?` hop on the far side, and
+  the two binder shapes as the counterweight. It runs `10 20 30` on both
+  compiler rungs and here; before the fix this machine printed
+  `10 10 10` forward and `30 30 30` reversed. `rows/propagate` was the
+  corpus's only cross-module handler and it took `else |_|`, which is
+  why nothing noticed. The unit-sized half, which does not wait on a pin
+  bump, is `tests/rows_option.rs`'s
+  `a_row_raised_across_a_module_boundary_still_dispatches_by_tag`.
+
+- **wolf-interp#28 half-FIXED (wolf-std F-0078): the index read no
+  longer copies the container.** `xs[i]` evaluated `xs` in order to pick
+  one element out of it, and evaluating a place-valued `xs` deep-copies
+  the whole thing: O(n) per read, O(n²) per walk. The same lend as #24's
+  receiver fix, on the index-read path — the read is charged at exactly
+  the moment and in exactly the order it always was, the base's own fuel
+  step included, and the container steps out of its slot only for the
+  length of one `builtin::index` call, which cannot re-enter the
+  machine. Slices keep the copy (`s[a..b]` reads its endpoints off the
+  *syntax*, the exclusion `lendable` already makes for `str.get(a..b)`),
+  as does a base that is not a plain place path — there would be nowhere
+  to put the value back.
+
+  Measured, a `List[int]` of N built by push then read back by index
+  (release build, CPU seconds, min of three, this box):
+
+  | N | before | after |
+  |---|---|---|
+  | 2 000 | 0.156 s | 0.042 s |
+  | 4 000 | 0.576 s | 0.080 s |
+  | 8 000 | 2.317 s | 0.157 s |
+  | 32 000 | 21.500 s | 0.333 s |
+
+  Four times the work per doubling down to under two — the curve the
+  issue's `for v in xs` walk already had — and **65× at 32k**.
+
+  One shape moved, and it moved onto the compiler's answer. The copy
+  path snapshotted the container *before* evaluating the index, so a
+  write hidden in the index expression was invisible to the read that
+  followed it: `xs[bump(mut xs) - 1]` trapped `bounds` against the stale
+  length in interpolation position, while the identical `let v =
+  xs[bump(mut xs) - 1]` answered 9 — this machine disagreeing with
+  itself over two spellings of one expression. The lend is taken *after*
+  the index is evaluated (#24's ordering), so both answer 9, which is
+  what wolfgang answers. Pinned in `eval::tests`.
+
+  **The other half of #28 stays open**: a read-mode `List` argument
+  still copies, on the way in and again on the way out
+  (call-by-value-result reads every parameter's final value back). That
+  is the same value-model question as #25 and is not a lend away — a
+  callee runs arbitrary user code, which can reach the caller's place by
+  other names.
+
+- **wolf-interp#25 not taken.** Closing it means giving region-homed
+  containers identity in the value model — a change to how values are
+  represented, not an arm selection or a lend. It stays declared in the
+  approximation contract, §6.13 and §6.14.1.
+
 ## 0.1.12 — 2026-08-13
 
 THE OWN-LEDGER PASS, then the re-pin. Two of this machine's own defects
