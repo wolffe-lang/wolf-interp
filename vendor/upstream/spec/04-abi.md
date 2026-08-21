@@ -34,6 +34,54 @@ AAPCS64, win64, Apple arm64 deltas).
   pads** anywhere in wolf code (D30/Perceus precondition, s04
   `[mem.shared.drop]`): every control transfer is a call, return,
   branch, or trap.
+- `[abi.native.taskenv]` A spawned task's captures cross to the
+  runtime as ONE pointer to a **capture record** whose layout is
+  `wolf-abi-0` internal, paired with a task-entry function that reads
+  it (`[conc.task.spawn]`). The record's storage is charged to the
+  spawning `scope`, and the scope may not release it before
+  `[conc.task.join]` completes — so the record is live for at least as
+  long as the task is. Where the storage comes from is an
+  implementation choice (a caller frame slot suffices for a spawn site
+  reached once; a site under a loop needs one record per reach, and
+  the scope's own arena is the natural home); *that* it outlives the
+  join is contract. Nothing here is a stability promise —
+  `[abi.native.unstable]` governs.
+- `[abi.native.procenv]` A proc's arguments cross to the runtime as
+  ONE pointer to an argument record of the same internal shape, paired
+  with a proc-entry function that reads it (`[conc.task.root]`), plus
+  the record's byte length — and the runtime **copies** the record
+  before the spawn returns. A proc has no extent at its spawn site
+  that outlives it: it is a failure domain under the root supervisor
+  (`[conc.proc.model]`) and by design outlives the frame that spawned
+  it, so the only owner that can keep its record alive is the proc's
+  own frame. The copy is charged to the proc and lives until its body
+  returns; the spawner's storage is free for reuse the instant it has
+  the proc id back, which is what makes `spawn proc` under a loop
+  sound with one record slot per site. Same stability status as the
+  task record: `[abi.native.unstable]` governs.
+
+- `[abi.native.dyn]` A trait object is a TWO-WORD pair: the data
+  pointer, then the vtable pointer, laid out as an ordinary by-value
+  aggregate `{ptr, ptr}`. The data half points at the erased value and
+  carries exactly the region obligations the checker assigned that
+  value — erasure changes dispatch, never ownership. The vtable half
+  points at immutable static storage: one pointer-sized slot per
+  method of the trait's dyn-safe method set, in the CANONICAL order
+  sema's dyn-safety report records (the interface serializes that
+  list, so a slot index is a cross-module fact — not declaration
+  order). Every slot holds a function of the ERASED signature: the
+  receiver crosses as the data pointer, every other parameter and the
+  result exactly as the trait declares them, which dyn-safety
+  guarantees are `Self`-free; a slot whose target's own convention
+  differs (a by-value receiver, say) is reached through a shim of the
+  erased shape, and the shim is the table's problem, never the call
+  site's. Dispatch is two loads and an indirect call; nothing else is
+  promised. Tables are demanded by `as dyn` cast sites
+  (`[mem.dyn.unsize]`, D47): one content-interned table per
+  (trait, impl) pair, synthesized with its shims when a cast first
+  names the pair; the data half is the cast operand's spilled place.
+  Same stability status as everything in this section:
+  `[abi.native.unstable]` governs.
 
 ## §2 C membranes `[abi.c]`
 

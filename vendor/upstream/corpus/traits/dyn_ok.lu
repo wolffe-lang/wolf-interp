@@ -1,10 +1,21 @@
-//! check: pass
-//! phase: mem
-//! conforms: ty.trait.dyn.safe
+//! check: run(exit=0, stdout="dot\ndot\ndot\n")
+//! phase: run
+//! conforms: ty.trait.dyn.safe, ty.trait.dyn.dispatch, ty.dyn.unsize
 //!
 //! A dyn-safe trait (receiver-only `Self`, no generics, no
-//! associated escapes): the `dyn` object satisfies its own trait,
-//! and sema records the dyn-safe method set for the interface.
+//! associated escapes), end to end: CONSTRUCTED from a place
+//! (`[mem.dyn.unsize]`, D47 — s98), dispatched through both
+//! spellings (s96), and run on every lane.
+//!
+//! `d as dyn Draw` builds the pair: the data half is `d`'s spilled
+//! place under a shared lend (writes to `d` while a pair lives are
+//! refused), the vtable half is the content-interned table for
+//! (Draw, impl-for-Dot) — TWO cast sites below, ONE table
+//! (`dedup_instances.rs` pins the counts). Every slot points at an
+//! erased-shape shim over the s95 instance; dispatch is two loads
+//! and a `call.ind` (s97). The binding-position cast grows a loan
+//! scoped by `o`'s liveness; the argument-position cast lends for
+//! exactly the call's extent.
 
 trait Draw {
     fn draw(self) -> str
@@ -24,6 +35,15 @@ fn render(d: dyn Draw) -> str {
     Draw.draw(d)
 }
 
+fn label(d: dyn Draw) -> str {
+    d.draw()
+}
+
 fn main() -> !int {
+    let d = Dot { x: 7 }
+    let o = d as dyn Draw
+    print("{o.draw()}")
+    print("{render(d as dyn Draw)}")
+    print("{label(o)}")
     0
 }

@@ -320,6 +320,92 @@ fn main() -> !int {
     );
 }
 
+/// wolf-interp#33 (wolf-std F-0084), #29's sequel one layer deeper: the
+/// row travels with the value, but `?` never WIDENED it. A tag raised in
+/// a sub-row (`just_overflow`'s `{overflow}`) and lifted by `?` into a
+/// wider row (`miss`'s `{syntax, deep, overflow}`) arrived at the far
+/// handler still carrying the one-tag vocabulary, so `syntax` and `deep`
+/// read as binders and the FIRST ARM swallowed the widened tag — `1 2 1`
+/// where the checker's lanes print `1 2 3`. `[err.propagate]`'s own
+/// comment in the evaluator promised widening-by-union; now the code
+/// keeps the promise at the propagation site. The reversed arm order is
+/// the same experiment as the test above: under first-arm-wins it flips
+/// the answer, under tag dispatch it cannot.
+#[test]
+fn a_tag_widened_from_a_sub_row_still_dispatches_by_name() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("widened_sub_row");
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).expect("stale scratch removed");
+    }
+    std::fs::create_dir_all(dir.join("scan")).expect("scratch created");
+    std::fs::write(
+        dir.join("scan/scan.lu"),
+        "\
+//! member: true
+
+fn just_overflow(k: int) -> int ! {overflow} {
+    if k == 3 { return overflow }
+    k
+}
+
+pub fn miss(k: int) -> int ! {syntax, deep, overflow} {
+    if k == 1 { return syntax }
+    if k == 2 { return deep }
+    let v = just_overflow(k)?
+    v
+}
+",
+    )
+    .expect("the member module is written");
+
+    let source = "\
+use scan
+
+fn fwd(k: int) -> int {
+    scan.miss(k) else |e| match e {
+        syntax => 1,
+        deep => 2,
+        overflow => 3,
+    }
+}
+
+fn rev(k: int) -> int {
+    scan.miss(k) else |e| match e {
+        overflow => 3,
+        deep => 2,
+        syntax => 1,
+    }
+}
+
+fn main() -> !int {
+    print(\"fwd: {fwd(1)} {fwd(2)} {fwd(3)}\")
+    print(\"rev: {rev(1)} {rev(2)} {rev(3)}\")
+    0
+}
+";
+    let entry = dir.join("main.lu");
+    std::fs::write(&entry, source).expect("the entry is written");
+
+    let observation = wolf_interp::frontend::observe_file(
+        &entry,
+        source.as_bytes(),
+        None,
+        wolf_interp::eval::Trace::Off,
+        &wolf_interp::eval::SchedRequest::Default,
+        None,
+    );
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "reason: {:?}",
+        observation.reason
+    );
+    assert_eq!(
+        String::from_utf8(observation.stdout).expect("utf-8"),
+        "fwd: 1 2 3\nrev: 1 2 3\n",
+    );
+}
+
 /// The sc02 trap, closed: a raise site whose tag resolves nowhere is
 /// refused at **resolve**, even though the input never takes the branch.
 /// Lazy resolution let exactly this program certify falsely.

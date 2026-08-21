@@ -150,6 +150,26 @@ pub struct Module {
     /// explicitly. `[mem.iter.for]` dispatch needs the trait too: user types
     /// implement `Iter` **by name** — no structural conformance.
     pub methods: BTreeMap<String, BTreeMap<String, Vec<MethodDef>>>,
+    /// A trait's **default method bodies**: trait name → method name → the
+    /// decl as written in the `trait` item. Consulted only when a subject's
+    /// own table misses (the s17 order: the type's impl wins; the default is
+    /// the floor under it) — wolf-interp#32's fix. Inside a default body,
+    /// `self` is the concrete receiver, so `self.name()` re-enters ordinary
+    /// dispatch and the impl's override wins: dispatch-back-through-Self
+    /// without a Self machinery this face-value tier never had.
+    pub trait_defaults: BTreeMap<String, BTreeMap<String, Box<FnDecl>>>,
+    /// `type Cover = distinct media.Song`: alias name → the target's head
+    /// name (`Song`). What lets an adapter cast MOVE the nominal identity
+    /// (`s as Cover` renames the value, both directions), which is the D28
+    /// layout-identity fact plus the one thing a by-name dispatcher needs:
+    /// dispatch follows the name, so the name must follow the cast
+    /// (wolf-interp#32's adapter case).
+    pub distincts: BTreeMap<String, String>,
+    /// Which traits each subject implements, from its `impl T for S` items —
+    /// including an EMPTY impl block, which is exactly the case where every
+    /// method comes from the defaults and the `methods` table alone cannot
+    /// even name the subject.
+    pub trait_impls: BTreeMap<String, Vec<String>>,
     /// Every lowercase tag a function signature of this module declares in an
     /// error row (return rows and postfix rows alike). The pattern-resolution
     /// rule (issue #12, the interpreter half of wolf-lang#4): a lowercase
@@ -441,6 +461,14 @@ fn same_file(a: &Path, b: &Path) -> bool {
 /// The head name of a type, for impl-subject and trait naming: the path's
 /// last segment, through prefix keywords. `None` for shapes an impl subject
 /// does not take at this machine's depth (tuples, fn types, …).
+/// The head name of a type as written — `distinct media.Song` → `Song`.
+/// The eval tier's adapter-cast rebranding wants the same reading the
+/// method tables were built with, so the one function serves both.
+#[must_use]
+pub fn head_name(ty: &Type) -> Option<String> {
+    type_head_name(ty)
+}
+
 fn type_head_name(ty: &Type) -> Option<String> {
     match &*ty.kind {
         TypeKind::Path { path, .. } => path.segments.last().map(|s| s.name.clone()),
@@ -567,6 +595,27 @@ fn collect(unit: &Unit, module: &mut Module, file: &str, source: &str) {
                         Some(alias.name.span),
                         file,
                     ),
+                    crate::ast::TypeDef::Alias(ty)
+                        if matches!(
+                            &*ty.kind,
+                            crate::ast::TypeKind::Prefixed {
+                                kw: crate::ast::PrefixTypeKw::Distinct,
+                                ..
+                            }
+                        ) =>
+                    {
+                        if let Some(target) = type_head_name(ty) {
+                            module.distincts.insert(alias.name.name.clone(), target);
+                        }
+                        define(
+                            module,
+                            alias.name.name.clone(),
+                            Def::Opaque("type"),
+                            true,
+                            Some(alias.name.span),
+                            file,
+                        );
+                    }
                     _ => define(
                         module,
                         alias.name.name.clone(),
@@ -605,6 +654,18 @@ fn collect(unit: &Unit, module: &mut Module, file: &str, source: &str) {
                     Some(def.name.span),
                     file,
                 );
+                for member in &def.members {
+                    if let ItemKind::Fn(decl) = &member.kind
+                        && decl.body.is_some()
+                    {
+                        collect_signature_tags(decl, &mut module.row_tags);
+                        module
+                            .trait_defaults
+                            .entry(def.name.name.clone())
+                            .or_default()
+                            .insert(decl.name.name.clone(), decl.clone());
+                    }
+                }
             }
             ItemKind::Impl(def) => {
                 // `impl X { … }` is an inherent impl; `impl Iter for X { … }`
@@ -618,6 +679,12 @@ fn collect(unit: &Unit, module: &mut Module, file: &str, source: &str) {
                     .then(|| type_head_name(&def.trait_or_subject))
                     .flatten();
                 if let Some(subject) = type_head_name(subject) {
+                    if let Some(trait_name) = &trait_name {
+                        let traits = module.trait_impls.entry(subject.clone()).or_default();
+                        if !traits.contains(trait_name) {
+                            traits.push(trait_name.clone());
+                        }
+                    }
                     for member in &def.members {
                         if let ItemKind::Fn(decl) = &member.kind {
                             collect_signature_tags(decl, &mut module.row_tags);

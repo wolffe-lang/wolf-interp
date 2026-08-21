@@ -595,30 +595,61 @@ the inputs that would have decided it either way.)
   non-iterating position is still an allocation — but the LIST is,
   never the strings inside it.
 
-- `[mem.str.view.lend]` `s.bytes()` in an **argument position** is a
-  LEND, not a copy: the callee receives the receiver's own
-  `{ptr, len}`, and the call allocates nothing. Which positions
-  materialize is therefore a rule of the language and not a property of
-  a compiler: `s.bytes()` yields a view when it is *consumed on the
-  spot* — iterated, indexed, asked for `len`/`count`/`is_empty`/`get`/
+- `[mem.str.view.lend]` `s.bytes()` in an **argument position** is
+  OFFERED as a lend, not a copy, and the lend is an optimization with a
+  defined fallback — never a rule a program can violate. Which positions
+  materialize is a rule of the language and not a property of a
+  compiler: `s.bytes()` yields a view when it is *consumed on the spot*
+  — iterated, indexed, asked for `len`/`count`/`is_empty`/`get`/
   `first`/`last`, or **passed as an argument to a function that only
   does those things with it** — and materializes a `List[int]` in every
-  other position, `let` bindings and returns included. The lend's deal
-  is the region checker's, one scale down: the callee may READ the
-  bytes for the call's duration and may not keep them, the caller's
-  string stays borrowed across the call (a `str` is immutable at every
-  tier, so nothing may change under the callee), and a lend the callee
-  would make outlive the call is refused (E1015) rather than silently
-  copied. The refusal names the fix: binding first (`let bs =
-  s.bytes()`) materializes, and the bound list may be passed, kept and
-  returned like any other value. A callee whose use of the parameter
-  falls outside the read set is not an error — the caller materializes
-  for it, exactly as it did before views crossed calls. A byte view has
-  no write path in any position (`[mem.str.get]`'s UTF-8 guarantee
+  other position, `let` bindings and returns included. Three cases at a
+  call, decided by the callee's body: (1) a callee that only READS its
+  parameter, in the positions above, is lent the receiver's own
+  `{ptr, len}` and the call allocates nothing; the lend's deal is the
+  region checker's, one scale down — the callee may read the bytes for
+  the call's duration and may not keep them, and the caller's string
+  stays borrowed across the call (a `str` is immutable at every tier,
+  so nothing may change under the callee). (2) A callee whose use of
+  the parameter this analysis cannot classify is not lent: the caller
+  materializes for it, exactly as every caller did before views crossed
+  calls. (3) A callee that provably KEEPS the parameter past the call —
+  returns it, stores it, hands it on — is not lent either, for the same
+  reason a region may not outlive its scope: the caller materializes,
+  and the compiler says so once (W1004), naming the escaping use and the
+  one-word fix (binding first, `let bs = s.bytes()`, if the copy was
+  the intent; changing the callee, if the lend was). Cases (2) and (3)
+  compile to the same thing — a copy — and differ only in what the
+  compiler can prove and therefore say. **The copy is observable only
+  in cost**: in every case the program means what it meant when views
+  materialized everywhere, and no program has a meaning under a lend
+  that it lacks under the copy. There is deliberately no way to spell
+  "keep these bytes and do not copy them", because that spelling has
+  no meaning that is not a dangling `{ptr, len}`. A byte view has no
+  write path in any position (`[mem.str.get]`'s UTF-8 guarantee
   survives construction: nothing may forge a `str` by writing one's
-  bytes).
+  bytes). *History:* s89–s91 refused case (3) as E1015; s92 retired
+  the refusal in favour of the copy-and-warn (#107, #108).
 
 ---
+
+- `[mem.dyn.unsize]` A trait object is constructed by an **explicit
+  cast, from a place** (D47): `v as dyn Trait`, where `v` denotes a
+  binding, a field, or an index, and the concrete type carries the
+  coherence-unique impl of the dyn-safe trait. There is no implicit
+  coercion — the coercion table grows by addition, never by a new
+  implicit mechanism — and a temporary is refused (E0810): the pair's
+  data half points AT the operand, and a temporary has no home to
+  point into. The cast is a **shared lend of the place** for as long
+  as the pair is needed: writes to and moves of the place while the
+  pair lives are refused, the same deal as every other borrow in this
+  chapter, one object at a time. A pair lives in a local or crosses a
+  call as an argument; it does not (yet) cross a return, enter a
+  container, a field, or a row — each of those is a borrow story not
+  yet written, refused by name rather than guessed. The vtable the
+  cast builds is `[abi.native.dyn]`'s: one content-interned table per
+  (trait, impl) pair, slots in the dyn report's canonical order,
+  shims owned by the table.
 
 ## Appendix A — `corpus/regions.lu`, clause by clause `[mem.appendix]`
 
