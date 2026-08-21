@@ -128,7 +128,9 @@ struct Program {
 pub fn export(options: &ExportOptions) -> Result<ExportSummary, String> {
     let pin = read_pin(&options.pin)?;
     let registry = read_registry(&options.spec)?;
-    cross_check_registry(&options.spec, &registry)?;
+    for notice in cross_check_registry(&options.spec, &registry)? {
+        eprintln!("{notice}");
+    }
 
     // -- gather every program, corpus first, suites after -------------------
     let mut programs = Vec::new();
@@ -320,18 +322,35 @@ fn read_registry(spec: &Path) -> Result<BTreeMap<String, String>, String> {
         .collect())
 }
 
+/// Registry disagreements that have been triaged and FILED upstream, keyed
+/// by namespace. The `FILED_DIVERGENCES` pattern applied to the anchor
+/// cross-check: a filed finding still appears in every export (hiding it
+/// would defeat the check), it just stops failing the export it already
+/// filed. The waiver dies with the filing — when the clause is amended and
+/// the namespace becomes legal, the row comes out and the check resumes
+/// gating.
+pub const FILED_REGISTRY_FINDINGS: &[(&str, &str)] = &[(
+    "pkg",
+    "wolf-lang#120 — [conf.anchor.ns] never amended for 08-package.md's \
+     sixteen anchors; the clause's own additive-append contract (the s39 \
+     `test` precedent) is the one-line fix",
+)];
+
 /// The independent extraction (`[conf.anchor.grammar]`): every
 /// `[registered.namespace.token]` in the pinned spec markdown, compared both
 /// ways against `anchors.json`. A mismatch is an **upstream finding** — the
 /// export fails loudly and files, never patches (independence doctrine).
+/// A mismatch already in [`FILED_REGISTRY_FINDINGS`] returns as a notice
+/// instead: reported on every export, no longer fatal, per the standing
+/// waiver rule.
 ///
 /// # Errors
 ///
-/// The mismatch, spelled out token by token.
+/// Any UNFILED mismatch, spelled out token by token.
 pub fn cross_check_registry(
     spec: &Path,
     registry: &BTreeMap<String, String>,
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
     let mut extracted: BTreeMap<String, ()> = BTreeMap::new();
     for (name, bytes) in walk_files(spec)? {
         if !name.ends_with(".md") {
@@ -353,12 +372,33 @@ pub fn cross_check_registry(
         .keys()
         .filter(|t| !registry.contains_key(*t))
         .collect();
-    let missing_from_spec: Vec<&String> = registry
+    let filed_ns = |t: &str| {
+        let ns = t.split('.').next().unwrap_or_default();
+        FILED_REGISTRY_FINDINGS.iter().find(|(n, _)| *n == ns)
+    };
+    // A token the spec cites but the registry lacks is never waived: the
+    // registry is upstream's own generated artifact, and a hole in it is
+    // a fresh finding whatever namespace it lands in.
+    let (filed, missing_from_spec): (Vec<&String>, Vec<&String>) = registry
         .keys()
         .filter(|t| !extracted.contains_key(*t))
-        .collect();
+        .partition(|t| filed_ns(t).is_some());
     if missing_from_registry.is_empty() && missing_from_spec.is_empty() {
-        return Ok(());
+        let mut notices = Vec::new();
+        if !filed.is_empty() {
+            let mut by_ns: BTreeMap<&str, (usize, &str)> = BTreeMap::new();
+            for t in &filed {
+                let (ns, filing) = filed_ns(t).expect("partitioned as filed");
+                by_ns.entry(ns).or_insert((0, *filing)).0 += 1;
+            }
+            for (ns, (count, filing)) in by_ns {
+                notices.push(format!(
+                    "notice: {count} `{ns}.*` anchor(s) registered but absent from the \
+                     spec's namespace clause — known upstream finding, {filing}"
+                ));
+            }
+        }
+        return Ok(notices);
     }
     Err(format!(
         "anchors.json and an independent extraction of the spec disagree — an upstream \
@@ -956,11 +996,29 @@ mod tests {
         fs::write(dir.join("01-x.md"), "a clause [mem.real] here\n").expect("write");
         let mut registry = BTreeMap::new();
         registry.insert("mem.real".to_owned(), "01-x.md".to_owned());
-        assert_eq!(cross_check_registry(&dir, &registry), Ok(()));
+        assert_eq!(cross_check_registry(&dir, &registry), Ok(Vec::new()));
 
         registry.insert("mem.phantom".to_owned(), "01-x.md".to_owned());
         let err = cross_check_registry(&dir, &registry).expect_err("must fail");
         assert!(err.contains("mem.phantom"), "{err}");
+
+        // A FILED namespace waives fatally-missing-from-spec into a notice
+        // that still names the filing — and only that namespace: `mem` is
+        // not filed, so `mem.phantom` above stayed fatal. `pkg` is.
+        let mut registry = BTreeMap::new();
+        registry.insert("mem.real".to_owned(), "01-x.md".to_owned());
+        registry.insert("pkg.manifest".to_owned(), "08-p.md".to_owned());
+        let notices = cross_check_registry(&dir, &registry).expect("filed ns is a notice");
+        assert_eq!(notices.len(), 1);
+        assert!(notices[0].contains("wolf-lang#120"), "{}", notices[0]);
+        assert!(notices[0].contains("1 `pkg.*`"), "{}", notices[0]);
+
+        // The other direction cannot arise for a filed-but-unregistered
+        // namespace: the extraction is namespace-gated (`classify` drops
+        // `pkg.*` citations until the clause legalizes them), so a spec
+        // citation the registry lacks stays a REGISTERED-namespace concern
+        // — proven fatal by the `mem.uncatalogued` case below, which the
+        // waiver must never touch.
 
         // And the converse: the spec cites what the registry does not know.
         fs::write(dir.join("02-y.md"), "cites [mem.uncatalogued]\n").expect("write");
