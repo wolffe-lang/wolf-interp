@@ -3068,10 +3068,30 @@ impl Machine {
             // it, and no pinned clause gives the mode a meaning there).
             ExprKind::ModedReceiver { place, .. } => self.eval(place),
             ExprKind::Try(inner) => {
-                let value = self.eval(inner)?;
+                let mut value = self.eval(inner)?;
                 if value.is_error() {
                     // `?` returns the error to the caller, widening the row by
                     // union (`[err.propagate]`). A return, not an unwind.
+                    //
+                    // The widening is LITERAL (wolf-interp#33, F-0079's
+                    // sequel): the value carries the row it was raised
+                    // through, and a tag raised in a sub-row (`{overflow}`)
+                    // that `?` lifts into a wider row (`{syntax, deep,
+                    // overflow}`) must arrive carrying the WIDE vocabulary,
+                    // or a far-side handler reads the missing tags as
+                    // binders and its first arm swallows every widened tag —
+                    // the exact first-arm disease #29 fixed, one layer up.
+                    if let Value::Error(e) = &mut value
+                        && !e.enum_variant
+                        && !e.row.is_empty()
+                        && let Some(frame) = self.frames.last()
+                    {
+                        for tag in &frame.row {
+                            if !e.row.contains(tag) {
+                                e.row.push(tag.clone());
+                            }
+                        }
+                    }
                     self.fire(Rule::ErrPropagate, expr.span, "`?` propagates");
                     return Err(Signal::Return(value));
                 }
