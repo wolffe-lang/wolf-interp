@@ -536,6 +536,11 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("generics/two_instances.lu", "exit(0)"),
     ("generics/two_level_raise.lu", "exit(0)"),
     ("traits/dyn_temp_refused.lu", "exit(0)"),
+    // is14's own two movers (#32): the dispatch floor under an impl is
+    // the trait's default, and an adapter cast moves the nominal
+    // identity. Both print what the checker's lanes print.
+    ("traits/adapter_distinct/main.lu", "exit(0)"),
+    ("typecheck/trait_default.lu", "exit(0)"),
     ("conc/select_single_arm_loop.lu", "exit(0)"),
     ("grammar/shebang.lu", "exit(0)"),
     ("memory/mut_param_aggregate_store.lu", "exit(0)"),

@@ -4102,12 +4102,43 @@ impl Machine {
             .map(|f| f.module.clone())
             .unwrap_or_default();
         let modules = &self.shared.program.modules;
-        std::iter::once(&current)
-            .chain(modules.keys().filter(|k| **k != current))
-            .find_map(|m| {
-                let defs = modules.get(m)?.methods.get(name)?.get(method)?;
-                Some((m.clone(), defs.clone()))
-            })
+        let order = || std::iter::once(&current).chain(modules.keys().filter(|k| **k != current));
+        if let Some(hit) = order().find_map(|m| {
+            let defs = modules.get(m)?.methods.get(name)?.get(method)?;
+            Some((m.clone(), defs.clone()))
+        }) {
+            return Some(hit);
+        }
+        // The subject's own table missed: the floor under it is a default
+        // body from a trait the subject implements (wolf-interp#32). The
+        // impl link and the trait may live in different modules (an entry
+        // file implementing an imported trait), so both lookups walk the
+        // module order independently. The synthesized MethodDef carries the
+        // trait's name — the same shape an explicit `impl` method records.
+        let implemented: Vec<String> = order()
+            .filter_map(|m| modules.get(m)?.trait_impls.get(name))
+            .flatten()
+            .cloned()
+            .collect();
+        for trait_name in implemented {
+            if let Some((m, decl)) = order().find_map(|m| {
+                let decl = modules
+                    .get(m)?
+                    .trait_defaults
+                    .get(&trait_name)?
+                    .get(method)?;
+                Some((m.clone(), decl.clone()))
+            }) {
+                return Some((
+                    m,
+                    vec![crate::sema::MethodDef {
+                        decl,
+                        trait_name: Some(trait_name),
+                    }],
+                ));
+            }
+        }
+        None
     }
 
     fn eval_closure(&mut self, params: &[ClosureParam], body: &Expr, span: Span) -> EResult<Value> {
@@ -4363,10 +4394,34 @@ impl Machine {
                 .map(|f| f.module.clone())
                 .unwrap_or_default();
             let head = path.segments[0].name.clone();
+            // The head may be the trait's own definition, or a `use`-bound
+            // name for a trait in another module (`use media.Show` then
+            // `Show.show(v)` — wolf-interp#32's adapter case). A use decl
+            // binds a path, not a Def, so the import is followed here: the
+            // recorded segments' tail looked up in their module, visibility
+            // honoured.
             let is_trait = matches!(
                 self.shared.program.lookup(&module, &head, false),
                 Some(Def::Opaque("trait"))
-            );
+            ) || self
+                .shared
+                .program
+                .modules
+                .get(&module)
+                .into_iter()
+                .flat_map(|m| m.use_paths.iter())
+                .filter(|(bound, _)| *bound == head)
+                .any(|(_, segments)| {
+                    let (Some(name), init) = (segments.last(), &segments[..segments.len() - 1])
+                    else {
+                        return false;
+                    };
+                    let target = init.join(".");
+                    matches!(
+                        self.shared.program.lookup(&target, name, true),
+                        Some(Def::Opaque("trait"))
+                    )
+                });
             if is_trait {
                 let method = path.segments[1].name.clone();
                 let evaluated = self.eval_args(args)?;
@@ -5247,6 +5302,35 @@ impl Machine {
     /// angelically, and a cast that *produces* a restricted type's value in
     /// unsafe code is §7/T1's whole subject.
     fn eval_cast(&mut self, value: Value, ty: &Type, span: Span) -> EResult<Value> {
+        // An adapter cast MOVES the nominal identity (wolf-interp#32's
+        // adapter case): `s as Cover` where `type Cover = distinct
+        // media.Song` renames the struct value, and the reverse cast
+        // renames it back — free and bidirectional (D28 layout identity),
+        // and dispatch-by-name follows the new name. Only a RECORDED
+        // distinct pair rebrands; unrelated struct casts keep their
+        // existing behavior.
+        if let Value::Struct { name, fields, home } = &value
+            && let Some(target) = crate::sema::head_name(ty)
+        {
+            let base = name.split('#').next().unwrap_or(name);
+            let modules = &self.shared.program.modules;
+            let relates = modules.values().any(|m| {
+                m.distincts.get(&target).is_some_and(|t| t == base)
+                    || m.distincts.get(base).is_some_and(|t| *t == target)
+            });
+            if relates && target != base {
+                self.fire(
+                    Rule::ValueSemantics,
+                    span,
+                    &format!("adapter cast renames `{base}` to `{target}` — layout identity"),
+                );
+                return Ok(Value::Struct {
+                    name: target,
+                    fields: fields.clone(),
+                    home: *home,
+                });
+            }
+        }
         if let TypeKind::RawPointer(inner) = &*ty.kind {
             let (elem, signed) = pointee(inner);
             return match value {
