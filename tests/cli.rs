@@ -132,7 +132,10 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = stdout_of(&output);
-    assert!(stdout.contains("294 file(s)"), "{stdout}");
+    // 294 -> 303 at the c9da6d9 pin: the c19/c21/c22/s98 wave lands
+    // (conc loop-procs, six generics witnesses, the D47 temporary
+    // fail-pin). Moved with the pin, per the export.rs rule.
+    assert!(stdout.contains("303 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -141,7 +144,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 294);
+    assert_eq!(value["total"], 303);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

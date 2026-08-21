@@ -281,14 +281,29 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             comments and that witness — so anchors stay 316 and the
     //             ratchet stays 107: the three new files cite `str.views`,
     //             `mem.str.get` and `mem.region.intra`, all already covered.)
+    //   c9da6d9 → 303 files (is14: the compiler's biggest fortnight —
+    //             c19 native conc closes (loop-spawned procs own a COPY
+    //             of their argument record), c21 monomorphization, c22
+    //             dispatch (static, `call.ind`, the dyn pair), s98's D47
+    //             (`v as dyn Trait`, places only), c23 range facts. The
+    //             corpus grows 9: two conc loop witnesses, six generics
+    //             witnesses, and `traits/dyn_temp_refused.lu`. EIGHT of
+    //             nine run clean here at first sight — every generics and
+    //             conc witness byte-matches, which is the differential's
+    //             finding again: the compiler built monomorphization and
+    //             this machine's tree-walking reading already agreed on
+    //             every answer. The ninth is the D47 fail-pin (E0810, a
+    //             place judgement this machine does not make): static
+    //             conservatism, the designed class, and wolf-interp#31's
+    //             disposition in one ledger row.)
     let report = report();
     assert_eq!(
         report.total(),
-        294,
+        303,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 271);
+    assert_eq!(report.entries(), 280);
     assert_eq!(report.members(), 23);
 }
 

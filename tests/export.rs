@@ -48,7 +48,11 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 /// corpus files; s90's fs builtins and s88's three holes bring the rest.
 /// A ratchet is a floor, not a target — it moves up when coverage does,
 /// and never down without the gap list on the table.
-const RATCHET_FLOOR: usize = 114;
+// 114 → 118 at c9da6d9: the wave's four newly covered clauses —
+// generics.mono/.nominal/.row-tail witnesses and ty.dyn.unsize.place — each
+// cited by the new corpus files alone. Raised in the bump commit per the
+// test's own instruction.
+const RATCHET_FLOOR: usize = 118;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -63,7 +67,11 @@ const RATCHET_FLOOR: usize = 114;
 /// s89 added `[mem.str.view.lend]` to 02-memory-model.md — written before
 /// the lend analysis it governs — and the rest of the delta is the s90 fs
 /// surface. Moves only with a pin bump, and then deliberately.
-const ANCHORS_TOTAL: usize = 323;
+// 323 → 343 at c9da6d9: taskenv/procenv/dyn (c19/c22/s96), [mem.dyn.unsize]
+// (s98), [mem.str.view.lend] retitles ride along, and s51's sixteen pkg.*
+// rows — registered while [conf.anchor.ns] still lacks the namespace, the
+// filed finding wolf-lang#120 (see export::FILED_REGISTRY_FINDINGS).
+const ANCHORS_TOTAL: usize = 343;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -187,9 +195,9 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // these numbers — move them *deliberately*, here and in the
     // corpus-harness ledger.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "02c1e88f23931d8258cb3ed3041baf8548dff3f2");
-    assert_eq!(summary.programs, 331);
-    assert_eq!(summary.records, 308);
+    assert_eq!(summary.pin, "c9da6d98fb81b95d48d34a28adef3525974cd338");
+    assert_eq!(summary.programs, 340);
+    assert_eq!(summary.records, 317);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
@@ -299,9 +307,10 @@ fn the_vocabularies_ship_closed() {
 fn the_anchor_registry_cross_check_holds_at_this_pin() {
     // Target 1 of the sprint: the pinned `anchors.json` is shared *data* —
     // consumed, and cross-checked against an independent extraction of the
-    // spec markdown. A mismatch is an upstream finding; at this pin the two
-    // agree exactly, and the export refuses to run when they stop agreeing
-    // (`export::cross_check_registry`, red-tested in the library).
+    // spec markdown. A mismatch is an upstream finding; at this pin the ONE
+    // disagreement is filed (wolf-lang#120, the pkg namespace) and returns
+    // as the sixteen-anchor notice; anything unfiled still refuses the
+    // export (`export::cross_check_registry`, red-tested in the library).
     let spec = crate_root().join(wolf_interp::upstream_root()).join("spec");
     let text = std::fs::read_to_string(spec.join("anchors.json")).expect("readable");
     let value: serde_json::Value = serde_json::from_str(&text).expect("json");
@@ -312,7 +321,10 @@ fn the_anchor_registry_cross_check_holds_at_this_pin() {
         .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_owned()))
         .collect();
     assert_eq!(registry.len(), ANCHORS_TOTAL);
-    export::cross_check_registry(&spec, &registry).expect("registry and extraction agree");
+    let notices =
+        export::cross_check_registry(&spec, &registry).expect("nothing unfiled disagrees");
+    assert_eq!(notices.len(), 1, "{notices:?}");
+    assert!(notices[0].contains("16 `pkg.*`"), "{}", notices[0]);
 }
 
 #[test]

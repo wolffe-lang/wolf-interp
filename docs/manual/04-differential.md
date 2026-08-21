@@ -83,17 +83,26 @@ a hashed manifest ([../conformance-bundle.md](../conformance-bundle.md)).
 `[proto.cmp]`. Checking the bundle against its own recorded records is the
 smoke test of the whole path:
 
+The `notice:` line in the transcript is the anchor cross-check reporting a
+FILED upstream finding on every export without failing the export that
+already filed it (`export::FILED_REGISTRY_FINDINGS`, the divergence-log
+waiver pattern): `[conf.anchor.ns]` was never amended for the `pkg`
+namespace `spec/08-package.md` introduced — wolf-lang#120, with both
+readings. This machine is not patched to match before the clause is fixed;
+the notice dies with the amendment.
+
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":114,"anchors_total":323,"bundle_sha256":"…","files":348,"forward_tags":95,"out":"target/bundle","pin":"02c1e88f23931d8258cb3ed3041baf8548dff3f2","programs":331,"records":308}
+{"anchors_covered":118,"anchors_total":343,"bundle_sha256":"…","files":357,"forward_tags":104,"out":"target/bundle","pin":"c9da6d98fb81b95d48d34a28adef3525974cd338","programs":340,"records":317}
+notice: 16 `pkg.*` anchor(s) registered but absent from the spec's namespace clause — known upstream finding, wolf-lang#120 — [conf.anchor.ns] never amended for 08-package.md's sixteen anchors; the clause's own additive-append contract (the s39 `test` precedent) is the one-line fix
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 308 entries compared, 0 member(s) exercised through their entries
+differential: 317 entries compared, 0 member(s) exercised through their entries
 divergences: 0
 conservatism ledger: 100 entries
   unsupported(counterparty): 50
   unsupported(interp): 50
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin 02c1e88f23931d8258cb3ed3041baf8548dff3f2 verified (bundle_sha256 …)
+notice: bundle target/bundle at pin c9da6d98fb81b95d48d34a28adef3525974cd338 verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the

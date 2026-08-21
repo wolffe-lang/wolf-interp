@@ -521,6 +521,21 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // s53: `shebang.lu` is the one file in the wave that DID need a
     // reading here — `[gram.lex.shebang]`, the wave's only spec delta.
     ("conc/chan_drain_after_inclusive_loop.lu", "exit(0)"),
+    // The c9da6d9 pin (is14): the compiler's c19-close/c21/c22/s98 wave.
+    // All nine new files reach run here; eight match their pins outright,
+    // and the ninth (dyn_temp_refused) runs where the corpus pins E0810 —
+    // static conservatism by design (D47's place rule is a sema judgement
+    // this machine does not make; the ledger row is wolf-interp#31's
+    // disposition).
+    ("conc/proc_spawn_loop.lu", "exit(0)"),
+    ("conc/spawn_fanout_loop.lu", "exit(0)"),
+    ("generics/box_method.lu", "exit(0)"),
+    ("generics/first_of_list.lu", "exit(0)"),
+    ("generics/hundred_shapes.lu", "exit(0)"),
+    ("generics/pair_of.lu", "exit(0)"),
+    ("generics/two_instances.lu", "exit(0)"),
+    ("generics/two_level_raise.lu", "exit(0)"),
+    ("traits/dyn_temp_refused.lu", "exit(0)"),
     ("conc/select_single_arm_loop.lu", "exit(0)"),
     ("grammar/shebang.lu", "exit(0)"),
     ("memory/mut_param_aggregate_store.lu", "exit(0)"),
