@@ -1573,3 +1573,121 @@ fn a_read_only_method_on_a_lent_receiver_is_not_a_write() {
         Outcome::Exit(0)
     );
 }
+
+// -- #28: the CoW list spine ------------------------------------------------
+//
+// `Value::List` shares its element vector behind an `Arc`; every write path
+// diverges its copy first (`Arc::make_mut`). These litmuses pin the property
+// that makes the sharing invisible: no program can distinguish the CoW spine
+// from the plain `Vec` it replaced — only the clock could, and the clock is
+// not a value.
+
+#[test]
+fn a_read_mode_list_argument_shares_and_the_caller_keeps_its_list() {
+    // `[mem.tier0.mode.read]`: the callee sees the caller's list, the caller
+    // observes no change — under CoW the argument is a refcount bump, and
+    // this pins that the caller's value survives the call intact.
+    let out = stdout(
+        "fn peek(xs: List[int]) -> int { xs.len }\n\
+         fn main() -> !int {\n\
+             var xs = List[int]()\n\
+             (mut xs).push(7)\n\
+             (mut xs).push(9)\n\
+             let a = peek(xs)\n\
+             let b = peek(xs)\n\
+             print(\"{a} {b} {xs.len}\")\n\
+             0\n\
+         }\n",
+    );
+    assert_eq!(out, "2 2 2\n");
+}
+
+#[test]
+fn a_donor_push_after_a_container_insert_diverges_the_spines() {
+    // `(mut outer).push(inner)` retains the donor and shares the spine;
+    // the donor's next push must diverge it — `outer[0]` is a snapshot,
+    // exactly as the plain `Vec` copy left it.
+    let out = stdout(
+        "fn main() -> !int {\n\
+             var inner = List[int]()\n\
+             (mut inner).push(5)\n\
+             var outer = List()\n\
+             (mut outer).push(inner)\n\
+             (mut inner).push(6)\n\
+             print(\"{outer[0].len} {inner.len}\")\n\
+             0\n\
+         }\n",
+    );
+    assert_eq!(out, "1 2\n");
+}
+
+#[test]
+fn a_donor_element_write_leaves_the_snapshot_element() {
+    // The place-projection write (`inner[0] = …`) goes through the CoW
+    // divergence too: the inserted snapshot's element is untouched.
+    let out = stdout(
+        "fn main() -> !int {\n\
+             var inner = List[int]()\n\
+             (mut inner).push(5)\n\
+             var outer = List()\n\
+             (mut outer).push(inner)\n\
+             inner[0] = 9\n\
+             print(\"{outer[0][0]} {inner[0]}\")\n\
+             0\n\
+         }\n",
+    );
+    assert_eq!(out, "5 9\n");
+}
+
+#[test]
+fn a_moved_list_still_traps_use_after_move() {
+    // The spine is shared machinery, not shared SEMANTICS: `let ys = xs`
+    // is still a move (`[mem.tier0.move.1]`), and the CoW change must not
+    // quietly turn moves into copies.
+    let trap = trap_kind(
+        "fn main() -> !int {\n\
+             var xs = List[int]()\n\
+             (mut xs).push(1)\n\
+             let ys = xs\n\
+             (mut xs).push(2)\n\
+             print(\"{ys.len}\")\n\
+             0\n\
+         }\n",
+    );
+    assert_eq!(trap, TrapKind::UseAfterMove);
+}
+
+#[test]
+fn the_same_list_twice_as_read_arguments_is_two_shares() {
+    // `f(xs, xs)` — Shared + Shared is legal, and both parameters see the
+    // same length; neither copy is ever materialized.
+    let out = stdout(
+        "fn both(a: List[int], b: List[int]) -> int { a.len + b.len }\n\
+         fn main() -> !int {\n\
+             var xs = List[int]()\n\
+             (mut xs).push(3)\n\
+             print(\"{both(xs, xs)}\")\n\
+             0\n\
+         }\n",
+    );
+    assert_eq!(out, "2\n");
+}
+
+#[test]
+fn a_donor_pop_leaves_the_snapshot_whole() {
+    // `pop` is the other write path; the container-insert snapshot keeps
+    // both elements while the donor shrinks.
+    let out = stdout(
+        "fn main() -> !int {\n\
+             var inner = List[int]()\n\
+             (mut inner).push(4)\n\
+             (mut inner).push(8)\n\
+             var outer = List()\n\
+             (mut outer).push(inner)\n\
+             let last = (mut inner).pop()\n\
+             print(\"{last} {inner.len} {outer[0].len}\")\n\
+             0\n\
+         }\n",
+    );
+    assert_eq!(out, "8 1 2\n");
+}

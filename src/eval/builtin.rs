@@ -246,7 +246,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // checked-lane posture; wolfgang's checked machine does the same).
         // argv defaults empty (the stdin posture, mirrored — real argv is
         // `wolf run file.lu a b c`'s, a surface this embedding lacks).
-        "env_args" => Ok(Value::List(Vec::new(), None)),
+        "env_args" => Ok(Value::list(Vec::new(), None)),
         "env_get" => {
             let Some(Value::Str(name)) = args.first() else {
                 return unsupported("`env_get` takes a variable name".to_owned());
@@ -389,7 +389,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 return unsupported("`str_from_utf8` takes a `List[int]` of bytes".to_owned());
             };
             let mut bytes: Vec<u8> = Vec::with_capacity(items.len());
-            for slot in items {
+            for slot in items.iter() {
                 let Value::Int(n, _) = slot.value else {
                     // Unreachable from typed source — sema types the argument
                     // `List[int]` — so this is the counterparty's `refuse`
@@ -434,7 +434,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             // The element checking context (issue #21) is stamped by the
             // caller (`eval_call`), which alone sees the constructor's
             // bracket type argument.
-            Ok(Value::List(Vec::new(), None))
+            Ok(Value::list(Vec::new(), None))
         }
         "Map" => {
             machine.allocate(span, "Map");
@@ -759,6 +759,9 @@ pub fn method(
     // A closure or function stored in a field is called, not dispatched.
     match (&mut *receiver, name) {
         (Value::List(items, elem), "push") => {
+            // The write path diverges a shared CoW list before mutating
+            // (#28): a caller holding the same spine observes nothing.
+            let items = std::sync::Arc::make_mut(items);
             // Issue #21 (the #53 mechanism): a container-element literal
             // adopts the container's element type — or `int` (64-bit,
             // locked: `[arith.literal.default]`'s container half) when the
@@ -791,7 +794,7 @@ pub fn method(
             machine.note(Rule::Alloc, span, "List.push");
             Ok(Value::Unit)
         }
-        (Value::List(items, _), "pop") => match items.pop() {
+        (Value::List(items, _), "pop") => match std::sync::Arc::make_mut(items).pop() {
             Some(slot) => Ok(slot.value),
             None => machine.fault(
                 TrapKind::Bounds,
@@ -814,7 +817,7 @@ pub fn method(
 
         (Value::Map(pairs), "len" | "count") => Ok(Value::Int(pairs.len() as i128, IntTy::INT)),
         (Value::Map(pairs), "is_empty") => Ok(Value::Bool(pairs.is_empty())),
-        (Value::Map(pairs), "pairs") => Ok(Value::List(
+        (Value::Map(pairs), "pairs") => Ok(Value::list(
             pairs
                 .iter()
                 .map(|(key, slot)| {
@@ -863,7 +866,7 @@ pub fn method(
         (Value::Str(s), "bytes") => {
             // The byte view, materialized at v0 (D25 licenses byte indexing
             // on `bytes`; `b[i]` rides List indexing).
-            Ok(Value::List(
+            Ok(Value::list(
                 s.bytes()
                     .map(|b| Slot::live(Value::Int(i128::from(b), IntTy::INT)))
                     .collect(),
@@ -950,9 +953,9 @@ pub fn method(
             if sep.is_empty() {
                 // `[mem.str.empty]`: an empty separator matches nothing, so
                 // the split yields the whole string as its one piece.
-                return Ok(Value::List(vec![Slot::live(Value::Str(s.clone()))], None));
+                return Ok(Value::list(vec![Slot::live(Value::Str(s.clone()))], None));
             }
-            Ok(Value::List(
+            Ok(Value::list(
                 s.split(sep.as_str())
                     .map(|part| Slot::live(Value::Str(part.to_owned())))
                     .collect(),
@@ -987,13 +990,13 @@ pub fn method(
             }
             Ok(Value::Str(s.replace(from.as_str(), to.as_str())))
         }
-        (Value::Str(s), "words") => Ok(Value::List(
+        (Value::Str(s), "words") => Ok(Value::list(
             s.split_whitespace()
                 .map(|word| Slot::live(Value::Str(word.to_owned())))
                 .collect(),
             None,
         )),
-        (Value::Str(s), "lines") => Ok(Value::List(
+        (Value::Str(s), "lines") => Ok(Value::list(
             s.lines()
                 .map(|line| Slot::live(Value::Str(line.to_owned())))
                 .collect(),
@@ -1291,7 +1294,8 @@ pub fn method(
 /// split-code-point slice (D25) → trap `bounds`"), `unsupported` otherwise.
 pub fn index(machine: &mut Machine, target: &Value, index: &Value, span: Span) -> BResult {
     match (target, index) {
-        (Value::List(items, _) | Value::Tuple(items), Value::Int(i, _)) => {
+        (Value::List(_, _) | Value::Tuple(_), Value::Int(i, _)) => {
+            let items = target.seq_slots().expect("sequence arm");
             match usize::try_from(*i).ok().and_then(|i| items.get(i)) {
                 Some(slot) => Ok(slot.value.clone()),
                 None => machine.fault(
@@ -1390,7 +1394,7 @@ pub fn slice(
                     format!("range {from}..{to} is outside a {len}-element List"),
                 );
             }
-            Ok(Value::List(
+            Ok(Value::list(
                 items[from as usize..to as usize].to_vec(),
                 *elem,
             ))

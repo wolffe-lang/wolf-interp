@@ -738,7 +738,7 @@ impl Machine {
         let args = if main.params.is_empty() {
             Vec::new()
         } else {
-            vec![Value::List(Vec::new(), None)]
+            vec![Value::list(Vec::new(), None)]
         };
         let result = self
             .call_fn(&main, "", args, main.span)
@@ -1194,9 +1194,15 @@ impl Machine {
                     let index = fields.iter().position(|(f, _)| f == name)?;
                     &mut fields[index].1
                 }
-                (Value::Tuple(items) | Value::List(items, _), Proj::Index(i)) => {
+                (Value::Tuple(items), Proj::Index(i)) => {
                     let index = usize::try_from(*i).ok()?;
                     items.get_mut(index)?
+                }
+                (Value::List(items, _), Proj::Index(i)) => {
+                    // A write through a shared CoW list diverges its copy
+                    // first (#28): value semantics exactly as the plain Vec.
+                    let index = usize::try_from(*i).ok()?;
+                    std::sync::Arc::make_mut(items).get_mut(index)?
                 }
                 (Value::Map(pairs), Proj::Key(key)) => {
                     let index = pairs.iter().position(|(k, _)| k.to_string() == *key)?;
@@ -1419,7 +1425,10 @@ impl Machine {
                 (Value::Struct { fields, .. }, Proj::Field(name)) => {
                     fields.iter().find(|(f, _)| f == name).map(|(_, slot)| slot)
                 }
-                (Value::Tuple(items) | Value::List(items, _), Proj::Index(i)) => {
+                (Value::Tuple(items), Proj::Index(i)) => {
+                    usize::try_from(*i).ok().and_then(|index| items.get(index))
+                }
+                (Value::List(items, _), Proj::Index(i)) => {
                     usize::try_from(*i).ok().and_then(|index| items.get(index))
                 }
                 (Value::Map(pairs), Proj::Key(key)) => pairs
@@ -3902,7 +3911,10 @@ impl Machine {
                 }
                 out
             }
-            Value::List(slots, _) => slots.into_iter().map(|s| s.value).collect(),
+            Value::List(slots, _) => std::sync::Arc::unwrap_or_clone(slots)
+                .into_iter()
+                .map(|s| s.value)
+                .collect(),
             Value::Map(pairs) => pairs
                 .into_iter()
                 .map(|(key, slot)| Value::Tuple(vec![Slot::live(key), slot]))
@@ -5746,8 +5758,7 @@ impl Machine {
 fn slice_len_of(target: &Value) -> Option<i128> {
     match target {
         Value::Str(s) => Some(s.len() as i128),
-        Value::List(items, _) | Value::Tuple(items) => Some(items.len() as i128),
-        _ => None,
+        _ => target.seq_slots().map(|items| items.len() as i128),
     }
 }
 
@@ -5787,7 +5798,10 @@ fn spelling(op: BinOp) -> &'static str {
 pub(crate) fn value_eq(left: &Value, right: &Value) -> bool {
     match (left, right) {
         (Value::Int(a, _), Value::Int(b, _)) => a == b,
-        (Value::Tuple(a) | Value::List(a, _), Value::Tuple(b) | Value::List(b, _)) => {
+        (Value::Tuple(_) | Value::List(..), Value::Tuple(_) | Value::List(..)) => {
+            let (Some(a), Some(b)) = (left.seq_slots(), right.seq_slots()) else {
+                return false;
+            };
             a.len() == b.len() && a.iter().zip(b).all(|(x, y)| value_eq(&x.value, &y.value))
         }
         (

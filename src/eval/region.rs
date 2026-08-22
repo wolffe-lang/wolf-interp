@@ -924,8 +924,13 @@ pub fn references(value: &Value, out: &mut Vec<Ref>) {
         Value::Handle(handle) => out.push(Ref::Handle(handle.pool)),
         Value::Shared(id) => out.push(Ref::Shared(*id)),
         Value::Weak(id) => out.push(Ref::Weak(*id)),
-        Value::Tuple(items) | Value::List(items, _) => {
+        Value::Tuple(items) => {
             for item in items {
+                references(&item.value, out);
+            }
+        }
+        Value::List(items, _) => {
+            for item in items.iter() {
                 references(&item.value, out);
             }
         }

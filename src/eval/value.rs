@@ -377,7 +377,7 @@ pub enum Value {
     /// unconstrained literal meeting a container does (issue #21, the #53
     /// mechanism) — so element loads feed checked arithmetic at the
     /// element's width (X3).
-    List(Vec<Slot>, Option<IntTy>),
+    List(std::sync::Arc<Vec<Slot>>, Option<IntTy>),
     /// Insertion-ordered; wolf's `Map` has no specified iteration order, and
     /// insertion order is the one that makes output reproducible.
     Map(Vec<(Value, Slot)>),
@@ -435,6 +435,28 @@ pub enum Value {
 }
 
 impl Value {
+    /// A fresh `List` from its parts. The element vector is wrapped in the
+    /// shared CoW spine (#28: a read-mode argument was a full deep copy per
+    /// call; clones are now a refcount bump and every WRITE path diverges
+    /// its copy first via `Arc::make_mut`, so value semantics are
+    /// byte-for-byte what the plain `Vec` gave).
+    #[must_use]
+    pub fn list(items: Vec<Slot>, elem: Option<IntTy>) -> Value {
+        Value::List(std::sync::Arc::new(items), elem)
+    }
+
+    /// The slots of a sequence value (`Tuple` or `List`), if it is one —
+    /// the alternation `Tuple(items) | List(items, _)` stopped binding one
+    /// type when `List` grew the CoW spine, and this is its replacement.
+    #[must_use]
+    pub fn seq_slots(&self) -> Option<&[Slot]> {
+        match self {
+            Value::Tuple(items) => Some(items),
+            Value::List(items, _) => Some(items),
+            _ => None,
+        }
+    }
+
     /// Is this an error value? The only question `?` and `else` need to ask.
     ///
     /// A **declared enum's variant** is tag-shaped but is not an error
