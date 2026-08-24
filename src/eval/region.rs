@@ -24,6 +24,14 @@
 //! can be dangling references, which is the honest reading of
 //! `[mem.region.intra.2]` under MVS.
 //!
+//! is16 (#25) adds the compiled world's other half without disturbing that:
+//! the aggregate's *bytes* still cannot dangle here, but a struct or `List`
+//! carries the region charged at its allocation site (`Value::home`), and
+//! every access consults that region's state — so a value that escaped a
+//! wholesale-freed region faults `[mem.region.intra.2]` at the access,
+//! exactly where compiled code would have read freed storage. The Rust copy
+//! is the mechanism; the fault is the semantics.
+//!
 //! # The scope stack is a stack of *open* regions with a current one
 //!
 //! `[mem.region.create.3]`'s ambient rule and `[mem.region.multiopen]`'s open
@@ -236,6 +244,12 @@ pub struct Store {
     /// The scope stack: every open region, innermost last. The last element is
     /// the **current** region; the whole vector is the **open set**.
     open: Vec<RegionId>,
+    /// Set the first time any region is freed or frozen, never cleared — the
+    /// fast-path gate for the per-access home consult (#25). A program in
+    /// which no region ever left the live states cannot fault a home
+    /// consult, so the machine skips the path walk entirely; the handle is
+    /// shared ([`Store::teeth`]) precisely so the check needs no store lock.
+    teeth: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Store {
@@ -258,6 +272,13 @@ impl Store {
     #[must_use]
     pub const fn root() -> RegionId {
         0
+    }
+
+    /// A handle to the [`Store::teeth`] flag, for reading it without the
+    /// store's own lock — the machine keeps one beside the store.
+    #[must_use]
+    pub fn teeth(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        std::sync::Arc::clone(&self.teeth)
     }
 
     // -- regions -----------------------------------------------------------
@@ -472,6 +493,7 @@ impl Store {
     ///
     /// Returns the ids actually freed, innermost first, for the trace.
     pub fn free(&mut self, id: RegionId) -> Vec<RegionId> {
+        self.teeth.store(true, std::sync::atomic::Ordering::Relaxed);
         let mut freed = Vec::new();
         let descendants = self.descendants(id);
         for target in descendants {
@@ -509,6 +531,7 @@ impl Store {
     /// The reason, when the region (or a region it owns) is open —
     /// `[mem.region.freeze.3]`: "the forest transfers as closed subtrees only".
     pub fn freeze(&mut self, id: RegionId) -> Result<Vec<RegionId>, String> {
+        self.teeth.store(true, std::sync::atomic::Ordering::Relaxed);
         if self.state(id) == Some(RegionState::Freed) {
             return Err(format!("{} was freed wholesale", self.label(id)));
         }
@@ -929,7 +952,7 @@ pub fn references(value: &Value, out: &mut Vec<Ref>) {
                 references(&item.value, out);
             }
         }
-        Value::List(items, _) => {
+        Value::List(items, _, _) => {
             for item in items.iter() {
                 references(&item.value, out);
             }

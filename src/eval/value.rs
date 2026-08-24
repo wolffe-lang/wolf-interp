@@ -377,7 +377,20 @@ pub enum Value {
     /// unconstrained literal meeting a container does (issue #21, the #53
     /// mechanism) — so element loads feed checked arithmetic at the
     /// element's width (X3).
-    List(std::sync::Arc<Vec<Slot>>, Option<IntTy>),
+    ///
+    /// The third field is the list's **home**: the region charged at the
+    /// constructor's allocation site (`[mem.model.alloc]`,
+    /// `[mem.region.create.3]`), exactly as `Value::Struct` carries one
+    /// (wolf-interp#25). Accesses consult this region's state — any access
+    /// through a `Freed` home faults (`[mem.region.intra.2]`), and writes
+    /// through a `Frozen` one fault (`[mem.region.freeze.1]`). It rides the
+    /// VARIANT, deliberately outside the shared spine: a CoW clone crossing
+    /// a region boundary shares the `Arc` — were home inside it, a
+    /// divergence copy would inherit the wrong region, and two regions'
+    /// values would claim one home. `None` only for values minted by
+    /// machinery with no allocation site; region ids are never reused, so a
+    /// bare id stays meaningful forever.
+    List(std::sync::Arc<Vec<Slot>>, Option<IntTy>, Option<RegionId>),
     /// Insertion-ordered; wolf's `Map` has no specified iteration order, and
     /// insertion order is the one that makes output reproducible.
     Map(Vec<(Value, Slot)>),
@@ -435,14 +448,17 @@ pub enum Value {
 }
 
 impl Value {
-    /// A fresh `List` from its parts. The element vector is wrapped in the
-    /// shared CoW spine (#28: a read-mode argument was a full deep copy per
-    /// call; clones are now a refcount bump and every WRITE path diverges
-    /// its copy first via `Arc::make_mut`, so value semantics are
-    /// byte-for-byte what the plain `Vec` gave).
+    /// A fresh `List` from its parts — the single construction funnel. The
+    /// element vector is wrapped in the shared CoW spine (#28: a read-mode
+    /// argument was a full deep copy per call; clones are now a refcount
+    /// bump and every WRITE path diverges its copy first via
+    /// `Arc::make_mut`, so value semantics are byte-for-byte what the plain
+    /// `Vec` gave). `home` is the region charged at the allocation site —
+    /// see the variant's field doc (#25); callers with an allocation site
+    /// pass the machine's current region, machinery passes `None`.
     #[must_use]
-    pub fn list(items: Vec<Slot>, elem: Option<IntTy>) -> Value {
-        Value::List(std::sync::Arc::new(items), elem)
+    pub fn list(items: Vec<Slot>, elem: Option<IntTy>, home: Option<RegionId>) -> Value {
+        Value::List(std::sync::Arc::new(items), elem, home)
     }
 
     /// The slots of a sequence value (`Tuple` or `List`), if it is one —
@@ -452,7 +468,22 @@ impl Value {
     pub fn seq_slots(&self) -> Option<&[Slot]> {
         match self {
             Value::Tuple(items) => Some(items),
-            Value::List(items, _) => Some(items),
+            Value::List(items, _, _) => Some(items),
+            _ => None,
+        }
+    }
+
+    /// The region this value is homed in, when it carries one — the region
+    /// charged at its allocation site (`[mem.model.alloc]`). `Value::Struct`
+    /// has carried a home since is08; `Value::List` gains one at is16 (#25).
+    /// Tuples carry none: `[mem.model.alloc]` names struct literals,
+    /// collection constructors and closures as the allocation sites — a
+    /// tuple is a value composite, and its elements carry their own homes.
+    #[must_use]
+    pub fn home(&self) -> Option<RegionId> {
+        match self {
+            Value::Struct { home, .. } => *home,
+            Value::List(_, _, home) => *home,
             _ => None,
         }
     }
@@ -569,7 +600,7 @@ impl fmt::Display for Value {
                 }
                 f.write_str(" }")
             }
-            Value::List(items, _) => {
+            Value::List(items, _, _) => {
                 f.write_str("[")?;
                 for (i, item) in items.iter().enumerate() {
                     if i > 0 {
