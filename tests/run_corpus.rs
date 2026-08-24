@@ -309,9 +309,15 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // (inherent wins; `Speak.speak(d)` reaches the shadowed trait method);
     // `receiver_modes`, `exclusivity`, `view_set_norm`, `assoc_rewrite`
     // (`exit(7)` is its own pinned arithmetic) and `show_bound` run clean.
-    // `method_ambiguous`, `method_scope/main`, `view_set_violation` and
-    // `receiver_bare_mut` run where the compiler statically rejects — the
-    // standing conservatism class, not divergences.
+    // `method_ambiguous`, `method_scope/main` and `view_set_violation` run
+    // where the compiler statically rejects — the standing conservatism
+    // class, not divergences.
+    // (`receiver_bare_mut` ran `exit(42)` here from 0.1.3 through 0.1.13 —
+    // the X1 receiver-mode disagreement executing to a silently wrong
+    // answer, the gap wolf-book's rp02 harvest exposed. Since is17 (#37) a
+    // `mut`-receiver method demands the call-site `(mut …)` marker at call
+    // evaluation and the bare spelling traps `exclusivity` — E0804's
+    // dynamic meaning, a counterpart row now, not conservatism.)
     ("faults/assert_msg_holds.lu", "exit(0)"),
     ("memory/exclusivity.lu", "exit(0)"),
     ("memory/view_set_norm.lu", "exit(0)"),
@@ -322,7 +328,7 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("typecheck/method_ambiguous.lu", "exit(0)"),
     ("typecheck/method_inherent.lu", "exit(0)"),
     ("typecheck/method_scope/main.lu", "exit(0)"),
-    ("typecheck/receiver_bare_mut.lu", "exit(42)"),
+    ("typecheck/receiver_bare_mut.lu", "trap(exclusivity)"),
     ("typecheck/receiver_modes.lu", "exit(0)"),
     // -- 0.1.4 (pin ad6cef7) -------------------------------------------------
     // The s29+s30 witnesses run to their pinned outcomes on this machine's

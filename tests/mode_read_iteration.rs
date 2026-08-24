@@ -107,13 +107,13 @@ fn a_mutating_method_on_a_read_parameter_traps() {
     traps_exclusivity(
         "\
 fn grow(xs: List[int]) -> int {
-    xs.push(9)
+    (mut xs).push(9)
     xs.len
 }
 
 fn main() -> !int {
     var l = List[int]()
-    l.push(1)
+    (mut l).push(1)
     print(\"{grow(l)}\")
     0
 }
@@ -191,10 +191,10 @@ fn pushing_into_the_iterated_container_traps() {
         "\
 fn main() -> !int {
     var xs = List[int]()
-    xs.push(1)
-    xs.push(2)
+    (mut xs).push(1)
+    (mut xs).push(2)
     for x in xs {
-        xs.push(x)
+        (mut xs).push(x)
     }
     0
 }
@@ -208,8 +208,8 @@ fn writing_an_element_of_the_iterated_container_traps() {
         "\
 fn main() -> !int {
     var xs = List[int]()
-    xs.push(1)
-    xs.push(2)
+    (mut xs).push(1)
+    (mut xs).push(2)
     for x in xs {
         xs[0] = x
     }
@@ -225,7 +225,7 @@ fn assigning_the_whole_iterated_container_traps() {
         "\
 fn main() -> !int {
     var xs = List[int]()
-    xs.push(1)
+    (mut xs).push(1)
     for x in xs {
         xs = List[int]()
     }
@@ -242,8 +242,8 @@ fn reading_the_container_inside_the_loop_stays_legal() {
         "\
 fn main() -> !int {
     var xs = List[int]()
-    xs.push(1)
-    xs.push(2)
+    (mut xs).push(1)
+    (mut xs).push(2)
     var sum = 0
     for x in xs {
         sum += x + xs.len + xs[0]
@@ -262,12 +262,12 @@ fn the_claim_ends_with_the_loop_on_every_exit() {
         "\
 fn main() -> !int {
     var xs = List[int]()
-    xs.push(1)
-    xs.push(2)
+    (mut xs).push(1)
+    (mut xs).push(2)
     for x in xs {
         if x == 1 { break }
     }
-    xs.push(3)
+    (mut xs).push(3)
     if xs.len != 3 { return 1 }
     0
 }
@@ -282,10 +282,10 @@ fn iterating_a_range_claims_nothing() {
         "\
 fn main() -> !int {
     var xs = List[int]()
-    xs.push(1)
-    xs.push(2)
+    (mut xs).push(1)
+    (mut xs).push(2)
     for i in 0..2 {
-        xs.push(xs[i])
+        (mut xs).push(xs[i])
     }
     if xs.len != 4 { return 1 }
     0

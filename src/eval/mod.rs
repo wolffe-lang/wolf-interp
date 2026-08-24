@@ -4308,6 +4308,18 @@ impl Machine {
         let Value::Struct { name, .. } = value else {
             return None;
         };
+        self.method_defs_named(name, method)
+    }
+
+    /// [`Machine::method_defs_of`] by the type's NAME alone — the nominal
+    /// half of dispatch, split out so a caller holding only the name (the
+    /// receiver-mode demand below peeks at the slot without reading it) can
+    /// ask the same question.
+    fn method_defs_named(
+        &self,
+        name: &str,
+        method: &str,
+    ) -> Option<(String, Vec<crate::sema::MethodDef>)> {
         // REPL generations (`Point#2`) impl under their base name.
         let name = name.split('#').next().unwrap_or(name);
         let current = self
@@ -4942,6 +4954,42 @@ impl Machine {
         }
     }
 
+    /// Does `method` on the value at `path` declare a `mut` receiver — the
+    /// demand a bare call site fails (#37)?
+    ///
+    /// `Some(declaration_span)` when it does: the span is the `mut self`
+    /// parameter's for a user impl method, `None`-inside for the builtin
+    /// arms, whose declaration is the counterparty's prelude, not a span in
+    /// this program. Outer `None` when the receiver's method wants no `mut`
+    /// (or the place does not resolve/is not live — the ordinary read path
+    /// reports those its own way).
+    fn mut_receiver_demand(&mut self, path: &Path, method: &str) -> Option<Option<Span>> {
+        let type_name = {
+            let (slot, _) = self.resolve(path)?;
+            if !slot.is_live() {
+                return None;
+            }
+            match &slot.value {
+                value @ Value::List(..) => {
+                    return builtin::mutates_receiver(value, method).then_some(None);
+                }
+                Value::Struct { name, .. } => name.clone(),
+                _ => return None,
+            }
+        };
+        let (_, defs) = self.method_defs_named(&type_name, method)?;
+        let decl = defs
+            .iter()
+            .find(|def| def.trait_name.is_none())
+            .or_else(|| defs.first())
+            .map(|def| &def.decl)?;
+        let receiver_param = decl
+            .params
+            .first()
+            .filter(|param| matches!(param.kind, ParamKind::SelfParam { .. }))?;
+        (receiver_param.mode == Some(ParamMode::Mut)).then_some(Some(receiver_param.span))
+    }
+
     fn eval_method(
         &mut self,
         receiver: &Receiver,
@@ -4950,6 +4998,34 @@ impl Machine {
         args: &[Arg],
         span: Span,
     ) -> EResult<Value> {
+        // wolf-interp#37 — receiver modes get teeth. X1 is locked surface:
+        // mutation is visible where it happens, and the call site spells it.
+        // A callee whose receiver mode is `mut` (a user impl's `fn m(mut
+        // self)`, or the builtin surface's two receiver-mutating arms,
+        // `List.push`/`List.pop`) demands the call-site `(mut …)` marker; the
+        // compiler refuses the bare spelling with E0804
+        // (`corpus/typecheck/receiver_bare_mut.lu`). This machine performs no
+        // static receiver-mode check, so the demand is made here, at call
+        // evaluation, with the mode named — E0804's dynamic meaning, kind
+        // `exclusivity` (the mode family's row, beside E1013/E1014; see
+        // `ledger::dynamic_meaning`).
+        if mode != Some(ParamMode::Mut)
+            && let Receiver::Place(path) = receiver
+            && let Some(declared) = self.mut_receiver_demand(path, method)
+        {
+            let display = path.to_string();
+            return self.trap(
+                TrapKind::Exclusivity,
+                Rule::ModeMut,
+                span,
+                format!(
+                    "`{method}` takes its receiver `mut`, and X1 binds the mode at the call \
+                     site: write `(mut {display}).{method}(…)` — the bare spelling is the \
+                     compiler's E0804"
+                ),
+                declared.map(|at| (at, "the receiver mode is declared here".to_owned())),
+            );
+        }
         // A receiver whose value is a builtin container is **lent** rather than
         // copied: the read is charged here exactly as it always was, but the
         // value stays in its slot until the arguments have been evaluated and

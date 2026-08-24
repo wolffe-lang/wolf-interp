@@ -161,7 +161,7 @@ fn a_mut_argument_inside_an_interpolation_leaves_no_stale_tag() {
          \x20   var rebuilt = List[T]()\n\
          \x20   var n = 0\n\
          \x20   for x in xs {\n\
-         \x20       if n < count - 1 { rebuilt.push(x) }\n\
+         \x20       if n < count - 1 { (mut rebuilt).push(x) }\n\
          \x20       n = n + 1\n\
          \x20   }\n\
          \x20   xs = rebuilt\n\
@@ -172,7 +172,7 @@ fn a_mut_argument_inside_an_interpolation_leaves_no_stale_tag() {
          \x20   var rebuilt = List[T]()\n\
          \x20   var n = len(items)\n\
          \x20   while n > 0 {\n\
-         \x20       rebuilt.push(nth(items, n - 1) else |_| { return })\n\
+         \x20       (mut rebuilt).push(nth(items, n - 1) else |_| { return })\n\
          \x20       n = n - 1\n\
          \x20   }\n\
          \x20   items = rebuilt\n\
@@ -188,7 +188,7 @@ fn a_mut_argument_inside_an_interpolation_leaves_no_stale_tag() {
         "use std.m\n\
          fn main() -> !int {\n\
          \x20   var xs = List[int]()\n\
-         \x20   xs.push(1)\n\
+         \x20   (mut xs).push(1)\n\
          \x20   print(\"popped {m.pop(mut xs) else 0}\")\n\
          \x20   m.reverse(mut xs)\n\
          \x20   print(\"len {m.len(xs)} last {m.last(xs) else 0}\")\n\
@@ -230,7 +230,7 @@ fn a_read_call_that_allocates_after_a_mut_call_is_not_a_foreign_write() {
          \n\
          pub fn keys[K, V](m: Map[K, V]) -> List[K] {\n\
          \x20   var out = List[K]()\n\
-         \x20   for pair in m.pairs() { out.push(pair.0) }\n\
+         \x20   for pair in m.pairs() { (mut out).push(pair.0) }\n\
          \x20   out\n\
          }\n",
     );

@@ -287,7 +287,7 @@ fn allocations_land_in_the_innermost_open_region() {
     // region is D12's default, and it falls out of not pushing on a call.
     let run = run("fn fill() -> List[int] {\n\
          \x20   var xs = List[int]()\n\
-         \x20   xs.push(7)\n\
+         \x20   (mut xs).push(7)\n\
          \x20   xs\n\
          }\n\
          fn main() -> int {\n\
@@ -334,10 +334,10 @@ fn two_disjoint_regions_open_simultaneously() {
          \x20   var total = 0\n\
          \x20   in a {\n\
          \x20       var xs = List[int]()\n\
-         \x20       xs.push(1)\n\
+         \x20       (mut xs).push(1)\n\
          \x20       in b {\n\
          \x20           var ys = List[int]()\n\
-         \x20           ys.push(2)\n\
+         \x20           (mut ys).push(2)\n\
          \x20           total += xs[0] + ys[0]\n\
          \x20       }\n\
          \x20   }\n\
@@ -355,7 +355,7 @@ fn reopening_the_region_you_are_already_inside_is_a_no_op() {
     let run = run(&main_of(
         "    region a {\n\
          \x20       var xs = List[int]()\n\
-         \x20       in a { xs.push(1) }\n\
+         \x20       in a { (mut xs).push(1) }\n\
          \x20       xs[0] - 1\n\
          \x20   }",
     ));
@@ -873,7 +873,7 @@ fn out_of_bounds_indexing_traps() {
     let trap = trap_of(
         "fn main() -> int {\n\
          \x20   var xs = List[int]()\n\
-         \x20   xs.push(1)\n\
+         \x20   (mut xs).push(1)\n\
          \x20   xs[3]\n\
          }\n",
     );
@@ -1362,9 +1362,9 @@ fn an_index_read_lends_the_container_and_leaves_it_where_it_was() {
         stdout(
             "fn main() -> !int {\n\
              \x20   var xs = List[int]()\n\
-             \x20   xs.push(1)\n\
-             \x20   xs.push(2)\n\
-             \x20   xs.push(3)\n\
+             \x20   (mut xs).push(1)\n\
+             \x20   (mut xs).push(2)\n\
+             \x20   (mut xs).push(3)\n\
              \x20   print(\"{xs[0]} {xs[xs[0]]} {xs[2]} {xs.len}\")\n\
              \x20   var m = Map[str, int]()\n\
              \x20   m[\"a\"] = 7\n\
@@ -1385,7 +1385,7 @@ fn an_out_of_bounds_index_still_traps_through_the_lend() {
         trap_kind(
             "fn main() -> !int {\n\
              \x20   var xs = List[int]()\n\
-             \x20   xs.push(1)\n\
+             \x20   (mut xs).push(1)\n\
              \x20   print(\"{xs[3]}\")\n\
              \x20   0\n\
              }\n"
@@ -1408,13 +1408,13 @@ fn an_index_expression_that_mutates_the_container_reads_the_mutated_one() {
     assert_eq!(
         stdout(
             "fn bump(mut ys: List[int]) -> int {\n\
-             \x20   ys.push(9)\n\
+             \x20   (mut ys).push(9)\n\
              \x20   ys.len\n\
              }\n\
              fn main() -> !int {\n\
              \x20   var xs = List[int]()\n\
-             \x20   xs.push(1)\n\
-             \x20   xs.push(2)\n\
+             \x20   (mut xs).push(1)\n\
+             \x20   (mut xs).push(2)\n\
              \x20   let v = xs[bump(mut xs) - 1]\n\
              \x20   print(\"{v} {xs[bump(mut xs) - 1]}\")\n\
              \x20   0\n\
@@ -1433,8 +1433,8 @@ fn an_index_read_under_a_for_loops_read_claim_is_allowed() {
         stdout(
             "fn main() -> !int {\n\
              \x20   var xs = List[int]()\n\
-             \x20   xs.push(4)\n\
-             \x20   xs.push(5)\n\
+             \x20   (mut xs).push(4)\n\
+             \x20   (mut xs).push(5)\n\
              \x20   for v in xs {\n\
              \x20       print(\"{v} {xs[0]}\")\n\
              \x20   }\n\
@@ -1576,6 +1576,96 @@ fn a_fn_value_call_missing_the_declared_mut_is_refused_not_run_wrong() {
     }
 }
 
+#[test]
+fn a_mut_receiver_method_on_a_bare_call_site_traps_with_the_mode_named() {
+    // wolf-interp#37, `corpus/typecheck/receiver_bare_mut.lu`'s shape: X1
+    // binds receiver modes at the call site, and the compiler refuses the
+    // bare spelling with E0804. This machine ran it to the mutated answer
+    // through 0.1.13 (exit 42 on the corpus witness) — the silently wrong
+    // class. Now the call-site marker is demanded at call evaluation:
+    // `trap(exclusivity)`, the mode family's kind, with both spans (the
+    // call and the `mut self` declaration).
+    let trap = trap_of(
+        "struct Counter { n: int }\n\
+         impl Counter {\n\
+         \x20   fn bump(mut self) -> int {\n\
+         \x20       self.n = self.n + 1\n\
+         \x20       self.n\n\
+         \x20   }\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   var c = Counter { n: 41 }\n\
+         \x20   c.bump()\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::Exclusivity);
+    assert_eq!(trap.rule, Rule::ModeMut);
+    assert_eq!(trap.rule.anchor(), "mem.tier0.mode.mut");
+    assert!(trap.message.contains("E0804"), "{}", trap.message);
+    assert!(trap.message.contains("(mut c)"), "{}", trap.message);
+    assert!(trap.secondary.is_some(), "the declaration site is spanned");
+}
+
+#[test]
+fn the_marked_spellings_of_a_mut_receiver_still_run() {
+    // The legal spellings are untouched: the user impl's `(mut c).bump()`
+    // and the builtin pair `(mut xs).push`/`(mut xs).pop`.
+    assert_eq!(
+        outcome(
+            "struct Counter { n: int }\n\
+             impl Counter {\n\
+             \x20   fn bump(mut self) -> int {\n\
+             \x20       self.n = self.n + 1\n\
+             \x20       self.n\n\
+             \x20   }\n\
+             }\n\
+             fn main() -> int {\n\
+             \x20   var c = Counter { n: 41 }\n\
+             \x20   (mut c).bump() - 42\n\
+             }\n",
+        ),
+        Outcome::Exit(0)
+    );
+    assert_eq!(
+        outcome(
+            "fn main() -> int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   (mut xs).push(7)\n\
+             \x20   let last = (mut xs).pop() else 0\n\
+             \x20   last - 7\n\
+             }\n",
+        ),
+        Outcome::Exit(0)
+    );
+}
+
+#[test]
+fn a_bare_builtin_mutating_call_traps_and_a_reading_one_does_not() {
+    // `List.push` is the builtin surface's mut-receiver arm; a bare `len`
+    // or `xs[i]` read keeps running exactly as before — the demand is only
+    // where the receiver mode is `mut`.
+    let trap = trap_of(
+        "fn main() -> int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   xs.push(7)\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::Exclusivity);
+    assert!(trap.message.contains("E0804"), "{}", trap.message);
+
+    assert_eq!(
+        outcome(
+            "fn main() -> int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   (mut xs).push(3)\n\
+             \x20   xs.len - xs[0] + 2\n\
+             }\n",
+        ),
+        Outcome::Exit(0)
+    );
+}
+
 // -- the lent receiver (issue #24) ------------------------------------------
 
 #[test]
@@ -1629,7 +1719,7 @@ fn a_lend_hands_the_receiver_back_when_the_method_traps() {
 #[test]
 fn a_two_phase_receiver_still_reads_itself_through_the_parent() {
     // The lend is taken AFTER the arguments are evaluated, precisely so
-    // `xs.push(xs.len)` still reads `xs` through its parent while the
+    // `(mut xs).push(xs.len)` still reads `xs` through its parent while the
     // receiver's fresh tag is Reserved (`corpus/memory/prov_two_phase.lu`).
     // Taking it earlier would hand the argument a placeholder.
     assert_eq!(
