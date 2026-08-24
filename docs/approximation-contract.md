@@ -303,6 +303,16 @@ with `defer` becomes observable and must be by registration order, not "defers
 then drops". That is the open item in this section, and it belongs to this
 machine.
 
+*(Update, is17 — wolf-interp#35.)* A region whose VALUE rides out of the
+dying scope — a block tail, a `return`, a `break` value — is not swept:
+a return is a move and a region is affine (X4, `[mem.region.create.2]`),
+so the adopting binding owns the free now (wolf_mem's s20 ret-region
+shape; `corpus/memory/region_value_return.lu` runs to the compiled
+lanes' exit). Only the region value transfers this way: a container
+merely allocated in the dying region does not carry its home out, and
+the freed-home fault (#25) still fires on any later access —
+`region_escape_local.lu`'s family traps exactly as before.
+
 ### 6.4 Function parameters are not swept
 
 A `read`-mode argument copies its value under MVS, so sweeping a parameter at
@@ -957,6 +967,23 @@ so a program that would silently lose writes is rejected before it can run.
 That retires the observable half of S-10 for the pinned corpus. The clause
 still states no *runtime* meaning, so the dynamic question stays open
 exactly as filed.
+
+The SAME-task face closed at is17 (wolf-interp#36). The compiler's closure
+env BORROWS its captured places (the s98 loans, `[abi.native.closure]`),
+so a write to a captured binding while the closure is still needed is
+fail(E1002) upstream — and through 0.1.13 this machine ran that program to
+its stale-read answer, the one observation that can tell copy-captures
+from loans apart. Now every closure records a loan per place its body
+actually uses (frame-serial + name + write generation), and a call on the
+capturing task whose loan generation has moved traps `exclusivity` at the
+use, naming the write. Checking at the use rather than the write is what
+keeps the forbidden direction closed: "still needed" is a *fact* at a
+call and a guess at a write, so W1102's advisory shape — a write after
+the closure's last use — still runs, and no compiler-accepted program
+faults. Capture-by-value remains the mechanism; the loan check is what
+makes the copy unobservable, which is the property `[abi.native.closure]`
+actually pins. Task closures stay under D14's copy law and E1101 above —
+their loans are exempt by task identity.
 
 ### 10.3 The killed-proc sequence, and what "no user code" means
 
