@@ -243,6 +243,17 @@ pub fn dynamic_meaning(code: &str) -> Option<TrapKind> {
         // as conservatism; they are counterparts now, because the document says
         // so rather than because this implementation guessed.
         "E1004" | "E1005" => Some(TrapKind::RegionFault),
+        // **E1010** (a region freed while a value in it is still needed —
+        // the escape family): the corpus states the dynamic meaning itself —
+        // `memory/region_escape_local.lu`'s header reads "Dynamically this
+        // is a region-fault after the free" — and the counterparty's own
+        // census table (`upstream/xtask`'s `static_code_to_trap`) pairs
+        // E1010 with `region-fault`. is16 (#25) makes this machine actually
+        // produce the fault: containers carry their allocation-site region,
+        // and any access through a freed home traps `[mem.region.intra.2]`.
+        // (E1011/E1012 sit in the same upstream table; their reclassification
+        // is deliberately NOT taken here — is16's contract names E1010.)
+        "E1010" => Some(TrapKind::RegionFault),
         // The s72 mode teeth. **E1013** (D40 iteration exclusivity):
         // `[conf.trap.map]` names it in the `exclusivity` row and
         // `[mem.iter.excl.2]` states the dynamic meaning outright.
