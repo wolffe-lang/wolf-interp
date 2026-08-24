@@ -595,6 +595,52 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/foreign_root_aliasing.lu", "exit(0)"),
     ("strings/equality_lanes.lu", "exit(0)"),
     ("strings/from_utf8_border.lu", "exit(0)"),
+    // -- is17 (pin b522b8a) --------------------------------------------------
+    // The c25/s105/front-end wave: the compiler's closure build, the
+    // region-value tier, and explicit generic application. Sixteen new
+    // files reach `run`; the two that are NOT plain matches are this
+    // sprint's own divergence work, and both land as counterparts:
+    //
+    // `memory/region_value_return.lu` is wolf-interp#35's witness — a
+    // returned region now TRANSFERS (a return is a move, a region is
+    // affine) instead of being freed at callee scope end, so the file runs
+    // to the compiled lanes' exit(0). Its siblings (`region_value_pass`,
+    // `region_value_container`, `region_value_elem`) ran at first sight:
+    // parameters are not swept, and the container/element shapes only
+    // needed the ordinary scope-end free.
+    //
+    // `memory/closure_borrow_write.lu` is #36's witness — the stale-read
+    // program that could tell copy-captures from the compiler's loans
+    // apart. It STOPS running to its stale exit(255): the machine now
+    // traps `exclusivity` at the closure's post-write use (E1002's dynamic
+    // complement). The six legal closure files beside it
+    // (`closure_capture_mut`, `closure_capture_write`,
+    // `closure_escape_refused`, `closure_kill_list`,
+    // `closure_region_capture`, `closure_value_paths`) all run exit(0) —
+    // the loan machinery faults nothing the compiler accepts.
+    //
+    // `generics/explicit_apply_arity.lu` pins fail(E0812) — explicit
+    // application arity is a sema judgement this machine does not make, so
+    // its Tier-0 body runs exit(0): the standing conservatism class
+    // (wolf-interp#34's first shape, ledgered rather than hidden).
+    // `explicit_apply.lu`, the two s105 kernels and the fn-value import
+    // all match at first sight.
+    ("generics/explicit_apply.lu", "exit(0)"),
+    ("generics/explicit_apply_arity.lu", "exit(0)"),
+    ("kernels/guarded_stencil.lu", "exit(12)"),
+    ("kernels/walk_twice.lu", "exit(0)"),
+    ("memory/closure_borrow_write.lu", "trap(exclusivity)"),
+    ("memory/closure_capture_mut.lu", "exit(0)"),
+    ("memory/closure_capture_write.lu", "exit(0)"),
+    ("memory/closure_escape_refused.lu", "exit(0)"),
+    ("memory/closure_kill_list.lu", "exit(0)"),
+    ("memory/closure_region_capture.lu", "exit(0)"),
+    ("memory/closure_value_paths.lu", "exit(0)"),
+    ("memory/region_value_container.lu", "exit(0)"),
+    ("memory/region_value_elem.lu", "exit(0)"),
+    ("memory/region_value_pass.lu", "exit(0)"),
+    ("memory/region_value_return.lu", "exit(0)"),
+    ("typecheck/fn_value_import/main.lu", "exit(0)"),
 ];
 
 #[test]

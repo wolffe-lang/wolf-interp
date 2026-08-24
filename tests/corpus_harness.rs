@@ -296,15 +296,32 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             place judgement this machine does not make): static
     //             conservatism, the designed class, and wolf-interp#31's
     //             disposition in one ledger row.)
+    //   b522b8a → 327 files (is17: the c25/s105/front-end wave. The
+    //             corpus grows 24 — 21 entries and 3 members: the closure
+    //             build's seven-file family (six legal shapes plus
+    //             `closure_borrow_write.lu`, wolf-interp#36's witness), the
+    //             region-value tier (`region_value_return.lu` is #35's
+    //             witness; pass/container/elem beside it), explicit generic
+    //             application (`explicit_apply.lu` + its E0812 arity
+    //             fail-pin, #34's first shape), the prim-impl pair
+    //             (`prim_impl.lu` and the orphan module, #34's survivor),
+    //             the variant-value and fn-value-import module witnesses,
+    //             two s105 kernels, and two net files for the tier this
+    //             machine declines whole. Existing files changed content
+    //             without changing the count, two of them check-visible:
+    //             `brackets_generic_call.lu` pass → run(exit=0) (#111
+    //             landed explicit application) and `prov_holy_grail.lu`
+    //             phase mem → run (the capture-free callback lambda-lifts
+    //             now).)
     let report = report();
     assert_eq!(
         report.total(),
-        303,
+        327,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 280);
-    assert_eq!(report.members(), 23);
+    assert_eq!(report.entries(), 301);
+    assert_eq!(report.members(), 26);
 }
 
 #[test]
