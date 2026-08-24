@@ -1691,3 +1691,173 @@ fn a_donor_pop_leaves_the_snapshot_whole() {
     );
     assert_eq!(out, "8 1 2\n");
 }
+
+// -- #25: the container knows its home ---------------------------------------
+//
+// `Value::List` carries the region charged at its allocation site, exactly as
+// `Value::Struct` has since is08, and every access consults it: a `Freed` home
+// faults `[mem.region.intra.2]` at the access, a `Frozen` one faults writes
+// `[mem.region.freeze.1]`. The compiler's half is E1010, a static refusal at
+// `mem`; these litmuses pin the dynamic complement — and the negatives pin
+// that the catch never fires early.
+
+#[test]
+fn a_list_escaping_its_freed_region_faults_on_read() {
+    // The #25 reproducer, read arm (`corpus/memory/region_escape_container.lu`'s
+    // shape): the escaped list's home is freed wholesale at the sugar-block
+    // exit, so `keep.len` — an access through the container — faults with the
+    // region named, instead of running to a clean exit.
+    let trap = trap_of(
+        "fn main() -> !int {\n\
+         \x20   var keep = List[int]()\n\
+         \x20   region tmp {\n\
+         \x20       keep = List[int]()\n\
+         \x20       (mut keep).push(7)\n\
+         \x20   }\n\
+         \x20   if keep.len == 1 { 0 } else { 1 }\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule, Rule::RegionFree);
+    assert_eq!(trap.rule.anchor(), "mem.region.intra.2");
+    // The region is named and its creation site is the secondary span.
+    let (created, _) = trap.secondary.expect("the creation site is reported");
+    assert!(created.start < trap.span.start);
+}
+
+#[test]
+fn a_list_escaping_its_freed_region_faults_on_write() {
+    // The write arm: `push` into the freed region's storage. The fault fires
+    // at the receiver access, before anything diverges — a trapping write
+    // mutates nothing.
+    let trap = trap_of(
+        "fn main() -> !int {\n\
+         \x20   var keep = List[int]()\n\
+         \x20   region tmp {\n\
+         \x20       keep = List[int]()\n\
+         \x20       (mut keep).push(7)\n\
+         \x20   }\n\
+         \x20   (mut keep).push(9)\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule.anchor(), "mem.region.intra.2");
+
+    // The element-write spelling reaches the same fault through the path
+    // walk (`write_refusal`), not the method surface.
+    let trap = trap_of(
+        "fn main() -> !int {\n\
+         \x20   var keep = List[int]()\n\
+         \x20   region tmp {\n\
+         \x20       keep = List[int]()\n\
+         \x20       (mut keep).push(7)\n\
+         \x20   }\n\
+         \x20   keep[0] = 5\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule.anchor(), "mem.region.intra.2");
+}
+
+#[test]
+fn a_struct_escaping_its_freed_region_faults_the_same_way() {
+    // `corpus/memory/region_escape_local.lu`'s shape — the struct sibling.
+    // The home machinery existed since is08; is16 makes ACCESS consult it,
+    // so the read of `keep.value` faults instead of answering 7.
+    let trap = trap_of(
+        "struct Node { value: int }\n\
+         fn main() -> !int {\n\
+         \x20   var keep = Node { value: 0 }\n\
+         \x20   region tmp {\n\
+         \x20       keep = Node { value: 7 }\n\
+         \x20   }\n\
+         \x20   if keep.value == 7 { 0 } else { 1 }\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule.anchor(), "mem.region.intra.2");
+}
+
+#[test]
+fn a_write_through_a_frozen_list_traps_region_fault() {
+    // Freeze parity — the struct freeze litmus duplicated for a list
+    // (`[mem.region.freeze.1]` on list value paths). The named-region shape:
+    // built under `in r`, frozen after — the home travels with the value.
+    let trap = trap_of(
+        "fn main() -> !int {\n\
+         \x20   let r = region(rc)\n\
+         \x20   var xs = in r {\n\
+         \x20       var l = List[int]()\n\
+         \x20       (mut l).push(1)\n\
+         \x20       l\n\
+         \x20   }\n\
+         \x20   let frozen = freeze r\n\
+         \x20   (mut xs).push(2)\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule, Rule::RegionFreeze);
+    assert_eq!(trap.rule.anchor(), "mem.region.freeze.1");
+
+    // The element write is the other divergence point; same fault.
+    let trap = trap_of(
+        "fn main() -> !int {\n\
+         \x20   let r = region(rc)\n\
+         \x20   var xs = in r {\n\
+         \x20       var l = List[int]()\n\
+         \x20       (mut l).push(1)\n\
+         \x20       l\n\
+         \x20   }\n\
+         \x20   let frozen = freeze r\n\
+         \x20   xs[0] = 9\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert_eq!(trap.rule.anchor(), "mem.region.freeze.1");
+
+    // Reads stay legal forever (`[mem.region.edge.imm]`), and rebinding the
+    // binding replaces what it holds without touching frozen storage — the
+    // same twin the struct litmus pins.
+    let source = "fn main() -> !int {\n\
+                  \x20   let r = region(rc)\n\
+                  \x20   var xs = in r {\n\
+                  \x20       var l = List[int]()\n\
+                  \x20       (mut l).push(4)\n\
+                  \x20       l\n\
+                  \x20   }\n\
+                  \x20   let frozen = freeze r\n\
+                  \x20   let seen = xs[0]\n\
+                  \x20   xs = List[int]()\n\
+                  \x20   (mut xs).push(6)\n\
+                  \x20   if seen == 4 && xs.len == 1 && xs[0] == 6 { 0 } else { 1 }\n\
+                  }\n";
+    assert_eq!(outcome(source), Outcome::Exit(0));
+}
+
+#[test]
+fn a_list_outliving_a_scope_with_a_live_region_reads_clean() {
+    // The catch must NOT fire early: a container outliving the block that
+    // built it is legal while its region lives — only `Freed` faults. The
+    // list here is built in `r` inside an `in r` block, read long after the
+    // block closed, and `r` is still alive.
+    let source = "fn build(n: int) -> List[int] {\n\
+                  \x20   var xs = List[int]()\n\
+                  \x20   var i = 0\n\
+                  \x20   while i < n {\n\
+                  \x20       (mut xs).push(i)\n\
+                  \x20       i = i + 1\n\
+                  \x20   }\n\
+                  \x20   xs\n\
+                  }\n\
+                  fn main() -> !int {\n\
+                  \x20   let r = region(rc)\n\
+                  \x20   var xs = in r { build(4) }\n\
+                  \x20   (mut xs).push(9)\n\
+                  \x20   if xs.len == 5 && xs[2] == 2 && xs[4] == 9 { 0 } else { 1 }\n\
+                  }\n";
+    assert_eq!(outcome(source), Outcome::Exit(0));
+}

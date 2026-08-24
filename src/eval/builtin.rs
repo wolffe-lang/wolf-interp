@@ -246,7 +246,9 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // checked-lane posture; wolfgang's checked machine does the same).
         // argv defaults empty (the stdin posture, mirrored — real argv is
         // `wolf run file.lu a b c`'s, a surface this embedding lacks).
-        "env_args" => Ok(Value::list(Vec::new(), None)),
+        // Machinery-minted (the corpus posture: argv defaults empty), no
+        // user allocation site — no home.
+        "env_args" => Ok(Value::list(Vec::new(), None, None)),
         "env_get" => {
             let Some(Value::Str(name)) = args.first() else {
                 return unsupported("`env_get` takes a variable name".to_owned());
@@ -385,7 +387,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // lane and rc≠0 on the native one. Bytes off a socket are data, and
         // mis-encoded data is an outcome a caller handles with `else`.
         "str_from_utf8" => {
-            let Some(Value::List(items, _)) = args.first() else {
+            let Some(Value::List(items, _, _)) = args.first() else {
                 return unsupported("`str_from_utf8` takes a `List[int]` of bytes".to_owned());
             };
             let mut bytes: Vec<u8> = Vec::with_capacity(items.len());
@@ -430,11 +432,12 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // Collection constructors are allocation sites (`[mem.model.alloc]`),
         // so they land in the current region (`[mem.region.create.3]`).
         "List" => {
-            machine.allocate(span, "List");
+            let home = machine.allocate(span, "List");
             // The element checking context (issue #21) is stamped by the
             // caller (`eval_call`), which alone sees the constructor's
-            // bracket type argument.
-            Ok(Value::list(Vec::new(), None))
+            // bracket type argument. The charged region is the value's home
+            // (#25): accesses consult its state from here on.
+            Ok(Value::list(Vec::new(), None, Some(home)))
         }
         "Map" => {
             machine.allocate(span, "Map");
@@ -659,7 +662,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
 pub fn property(machine: &mut Machine, receiver: &Value, name: &str, span: Span) -> BResult {
     let _ = span;
     match (receiver, name) {
-        (Value::List(items, _), "len") => Ok(Value::Int(items.len() as i128, IntTy::INT)),
+        (Value::List(items, _, _), "len") => Ok(Value::Int(items.len() as i128, IntTy::INT)),
         (Value::Map(pairs), "len") => Ok(Value::Int(pairs.len() as i128, IntTy::INT)),
         // D25: `str` is bytes, and `len` is a byte count — the same unit
         // slicing uses, so `s[..s.len]` is the whole string.
@@ -736,7 +739,7 @@ pub fn mutates_receiver(receiver: &Value, name: &str) -> bool {
 #[must_use]
 pub fn list_len(value: &Value) -> Option<usize> {
     match value {
-        Value::List(items, _) => Some(items.len()),
+        Value::List(items, _, _) => Some(items.len()),
         _ => None,
     }
 }
@@ -758,7 +761,12 @@ pub fn method(
 ) -> BResult {
     // A closure or function stored in a field is called, not dispatched.
     match (&mut *receiver, name) {
-        (Value::List(items, elem), "push") => {
+        (Value::List(items, elem, home), "push") => {
+            // The receiver's home is consulted before anything diverges
+            // (#25): `push` writes into the region's storage, so a `Freed`
+            // or `Frozen` home faults here — the same consult a struct
+            // field write runs — and a trapping push mutates nothing.
+            machine.check_home_write(*home, "this `push`", span)?;
             // The write path diverges a shared CoW list before mutating
             // (#28): a caller holding the same spine observes nothing.
             let items = std::sync::Arc::make_mut(items);
@@ -794,18 +802,25 @@ pub fn method(
             machine.note(Rule::Alloc, span, "List.push");
             Ok(Value::Unit)
         }
-        (Value::List(items, _), "pop") => match std::sync::Arc::make_mut(items).pop() {
-            Some(slot) => Ok(slot.value),
-            None => machine.fault(
-                TrapKind::Bounds,
-                Rule::Bounds,
-                span,
-                "`pop` on an empty List".to_owned(),
-            ),
-        },
-        (Value::List(items, _), "len" | "count") => Ok(Value::Int(items.len() as i128, IntTy::INT)),
-        (Value::List(items, _), "is_empty") => Ok(Value::Bool(items.is_empty())),
-        (Value::List(items, _), "get") => {
+        (Value::List(items, _, home), "pop") => {
+            // The other CoW divergence point — the same #25 consult as
+            // `push`, before `Arc::make_mut` diverges anything.
+            machine.check_home_write(*home, "this `pop`", span)?;
+            match std::sync::Arc::make_mut(items).pop() {
+                Some(slot) => Ok(slot.value),
+                None => machine.fault(
+                    TrapKind::Bounds,
+                    Rule::Bounds,
+                    span,
+                    "`pop` on an empty List".to_owned(),
+                ),
+            }
+        }
+        (Value::List(items, _, _), "len" | "count") => {
+            Ok(Value::Int(items.len() as i128, IntTy::INT))
+        }
+        (Value::List(items, _, _), "is_empty") => Ok(Value::Bool(items.is_empty())),
+        (Value::List(items, _, _), "get") => {
             let Some(Value::Int(index, _)) = args.first() else {
                 return unsupported("`get` takes an integer index".to_owned());
             };
@@ -828,6 +843,9 @@ pub fn method(
                 })
                 .collect(),
             None,
+            // A fresh container minted at the call lands in the ambient
+            // region (D12), which is its home (#25).
+            Some(machine.current_region()),
         )),
 
         // -- the s37 builtin `str` surface (D24/D25) -----------------------
@@ -871,6 +889,7 @@ pub fn method(
                     .map(|b| Slot::live(Value::Int(i128::from(b), IntTy::INT)))
                     .collect(),
                 Some(IntTy::INT),
+                Some(machine.current_region()),
             ))
         }
         (Value::Str(s), "repeat") => {
@@ -953,13 +972,18 @@ pub fn method(
             if sep.is_empty() {
                 // `[mem.str.empty]`: an empty separator matches nothing, so
                 // the split yields the whole string as its one piece.
-                return Ok(Value::list(vec![Slot::live(Value::Str(s.clone()))], None));
+                return Ok(Value::list(
+                    vec![Slot::live(Value::Str(s.clone()))],
+                    None,
+                    Some(machine.current_region()),
+                ));
             }
             Ok(Value::list(
                 s.split(sep.as_str())
                     .map(|part| Slot::live(Value::Str(part.to_owned())))
                     .collect(),
                 None,
+                Some(machine.current_region()),
             ))
         }
         (Value::Str(s), "strip_prefix" | "strip_suffix") => {
@@ -995,12 +1019,14 @@ pub fn method(
                 .map(|word| Slot::live(Value::Str(word.to_owned())))
                 .collect(),
             None,
+            Some(machine.current_region()),
         )),
         (Value::Str(s), "lines") => Ok(Value::list(
             s.lines()
                 .map(|line| Slot::live(Value::Str(line.to_owned())))
                 .collect(),
             None,
+            Some(machine.current_region()),
         )),
         (Value::Str(s), "to_int") => {
             // `-> !int`: a value, tagged. There is no unwinding (`[err.union]`).
@@ -1294,7 +1320,7 @@ pub fn method(
 /// split-code-point slice (D25) → trap `bounds`"), `unsupported` otherwise.
 pub fn index(machine: &mut Machine, target: &Value, index: &Value, span: Span) -> BResult {
     match (target, index) {
-        (Value::List(_, _) | Value::Tuple(_), Value::Int(i, _)) => {
+        (Value::List(..) | Value::Tuple(_), Value::Int(i, _)) => {
             let items = target.seq_slots().expect("sequence arm");
             match usize::try_from(*i).ok().and_then(|i| items.get(i)) {
                 Some(slot) => Ok(slot.value.clone()),
@@ -1382,7 +1408,7 @@ pub fn slice(
             }
             Ok(Value::Str(s[from..to].to_owned()))
         }
-        Value::List(items, elem) => {
+        Value::List(items, elem, _) => {
             let len = items.len() as i128;
             let from = start.unwrap_or(0);
             let to = end.map_or(len, |e| if inclusive { e + 1 } else { e });
@@ -1394,9 +1420,12 @@ pub fn slice(
                     format!("range {from}..{to} is outside a {len}-element List"),
                 );
             }
+            // The slice is a NEW list minted at this expression, so its home
+            // is the ambient region here — not the receiver's (#25).
             Ok(Value::list(
                 items[from as usize..to as usize].to_vec(),
                 *elem,
+                Some(machine.current_region()),
             ))
         }
         other => unsupported(format!("{} cannot be sliced", other.kind())),

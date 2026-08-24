@@ -242,13 +242,22 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // The three region-inference demonstrations run with zero annotations —
     // the machine's dynamic region semantics needed nothing new. The E1004/
     // E1010 litmuses pin *static* rejections (`fail(E1004)`/`fail(E1010)`);
-    // their Tier-0 bodies run here and ledger as conservatism.
+    // their Tier-0 bodies ran to exit(0) here from is07 through is15 — the
+    // conservatism the approximation contract ledgered, a use-after-free-
+    // region executing to a clean exit. Since is16 (#25) containers and
+    // structs carry their allocation-site region and any access through a
+    // freed home faults `[mem.region.intra.2]`: both files trap now, the
+    // dynamic counterpart of the codes they pin. `region_conflict_params`'s
+    // own header said so all along ("Dynamically the call below ties
+    // tmp-region data into a caller-region container: a region-fault once
+    // tmp is freed"), and `region_escape_local`'s reads "Dynamically this
+    // is a region-fault after the free."
     // (`mode_missing_mut.lu` ran `exit(1)` here from is07 through 0.1.3 —
     // the X1 disagreement executing to a silently wrong answer. Since 0.1.4
     // it stops at `resolve` with E1007 (issue #15) and leaves this ledger,
     // exactly as the E0410 fail-files did.)
-    ("memory/region_conflict_params.lu", "exit(0)"),
-    ("memory/region_escape_local.lu", "exit(0)"),
+    ("memory/region_conflict_params.lu", "trap(region-fault)"),
+    ("memory/region_escape_local.lu", "trap(region-fault)"),
     ("memory/region_infer_list_builder.lu", "exit(0)"),
     ("memory/region_infer_request_handler.lu", "exit(0)"),
     ("memory/region_infer_tree_transform.lu", "exit(0)"),
@@ -495,10 +504,13 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // — is a move TOWARD this machine's reading, and the answer (2096128
     // per round) is unchanged. `region_container_freeze_ok.lu` is the
     // `freeze`-outlives half ([mem.region.freeze.1]).
-    // `region_escape_container.lu` runs to `exit(0)` here and is E1010
-    // upstream: the escape is a COMPILE-TIME region judgement this
-    // machine does not make, so it ledgers as static conservatism — the
-    // honest pairing, not a divergence. See the approximation contract.
+    // `region_escape_container.lu` ran to `exit(0)` here through is15 and
+    // is E1010 upstream: the escape is a COMPILE-TIME region judgement
+    // this machine does not make, and the container had no home to
+    // consult at run time. Since is16 (#25) a `List` carries its
+    // allocation-site region and any access through a freed home faults,
+    // so the file traps `[mem.region.intra.2]` — the dynamic counterpart
+    // of the code it pins, no longer mere conservatism.
     //
     // s77 (`s.bytes()` is a view over the receiver's own storage):
     // `byte_view.lu` pins bytes UNSIGNED (`é` is 195, 169 — never
@@ -546,7 +558,7 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/mut_param_aggregate_store.lu", "exit(0)"),
     ("memory/region_container_freeze_ok.lu", "exit(0)"),
     ("memory/region_container_reclaim.lu", "exit(0)"),
-    ("memory/region_escape_container.lu", "exit(0)"),
+    ("memory/region_escape_container.lu", "trap(region-fault)"),
     ("strings/byte_view.lu", "exit(0)"),
     ("strings/slice_boundary_sweep.lu", "exit(0)"),
     ("typecheck/match_narrow_scrutinee.lu", "exit(0)"),

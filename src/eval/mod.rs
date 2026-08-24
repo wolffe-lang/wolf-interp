@@ -738,7 +738,7 @@ impl Machine {
         let args = if main.params.is_empty() {
             Vec::new()
         } else {
-            vec![Value::list(Vec::new(), None)]
+            vec![Value::list(Vec::new(), None, None)]
         };
         let result = self
             .call_fn(&main, "", args, main.span)
@@ -1198,7 +1198,7 @@ impl Machine {
                     let index = usize::try_from(*i).ok()?;
                     items.get_mut(index)?
                 }
-                (Value::List(items, _), Proj::Index(i)) => {
+                (Value::List(items, _, _), Proj::Index(i)) => {
                     // A write through a shared CoW list diverges its copy
                     // first (#28): value semantics exactly as the plain Vec.
                     let index = usize::try_from(*i).ok()?;
@@ -1292,6 +1292,14 @@ impl Machine {
         match self.resolve(path) {
             None => unsupported(format!("`{display}` does not denote a place at run time")),
             Some((_, None)) => {
+                // #25: any access through a container whose home region was
+                // freed wholesale faults, with the region named. Only
+                // `Freed` — a live (or frozen) home reads clean, and the
+                // `Moved` arm below still owns moved slots: home is not
+                // identity, moves stay moves.
+                if let Some(freed) = self.freed_region_on_read(path) {
+                    return self.region_freed_fault(&format!("`{display}`"), freed, span);
+                }
                 self.fire(Rule::PlacePath, span, &format!("read `{display}`"));
                 self.access_place(path, AccessKind::Read, span)
             }
@@ -1355,7 +1363,7 @@ impl Machine {
     fn writeback_would_trap(&self, path: &Path) -> bool {
         self.read_param_write(path).is_some()
             || self.access.conflict(path, Access::Exclusive).is_some()
-            || self.frozen_container(path).is_some()
+            || self.write_refusal(path).is_some()
     }
 
     /// Moves out of a path: the source place becomes uninitialized
@@ -1363,46 +1371,40 @@ impl Machine {
     fn move_path(&mut self, path: &Path, span: Span) -> EResult<Value> {
         self.check_access(path, Access::Exclusive, span)?;
         let display = path.to_string();
-        let outcome = match self.resolve(path) {
-            None => None,
-            Some((slot, None)) => Some(Ok(slot.take_value(span))),
-            Some((_, Some((at, depth)))) => Some(Err((at, depth))),
+        let moved = match self.resolve(path) {
+            None => {
+                return unsupported(format!("`{display}` does not denote a place at run time"));
+            }
+            Some((_, moved)) => moved,
         };
-        match outcome {
-            None => unsupported(format!("`{display}` does not denote a place at run time")),
-            Some(Ok(value)) => {
-                self.fire(Rule::Move, span, &format!("move out of `{display}`"));
-                Ok(value)
-            }
-            Some(Err((moved_at, depth))) => {
-                let moved_path = prefix(path, depth);
-                self.trap(
-                    TrapKind::UseAfterMove,
-                    Rule::UseAfterMove,
-                    span,
-                    format!("`{display}` was already moved out"),
-                    Some((moved_at, format!("`{moved_path}` moved here"))),
-                )
-            }
+        if let Some((moved_at, depth)) = moved {
+            let moved_path = prefix(path, depth);
+            return self.trap(
+                TrapKind::UseAfterMove,
+                Rule::UseAfterMove,
+                span,
+                format!("`{display}` was already moved out"),
+                Some((moved_at, format!("`{moved_path}` moved here"))),
+            );
         }
+        // #25: a move reads the value out, so a `Freed` home faults exactly
+        // as a read does — after the `Moved` check above, which keeps moves
+        // moves (home is not identity).
+        if let Some(freed) = self.freed_region_on_read(path) {
+            return self.region_freed_fault(&format!("`{display}`"), freed, span);
+        }
+        let Some((slot, _)) = self.resolve(path) else {
+            return unsupported(format!("`{display}` does not denote a place at run time"));
+        };
+        let value = slot.take_value(span);
+        self.fire(Rule::Move, span, &format!("move out of `{display}`"));
+        Ok(value)
     }
 
-    /// The first `Frozen` region a write through `path` would reach into.
-    ///
-    /// The containers a write mutates are the base slot's value and every
-    /// intermediate projection target; a container homed in a `Frozen`
-    /// region makes the write `[mem.region.freeze.1]`'s fault — the
-    /// value-path half of the check the granule paths (pools, cells) already
-    /// run. Rebinding the base (no projections) replaces what the *binding*
-    /// holds and touches no frozen storage, so it passes. The walk stops
-    /// where the value tree does: a path that grows a map key still writes
-    /// through every container above the growth point.
-    fn frozen_container(&self, path: &Path) -> Option<RegionId> {
-        if path.projections.is_empty() {
-            return None;
-        }
-        let base: &Slot = if path.frame == usize::MAX {
-            self.globals.get(&path.base)?
+    /// The slot `path`'s base binding currently holds, if it denotes one.
+    fn base_slot(&self, path: &Path) -> Option<&Slot> {
+        if path.frame == usize::MAX {
+            self.globals.get(&path.base)
         } else {
             let frame = self.frames.get(path.frame)?;
             frame.scopes.iter().rev().find_map(|scope| {
@@ -1412,14 +1414,35 @@ impl Machine {
                     .rev()
                     .find(|(n, _)| *n == path.base)
                     .map(|(_, slot)| slot)
-            })?
-        };
-        let mut homes: Vec<RegionId> = Vec::new();
-        let mut current: Option<&Slot> = Some(base);
+            })
+        }
+    }
+
+    /// Walks the containers a `path` access touches — the base binding's
+    /// value, then every projection target in turn — calling `visit` with
+    /// the home of each one that carries a home (`Value::home`: structs
+    /// since is08, lists since is16/#25). The walk stops early when `visit`
+    /// answers, so the cost is one Vec-indexed region lookup per container
+    /// the ACCESS actually reaches, never per element.
+    ///
+    /// `include_target` says whether the *resolved* value's own home counts.
+    /// A read copies the resolved value itself, so it does; a write replaces
+    /// the resolved slot's value and touches only the containers ABOVE it,
+    /// so it does not — which is also what keeps rebinding the base (no
+    /// projections) legal: such a write visits nothing.
+    fn walk_homes<T>(
+        &self,
+        path: &Path,
+        include_target: bool,
+        mut visit: impl FnMut(RegionId) -> Option<T>,
+    ) -> Option<T> {
+        let mut current: Option<&Slot> = self.base_slot(path);
         for step in &path.projections {
-            let Some(slot) = current else { break };
-            if let Value::Struct { home: Some(id), .. } = &slot.value {
-                homes.push(*id);
+            let slot = current?;
+            if let Some(id) = slot.value.home()
+                && let Some(answer) = visit(id)
+            {
+                return Some(answer);
             }
             current = match (&slot.value, step) {
                 (Value::Struct { fields, .. }, Proj::Field(name)) => {
@@ -1428,7 +1451,7 @@ impl Machine {
                 (Value::Tuple(items), Proj::Index(i)) => {
                     usize::try_from(*i).ok().and_then(|index| items.get(index))
                 }
-                (Value::List(items, _), Proj::Index(i)) => {
+                (Value::List(items, _, _), Proj::Index(i)) => {
                     usize::try_from(*i).ok().and_then(|index| items.get(index))
                 }
                 (Value::Map(pairs), Proj::Key(key)) => pairs
@@ -1438,10 +1461,102 @@ impl Machine {
                 _ => None,
             };
         }
-        let store = self.store();
-        homes
-            .into_iter()
-            .find(|id| store.state(*id) == Some(RegionState::Frozen))
+        if include_target
+            && let Some(slot) = current
+            && let Some(id) = slot.value.home()
+        {
+            return visit(id);
+        }
+        None
+    }
+
+    /// The first region a write through `path` would reach into whose state
+    /// refuses the write: `Freed` first (#25's write arm — the storage died
+    /// with the region, `[mem.region.intra.2]`), then `Frozen`
+    /// (`[mem.region.freeze.1]` — the value-path half of the check the
+    /// granule paths already run). Rebinding the base (no projections)
+    /// replaces what the *binding* holds and touches no region storage, so
+    /// it passes. The walk stops where the value tree does: a path that
+    /// grows a map key still writes through every container above the
+    /// growth point.
+    fn write_refusal(&self, path: &Path) -> Option<(RegionId, RegionState)> {
+        let mut frozen = None;
+        let store = &self.shared.store;
+        let freed = self.walk_homes(path, false, |id| {
+            match store.lock().expect("store lock").state(id) {
+                Some(RegionState::Freed) => Some(id),
+                Some(RegionState::Frozen) => {
+                    frozen.get_or_insert(id);
+                    None
+                }
+                _ => None,
+            }
+        });
+        freed
+            .map(|id| (id, RegionState::Freed))
+            .or_else(|| frozen.map(|id| (id, RegionState::Frozen)))
+    }
+
+    /// #25's read half: the first `Freed` region a read of `path` reaches
+    /// into. Only `Freed` faults here — reads through `Frozen` data are
+    /// legal forever (`[mem.region.edge.imm]`), and a container merely
+    /// OUTLIVING a scope while its region lives is legal; the fault is the
+    /// dynamic complement of the compiler's E1010, at the ACCESS
+    /// (`[mem.region.intra.2]`).
+    fn freed_region_on_read(&self, path: &Path) -> Option<RegionId> {
+        let store = &self.shared.store;
+        self.walk_homes(path, true, |id| {
+            (store.lock().expect("store lock").state(id) == Some(RegionState::Freed)).then_some(id)
+        })
+    }
+
+    /// The `[mem.region.intra.2]` access fault: `what` reaches into a region
+    /// that was freed wholesale, with the region named and its creation site
+    /// as the secondary span — the same shape the granule paths give
+    /// use-after-free (`check_pool_region`).
+    fn region_freed_fault<T>(&mut self, what: &str, id: RegionId, span: Span) -> EResult<T> {
+        let label = self.store().label(id);
+        let created = self
+            .store()
+            .region(id)
+            .map(|region| (region.span, "the region was created here".to_owned()));
+        self.region_fault(
+            Rule::RegionFree,
+            span,
+            format!("{what} reaches into {label}, which was freed wholesale; the value died with the region"),
+            created,
+        )
+    }
+
+    /// The home consult at a container's own mutating methods — `List.push`
+    /// and `List.pop`, the two CoW divergence points (is15). A method
+    /// receiver's path has no projection for [`Machine::write_refusal`] to
+    /// walk (the writeback is a whole-value store into the base), so the
+    /// receiver value's own home is consulted here, before `Arc::make_mut`
+    /// diverges anything: `Freed` faults `[mem.region.intra.2]` (#25's
+    /// write arm), `Frozen` faults `[mem.region.freeze.1]` — exactly the
+    /// consult a struct field write runs through its path walk.
+    pub(crate) fn check_home_write(
+        &mut self,
+        home: Option<RegionId>,
+        what: &str,
+        span: Span,
+    ) -> EResult<()> {
+        let Some(id) = home else { return Ok(()) };
+        let state = self.store().state(id);
+        match state {
+            Some(RegionState::Freed) => self.region_freed_fault(what, id, span),
+            Some(RegionState::Frozen) => {
+                let label = self.store().label(id);
+                self.region_fault(
+                    Rule::RegionFreeze,
+                    span,
+                    format!("{label} is frozen: `imm` data is immutable forever"),
+                    None,
+                )
+            }
+            _ => Ok(()),
+        }
     }
 
     /// D39's callee-side write barrier (`[mem.tier0.mode.read]`): the span of
@@ -1495,17 +1610,26 @@ impl Machine {
             );
         }
         self.check_access(path, Access::Exclusive, span)?;
-        // `[mem.region.freeze.1]`: frozen data is immutable forever, through
-        // value paths as much as through granules. Checked before the slot is
-        // touched, so a trapping write mutates nothing.
-        if let Some(frozen) = self.frozen_container(path) {
-            let label = self.store().label(frozen);
-            return self.region_fault(
-                Rule::RegionFreeze,
-                span,
-                format!("{label} is frozen: `imm` data is immutable forever"),
-                None,
-            );
+        // `[mem.region.intra.2]` / `[mem.region.freeze.1]`: a write into a
+        // freed region's storage is #25's write arm, and frozen data is
+        // immutable forever — through value paths as much as through
+        // granules. Both checked before the slot is touched, so a trapping
+        // write mutates nothing.
+        match self.write_refusal(path) {
+            Some((freed, RegionState::Freed)) => {
+                let display = path.to_string();
+                return self.region_freed_fault(&format!("the write to `{display}`"), freed, span);
+            }
+            Some((frozen, _)) => {
+                let label = self.store().label(frozen);
+                return self.region_fault(
+                    Rule::RegionFreeze,
+                    span,
+                    format!("{label} is frozen: `imm` data is immutable forever"),
+                    None,
+                );
+            }
+            None => {}
         }
         let display = path.to_string();
         // A map grows on assignment to an absent key; every other path must
@@ -3911,7 +4035,7 @@ impl Machine {
                 }
                 out
             }
-            Value::List(slots, _) => std::sync::Arc::unwrap_or_clone(slots)
+            Value::List(slots, _, _) => std::sync::Arc::unwrap_or_clone(slots)
                 .into_iter()
                 .map(|s| s.value)
                 .collect(),
@@ -4525,7 +4649,7 @@ impl Machine {
             // erases type arguments from values, so the annotation is read
             // off the callee's own syntax here and stamped onto the fresh
             // container.
-            Value::List(items, None) => Value::List(items, list_elem_of(callee)),
+            Value::List(items, None, home) => Value::List(items, list_elem_of(callee), home),
             value => value,
         })
     }
@@ -5977,14 +6101,14 @@ fn coerce(value: Value, ty: Option<&Type>) -> Value {
         // A `List[T]` annotation stamps the element checking context onto an
         // untagged container (issue #21) — `var l: List[i32] = …`, and the
         // declared type of a `mut`/`take` parameter.
-        (TypeKind::Path { path, args }, Value::List(items, None))
+        (TypeKind::Path { path, args }, Value::List(items, None, home))
             if path.segments.last().is_some_and(|s| s.name == "List") =>
         {
             let elem = args.iter().find_map(|arg| match arg {
                 TypeArg::Type(inner) => int_of_type(inner),
                 TypeArg::Expr(_) => None,
             });
-            Value::List(items, elem)
+            Value::List(items, elem, home)
         }
         (TypeKind::Path { path, args }, Value::Int(v, current)) => {
             let name = path.segments.last().map(|s| s.name.as_str()).unwrap_or("");

@@ -929,7 +929,7 @@ pub fn references(value: &Value, out: &mut Vec<Ref>) {
                 references(&item.value, out);
             }
         }
-        Value::List(items, _) => {
+        Value::List(items, _, _) => {
             for item in items.iter() {
                 references(&item.value, out);
             }
