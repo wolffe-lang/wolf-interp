@@ -500,6 +500,99 @@ fn a_region_has_at_most_one_owning_edge() {
 }
 
 #[test]
+fn a_returned_region_transfers_to_the_caller() {
+    // wolf-interp#35, `corpus/memory/region_value_return.lu`'s shape: a
+    // region is an affine first-class value (X4) and a return is a move, so
+    // the callee's scope teardown must NOT free a region its return value
+    // carries out — the caller's binding adopts identity + handle (the s20
+    // ret-region rig) and opens it. Through is16 this trapped
+    // `[mem.region.intra.2]` at the caller's `in`.
+    let run = run("fn make() -> region {\n\
+         \x20   let r = region()\n\
+         \x20   r\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   let r = make()\n\
+         \x20   var t = 0\n\
+         \x20   in r {\n\
+         \x20       var xs = List[int]()\n\
+         \x20       (mut xs).push(41)\n\
+         \x20       t = xs[0] + 1\n\
+         \x20   }\n\
+         \x20   if t == 42 { 0 } else { 1 }\n\
+         }\n");
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    // The transfer is a move, not a leak: the adopting binding freed it.
+    assert!(run.leaks.is_empty());
+}
+
+#[test]
+fn a_region_returned_through_a_return_statement_transfers_too() {
+    // The `Signal::Return` road (an early return unwinding through nested
+    // scopes) transfers exactly as the block-tail road does.
+    let run = run("fn make(flag: bool) -> region {\n\
+         \x20   let r = region()\n\
+         \x20   if flag {\n\
+         \x20       return r\n\
+         \x20   }\n\
+         \x20   r\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   let r = make(true)\n\
+         \x20   in r {\n\
+         \x20       var xs = List[int]()\n\
+         \x20       (mut xs).push(1)\n\
+         \x20       xs[0] - 1\n\
+         \x20   }\n\
+         }\n");
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    assert!(run.leaks.is_empty());
+}
+
+#[test]
+fn a_region_not_returned_still_frees_at_callee_scope_end() {
+    // The other direction, pinned: when the region value does NOT ride the
+    // return, teardown frees it exactly as before — were the skip too eager,
+    // the region would outlive its binding and show up as a leak.
+    let run = run("fn busywork() -> int {\n\
+         \x20   let r = region()\n\
+         \x20   in r {\n\
+         \x20       var xs = List[int]()\n\
+         \x20       (mut xs).push(7)\n\
+         \x20       xs[0]\n\
+         \x20   }\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   busywork() - 7\n\
+         }\n");
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    assert!(run.leaks.is_empty());
+}
+
+#[test]
+fn a_value_escaping_its_region_still_faults_after_the_free() {
+    // The transfer is for the region VALUE only. A container merely
+    // allocated in the dying region does not carry its home out: the callee's
+    // teardown frees the region, and the caller's access faults through the
+    // freed home (#25) — `region_escape_local.lu`'s class, unchanged by #35.
+    let trap = trap_of(
+        "fn make() -> List[int] {\n\
+         \x20   let r = region()\n\
+         \x20   in r {\n\
+         \x20       var xs = List[int]()\n\
+         \x20       (mut xs).push(1)\n\
+         \x20       xs\n\
+         \x20   }\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   let xs = make()\n\
+         \x20   xs[0]\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+}
+
+#[test]
 fn freezing_is_deep_and_forever_and_writes_through_it_fault() {
     // `[mem.region.freeze.1]`: "promotes the entire graph to `imm` — deep, in
     // place, no copy. Frozen data is immutable **forever**." The read is legal

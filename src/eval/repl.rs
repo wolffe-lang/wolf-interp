@@ -634,7 +634,8 @@ impl Session {
                 locals: dropped,
                 ..Scope::default()
             };
-            self.machine.reclaim(&morgue);
+            // Dropping a binding is not a value escaping: nothing transfers.
+            self.machine.reclaim(&morgue, &[]);
         }
         existed
     }

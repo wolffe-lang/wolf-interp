@@ -1055,6 +1055,21 @@ impl Machine {
     }
 
     fn pop_scope(&mut self) {
+        self.pop_scope_escaping(&[]);
+    }
+
+    /// As [`Machine::pop_scope`], naming the regions whose values are LEAVING
+    /// the scope — on a block's tail, a `return`, or a `break` value.
+    ///
+    /// A region is an affine first-class value (X4, `[mem.region.create.2]`)
+    /// and a return is a move: the escaping value carries the handle out, so
+    /// teardown must not free the region under it — the adopting binding owns
+    /// it now (wolf_mem's s20 ret-region shape; wolf-interp#35). Only the
+    /// region *value* transfers this way: a container merely allocated in a
+    /// dying region does not carry its home out, and the freed-home fault
+    /// (#25) still fires on any later access — `region_escape_local.lu` and
+    /// its family trap exactly as before.
+    fn pop_scope_escaping(&mut self, escapes: &[RegionId]) {
         let Some(frame) = self.frames.last_mut() else {
             return;
         };
@@ -1065,8 +1080,27 @@ impl Machine {
         // (`[mem.tier0.borrow.1]`).
         let extra = self.access.len().saturating_sub(scope.held);
         self.access.release(extra);
-        self.reclaim(&scope);
+        self.reclaim(&scope, escapes);
         self.prov().prune();
+    }
+
+    /// The region ids riding out of a scope on its result value — the input
+    /// to [`Machine::pop_scope_escaping`]. `Ok` is a block tail; `Return` and
+    /// `Break` carry values across scopes the same way. Every other signal
+    /// carries no user value, so nothing escapes on it.
+    fn escaping_regions(result: &EResult<Value>) -> Vec<RegionId> {
+        let value = match result {
+            Ok(value) | Err(Signal::Return(value) | Signal::Break(value)) => value,
+            Err(_) => return Vec::new(),
+        };
+        let mut refs = Vec::new();
+        region::references(value, &mut refs);
+        refs.into_iter()
+            .filter_map(|granule| match granule {
+                Ref::Region(id) => Some(id),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Scope-exit reclamation: the Tier-1 and Tier-2 half of `[mem.shared.drop]`.
@@ -1088,7 +1122,7 @@ impl Machine {
     ///   caller still owns. Declining to sweep leaks (defined and safe,
     ///   `[mem.ub.defined]`); sweeping would fault wrongly, and the
     ///   approximation direction forbids that.
-    fn reclaim(&mut self, scope: &Scope) {
+    fn reclaim(&mut self, scope: &Scope, escapes: &[RegionId]) {
         for (name, slot) in scope.locals.iter().rev() {
             if !slot.is_live() {
                 // Moved out: its new owner is responsible for it.
@@ -1098,6 +1132,20 @@ impl Machine {
             region::references(&slot.value, &mut refs);
             for granule in refs {
                 match granule {
+                    Ref::Region(id) if escapes.contains(&id) => {
+                        // The scope's result value carries this region out:
+                        // the affine handle moves with it (X4, a return is a
+                        // move — `[mem.region.create.2]`; wolf-interp#35).
+                        // The adopting binding frees it at ITS death instead.
+                        self.fire(
+                            Rule::RegionAffine,
+                            Span::new(0, 0),
+                            &format!(
+                                "`{name}` moved out with the scope's value: the affine region \
+                                 transfers instead of being freed"
+                            ),
+                        );
+                    }
                     Ref::Region(id) => {
                         let freed = self.store().free(id);
                         self.prov().region_freed(&freed, Span::new(0, 0));
@@ -2793,7 +2841,10 @@ impl Machine {
             Err(Signal::Break(_) | Signal::Continue) => false,
         };
         let defers = self.run_defers(errored);
-        self.pop_scope();
+        // A region value in the block's result moves OUT of the dying scope
+        // (wolf-interp#35): name it so teardown skips its wholesale free.
+        let escapes = Machine::escaping_regions(&result);
+        self.pop_scope_escaping(&escapes);
         match (result, defers) {
             (Ok(value), Ok(())) => Ok(value),
             (Err(signal), _) => Err(signal),
