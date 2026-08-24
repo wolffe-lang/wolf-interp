@@ -387,6 +387,12 @@ struct Shared {
     /// Tier-2 pools and cells. The open-stack half is per task, swapped in
     /// and out at context switches ([`Store::swap_open`]).
     store: Arc<Mutex<Store>>,
+    /// The store's [`Store::teeth`] flag, readable without the store lock:
+    /// set the first time any region is freed or frozen. While it is unset
+    /// no home consult can fault, so the per-access walk (#25) is skipped
+    /// entirely — a program that never frees or freezes a region pays one
+    /// atomic load per access, not a path walk.
+    region_teeth: Arc<std::sync::atomic::AtomicBool>,
     /// `[mem.model.machine]` component 2: the provenance forest (is04).
     prov: Arc<Mutex<Provenance>>,
     stdout: Arc<Mutex<Vec<u8>>>,
@@ -539,9 +545,12 @@ impl Machine {
     }
 
     fn with_sched(program: &Program, sched: sched::Sched) -> Machine {
+        let store = Store::new();
+        let region_teeth = store.teeth();
         let shared = Shared {
             program: Arc::new(program.clone()),
-            store: Arc::new(Mutex::new(Store::new())),
+            store: Arc::new(Mutex::new(store)),
+            region_teeth,
             prov: Arc::new(Mutex::new(Provenance::new())),
             stdout: Arc::new(Mutex::new(Vec::new())),
             trace: Arc::new(Mutex::new(Vec::new())),
@@ -1401,6 +1410,15 @@ impl Machine {
         Ok(value)
     }
 
+    /// Has any region ever been freed or frozen? While false, no home
+    /// consult can fault, and the per-access walks skip themselves — the
+    /// bounded perf tax the is16 acceptance pins.
+    fn region_teeth(&self) -> bool {
+        self.shared
+            .region_teeth
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     /// The slot `path`'s base binding currently holds, if it denotes one.
     fn base_slot(&self, path: &Path) -> Option<&Slot> {
         if path.frame == usize::MAX {
@@ -1480,6 +1498,9 @@ impl Machine {
     /// grows a map key still writes through every container above the
     /// growth point.
     fn write_refusal(&self, path: &Path) -> Option<(RegionId, RegionState)> {
+        if !self.region_teeth() {
+            return None;
+        }
         let mut frozen = None;
         let store = &self.shared.store;
         let freed = self.walk_homes(path, false, |id| {
@@ -1504,6 +1525,9 @@ impl Machine {
     /// dynamic complement of the compiler's E1010, at the ACCESS
     /// (`[mem.region.intra.2]`).
     fn freed_region_on_read(&self, path: &Path) -> Option<RegionId> {
+        if !self.region_teeth() {
+            return None;
+        }
         let store = &self.shared.store;
         self.walk_homes(path, true, |id| {
             (store.lock().expect("store lock").state(id) == Some(RegionState::Freed)).then_some(id)
@@ -1543,6 +1567,9 @@ impl Machine {
         span: Span,
     ) -> EResult<()> {
         let Some(id) = home else { return Ok(()) };
+        if !self.region_teeth() {
+            return Ok(());
+        }
         let state = self.store().state(id);
         match state {
             Some(RegionState::Freed) => self.region_freed_fault(what, id, span),

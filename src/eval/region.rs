@@ -236,6 +236,12 @@ pub struct Store {
     /// The scope stack: every open region, innermost last. The last element is
     /// the **current** region; the whole vector is the **open set**.
     open: Vec<RegionId>,
+    /// Set the first time any region is freed or frozen, never cleared — the
+    /// fast-path gate for the per-access home consult (#25). A program in
+    /// which no region ever left the live states cannot fault a home
+    /// consult, so the machine skips the path walk entirely; the handle is
+    /// shared ([`Store::teeth`]) precisely so the check needs no store lock.
+    teeth: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Store {
@@ -258,6 +264,13 @@ impl Store {
     #[must_use]
     pub const fn root() -> RegionId {
         0
+    }
+
+    /// A handle to the [`Store::teeth`] flag, for reading it without the
+    /// store's own lock — the machine keeps one beside the store.
+    #[must_use]
+    pub fn teeth(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        std::sync::Arc::clone(&self.teeth)
     }
 
     // -- regions -----------------------------------------------------------
@@ -472,6 +485,7 @@ impl Store {
     ///
     /// Returns the ids actually freed, innermost first, for the trace.
     pub fn free(&mut self, id: RegionId) -> Vec<RegionId> {
+        self.teeth.store(true, std::sync::atomic::Ordering::Relaxed);
         let mut freed = Vec::new();
         let descendants = self.descendants(id);
         for target in descendants {
@@ -509,6 +523,7 @@ impl Store {
     /// The reason, when the region (or a region it owns) is open —
     /// `[mem.region.freeze.3]`: "the forest transfers as closed subtrees only".
     pub fn freeze(&mut self, id: RegionId) -> Result<Vec<RegionId>, String> {
+        self.teeth.store(true, std::sync::atomic::Ordering::Relaxed);
         if self.state(id) == Some(RegionState::Freed) {
             return Err(format!("{} was freed wholesale", self.label(id)));
         }
