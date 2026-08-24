@@ -24,6 +24,14 @@
 //! can be dangling references, which is the honest reading of
 //! `[mem.region.intra.2]` under MVS.
 //!
+//! is16 (#25) adds the compiled world's other half without disturbing that:
+//! the aggregate's *bytes* still cannot dangle here, but a struct or `List`
+//! carries the region charged at its allocation site (`Value::home`), and
+//! every access consults that region's state — so a value that escaped a
+//! wholesale-freed region faults `[mem.region.intra.2]` at the access,
+//! exactly where compiled code would have read freed storage. The Rust copy
+//! is the mechanism; the fault is the semantics.
+//!
 //! # The scope stack is a stack of *open* regions with a current one
 //!
 //! `[mem.region.create.3]`'s ambient rule and `[mem.region.multiopen]`'s open
