@@ -34,7 +34,7 @@ pub mod rules;
 pub mod sched;
 pub mod value;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -52,7 +52,8 @@ use prov::{AccessKind, Prov, Provenance, RawPtr, RetagKind, UbFinding, UbRow};
 use region::{Edge, Ref, RegionId, RegionState, Store, Strategy};
 use rules::Rule;
 use value::{
-    ArithMode, ClosureValue, ErrorValue, HandleValue, IntTy, RegionValue, Slot, SlotState, Value,
+    ArithMode, CaptureLoan, ClosureValue, ErrorValue, HandleValue, IntTy, RegionValue, Slot,
+    SlotState, Value,
 };
 
 /// A trap: a fault of a *defined* execution, named by the closed vocabulary.
@@ -357,6 +358,10 @@ struct Scope {
 #[derive(Debug)]
 struct Frame {
     module: String,
+    /// This activation's never-reused id (#36): frame *indices* are reused
+    /// as frames push and pop, so a capture loan keyed by index could alias
+    /// a stranger's local. Serials are minted once per activation per task.
+    serial: u64,
     scopes: Vec<Scope>,
     /// The enclosing function's declared return-row tags — what a bare
     /// lowercase name at a raise site resolves against (issue #12, the
@@ -463,6 +468,17 @@ pub struct Machine {
     /// Retags produced by the current call's arguments, waiting for
     /// [`Machine::call_fn`] to bind them to the callee's parameter places.
     pending_retags: Vec<Option<PendingRetag>>,
+    /// The next [`Frame::serial`] this task will mint (#36).
+    next_frame_serial: u64,
+    /// The places some live closure has captured, `(frame serial, name)` —
+    /// the filter that keeps [`Machine::note_captured_write`] O(1) for the
+    /// programs that never create a capturing closure (#36).
+    captured_places: BTreeSet<(u64, String)>,
+    /// Write generations (and the last write's span) for captured places
+    /// (#36). Entries are never removed: serials are never reused, so a
+    /// stale entry can never alias, and the map is bounded by the distinct
+    /// captured bindings a run actually writes.
+    capture_gens: BTreeMap<(u64, String), (u64, Span)>,
     tracing: Trace,
 }
 
@@ -579,8 +595,17 @@ impl Machine {
             unsafe_depth: 0,
             when_held: Vec::new(),
             pending_retags: Vec::new(),
+            next_frame_serial: 0,
+            captured_places: BTreeSet::new(),
+            capture_gens: BTreeMap::new(),
             tracing,
         }
+    }
+
+    /// Mints a [`Frame::serial`] — every frame construction calls this.
+    fn mint_frame_serial(&mut self) -> u64 {
+        self.next_frame_serial += 1;
+        self.next_frame_serial
     }
 
     #[must_use]
@@ -713,8 +738,10 @@ impl Machine {
     }
 
     fn run_main(&mut self) -> Outcome {
+        let serial = self.mint_frame_serial();
         self.frames.push(Frame {
             module: String::new(),
+            serial,
             scopes: vec![Scope::default()],
             row: Vec::new(),
             read_params: Vec::new(),
@@ -1455,6 +1482,9 @@ impl Machine {
         };
         let value = slot.take_value(span);
         self.fire(Rule::Move, span, &format!("move out of `{display}`"));
+        // A move ends the captured place's life as surely as a write ends
+        // its loan (#36): the generation advances either way.
+        self.note_captured_write(path, span);
         Ok(value)
     }
 
@@ -1724,7 +1754,30 @@ impl Machine {
             Rule::Assign
         };
         self.fire(rule, span, &format!("write `{display}`"));
+        self.note_captured_write(path, span);
         self.access_place(path, AccessKind::Write, span)
+    }
+
+    /// Advances a captured place's write generation (#36). Free until a
+    /// program creates a capturing closure: the `captured_places` filter is
+    /// empty and the walk never starts. Keyed by the owning frame's serial
+    /// plus the base name — a write anywhere under the binding (an element,
+    /// a field) conflicts with the whole-binding capture exactly as
+    /// `[mem.model.path.disjoint]` reads prefixes.
+    fn note_captured_write(&mut self, path: &Path, span: Span) {
+        if self.captured_places.is_empty() || path.frame == usize::MAX {
+            return;
+        }
+        let Some(frame) = self.frames.get(path.frame) else {
+            return;
+        };
+        let key = (frame.serial, path.base.clone());
+        if !self.captured_places.contains(&key) {
+            return;
+        }
+        let entry = self.capture_gens.entry(key).or_insert((0, span));
+        entry.0 += 1;
+        entry.1 = span;
     }
 
     /// One Tier-0 place access, against the provenance forest.
@@ -2473,8 +2526,10 @@ impl Machine {
                 (name, param.span)
             })
             .collect();
+        let serial = self.mint_frame_serial();
         self.frames.push(Frame {
             module: module.to_owned(),
+            serial,
             scopes: vec![Scope::default()],
             row: crate::sema::declared_raise_tags(decl),
             read_params,
@@ -4380,11 +4435,47 @@ impl Machine {
                 }
             }
         }
+        // wolf-interp#36: the compiler's closure env BORROWS its captures
+        // (the s98 loan design, `[abi.native.closure]`); this machine copies
+        // the bits, and the shared loan is what keeps the copy unobservable.
+        // Record a loan for every place the body actually USES (the copy
+        // above over-captures the whole frame; the loans must not), so a
+        // later call can notice a write that landed after the capture — the
+        // one program that could tell copy from reference apart — and refuse
+        // it instead of running the stale read.
+        let mut bound: BTreeSet<String> = params.iter().map(|p| p.name.name.clone()).collect();
+        let mut used = BTreeSet::new();
+        crate::lint::free_names(body, &mut bound, &mut used);
+        let mut loans = Vec::new();
+        if let Some(frame) = self.frames.last() {
+            let serial = frame.serial;
+            for name in &used {
+                if !captures.iter().any(|(captured, _)| captured == name) {
+                    continue;
+                }
+                let generation = self
+                    .capture_gens
+                    .get(&(serial, name.clone()))
+                    .map_or(0, |(generation, _)| *generation);
+                loans.push(CaptureLoan {
+                    name: name.clone(),
+                    task: self.task,
+                    serial,
+                    generation,
+                    span,
+                });
+            }
+        }
+        for loan in &loans {
+            self.captured_places
+                .insert((loan.serial, loan.name.clone()));
+        }
         self.fire(Rule::Closure, span, "closure captures by value");
         Ok(Value::Closure(Box::new(ClosureValue {
             params: params.iter().map(|p| p.name.name.clone()).collect(),
             body: body.clone(),
             captures,
+            loans,
         })))
     }
 
@@ -4864,12 +4955,52 @@ impl Machine {
                         args.len()
                     ));
                 }
+                // wolf-interp#36: the env borrows its captured places (s98,
+                // `[abi.native.closure]`). This call is the moment "the
+                // closure is still needed" becomes a fact rather than a
+                // liveness guess, so the loan is checked here: a captured
+                // place written since the capture means the compiler's NLL
+                // engine refuses the WRITE as E1002, and running on would
+                // read this machine's stale copy — the one observable
+                // difference between copy and borrow. Refuse it, naming both
+                // sites. A closure on a foreign task is exempt: task
+                // captures are copies by D14's law, not loans.
+                for loan in &closure.loans {
+                    if loan.task != self.task {
+                        continue;
+                    }
+                    let key = (loan.serial, loan.name.clone());
+                    let Some((current, written_at)) = self.capture_gens.get(&key).copied() else {
+                        continue;
+                    };
+                    if current != loan.generation {
+                        let name = &loan.name;
+                        return self.trap(
+                            TrapKind::Exclusivity,
+                            Rule::BorrowExtent,
+                            span,
+                            format!(
+                                "this closure captured `{name}` and is still needed, but \
+                                 `{name}` was written after the capture: the closure env \
+                                 borrows its places, so the write ends the loan — the \
+                                 compiler refuses it as E1002, and running on would read a \
+                                 stale copy"
+                            ),
+                            Some((
+                                written_at,
+                                format!("`{name}` written here, after the closure captured it"),
+                            )),
+                        );
+                    }
+                }
+                let serial = self.mint_frame_serial();
                 self.frames.push(Frame {
                     module: self
                         .frames
                         .last()
                         .map(|f| f.module.clone())
                         .unwrap_or_default(),
+                    serial,
                     scopes: vec![Scope::default()],
                     // A closure body raising a bare tag reads the enclosing
                     // function's declared row — the closure has no row of

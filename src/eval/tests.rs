@@ -1136,19 +1136,90 @@ fn boolean_operators_short_circuit() {
 }
 
 #[test]
-fn a_closure_captures_by_value() {
-    // `[gram.expr.closure]`: captured when the closure is built, so a later
-    // write to the captured local is invisible inside it.
+fn a_closure_used_after_a_write_to_its_captured_place_refuses_the_stale_read() {
+    // wolf-interp#36, `corpus/memory/closure_borrow_write.lu`'s shape. This
+    // test used to pin the OPPOSITE — "a later write to the captured local
+    // is invisible inside it", exit on the stale copy — which is exactly the
+    // divergence the issue filed: the compiler's closure env BORROWS its
+    // captures (s98, `[abi.native.closure]`) and refuses the write with
+    // E1002 whenever the closure is still needed. A dynamic machine learns
+    // "still needed" at the use, so the use is where it faults, naming the
+    // write.
+    let trap = trap_of(
+        "fn main() -> int {\n\
+         \x20   var n = 1\n\
+         \x20   let f = fn(x) x + n\n\
+         \x20   n = 100\n\
+         \x20   f(1)\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::Exclusivity);
+    assert_eq!(trap.rule, Rule::BorrowExtent);
+    assert_eq!(trap.rule.anchor(), "mem.tier0.borrow.2");
+    assert!(trap.message.contains("E1002"), "{}", trap.message);
+    let (write_site, _) = trap.secondary.expect("the write site is spanned");
+    assert!(write_site.start < trap.span.start);
+}
+
+#[test]
+fn a_write_after_the_closures_last_use_stays_legal() {
+    // The NLL complement, dynamically exact: once nothing needs the closure
+    // any more, the write is W1102's advisory shape, not E1002 — and this
+    // machine runs it. Zero false positives is the point of checking at the
+    // use instead of at the write.
     assert_eq!(
         outcome(
             "fn main() -> int {\n\
              \x20   var n = 1\n\
              \x20   let f = fn(x) x + n\n\
+             \x20   let a = f(1)\n\
              \x20   n = 100\n\
-             \x20   f(1)\n\
+             \x20   a - 2\n\
              }\n"
         ),
-        Outcome::Exit(2)
+        Outcome::Exit(0)
+    );
+}
+
+#[test]
+fn a_closure_writing_its_own_captured_copy_keeps_running() {
+    // `corpus/memory/closure_capture_write.lu`'s shape: the write INSIDE the
+    // body lands on the closure's own frame-local copy — no loan on the
+    // creating frame moves, so the program runs (the compiler refuses this
+    // by name at `wir`; here it is the honest copy semantics executing).
+    assert_eq!(
+        outcome(
+            "fn main() -> int {\n\
+             \x20   var n = 0\n\
+             \x20   let f = fn() { n = n + 1 }\n\
+             \x20   f()\n\
+             \x20   0\n\
+             }\n"
+        ),
+        Outcome::Exit(0)
+    );
+}
+
+#[test]
+fn a_task_closure_is_a_capture_not_a_loan() {
+    // D14's law: task captures are copies (`move`/copy/`imm`), and E1101 is
+    // the code that polices writes to them — not E1002. A closure crossing
+    // to a spawned task is exempt from the loan check even when the parent
+    // keeps writing; the corpus's conc tier leans on this.
+    assert_eq!(
+        outcome(
+            "fn main() -> !int {\n\
+             \x20   let ch = channel[int](1)\n\
+             \x20   var base = 10\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() { ch.send(base) })\n\
+             \x20   }\n\
+             \x20   base = 20\n\
+             \x20   let got = ch.recv() else |_| { return 2 }\n\
+             \x20   got - 10\n\
+             }\n"
+        ),
+        Outcome::Exit(0)
     );
 }
 

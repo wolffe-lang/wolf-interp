@@ -103,8 +103,10 @@ impl Session {
     pub fn new(seed: Option<u64>) -> Session {
         let program = crate::sema::load_source("repl", "").expect("the empty program always loads");
         let mut machine = Machine::with_seed(&program, seed);
+        let serial = machine.mint_frame_serial();
         machine.frames.push(Frame {
             module: String::new(),
+            serial,
             scopes: vec![Scope::default()],
             row: Vec::new(),
             read_params: Vec::new(),
