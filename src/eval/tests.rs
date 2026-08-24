@@ -1737,6 +1737,47 @@ fn a_bare_builtin_mutating_call_traps_and_a_reading_one_does_not() {
     );
 }
 
+#[test]
+fn a_prim_impl_dispatches_through_the_trait_qualified_call() {
+    // wolf-interp#34's third shape (upstream #119, D49's substrate):
+    // `impl Text for int` registers under the spelling `int` exactly as a
+    // nominal does, and the trait-qualified call reaches it for an
+    // int-typed receiver. The literal leg stays undispatched on BOTH
+    // machines (`Text.text(7)` types the literal i32 upstream —
+    // prim_impl.lu's own header leaves it with D49's implementing
+    // campaign), so the second program declines rather than guessing.
+    let run = run("trait Text {\n\
+         \x20   fn text(x: Self) -> str\n\
+         }\n\
+         impl Text for int {\n\
+         \x20   fn text(x: Self) -> str { \"n\" }\n\
+         }\n\
+         fn main() -> !int {\n\
+         \x20   let n: int = 7\n\
+         \x20   print(Text.text(n))\n\
+         \x20   0\n\
+         }\n");
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "n\n");
+
+    let literal = outcome(
+        "trait Text {\n\
+         \x20   fn text(x: Self) -> str\n\
+         }\n\
+         impl Text for int {\n\
+         \x20   fn text(x: Self) -> str { \"n\" }\n\
+         }\n\
+         fn main() -> !int {\n\
+         \x20   print(Text.text(7))\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert!(
+        matches!(literal, Outcome::Unsupported(_)),
+        "the literal leg is D49's campaign, not this machine's guess: {literal:?}"
+    );
+}
+
 // -- the lent receiver (issue #24) ------------------------------------------
 
 #[test]

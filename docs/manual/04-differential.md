@@ -98,9 +98,9 @@ notice: 16 `pkg.*` anchor(s) registered but absent from the spec's namespace cla
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
 differential: 338 entries compared, 0 member(s) exercised through their entries
 divergences: 0
-conservatism ledger: 106 entries
-  unsupported(counterparty): 53
-  unsupported(interp): 53
+conservatism ledger: 102 entries
+  unsupported(counterparty): 51
+  unsupported(interp): 51
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
 notice: bundle target/bundle at pin b522b8aff7ff8dc6a6faf3f947c1a766160fda9b verified (bundle_sha256 …)
 ```

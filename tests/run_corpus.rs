@@ -641,6 +641,16 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/region_value_pass.lu", "exit(0)"),
     ("memory/region_value_return.lu", "exit(0)"),
     ("typecheck/fn_value_import/main.lu", "exit(0)"),
+    // is17's #34 probe takes the known survivor: `impl Text for int`
+    // dispatches through the trait-qualified call now — a prim receiver
+    // falls back to its TYPE-name lookup (`int` registers exactly as a
+    // nominal, #119/D49), so `prim_impl.lu` prints `n` and matches.
+    // `prim_impl_orphan/main.lu` rides the same road where the compiler
+    // refuses E0504: coherence is a static judgement this machine does not
+    // make, so it runs exit(0) — the `coherence_orphan/main.lu` class,
+    // ledgered conservatism, not a divergence.
+    ("traits/prim_impl.lu", "exit(0)"),
+    ("traits/prim_impl_orphan/main.lu", "exit(0)"),
 ];
 
 #[test]

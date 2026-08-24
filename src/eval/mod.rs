@@ -4343,13 +4343,24 @@ impl Machine {
     /// The trait-qualified form: `Speak.speak(d)` reaches trait `Speak`'s
     /// method for `d`'s type even where an inherent method shadows it
     /// (`[ty.trait.qualified-call]`).
+    ///
+    /// Primitives dispatch here too (wolf-interp#34's third shape, upstream
+    /// #119/D49): `impl Text for int` registers under the spelling `int`
+    /// exactly as a nominal does, so a prim receiver falls back to its
+    /// TYPE-name lookup. Only the qualified call gets this road — the
+    /// method-call syntax on prim receivers stays with the builtin surface,
+    /// whose inherent tier wins the s17 resolution order.
     fn trait_method_of(
         &self,
         trait_name: &str,
         method: &str,
         value: &Value,
     ) -> Option<(String, Box<crate::ast::FnDecl>)> {
-        let (module, defs) = self.method_defs_of(value, method)?;
+        let (module, defs) = self.method_defs_of(value, method).or_else(|| {
+            prim_type_names(value)
+                .into_iter()
+                .find_map(|name| self.method_defs_named(&name, method))
+        })?;
         defs.iter()
             .find(|def| def.trait_name.as_deref() == Some(trait_name))
             .map(|def| (module, def.decl.clone()))
@@ -6256,6 +6267,34 @@ fn split_qualified(qualified: &str) -> (String, String) {
     match qualified.split_once("::") {
         Some((module, name)) => (module.to_owned(), name.to_owned()),
         None => (String::new(), qualified.to_owned()),
+    }
+}
+
+/// The spellings a primitive value's type may register an `impl` under
+/// (wolf-interp#34, upstream #119/D49): `impl Text for int` mangles the
+/// prim's spelling exactly as a nominal's, so the lookup tries the
+/// language-default alias first where the value carries it (`int` IS i64,
+/// `uint` IS u64), then the width name. A *literal* stays its
+/// `[arith.literal.default]` i32 and binds no alias — `Text.text(7)` is
+/// the leg prim_impl.lu's own header leaves with D49's implementing
+/// campaign, on both machines.
+fn prim_type_names(value: &Value) -> Vec<String> {
+    match value {
+        Value::Int(_, ty) => {
+            let width = ty.name();
+            if ty.literal {
+                return vec![width];
+            }
+            match width.as_str() {
+                "i64" => vec!["int".to_owned(), width],
+                "u64" => vec!["uint".to_owned(), width],
+                _ => vec![width],
+            }
+        }
+        Value::Float(_) => vec!["float".to_owned(), "f64".to_owned()],
+        Value::Str(_) => vec!["str".to_owned()],
+        Value::Bool(_) => vec!["bool".to_owned()],
+        _ => Vec::new(),
     }
 }
 
