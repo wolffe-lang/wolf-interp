@@ -254,6 +254,16 @@ pub fn dynamic_meaning(code: &str) -> Option<TrapKind> {
         // (E1011/E1012 sit in the same upstream table; their reclassification
         // is deliberately NOT taken here — is16's contract names E1010.)
         "E1010" => Some(TrapKind::RegionFault),
+        // **E0804** (a `mut`-receiver method on a bare call site — X1 binds
+        // receiver modes where the mutation happens). is17 (#37): this
+        // machine demands the call-site marker at call evaluation and traps
+        // the bare spelling with the mode named. The kind is the mode
+        // family's, `exclusivity` — the same row E1013/E1014 land on in
+        // `[conf.trap.map]` — and the grounds are the corpus file's own
+        // header (`receiver_bare_mut.lu`: "the syntax law (X1) binds at the
+        // call site") plus `[mem.tier0.mode.mut]`, which the file conforms
+        // to beside `ty.method.receiver-mode`.
+        "E0804" => Some(TrapKind::Exclusivity),
         // The s72 mode teeth. **E1013** (D40 iteration exclusivity):
         // `[conf.trap.map]` names it in the `exclusivity` row and
         // `[mem.iter.excl.2]` states the dynamic meaning outright.
@@ -464,6 +474,26 @@ mod tests {
         // No other memory code has a stated dynamic meaning.
         assert_eq!(dynamic_meaning("E1003"), None);
         assert_eq!(dynamic_meaning("E1006"), None);
+    }
+
+    #[test]
+    fn the_receiver_mode_code_is_a_counterpart_when_the_machine_traps_exclusivity() {
+        // is17 (#37): a `mut`-receiver method on a bare call site is E0804
+        // statically; this machine demands the marker at call evaluation and
+        // traps `exclusivity` — the mode family's kind.
+        assert!(matches!(
+            judge(
+                &Check::Fail("E0804".to_owned()),
+                &record(Verdict::Trap(TrapKind::Exclusivity)),
+                ""
+            ),
+            Judgement::DynamicCounterpart(_)
+        ));
+        assert_eq!(dynamic_meaning("E0804"), Some(TrapKind::Exclusivity));
+        // The neighbouring method-tier codes gain nothing: only E0804 has a
+        // stated dynamic demand.
+        assert_eq!(dynamic_meaning("E0803"), None);
+        assert_eq!(dynamic_meaning("E0805"), None);
     }
 
     #[test]

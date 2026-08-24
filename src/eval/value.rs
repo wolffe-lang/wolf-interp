@@ -321,6 +321,36 @@ pub struct ClosureValue {
     pub body: crate::ast::Expr,
     /// Free variables, captured when the closure was built (`[gram.expr.closure]`).
     pub captures: Vec<(String, Value)>,
+    /// The loan records for the places the body actually uses (#36): the
+    /// compiler's closure env BORROWS its captures (the s98 loan design,
+    /// `[abi.native.closure]`), and these are what let this machine notice —
+    /// at a later call — that a captured place was written after the capture,
+    /// which is the one observation that could tell copy from reference apart.
+    pub loans: Vec<CaptureLoan>,
+}
+
+/// One captured place's loan (wolf-interp#36).
+///
+/// Keyed by the capturing frame's never-reused serial plus the binding's
+/// name, with the place's write generation at capture time. A later call of
+/// the closure on the same task compares generations: a mismatch means the
+/// program wrote the captured place while the closure was still needed —
+/// statically E1002 through the NLL engine — and the machine refuses to run
+/// the stale read.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CaptureLoan {
+    pub name: String,
+    /// The capturing task. A closure crossing to another task is a task
+    /// capture — a copy by D14's law (`move`/copy/`imm`), not a loan — so
+    /// the check only binds on the task that created it.
+    pub task: usize,
+    /// The capturing frame's serial ([`super::Machine`] mints them once,
+    /// never reusing one), so two activations of one function never alias.
+    pub serial: u64,
+    /// The place's write generation when the closure was built.
+    pub generation: u64,
+    /// The closure creation site.
+    pub span: crate::diag::Span,
 }
 
 /// A first-class region value (X4, `[mem.region.create.2]`).

@@ -265,8 +265,10 @@ impl Machine {
             let mut stack = self.shared.sched.restore_stack(self.task);
             self.store().swap_open(&mut stack);
         }
+        let serial = self.mint_frame_serial();
         self.frames.push(Frame {
             module,
+            serial,
             scopes: vec![Scope::default()],
             row: Vec::new(),
             read_params: Vec::new(),
@@ -414,8 +416,10 @@ impl Machine {
         }
         // `call_fn` pushes its own frame; give the thread a root frame so
         // frame teardown in `finish_task_thread` has something to pop.
+        let serial = self.mint_frame_serial();
         self.frames.push(Frame {
             module: module.to_owned(),
+            serial,
             scopes: vec![Scope::default()],
             row: Vec::new(),
             read_params: Vec::new(),

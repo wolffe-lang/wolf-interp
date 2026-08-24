@@ -396,10 +396,10 @@ const MULTIOPEN_UNDER_TASKS: &str = r#"fn main() -> !int {
     var total = 0
     in a {
         var xs = List[int]()
-        xs.push(1)
+        (mut xs).push(1)
         in b {
             var ys = List[int]()
-            ys.push(2)
+            (mut ys).push(2)
             scope s {
                 s.spawn(fn() { ch.send(10) })
                 s.spawn(fn() { ch.send(20) })
@@ -440,7 +440,7 @@ const TRANSFER_WHILE_MULTIOPEN: &str = r#"fn main() -> !int {
             let q = region()
             let n = in q {
                 var zs = List[int]()
-                zs.push(9)
+                (mut zs).push(9)
                 zs[0]
             }
             done.send(n)
@@ -449,7 +449,7 @@ const TRANSFER_WHILE_MULTIOPEN: &str = r#"fn main() -> !int {
         ch.send(move p)
         in a {
             var xs = List[int]()
-            xs.push(1)
+            (mut xs).push(1)
             total += xs[0]
         }
     }

@@ -34,7 +34,7 @@ pub mod rules;
 pub mod sched;
 pub mod value;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -52,7 +52,8 @@ use prov::{AccessKind, Prov, Provenance, RawPtr, RetagKind, UbFinding, UbRow};
 use region::{Edge, Ref, RegionId, RegionState, Store, Strategy};
 use rules::Rule;
 use value::{
-    ArithMode, ClosureValue, ErrorValue, HandleValue, IntTy, RegionValue, Slot, SlotState, Value,
+    ArithMode, CaptureLoan, ClosureValue, ErrorValue, HandleValue, IntTy, RegionValue, Slot,
+    SlotState, Value,
 };
 
 /// A trap: a fault of a *defined* execution, named by the closed vocabulary.
@@ -357,6 +358,10 @@ struct Scope {
 #[derive(Debug)]
 struct Frame {
     module: String,
+    /// This activation's never-reused id (#36): frame *indices* are reused
+    /// as frames push and pop, so a capture loan keyed by index could alias
+    /// a stranger's local. Serials are minted once per activation per task.
+    serial: u64,
     scopes: Vec<Scope>,
     /// The enclosing function's declared return-row tags — what a bare
     /// lowercase name at a raise site resolves against (issue #12, the
@@ -463,6 +468,17 @@ pub struct Machine {
     /// Retags produced by the current call's arguments, waiting for
     /// [`Machine::call_fn`] to bind them to the callee's parameter places.
     pending_retags: Vec<Option<PendingRetag>>,
+    /// The next [`Frame::serial`] this task will mint (#36).
+    next_frame_serial: u64,
+    /// The places some live closure has captured, `(frame serial, name)` —
+    /// the filter that keeps [`Machine::note_captured_write`] O(1) for the
+    /// programs that never create a capturing closure (#36).
+    captured_places: BTreeSet<(u64, String)>,
+    /// Write generations (and the last write's span) for captured places
+    /// (#36). Entries are never removed: serials are never reused, so a
+    /// stale entry can never alias, and the map is bounded by the distinct
+    /// captured bindings a run actually writes.
+    capture_gens: BTreeMap<(u64, String), (u64, Span)>,
     tracing: Trace,
 }
 
@@ -579,8 +595,17 @@ impl Machine {
             unsafe_depth: 0,
             when_held: Vec::new(),
             pending_retags: Vec::new(),
+            next_frame_serial: 0,
+            captured_places: BTreeSet::new(),
+            capture_gens: BTreeMap::new(),
             tracing,
         }
+    }
+
+    /// Mints a [`Frame::serial`] — every frame construction calls this.
+    fn mint_frame_serial(&mut self) -> u64 {
+        self.next_frame_serial += 1;
+        self.next_frame_serial
     }
 
     #[must_use]
@@ -713,8 +738,10 @@ impl Machine {
     }
 
     fn run_main(&mut self) -> Outcome {
+        let serial = self.mint_frame_serial();
         self.frames.push(Frame {
             module: String::new(),
+            serial,
             scopes: vec![Scope::default()],
             row: Vec::new(),
             read_params: Vec::new(),
@@ -1055,6 +1082,21 @@ impl Machine {
     }
 
     fn pop_scope(&mut self) {
+        self.pop_scope_escaping(&[]);
+    }
+
+    /// As [`Machine::pop_scope`], naming the regions whose values are LEAVING
+    /// the scope — on a block's tail, a `return`, or a `break` value.
+    ///
+    /// A region is an affine first-class value (X4, `[mem.region.create.2]`)
+    /// and a return is a move: the escaping value carries the handle out, so
+    /// teardown must not free the region under it — the adopting binding owns
+    /// it now (wolf_mem's s20 ret-region shape; wolf-interp#35). Only the
+    /// region *value* transfers this way: a container merely allocated in a
+    /// dying region does not carry its home out, and the freed-home fault
+    /// (#25) still fires on any later access — `region_escape_local.lu` and
+    /// its family trap exactly as before.
+    fn pop_scope_escaping(&mut self, escapes: &[RegionId]) {
         let Some(frame) = self.frames.last_mut() else {
             return;
         };
@@ -1065,8 +1107,27 @@ impl Machine {
         // (`[mem.tier0.borrow.1]`).
         let extra = self.access.len().saturating_sub(scope.held);
         self.access.release(extra);
-        self.reclaim(&scope);
+        self.reclaim(&scope, escapes);
         self.prov().prune();
+    }
+
+    /// The region ids riding out of a scope on its result value — the input
+    /// to [`Machine::pop_scope_escaping`]. `Ok` is a block tail; `Return` and
+    /// `Break` carry values across scopes the same way. Every other signal
+    /// carries no user value, so nothing escapes on it.
+    fn escaping_regions(result: &EResult<Value>) -> Vec<RegionId> {
+        let value = match result {
+            Ok(value) | Err(Signal::Return(value) | Signal::Break(value)) => value,
+            Err(_) => return Vec::new(),
+        };
+        let mut refs = Vec::new();
+        region::references(value, &mut refs);
+        refs.into_iter()
+            .filter_map(|granule| match granule {
+                Ref::Region(id) => Some(id),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Scope-exit reclamation: the Tier-1 and Tier-2 half of `[mem.shared.drop]`.
@@ -1088,7 +1149,7 @@ impl Machine {
     ///   caller still owns. Declining to sweep leaks (defined and safe,
     ///   `[mem.ub.defined]`); sweeping would fault wrongly, and the
     ///   approximation direction forbids that.
-    fn reclaim(&mut self, scope: &Scope) {
+    fn reclaim(&mut self, scope: &Scope, escapes: &[RegionId]) {
         for (name, slot) in scope.locals.iter().rev() {
             if !slot.is_live() {
                 // Moved out: its new owner is responsible for it.
@@ -1098,6 +1159,20 @@ impl Machine {
             region::references(&slot.value, &mut refs);
             for granule in refs {
                 match granule {
+                    Ref::Region(id) if escapes.contains(&id) => {
+                        // The scope's result value carries this region out:
+                        // the affine handle moves with it (X4, a return is a
+                        // move — `[mem.region.create.2]`; wolf-interp#35).
+                        // The adopting binding frees it at ITS death instead.
+                        self.fire(
+                            Rule::RegionAffine,
+                            Span::new(0, 0),
+                            &format!(
+                                "`{name}` moved out with the scope's value: the affine region \
+                                 transfers instead of being freed"
+                            ),
+                        );
+                    }
                     Ref::Region(id) => {
                         let freed = self.store().free(id);
                         self.prov().region_freed(&freed, Span::new(0, 0));
@@ -1407,6 +1482,9 @@ impl Machine {
         };
         let value = slot.take_value(span);
         self.fire(Rule::Move, span, &format!("move out of `{display}`"));
+        // A move ends the captured place's life as surely as a write ends
+        // its loan (#36): the generation advances either way.
+        self.note_captured_write(path, span);
         Ok(value)
     }
 
@@ -1676,7 +1754,30 @@ impl Machine {
             Rule::Assign
         };
         self.fire(rule, span, &format!("write `{display}`"));
+        self.note_captured_write(path, span);
         self.access_place(path, AccessKind::Write, span)
+    }
+
+    /// Advances a captured place's write generation (#36). Free until a
+    /// program creates a capturing closure: the `captured_places` filter is
+    /// empty and the walk never starts. Keyed by the owning frame's serial
+    /// plus the base name — a write anywhere under the binding (an element,
+    /// a field) conflicts with the whole-binding capture exactly as
+    /// `[mem.model.path.disjoint]` reads prefixes.
+    fn note_captured_write(&mut self, path: &Path, span: Span) {
+        if self.captured_places.is_empty() || path.frame == usize::MAX {
+            return;
+        }
+        let Some(frame) = self.frames.get(path.frame) else {
+            return;
+        };
+        let key = (frame.serial, path.base.clone());
+        if !self.captured_places.contains(&key) {
+            return;
+        }
+        let entry = self.capture_gens.entry(key).or_insert((0, span));
+        entry.0 += 1;
+        entry.1 = span;
     }
 
     /// One Tier-0 place access, against the provenance forest.
@@ -2425,8 +2526,10 @@ impl Machine {
                 (name, param.span)
             })
             .collect();
+        let serial = self.mint_frame_serial();
         self.frames.push(Frame {
             module: module.to_owned(),
+            serial,
             scopes: vec![Scope::default()],
             row: crate::sema::declared_raise_tags(decl),
             read_params,
@@ -2793,7 +2896,10 @@ impl Machine {
             Err(Signal::Break(_) | Signal::Continue) => false,
         };
         let defers = self.run_defers(errored);
-        self.pop_scope();
+        // A region value in the block's result moves OUT of the dying scope
+        // (wolf-interp#35): name it so teardown skips its wholesale free.
+        let escapes = Machine::escaping_regions(&result);
+        self.pop_scope_escaping(&escapes);
         match (result, defers) {
             (Ok(value), Ok(())) => Ok(value),
             (Err(signal), _) => Err(signal),
@@ -4237,13 +4343,24 @@ impl Machine {
     /// The trait-qualified form: `Speak.speak(d)` reaches trait `Speak`'s
     /// method for `d`'s type even where an inherent method shadows it
     /// (`[ty.trait.qualified-call]`).
+    ///
+    /// Primitives dispatch here too (wolf-interp#34's third shape, upstream
+    /// #119/D49): `impl Text for int` registers under the spelling `int`
+    /// exactly as a nominal does, so a prim receiver falls back to its
+    /// TYPE-name lookup. Only the qualified call gets this road — the
+    /// method-call syntax on prim receivers stays with the builtin surface,
+    /// whose inherent tier wins the s17 resolution order.
     fn trait_method_of(
         &self,
         trait_name: &str,
         method: &str,
         value: &Value,
     ) -> Option<(String, Box<crate::ast::FnDecl>)> {
-        let (module, defs) = self.method_defs_of(value, method)?;
+        let (module, defs) = self.method_defs_of(value, method).or_else(|| {
+            prim_type_names(value)
+                .into_iter()
+                .find_map(|name| self.method_defs_named(&name, method))
+        })?;
         defs.iter()
             .find(|def| def.trait_name.as_deref() == Some(trait_name))
             .map(|def| (module, def.decl.clone()))
@@ -4257,6 +4374,18 @@ impl Machine {
         let Value::Struct { name, .. } = value else {
             return None;
         };
+        self.method_defs_named(name, method)
+    }
+
+    /// [`Machine::method_defs_of`] by the type's NAME alone — the nominal
+    /// half of dispatch, split out so a caller holding only the name (the
+    /// receiver-mode demand below peeks at the slot without reading it) can
+    /// ask the same question.
+    fn method_defs_named(
+        &self,
+        name: &str,
+        method: &str,
+    ) -> Option<(String, Vec<crate::sema::MethodDef>)> {
         // REPL generations (`Point#2`) impl under their base name.
         let name = name.split('#').next().unwrap_or(name);
         let current = self
@@ -4317,11 +4446,47 @@ impl Machine {
                 }
             }
         }
+        // wolf-interp#36: the compiler's closure env BORROWS its captures
+        // (the s98 loan design, `[abi.native.closure]`); this machine copies
+        // the bits, and the shared loan is what keeps the copy unobservable.
+        // Record a loan for every place the body actually USES (the copy
+        // above over-captures the whole frame; the loans must not), so a
+        // later call can notice a write that landed after the capture — the
+        // one program that could tell copy from reference apart — and refuse
+        // it instead of running the stale read.
+        let mut bound: BTreeSet<String> = params.iter().map(|p| p.name.name.clone()).collect();
+        let mut used = BTreeSet::new();
+        crate::lint::free_names(body, &mut bound, &mut used);
+        let mut loans = Vec::new();
+        if let Some(frame) = self.frames.last() {
+            let serial = frame.serial;
+            for name in &used {
+                if !captures.iter().any(|(captured, _)| captured == name) {
+                    continue;
+                }
+                let generation = self
+                    .capture_gens
+                    .get(&(serial, name.clone()))
+                    .map_or(0, |(generation, _)| *generation);
+                loans.push(CaptureLoan {
+                    name: name.clone(),
+                    task: self.task,
+                    serial,
+                    generation,
+                    span,
+                });
+            }
+        }
+        for loan in &loans {
+            self.captured_places
+                .insert((loan.serial, loan.name.clone()));
+        }
         self.fire(Rule::Closure, span, "closure captures by value");
         Ok(Value::Closure(Box::new(ClosureValue {
             params: params.iter().map(|p| p.name.name.clone()).collect(),
             body: body.clone(),
             captures,
+            loans,
         })))
     }
 
@@ -4801,12 +4966,52 @@ impl Machine {
                         args.len()
                     ));
                 }
+                // wolf-interp#36: the env borrows its captured places (s98,
+                // `[abi.native.closure]`). This call is the moment "the
+                // closure is still needed" becomes a fact rather than a
+                // liveness guess, so the loan is checked here: a captured
+                // place written since the capture means the compiler's NLL
+                // engine refuses the WRITE as E1002, and running on would
+                // read this machine's stale copy — the one observable
+                // difference between copy and borrow. Refuse it, naming both
+                // sites. A closure on a foreign task is exempt: task
+                // captures are copies by D14's law, not loans.
+                for loan in &closure.loans {
+                    if loan.task != self.task {
+                        continue;
+                    }
+                    let key = (loan.serial, loan.name.clone());
+                    let Some((current, written_at)) = self.capture_gens.get(&key).copied() else {
+                        continue;
+                    };
+                    if current != loan.generation {
+                        let name = &loan.name;
+                        return self.trap(
+                            TrapKind::Exclusivity,
+                            Rule::BorrowExtent,
+                            span,
+                            format!(
+                                "this closure captured `{name}` and is still needed, but \
+                                 `{name}` was written after the capture: the closure env \
+                                 borrows its places, so the write ends the loan — the \
+                                 compiler refuses it as E1002, and running on would read a \
+                                 stale copy"
+                            ),
+                            Some((
+                                written_at,
+                                format!("`{name}` written here, after the closure captured it"),
+                            )),
+                        );
+                    }
+                }
+                let serial = self.mint_frame_serial();
                 self.frames.push(Frame {
                     module: self
                         .frames
                         .last()
                         .map(|f| f.module.clone())
                         .unwrap_or_default(),
+                    serial,
                     scopes: vec![Scope::default()],
                     // A closure body raising a bare tag reads the enclosing
                     // function's declared row — the closure has no row of
@@ -4891,6 +5096,42 @@ impl Machine {
         }
     }
 
+    /// Does `method` on the value at `path` declare a `mut` receiver — the
+    /// demand a bare call site fails (#37)?
+    ///
+    /// `Some(declaration_span)` when it does: the span is the `mut self`
+    /// parameter's for a user impl method, `None`-inside for the builtin
+    /// arms, whose declaration is the counterparty's prelude, not a span in
+    /// this program. Outer `None` when the receiver's method wants no `mut`
+    /// (or the place does not resolve/is not live — the ordinary read path
+    /// reports those its own way).
+    fn mut_receiver_demand(&mut self, path: &Path, method: &str) -> Option<Option<Span>> {
+        let type_name = {
+            let (slot, _) = self.resolve(path)?;
+            if !slot.is_live() {
+                return None;
+            }
+            match &slot.value {
+                value @ Value::List(..) => {
+                    return builtin::mutates_receiver(value, method).then_some(None);
+                }
+                Value::Struct { name, .. } => name.clone(),
+                _ => return None,
+            }
+        };
+        let (_, defs) = self.method_defs_named(&type_name, method)?;
+        let decl = defs
+            .iter()
+            .find(|def| def.trait_name.is_none())
+            .or_else(|| defs.first())
+            .map(|def| &def.decl)?;
+        let receiver_param = decl
+            .params
+            .first()
+            .filter(|param| matches!(param.kind, ParamKind::SelfParam { .. }))?;
+        (receiver_param.mode == Some(ParamMode::Mut)).then_some(Some(receiver_param.span))
+    }
+
     fn eval_method(
         &mut self,
         receiver: &Receiver,
@@ -4899,6 +5140,34 @@ impl Machine {
         args: &[Arg],
         span: Span,
     ) -> EResult<Value> {
+        // wolf-interp#37 — receiver modes get teeth. X1 is locked surface:
+        // mutation is visible where it happens, and the call site spells it.
+        // A callee whose receiver mode is `mut` (a user impl's `fn m(mut
+        // self)`, or the builtin surface's two receiver-mutating arms,
+        // `List.push`/`List.pop`) demands the call-site `(mut …)` marker; the
+        // compiler refuses the bare spelling with E0804
+        // (`corpus/typecheck/receiver_bare_mut.lu`). This machine performs no
+        // static receiver-mode check, so the demand is made here, at call
+        // evaluation, with the mode named — E0804's dynamic meaning, kind
+        // `exclusivity` (the mode family's row, beside E1013/E1014; see
+        // `ledger::dynamic_meaning`).
+        if mode != Some(ParamMode::Mut)
+            && let Receiver::Place(path) = receiver
+            && let Some(declared) = self.mut_receiver_demand(path, method)
+        {
+            let display = path.to_string();
+            return self.trap(
+                TrapKind::Exclusivity,
+                Rule::ModeMut,
+                span,
+                format!(
+                    "`{method}` takes its receiver `mut`, and X1 binds the mode at the call \
+                     site: write `(mut {display}).{method}(…)` — the bare spelling is the \
+                     compiler's E0804"
+                ),
+                declared.map(|at| (at, "the receiver mode is declared here".to_owned())),
+            );
+        }
         // A receiver whose value is a builtin container is **lent** rather than
         // copied: the read is charged here exactly as it always was, but the
         // value stays in its slot until the arguments have been evaluated and
@@ -5998,6 +6267,34 @@ fn split_qualified(qualified: &str) -> (String, String) {
     match qualified.split_once("::") {
         Some((module, name)) => (module.to_owned(), name.to_owned()),
         None => (String::new(), qualified.to_owned()),
+    }
+}
+
+/// The spellings a primitive value's type may register an `impl` under
+/// (wolf-interp#34, upstream #119/D49): `impl Text for int` mangles the
+/// prim's spelling exactly as a nominal's, so the lookup tries the
+/// language-default alias first where the value carries it (`int` IS i64,
+/// `uint` IS u64), then the width name. A *literal* stays its
+/// `[arith.literal.default]` i32 and binds no alias — `Text.text(7)` is
+/// the leg prim_impl.lu's own header leaves with D49's implementing
+/// campaign, on both machines.
+fn prim_type_names(value: &Value) -> Vec<String> {
+    match value {
+        Value::Int(_, ty) => {
+            let width = ty.name();
+            if ty.literal {
+                return vec![width];
+            }
+            match width.as_str() {
+                "i64" => vec!["int".to_owned(), width],
+                "u64" => vec!["uint".to_owned(), width],
+                _ => vec![width],
+            }
+        }
+        Value::Float(_) => vec!["float".to_owned(), "f64".to_owned()],
+        Value::Str(_) => vec!["str".to_owned()],
+        Value::Bool(_) => vec!["bool".to_owned()],
+        _ => Vec::new(),
     }
 }
 

@@ -287,7 +287,7 @@ fn allocations_land_in_the_innermost_open_region() {
     // region is D12's default, and it falls out of not pushing on a call.
     let run = run("fn fill() -> List[int] {\n\
          \x20   var xs = List[int]()\n\
-         \x20   xs.push(7)\n\
+         \x20   (mut xs).push(7)\n\
          \x20   xs\n\
          }\n\
          fn main() -> int {\n\
@@ -334,10 +334,10 @@ fn two_disjoint_regions_open_simultaneously() {
          \x20   var total = 0\n\
          \x20   in a {\n\
          \x20       var xs = List[int]()\n\
-         \x20       xs.push(1)\n\
+         \x20       (mut xs).push(1)\n\
          \x20       in b {\n\
          \x20           var ys = List[int]()\n\
-         \x20           ys.push(2)\n\
+         \x20           (mut ys).push(2)\n\
          \x20           total += xs[0] + ys[0]\n\
          \x20       }\n\
          \x20   }\n\
@@ -355,7 +355,7 @@ fn reopening_the_region_you_are_already_inside_is_a_no_op() {
     let run = run(&main_of(
         "    region a {\n\
          \x20       var xs = List[int]()\n\
-         \x20       in a { xs.push(1) }\n\
+         \x20       in a { (mut xs).push(1) }\n\
          \x20       xs[0] - 1\n\
          \x20   }",
     ));
@@ -497,6 +497,99 @@ fn a_region_has_at_most_one_owning_edge() {
     );
     assert_eq!(trap.kind, TrapKind::UseAfterMove);
     assert_eq!(trap.rule.anchor(), "mem.tier0.move.2");
+}
+
+#[test]
+fn a_returned_region_transfers_to_the_caller() {
+    // wolf-interp#35, `corpus/memory/region_value_return.lu`'s shape: a
+    // region is an affine first-class value (X4) and a return is a move, so
+    // the callee's scope teardown must NOT free a region its return value
+    // carries out — the caller's binding adopts identity + handle (the s20
+    // ret-region rig) and opens it. Through is16 this trapped
+    // `[mem.region.intra.2]` at the caller's `in`.
+    let run = run("fn make() -> region {\n\
+         \x20   let r = region()\n\
+         \x20   r\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   let r = make()\n\
+         \x20   var t = 0\n\
+         \x20   in r {\n\
+         \x20       var xs = List[int]()\n\
+         \x20       (mut xs).push(41)\n\
+         \x20       t = xs[0] + 1\n\
+         \x20   }\n\
+         \x20   if t == 42 { 0 } else { 1 }\n\
+         }\n");
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    // The transfer is a move, not a leak: the adopting binding freed it.
+    assert!(run.leaks.is_empty());
+}
+
+#[test]
+fn a_region_returned_through_a_return_statement_transfers_too() {
+    // The `Signal::Return` road (an early return unwinding through nested
+    // scopes) transfers exactly as the block-tail road does.
+    let run = run("fn make(flag: bool) -> region {\n\
+         \x20   let r = region()\n\
+         \x20   if flag {\n\
+         \x20       return r\n\
+         \x20   }\n\
+         \x20   r\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   let r = make(true)\n\
+         \x20   in r {\n\
+         \x20       var xs = List[int]()\n\
+         \x20       (mut xs).push(1)\n\
+         \x20       xs[0] - 1\n\
+         \x20   }\n\
+         }\n");
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    assert!(run.leaks.is_empty());
+}
+
+#[test]
+fn a_region_not_returned_still_frees_at_callee_scope_end() {
+    // The other direction, pinned: when the region value does NOT ride the
+    // return, teardown frees it exactly as before — were the skip too eager,
+    // the region would outlive its binding and show up as a leak.
+    let run = run("fn busywork() -> int {\n\
+         \x20   let r = region()\n\
+         \x20   in r {\n\
+         \x20       var xs = List[int]()\n\
+         \x20       (mut xs).push(7)\n\
+         \x20       xs[0]\n\
+         \x20   }\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   busywork() - 7\n\
+         }\n");
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    assert!(run.leaks.is_empty());
+}
+
+#[test]
+fn a_value_escaping_its_region_still_faults_after_the_free() {
+    // The transfer is for the region VALUE only. A container merely
+    // allocated in the dying region does not carry its home out: the callee's
+    // teardown frees the region, and the caller's access faults through the
+    // freed home (#25) — `region_escape_local.lu`'s class, unchanged by #35.
+    let trap = trap_of(
+        "fn make() -> List[int] {\n\
+         \x20   let r = region()\n\
+         \x20   in r {\n\
+         \x20       var xs = List[int]()\n\
+         \x20       (mut xs).push(1)\n\
+         \x20       xs\n\
+         \x20   }\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   let xs = make()\n\
+         \x20   xs[0]\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::RegionFault);
 }
 
 #[test]
@@ -780,7 +873,7 @@ fn out_of_bounds_indexing_traps() {
     let trap = trap_of(
         "fn main() -> int {\n\
          \x20   var xs = List[int]()\n\
-         \x20   xs.push(1)\n\
+         \x20   (mut xs).push(1)\n\
          \x20   xs[3]\n\
          }\n",
     );
@@ -1043,19 +1136,90 @@ fn boolean_operators_short_circuit() {
 }
 
 #[test]
-fn a_closure_captures_by_value() {
-    // `[gram.expr.closure]`: captured when the closure is built, so a later
-    // write to the captured local is invisible inside it.
+fn a_closure_used_after_a_write_to_its_captured_place_refuses_the_stale_read() {
+    // wolf-interp#36, `corpus/memory/closure_borrow_write.lu`'s shape. This
+    // test used to pin the OPPOSITE — "a later write to the captured local
+    // is invisible inside it", exit on the stale copy — which is exactly the
+    // divergence the issue filed: the compiler's closure env BORROWS its
+    // captures (s98, `[abi.native.closure]`) and refuses the write with
+    // E1002 whenever the closure is still needed. A dynamic machine learns
+    // "still needed" at the use, so the use is where it faults, naming the
+    // write.
+    let trap = trap_of(
+        "fn main() -> int {\n\
+         \x20   var n = 1\n\
+         \x20   let f = fn(x) x + n\n\
+         \x20   n = 100\n\
+         \x20   f(1)\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::Exclusivity);
+    assert_eq!(trap.rule, Rule::BorrowExtent);
+    assert_eq!(trap.rule.anchor(), "mem.tier0.borrow.2");
+    assert!(trap.message.contains("E1002"), "{}", trap.message);
+    let (write_site, _) = trap.secondary.expect("the write site is spanned");
+    assert!(write_site.start < trap.span.start);
+}
+
+#[test]
+fn a_write_after_the_closures_last_use_stays_legal() {
+    // The NLL complement, dynamically exact: once nothing needs the closure
+    // any more, the write is W1102's advisory shape, not E1002 — and this
+    // machine runs it. Zero false positives is the point of checking at the
+    // use instead of at the write.
     assert_eq!(
         outcome(
             "fn main() -> int {\n\
              \x20   var n = 1\n\
              \x20   let f = fn(x) x + n\n\
+             \x20   let a = f(1)\n\
              \x20   n = 100\n\
-             \x20   f(1)\n\
+             \x20   a - 2\n\
              }\n"
         ),
-        Outcome::Exit(2)
+        Outcome::Exit(0)
+    );
+}
+
+#[test]
+fn a_closure_writing_its_own_captured_copy_keeps_running() {
+    // `corpus/memory/closure_capture_write.lu`'s shape: the write INSIDE the
+    // body lands on the closure's own frame-local copy — no loan on the
+    // creating frame moves, so the program runs (the compiler refuses this
+    // by name at `wir`; here it is the honest copy semantics executing).
+    assert_eq!(
+        outcome(
+            "fn main() -> int {\n\
+             \x20   var n = 0\n\
+             \x20   let f = fn() { n = n + 1 }\n\
+             \x20   f()\n\
+             \x20   0\n\
+             }\n"
+        ),
+        Outcome::Exit(0)
+    );
+}
+
+#[test]
+fn a_task_closure_is_a_capture_not_a_loan() {
+    // D14's law: task captures are copies (`move`/copy/`imm`), and E1101 is
+    // the code that polices writes to them — not E1002. A closure crossing
+    // to a spawned task is exempt from the loan check even when the parent
+    // keeps writing; the corpus's conc tier leans on this.
+    assert_eq!(
+        outcome(
+            "fn main() -> !int {\n\
+             \x20   let ch = channel[int](1)\n\
+             \x20   var base = 10\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() { ch.send(base) })\n\
+             \x20   }\n\
+             \x20   base = 20\n\
+             \x20   let got = ch.recv() else |_| { return 2 }\n\
+             \x20   got - 10\n\
+             }\n"
+        ),
+        Outcome::Exit(0)
     );
 }
 
@@ -1269,9 +1433,9 @@ fn an_index_read_lends_the_container_and_leaves_it_where_it_was() {
         stdout(
             "fn main() -> !int {\n\
              \x20   var xs = List[int]()\n\
-             \x20   xs.push(1)\n\
-             \x20   xs.push(2)\n\
-             \x20   xs.push(3)\n\
+             \x20   (mut xs).push(1)\n\
+             \x20   (mut xs).push(2)\n\
+             \x20   (mut xs).push(3)\n\
              \x20   print(\"{xs[0]} {xs[xs[0]]} {xs[2]} {xs.len}\")\n\
              \x20   var m = Map[str, int]()\n\
              \x20   m[\"a\"] = 7\n\
@@ -1292,7 +1456,7 @@ fn an_out_of_bounds_index_still_traps_through_the_lend() {
         trap_kind(
             "fn main() -> !int {\n\
              \x20   var xs = List[int]()\n\
-             \x20   xs.push(1)\n\
+             \x20   (mut xs).push(1)\n\
              \x20   print(\"{xs[3]}\")\n\
              \x20   0\n\
              }\n"
@@ -1315,13 +1479,13 @@ fn an_index_expression_that_mutates_the_container_reads_the_mutated_one() {
     assert_eq!(
         stdout(
             "fn bump(mut ys: List[int]) -> int {\n\
-             \x20   ys.push(9)\n\
+             \x20   (mut ys).push(9)\n\
              \x20   ys.len\n\
              }\n\
              fn main() -> !int {\n\
              \x20   var xs = List[int]()\n\
-             \x20   xs.push(1)\n\
-             \x20   xs.push(2)\n\
+             \x20   (mut xs).push(1)\n\
+             \x20   (mut xs).push(2)\n\
              \x20   let v = xs[bump(mut xs) - 1]\n\
              \x20   print(\"{v} {xs[bump(mut xs) - 1]}\")\n\
              \x20   0\n\
@@ -1340,8 +1504,8 @@ fn an_index_read_under_a_for_loops_read_claim_is_allowed() {
         stdout(
             "fn main() -> !int {\n\
              \x20   var xs = List[int]()\n\
-             \x20   xs.push(4)\n\
-             \x20   xs.push(5)\n\
+             \x20   (mut xs).push(4)\n\
+             \x20   (mut xs).push(5)\n\
              \x20   for v in xs {\n\
              \x20       print(\"{v} {xs[0]}\")\n\
              \x20   }\n\
@@ -1483,6 +1647,137 @@ fn a_fn_value_call_missing_the_declared_mut_is_refused_not_run_wrong() {
     }
 }
 
+#[test]
+fn a_mut_receiver_method_on_a_bare_call_site_traps_with_the_mode_named() {
+    // wolf-interp#37, `corpus/typecheck/receiver_bare_mut.lu`'s shape: X1
+    // binds receiver modes at the call site, and the compiler refuses the
+    // bare spelling with E0804. This machine ran it to the mutated answer
+    // through 0.1.13 (exit 42 on the corpus witness) — the silently wrong
+    // class. Now the call-site marker is demanded at call evaluation:
+    // `trap(exclusivity)`, the mode family's kind, with both spans (the
+    // call and the `mut self` declaration).
+    let trap = trap_of(
+        "struct Counter { n: int }\n\
+         impl Counter {\n\
+         \x20   fn bump(mut self) -> int {\n\
+         \x20       self.n = self.n + 1\n\
+         \x20       self.n\n\
+         \x20   }\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   var c = Counter { n: 41 }\n\
+         \x20   c.bump()\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::Exclusivity);
+    assert_eq!(trap.rule, Rule::ModeMut);
+    assert_eq!(trap.rule.anchor(), "mem.tier0.mode.mut");
+    assert!(trap.message.contains("E0804"), "{}", trap.message);
+    assert!(trap.message.contains("(mut c)"), "{}", trap.message);
+    assert!(trap.secondary.is_some(), "the declaration site is spanned");
+}
+
+#[test]
+fn the_marked_spellings_of_a_mut_receiver_still_run() {
+    // The legal spellings are untouched: the user impl's `(mut c).bump()`
+    // and the builtin pair `(mut xs).push`/`(mut xs).pop`.
+    assert_eq!(
+        outcome(
+            "struct Counter { n: int }\n\
+             impl Counter {\n\
+             \x20   fn bump(mut self) -> int {\n\
+             \x20       self.n = self.n + 1\n\
+             \x20       self.n\n\
+             \x20   }\n\
+             }\n\
+             fn main() -> int {\n\
+             \x20   var c = Counter { n: 41 }\n\
+             \x20   (mut c).bump() - 42\n\
+             }\n",
+        ),
+        Outcome::Exit(0)
+    );
+    assert_eq!(
+        outcome(
+            "fn main() -> int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   (mut xs).push(7)\n\
+             \x20   let last = (mut xs).pop() else 0\n\
+             \x20   last - 7\n\
+             }\n",
+        ),
+        Outcome::Exit(0)
+    );
+}
+
+#[test]
+fn a_bare_builtin_mutating_call_traps_and_a_reading_one_does_not() {
+    // `List.push` is the builtin surface's mut-receiver arm; a bare `len`
+    // or `xs[i]` read keeps running exactly as before — the demand is only
+    // where the receiver mode is `mut`.
+    let trap = trap_of(
+        "fn main() -> int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   xs.push(7)\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::Exclusivity);
+    assert!(trap.message.contains("E0804"), "{}", trap.message);
+
+    assert_eq!(
+        outcome(
+            "fn main() -> int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   (mut xs).push(3)\n\
+             \x20   xs.len - xs[0] + 2\n\
+             }\n",
+        ),
+        Outcome::Exit(0)
+    );
+}
+
+#[test]
+fn a_prim_impl_dispatches_through_the_trait_qualified_call() {
+    // wolf-interp#34's third shape (upstream #119, D49's substrate):
+    // `impl Text for int` registers under the spelling `int` exactly as a
+    // nominal does, and the trait-qualified call reaches it for an
+    // int-typed receiver. The literal leg stays undispatched on BOTH
+    // machines (`Text.text(7)` types the literal i32 upstream —
+    // prim_impl.lu's own header leaves it with D49's implementing
+    // campaign), so the second program declines rather than guessing.
+    let run = run("trait Text {\n\
+         \x20   fn text(x: Self) -> str\n\
+         }\n\
+         impl Text for int {\n\
+         \x20   fn text(x: Self) -> str { \"n\" }\n\
+         }\n\
+         fn main() -> !int {\n\
+         \x20   let n: int = 7\n\
+         \x20   print(Text.text(n))\n\
+         \x20   0\n\
+         }\n");
+    assert_eq!(run.outcome, Outcome::Exit(0));
+    assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "n\n");
+
+    let literal = outcome(
+        "trait Text {\n\
+         \x20   fn text(x: Self) -> str\n\
+         }\n\
+         impl Text for int {\n\
+         \x20   fn text(x: Self) -> str { \"n\" }\n\
+         }\n\
+         fn main() -> !int {\n\
+         \x20   print(Text.text(7))\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert!(
+        matches!(literal, Outcome::Unsupported(_)),
+        "the literal leg is D49's campaign, not this machine's guess: {literal:?}"
+    );
+}
+
 // -- the lent receiver (issue #24) ------------------------------------------
 
 #[test]
@@ -1536,7 +1831,7 @@ fn a_lend_hands_the_receiver_back_when_the_method_traps() {
 #[test]
 fn a_two_phase_receiver_still_reads_itself_through_the_parent() {
     // The lend is taken AFTER the arguments are evaluated, precisely so
-    // `xs.push(xs.len)` still reads `xs` through its parent while the
+    // `(mut xs).push(xs.len)` still reads `xs` through its parent while the
     // receiver's fresh tag is Reserved (`corpus/memory/prov_two_phase.lu`).
     // Taking it earlier would hand the argument a placeholder.
     assert_eq!(

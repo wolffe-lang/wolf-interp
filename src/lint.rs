@@ -1461,7 +1461,7 @@ fn expr_type_head(expr: &Expr) -> Option<&str> {
 /// The free bare names of a closure body: referenced names minus the ones the
 /// body itself declares. Approximate downward (module items and prelude names
 /// are filtered by the caller against the enclosing scopes).
-fn free_names(expr: &Expr, locals: &mut BTreeSet<String>, out: &mut BTreeSet<String>) {
+pub(crate) fn free_names(expr: &Expr, locals: &mut BTreeSet<String>, out: &mut BTreeSet<String>) {
     match &*expr.kind {
         ExprKind::Path(path) if path.is_single() => {
             let name = &path.segments[0].name;

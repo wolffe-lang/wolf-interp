@@ -1069,6 +1069,8 @@ pub fn method(
                     // `s.spawn(worker)` — a named function with no captures.
                     let closure = super::value::ClosureValue {
                         params: Vec::new(),
+                        // A named fn has no captures and takes no loans.
+                        loans: Vec::new(),
                         body: crate::ast::Expr {
                             kind: Box::new(crate::ast::ExprKind::Call {
                                 callee: crate::ast::Expr {

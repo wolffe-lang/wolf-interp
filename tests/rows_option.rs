@@ -75,7 +75,7 @@ fn flatten(v: (int ! {none}) ! {none}) -> int ! {none} {
 fn to_list(v: int ! {none}) -> List[int] {
     var out = List[int]()
     let x = v else { return out }
-    out.push(x)
+    (mut out).push(x)
     out
 }
 

@@ -278,7 +278,7 @@ fn a_proc_crash_is_contained_bulk_frees_and_reports_error() {
     // bulk-free (the leak assertion is the proof) and the reason is an error.
     let source = r#"fn crasher() -> int {
     let xs = List[int]()
-    xs.push(1)
+    (mut xs).push(1)
     let d = 0
     10 / d
 }
@@ -447,7 +447,7 @@ fn freeze_then_share_reads_from_any_task() {
     let source = r#"fn main() -> !int {
     let table = freeze region {
         var xs = List[int]()
-        for i in 0..10 { xs.push(i * i) }
+        for i in 0..10 { (mut xs).push(i * i) }
         xs
     }
     let out = channel[int](2)

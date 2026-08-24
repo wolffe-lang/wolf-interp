@@ -309,9 +309,15 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // (inherent wins; `Speak.speak(d)` reaches the shadowed trait method);
     // `receiver_modes`, `exclusivity`, `view_set_norm`, `assoc_rewrite`
     // (`exit(7)` is its own pinned arithmetic) and `show_bound` run clean.
-    // `method_ambiguous`, `method_scope/main`, `view_set_violation` and
-    // `receiver_bare_mut` run where the compiler statically rejects — the
-    // standing conservatism class, not divergences.
+    // `method_ambiguous`, `method_scope/main` and `view_set_violation` run
+    // where the compiler statically rejects — the standing conservatism
+    // class, not divergences.
+    // (`receiver_bare_mut` ran `exit(42)` here from 0.1.3 through 0.1.13 —
+    // the X1 receiver-mode disagreement executing to a silently wrong
+    // answer, the gap wolf-book's rp02 harvest exposed. Since is17 (#37) a
+    // `mut`-receiver method demands the call-site `(mut …)` marker at call
+    // evaluation and the bare spelling traps `exclusivity` — E0804's
+    // dynamic meaning, a counterpart row now, not conservatism.)
     ("faults/assert_msg_holds.lu", "exit(0)"),
     ("memory/exclusivity.lu", "exit(0)"),
     ("memory/view_set_norm.lu", "exit(0)"),
@@ -322,7 +328,7 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("typecheck/method_ambiguous.lu", "exit(0)"),
     ("typecheck/method_inherent.lu", "exit(0)"),
     ("typecheck/method_scope/main.lu", "exit(0)"),
-    ("typecheck/receiver_bare_mut.lu", "exit(42)"),
+    ("typecheck/receiver_bare_mut.lu", "trap(exclusivity)"),
     ("typecheck/receiver_modes.lu", "exit(0)"),
     // -- 0.1.4 (pin ad6cef7) -------------------------------------------------
     // The s29+s30 witnesses run to their pinned outcomes on this machine's
@@ -589,6 +595,62 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/foreign_root_aliasing.lu", "exit(0)"),
     ("strings/equality_lanes.lu", "exit(0)"),
     ("strings/from_utf8_border.lu", "exit(0)"),
+    // -- is17 (pin b522b8a) --------------------------------------------------
+    // The c25/s105/front-end wave: the compiler's closure build, the
+    // region-value tier, and explicit generic application. Sixteen new
+    // files reach `run`; the two that are NOT plain matches are this
+    // sprint's own divergence work, and both land as counterparts:
+    //
+    // `memory/region_value_return.lu` is wolf-interp#35's witness — a
+    // returned region now TRANSFERS (a return is a move, a region is
+    // affine) instead of being freed at callee scope end, so the file runs
+    // to the compiled lanes' exit(0). Its siblings (`region_value_pass`,
+    // `region_value_container`, `region_value_elem`) ran at first sight:
+    // parameters are not swept, and the container/element shapes only
+    // needed the ordinary scope-end free.
+    //
+    // `memory/closure_borrow_write.lu` is #36's witness — the stale-read
+    // program that could tell copy-captures from the compiler's loans
+    // apart. It STOPS running to its stale exit(255): the machine now
+    // traps `exclusivity` at the closure's post-write use (E1002's dynamic
+    // complement). The six legal closure files beside it
+    // (`closure_capture_mut`, `closure_capture_write`,
+    // `closure_escape_refused`, `closure_kill_list`,
+    // `closure_region_capture`, `closure_value_paths`) all run exit(0) —
+    // the loan machinery faults nothing the compiler accepts.
+    //
+    // `generics/explicit_apply_arity.lu` pins fail(E0812) — explicit
+    // application arity is a sema judgement this machine does not make, so
+    // its Tier-0 body runs exit(0): the standing conservatism class
+    // (wolf-interp#34's first shape, ledgered rather than hidden).
+    // `explicit_apply.lu`, the two s105 kernels and the fn-value import
+    // all match at first sight.
+    ("generics/explicit_apply.lu", "exit(0)"),
+    ("generics/explicit_apply_arity.lu", "exit(0)"),
+    ("kernels/guarded_stencil.lu", "exit(12)"),
+    ("kernels/walk_twice.lu", "exit(0)"),
+    ("memory/closure_borrow_write.lu", "trap(exclusivity)"),
+    ("memory/closure_capture_mut.lu", "exit(0)"),
+    ("memory/closure_capture_write.lu", "exit(0)"),
+    ("memory/closure_escape_refused.lu", "exit(0)"),
+    ("memory/closure_kill_list.lu", "exit(0)"),
+    ("memory/closure_region_capture.lu", "exit(0)"),
+    ("memory/closure_value_paths.lu", "exit(0)"),
+    ("memory/region_value_container.lu", "exit(0)"),
+    ("memory/region_value_elem.lu", "exit(0)"),
+    ("memory/region_value_pass.lu", "exit(0)"),
+    ("memory/region_value_return.lu", "exit(0)"),
+    ("typecheck/fn_value_import/main.lu", "exit(0)"),
+    // is17's #34 probe takes the known survivor: `impl Text for int`
+    // dispatches through the trait-qualified call now — a prim receiver
+    // falls back to its TYPE-name lookup (`int` registers exactly as a
+    // nominal, #119/D49), so `prim_impl.lu` prints `n` and matches.
+    // `prim_impl_orphan/main.lu` rides the same road where the compiler
+    // refuses E0504: coherence is a static judgement this machine does not
+    // make, so it runs exit(0) — the `coherence_orphan/main.lu` class,
+    // ledgered conservatism, not a divergence.
+    ("traits/prim_impl.lu", "exit(0)"),
+    ("traits/prim_impl_orphan/main.lu", "exit(0)"),
 ];
 
 #[test]
