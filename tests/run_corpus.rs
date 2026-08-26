@@ -769,16 +769,32 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // — the D52 mirror's warning half, landed with the pin because the
     // warns ledger gates it).
     //
-    // The other three s109 rows are the split this sprint's mirror closes:
-    // `tag_arg_position.lu` and `tag_let_position.lu` pin run(exit=0) and
-    // decline here at baseline (`` `none` does not resolve `` — the
-    // out-of-scope class, exactly the split D52 says the witnesses pin
-    // honestly until the is-track mirror), and `negative/tag_undeclared_arg.lu`
-    // pins fail(E0301) while this machine refuses the same fact by name
-    // (unsupported at resolve) — agreement in substance, out-of-scope in
-    // class, both sides refusing to run a typo.
+    // The other three s109 rows were the split the D52 mirror closed
+    // (`Machine::declared_row_tag` — per-position expected-row lookup at
+    // arguments, annotated `let`/`var` initializers, and the `return`
+    // operand; the fallible tail keeps the frame-row fallback, re-derived
+    // and documented at `eval_path_expr`):
+    //
+    // `rows/tag_arg_position.lu` — `or(none, 9)` injects against the
+    // callee's declared parameter row exactly as at a raise site; declined
+    // at the pin-bump baseline (`` `none` does not resolve ``), runs to the
+    // compiled lanes' exit(0) now. Split → agreement.
+    //
+    // `rows/tag_let_position.lu` — the annotation's row is the expected
+    // row of the initializer; `w` defaults to 5. This machine matches the
+    // SPEC and the native/release lanes — the compiler's CHECKED executor's
+    // wrong value at this shape is wolf-lang#122, its own filing, and is
+    // not mirrored here. Split → agreement.
+    //
+    // `rows/negative/tag_undeclared_arg.lu` stays OUT of this ledger on
+    // purpose: `gone` is not a tag the parameter's row declares, so the
+    // deferral does not apply and the bare name keeps its refusal
+    // (unsupported at resolve — E0301's fact stated by this machine's
+    // honest class). The rule is exactly as wide as the declared row.
     ("rows/nested_row_merge_payload.lu", "exit(0)"),
     ("rows/negative/nested_row_conflict.lu", "exit(3)"),
+    ("rows/tag_arg_position.lu", "exit(0)"),
+    ("rows/tag_let_position.lu", "exit(0)"),
     ("rows/tag_shadow_local.lu", "exit(0)"),
 ];
 
