@@ -216,7 +216,9 @@ fn every_parseable_file_resolves_under_sema_lite() {
     // E11xx capture law: E1101 (a task writes to a captured name), E1102
     // (a visibly unsendable channel payload), E1103 (nested `when`). Since
     // 0.1.8 (the 3d5cee6 re-pin) it owns E0809 (s71: an `else` handler
-    // pattern must cover the operand's whole row). A file
+    // pattern must cover the operand's whole row). Since is19 it owns E0812
+    // (explicit generic application arity, wolf-lang#111 — both counts are
+    // syntax, `lint::Walk::explicit_apply`). A file
     // that *pins* one of these codes fails here exactly as the corpus says. Any other resolve failure
     // would mean the module machinery broke, not that a program is
     // ill-typed.
@@ -227,7 +229,7 @@ fn every_parseable_file_resolves_under_sema_lite() {
         let observation = frontend::observe(&case.source, Some(Phase::Resolve));
         if let Some(
             code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E0809"
-            | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
+            | "E0812" | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
         ) = pinned_code(case.check.as_ref())
         {
             assert_eq!(
@@ -262,7 +264,7 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
             let observation = frontend::observe(&case.source, Some(rung));
             if let Some(
                 code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
-                | "E0809" | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
+                | "E0809" | "E0812" | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
             ) = pinned_code(case.check.as_ref())
             {
                 assert_eq!(

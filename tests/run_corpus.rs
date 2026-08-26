@@ -624,14 +624,16 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // `closure_region_capture`, `closure_value_paths`) all run exit(0) —
     // the loan machinery faults nothing the compiler accepts.
     //
-    // `generics/explicit_apply_arity.lu` pins fail(E0812) — explicit
-    // application arity is a sema judgement this machine does not make, so
-    // its Tier-0 body runs exit(0): the standing conservatism class
-    // (wolf-interp#34's first shape, ledgered rather than hidden).
-    // `explicit_apply.lu`, the two s105 kernels and the fn-value import
-    // all match at first sight.
+    // `generics/explicit_apply_arity.lu` pinned fail(E0812) against this
+    // machine's exit(0) from is17 to is19 — the standing conservatism class
+    // (wolf-interp#34's first shape, ledgered rather than hidden). is19
+    // closed it: explicit-application arity is one count against another,
+    // both in the syntax, so the resolve rung owns it now
+    // (`lint::Walk::explicit_apply`) and the file fails E0812 here exactly
+    // as the corpus pins — it LEFT this ledger deliberately, a static
+    // refusal, not a lost run. `explicit_apply.lu`, the two s105 kernels
+    // and the fn-value import all match at first sight.
     ("generics/explicit_apply.lu", "exit(0)"),
-    ("generics/explicit_apply_arity.lu", "exit(0)"),
     ("kernels/guarded_stencil.lu", "exit(12)"),
     ("kernels/walk_twice.lu", "exit(0)"),
     ("memory/closure_borrow_write.lu", "trap(exclusivity)"),

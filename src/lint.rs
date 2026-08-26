@@ -1019,6 +1019,7 @@ impl Walk<'_> {
                 self.call(expr, callee, args);
             }
             ExprKind::BracketApply { base, args } => {
+                self.explicit_apply(expr, base, args);
                 self.expr(base);
                 for arg in args {
                     if let IndexArg::Value(arg) = arg {
@@ -1282,6 +1283,46 @@ impl Walk<'_> {
             self.capture_lend(mode, &arg.expr);
         }
         self.expr(&arg.expr);
+    }
+
+    /// E0812 — explicit generic application arity (wolf-lang#111, the
+    /// wolf-interp#34 straggler): the explicit form is one type per generic
+    /// parameter, in declaration order. Judged only where BOTH counts are in
+    /// sight without a type checker: the base names a module-level `fn` no
+    /// local shadows — `e[…]` is one production (`[gram.amb.brackets]`), and
+    /// a fn base makes it application, never indexing — which is exactly the
+    /// corpus's shape (`generics/explicit_apply_arity.lu`, `pick[int, str]`
+    /// against one declared parameter). The non-type-argument half of E0812
+    /// and dotted callees stay the compiler's; declining those is the honest
+    /// narrowness, never a wrong refusal.
+    fn explicit_apply(&mut self, expr: &Expr, base: &Expr, args: &[IndexArg]) {
+        let ExprKind::Path(path) = &*base.kind else {
+            return;
+        };
+        if !path.is_single() || self.declared(&path.segments[0].name).is_some() {
+            return;
+        }
+        let Some(decl) = self.fn_decls.get(path.segments[0].name.as_str()) else {
+            return;
+        };
+        if args.is_empty() || args.len() == decl.generics.len() {
+            return;
+        }
+        // The brackets, types included — the span of the wrong count.
+        let span = Span::new(base.span.end, expr.span.end);
+        self.statics.push(Diag::new(
+            "E0812",
+            span,
+            "generics.apply.explicit",
+            format!(
+                "`{name}` declares {declared} generic parameter(s) and this explicit \
+                 application spells {spelled} type(s) — one type per generic parameter, in \
+                 declaration order; the generics are declared at `{name}`'s signature",
+                name = path.segments[0].name,
+                declared = decl.generics.len(),
+                spelled = args.len(),
+            ),
+        ));
     }
 
     fn call(&mut self, _call: &Expr, callee: &Expr, args: &[Arg]) {
@@ -1861,6 +1902,81 @@ mod tests {
             .into_iter()
             .map(|w| w.code)
             .collect()
+    }
+
+    // ---- E0812: explicit generic application arity (wolf-lang#111) --------
+
+    /// Every E0812 the walk raised over one program, with its span.
+    fn arity_codes(source: &str) -> Vec<(String, Span)> {
+        let program = crate::sema::load_source("t.lu", source).expect("loads");
+        analyze(&program)
+            .statics
+            .into_iter()
+            .filter(|d| d.code == "E0812")
+            .map(|d| (d.code.to_owned(), d.span))
+            .collect()
+    }
+
+    #[test]
+    fn a_wrong_count_explicit_application_fails_e0812() {
+        // The corpus witness's shape (generics/explicit_apply_arity.lu):
+        // one declared parameter, two bracket types.
+        let found = arity_codes(
+            "fn pick[T](xs: List[T], i: int) -> T ! {none} {\n\
+             \x20   xs.get(i)\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   var a = List[int]()\n\
+             \x20   (mut a).push(7)\n\
+             \x20   let v = pick[int, str](a, 0) else 0\n\
+             \x20   if v == 7 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        // The span is the bracket list, types included: `[int, str]`.
+        let source_span = &found[0].1;
+        assert_eq!(source_span.end - source_span.start, "[int, str]".len());
+    }
+
+    #[test]
+    fn the_arity_judgement_is_exactly_as_narrow_as_the_syntax() {
+        // Correct arity: no diagnostic (generics/explicit_apply.lu's shape).
+        let ok = arity_codes(
+            "fn pick[T](xs: List[T], i: int) -> T ! {none} {\n\
+             \x20   xs.get(i)\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   var a = List[int]()\n\
+             \x20   (mut a).push(7)\n\
+             \x20   let v = pick[int](a, 0) else 0\n\
+             \x20   if v == 7 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert!(ok.is_empty(), "{ok:?}");
+
+        // A local shadowing the fn name makes the brackets INDEXING, and the
+        // judgement declines — never a wrong refusal.
+        let shadowed = arity_codes(
+            "fn pick[T](xs: List[T], i: int) -> T ! {none} {\n\
+             \x20   xs.get(i)\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   var pick = List[int]()\n\
+             \x20   (mut pick).push(7)\n\
+             \x20   if pick[0] == 7 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert!(shadowed.is_empty(), "{shadowed:?}");
+
+        // A builtin constructor's bracket type is not a module fn's.
+        let builtin = arity_codes(
+            "fn main() -> !int {\n\
+             \x20   var a = List[int]()\n\
+             \x20   (mut a).push(7)\n\
+             \x20   if a[0] == 7 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert!(builtin.is_empty(), "{builtin:?}");
     }
 
     // ---- W0305's fire-at-use (D52, [gram.expr.tagident]) ------------------
