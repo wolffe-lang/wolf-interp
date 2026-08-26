@@ -304,13 +304,73 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             Err(Signal::Exit(code.rem_euclid(256) as u8))
         }
-        // The process trio is exec surface: this machine spawns, reaps and
-        // signals no processes by design — the checked-lane twins live in
-        // the counterparty's test tier. Declined, never mocked.
+        // The s40 process trio, over `std::process` (is18 — see `eval::os`
+        // for the semantics and their witnesses). argv-array ONLY, stdio
+        // null-wired, rows never traps: {not_found, denied, io} on spawn,
+        // {signal, io} on wait (which REAPS), {io} on kill (which never
+        // tombstones). No `std::process` on wasm: the tier declines there.
+        #[cfg(target_family = "wasm")]
         "os_spawn" | "os_wait" | "os_kill" => unsupported(format!(
-            "`{name}` is the s40 process trio (exec surface); this machine runs no child \
-             processes by design, so the tier is declined rather than mocked"
+            "`{name}` is the s40 process trio; this wasm build has no processes to spawn, \
+             so the tier is declined rather than mocked"
         )),
+        #[cfg(not(target_family = "wasm"))]
+        "os_spawn" => {
+            let Some(Value::List(items, _, _)) = args.first() else {
+                return unsupported(
+                    "`os_spawn` takes a `List[str]` argv (argv-array only — no shell-string \
+                     spawn exists anywhere, by construction)"
+                        .to_owned(),
+                );
+            };
+            let mut argv = Vec::with_capacity(items.len());
+            for slot in items.iter() {
+                let Value::Str(part) = &slot.value else {
+                    return unsupported(format!(
+                        "`os_spawn`'s argv holds {}, not `str`",
+                        slot.value.kind()
+                    ));
+                };
+                argv.push(part.clone());
+            }
+            let spawned = machine.children().spawn(&argv);
+            match spawned {
+                Ok(handle) => Ok(Value::Int(handle, IntTy::INT)),
+                Err(tag) => {
+                    machine.note(
+                        Rule::ErrUnion,
+                        span,
+                        &format!("`os_spawn` yields the `{tag}` row"),
+                    );
+                    Ok(error(tag))
+                }
+            }
+        }
+        #[cfg(not(target_family = "wasm"))]
+        "os_wait" | "os_kill" => {
+            let Some(Value::Int(handle, _)) = args.first() else {
+                return unsupported(format!("`{name}` takes an integer child handle"));
+            };
+            let handle = *handle;
+            let answer = if name == "os_wait" {
+                let waited = machine.children().wait(handle);
+                waited.map(|code| Value::Int(code, IntTy::INT))
+            } else {
+                let killed = machine.children().kill(handle);
+                killed.map(|()| Value::Unit)
+            };
+            match answer {
+                Ok(value) => Ok(value),
+                Err(tag) => {
+                    machine.note(
+                        Rule::ErrUnion,
+                        span,
+                        &format!("`{name}` yields the `{tag}` row"),
+                    );
+                    Ok(error(tag))
+                }
+            }
+        }
         // The time trio needs a clock and a way to block, and wasm has
         // neither to call: `Instant`, `SystemTime` and `thread::sleep` all
         // abort the module. A guessed clock would make the tier *look*

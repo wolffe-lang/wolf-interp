@@ -26,6 +26,10 @@
 
 pub mod builtin;
 mod conc;
+/// The s40 process trio's child table (no `std::process` on wasm — the
+/// builtin arms decline there, like the time tier).
+#[cfg(not(target_family = "wasm"))]
+mod os;
 pub mod place;
 pub mod prov;
 pub mod region;
@@ -428,6 +432,11 @@ struct Shared {
     /// (the checked-lane posture: the same program observes the same
     /// answers on any machine).
     env: Arc<Mutex<BTreeMap<String, String>>>,
+    /// is18: the s40 process trio's children, by handle — shared like the
+    /// store because a handle is an `int` any task may hold. Wait reaps;
+    /// kill never tombstones (`eval::os`).
+    #[cfg(not(target_family = "wasm"))]
+    children: Arc<Mutex<os::ChildTable>>,
     /// s40 time v0 (X12): `time_now_ms`'s process-local monotonic anchor —
     /// values compare and subtract; they are never wall timestamps.
     ///
@@ -578,6 +587,8 @@ impl Machine {
             repl_types: Arc::new(Mutex::new(BTreeMap::new())),
             env: Arc::new(Mutex::new(BTreeMap::new())),
             #[cfg(not(target_family = "wasm"))]
+            children: Arc::new(Mutex::new(os::ChildTable::default())),
+            #[cfg(not(target_family = "wasm"))]
             epoch: std::time::Instant::now(),
         };
         Machine::for_task(shared, 0, BTreeMap::new())
@@ -634,6 +645,13 @@ impl Machine {
     /// The provenance machine, for this module and `builtin`'s C intrinsics.
     pub(crate) fn prov(&self) -> MutexGuard<'_, Provenance> {
         self.shared.prov.lock().expect("prov lock")
+    }
+
+    /// The process trio's child table (is18) — uncontended like the store:
+    /// the scheduler's baton runs one task at a time.
+    #[cfg(not(target_family = "wasm"))]
+    pub(crate) fn children(&self) -> MutexGuard<'_, os::ChildTable> {
+        self.shared.children.lock().expect("children lock")
     }
 
     /// Stack the tree-walk runs on.

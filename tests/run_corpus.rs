@@ -721,6 +721,11 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // queries, byte-equal with the compiled lanes.
     ("json/query.lu", "exit(0)"),
     ("json/rows.lu", "exit(0)"),
+    // is18's process mover: the s40 trio runs over `std::process`
+    // (`eval::os` — argv-array only, null-wired stdio, wait REAPS, kill
+    // never tombstones, rows never traps). The witness spawns nothing and
+    // answers its three rows; the live halves are `tests/os_process.rs`.
+    ("os/spawn_rows.lu", "exit(0)"),
 ];
 
 #[test]
