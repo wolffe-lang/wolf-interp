@@ -51,7 +51,7 @@ impl Machine {
     /// stack is swapped out of the store first and back in afterwards, so the
     /// store always holds the *running* task's scope stack. The lock order
     /// (store, then scheduler) is this function's alone.
-    fn sched_block<T>(
+    pub(super) fn sched_block<T>(
         &mut self,
         f: impl FnOnce(&super::sched::Sched, super::sched::TaskId) -> T,
     ) -> T {

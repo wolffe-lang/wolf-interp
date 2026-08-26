@@ -132,12 +132,11 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = stdout_of(&output);
-    // 303 -> 327 at the b522b8a pin: the c25/s105/front-end wave lands
-    // (the closure build's seven-file family, the region-value tier,
-    // explicit application, prim impls, the variant-value and fn-value
-    // import witnesses, two net files). Moved with the pin, per the
-    // export.rs rule.
-    assert!(stdout.contains("327 file(s)"), "{stdout}");
+    // 327 -> 339 at the 1b149ba pin: the s108 front-end wave lands (the
+    // nested-fn twins, the leaf_twins module-identity witness, nested
+    // rows, the diverging-handler pair, raw fences, and the E0414
+    // boundary pair). Moved with the pin, per the export.rs rule.
+    assert!(stdout.contains("339 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -146,7 +145,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 327);
+    assert_eq!(value["total"], 339);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

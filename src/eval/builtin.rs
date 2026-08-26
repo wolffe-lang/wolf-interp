@@ -86,6 +86,17 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // rather than reimplemented-and-guessed.
     "env_args",
     "env_get",
+    // The s39 net builtin tier (is18): blocking TCP v0 over std::net,
+    // loopback + port 0, rows never traps — see `eval::net` for the
+    // semantics and their witnesses.
+    "net_listen",
+    "net_port",
+    "net_accept",
+    "net_connect",
+    "net_read",
+    "net_write",
+    "net_close",
+    "net_deadline",
     "env_set",
     "os_cwd",
     "os_exit",
@@ -304,13 +315,73 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             Err(Signal::Exit(code.rem_euclid(256) as u8))
         }
-        // The process trio is exec surface: this machine spawns, reaps and
-        // signals no processes by design — the checked-lane twins live in
-        // the counterparty's test tier. Declined, never mocked.
+        // The s40 process trio, over `std::process` (is18 — see `eval::os`
+        // for the semantics and their witnesses). argv-array ONLY, stdio
+        // null-wired, rows never traps: {not_found, denied, io} on spawn,
+        // {signal, io} on wait (which REAPS), {io} on kill (which never
+        // tombstones). No `std::process` on wasm: the tier declines there.
+        #[cfg(target_family = "wasm")]
         "os_spawn" | "os_wait" | "os_kill" => unsupported(format!(
-            "`{name}` is the s40 process trio (exec surface); this machine runs no child \
-             processes by design, so the tier is declined rather than mocked"
+            "`{name}` is the s40 process trio; this wasm build has no processes to spawn, \
+             so the tier is declined rather than mocked"
         )),
+        #[cfg(not(target_family = "wasm"))]
+        "os_spawn" => {
+            let Some(Value::List(items, _, _)) = args.first() else {
+                return unsupported(
+                    "`os_spawn` takes a `List[str]` argv (argv-array only — no shell-string \
+                     spawn exists anywhere, by construction)"
+                        .to_owned(),
+                );
+            };
+            let mut argv = Vec::with_capacity(items.len());
+            for slot in items.iter() {
+                let Value::Str(part) = &slot.value else {
+                    return unsupported(format!(
+                        "`os_spawn`'s argv holds {}, not `str`",
+                        slot.value.kind()
+                    ));
+                };
+                argv.push(part.clone());
+            }
+            let spawned = machine.children().spawn(&argv);
+            match spawned {
+                Ok(handle) => Ok(Value::Int(handle, IntTy::INT)),
+                Err(tag) => {
+                    machine.note(
+                        Rule::ErrUnion,
+                        span,
+                        &format!("`os_spawn` yields the `{tag}` row"),
+                    );
+                    Ok(error(tag))
+                }
+            }
+        }
+        #[cfg(not(target_family = "wasm"))]
+        "os_wait" | "os_kill" => {
+            let Some(Value::Int(handle, _)) = args.first() else {
+                return unsupported(format!("`{name}` takes an integer child handle"));
+            };
+            let handle = *handle;
+            let answer = if name == "os_wait" {
+                let waited = machine.children().wait(handle);
+                waited.map(|code| Value::Int(code, IntTy::INT))
+            } else {
+                let killed = machine.children().kill(handle);
+                killed.map(|()| Value::Unit)
+            };
+            match answer {
+                Ok(value) => Ok(value),
+                Err(tag) => {
+                    machine.note(
+                        Rule::ErrUnion,
+                        span,
+                        &format!("`{name}` yields the `{tag}` row"),
+                    );
+                    Ok(error(tag))
+                }
+            }
+        }
         // The time trio needs a clock and a way to block, and wasm has
         // neither to call: `Instant`, `SystemTime` and `thread::sleep` all
         // abort the module. A guessed clock would make the tier *look*
@@ -345,14 +416,54 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 .unwrap_or(0);
             Ok(Value::Int(ms, IntTy::INT))
         }
-        // std.x.json's kernels are wolf_mem's reference parser, pinned by
-        // its module doc — a surface this machine declines rather than
-        // reimplements-and-guesses ([proto.record.unsupported]).
-        "json_valid" | "json_get" | "json_type" | "json_len" => unsupported(format!(
-            "`{name}` is std.x.json's s40 query tier; its reference kernel is the \
-             counterparty's `wolf_mem::json`, and this machine declines the surface rather \
-             than risk a second, guessed RFC 8259 reading"
-        )),
+        // std.x.json's s40 query tier, on lupin's OWN RFC 8259 reading
+        // (is18 — `crate::json` states the independence contract and the
+        // empirically pinned edges; porting `wolf_mem::json` is forbidden,
+        // and a divergence between the two independent parsers is a finding
+        // to file, never to paper). PURE — no capability, no sandbox
+        // category; errors are D30 rows, never traps.
+        "json_valid" => {
+            let Some(Value::Str(text)) = args.first() else {
+                return unsupported("`json_valid` takes one `str` of JSON text".to_owned());
+            };
+            Ok(Value::Bool(crate::json::valid(text)))
+        }
+        "json_get" | "json_type" | "json_len" => {
+            let (Some(Value::Str(text)), Some(Value::Str(path))) = (args.first(), args.get(1))
+            else {
+                return unsupported(format!(
+                    "`{name}` takes JSON text and a dotted path, both `str`"
+                ));
+            };
+            let answer = match name {
+                "json_get" => crate::json::get(text, path).map(Value::Str),
+                "json_type" => {
+                    crate::json::kind(text, path).map(|kind| Value::Str(kind.to_owned()))
+                }
+                _ => crate::json::len(text, path).map(|n| Value::Int(n as i128, IntTy::INT)),
+            };
+            match answer {
+                Ok(value) => {
+                    if matches!(value, Value::Str(_)) {
+                        machine.allocate(span, name);
+                    }
+                    Ok(value)
+                }
+                Err(err) => {
+                    let tag = match err {
+                        crate::json::Error::Parse => "parse",
+                        crate::json::Error::Missing => "missing",
+                        crate::json::Error::Kind => "kind",
+                    };
+                    machine.note(
+                        Rule::ErrUnion,
+                        span,
+                        &format!("`{name}` yields the `{tag}` row"),
+                    );
+                    Ok(error(tag))
+                }
+            }
+        }
         // `str_from_utf8(b: List[int]) -> str ! {utf8}` (s81, wolf-lang#58) —
         // the str-construction border, and the ONLY way a wolf program builds
         // a `str` out of numbers.
@@ -646,6 +757,17 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             machine.raw_copy(dst, src, len, span)?;
             Ok(Value::Unit)
         }
+        // The s39 net family (is18): one dispatch arm, the semantics in
+        // `eval::net`. No sockets on wasm — the tier declines there.
+        #[cfg(target_family = "wasm")]
+        "net_listen" | "net_port" | "net_accept" | "net_connect" | "net_read" | "net_write"
+        | "net_close" | "net_deadline" => unsupported(format!(
+            "`{name}` is the s39 net tier; this wasm build has no sockets to open, so the \
+             tier is declined rather than mocked"
+        )),
+        #[cfg(not(target_family = "wasm"))]
+        "net_listen" | "net_port" | "net_accept" | "net_connect" | "net_read" | "net_write"
+        | "net_close" | "net_deadline" => machine.net_call(name, &args, span),
         other => unsupported(format!(
             "`{other}` is in the ambient std stub but has no pinned semantics; the real std \
              surface is not specified yet, and guessing it would put invented behavior into a \
@@ -1530,6 +1652,12 @@ impl CopiedRaw for Option<&Value> {
             _ => None,
         }
     }
+}
+
+/// The bare-tag error value the builtin rows answer with — pub(crate)
+/// because the net tier (`eval::net`) mints the same shape.
+pub(crate) fn error_value(tag: &str) -> Value {
+    error(tag)
 }
 
 fn error(tag: &str) -> Value {

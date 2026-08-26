@@ -2156,3 +2156,110 @@ fn a_list_outliving_a_scope_with_a_live_region_reads_clean() {
                   }\n";
     assert_eq!(outcome(source), Outcome::Exit(0));
 }
+
+// -- #38: nested named fns (the compiler's #116b twin) ----------------------
+
+#[test]
+fn a_capture_free_nested_fn_binds_like_a_let_and_runs_every_provenance() {
+    // `typecheck/nested_fn_value.lu`'s three shapes in one fixture: direct
+    // call, pass to a higher-order fn, bind-and-call. The nested fn is the
+    // closure recipe with a declared signature and NO captures.
+    let source = "fn apply(f: fn(int) -> bool, v: int) -> bool { f(v) }\n\
+                  fn main() -> !int {\n\
+                  \x20   fn odd(v: int) -> bool {\n\
+                  \x20       let m = v % 2\n\
+                  \x20       m == 1\n\
+                  \x20   }\n\
+                  \x20   if odd(3) { print(\"odd\") } else { return 1 }\n\
+                  \x20   if apply(odd, 5) {} else { return 2 }\n\
+                  \x20   let g = odd\n\
+                  \x20   if g(7) { print(\"yes\") } else { return 3 }\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(outcome(source), Outcome::Exit(0));
+    assert_eq!(stdout(source), "odd\nyes\n");
+}
+
+#[test]
+fn a_nested_fn_may_call_module_items_and_prelude_names() {
+    // Free names that resolve at module or prelude level are not captures:
+    // the refused set is enclosing LOCALS only.
+    let source = "fn double(v: int) -> int { v * 2 }\n\
+                  fn main() -> !int {\n\
+                  \x20   fn shout(v: int) -> int { print(\"{v}\"); double(v) }\n\
+                  \x20   if shout(4) == 8 { 0 } else { 1 }\n\
+                  }\n";
+    assert_eq!(outcome(source), Outcome::Exit(0));
+    assert_eq!(stdout(source), "4\n");
+}
+
+#[test]
+fn a_nested_fn_capturing_an_enclosing_local_refuses_by_name() {
+    // `typecheck/nested_fn_capture.lu`: a capture means an environment, and
+    // the env machinery belongs to closure VALUES a binding claims. The
+    // refusal names the local and points at the closure spelling — parity
+    // with the compiler's scoped v1, never a silent miscompile of `base`.
+    let Outcome::Unsupported(reason) = outcome(
+        "fn main() -> !int {\n\
+         \x20   let base = 4\n\
+         \x20   fn plus(v: int) -> int { v + base }\n\
+         \x20   if plus(1) == 5 { 0 } else { 1 }\n\
+         }\n",
+    ) else {
+        panic!("a capturing nested fn must refuse");
+    };
+    assert!(reason.contains("`base`"), "{reason}");
+    assert!(reason.contains("bind a closure instead"), "{reason}");
+}
+
+#[test]
+fn the_nested_fn_scoped_out_shapes_refuse_by_name() {
+    // Generics, an error row on the nested return, and parameter modes are
+    // the compiler's refused set too — refusing THERE and here is parity.
+    for (source, needle) in [
+        (
+            "fn main() -> !int {\n\
+             \x20   fn id[T](v: T) -> T { v }\n\
+             \x20   if id(1) == 1 { 0 } else { 1 }\n\
+             }\n",
+            "generics",
+        ),
+        (
+            "fn main() -> !int {\n\
+             \x20   fn pick(v: int) -> int ! {none} { v }\n\
+             \x20   if pick(1) == 1 { 0 } else { 1 }\n\
+             }\n",
+            "error row",
+        ),
+        (
+            "fn main() -> !int {\n\
+             \x20   fn bump(mut v: int) { v = v + 1 }\n\
+             \x20   bump(1)\n\
+             \x20   0\n\
+             }\n",
+            "parameter mode",
+        ),
+    ] {
+        let Outcome::Unsupported(reason) = outcome(source) else {
+            panic!("expected a by-name refusal for: {source}");
+        };
+        assert!(reason.contains(needle), "{reason} vs {needle}");
+    }
+}
+
+#[test]
+fn a_nested_fn_shadowing_is_scoped_to_its_block() {
+    // The binding is a `let`: it lives in the block that declared it and is
+    // gone after — a later same-name call resolves the module fn, exactly as
+    // a shadowed `let` would.
+    let source = "fn tag() -> int { 1 }\n\
+                  fn main() -> !int {\n\
+                  \x20   var first = 0\n\
+                  \x20   {\n\
+                  \x20       fn tag() -> int { 2 }\n\
+                  \x20       first = tag()\n\
+                  \x20   }\n\
+                  \x20   if first == 2 && tag() == 1 { 0 } else { 1 }\n\
+                  }\n";
+    assert_eq!(outcome(source), Outcome::Exit(0));
+}

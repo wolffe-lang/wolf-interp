@@ -56,7 +56,12 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // [abi.native.closure] (cited by closure_escape_refused/closure_value_paths),
 // plus the region-value and explicit-application citations the new corpus
 // files bring. Raised in the bump commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 121;
+// 121 → 125 at 1b149ba: the s108 wave's newly covered clauses — the
+// gram.lex.str.raw citation lands on run-reaching files (raw_fences +
+// the advanced raw_interp_braces), and the nested-row/diverging-handler/
+// entry-shape files bring the rest. Raised in the bump commit per the
+// test's own instruction.
+const RATCHET_FLOOR: usize = 125;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -77,6 +82,9 @@ const RATCHET_FLOOR: usize = 121;
 // filed finding wolf-lang#120 (see export::FILED_REGISTRY_FINDINGS).
 // 343 → 344 at b522b8a: [abi.native.closure], the wave's one spec/ delta —
 // c25's closure ABI (the two-word pair, the borrowing env).
+// HELD at 344 by 1b149ba: the s108 range touches no spec/ file at all —
+// twelve corpus files, zero clauses; the nested-row meaning stays an open
+// D-question by design.
 const ANCHORS_TOTAL: usize = 344;
 
 fn crate_root() -> PathBuf {
@@ -202,10 +210,12 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // corpus-harness ledger.
     // 340/317 → 364/338 at b522b8a (is17): the c25/s105/front-end wave's
     // 24 corpus files (21 entries) land; the suite programs are unmoved.
+    // 364/338 → 376/348 at 1b149ba (is18): the s108 wave's 12 corpus
+    // files (10 entries) land; the suite programs are unmoved.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "b522b8aff7ff8dc6a6faf3f947c1a766160fda9b");
-    assert_eq!(summary.programs, 364);
-    assert_eq!(summary.records, 338);
+    assert_eq!(summary.pin, "1b149ba454c5d37978820decde23cac4e4c633e7");
+    assert_eq!(summary.programs, 376);
+    assert_eq!(summary.records, 348);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

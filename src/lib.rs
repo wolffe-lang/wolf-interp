@@ -37,6 +37,7 @@ pub mod export;
 pub mod fmtspec;
 pub mod frontend;
 pub mod fuzz;
+pub mod json;
 pub mod ledger;
 pub mod lex;
 pub mod lint;
@@ -126,6 +127,12 @@ pub fn observe_record(
 pub struct Observed {
     pub diagnostic: Option<crate::diag::Diag>,
     pub trap: Option<crate::eval::Trap>,
+    /// The program's whole stdout, whatever the verdict. The record carries
+    /// stdout only for `exit` (`[proto.record.fields]`), but the *directive*
+    /// matcher compares "the program's stdout" (`[conf.directive.check]`) —
+    /// a `run(exit=trap(assert), stdout="…")` pin judges the bytes printed
+    /// before the trap, which the wire record deliberately drops.
+    pub stdout: String,
     /// The `[mem.ub]` row behind a `ub(…)` verdict, with its two spans, the
     /// optimization it licenses, and the borrow-tree slice at the violation.
     pub ub: Option<crate::eval::prov::UbFinding>,
@@ -142,6 +149,7 @@ impl Default for Observed {
         Observed {
             diagnostic: None,
             trap: None,
+            stdout: String::new(),
             ub: None,
             trace: Vec::new(),
             leaks: Vec::new(),
@@ -218,6 +226,7 @@ fn record_of(
     // the inline text up to 4096 bytes. Only an `exit` verdict has "the program
     // wrote output" to speak of — a trap's partial output is not a comparison
     // surface the protocol defines.
+    let observed_stdout = String::from_utf8_lossy(&observation.stdout).into_owned();
     let wrote = matches!(observation.verdict, Verdict::Exit(_)) && !observation.stdout.is_empty();
     let (digest, inline) = if wrote {
         let text = String::from_utf8_lossy(&observation.stdout).into_owned();
@@ -324,6 +333,7 @@ fn record_of(
         Observed {
             diagnostic: observation.detail,
             trap: observation.trap,
+            stdout: observed_stdout,
             ub: observation.ub,
             trace: observation.trace,
             leaks: observation.leaks,

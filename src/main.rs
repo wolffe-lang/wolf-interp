@@ -815,12 +815,16 @@ fn observe_entry(
     let Ok(source) = std::fs::read(&path) else {
         return ("unreadable".to_owned(), None);
     };
-    let (record, _) = wolf_interp::observe_record(&path, &source, None);
+    let (record, observed) = wolf_interp::observe_record(&path, &source, None);
     let status = format!("{}@{}", record.verdict, record.phase_reached);
-    let judgement = directives.check.as_ref().map(|check| {
-        let stdout = record.stdout_inline.clone().unwrap_or_default();
-        ledger::judge(check, &record, &stdout)
-    });
+    // The directive matcher judges "the program's stdout"
+    // (`[conf.directive.check]`), which the observation carries whatever the
+    // verdict — a trap pin with `stdout="…"` compares the bytes printed
+    // before the fault, which the wire record deliberately omits.
+    let judgement = directives
+        .check
+        .as_ref()
+        .map(|check| ledger::judge(check, &record, &observed.stdout));
     (status, judgement)
 }
 

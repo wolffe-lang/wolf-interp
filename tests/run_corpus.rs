@@ -50,8 +50,13 @@ fn entries() -> Vec<Entry> {
             };
             let full = root.join(&file.path);
             let source = std::fs::read(&full).expect("readable");
-            let (record, _) = wolf_interp::observe_record(&full, &source, None);
-            let stdout = record.stdout_inline.clone().unwrap_or_default();
+            let (record, observed) = wolf_interp::observe_record(&full, &source, None);
+            // The directive matcher compares "the program's stdout"
+            // (`[conf.directive.check]`) — the observation's, whatever the
+            // verdict. A trap pin with `stdout="…"` judges the bytes printed
+            // before the fault (`rows/handler_diverge_trap.lu`), which the
+            // wire record deliberately omits (`[proto.record.fields]`).
+            let stdout = observed.stdout.clone();
             let judgement = ledger::judge(
                 directives.check.as_ref().expect("an entry pins a check"),
                 &record,
@@ -651,6 +656,88 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // ledgered conservatism, not a divergence.
     ("traits/prim_impl.lu", "exit(0)"),
     ("traits/prim_impl_orphan/main.lu", "exit(0)"),
+    // -- is18 (pin 1b149ba) --------------------------------------------------
+    // The s108 front-end wave. Six of the pin's twelve new files reach `run`
+    // at first sight — no new semantics were written on this side for any of
+    // them:
+    //
+    // `strings/raw_fences.lu` — the `#`-fenced raw forms (#76). lupin's
+    // decoder stripped the whole opening delimiter first (the v0.1.10
+    // differential caught the one-sided residue), so each fence width
+    // answers its pinned bytes here already; the pin is wolfgang's decoders
+    // catching up. `lints/raw_interp_braces.lu` advanced from `phase: wir`
+    // to `run` in the same repair and its entry above is unchanged.
+    //
+    // `rows/nested_row_param.lu` / `rows/nested_row_return.lu` — #34's
+    // nested rows now PARSE upstream (right-recursive row tail) and sema
+    // refuses their meaning by name; both files pin `phase: resolve` with
+    // the run expectation being lupin's own long-standing answer, so this
+    // machine's exit(0) is the reading the pin advances toward.
+    //
+    // `rows/handler_diverge_call.lu` / `handler_diverge_trap.lu` — #35
+    // narrowed: `assert(false)` in fallback position types as bottom
+    // upstream; this machine never made that typing judgement, so the hit
+    // path ran and the miss path trapped `assert` from the start. The trap
+    // twin is the corpus's first `stdout=` pin on a TRAP verdict, which is
+    // why the directive matcher now judges the observation's stdout
+    // (`[conf.directive.check]`) rather than the record's exit-only inline.
+    //
+    // `typecheck/main_unit_row.lu` — E0414's legal fourth spelling
+    // (`fn main() -> !()`); ran at first sight. Its refusing twin
+    // `main_returns_str.lu` pins fail(E0414), a declaration judgement this
+    // machine states as an honest unsupported (out-of-scope, not
+    // conservatism: the refusal names the same fact).
+    ("rows/handler_diverge_call.lu", "exit(0)"),
+    ("rows/handler_diverge_trap.lu", "trap(assert)"),
+    ("rows/nested_row_param.lu", "exit(0)"),
+    ("rows/nested_row_return.lu", "exit(0)"),
+    ("strings/raw_fences.lu", "exit(0)"),
+    ("typecheck/main_unit_row.lu", "exit(0)"),
+    // is18's #38 mover: a nested named fn RESOLVES — the capture-free shape
+    // binds like a `let` whose value is a fn value, so the direct call, the
+    // higher-order pass and the bind-and-call all run ("odd\nyes", the
+    // compiled lanes' bytes). Its refusing twin `nested_fn_capture.lu`
+    // refuses BY NAME here exactly as the compiler's scoped v1 refuses it
+    // there — parity, not a gap — and stays out of this ledger.
+    ("typecheck/nested_fn_value.lu", "exit(0)"),
+    // is18's #39 mover: module identity is the FULL path. `use fmt.float`
+    // resolves `<package root>/fmt/float` now (flat `<root>/<bound>` stays
+    // the fallback), so two modules whose leaf is `float` coexist under
+    // distinct bound names and the entry's aliased import answers "13 3".
+    // The silent duplicate-leaf single-binding died with the same change:
+    // same bound name, different directories is an honest E0306 naming
+    // both paths and the `use … as` fix.
+    ("resolve/leaf_twins/main.lu", "exit(0)"),
+    // #39's free rider: `use outer.inner` resolves the nested directory at
+    // its full path now, so the W0316 ancestor-import fixture finally runs
+    // its program (the warning itself is a compiler-side analysis, honest-
+    // absent here). It sat unsupported behind the flat `<root>/<bound>`
+    // spelling since the pin brought it.
+    ("lints/ancestor_import/main.lu", "exit(0)"),
+    // is18's json movers: the s40 query tier runs on lupin's OWN RFC 8259
+    // reading (`crate::json` — independence forbids porting wolf_mem::json;
+    // the witnesses and the empirically probed edges are the contract).
+    // `rows.lu` answers the three row kinds and `query.lu` the dotted-path
+    // queries, byte-equal with the compiled lanes.
+    ("json/query.lu", "exit(0)"),
+    ("json/rows.lu", "exit(0)"),
+    // is18's process mover: the s40 trio runs over `std::process`
+    // (`eval::os` — argv-array only, null-wired stdio, wait REAPS, kill
+    // never tombstones, rows never traps). The witness spawns nothing and
+    // answers its three rows; the live halves are `tests/os_process.rs`.
+    ("os/spawn_rows.lu", "exit(0)"),
+    // is18's net movers: the s39 family runs over std::net (`eval::net` —
+    // loopback + port 0, rows never traps, nonblocking polls under the
+    // scheduler's baton). The roundtrip echoes, the dead dial answers
+    // `refused` twice (handled, then propagated to exit 1), the armed 40ms
+    // budget fires the `timeout` row against a silent peer, and
+    // `spawn_accept` — the design question — parks its task's accept
+    // through `Sched::net_yield` so main's dial resolves it: the machine's
+    // own scheduling, never a hang, never a wrong answer.
+    ("net/echo_roundtrip.lu", "exit(0)"),
+    ("net/read_deadline.lu", "exit(1)"),
+    ("net/refused_row.lu", "exit(1)"),
+    ("net/spawn_accept.lu", "exit(0)"),
 ];
 
 #[test]
