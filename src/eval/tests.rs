@@ -1395,6 +1395,32 @@ fn a_payload_pattern_matches_the_enum_qualified_value() {
 }
 
 #[test]
+fn a_variant_value_dispatches_its_enums_impl_methods() {
+    // wolf-interp#34's second shape (wolf-lang#23's surviving leg,
+    // `corpus/typecheck/variant_value/` at unit size): a payload-free
+    // variant as a bare VALUE owns its enum's nominal identity in method
+    // dispatch — `favorite()`'s `Hue.Red` answers `.name()` through
+    // `impl Hue`, whose own `match self` resolves the bare variant
+    // patterns against the same variant table.
+    assert_eq!(
+        stdout(
+            "enum Hue { Red, Blue }\n\
+             impl Hue {\n\
+             \x20   fn name(self) -> str {\n\
+             \x20       match self { Red => \"red\", Blue => \"blue\" }\n\
+             \x20   }\n\
+             }\n\
+             fn favorite() -> Hue { Hue.Red }\n\
+             fn main() -> int {\n\
+             \x20   print(favorite().name())\n\
+             \x20   0\n\
+             }\n"
+        ),
+        "red\n"
+    );
+}
+
+#[test]
 fn row_tags_dispatch_and_lowercase_still_binds() {
     // D30 rows need no declaration: over a tag-shaped scrutinee a
     // capitalized bare identifier is a tag pattern; a lowercase one binds.

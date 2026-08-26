@@ -798,6 +798,15 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("rows/tag_arg_position.lu", "exit(0)"),
     ("rows/tag_let_position.lu", "exit(0)"),
     ("rows/tag_shadow_local.lu", "exit(0)"),
+    // is19's #34 closer: a declared enum's variant VALUE owns its enum's
+    // nominal identity in method dispatch (`Machine::enum_of_variant` — the
+    // tag stays the tag; only dispatch learns the type's name), so
+    // `paint.favorite()`'s bare `Hue.Red` answers `.name()` through the
+    // imported module's `impl Hue` and the entry prints "red". The wall was
+    // exactly where is17's probe said it was: `method_defs_of` had no name
+    // to dispatch through for `Value::Error`, and the #16 enum_variant flag
+    // is where the name was waiting.
+    ("typecheck/variant_value/main.lu", "exit(0)"),
 ];
 
 #[test]

@@ -4621,10 +4621,43 @@ impl Machine {
         value: &Value,
         method: &str,
     ) -> Option<(String, Vec<crate::sema::MethodDef>)> {
-        let Value::Struct { name, .. } = value else {
-            return None;
+        let owned;
+        let name: &str = match value {
+            Value::Struct { name, .. } => name,
+            // A declared enum's variant VALUE owns its enum's nominal
+            // identity (wolf-interp#34's second shape, wolf-lang#23's
+            // surviving leg): `Hue.Red` outside call position is the tag —
+            // the same encoding call-form construction emits — and a method
+            // on it dispatches through `impl Hue` exactly as a struct value
+            // does through its type's impls. The tag never stops being the
+            // tag (pattern matching, equality and rendering are untouched);
+            // only dispatch learns the type's name.
+            Value::Error(e) if e.enum_variant => {
+                owned = self.enum_of_variant(e)?;
+                &owned
+            }
+            _ => return None,
         };
         self.method_defs_named(name, method)
+    }
+
+    /// The enum a variant VALUE belongs to: the qualifier of a dotted tag
+    /// (`Hue.Red` → `Hue`), or — for a bare tag minted where the variant
+    /// name alone was in scope — the declaring enum, current module first
+    /// (the same order every nominal lookup walks).
+    fn enum_of_variant(&self, e: &ErrorValue) -> Option<String> {
+        if let Some((owner, _)) = e.tag.split_once('.') {
+            return Some(owner.to_owned());
+        }
+        let current = self
+            .frames
+            .last()
+            .map(|f| f.module.clone())
+            .unwrap_or_default();
+        let modules = &self.shared.program.modules;
+        std::iter::once(&current)
+            .chain(modules.keys().filter(|k| **k != current))
+            .find_map(|m| modules.get(m)?.variants.get(&e.tag)?.first().cloned())
     }
 
     /// [`Machine::method_defs_of`] by the type's NAME alone — the nominal
