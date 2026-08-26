@@ -726,6 +726,18 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // never tombstones, rows never traps). The witness spawns nothing and
     // answers its three rows; the live halves are `tests/os_process.rs`.
     ("os/spawn_rows.lu", "exit(0)"),
+    // is18's net movers: the s39 family runs over std::net (`eval::net` —
+    // loopback + port 0, rows never traps, nonblocking polls under the
+    // scheduler's baton). The roundtrip echoes, the dead dial answers
+    // `refused` twice (handled, then propagated to exit 1), the armed 40ms
+    // budget fires the `timeout` row against a silent peer, and
+    // `spawn_accept` — the design question — parks its task's accept
+    // through `Sched::net_yield` so main's dial resolves it: the machine's
+    // own scheduling, never a hang, never a wrong answer.
+    ("net/echo_roundtrip.lu", "exit(0)"),
+    ("net/read_deadline.lu", "exit(1)"),
+    ("net/refused_row.lu", "exit(1)"),
+    ("net/spawn_accept.lu", "exit(0)"),
 ];
 
 #[test]

@@ -26,6 +26,10 @@
 
 pub mod builtin;
 mod conc;
+/// The s39 net family over std::net (no sockets on wasm — the builtin
+/// arms decline there, like the time tier).
+#[cfg(not(target_family = "wasm"))]
+mod net;
 /// The s40 process trio's child table (no `std::process` on wasm — the
 /// builtin arms decline there, like the time tier).
 #[cfg(not(target_family = "wasm"))]
@@ -437,6 +441,10 @@ struct Shared {
     /// kill never tombstones (`eval::os`).
     #[cfg(not(target_family = "wasm"))]
     children: Arc<Mutex<os::ChildTable>>,
+    /// is18: the s39 net family's sockets, by fd — shared for the same
+    /// reason (`net/spawn_accept.lu`'s task accepts on the fd main bound).
+    #[cfg(not(target_family = "wasm"))]
+    net: Arc<Mutex<net::NetTable>>,
     /// s40 time v0 (X12): `time_now_ms`'s process-local monotonic anchor —
     /// values compare and subtract; they are never wall timestamps.
     ///
@@ -589,6 +597,8 @@ impl Machine {
             #[cfg(not(target_family = "wasm"))]
             children: Arc::new(Mutex::new(os::ChildTable::default())),
             #[cfg(not(target_family = "wasm"))]
+            net: Arc::new(Mutex::new(net::NetTable::default())),
+            #[cfg(not(target_family = "wasm"))]
             epoch: std::time::Instant::now(),
         };
         Machine::for_task(shared, 0, BTreeMap::new())
@@ -652,6 +662,12 @@ impl Machine {
     #[cfg(not(target_family = "wasm"))]
     pub(crate) fn children(&self) -> MutexGuard<'_, os::ChildTable> {
         self.shared.children.lock().expect("children lock")
+    }
+
+    /// The net family's socket table (is18) — same posture as the store.
+    #[cfg(not(target_family = "wasm"))]
+    pub(crate) fn net(&self) -> MutexGuard<'_, net::NetTable> {
+        self.shared.net.lock().expect("net lock")
     }
 
     /// Stack the tree-walk runs on.

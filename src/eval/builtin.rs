@@ -86,6 +86,17 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // rather than reimplemented-and-guessed.
     "env_args",
     "env_get",
+    // The s39 net builtin tier (is18): blocking TCP v0 over std::net,
+    // loopback + port 0, rows never traps — see `eval::net` for the
+    // semantics and their witnesses.
+    "net_listen",
+    "net_port",
+    "net_accept",
+    "net_connect",
+    "net_read",
+    "net_write",
+    "net_close",
+    "net_deadline",
     "env_set",
     "os_cwd",
     "os_exit",
@@ -746,6 +757,17 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             machine.raw_copy(dst, src, len, span)?;
             Ok(Value::Unit)
         }
+        // The s39 net family (is18): one dispatch arm, the semantics in
+        // `eval::net`. No sockets on wasm — the tier declines there.
+        #[cfg(target_family = "wasm")]
+        "net_listen" | "net_port" | "net_accept" | "net_connect" | "net_read" | "net_write"
+        | "net_close" | "net_deadline" => unsupported(format!(
+            "`{name}` is the s39 net tier; this wasm build has no sockets to open, so the \
+             tier is declined rather than mocked"
+        )),
+        #[cfg(not(target_family = "wasm"))]
+        "net_listen" | "net_port" | "net_accept" | "net_connect" | "net_read" | "net_write"
+        | "net_close" | "net_deadline" => machine.net_call(name, &args, span),
         other => unsupported(format!(
             "`{other}` is in the ambient std stub but has no pinned semantics; the real std \
              surface is not specified yet, and guessing it would put invented behavior into a \
@@ -1630,6 +1652,12 @@ impl CopiedRaw for Option<&Value> {
             _ => None,
         }
     }
+}
+
+/// The bare-tag error value the builtin rows answer with — pub(crate)
+/// because the net tier (`eval::net`) mints the same shape.
+pub(crate) fn error_value(tag: &str) -> Value {
+    error(tag)
 }
 
 fn error(tag: &str) -> Value {

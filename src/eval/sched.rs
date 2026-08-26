@@ -1199,7 +1199,10 @@ fn closed_error() -> Value {
     }))
 }
 
-fn cancelled_error() -> Value {
+/// The cancellation-at-a-blocking-point error value — pub(crate) because
+/// the net tier's parking loop (is18) resolves a raced-in cancellation to
+/// exactly the value a channel op would.
+pub(crate) fn cancelled_error() -> Value {
     Value::Error(Box::new(ErrorValue {
         tag: "Cancelled".to_owned(),
         payload: Vec::new(),
@@ -1446,6 +1449,25 @@ impl Sched {
     /// tried to block): consume it without a context switch.
     fn immediate(&self, me: TaskId) -> Option<Wake> {
         self.lock().tasks[me].wake.take()
+    }
+
+    /// The net tier's cooperative yield (is18): the running task re-enters
+    /// the ready queue and the baton passes through an ordinary scheduling
+    /// decision — the polling shape that lets a simulated task's blocking
+    /// `net_accept` coexist with the peer that will resolve it (the
+    /// `net/spawn_accept.lu` design question: solve blocking with the
+    /// machine's own scheduling, never with a hang and never with a wrong
+    /// answer). The wake is `Ok(Unit)` for a plain reschedule; a
+    /// cancellation or kill that raced in comes back as itself, exactly as
+    /// at a channel's blocking point.
+    pub fn net_yield(&self, me: TaskId) -> Wake {
+        {
+            let mut state = self.lock();
+            if state.tasks[me].wake.is_none() {
+                state.tasks[me].wake = Some(Wake::Ok(Value::Unit));
+            }
+        }
+        self.park(me)
     }
 
     /// Hands the baton on when a task finishes: schedule the next runnable
