@@ -313,15 +313,28 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             landed explicit application) and `prov_holy_grail.lu`
     //             phase mem → run (the capture-free callback lambda-lifts
     //             now).)
+    //   1b149ba → 339 files (is18: the s108 front-end wave. The corpus
+    //             grows 12 — 10 entries and 2 members: the nested-fn
+    //             twins (wolf-interp#38's witness pair), the leaf_twins
+    //             module-identity witness with its two same-leaf members
+    //             (wolf-interp#39), the nested-row pair (#34 — parses
+    //             upstream now, sema refuses the meaning by name), the
+    //             diverging-handler pair (#35 narrowed; the trap twin is
+    //             the corpus's first `stdout=` pin on a trap verdict),
+    //             `raw_fences.lu` (#76 — the fence-width decode family),
+    //             and the E0414 entry-shape pair. One existing file
+    //             changed check-visibly: `raw_interp_braces.lu` advanced
+    //             `phase: wir` → `run` (the shared raw-decode debt paid;
+    //             lupin's side was fixed at v0.1.10).)
     let report = report();
     assert_eq!(
         report.total(),
-        327,
+        339,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 301);
-    assert_eq!(report.members(), 26);
+    assert_eq!(report.entries(), 311);
+    assert_eq!(report.members(), 28);
 }
 
 #[test]

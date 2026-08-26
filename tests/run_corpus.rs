@@ -50,8 +50,13 @@ fn entries() -> Vec<Entry> {
             };
             let full = root.join(&file.path);
             let source = std::fs::read(&full).expect("readable");
-            let (record, _) = wolf_interp::observe_record(&full, &source, None);
-            let stdout = record.stdout_inline.clone().unwrap_or_default();
+            let (record, observed) = wolf_interp::observe_record(&full, &source, None);
+            // The directive matcher compares "the program's stdout"
+            // (`[conf.directive.check]`) — the observation's, whatever the
+            // verdict. A trap pin with `stdout="…"` judges the bytes printed
+            // before the fault (`rows/handler_diverge_trap.lu`), which the
+            // wire record deliberately omits (`[proto.record.fields]`).
+            let stdout = observed.stdout.clone();
             let judgement = ledger::judge(
                 directives.check.as_ref().expect("an entry pins a check"),
                 &record,
@@ -651,6 +656,43 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // ledgered conservatism, not a divergence.
     ("traits/prim_impl.lu", "exit(0)"),
     ("traits/prim_impl_orphan/main.lu", "exit(0)"),
+    // -- is18 (pin 1b149ba) --------------------------------------------------
+    // The s108 front-end wave. Six of the pin's twelve new files reach `run`
+    // at first sight — no new semantics were written on this side for any of
+    // them:
+    //
+    // `strings/raw_fences.lu` — the `#`-fenced raw forms (#76). lupin's
+    // decoder stripped the whole opening delimiter first (the v0.1.10
+    // differential caught the one-sided residue), so each fence width
+    // answers its pinned bytes here already; the pin is wolfgang's decoders
+    // catching up. `lints/raw_interp_braces.lu` advanced from `phase: wir`
+    // to `run` in the same repair and its entry above is unchanged.
+    //
+    // `rows/nested_row_param.lu` / `rows/nested_row_return.lu` — #34's
+    // nested rows now PARSE upstream (right-recursive row tail) and sema
+    // refuses their meaning by name; both files pin `phase: resolve` with
+    // the run expectation being lupin's own long-standing answer, so this
+    // machine's exit(0) is the reading the pin advances toward.
+    //
+    // `rows/handler_diverge_call.lu` / `handler_diverge_trap.lu` — #35
+    // narrowed: `assert(false)` in fallback position types as bottom
+    // upstream; this machine never made that typing judgement, so the hit
+    // path ran and the miss path trapped `assert` from the start. The trap
+    // twin is the corpus's first `stdout=` pin on a TRAP verdict, which is
+    // why the directive matcher now judges the observation's stdout
+    // (`[conf.directive.check]`) rather than the record's exit-only inline.
+    //
+    // `typecheck/main_unit_row.lu` — E0414's legal fourth spelling
+    // (`fn main() -> !()`); ran at first sight. Its refusing twin
+    // `main_returns_str.lu` pins fail(E0414), a declaration judgement this
+    // machine states as an honest unsupported (out-of-scope, not
+    // conservatism: the refusal names the same fact).
+    ("rows/handler_diverge_call.lu", "exit(0)"),
+    ("rows/handler_diverge_trap.lu", "trap(assert)"),
+    ("rows/nested_row_param.lu", "exit(0)"),
+    ("rows/nested_row_return.lu", "exit(0)"),
+    ("strings/raw_fences.lu", "exit(0)"),
+    ("typecheck/main_unit_row.lu", "exit(0)"),
 ];
 
 #[test]
