@@ -286,6 +286,15 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
         false,
     )];
     let mut loaded: Vec<String> = Vec::new();
+    // #39 (module identity is the FULL path): every binding's resolved
+    // directory, program-wide. Two `use` decls binding the same name to
+    // DIFFERENT directories used to single-bind silently — the first won and
+    // the second's calls answered through the wrong module. That is an
+    // honest error now (the compiler's E0306 shape; `use … as` is the fix
+    // the message names). Same name to the SAME directory stays legal: `use`
+    // is file-scoped upstream, and two files importing one module is the
+    // ordinary case.
+    let mut resolved: BTreeMap<String, PathBuf> = BTreeMap::new();
 
     while let Some((name, dir, entry, from_std)) = queue.pop() {
         if loaded.contains(&name) {
@@ -298,10 +307,46 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
 
         let module = load_module(&name, &dir, entry.as_deref(), &mut program.files, from_std)?;
         let mut queued: Vec<String> = Vec::new();
-        for (bound, segments) in &module.use_paths {
-            if loaded.contains(bound) || queued.contains(bound) {
-                continue;
+        let mut claim = |bound: &str, candidate: &Path, module: &Module| -> Result<(), LoadError> {
+            match resolved.get(bound) {
+                None => {
+                    resolved.insert(bound.to_owned(), candidate.to_path_buf());
+                    Ok(())
+                }
+                Some(first) if same_dir(first, candidate) => Ok(()),
+                Some(first) => {
+                    // The later decl's own span, from this module's scopes.
+                    let (span, file) = module
+                        .scopes
+                        .iter()
+                        .flat_map(|scope| {
+                            scope
+                                .uses
+                                .iter()
+                                .filter(|used| used.name == bound)
+                                .map(|used| (used.name_span, scope.file.clone()))
+                        })
+                        .next_back()
+                        .unwrap_or((Span::new(0, 0), module.name.clone()));
+                    Err(LoadError::Syntax {
+                        file,
+                        diag: Box::new(Diag::new(
+                            "E0306",
+                            span,
+                            "gram.item.use",
+                            format!(
+                                "`{bound}` is already bound to the module at `{}`; this \
+                                 import names `{}` — module identity is the full path \
+                                 (#39), so give one side its own name with `use … as`",
+                                first.display(),
+                                candidate.display()
+                            ),
+                        )),
+                    })
+                }
             }
+        };
+        for (bound, segments) in &module.use_paths {
             // `use std.X[.Y]` against a configured root: `<root>/X[/Y]/`.
             if let Some(root) = std_root
                 && segments.len() >= 2
@@ -312,15 +357,39 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
                     candidate.push(segment);
                 }
                 if candidate.is_dir() {
-                    queue.push((bound.clone(), candidate, None, true));
-                    queued.push(bound.clone());
+                    claim(bound, &candidate, &module)?;
+                    if !loaded.contains(bound) && !queued.contains(bound) {
+                        queue.push((bound.clone(), candidate, None, true));
+                        queued.push(bound.clone());
+                    }
                     continue;
                 }
             }
+            // #39: a dotted `use` names the directory at its FULL path —
+            // `use fmt.float` is `<package root>/fmt/float`, and two leaves
+            // spelled `float` coexist under distinct bound names. The flat
+            // `<package root>/<bound>` spelling stays as the fallback, which
+            // keeps single-segment imports and flat mirrors working
+            // unchanged.
+            let mut full = package_root.clone();
+            for segment in segments {
+                full.push(segment);
+            }
+            if segments.len() >= 2 && full.is_dir() {
+                claim(bound, &full, &module)?;
+                if !loaded.contains(bound) && !queued.contains(bound) {
+                    queue.push((bound.clone(), full, None, false));
+                    queued.push(bound.clone());
+                }
+                continue;
+            }
             let candidate = package_root.join(bound);
             if candidate.is_dir() {
-                queue.push((bound.clone(), candidate, None, false));
-                queued.push(bound.clone());
+                claim(bound, &candidate, &module)?;
+                if !loaded.contains(bound) && !queued.contains(bound) {
+                    queue.push((bound.clone(), candidate, None, false));
+                    queued.push(bound.clone());
+                }
             }
         }
         // The heads of dotted `use` paths (`std` in `use std.prelude`) sit in
@@ -456,6 +525,12 @@ fn same_file(a: &Path, b: &Path) -> bool {
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,
     }
+}
+
+/// Two directory paths naming the same directory (#39's collision check
+/// compares module *identities*, which are full paths).
+fn same_dir(a: &Path, b: &Path) -> bool {
+    same_file(a, b)
 }
 
 /// The head name of a type, for impl-subject and trait naming: the path's

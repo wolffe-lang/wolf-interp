@@ -258,3 +258,96 @@ fn a_read_call_that_allocates_after_a_mut_call_is_not_a_foreign_write() {
     ));
     assert_eq!(value["verdict"], "exit(0)", "{value}");
 }
+
+// -- #39: module identity is the full path ----------------------------------
+
+/// The leaf_twins shape, staged from scratch: two modules whose leaf is
+/// `float` coexist because identity is the FULL dotted path — `use
+/// fmt.float` is `<root>/fmt/float` and `use math.float as mfloat` is
+/// `<root>/math/float` — and the fmt twin itself imports the math twin
+/// (same leaf on both sides of the import; the shape #39's original filing
+/// read back as a self-cycle).
+#[test]
+fn two_modules_with_the_same_leaf_resolve_by_their_full_paths() {
+    let dir = scratch("leaf-twins");
+    write(
+        &dir,
+        "math/float/float.lu",
+        "pub fn probe(v: int) -> int { v + 2 }\n",
+    );
+    write(
+        &dir,
+        "fmt/float/float.lu",
+        "use math.float as mf\n\npub fn probe(v: int) -> int { mf.probe(v) + 10 }\n",
+    );
+    write(
+        &dir,
+        "main.lu",
+        "use fmt.float\nuse math.float as mfloat\n\nfn main() -> !int {\n    print(\"{float.probe(1)} {mfloat.probe(1)}\")\n    if float.probe(1) == 13 && mfloat.probe(1) == 3 { 0 } else { 1 }\n}\n",
+    );
+    let entry = dir.join("main.lu");
+    let output = lupin(
+        &["conform-run", entry.to_str().expect("utf-8"), "--json"],
+        &[],
+    );
+    let record = record(&output);
+    assert_eq!(record["verdict"], "exit(0)", "{record}");
+    assert_eq!(record["stdout_inline"], "13 3\n", "{record}");
+}
+
+/// #39's minimum ask, delivered as the maximum: the silent duplicate-leaf
+/// single-binding is GONE. Two imports that want the same bound name for
+/// different directories are an honest E0306 naming both paths and the
+/// `use … as` fix — never the first-wins silent misresolution.
+#[test]
+fn a_duplicate_leaf_binding_is_an_honest_error_not_a_silent_first_wins() {
+    let dir = scratch("leaf-collision");
+    write(
+        &dir,
+        "math/float/float.lu",
+        "pub fn probe(v: int) -> int { v + 2 }\n",
+    );
+    write(
+        &dir,
+        "fmt/float/float.lu",
+        "pub fn probe(v: int) -> int { v + 12 }\n",
+    );
+    write(
+        &dir,
+        "main.lu",
+        "use fmt.float\nuse math.float\n\nfn main() -> !int {\n    if float.probe(1) == 13 { 0 } else { 1 }\n}\n",
+    );
+    let entry = dir.join("main.lu");
+    let output = lupin(
+        &["conform-run", entry.to_str().expect("utf-8"), "--json"],
+        &[],
+    );
+    let record = record(&output);
+    assert_eq!(record["verdict"], "fail(E0306)", "{record}");
+}
+
+/// The flat fallback stays: a single-segment `use` still binds the sibling
+/// directory by its own name, and the same module imported from two files
+/// under the same path is the ordinary legal case, never a collision.
+#[test]
+fn the_flat_fallback_and_repeated_same_path_imports_stay_legal() {
+    let dir = scratch("flat-fallback");
+    write(&dir, "util/util.lu", "pub fn one() -> int { 1 }\n");
+    write(
+        &dir,
+        "other/other.lu",
+        "use util\n\npub fn two() -> int { util.one() + 1 }\n",
+    );
+    write(
+        &dir,
+        "main.lu",
+        "use util\nuse other\n\nfn main() -> !int {\n    if util.one() + other.two() == 3 { 0 } else { 1 }\n}\n",
+    );
+    let entry = dir.join("main.lu");
+    let output = lupin(
+        &["conform-run", entry.to_str().expect("utf-8"), "--json"],
+        &[],
+    );
+    let record = record(&output);
+    assert_eq!(record["verdict"], "exit(0)", "{record}");
+}

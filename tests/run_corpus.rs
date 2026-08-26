@@ -700,6 +700,20 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // refuses BY NAME here exactly as the compiler's scoped v1 refuses it
     // there — parity, not a gap — and stays out of this ledger.
     ("typecheck/nested_fn_value.lu", "exit(0)"),
+    // is18's #39 mover: module identity is the FULL path. `use fmt.float`
+    // resolves `<package root>/fmt/float` now (flat `<root>/<bound>` stays
+    // the fallback), so two modules whose leaf is `float` coexist under
+    // distinct bound names and the entry's aliased import answers "13 3".
+    // The silent duplicate-leaf single-binding died with the same change:
+    // same bound name, different directories is an honest E0306 naming
+    // both paths and the `use … as` fix.
+    ("resolve/leaf_twins/main.lu", "exit(0)"),
+    // #39's free rider: `use outer.inner` resolves the nested directory at
+    // its full path now, so the W0316 ancestor-import fixture finally runs
+    // its program (the warning itself is a compiler-side analysis, honest-
+    // absent here). It sat unsupported behind the flat `<root>/<bound>`
+    // spelling since the pin brought it.
+    ("lints/ancestor_import/main.lu", "exit(0)"),
 ];
 
 #[test]
