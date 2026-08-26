@@ -738,6 +738,48 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("net/read_deadline.lu", "exit(1)"),
     ("net/refused_row.lu", "exit(1)"),
     ("net/spawn_accept.lu", "exit(0)"),
+    // -- is19 (pin 87405ac) --------------------------------------------------
+    // The s109 ruling wave: D51 (nested rows flatten) and D52 (declared-row
+    // tags resolve one position wider) land upstream. The pin-bump baseline,
+    // before this sprint's own mirror work:
+    //
+    // `rows/nested_row_merge_payload.lu` — D51's silent-merge half. The
+    // flattened union is what this machine always executed (its two miss
+    // layers were indistinguishable, which D51 ratified as THE semantics),
+    // so the file ran at first sight: both raise paths and the ok path.
+    //
+    // `rows/negative/nested_row_conflict.lu` — D51's recorded cost, priced
+    // with eyes open: `Bad(int)` and `Bad(str)` across the two layers is one
+    // structural tag that cannot carry both shapes, and the compiler refuses
+    // E0609 at resolve. This machine performs no row-payload conflict check
+    // and runs the program; the run is SPEC-CLEAN — `poke(3)` never raises,
+    // no conflicted tag ever materializes, main answers 3 — so the verdict
+    // lands in the census's conservatism class, honestly: a static
+    // rejection this machine does not perform, never a wrong answer. E0609
+    // deliberately does NOT join `ledger::dynamic_meaning` — no document
+    // states a runtime meaning for a payload-shape conflict, and the one
+    // execution that could exhibit it (raising the tag) is exactly what
+    // D51's union semantics already defines. See the note there.
+    //
+    // `rows/tag_shadow_local.lu` — D52's priced hazard, and the baseline
+    // AGREEMENT: locals shadow a declared tag in this machine exactly as the
+    // ruling requires (the env is consulted before any tag fallback), so
+    // `or(none, 9)` passes the local's 3 on both machines. W0305 fires at
+    // the use from this machine's own warning channel (`lint::tag_shadow_use`
+    // — the D52 mirror's warning half, landed with the pin because the
+    // warns ledger gates it).
+    //
+    // The other three s109 rows are the split this sprint's mirror closes:
+    // `tag_arg_position.lu` and `tag_let_position.lu` pin run(exit=0) and
+    // decline here at baseline (`` `none` does not resolve `` — the
+    // out-of-scope class, exactly the split D52 says the witnesses pin
+    // honestly until the is-track mirror), and `negative/tag_undeclared_arg.lu`
+    // pins fail(E0301) while this machine refuses the same fact by name
+    // (unsupported at resolve) — agreement in substance, out-of-scope in
+    // class, both sides refusing to run a typo.
+    ("rows/nested_row_merge_payload.lu", "exit(0)"),
+    ("rows/negative/nested_row_conflict.lu", "exit(3)"),
+    ("rows/tag_shadow_local.lu", "exit(0)"),
 ];
 
 #[test]

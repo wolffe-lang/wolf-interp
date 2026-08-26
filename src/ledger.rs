@@ -275,6 +275,15 @@ pub fn dynamic_meaning(code: &str) -> Option<TrapKind> {
         // not family-inferred; `[mem.tier0.excl.1]` remains the family
         // rule the code instantiates.
         "E1013" | "E1014" => Some(TrapKind::Exclusivity),
+        // **E0609** (D51's recorded cost: one structural tag whose nested
+        // layers disagree on its payload shape) deliberately has NO row
+        // here. No document states a runtime meaning for the conflict, and
+        // the only execution that could exhibit it — raising the tag — is
+        // exactly what `[gram.type.row.flatten]`'s union semantics already
+        // defines, so there is no trap to map. A program the compiler
+        // refuses E0609 that never raises the conflicted tag runs
+        // spec-clean here (`rows/negative/nested_row_conflict.lu`, exit 3):
+        // the conservatism class, ledgered in `tests/run_corpus.rs`.
         _ => None,
     }
 }

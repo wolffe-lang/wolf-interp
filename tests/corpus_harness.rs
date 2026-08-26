@@ -326,14 +326,29 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             changed check-visibly: `raw_interp_braces.lu` advanced
     //             `phase: wir` → `run` (the shared raw-decode debt paid;
     //             lupin's side was fixed at v0.1.10).)
+    //   87405ac → 345 files (is19: the s109 ruling wave — D51 and D52 land
+    //             upstream. The corpus grows 6, all entries, all `rows/`:
+    //             the D51 pair `nested_row_merge_payload.lu` (same tag, same
+    //             payload, both layers — one tag, runs) and
+    //             `negative/nested_row_conflict.lu` (same tag, DIFFERENT
+    //             payloads — E0609, the priced cost), and the D52 quartet
+    //             `tag_arg_position.lu`, `tag_let_position.lu`,
+    //             `tag_shadow_local.lu` (warns: W0305 at the use) and
+    //             `negative/tag_undeclared_arg.lu` (the E0301 counter). Two
+    //             existing files changed check-visibly without moving the
+    //             count: `nested_row_param.lu` and `nested_row_return.lu`
+    //             advance `phase: resolve` → `run` — the ruled flattening is
+    //             what this machine always executed, so the pins now gate
+    //             both machines. The spec grows `[gram.expr.tagident]` and
+    //             `[gram.type.row.flatten]` — 346 anchors.)
     let report = report();
     assert_eq!(
         report.total(),
-        339,
+        345,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 311);
+    assert_eq!(report.entries(), 317);
     assert_eq!(report.members(), 28);
 }
 

@@ -52,7 +52,7 @@
 //! statement *through its terminator* — `;` or the newline — which is the
 //! counterparty's convention, observed on the fixtures.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::{
     Arg, AttrArg, AttrInput, Attribute, BinOp, Binding, BindingKind, Block, ElseHandler, Expr,
@@ -132,16 +132,28 @@ pub fn analyze(program: &Program) -> Analysis {
             .filter(|(_, (def, _))| matches!(def, Def::Fn(_)))
             .map(|(name, _)| name.clone())
             .collect();
+        // The module's fn signatures by name, for the checks that read a
+        // callee's declaration at a call site (W0305's fire-at-use).
+        let fn_decls: BTreeMap<&str, &FnDecl> = module
+            .items
+            .iter()
+            .filter_map(|(name, (def, _))| match def {
+                Def::Fn(decl) => Some((name.as_str(), &**decl)),
+                _ => None,
+            })
+            .collect();
         for unit in &module.units {
             let mut walk = Walk {
                 source: &unit.source,
                 from_std: unit.from_std,
                 item_names: &item_names,
                 fn_names: &fn_names,
+                fn_decls: &fn_decls,
                 findings: &mut findings,
                 statics: &mut statics,
                 allows: &mut allows,
                 scopes: Vec::new(),
+                ret_row: Vec::new(),
                 closures: Vec::new(),
                 assigns: Vec::new(),
                 closure_stack: Vec::new(),
@@ -317,11 +329,17 @@ struct Walk<'a> {
     item_names: &'a BTreeSet<String>,
     /// Module-level `fn` names, for the W0305 collision check.
     fn_names: &'a BTreeSet<String>,
+    /// Module-level `fn` signatures by name — a callee's declaration read at
+    /// its call site (W0305's fire-at-use over the declared parameter rows).
+    fn_decls: &'a BTreeMap<&'a str, &'a FnDecl>,
     findings: &'a mut Vec<(String, Span)>,
     statics: &'a mut Vec<Diag>,
     allows: &'a mut Vec<(String, Span)>,
     /// Locals of the enclosing function, innermost last: `(name, is_var)`.
     scopes: Vec<Vec<(String, bool)>>,
+    /// The enclosing function's declared return-row tags — the expected row
+    /// of `return` position for W0305's fire-at-use.
+    ret_row: Vec<String>,
     /// Closures created so far in the current function (W1102).
     closures: Vec<ClosureRec>,
     /// Whole-name assignments in the current function (W1102).
@@ -523,6 +541,24 @@ impl Walk<'_> {
         }
     }
 
+    /// W0305's fire-at-use (D52, `[gram.expr.tagident]`): a bare lowercase
+    /// identifier in a *checked position* whose expected declared row spells
+    /// the name resolves LOCAL-first — the tightest scopes shadow, as
+    /// everywhere — and the shadow warns where it happens, at the use. The
+    /// checked positions are the `return` operand, a call argument against
+    /// the callee's declared parameter row, and an annotated `let`/`var`
+    /// initializer against the annotation's row.
+    fn tag_shadow_use(&mut self, expr: &Expr, row: &[String]) {
+        if let ExprKind::Path(path) = &*expr.kind
+            && path.is_single()
+            && path.segments[0].name.starts_with(char::is_lowercase)
+            && row.contains(&path.segments[0].name)
+            && self.declared(&path.segments[0].name).is_some()
+        {
+            self.warn("W0305", path.segments[0].span);
+        }
+    }
+
     /// The signature lints: W0305 (row tag colliding with a name in scope)
     /// and W0602 (a `pub` signature spelling a ≥2-tag row inline).
     fn signature(&mut self, decl: &FnDecl, is_pub: bool) {
@@ -685,7 +721,10 @@ impl Walk<'_> {
         let outer_assigns = std::mem::take(&mut self.assigns);
         let outer_writes = std::mem::take(&mut self.writes);
         let outer_literal_lets = std::mem::take(&mut self.literal_lets);
+        let outer_ret_row =
+            std::mem::replace(&mut self.ret_row, crate::sema::declared_raise_tags(decl));
         self.block(body);
+        self.ret_row = outer_ret_row;
         self.scopes.pop();
 
         // W1002 — a `mut` parameter the body never writes: every call site
@@ -816,6 +855,14 @@ impl Walk<'_> {
     }
 
     fn binding(&mut self, binding: &Binding) {
+        // W0305's annotated-`let`/`var` position (D52): the annotation's row
+        // is the expected row of the initializer.
+        if let Some(ty) = &binding.ty {
+            let row = crate::sema::type_tags(ty);
+            if !row.is_empty() {
+                self.tag_shadow_use(&binding.value, &row);
+            }
+        }
         self.expr(&binding.value);
         // E0802's shape evidence: a `let` bound directly to a scalar
         // literal has a type no variant pattern can ever match.
@@ -1062,7 +1109,17 @@ impl Walk<'_> {
                 self.block(body);
             }
             ExprKind::Loop { body } => self.block(body),
-            ExprKind::Return(value) | ExprKind::Break(value) => {
+            ExprKind::Return(value) => {
+                if let Some(value) = value {
+                    // W0305's return position (D52): the enclosing declared
+                    // return row is the expected row of the operand.
+                    let row = std::mem::take(&mut self.ret_row);
+                    self.tag_shadow_use(value, &row);
+                    self.ret_row = row;
+                    self.expr(value);
+                }
+            }
+            ExprKind::Break(value) => {
                 if let Some(value) = value {
                     self.expr(value);
                 }
@@ -1249,6 +1306,22 @@ impl Walk<'_> {
                      `{head}` is none of those. Send the region instead"
                 ),
             ));
+        }
+
+        // W0305's argument position (D52): a call to a module-level fn whose
+        // parameter's declared row spells a bare-identifier argument that a
+        // local also binds — the local wins, and the shadow warns at the use.
+        if let ExprKind::Path(path) = &*callee.kind
+            && path.is_single()
+            && self.declared(&path.segments[0].name).is_none()
+            && let Some(decl) = self.fn_decls.get(path.segments[0].name.as_str())
+        {
+            for (param, arg) in decl.params.iter().zip(args) {
+                if let crate::ast::ParamKind::Named { ty, .. } = &param.kind {
+                    let row = crate::sema::type_tags(ty);
+                    self.tag_shadow_use(&arg.expr, &row);
+                }
+            }
         }
 
         // A task closure: `s.spawn(fn() { … })` — the E1101/W1101 context.
@@ -1788,6 +1861,89 @@ mod tests {
             .into_iter()
             .map(|w| w.code)
             .collect()
+    }
+
+    // ---- W0305's fire-at-use (D52, [gram.expr.tagident]) ------------------
+    //
+    // A local named like a tag the expected declared row spells SHADOWS the
+    // tag — locals win, matching resolution everywhere else — and the hazard
+    // warns at the use, in every checked position: call argument, annotated
+    // `let`/`var` initializer, `return` operand.
+
+    #[test]
+    fn a_local_shadowing_a_declared_tag_warns_at_the_argument_use() {
+        // The corpus witness's own shape (rows/tag_shadow_local.lu).
+        let found = warn_codes(
+            "fn or(v: int ! {none}, d: int) -> int { v else d }\n\
+             fn main() -> !int {\n\
+             \x20   let none = 3\n\
+             \x20   if or(none, 9) == 3 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert_eq!(
+            found.iter().filter(|c| *c == "W0305").count(),
+            1,
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_local_shadowing_the_annotation_row_warns_at_the_initializer() {
+        let found = warn_codes(
+            "fn main() -> !int {\n\
+             \x20   let none = 3\n\
+             \x20   let v: int ! {none} = none\n\
+             \x20   let w = v else 5\n\
+             \x20   if w == 3 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert_eq!(
+            found.iter().filter(|c| *c == "W0305").count(),
+            1,
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_local_shadowing_the_return_row_warns_at_the_return() {
+        let found = warn_codes(
+            "fn f() -> int ! {none} {\n\
+             \x20   let none = 3\n\
+             \x20   return none\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   f() else 0\n\
+             }\n",
+        );
+        assert_eq!(
+            found.iter().filter(|c| *c == "W0305").count(),
+            1,
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn the_fire_at_use_is_exactly_as_wide_as_the_shadow() {
+        // No local: the bare tag resolves as the tag, no warning
+        // (rows/tag_arg_position.lu and tag_let_position.lu are
+        // warning-clean); a local whose name no expected row spells is an
+        // ordinary argument.
+        let clean = warn_codes(
+            "fn or(v: int ! {none}, d: int) -> int { v else d }\n\
+             fn main() -> !int {\n\
+             \x20   if or(none, 9) == 9 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert!(!clean.iter().any(|c| c == "W0305"), "{clean:?}");
+
+        let ordinary = warn_codes(
+            "fn or(v: int ! {none}, d: int) -> int { v else d }\n\
+             fn main() -> !int {\n\
+             \x20   let k = 3\n\
+             \x20   if or(k, 9) == 3 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert!(!ordinary.iter().any(|c| c == "W0305"), "{ordinary:?}");
     }
 
     // ---- the capture law's three spellings (s74, wolf-lang#71) ------------
