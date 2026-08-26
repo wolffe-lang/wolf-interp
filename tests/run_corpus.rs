@@ -693,6 +693,13 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("rows/nested_row_return.lu", "exit(0)"),
     ("strings/raw_fences.lu", "exit(0)"),
     ("typecheck/main_unit_row.lu", "exit(0)"),
+    // is18's #38 mover: a nested named fn RESOLVES — the capture-free shape
+    // binds like a `let` whose value is a fn value, so the direct call, the
+    // higher-order pass and the bind-and-call all run ("odd\nyes", the
+    // compiled lanes' bytes). Its refusing twin `nested_fn_capture.lu`
+    // refuses BY NAME here exactly as the compiler's scoped v1 refuses it
+    // there — parity, not a gap — and stays out of this ledger.
+    ("typecheck/nested_fn_value.lu", "exit(0)"),
 ];
 
 #[test]

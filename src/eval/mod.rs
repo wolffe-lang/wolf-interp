@@ -2965,8 +2965,112 @@ impl Machine {
                 self.eval(expr)?;
                 Ok(())
             }
-            StmtKind::Item(_) => Ok(()),
+            StmtKind::Item(item) => {
+                // #38 (wolf-lang#116b): a nested named `fn` RESOLVES — it
+                // binds like a `let` whose value is a capture-free fn value
+                // (the closure recipe with a declared signature). Every other
+                // item kind in statement position stays inert, as before.
+                if let crate::ast::ItemKind::Fn(decl) = &item.kind {
+                    return self.exec_nested_fn(decl, stmt.span);
+                }
+                Ok(())
+            }
         }
+    }
+
+    /// A nested named `fn` in statement position (#38, the compiler's #116b
+    /// twin): the capture-free shape checks as a fn value with a name and
+    /// binds like a `let`, so a direct call, a pass to a higher-order fn,
+    /// and a call through a later binding all resolve.
+    ///
+    /// The scoped-out shapes refuse BY NAME — the counterparty's scoped v1
+    /// refuses the same set, so an honest `unsupported` here is parity, not
+    /// a gap: captures of enclosing locals (`typecheck/nested_fn_capture.lu`
+    /// pins the refusal; "bind a closure instead"), generics, an error row
+    /// on the nested return, parameter modes and `self`.
+    fn exec_nested_fn(&mut self, decl: &FnDecl, span: Span) -> EResult<()> {
+        let name = &decl.name.name;
+        if !decl.generics.is_empty() {
+            return unsupported(format!(
+                "nested fn `{name}` declares generics; a nested fn is the capture-free \
+                 closure recipe and its scoped v1 holds no type parameters — lift it to \
+                 the module (#38)"
+            ));
+        }
+        // Both row spellings on the return refuse: the postfix row
+        // (`-> int ! {none}` — RetType's own or the Fallible type's) and the
+        // bang union (`-> !int`).
+        let rowed_return = decl.ret.as_ref().is_some_and(|ret| {
+            ret.row.is_some()
+                || matches!(
+                    &*ret.ty.kind,
+                    TypeKind::ErrorUnion(_) | TypeKind::Fallible { .. }
+                )
+        });
+        if rowed_return {
+            return unsupported(format!(
+                "nested fn `{name}` declares an error row on its return; rows on a nested \
+                 return are outside the scoped v1 — lift it to the module (#38)"
+            ));
+        }
+        let Some(body) = &decl.body else {
+            return unsupported(format!(
+                "nested fn `{name}` has no body; only `extern` items are bodyless and the \
+                 extern surface is not a statement's"
+            ));
+        };
+        let mut params = Vec::new();
+        for param in &decl.params {
+            let ParamKind::Named { name: pname, .. } = &param.kind else {
+                return unsupported(format!(
+                    "nested fn `{name}` takes `self`; methods belong to impl blocks"
+                ));
+            };
+            if param.mode.is_some() {
+                return unsupported(format!(
+                    "nested fn `{name}` declares a parameter mode; closure-recipe \
+                     parameters carry none in the scoped v1 (#38)"
+                ));
+            }
+            params.push(pname.name.clone());
+        }
+        let body_expr = Expr {
+            kind: Box::new(ExprKind::Block(body.clone())),
+            span: decl.span,
+            anchor: "gram.item.fn",
+        };
+        // The capture question, asked the way `eval_closure` asks it: the
+        // body's free single names, minus the parameters. A free name that is
+        // a live LOCAL of the enclosing frame is a capture, and captures are
+        // the refused shape — an environment belongs to closure VALUES a
+        // binding claims. Module items, globals and prelude names are not
+        // captures; they resolve at call time as they do everywhere.
+        let mut bound: BTreeSet<String> = params.iter().cloned().collect();
+        let mut used = BTreeSet::new();
+        crate::lint::free_names(&body_expr, &mut bound, &mut used);
+        for free in &used {
+            if self.local_exists(free) {
+                return unsupported(format!(
+                    "nested fn `{name}` captures the enclosing local `{free}` (bind a \
+                     closure instead) — the scoped v1 is capture-free on every lane (#38)"
+                ));
+            }
+        }
+        self.fire(
+            Rule::Call,
+            span,
+            &format!("nested fn `{name}` binds as a capture-free fn value, like a `let`"),
+        );
+        self.declare(
+            name,
+            Slot::live(Value::Closure(Box::new(ClosureValue {
+                params,
+                body: body_expr,
+                captures: Vec::new(),
+                loans: Vec::new(),
+            }))),
+        );
+        Ok(())
     }
 
     fn exec_binding(&mut self, binding: &Binding) -> EResult<()> {
