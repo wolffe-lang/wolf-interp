@@ -345,14 +345,54 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 .unwrap_or(0);
             Ok(Value::Int(ms, IntTy::INT))
         }
-        // std.x.json's kernels are wolf_mem's reference parser, pinned by
-        // its module doc — a surface this machine declines rather than
-        // reimplements-and-guesses ([proto.record.unsupported]).
-        "json_valid" | "json_get" | "json_type" | "json_len" => unsupported(format!(
-            "`{name}` is std.x.json's s40 query tier; its reference kernel is the \
-             counterparty's `wolf_mem::json`, and this machine declines the surface rather \
-             than risk a second, guessed RFC 8259 reading"
-        )),
+        // std.x.json's s40 query tier, on lupin's OWN RFC 8259 reading
+        // (is18 — `crate::json` states the independence contract and the
+        // empirically pinned edges; porting `wolf_mem::json` is forbidden,
+        // and a divergence between the two independent parsers is a finding
+        // to file, never to paper). PURE — no capability, no sandbox
+        // category; errors are D30 rows, never traps.
+        "json_valid" => {
+            let Some(Value::Str(text)) = args.first() else {
+                return unsupported("`json_valid` takes one `str` of JSON text".to_owned());
+            };
+            Ok(Value::Bool(crate::json::valid(text)))
+        }
+        "json_get" | "json_type" | "json_len" => {
+            let (Some(Value::Str(text)), Some(Value::Str(path))) = (args.first(), args.get(1))
+            else {
+                return unsupported(format!(
+                    "`{name}` takes JSON text and a dotted path, both `str`"
+                ));
+            };
+            let answer = match name {
+                "json_get" => crate::json::get(text, path).map(Value::Str),
+                "json_type" => {
+                    crate::json::kind(text, path).map(|kind| Value::Str(kind.to_owned()))
+                }
+                _ => crate::json::len(text, path).map(|n| Value::Int(n as i128, IntTy::INT)),
+            };
+            match answer {
+                Ok(value) => {
+                    if matches!(value, Value::Str(_)) {
+                        machine.allocate(span, name);
+                    }
+                    Ok(value)
+                }
+                Err(err) => {
+                    let tag = match err {
+                        crate::json::Error::Parse => "parse",
+                        crate::json::Error::Missing => "missing",
+                        crate::json::Error::Kind => "kind",
+                    };
+                    machine.note(
+                        Rule::ErrUnion,
+                        span,
+                        &format!("`{name}` yields the `{tag}` row"),
+                    );
+                    Ok(error(tag))
+                }
+            }
+        }
         // `str_from_utf8(b: List[int]) -> str ! {utf8}` (s81, wolf-lang#58) —
         // the str-construction border, and the ONLY way a wolf program builds
         // a `str` out of numbers.

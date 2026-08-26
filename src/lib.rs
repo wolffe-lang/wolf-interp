@@ -37,6 +37,7 @@ pub mod export;
 pub mod fmtspec;
 pub mod frontend;
 pub mod fuzz;
+pub mod json;
 pub mod ledger;
 pub mod lex;
 pub mod lint;

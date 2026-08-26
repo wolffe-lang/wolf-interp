@@ -714,6 +714,13 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // absent here). It sat unsupported behind the flat `<root>/<bound>`
     // spelling since the pin brought it.
     ("lints/ancestor_import/main.lu", "exit(0)"),
+    // is18's json movers: the s40 query tier runs on lupin's OWN RFC 8259
+    // reading (`crate::json` — independence forbids porting wolf_mem::json;
+    // the witnesses and the empirically probed edges are the contract).
+    // `rows.lu` answers the three row kinds and `query.lu` the dotted-path
+    // queries, byte-equal with the compiled lanes.
+    ("json/query.lu", "exit(0)"),
+    ("json/rows.lu", "exit(0)"),
 ];
 
 #[test]
