@@ -898,6 +898,50 @@ fn wrapping_shift_counts_mask_at_thirty_two_on_u32() {
 }
 
 #[test]
+fn a_full_range_wrapping_literal_types_in_container_argument_position() {
+    // #43: the expected-type flow reaches call-argument position for
+    // wrapping literals. `List[wrapping[u64]]`'s element annotation is the
+    // literal's checking context at `push`, exactly as an annotated `let`
+    // is — 0xc19bf174cf692694 has no `int` spelling at all (top bit set),
+    // and before this landed the push trapped overflow against `i64` while
+    // wolfc typed it. Both spellings of the annotation are pinned: the
+    // constructor (`List[wrapping[u64]]()`) and the declared type
+    // (`var l: List[wrapping[u64]] = List()`).
+    assert_eq!(
+        stdout(
+            "fn main() -> int {\n\
+             \x20   var k = List[wrapping[u64]]()\n\
+             \x20   (mut k).push(0xc19bf174cf692694)\n\
+             \x20   var l: List[wrapping[u64]] = List()\n\
+             \x20   (mut l).push(0xc19bf174cf692694)\n\
+             \x20   let hi = (k[0] >> 32) as int\n\
+             \x20   let lo = (l[0] & 0xffffffff) as int\n\
+             \x20   print(\"{hi} {lo}\")\n\
+             \x20   0\n\
+             }\n"
+        ),
+        "3248222580 3479774868\n"
+    );
+}
+
+#[test]
+fn a_bare_big_literal_into_a_plain_int_list_keeps_its_trap() {
+    // #43's negative rail: only wrapping-typed expected positions adopt
+    // the width. A bare full-range literal pushed into `List[int]` is
+    // still outside `i64` and still traps — the fix must not widen PLAIN
+    // int literal semantics.
+    let trap = trap_of(
+        "fn main() -> int {\n\
+         \x20   var m = List[int]()\n\
+         \x20   (mut m).push(0xc19bf174cf692694)\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::Overflow);
+    assert_eq!(trap.rule.anchor(), "arith.checked");
+}
+
+#[test]
 fn checked_shift_at_the_width_still_traps() {
     // #42 is a WRAPPING ruling only: on a checked type a shift whose result
     // leaves the range keeps X3's overflow trap — no count mask sneaks into
