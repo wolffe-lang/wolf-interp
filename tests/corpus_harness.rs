@@ -395,15 +395,39 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             static E0401 refusals this machine performs dynamically
     //             (`unsupported`) — conservatism, not mismatch. The spec grows
     //             `spec/10-types.md`; no existing corpus file changed content.)
+    //   90c90df → 385 files (is24: the s114–s116 wave. The corpus grows 11 —
+    //             10 entries and 1 member. Six entries plus the member run
+    //             clean at first sight: the D56 wrap-cast trio
+    //             `typecheck/wrap_as_int_in_range.lu`,
+    //             `faults/wrap_high_as_i32.lu`, `faults/wrap_top_bit_as_int.lu`
+    //             (value-preserving `wrapping[T] as int`, trap(overflow) out of
+    //             range), s116's `generics/list_struct_elem.lu` and
+    //             `generics/list_imported_elem/` (#140 — `List[mod.Type]` as a
+    //             bracket-position type head; `geo/point.lu` is the member),
+    //             and `rows/iter_diverging_else_bound.lu`. Four entries are
+    //             out-of-scope std surface this machine declines rather than
+    //             guesses: s114's signal pair `os/signal_loopback.lu` +
+    //             `os/signal_supervisor.lu` (`os_signal_*`) and s115's byte
+    //             pair `net/byte_roundtrip.lu` + `net/line_reader_bytes.lu`.
+    //             The `os` namespace is now REGISTERED here (spec/11-os.md
+    //             landed with the `[os.signal]` family, every `os.*` in
+    //             anchors.json); before that registration the signal files'
+    //             headers failed to parse, so `belongs` swept them into the
+    //             os/ siblings' modules and every `main` collided (E0302) —
+    //             the ct (da8582d) and type (77466a3) lesson, third telling.
+    //             `pkg` is registered too: s115 amended [conf.anchor.ns] for
+    //             #120, retiring the standing export waiver. The spec grows
+    //             `spec/11-os.md` and D56's `[type.numlit.cast.wrap]` — 380
+    //             anchors; no existing corpus file changed content.)
     let report = report();
     assert_eq!(
         report.total(),
-        374,
+        385,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 346);
-    assert_eq!(report.members(), 28);
+    assert_eq!(report.entries(), 356);
+    assert_eq!(report.members(), 29);
 }
 
 #[test]

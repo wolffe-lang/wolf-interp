@@ -906,6 +906,24 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("faults/cast_float_to_int_truncate.lu", "exit(0)"),
     ("faults/cast_float_overflow_trap.lu", "trap(overflow)"),
     ("faults/cast_float_nan_trap.lu", "trap(overflow)"),
+    // -- is24 (pin 90c90df) --------------------------------------------------
+    // The s114–s116 wave's six run-reaching entries, all clean at first
+    // sight. D56's wrap-cast trio: `wrapping[T] as int` is value-preserving —
+    // in range it converts unchanged (`wrap_as_int_in_range`), out of range
+    // it joins the checked-arithmetic trap family (`[type.numlit.cast.wrap]`,
+    // the top-bit u64 and the high u32→i32 witnesses both `trap(overflow)`).
+    // s116's #140 pair: `List[mod.Type]` and `List[LocalStruct]` as bracket-
+    // position type heads (`list_imported_elem/` brings the corpus's newest
+    // member file, `geo/point.lu`). And `rows/iter_diverging_else_bound.lu`.
+    // The wave's other four entries (`os/signal_*`, `net/byte_roundtrip`,
+    // `net/line_reader_bytes`) are std surface with no pinned semantics
+    // here — declined, never run.
+    ("faults/wrap_high_as_i32.lu", "trap(overflow)"),
+    ("faults/wrap_top_bit_as_int.lu", "trap(overflow)"),
+    ("generics/list_imported_elem/main.lu", "exit(0)"),
+    ("generics/list_struct_elem.lu", "exit(0)"),
+    ("rows/iter_diverging_else_bound.lu", "exit(0)"),
+    ("typecheck/wrap_as_int_in_range.lu", "exit(0)"),
 ];
 
 #[test]
