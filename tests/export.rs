@@ -74,7 +74,13 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // flagships + public_len), ct.taint.sink (the five ct/ sink witnesses) and
 // ct.taint.membrane (membrane.lu). Raised in the bump commit per the test's
 // own instruction.
-const RATCHET_FLOOR: usize = 133;
+// 133 → 140 at 77466a3 (is23): the s113 D54 literal tier's seven covered
+// clauses gain their first citing programs in the same wave — type.numlit.adopt,
+// type.numlit.propagate, type.numlit.default, type.numlit.value, type.numlit.ambig
+// (the nine numlit_* witnesses) and type.numlit.cast.widen / type.numlit.cast.trunc
+// (the #138 cast witnesses). Raised in the bump commit per the test's own
+// instruction.
+const RATCHET_FLOOR: usize = 140;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -110,7 +116,12 @@ const RATCHET_FLOOR: usize = 133;
 // spec/09-constant-time.md — fourteen `ct.*` anchors ([ct.attr] and its
 // six children, [ct.taint] and its seven). The `ct` namespace is REGISTERED
 // here now (the spec exists, every anchor is in anchors.json).
-const ANCHORS_TOTAL: usize = 360;
+// 360 → 370 at 77466a3 (is23): the s113 D54 literal tier writes
+// spec/10-types.md — ten `type.*` anchors ([type.numlit] and its four children
+// adopt/propagate/default/value, [type.numlit.kind], [type.numlit.ambig], and
+// [type.numlit.cast] with its widen/trunc pair). The `type` namespace is
+// REGISTERED here now (the spec exists, every anchor is in anchors.json).
+const ANCHORS_TOTAL: usize = 370;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -243,10 +254,12 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // files (all entries) land; the suite programs are unmoved.
     // 388/360 → 398/370 at da8582d (is22): the s112 constant-time tier's 10
     // corpus files (all entries) land; the suite programs are unmoved.
+    // 398/370 → 411/383 at 77466a3 (is23): the s113 D54 literal tier's 13
+    // corpus files (all entries) land; the suite programs are unmoved.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "da8582d0512eded12e4ba873910a5f95ce2b1a67");
-    assert_eq!(summary.programs, 398);
-    assert_eq!(summary.records, 370);
+    assert_eq!(summary.pin, "77466a320e14fd0cbf148ad51613e55aff6cb9fa");
+    assert_eq!(summary.programs, 411);
+    assert_eq!(summary.records, 383);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

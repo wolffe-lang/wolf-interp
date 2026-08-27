@@ -875,6 +875,37 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("ct/public_typo.lu", "exit(0)"),
     ("kernels/ct_cswap.lu", "exit(0)"),
     ("kernels/ct_tag_compare.lu", "exit(0)"),
+    // -- is23 (pin 77466a3) --------------------------------------------------
+    // D54's `[type.numlit]` witnesses. The POSITIVES run byte-for-byte with the
+    // compiled lanes: an integer literal adopts a float expectation
+    // (`numlit_annotation_float`), the adoption propagates through an arithmetic
+    // or comparison term (`numlit_c2f`, `numlit_arith_through`,
+    // `numlit_compare_adopts`), and the soundness twins pin float-vs-integer
+    // division by the operands' resolved type — `let x: f64 = 1 / 2` is `0.5`,
+    // `let n: int = 1 / 2` is `0`. The two hard NEGATIVES — value non-adoption
+    // (`numlit_value_refused`) and the kind mismatch (`numlit_float_to_int_refused`)
+    // — do NOT appear here: this machine REFUSES them (`unsupported`), so they
+    // never reach `run`. `numlit_ambiguity_named` (`1 + 2.0` with no concrete
+    // float context) is the one conservatism: a tree-walk carries no float-
+    // literal kind, so it computes the f64 result and exits 0 rather than
+    // issuing the static E0401 ambiguity — census-neutral (the file prints
+    // nothing), documented for the merger.
+    ("typecheck/numlit_annotation_float.lu", "exit(0)"),
+    ("typecheck/numlit_arith_through.lu", "exit(0)"),
+    ("typecheck/numlit_ambiguity_named.lu", "exit(0)"),
+    ("typecheck/numlit_c2f.lu", "exit(0)"),
+    ("typecheck/numlit_compare_adopts.lu", "exit(0)"),
+    ("typecheck/numlit_div_float.lu", "exit(0)"),
+    ("typecheck/numlit_div_int.lu", "exit(0)"),
+    // #138's numeric casts. `int as float` is the free widening direction and
+    // `float as int` truncates toward zero (`[type.numlit.cast]`); the two trap
+    // witnesses join the checked-arithmetic family — an out-of-range or NaN
+    // `float as int` is `trap(overflow)`, D54.4's posture this machine already
+    // held (is22 confirmed the float→int trap).
+    ("typecheck/cast_int_to_float.lu", "exit(0)"),
+    ("faults/cast_float_to_int_truncate.lu", "exit(0)"),
+    ("faults/cast_float_overflow_trap.lu", "trap(overflow)"),
+    ("faults/cast_float_nan_trap.lu", "trap(overflow)"),
 ];
 
 #[test]
