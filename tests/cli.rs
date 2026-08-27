@@ -140,8 +140,11 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // 361 -> 374 at the 77466a3 pin (is23): s113's D54 tier lands nine
     // `typecheck/numlit_*` witnesses, `typecheck/cast_int_to_float`, and three
     // `faults/cast_float_*` cast witnesses (#138).
+    // 374 -> 385 at the 90c90df pin (is24): the s114-s116 wave lands the D56
+    // wrap-cast trio, s116's imported-element pair (entry + member), the
+    // diverging-else witness, and the out-of-scope signal/byte std pairs.
     // Moved with the pin, per the export.rs rule.
-    assert!(stdout.contains("374 file(s)"), "{stdout}");
+    assert!(stdout.contains("385 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -150,7 +153,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 374);
+    assert_eq!(value["total"], 385);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

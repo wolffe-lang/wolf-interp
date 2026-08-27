@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: wrap_high_as_i32.lu
+trap:    overflow
+clause:  [arith.checked]
+rule:    ArithChecked
+message: `2147483648 as i32` is outside `i32` — numeric casts are checked conversions in every profile (X3); spell intended overflow `wrapping[i32]`
+at:      13:13 `hi as i32`
+because: (single-span fault)

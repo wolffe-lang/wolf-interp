@@ -26,8 +26,15 @@ use std::fmt;
 /// D54's `[type.numlit]` family, and every `type.*` anchor is in
 /// `anchors.json`, so the namespace is checkable, not forward). The chapter
 /// spells its namespace `type`, not the older reserved `ty`.
-pub const REGISTERED_NAMESPACES: [&str; 9] = [
-    "gram", "mem", "conc", "abi", "conf", "proto", "diag", "ct", "type",
+/// `pkg` joined at the 90c90df pin (s115 amends `[conf.anchor.ns]` for #120
+/// — the clause letter now admits 08-package.md's namespace, so the
+/// standing waiver in `export::FILED_REGISTRY_FINDINGS` dies with the
+/// filing and the namespace is registered like any other).
+/// `os` joined at the 90c90df pin (s114 — `spec/11-os.md` lands with the
+/// `[os.signal]` family, and every `os.*` anchor is in `anchors.json`, so
+/// the namespace is checkable, not forward).
+pub const REGISTERED_NAMESPACES: [&str; 11] = [
+    "gram", "mem", "conc", "abi", "conf", "proto", "diag", "ct", "type", "pkg", "os",
 ];
 
 /// Namespaces reserved for spec documents not yet written; tags in them are

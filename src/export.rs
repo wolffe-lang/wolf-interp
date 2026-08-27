@@ -329,12 +329,11 @@ fn read_registry(spec: &Path) -> Result<BTreeMap<String, String>, String> {
 /// filed. The waiver dies with the filing — when the clause is amended and
 /// the namespace becomes legal, the row comes out and the check resumes
 /// gating.
-pub const FILED_REGISTRY_FINDINGS: &[(&str, &str)] = &[(
-    "pkg",
-    "wolf-lang#120 — [conf.anchor.ns] never amended for 08-package.md's \
-     sixteen anchors; the clause's own additive-append contract (the s39 \
-     `test` precedent) is the one-line fix",
-)];
+/// Empty at the 90c90df pin: the one standing waiver (wolf-lang#120, the
+/// `pkg` namespace) died when s115 amended `[conf.anchor.ns]` to admit
+/// 08-package.md — `pkg` is in `anchor::REGISTERED_NAMESPACES` and the
+/// cross-check gates it like any other namespace again.
+pub const FILED_REGISTRY_FINDINGS: &[(&str, &str)] = &[];
 
 /// The independent extraction (`[conf.anchor.grammar]`): every
 /// `[registered.namespace.token]` in the pinned spec markdown, compared both
@@ -1002,23 +1001,17 @@ mod tests {
         let err = cross_check_registry(&dir, &registry).expect_err("must fail");
         assert!(err.contains("mem.phantom"), "{err}");
 
-        // A FILED namespace waives fatally-missing-from-spec into a notice
-        // that still names the filing — and only that namespace: `mem` is
-        // not filed, so `mem.phantom` above stayed fatal. `pkg` is.
+        // The waiver rule: a FILED namespace turns fatally-missing-from-spec
+        // into a notice naming the filing. At 90c90df the findings table is
+        // EMPTY (the pkg waiver died when s115 amended [conf.anchor.ns] for
+        // #120), so a planted `pkg.*` hole is fatal again like any other
+        // registered namespace — the check resumed gating, which is the
+        // "waiver dies with the filing" clause proven from the other side.
         let mut registry = BTreeMap::new();
         registry.insert("mem.real".to_owned(), "01-x.md".to_owned());
         registry.insert("pkg.manifest".to_owned(), "08-p.md".to_owned());
-        let notices = cross_check_registry(&dir, &registry).expect("filed ns is a notice");
-        assert_eq!(notices.len(), 1);
-        assert!(notices[0].contains("wolf-lang#120"), "{}", notices[0]);
-        assert!(notices[0].contains("1 `pkg.*`"), "{}", notices[0]);
-
-        // The other direction cannot arise for a filed-but-unregistered
-        // namespace: the extraction is namespace-gated (`classify` drops
-        // `pkg.*` citations until the clause legalizes them), so a spec
-        // citation the registry lacks stays a REGISTERED-namespace concern
-        // — proven fatal by the `mem.uncatalogued` case below, which the
-        // waiver must never touch.
+        let err = cross_check_registry(&dir, &registry).expect_err("no standing waiver");
+        assert!(err.contains("pkg.manifest"), "{err}");
 
         // And the converse: the spec cites what the registry does not know.
         fs::write(dir.join("02-y.md"), "cites [mem.uncatalogued]\n").expect("write");

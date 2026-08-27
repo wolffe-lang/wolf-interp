@@ -80,7 +80,13 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // (the nine numlit_* witnesses) and type.numlit.cast.widen / type.numlit.cast.trunc
 // (the #138 cast witnesses). Raised in the bump commit per the test's own
 // instruction.
-const RATCHET_FLOOR: usize = 140;
+// 140 → 144 at 90c90df (is24): the s114–s116 wave's four newly covered
+// clauses — type.numlit.cast.wrap (the D56 trio: wrap_as_int_in_range +
+// the two faults/ trap witnesses) and os.signal.listen / os.signal.wait /
+// os.signal.raise (cited by the signal pair, which this machine declines
+// but the coverage table counts by citation, honestly). Raised in the
+// bump commit per the test's own instruction.
+const RATCHET_FLOOR: usize = 144;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -121,7 +127,13 @@ const RATCHET_FLOOR: usize = 140;
 // adopt/propagate/default/value, [type.numlit.kind], [type.numlit.ambig], and
 // [type.numlit.cast] with its widen/trunc pair). The `type` namespace is
 // REGISTERED here now (the spec exists, every anchor is in anchors.json).
-const ANCHORS_TOTAL: usize = 370;
+// 370 → 380 at 90c90df (is24): the s114 signal tier writes spec/11-os.md —
+// nine `os.*` anchors ([os.signal] and its eight children), the `os`
+// namespace REGISTERED here now (the spec exists, every anchor is in
+// anchors.json) — and s113's D56 follow-up adds [type.numlit.cast.wrap].
+// The `pkg` namespace is REGISTERED too: s115 amended [conf.anchor.ns]
+// for #120, so the FILED_REGISTRY_FINDINGS waiver dies with the filing.
+const ANCHORS_TOTAL: usize = 380;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -256,10 +268,12 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // corpus files (all entries) land; the suite programs are unmoved.
     // 398/370 → 411/383 at 77466a3 (is23): the s113 D54 literal tier's 13
     // corpus files (all entries) land; the suite programs are unmoved.
+    // 411/383 → 422/393 at 90c90df (is24): the s114–s116 wave's 11 corpus
+    // files (10 entries, 1 member) land; the suite programs are unmoved.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "77466a320e14fd0cbf148ad51613e55aff6cb9fa");
-    assert_eq!(summary.programs, 411);
-    assert_eq!(summary.records, 383);
+    assert_eq!(summary.pin, "90c90df91dc314f9d0ae322d387dd10be046c828");
+    assert_eq!(summary.programs, 422);
+    assert_eq!(summary.records, 393);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
@@ -369,10 +383,10 @@ fn the_vocabularies_ship_closed() {
 fn the_anchor_registry_cross_check_holds_at_this_pin() {
     // Target 1 of the sprint: the pinned `anchors.json` is shared *data* —
     // consumed, and cross-checked against an independent extraction of the
-    // spec markdown. A mismatch is an upstream finding; at this pin the ONE
-    // disagreement is filed (wolf-lang#120, the pkg namespace) and returns
-    // as the sixteen-anchor notice; anything unfiled still refuses the
-    // export (`export::cross_check_registry`, red-tested in the library).
+    // spec markdown. A mismatch is an upstream finding; anything unfiled
+    // refuses the export (`export::cross_check_registry`, red-tested in
+    // the library). The pkg disagreement that stood here from c9da6d9 to
+    // 77466a3 (wolf-lang#120) was fixed upstream by s115.
     let spec = crate_root().join(wolf_interp::upstream_root()).join("spec");
     let text = std::fs::read_to_string(spec.join("anchors.json")).expect("readable");
     let value: serde_json::Value = serde_json::from_str(&text).expect("json");
@@ -385,8 +399,10 @@ fn the_anchor_registry_cross_check_holds_at_this_pin() {
     assert_eq!(registry.len(), ANCHORS_TOTAL);
     let notices =
         export::cross_check_registry(&spec, &registry).expect("nothing unfiled disagrees");
-    assert_eq!(notices.len(), 1, "{notices:?}");
-    assert!(notices[0].contains("16 `pkg.*`"), "{}", notices[0]);
+    // At 90c90df the pkg waiver is gone (s115 amended [conf.anchor.ns] for
+    // #120; the namespace is registered) — the cross-check holds with no
+    // standing notice at all, for the first time since c9da6d9.
+    assert_eq!(notices.len(), 0, "{notices:?}");
 }
 
 #[test]
