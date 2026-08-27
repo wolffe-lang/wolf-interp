@@ -2392,3 +2392,83 @@ fn a_nested_fn_shadowing_is_scoped_to_its_block() {
                   }\n";
     assert_eq!(outcome(source), Outcome::Exit(0));
 }
+
+// -- D54 numeric-literal adoption (`[type.numlit]`) ------------------------
+
+#[test]
+fn an_integer_literal_adopts_a_float_annotation() {
+    // D54.1 `[type.numlit.adopt]`: a bare `{integer}` literal in a float
+    // position resolves as that float — `let x: f64 = 5` binds `5.0`. The
+    // proof it is genuinely a float, not an int that happens to print the
+    // same, is a following float division reading `2.5`.
+    let source = "fn main() -> !int {\n\
+                  \x20   let x: f64 = 5\n\
+                  \x20   print(\"{x / 2}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "2.5\n");
+}
+
+#[test]
+fn float_division_is_sound_under_a_float_expectation() {
+    // D54.1/D54.2 soundness: `let x: f64 = 1 / 2` is `0.5` — both literals
+    // adopt `f64` BEFORE `/` runs, so it is float division, not the C
+    // integer-division footgun (`[type.numlit.propagate]`).
+    assert_eq!(
+        stdout("fn main() -> !int { let x: f64 = 1 / 2\nprint(\"{x}\")\n0 }\n"),
+        "0.5\n"
+    );
+    // The int twin: no float context, so the literals default to int and `/`
+    // is integer division (`[type.numlit.default]`).
+    assert_eq!(
+        stdout("fn main() -> !int { let n: int = 1 / 2\nprint(\"{n}\")\n0 }\n"),
+        "0\n"
+    );
+}
+
+#[test]
+fn the_arithmetic_bridge_propagates_adoption_through_a_term() {
+    // D54.2 `[type.numlit.propagate]`: `c * 1.8 + 32` with `c: f64` adopts the
+    // bare `32` as `f64` because the whole term is float.
+    assert_eq!(
+        stdout("fn main() -> !int { let c: f64 = 100.0\nprint(\"{c * 1.8 + 32}\")\n0 }\n"),
+        "212\n"
+    );
+    // The comparison bridge (the D49 lineage): `c <= 200` adopts the `200`.
+    assert_eq!(
+        stdout("fn main() -> !int { let c: f64 = 5.0\nif c <= 200 { print(\"yes\") }\n0 }\n"),
+        "yes\n"
+    );
+}
+
+#[test]
+fn a_concrete_int_value_never_adopts_a_float_type() {
+    // D54.3 `[type.numlit.value]`: adoption is a LITERAL's privilege. Once
+    // `let n = 0` names the value, `n` is an int value and `let x: f64 = n` is
+    // REFUSED — a dynamic machine must not silently let the value adopt where
+    // wolfc's `IntFrozen` state keeps them apart. The spelled fix is `n as f64`.
+    let source = "fn main() -> !int {\n\
+                  \x20   let n = 0\n\
+                  \x20   let x: f64 = n\n\
+                  \x20   0\n\
+                  }\n";
+    let Outcome::Unsupported(reason) = outcome(source) else {
+        panic!("a value adopting a float type must be refused: {source}");
+    };
+    assert!(reason.contains("literal's privilege"), "{reason}");
+}
+
+#[test]
+fn a_float_literal_never_satisfies_an_integer_expectation() {
+    // D54.1 `[type.numlit.adopt]`: adoption is one-directional. `let n: int =
+    // 0.0` is REFUSED — `0.0` is not an integer denotation, and the kind
+    // mismatch stays a mismatch (a leaner checker must not let it through).
+    let source = "fn main() -> !int {\n\
+                  \x20   let n: int = 0.0\n\
+                  \x20   n\n\
+                  }\n";
+    let Outcome::Unsupported(reason) = outcome(source) else {
+        panic!("a float literal satisfying an int expectation must be refused: {source}");
+    };
+    assert!(reason.contains("one-directional"), "{reason}");
+}

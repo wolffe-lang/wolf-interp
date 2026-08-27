@@ -379,14 +379,30 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             machine does not check — they run as conservatism, not
     //             mismatch. The spec grows `spec/09-constant-time.md`; no
     //             existing corpus file changed content.)
+    //   77466a3 → 374 files (is23: the s113 D54 literal tier. The corpus grows
+    //             13, all entries: `corpus/typecheck/` adds nine
+    //             `numlit_*` witnesses (adopt/propagate/default/value/ambig and
+    //             the c2f flagship) plus `cast_int_to_float.lu`, and
+    //             `corpus/faults/` adds three `cast_float_*` witnesses (#138 —
+    //             truncate, overflow trap, NaN trap). The `type` namespace is
+    //             now REGISTERED here (spec/10-types.md landed with the
+    //             `[type.numlit]` family, every `type.*` in anchors.json);
+    //             before that registration these files' headers failed to parse,
+    //             so `belongs` swept them into a sibling's module and every
+    //             `main` collided (E0302) — the same lesson the `ct` namespace
+    //             taught at da8582d. The two negative witnesses
+    //             (`numlit_value_refused`, `numlit_float_to_int_refused`) are
+    //             static E0401 refusals this machine performs dynamically
+    //             (`unsupported`) — conservatism, not mismatch. The spec grows
+    //             `spec/10-types.md`; no existing corpus file changed content.)
     let report = report();
     assert_eq!(
         report.total(),
-        361,
+        374,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 333);
+    assert_eq!(report.entries(), 346);
     assert_eq!(report.members(), 28);
 }
 

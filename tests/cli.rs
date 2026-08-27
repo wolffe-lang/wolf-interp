@@ -137,8 +137,11 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // plus s110's header-promotion pair and the #133 field-lend witness.
     // 351 -> 361 at the da8582d pin (is22): s112's constant-time tier lands
     // eight `ct/` taint witnesses plus the two `kernels/ct_*` flagships.
+    // 361 -> 374 at the 77466a3 pin (is23): s113's D54 tier lands nine
+    // `typecheck/numlit_*` witnesses, `typecheck/cast_int_to_float`, and three
+    // `faults/cast_float_*` cast witnesses (#138).
     // Moved with the pin, per the export.rs rule.
-    assert!(stdout.contains("361 file(s)"), "{stdout}");
+    assert!(stdout.contains("374 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -147,7 +150,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 361);
+    assert_eq!(value["total"], 374);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
