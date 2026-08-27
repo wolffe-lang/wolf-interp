@@ -362,14 +362,31 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             The spec is UNCHANGED in the range — 346 anchors; the
     //             wrapping family still has no clause of its own, which
     //             is the spec gap wolf-interp#42's comment records.)
+    //   da8582d → 361 files (is22: the s112 constant-time tier. The corpus
+    //             grows 10, all entries: `corpus/ct/` adds eight taint
+    //             witnesses — `branch_secret.lu`, `callind_secret.lu`,
+    //             `checked_secret.lu`, `divmod_secret.lu`, `index_secret.lu`
+    //             (the five sink classes, E1601-E1604/E1606), `membrane.lu`
+    //             (E1605), `public_len.lu` (the `public(…)` exemption runs)
+    //             and `public_typo.lu` (E1607) — and `corpus/kernels/` adds
+    //             the two flagships `ct_cswap.lu` + `ct_tag_compare.lu`. The
+    //             `ct` namespace is now REGISTERED here (spec/09-constant-
+    //             time.md landed with `[ct.attr]`/`[ct.taint]`, every `ct.*`
+    //             in anchors.json); before that registration these files'
+    //             headers failed to parse, so `belongs` swept them into a
+    //             sibling's module and every `main` collided (E0302). The
+    //             ct/ sink witnesses are static E16xx refusals this dynamic
+    //             machine does not check — they run as conservatism, not
+    //             mismatch. The spec grows `spec/09-constant-time.md`; no
+    //             existing corpus file changed content.)
     let report = report();
     assert_eq!(
         report.total(),
-        351,
+        361,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 323);
+    assert_eq!(report.entries(), 333);
     assert_eq!(report.members(), 28);
 }
 

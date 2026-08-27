@@ -845,6 +845,36 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("kernels/sha256_block.lu", "exit(0)"),
     ("memory/mut_param_field_lend.lu", "exit(0)"),
     ("typecheck/wrap_narrow_cast.lu", "exit(0)"),
+    // -- is22 (pin da8582d) --------------------------------------------------
+    // The s112 constant-time tier. All ten of its witnesses reach `run` here,
+    // because the constant-time guarantee is a STATIC taint analysis (the
+    // E16xx family, a compile-time gate) and this dynamic machine does not
+    // carry that pass. The seven `ct/` sink witnesses pin a static refusal
+    // upstream (`check: fail(E16xx)`); lupin executes them and they reach
+    // their value — the honest `conservatism` class in the census, and here
+    // a pinned `run` verdict like any other executed program. The two kernel
+    // flagships and the `public(…)`-exemption program declare `phase: run`
+    // outright.
+    //
+    // `kernels/ct_tag_compare.lu` — four wrapping[u64] limb pairs XORed and
+    // OR-folded unconditionally, ONE declassified compare decides the exit;
+    // a tree-walk has no secret-dependent branches to leak, so it runs at
+    // sight. `kernels/ct_cswap.lu` — the conditional-swap shape, the mask
+    // built from a public bit. `ct/public_len.lu` — a `public(len)`-exempt
+    // parameter used as a bound; the exemption is the compiler's concern,
+    // the value is this machine's. The sink witnesses exit by what their
+    // bodies compute past the point the verifier would have refused:
+    // `divmod_secret` exits 2, `index_secret` exits 4, the rest exit 0.
+    ("ct/branch_secret.lu", "exit(0)"),
+    ("ct/callind_secret.lu", "exit(0)"),
+    ("ct/checked_secret.lu", "exit(0)"),
+    ("ct/divmod_secret.lu", "exit(2)"),
+    ("ct/index_secret.lu", "exit(4)"),
+    ("ct/membrane.lu", "exit(0)"),
+    ("ct/public_len.lu", "exit(0)"),
+    ("ct/public_typo.lu", "exit(0)"),
+    ("kernels/ct_cswap.lu", "exit(0)"),
+    ("kernels/ct_tag_compare.lu", "exit(0)"),
 ];
 
 #[test]
