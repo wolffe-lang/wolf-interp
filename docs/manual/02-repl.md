@@ -36,7 +36,6 @@ wolf> t
 wolf : str
 wolf> 1 / 0
 trap(div-zero): division by zero is defined behavior in wolf: it traps [mem.ub.defined] at 0..5
-the session survives the trap; the world is as the fault left it [repl.trap.alive]
 wolf> 2 + 3
 5 : i32
 wolf> :quit
@@ -50,7 +49,9 @@ Worth noticing in that transcript:
   read, and the move it conflicts with. The value lives on in `t`.
 - A trap does not end the session (`[repl.trap.alive]`). The world is
   whatever the fault left behind. Nothing rolls back, and that state is
-  inspectable, which is the point.
+  inspectable, which is the point. The survival guarantee holds on every
+  fault; the reminder line is printed once per session (the first fault,
+  trap or UB), so the second trap here shows only its trap line.
 
 ## Multi-line input
 

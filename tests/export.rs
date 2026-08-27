@@ -66,7 +66,15 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // quartet) and [gram.type.row.flatten] (the D51 pair plus the advanced
 // nested_row_param/return). Raised in the bump commit per the test's own
 // instruction.
-const RATCHET_FLOOR: usize = 127;
+// HELD at 127 by 21b129e (is21): the s110/s111 wave adds no anchor — the
+// wrapping family still has no clause, so its six new files cite nothing new.
+// 127 → 133 at da8582d (is22): the s112 constant-time tier's six covered
+// clauses gain their first citing programs in the same wave — ct.attr.fn,
+// ct.attr.public, ct.taint.prop, ct.taint.declassify (the two kernel
+// flagships + public_len), ct.taint.sink (the five ct/ sink witnesses) and
+// ct.taint.membrane (membrane.lu). Raised in the bump commit per the test's
+// own instruction.
+const RATCHET_FLOOR: usize = 133;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -98,7 +106,11 @@ const RATCHET_FLOOR: usize = 127;
 // corpus files, zero clauses. The wrapping family the wave completes still
 // has no clause of its own (no arith.* namespace exists); the shift-count
 // gap is recorded on wolf-interp#42 as owed upstream.
-const ANCHORS_TOTAL: usize = 346;
+// 346 → 360 at da8582d (is22): the s112 constant-time tier writes
+// spec/09-constant-time.md — fourteen `ct.*` anchors ([ct.attr] and its
+// six children, [ct.taint] and its seven). The `ct` namespace is REGISTERED
+// here now (the spec exists, every anchor is in anchors.json).
+const ANCHORS_TOTAL: usize = 360;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -229,10 +241,12 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // files (all entries) land; the suite programs are unmoved.
     // 382/354 → 388/360 at 21b129e (is21): the s110/s111 wave's 6 corpus
     // files (all entries) land; the suite programs are unmoved.
+    // 388/360 → 398/370 at da8582d (is22): the s112 constant-time tier's 10
+    // corpus files (all entries) land; the suite programs are unmoved.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "21b129e90c4589c0fc6b5698e0468e84edbd574d");
-    assert_eq!(summary.programs, 388);
-    assert_eq!(summary.records, 360);
+    assert_eq!(summary.pin, "da8582d0512eded12e4ba873910a5f95ce2b1a67");
+    assert_eq!(summary.programs, 398);
+    assert_eq!(summary.records, 370);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

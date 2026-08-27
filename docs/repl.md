@@ -60,7 +60,10 @@ fork it. is09 exports them with the rest of the doc surface.
 - **`[repl.trap.alive]`.** A trap, UB finding, or diagnostic prints and
   the session survives. The world is whatever the fault left behind, with
   no rollback, and `:mem` shows exactly that state. That is a teaching
-  surface, not a bug. `:reset` is the fresh start.
+  surface, not a bug. `:reset` is the fresh start. The survival holds on
+  every fault; the reminder line (`the session survives …`) prints once per
+  session — on the first fault, trap or UB — so a transcript with a run of
+  faults does not repeat it.
 
 ## 3. The directive surface (v1: additions take corpus-directive review)
 

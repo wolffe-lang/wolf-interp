@@ -94,6 +94,12 @@ pub struct Session {
     /// the rest of the world). The interactive loop never reads this; `lupin
     /// eval` does.
     fault: Option<SessionFault>,
+    /// Whether the survival reminder (`the session survives …
+    /// [repl.trap.alive]`) has already printed this session. The clause's
+    /// guarantee holds on *every* fault; the *reminder* is once per session
+    /// — newcomers reading a book transcript need it after the first fault,
+    /// not on repeat. `:reset` (a fresh world) clears it with everything else.
+    survival_note_shown: bool,
 }
 
 impl Session {
@@ -120,6 +126,18 @@ impl Session {
             trace: std::collections::VecDeque::new(),
             tracing: false,
             fault: None,
+            survival_note_shown: false,
+        }
+    }
+
+    /// Pushes the once-per-session survival reminder (`[repl.trap.alive]`), or
+    /// nothing on every fault after the first. The clause guarantee is
+    /// unchanged — the session survives every fault; only the reminder is
+    /// deduplicated so a book transcript does not repeat it.
+    fn push_survival_note(&mut self, line: &str, out: &mut Vec<String>) {
+        if !self.survival_note_shown {
+            self.survival_note_shown = true;
+            out.push(line.to_owned());
         }
     }
 
@@ -717,10 +735,10 @@ impl Session {
                         adjust(secondary.end)
                     ));
                 }
-                out.push(
+                self.push_survival_note(
                     "the session survives the trap; the world is as the fault left it \
-                     [repl.trap.alive]"
-                        .to_owned(),
+                     [repl.trap.alive]",
+                    out,
                 );
             }
             Signal::Ub(finding) => {
@@ -745,10 +763,10 @@ impl Session {
                 }
                 out.push(line);
                 out.push(format!("  licenses {}", finding.row.optimization()));
-                out.push(
+                self.push_survival_note(
                     "the session survives the finding; the world is as the access left it \
-                     [repl.trap.alive]"
-                        .to_owned(),
+                     [repl.trap.alive]",
+                    out,
                 );
             }
             Signal::Return(Value::Error(err)) => {
@@ -951,5 +969,153 @@ fn collect_bound_names(pattern: &Pattern, out: &mut Vec<String>) {
             }
         }
         PatKind::Wildcard | PatKind::Literal(_) => {}
+    }
+}
+
+#[cfg(test)]
+mod survival_note_is_once_per_session {
+    //! `[repl.trap.alive]` holds on EVERY fault — the session survives, the
+    //! world is as the fault left it. The *reminder* line, however, is once
+    //! per session (the first fault, trap or UB): a book transcript with a
+    //! run of faults would otherwise repeat it as noise. The semantic is
+    //! unchanged; only the rendering is deduplicated.
+
+    use super::{Fed, Session};
+
+    /// Feeds a script line-by-line to a fresh session and returns every
+    /// output line, in order (a directive's or expression's `Fed::Output`).
+    fn run(lines: &[&str]) -> Vec<String> {
+        let mut session = Session::new(Some(0));
+        let mut out = Vec::new();
+        for line in lines {
+            if let Fed::Output(produced) = session.feed_line(line) {
+                out.extend(produced);
+            }
+        }
+        out
+    }
+
+    fn survival_lines(out: &[String]) -> usize {
+        out.iter()
+            .filter(|line| line.contains("[repl.trap.alive]"))
+            .count()
+    }
+
+    fn faults(out: &[String]) -> usize {
+        out.iter()
+            .filter(|line| line.starts_with("trap(") || line.starts_with("ub("))
+            .count()
+    }
+
+    #[test]
+    fn two_traps_print_the_survival_reminder_once() {
+        let out = run(&["1/0", "2/0"]);
+        assert_eq!(
+            faults(&out),
+            2,
+            "both div-zero divisions must trap:\n{out:#?}"
+        );
+        assert_eq!(
+            survival_lines(&out),
+            1,
+            "the reminder is once per session — the second trap prints only its \
+             trap line:\n{out:#?}"
+        );
+        // Placement: the reminder rides the FIRST fault, not the second.
+        let first_trap = out.iter().position(|l| l.starts_with("trap(")).unwrap();
+        let note = out
+            .iter()
+            .position(|l| l.contains("[repl.trap.alive]"))
+            .unwrap();
+        assert_eq!(
+            note,
+            first_trap + 1,
+            "the note follows the first trap:\n{out:#?}"
+        );
+    }
+
+    #[test]
+    fn two_ub_findings_print_the_survival_reminder_once() {
+        // Use-after-free through a freed C pointer is the P1 finding; doing it
+        // twice is two findings in one session (`[mem.prov.state]`).
+        let out = run(&[
+            "import c \"stdlib.h\"",
+            "let p = c.malloc(8)",
+            "c.free(p)",
+            "c.memset(p, 1, 8)",
+            "c.memset(p, 2, 8)",
+        ]);
+        assert_eq!(
+            out.iter().filter(|l| l.starts_with("ub(")).count(),
+            2,
+            "both writes through the freed pointer must report UB:\n{out:#?}"
+        );
+        assert_eq!(
+            survival_lines(&out),
+            1,
+            "the reminder is once per session — the second finding prints only \
+             its ub line:\n{out:#?}"
+        );
+    }
+
+    #[test]
+    fn a_trap_then_a_ub_prints_the_reminder_once_across_the_kinds() {
+        // Once per session is across BOTH kinds: the trap claims the reminder,
+        // the later UB finding is suppressed.
+        let out = run(&[
+            "1/0",
+            "import c \"stdlib.h\"",
+            "let p = c.malloc(8)",
+            "c.free(p)",
+            "c.memset(p, 1, 8)",
+        ]);
+        assert!(
+            out.iter().any(|l| l.starts_with("trap(")),
+            "the division traps:\n{out:#?}"
+        );
+        assert!(
+            out.iter().any(|l| l.starts_with("ub(")),
+            "the write through the freed pointer is UB:\n{out:#?}"
+        );
+        assert_eq!(
+            survival_lines(&out),
+            1,
+            "one reminder for the whole session, whichever kind came first:\n{out:#?}"
+        );
+        // The trap came first, so its wording is the one that printed.
+        let note = out
+            .iter()
+            .find(|l| l.contains("[repl.trap.alive]"))
+            .unwrap();
+        assert!(
+            note.contains("survives the trap"),
+            "the first fault was the trap, so the trap wording shows:\n{note}"
+        );
+    }
+
+    #[test]
+    fn reset_re_arms_the_reminder() {
+        // `:reset` is a fresh world (`Session::new`), so the next session's
+        // first fault reminds again — the flag is session state, not global.
+        let mut session = Session::new(Some(0));
+        let mut before = Vec::new();
+        for line in ["1/0", "2/0"] {
+            if let Fed::Output(o) = session.feed_line(line) {
+                before.extend(o);
+            }
+        }
+        assert_eq!(survival_lines(&before), 1);
+
+        let mut after = Vec::new();
+        for line in [":reset", "1/0"] {
+            if let Fed::Output(o) = session.feed_line(line) {
+                after.extend(o);
+            }
+        }
+        assert_eq!(
+            survival_lines(&after),
+            1,
+            "the first fault after :reset reminds again:\n{after:#?}"
+        );
     }
 }
