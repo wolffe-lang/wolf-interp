@@ -712,9 +712,12 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("resolve/leaf_twins/main.lu", "exit(0)"),
     // #39's free rider: `use outer.inner` resolves the nested directory at
     // its full path now, so the W0316 ancestor-import fixture finally runs
-    // its program (the warning itself is a compiler-side analysis, honest-
-    // absent here). It sat unsupported behind the flat `<root>/<bound>`
-    // spelling since the pin brought it.
+    // its program. It sat unsupported behind the flat `<root>/<bound>`
+    // spelling since the pin brought it. is19's probe closed the loop: the
+    // W0316 detection had stood ready since 0.1.6 and is18's loader was
+    // exactly what it was waiting for — the warning fires at the `use`
+    // target's ident ([92,97], the counterparty's own span), so W0316 left
+    // `lint::HONEST_ABSENT` for `IMPLEMENTED` and the ledger is enforced.
     ("lints/ancestor_import/main.lu", "exit(0)"),
     // is18's json movers: the s40 query tier runs on lupin's OWN RFC 8259
     // reading (`crate::json` — independence forbids porting wolf_mem::json;

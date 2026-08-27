@@ -69,21 +69,20 @@ use crate::sema::{Def, Program};
 /// codes (`[proto.record.warn]`'s honest-absent rule covers the rest).
 pub const IMPLEMENTED: &[&str] = &[
     "W0302", "W0303", "W0304", "W0305", "W0306", "W0307", "W0308", "W0309", "W0310", "W0311",
-    "W0312", "W0313", "W0314", "W0315", "W0401", "W0602", "W0603", "W0604", "W1002", "W1003",
-    "W1101", "W1102", "W1302", "E0802",
+    "W0312", "W0313", "W0314", "W0315", "W0316", "W0401", "W0602", "W0603", "W0604", "W1002",
+    "W1003", "W1101", "W1102", "W1302", "E0802",
 ];
 
 /// Compiler-only for now — codes this machine's rungs cannot observe, kept
 /// here so the honest-absent posture is written down beside the implemented
 /// set: W0402 (float typing), W0601 (row typing), W0801 (case tables),
 /// W1001 (region inference), plus the grandfathered W0301/W1301. W0316
-/// (ancestor import, s69) joins them: its only witness shape needs the
-/// dotted `use outer.inner` nested-module loading this machine's loader
-/// does not perform — the detection code below stands ready and simply
-/// never sees its input (`lints/ancestor_import/` is out-of-scope here).
-pub const HONEST_ABSENT: &[&str] = &[
-    "W0301", "W0316", "W0402", "W0601", "W0801", "W1001", "W1301",
-];
+/// (ancestor import, s69) sat here from 0.1.6 to is18: its only witness
+/// shape needs the dotted `use outer.inner` nested-module loading, the
+/// detection code stood ready, and is18's module-identity work (#39) is
+/// what finally fed it — `lints/ancestor_import/` runs and warns now, so
+/// W0316 moved to `IMPLEMENTED` at is19 and its ledger is enforced.
+pub const HONEST_ABSENT: &[&str] = &["W0301", "W0402", "W0601", "W0801", "W1001", "W1301"];
 
 /// Codes `#[allow(…)]` recognizes — spec/01 §9.2's registered families as of
 /// the 13b811f pin. An argument outside this set suppresses nothing and is
