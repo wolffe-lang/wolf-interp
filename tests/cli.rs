@@ -132,10 +132,11 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = stdout_of(&output);
-    // 339 -> 345 at the 87405ac pin: s109's ruling wave lands (D51's
-    // nested-row merge/conflict pair, D52's tag-position trio and its
-    // E0301 counter). Moved with the pin, per the export.rs rule.
-    assert!(stdout.contains("345 file(s)"), "{stdout}");
+    // 345 -> 351 at the 21b129e pin: s111's wrapping-family wave lands
+    // (sha256_block, the K-table witness, the narrowing wrapping cast)
+    // plus s110's header-promotion pair and the #133 field-lend witness.
+    // Moved with the pin, per the export.rs rule.
+    assert!(stdout.contains("351 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -144,7 +145,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 345);
+    assert_eq!(value["total"], 351);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

@@ -341,14 +341,35 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             what this machine always executed, so the pins now gate
     //             both machines. The spec grows `[gram.expr.tagident]` and
     //             `[gram.type.row.flatten]` — 346 anchors.)
+    //   21b129e → 351 files (is21: the s110/s111 span — the crypto probe's
+    //             debts paid. The corpus grows 6, all entries:
+    //             `kernels/sha256_block.lu` (wolf-lang#130's flagship — one
+    //             full SHA-256("abc") compression over wrapping[u64]),
+    //             `generics/list_wrapping_elem.lu` (#132 — a
+    //             `List[wrapping[u64]]` K-table load; its constants ride
+    //             annotated `let`s because of THIS repo's #43),
+    //             `typecheck/wrap_narrow_cast.lu` (#131 — narrowing
+    //             `int as wrapping[u32]` is mask-to-width),
+    //             `memory/mut_param_field_lend.lu` (#133 —
+    //             `f(mut param.field)` re-lends the caller's slot at the
+    //             field's offset), and s110's header-promotion pair
+    //             `kernels/hot_header.lu` + `hot_header_alias.lu`. One
+    //             existing file changed content without moving a count or
+    //             a check: `rows/tag_let_position.lu`'s header records
+    //             that s111 closed wolf-lang#122 (a raw row BINDS at
+    //             `let`; only `?` propagates), so all three compiler lanes
+    //             now agree with the spec reading this machine executes.
+    //             The spec is UNCHANGED in the range — 346 anchors; the
+    //             wrapping family still has no clause of its own, which
+    //             is the spec gap wolf-interp#42's comment records.)
     let report = report();
     assert_eq!(
         report.total(),
-        345,
+        351,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 317);
+    assert_eq!(report.entries(), 323);
     assert_eq!(report.members(), 28);
 }
 

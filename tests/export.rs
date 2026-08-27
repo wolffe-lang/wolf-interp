@@ -94,6 +94,10 @@ const RATCHET_FLOOR: usize = 127;
 // into spec/01 — [gram.expr.tagident] (D52's declared-row-first resolution,
 // the return-position rule recorded for the first time) and
 // [gram.type.row.flatten] (D51's union semantics, E0609 the counter).
+// HELD at 346 by 21b129e: the s110/s111 range touches no spec/ file — six
+// corpus files, zero clauses. The wrapping family the wave completes still
+// has no clause of its own (no arith.* namespace exists); the shift-count
+// gap is recorded on wolf-interp#42 as owed upstream.
 const ANCHORS_TOTAL: usize = 346;
 
 fn crate_root() -> PathBuf {
@@ -223,10 +227,12 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // files (10 entries) land; the suite programs are unmoved.
     // 376/348 → 382/354 at 87405ac (is19): the s109 ruling wave's 6 corpus
     // files (all entries) land; the suite programs are unmoved.
+    // 382/354 → 388/360 at 21b129e (is21): the s110/s111 wave's 6 corpus
+    // files (all entries) land; the suite programs are unmoved.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "87405aca88bbdd1d571e7b3ef8da638e64fbd57a");
-    assert_eq!(summary.programs, 382);
-    assert_eq!(summary.records, 354);
+    assert_eq!(summary.pin, "21b129e90c4589c0fc6b5698e0468e84edbd574d");
+    assert_eq!(summary.programs, 388);
+    assert_eq!(summary.records, 360);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
