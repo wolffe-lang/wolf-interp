@@ -4346,6 +4346,25 @@ impl Machine {
             );
         }
 
+        // #42: on a wrapping type the shift COUNT masks to the TYPE's bit
+        // width — `x << 64 == x` on wrapping[u64], `y << 32 == y` on
+        // wrapping[u32] — the in-repo ruling all three compiler lanes
+        // implement (the WIR shl contract; s111's #130 mirrored it into the
+        // checked tier). The width comes from the operand's type, never a
+        // constant: u32 masks at 32, u64 at 64. Powers of two throughout, so
+        // `rem_euclid` IS the bit mask, and it also reads a negative count
+        // the way hardware reads its two's-complement pattern. Checked and
+        // saturating types keep the overflow trap `checked` below imposes —
+        // the spec's own wrapping-shift-count clause is still owed upstream
+        // ([gram] has no arith rows), recorded on the issue.
+        let shift_count = || {
+            let masked = if ty.mode == ArithMode::Wrapping {
+                b.rem_euclid(i128::from(ty.bits))
+            } else {
+                b
+            };
+            u32::try_from(masked).ok()
+        };
         let computed = match op {
             Add => a.checked_add(b),
             Sub => a.checked_sub(b),
@@ -4355,8 +4374,8 @@ impl Machine {
             BitAnd => Some(a & b),
             BitOr => Some(a | b),
             BitXor => Some(a ^ b),
-            Shl => u32::try_from(b).ok().and_then(|s| a.checked_shl(s)),
-            Shr => u32::try_from(b).ok().and_then(|s| a.checked_shr(s)),
+            Shl => shift_count().and_then(|s| a.checked_shl(s)),
+            Shr => shift_count().and_then(|s| a.checked_shr(s)),
             _ => unreachable!("handled above"),
         };
         self.checked(ty, computed, span, &format!("`{}`", spelling(op)))
