@@ -404,7 +404,24 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             };
             if *ms > 0 {
                 let capped = u64::try_from(*ms).unwrap_or(u64::MAX);
-                std::thread::sleep(std::time::Duration::from_millis(capped));
+                if machine.concurrent() {
+                    // A concurrent program's sleep parks the TASK, never the
+                    // scheduler: a raw `thread::sleep` here held the baton
+                    // for the whole duration, so a sibling's armed net
+                    // deadline was observed at the sleep's length instead of
+                    // its own (wolf-interp#40 measured 503ms against 60ms).
+                    // The park bound becomes the earliest pending wakeup —
+                    // see `Sched::sleep_park`.
+                    // A cancellation ends the sleep early; the pending flag
+                    // delivers at the task's next blocking point, exactly as
+                    // it would after a full-length sleep. A kill unwinds.
+                    let wake = machine.sched_block(|sched, task| sched.sleep_park(task, capped));
+                    if wake == super::sched::Wake::Killed {
+                        return Err(Signal::ProcKilled);
+                    }
+                } else {
+                    std::thread::sleep(std::time::Duration::from_millis(capped));
+                }
             }
             Ok(Value::Unit)
         }

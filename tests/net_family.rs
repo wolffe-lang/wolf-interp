@@ -147,3 +147,107 @@ fn a_deadline_resolves_an_accept_park_as_the_timeout_row() {
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     assert_eq!(String::from_utf8_lossy(&output.stdout), "error: timeout\n");
 }
+
+#[test]
+fn a_sleeping_sibling_does_not_starve_an_armed_deadline() {
+    // wolf-interp#40: a sibling task parked in `time_sleep_ms(500)` held
+    // the baton through a raw `thread::sleep`, so a 60ms `net_deadline` in
+    // the reading task was observed at ~503ms and resolved as the peer's
+    // `closed` instead of its own `timeout`. The is20 fix parks the TASK
+    // and makes the scheduler's park bound the earliest pending wakeup.
+    //
+    // The witness: the deadline fires as `timeout` within its declared
+    // 60ms window plus a stated epsilon of 340ms — process spawn, program
+    // load, the ~1ms poll cadence and the cancelled sibling's teardown —
+    // chosen to stay decisively below the sibling's 500ms sleep (the base
+    // bug cannot pass it). Five runs per spawn ordering: ten runs total,
+    // all stable.
+    let sleeper_first = "fn main() -> !int {\n\
+        \x20   let srv = net_listen(\"127.0.0.1:0\")?\n\
+        \x20   let port = net_port(srv)?\n\
+        \x20   scope s {\n\
+        \x20       s.spawn(fn() {\n\
+        \x20           let conn = net_accept(srv) else |_| -1\n\
+        \x20           time_sleep_ms(500)\n\
+        \x20           net_close(conn) else |_| {}\n\
+        \x20       })\n\
+        \x20       let cli = net_connect(\"127.0.0.1:{port}\")?\n\
+        \x20       net_deadline(cli, 60)?\n\
+        \x20       let got = net_read(cli, 64)?\n\
+        \x20       print(\"read-ok: {got.len}\")\n\
+        \x20       net_close(cli)?\n\
+        \x20   }\n\
+        \x20   net_close(srv)?\n\
+        \x20   0\n\
+        }\n";
+    let dialer_first = "fn main() -> !int {\n\
+        \x20   let srv = net_listen(\"127.0.0.1:0\")?\n\
+        \x20   let port = net_port(srv)?\n\
+        \x20   scope s {\n\
+        \x20       let cli = net_connect(\"127.0.0.1:{port}\")?\n\
+        \x20       s.spawn(fn() {\n\
+        \x20           let conn = net_accept(srv) else |_| -1\n\
+        \x20           time_sleep_ms(500)\n\
+        \x20           net_close(conn) else |_| {}\n\
+        \x20       })\n\
+        \x20       net_deadline(cli, 60)?\n\
+        \x20       let got = net_read(cli, 64)?\n\
+        \x20       print(\"read-ok: {got.len}\")\n\
+        \x20       net_close(cli)?\n\
+        \x20   }\n\
+        \x20   net_close(srv)?\n\
+        \x20   0\n\
+        }\n";
+    for (name, source) in [
+        ("net-deadline-sleeper-first", sleeper_first),
+        ("net-deadline-dialer-first", dialer_first),
+    ] {
+        let dir = scratch(name);
+        for round in 0..5 {
+            let started = std::time::Instant::now();
+            let output = run_program(&dir, source);
+            let elapsed = started.elapsed();
+            assert_eq!(output.status.code(), Some(1), "{name}#{round}: {output:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&output.stdout),
+                "error: timeout\n",
+                "{name}#{round}: the deadline's own row, never the sleeping peer's"
+            );
+            assert!(
+                elapsed < std::time::Duration::from_millis(400),
+                "{name}#{round}: the 60ms deadline was observed at {elapsed:?} — \
+                 a sleeping sibling is starving the timer again (#40)"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_lone_concurrent_sleeper_parks_the_world_for_exactly_its_duration() {
+    // The other face of the #40 park bound: when the sleeper is the ONLY
+    // runnable task, the scheduler must wait for its real wakeup — not
+    // declare deadlock (nothing ready, no virtual timer) and not spin.
+    let dir = scratch("net-lone-sleeper");
+    let source = "fn main() -> !int {\n\
+        \x20   scope s {\n\
+        \x20       s.spawn(fn() {\n\
+        \x20           time_sleep_ms(80)\n\
+        \x20           print(\"slept\")\n\
+        \x20       })\n\
+        \x20   }\n\
+        \x20   0\n\
+        }\n";
+    let started = std::time::Instant::now();
+    let output = run_program(&dir, source);
+    let elapsed = started.elapsed();
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "slept\n");
+    assert!(
+        elapsed >= std::time::Duration::from_millis(80),
+        "a sleep is real: {elapsed:?}"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_millis(400),
+        "the join woke promptly after the sleep: {elapsed:?}"
+    );
+}

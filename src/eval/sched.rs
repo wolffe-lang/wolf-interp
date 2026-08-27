@@ -433,6 +433,19 @@ struct Timer {
     arm: usize,
 }
 
+/// A pending **real-time** sleep (`time_sleep_ms` in a concurrent program,
+/// is20). Distinct from [`Timer`] on purpose: a select timeout lives on the
+/// virtual clock and fires by jumping it (spec/07: "no real sleeping"), while
+/// a sleep is s40's real wall-time surface — the sleeping task parks and the
+/// scheduler's park bound becomes the earliest pending wakeup, so a sleeping
+/// sibling can never starve another task's timer (wolf-interp#40).
+#[derive(Debug)]
+struct RealSleep {
+    due: std::time::Instant,
+    seq: u64,
+    task: TaskId,
+}
+
 /// A memory access the race detector remembers (`[conc.mm.race.3]`).
 #[derive(Debug)]
 struct Access {
@@ -482,6 +495,9 @@ struct State {
     procs: Vec<Proc>,
     timers: Vec<Timer>,
     timer_seq: u64,
+    /// Pending real-time sleeps (is20, #40) — see [`RealSleep`].
+    real_sleeps: Vec<RealSleep>,
+    sleep_seq: u64,
     /// Virtual nanoseconds (`[conc.select.timeout]`).
     clock: u128,
     /// How this run answers decision points (`[conc.det.seed]`).
@@ -719,6 +735,10 @@ impl State {
         for t in &self.timers {
             let _ = write!(s, "tm={},{},{},{};", t.deadline, t.seq, t.task, t.arm);
         }
+        for sleep in &self.real_sleeps {
+            // Wall time is not canonical; the sleep's identity is.
+            let _ = write!(s, "rs={},{};", sleep.seq, sleep.task);
+        }
         for (key, history) in &self.accesses {
             let _ = write!(s, "acc{key:?}=");
             for a in history {
@@ -791,12 +811,54 @@ impl State {
             mx.waiters.retain(|t| *t != task);
         }
         self.timers.retain(|timer| timer.task != task);
+        self.real_sleeps.retain(|sleep| sleep.task != task);
+    }
+
+    /// Wakes every real-time sleeper whose due instant has passed. Called at
+    /// each scheduling decision, so a due sleeper joins the candidates the
+    /// moment the baton moves (is20, #40).
+    fn promote_due_sleeps(&mut self) {
+        if self.real_sleeps.is_empty() {
+            return;
+        }
+        let now = std::time::Instant::now();
+        let mut due: Vec<RealSleep> = Vec::new();
+        let mut keep: Vec<RealSleep> = Vec::new();
+        for sleep in self.real_sleeps.drain(..) {
+            if sleep.due <= now {
+                due.push(sleep);
+            } else {
+                keep.push(sleep);
+            }
+        }
+        self.real_sleeps = keep;
+        // Deterministic wake order: registration sequence.
+        due.sort_by_key(|sleep| sleep.seq);
+        for sleep in due {
+            if self.tasks[sleep.task].state == TaskState::Blocked {
+                let name = self.tasks[sleep.task].name.clone();
+                self.note(
+                    Rule::SchedTimer,
+                    format!("real sleep for `{name}` (task {}) elapses", sleep.task),
+                );
+                self.make_ready(sleep.task, Wake::Ok(Value::Unit));
+            }
+        }
     }
 
     /// Picks the next task to run, advancing virtual time if it must.
     /// `None` means nothing can ever run again.
+    ///
+    /// The park bound (is20, #40): when nothing is ready and no virtual
+    /// timer is pending but a real-time sleep is, this **waits** for the
+    /// earliest pending wakeup instead of returning `None` — so a sleeping
+    /// sibling parks the world for exactly its remaining duration and no
+    /// longer, and a deadlock is never declared over a sleeper that will
+    /// wake. No busy-poll: the wait is one `thread::sleep` to the earliest
+    /// due instant.
     fn choose_next(&mut self) -> Option<TaskId> {
         loop {
+            self.promote_due_sleeps();
             if !self.ready.is_empty() {
                 if let Chooser::Plan(plan) = &self.chooser
                     && plan.leak_nondeterminism
@@ -821,8 +883,13 @@ impl State {
                 );
                 return Some(task);
             }
-            if !self.advance_clock() {
-                return None;
+            if self.advance_clock() {
+                continue;
+            }
+            let earliest = self.real_sleeps.iter().map(|sleep| sleep.due).min()?;
+            let now = std::time::Instant::now();
+            if earliest > now {
+                std::thread::sleep(earliest - now);
             }
         }
     }
@@ -1282,6 +1349,8 @@ impl Sched {
             procs: Vec::new(),
             timers: Vec::new(),
             timer_seq: 0,
+            real_sleeps: Vec::new(),
+            sleep_seq: 0,
             clock: 0,
             chooser,
             decisions: Vec::new(),
@@ -1466,6 +1535,33 @@ impl Sched {
             if state.tasks[me].wake.is_none() {
                 state.tasks[me].wake = Some(Wake::Ok(Value::Unit));
             }
+        }
+        self.park(me)
+    }
+
+    /// `time_sleep_ms` in a concurrent program (is20, #40): register a
+    /// real-time wakeup and **park**, so siblings run for the duration and
+    /// the scheduler's park bound becomes the earliest pending wakeup —
+    /// a sleeping sibling can no longer hold the baton through a
+    /// `thread::sleep` while another task's armed net deadline goes
+    /// unserviced. Wakes `Ok` when the duration elapses; a cancellation or
+    /// kill racing in ends the sleep early exactly as at any other
+    /// runtime-owned blocking point.
+    pub fn sleep_park(&self, me: TaskId, ms: u64) -> Wake {
+        {
+            let mut state = self.lock();
+            let due = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+            let seq = state.sleep_seq;
+            state.sleep_seq += 1;
+            state.real_sleeps.push(RealSleep { due, seq, task: me });
+            let name = state.tasks[me].name.clone();
+            state.note(
+                Rule::SchedPark,
+                format!(
+                    "`{name}` (task {me}) sleeps {ms}ms; the park bound is the earliest \
+                     pending wakeup"
+                ),
+            );
         }
         self.park(me)
     }
