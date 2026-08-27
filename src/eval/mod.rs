@@ -2644,7 +2644,47 @@ impl Machine {
     /// Exclusivity is checked as the arguments accumulate, which is what makes
     /// `f(mut a.x, mut a.y)` legal and `f(mut a, mut a.x)` a trap.
     fn eval_args(&mut self, args: &[Arg]) -> EResult<Args> {
-        self.eval_args_for(args, Callee::Wolf)
+        self.eval_args_for(args, Callee::Wolf, None)
+    }
+
+    /// D52's declared-row-first resolution at one checked position
+    /// (`[gram.expr.tagident]`): a bare lowercase identifier the position's
+    /// expected DECLARED row spells resolves as the tag — the raise value,
+    /// not a name lookup. A *local binding* shadows it (the tightest scopes
+    /// win, as everywhere; W0305's fire-at-use in `lint` warns there), while
+    /// module items, imports and prelude names LOSE to the declared tag —
+    /// which is why this is asked before any of those lookups would run.
+    /// A name the row does not spell is `None`: the caller's ordinary
+    /// resolution proceeds, and an unresolvable name keeps its refusal
+    /// (`rows/negative/tag_undeclared_arg.lu` — E0301's fact, stated here
+    /// as the honest unsupported).
+    fn declared_row_tag(&mut self, expr: &Expr, row: &[String]) -> Option<Value> {
+        let ExprKind::Path(path) = &*expr.kind else {
+            return None;
+        };
+        if !path.is_single() {
+            return None;
+        }
+        let name = &path.segments[0].name;
+        if !name.starts_with(char::is_lowercase) || !row.contains(name) || self.local_exists(name) {
+            return None;
+        }
+        let name = name.clone();
+        self.fire(
+            Rule::ErrRows,
+            expr.span,
+            &format!("declared-row tag `{name}` at a checked position (D52)"),
+        );
+        Some(Value::Error(Box::new(ErrorValue {
+            tag: name,
+            payload: Vec::new(),
+            // A name reached through a checked position's declared row is a
+            // raise by construction, whatever else it spells.
+            enum_variant: false,
+            // The row rides with the value (wolf-interp#29): handler arm
+            // resolution asks the VALUE which row it came through.
+            row: row.to_vec(),
+        })))
     }
 
     /// As [`Machine::eval_args`], knowing what is being called.
@@ -2659,7 +2699,20 @@ impl Machine {
     /// happens instead is exposure: "wildcard pointers from FFI behave as
     /// exposed", so a pointer handed to C joins the exposed set and the call is
     /// a foreign havoc that angelic resolution already models.
-    fn eval_args_for(&mut self, args: &[Arg], callee: Callee) -> EResult<Args> {
+    ///
+    /// `param_rows` carries the callee's declared parameter-row tags by index
+    /// where a declaration is in sight (a direct call to a named `fn`) — the
+    /// expected rows of D52's argument position. `None` means no declaration
+    /// is visible from the call site (a closure value, the builtin surface, a
+    /// trait-qualified call whose dispatch needs the arguments first): those
+    /// positions keep ordinary resolution, honestly narrower than the clause,
+    /// exactly as wide as what this machine can know without a type checker.
+    fn eval_args_for(
+        &mut self,
+        args: &[Arg],
+        callee: Callee,
+        param_rows: Option<&[Vec<String>]>,
+    ) -> EResult<Args> {
         let mut values = Vec::with_capacity(args.len());
         let mut writebacks = Vec::new();
         let mut held = 0usize;
@@ -2723,6 +2776,17 @@ impl Machine {
                     values.push(value);
                 }
                 None => {
+                    // D52's argument position (`[gram.expr.tagident]`): the
+                    // callee's declared parameter row is the expected row,
+                    // asked FIRST — a local place would have shadowed inside
+                    // `declared_row_tag`, and everything else (module items,
+                    // prelude names, the unresolvable) loses to the tag.
+                    if let Some(row) = param_rows.and_then(|rows| rows.get(index))
+                        && let Some(value) = self.declared_row_tag(&arg.expr, row)
+                    {
+                        values.push(value);
+                        continue;
+                    }
                     // Default mode: immutable for the whole call, caller retains
                     // (`[mem.tier0.mode.read]`).
                     let value: Value = match self.live_place(&arg.expr)? {
@@ -3108,6 +3172,20 @@ impl Machine {
     }
 
     fn exec_binding(&mut self, binding: &Binding) -> EResult<()> {
+        // D52's annotated-`let`/`var` position (`[gram.expr.tagident]`): the
+        // annotation's declared row is the initializer's expected row, asked
+        // before ordinary resolution — locals shadow, module items lose.
+        // `rows/tag_let_position.lu` pins the spec reading (bind, run the
+        // handler); the compiler's CHECKED lane mishandles this shape
+        // (wolf-lang#122) and this machine matches spec/native, not checked.
+        if let Some(ty) = &binding.ty {
+            let row = crate::sema::type_tags(ty);
+            if !row.is_empty()
+                && let Some(value) = self.declared_row_tag(&binding.value, &row)
+            {
+                return self.bind_pattern(&binding.pattern, value);
+            }
+        }
         // Initialization moves (`[mem.tier0.move.1]`) unless the source is a
         // `Copy`-shaped value or is not a place at all.
         let value = self.eval_for_init(&binding.value)?;
@@ -3618,7 +3696,25 @@ impl Machine {
             },
             ExprKind::Return(value) => {
                 let value = match value {
-                    Some(value) => self.eval_for_init(value)?,
+                    Some(value) => {
+                        // D52's return position, re-derived from the clause
+                        // (`[gram.expr.tagident]`): the enclosing declared
+                        // return row is the expected row, asked BEFORE the
+                        // ordinary lookups so module items and prelude names
+                        // lose to the declared tag (the s37 silent-wrong
+                        // fix); a local still shadows. The wider frame-row
+                        // fallback in `eval_path_expr` continues to serve
+                        // the fallible tail — see the note there.
+                        let row = self
+                            .frames
+                            .last()
+                            .map(|frame| frame.row.clone())
+                            .unwrap_or_default();
+                        match self.declared_row_tag(value, &row) {
+                            Some(tag) => tag,
+                            None => self.eval_for_init(value)?,
+                        }
+                    }
                     None => Value::Unit,
                 };
                 self.fire(Rule::Flow, expr.span, "return");
@@ -3821,6 +3917,22 @@ impl Machine {
             // `return none` under `-> int ! {none}` raises the tag. The
             // eager half lives in sema's `raise_check` — by the time this
             // runs, an unresolvable raise has already been refused.
+            //
+            // Re-derived against `[gram.expr.tagident]` (D52, is19): the
+            // clause's return-position rule — the `return` operand and a
+            // fallible function's TAIL check against the declared return
+            // row, locals shadowing, module items losing — is implemented
+            // by `declared_row_tag` at the `Return` arm (exact, items lose)
+            // plus this fallback, which is what resolves the tail and any
+            // expression feeding it. Two honest deltas from the clause
+            // remain here, named rather than hidden: (1) this fallback runs
+            // AFTER the module/prelude lookups, so a module item spelling a
+            // declared tag would win in tail position (no witness
+            // exercises the collision; the `return` spelling is exact);
+            // (2) it answers in positions the clause does not check —
+            // wider than the rule, but a program relying on that width is
+            // one the compiler refuses E0301, so the differential lands it
+            // in the refusal classes, never as a silent disagreement.
             if let Some(row) = self
                 .frames
                 .last()
@@ -4509,10 +4621,43 @@ impl Machine {
         value: &Value,
         method: &str,
     ) -> Option<(String, Vec<crate::sema::MethodDef>)> {
-        let Value::Struct { name, .. } = value else {
-            return None;
+        let owned;
+        let name: &str = match value {
+            Value::Struct { name, .. } => name,
+            // A declared enum's variant VALUE owns its enum's nominal
+            // identity (wolf-interp#34's second shape, wolf-lang#23's
+            // surviving leg): `Hue.Red` outside call position is the tag —
+            // the same encoding call-form construction emits — and a method
+            // on it dispatches through `impl Hue` exactly as a struct value
+            // does through its type's impls. The tag never stops being the
+            // tag (pattern matching, equality and rendering are untouched);
+            // only dispatch learns the type's name.
+            Value::Error(e) if e.enum_variant => {
+                owned = self.enum_of_variant(e)?;
+                &owned
+            }
+            _ => return None,
         };
         self.method_defs_named(name, method)
+    }
+
+    /// The enum a variant VALUE belongs to: the qualifier of a dotted tag
+    /// (`Hue.Red` → `Hue`), or — for a bare tag minted where the variant
+    /// name alone was in scope — the declaring enum, current module first
+    /// (the same order every nominal lookup walks).
+    fn enum_of_variant(&self, e: &ErrorValue) -> Option<String> {
+        if let Some((owner, _)) = e.tag.split_once('.') {
+            return Some(owner.to_owned());
+        }
+        let current = self
+            .frames
+            .last()
+            .map(|f| f.module.clone())
+            .unwrap_or_default();
+        let modules = &self.shared.program.modules;
+        std::iter::once(&current)
+            .chain(modules.keys().filter(|k| **k != current))
+            .find_map(|m| modules.get(m)?.variants.get(&e.tag)?.first().cloned())
     }
 
     /// [`Machine::method_defs_of`] by the type's NAME alone — the nominal
@@ -4932,6 +5077,10 @@ impl Machine {
         // exists for it — and running would compute a wrong answer (an
         // unspelled `mut` argument passes by value and the writeback never
         // happens), so the honest verdict is a refusal.
+        //
+        // The same declaration, where it is in sight, carries the parameter
+        // rows D52's argument position resolves against (`param_rows` below).
+        let mut param_rows: Option<Vec<Vec<String>>> = None;
         if let Value::Fn(qualified) = &target
             && let (module, name) = split_qualified(qualified)
             && let Some(Def::Fn(decl)) = self.shared.program.lookup(&module, &name, false)
@@ -4951,8 +5100,17 @@ impl Machine {
                     ));
                 }
             }
+            param_rows = Some(
+                decl.params
+                    .iter()
+                    .map(|param| match &param.kind {
+                        ParamKind::Named { ty, .. } => crate::sema::type_tags(ty),
+                        ParamKind::SelfParam { .. } => Vec::new(),
+                    })
+                    .collect(),
+            );
         }
-        let evaluated = self.eval_args_for(args, Callee::of(&target))?;
+        let evaluated = self.eval_args_for(args, Callee::of(&target), param_rows.as_deref())?;
         // Handed to `call_fn` across `apply`, which performs no evaluation of
         // its own between here and the callee's parameter binding.
         self.pending_retags = vec![None; evaluated.values.len()];

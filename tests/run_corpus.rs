@@ -624,14 +624,16 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // `closure_region_capture`, `closure_value_paths`) all run exit(0) —
     // the loan machinery faults nothing the compiler accepts.
     //
-    // `generics/explicit_apply_arity.lu` pins fail(E0812) — explicit
-    // application arity is a sema judgement this machine does not make, so
-    // its Tier-0 body runs exit(0): the standing conservatism class
-    // (wolf-interp#34's first shape, ledgered rather than hidden).
-    // `explicit_apply.lu`, the two s105 kernels and the fn-value import
-    // all match at first sight.
+    // `generics/explicit_apply_arity.lu` pinned fail(E0812) against this
+    // machine's exit(0) from is17 to is19 — the standing conservatism class
+    // (wolf-interp#34's first shape, ledgered rather than hidden). is19
+    // closed it: explicit-application arity is one count against another,
+    // both in the syntax, so the resolve rung owns it now
+    // (`lint::Walk::explicit_apply`) and the file fails E0812 here exactly
+    // as the corpus pins — it LEFT this ledger deliberately, a static
+    // refusal, not a lost run. `explicit_apply.lu`, the two s105 kernels
+    // and the fn-value import all match at first sight.
     ("generics/explicit_apply.lu", "exit(0)"),
-    ("generics/explicit_apply_arity.lu", "exit(0)"),
     ("kernels/guarded_stencil.lu", "exit(12)"),
     ("kernels/walk_twice.lu", "exit(0)"),
     ("memory/closure_borrow_write.lu", "trap(exclusivity)"),
@@ -710,9 +712,12 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("resolve/leaf_twins/main.lu", "exit(0)"),
     // #39's free rider: `use outer.inner` resolves the nested directory at
     // its full path now, so the W0316 ancestor-import fixture finally runs
-    // its program (the warning itself is a compiler-side analysis, honest-
-    // absent here). It sat unsupported behind the flat `<root>/<bound>`
-    // spelling since the pin brought it.
+    // its program. It sat unsupported behind the flat `<root>/<bound>`
+    // spelling since the pin brought it. is19's probe closed the loop: the
+    // W0316 detection had stood ready since 0.1.6 and is18's loader was
+    // exactly what it was waiting for — the warning fires at the `use`
+    // target's ident ([92,97], the counterparty's own span), so W0316 left
+    // `lint::HONEST_ABSENT` for `IMPLEMENTED` and the ledger is enforced.
     ("lints/ancestor_import/main.lu", "exit(0)"),
     // is18's json movers: the s40 query tier runs on lupin's OWN RFC 8259
     // reading (`crate::json` — independence forbids porting wolf_mem::json;
@@ -738,6 +743,73 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("net/read_deadline.lu", "exit(1)"),
     ("net/refused_row.lu", "exit(1)"),
     ("net/spawn_accept.lu", "exit(0)"),
+    // -- is19 (pin 87405ac) --------------------------------------------------
+    // The s109 ruling wave: D51 (nested rows flatten) and D52 (declared-row
+    // tags resolve one position wider) land upstream. The pin-bump baseline,
+    // before this sprint's own mirror work:
+    //
+    // `rows/nested_row_merge_payload.lu` — D51's silent-merge half. The
+    // flattened union is what this machine always executed (its two miss
+    // layers were indistinguishable, which D51 ratified as THE semantics),
+    // so the file ran at first sight: both raise paths and the ok path.
+    //
+    // `rows/negative/nested_row_conflict.lu` — D51's recorded cost, priced
+    // with eyes open: `Bad(int)` and `Bad(str)` across the two layers is one
+    // structural tag that cannot carry both shapes, and the compiler refuses
+    // E0609 at resolve. This machine performs no row-payload conflict check
+    // and runs the program; the run is SPEC-CLEAN — `poke(3)` never raises,
+    // no conflicted tag ever materializes, main answers 3 — so the verdict
+    // lands in the census's conservatism class, honestly: a static
+    // rejection this machine does not perform, never a wrong answer. E0609
+    // deliberately does NOT join `ledger::dynamic_meaning` — no document
+    // states a runtime meaning for a payload-shape conflict, and the one
+    // execution that could exhibit it (raising the tag) is exactly what
+    // D51's union semantics already defines. See the note there.
+    //
+    // `rows/tag_shadow_local.lu` — D52's priced hazard, and the baseline
+    // AGREEMENT: locals shadow a declared tag in this machine exactly as the
+    // ruling requires (the env is consulted before any tag fallback), so
+    // `or(none, 9)` passes the local's 3 on both machines. W0305 fires at
+    // the use from this machine's own warning channel (`lint::tag_shadow_use`
+    // — the D52 mirror's warning half, landed with the pin because the
+    // warns ledger gates it).
+    //
+    // The other three s109 rows were the split the D52 mirror closed
+    // (`Machine::declared_row_tag` — per-position expected-row lookup at
+    // arguments, annotated `let`/`var` initializers, and the `return`
+    // operand; the fallible tail keeps the frame-row fallback, re-derived
+    // and documented at `eval_path_expr`):
+    //
+    // `rows/tag_arg_position.lu` — `or(none, 9)` injects against the
+    // callee's declared parameter row exactly as at a raise site; declined
+    // at the pin-bump baseline (`` `none` does not resolve ``), runs to the
+    // compiled lanes' exit(0) now. Split → agreement.
+    //
+    // `rows/tag_let_position.lu` — the annotation's row is the expected
+    // row of the initializer; `w` defaults to 5. This machine matches the
+    // SPEC and the native/release lanes — the compiler's CHECKED executor's
+    // wrong value at this shape is wolf-lang#122, its own filing, and is
+    // not mirrored here. Split → agreement.
+    //
+    // `rows/negative/tag_undeclared_arg.lu` stays OUT of this ledger on
+    // purpose: `gone` is not a tag the parameter's row declares, so the
+    // deferral does not apply and the bare name keeps its refusal
+    // (unsupported at resolve — E0301's fact stated by this machine's
+    // honest class). The rule is exactly as wide as the declared row.
+    ("rows/nested_row_merge_payload.lu", "exit(0)"),
+    ("rows/negative/nested_row_conflict.lu", "exit(3)"),
+    ("rows/tag_arg_position.lu", "exit(0)"),
+    ("rows/tag_let_position.lu", "exit(0)"),
+    ("rows/tag_shadow_local.lu", "exit(0)"),
+    // is19's #34 closer: a declared enum's variant VALUE owns its enum's
+    // nominal identity in method dispatch (`Machine::enum_of_variant` — the
+    // tag stays the tag; only dispatch learns the type's name), so
+    // `paint.favorite()`'s bare `Hue.Red` answers `.name()` through the
+    // imported module's `impl Hue` and the entry prints "red". The wall was
+    // exactly where is17's probe said it was: `method_defs_of` had no name
+    // to dispatch through for `Value::Error`, and the #16 enum_variant flag
+    // is where the name was waiting.
+    ("typecheck/variant_value/main.lu", "exit(0)"),
 ];
 
 #[test]

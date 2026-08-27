@@ -554,6 +554,16 @@ fn type_head_name(ty: &Type) -> Option<String> {
     }
 }
 
+/// The row tags a type spells — the *expected declared row* of a checked
+/// position (`[gram.expr.tagident]`, D52): a callee parameter's type at
+/// argument position, a `let`/`var` annotation at initializer position.
+#[must_use]
+pub fn type_tags(ty: &Type) -> Vec<String> {
+    let mut tags = Vec::new();
+    type_row_tags(ty, &mut tags);
+    tags
+}
+
 /// Collects every single-segment tag name a type's postfix rows declare —
 /// `int ! {none}` yields `none`; rows nest ( `(int ! {none}) ! {stale}` ).
 fn type_row_tags(ty: &Type, out: &mut Vec<String>) {

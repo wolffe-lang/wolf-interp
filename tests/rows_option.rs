@@ -642,3 +642,144 @@ fn main() -> !int {
         observation.reason
     );
 }
+
+// -- D52: a declared row resolves its tags, one position wider -----------
+//
+// `[gram.expr.tagident]` (ruled 2026-08-26, D52 / wolf-lang#38): a bare
+// lowercase identifier in a *checked position* whose expected declared row
+// spells the tag resolves as the tag — the raise-site rule generalized to
+// call arguments and annotated `let`/`var` initializers. Locals shadow;
+// module items, imports and prelude names LOSE to the declared tag. The
+// corpus witnesses are `rows/tag_arg_position.lu`, `tag_let_position.lu`,
+// `tag_shadow_local.lu` and `negative/tag_undeclared_arg.lu`; these are the
+// same shapes at unit size, plus the module-item-loses corner the corpus
+// does not pin.
+
+#[test]
+fn a_declared_parameter_row_resolves_a_bare_tag_argument() {
+    // std.option's motivating shape: `or(none, 9)` injects against the
+    // parameter's declared row; `or(4, 9)` is the ok-injection twin.
+    let source = "\
+fn or(v: int ! {none}, d: int) -> int {
+    v else d
+}
+
+fn main() -> !int {
+    if or(none, 9) == 9 { if or(4, 9) == 4 { return 0 } }
+    1
+}
+";
+    let observation = observe(source);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "{:?}",
+        observation.reason
+    );
+}
+
+#[test]
+fn an_annotation_row_resolves_a_bare_tag_initializer() {
+    // Both binding spellings: the clause says `let`/`var` alike.
+    for kind in ["let", "var"] {
+        let source = format!(
+            "\
+fn main() -> !int {{
+    {kind} v: int ! {{none}} = none
+    let w = v else 5
+    if w == 5 {{ 0 }} else {{ 1 }}
+}}
+"
+        );
+        let observation = observe(&source);
+        assert_eq!(
+            observation.verdict,
+            Verdict::Exit(0),
+            "{kind}: {:?}",
+            observation.reason
+        );
+    }
+}
+
+#[test]
+fn a_local_shadows_the_declared_tag_and_the_value_is_the_locals() {
+    // D52's priced hazard (rows/tag_shadow_local.lu): the local wins, the
+    // callee sees an ok 3, the fallback never fires. W0305's fire-at-use is
+    // asserted in `lint::tests`.
+    let source = "\
+fn or(v: int ! {none}, d: int) -> int {
+    v else d
+}
+
+fn main() -> !int {
+    let none = 3
+    if or(none, 9) == 3 { 0 } else { 1 }
+}
+";
+    let observation = observe(source);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "{:?}",
+        observation.reason
+    );
+}
+
+#[test]
+fn an_undeclared_bare_name_keeps_its_refusal_in_both_new_positions() {
+    // The rule is exactly as wide as the declared row: `gone` is not a
+    // candidate tag, resolves as an ordinary name, misses everything in
+    // scope, and the refusal stands (the compiler's E0301; this machine's
+    // honest unsupported at resolve). The deferral never trades a typo for
+    // silence.
+    for source in [
+        "\
+fn or(v: int ! {none}, d: int) -> int {
+    v else d
+}
+
+fn main() -> !int {
+    if or(gone, 9) == 9 { 0 } else { 1 }
+}
+",
+        "\
+fn main() -> !int {
+    let v: int ! {none} = gone
+    let w = v else 5
+    if w == 5 { 0 } else { 1 }
+}
+",
+    ] {
+        let observation = observe(source);
+        assert_eq!(observation.verdict, Verdict::Unsupported, "{source}");
+        assert_eq!(observation.phase_reached, Phase::Resolve, "{source}");
+    }
+}
+
+#[test]
+fn a_module_item_loses_to_the_declared_tag_at_return_position() {
+    // The clause's s37 silent-wrong fix, at unit size: `return hex` under
+    // `! {hex}` is the TAG even though a module-level `fn hex` is in scope
+    // — module items lose, only locals shadow. The raise lands in the
+    // handler: exit 3.
+    let source = "\
+fn hex() -> int {
+    7
+}
+
+fn f() -> int ! {hex} {
+    return hex
+}
+
+fn main() -> !int {
+    f() else 3
+}
+";
+    let observation = observe(source);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(3),
+        "{:?}",
+        observation.reason
+    );
+}

@@ -52,7 +52,7 @@
 //! statement *through its terminator* — `;` or the newline — which is the
 //! counterparty's convention, observed on the fixtures.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::{
     Arg, AttrArg, AttrInput, Attribute, BinOp, Binding, BindingKind, Block, ElseHandler, Expr,
@@ -69,21 +69,20 @@ use crate::sema::{Def, Program};
 /// codes (`[proto.record.warn]`'s honest-absent rule covers the rest).
 pub const IMPLEMENTED: &[&str] = &[
     "W0302", "W0303", "W0304", "W0305", "W0306", "W0307", "W0308", "W0309", "W0310", "W0311",
-    "W0312", "W0313", "W0314", "W0315", "W0401", "W0602", "W0603", "W0604", "W1002", "W1003",
-    "W1101", "W1102", "W1302", "E0802",
+    "W0312", "W0313", "W0314", "W0315", "W0316", "W0401", "W0602", "W0603", "W0604", "W1002",
+    "W1003", "W1101", "W1102", "W1302", "E0802",
 ];
 
 /// Compiler-only for now — codes this machine's rungs cannot observe, kept
 /// here so the honest-absent posture is written down beside the implemented
 /// set: W0402 (float typing), W0601 (row typing), W0801 (case tables),
 /// W1001 (region inference), plus the grandfathered W0301/W1301. W0316
-/// (ancestor import, s69) joins them: its only witness shape needs the
-/// dotted `use outer.inner` nested-module loading this machine's loader
-/// does not perform — the detection code below stands ready and simply
-/// never sees its input (`lints/ancestor_import/` is out-of-scope here).
-pub const HONEST_ABSENT: &[&str] = &[
-    "W0301", "W0316", "W0402", "W0601", "W0801", "W1001", "W1301",
-];
+/// (ancestor import, s69) sat here from 0.1.6 to is18: its only witness
+/// shape needs the dotted `use outer.inner` nested-module loading, the
+/// detection code stood ready, and is18's module-identity work (#39) is
+/// what finally fed it — `lints/ancestor_import/` runs and warns now, so
+/// W0316 moved to `IMPLEMENTED` at is19 and its ledger is enforced.
+pub const HONEST_ABSENT: &[&str] = &["W0301", "W0402", "W0601", "W0801", "W1001", "W1301"];
 
 /// Codes `#[allow(…)]` recognizes — spec/01 §9.2's registered families as of
 /// the 13b811f pin. An argument outside this set suppresses nothing and is
@@ -132,16 +131,28 @@ pub fn analyze(program: &Program) -> Analysis {
             .filter(|(_, (def, _))| matches!(def, Def::Fn(_)))
             .map(|(name, _)| name.clone())
             .collect();
+        // The module's fn signatures by name, for the checks that read a
+        // callee's declaration at a call site (W0305's fire-at-use).
+        let fn_decls: BTreeMap<&str, &FnDecl> = module
+            .items
+            .iter()
+            .filter_map(|(name, (def, _))| match def {
+                Def::Fn(decl) => Some((name.as_str(), &**decl)),
+                _ => None,
+            })
+            .collect();
         for unit in &module.units {
             let mut walk = Walk {
                 source: &unit.source,
                 from_std: unit.from_std,
                 item_names: &item_names,
                 fn_names: &fn_names,
+                fn_decls: &fn_decls,
                 findings: &mut findings,
                 statics: &mut statics,
                 allows: &mut allows,
                 scopes: Vec::new(),
+                ret_row: Vec::new(),
                 closures: Vec::new(),
                 assigns: Vec::new(),
                 closure_stack: Vec::new(),
@@ -317,11 +328,17 @@ struct Walk<'a> {
     item_names: &'a BTreeSet<String>,
     /// Module-level `fn` names, for the W0305 collision check.
     fn_names: &'a BTreeSet<String>,
+    /// Module-level `fn` signatures by name — a callee's declaration read at
+    /// its call site (W0305's fire-at-use over the declared parameter rows).
+    fn_decls: &'a BTreeMap<&'a str, &'a FnDecl>,
     findings: &'a mut Vec<(String, Span)>,
     statics: &'a mut Vec<Diag>,
     allows: &'a mut Vec<(String, Span)>,
     /// Locals of the enclosing function, innermost last: `(name, is_var)`.
     scopes: Vec<Vec<(String, bool)>>,
+    /// The enclosing function's declared return-row tags — the expected row
+    /// of `return` position for W0305's fire-at-use.
+    ret_row: Vec<String>,
     /// Closures created so far in the current function (W1102).
     closures: Vec<ClosureRec>,
     /// Whole-name assignments in the current function (W1102).
@@ -523,6 +540,24 @@ impl Walk<'_> {
         }
     }
 
+    /// W0305's fire-at-use (D52, `[gram.expr.tagident]`): a bare lowercase
+    /// identifier in a *checked position* whose expected declared row spells
+    /// the name resolves LOCAL-first — the tightest scopes shadow, as
+    /// everywhere — and the shadow warns where it happens, at the use. The
+    /// checked positions are the `return` operand, a call argument against
+    /// the callee's declared parameter row, and an annotated `let`/`var`
+    /// initializer against the annotation's row.
+    fn tag_shadow_use(&mut self, expr: &Expr, row: &[String]) {
+        if let ExprKind::Path(path) = &*expr.kind
+            && path.is_single()
+            && path.segments[0].name.starts_with(char::is_lowercase)
+            && row.contains(&path.segments[0].name)
+            && self.declared(&path.segments[0].name).is_some()
+        {
+            self.warn("W0305", path.segments[0].span);
+        }
+    }
+
     /// The signature lints: W0305 (row tag colliding with a name in scope)
     /// and W0602 (a `pub` signature spelling a ≥2-tag row inline).
     fn signature(&mut self, decl: &FnDecl, is_pub: bool) {
@@ -685,7 +720,10 @@ impl Walk<'_> {
         let outer_assigns = std::mem::take(&mut self.assigns);
         let outer_writes = std::mem::take(&mut self.writes);
         let outer_literal_lets = std::mem::take(&mut self.literal_lets);
+        let outer_ret_row =
+            std::mem::replace(&mut self.ret_row, crate::sema::declared_raise_tags(decl));
         self.block(body);
+        self.ret_row = outer_ret_row;
         self.scopes.pop();
 
         // W1002 — a `mut` parameter the body never writes: every call site
@@ -816,6 +854,14 @@ impl Walk<'_> {
     }
 
     fn binding(&mut self, binding: &Binding) {
+        // W0305's annotated-`let`/`var` position (D52): the annotation's row
+        // is the expected row of the initializer.
+        if let Some(ty) = &binding.ty {
+            let row = crate::sema::type_tags(ty);
+            if !row.is_empty() {
+                self.tag_shadow_use(&binding.value, &row);
+            }
+        }
         self.expr(&binding.value);
         // E0802's shape evidence: a `let` bound directly to a scalar
         // literal has a type no variant pattern can ever match.
@@ -972,6 +1018,7 @@ impl Walk<'_> {
                 self.call(expr, callee, args);
             }
             ExprKind::BracketApply { base, args } => {
+                self.explicit_apply(expr, base, args);
                 self.expr(base);
                 for arg in args {
                     if let IndexArg::Value(arg) = arg {
@@ -1062,7 +1109,17 @@ impl Walk<'_> {
                 self.block(body);
             }
             ExprKind::Loop { body } => self.block(body),
-            ExprKind::Return(value) | ExprKind::Break(value) => {
+            ExprKind::Return(value) => {
+                if let Some(value) = value {
+                    // W0305's return position (D52): the enclosing declared
+                    // return row is the expected row of the operand.
+                    let row = std::mem::take(&mut self.ret_row);
+                    self.tag_shadow_use(value, &row);
+                    self.ret_row = row;
+                    self.expr(value);
+                }
+            }
+            ExprKind::Break(value) => {
                 if let Some(value) = value {
                     self.expr(value);
                 }
@@ -1227,6 +1284,46 @@ impl Walk<'_> {
         self.expr(&arg.expr);
     }
 
+    /// E0812 — explicit generic application arity (wolf-lang#111, the
+    /// wolf-interp#34 straggler): the explicit form is one type per generic
+    /// parameter, in declaration order. Judged only where BOTH counts are in
+    /// sight without a type checker: the base names a module-level `fn` no
+    /// local shadows — `e[…]` is one production (`[gram.amb.brackets]`), and
+    /// a fn base makes it application, never indexing — which is exactly the
+    /// corpus's shape (`generics/explicit_apply_arity.lu`, `pick[int, str]`
+    /// against one declared parameter). The non-type-argument half of E0812
+    /// and dotted callees stay the compiler's; declining those is the honest
+    /// narrowness, never a wrong refusal.
+    fn explicit_apply(&mut self, expr: &Expr, base: &Expr, args: &[IndexArg]) {
+        let ExprKind::Path(path) = &*base.kind else {
+            return;
+        };
+        if !path.is_single() || self.declared(&path.segments[0].name).is_some() {
+            return;
+        }
+        let Some(decl) = self.fn_decls.get(path.segments[0].name.as_str()) else {
+            return;
+        };
+        if args.is_empty() || args.len() == decl.generics.len() {
+            return;
+        }
+        // The brackets, types included — the span of the wrong count.
+        let span = Span::new(base.span.end, expr.span.end);
+        self.statics.push(Diag::new(
+            "E0812",
+            span,
+            "generics.apply.explicit",
+            format!(
+                "`{name}` declares {declared} generic parameter(s) and this explicit \
+                 application spells {spelled} type(s) — one type per generic parameter, in \
+                 declaration order; the generics are declared at `{name}`'s signature",
+                name = path.segments[0].name,
+                declared = decl.generics.len(),
+                spelled = args.len(),
+            ),
+        ));
+    }
+
     fn call(&mut self, _call: &Expr, callee: &Expr, args: &[Arg]) {
         // E1102 — `channel[T](…)` with a visibly unsendable payload: a bare
         // region-interior container can never cross a channel.
@@ -1249,6 +1346,22 @@ impl Walk<'_> {
                      `{head}` is none of those. Send the region instead"
                 ),
             ));
+        }
+
+        // W0305's argument position (D52): a call to a module-level fn whose
+        // parameter's declared row spells a bare-identifier argument that a
+        // local also binds — the local wins, and the shadow warns at the use.
+        if let ExprKind::Path(path) = &*callee.kind
+            && path.is_single()
+            && self.declared(&path.segments[0].name).is_none()
+            && let Some(decl) = self.fn_decls.get(path.segments[0].name.as_str())
+        {
+            for (param, arg) in decl.params.iter().zip(args) {
+                if let crate::ast::ParamKind::Named { ty, .. } = &param.kind {
+                    let row = crate::sema::type_tags(ty);
+                    self.tag_shadow_use(&arg.expr, &row);
+                }
+            }
         }
 
         // A task closure: `s.spawn(fn() { … })` — the E1101/W1101 context.
@@ -1788,6 +1901,164 @@ mod tests {
             .into_iter()
             .map(|w| w.code)
             .collect()
+    }
+
+    // ---- E0812: explicit generic application arity (wolf-lang#111) --------
+
+    /// Every E0812 the walk raised over one program, with its span.
+    fn arity_codes(source: &str) -> Vec<(String, Span)> {
+        let program = crate::sema::load_source("t.lu", source).expect("loads");
+        analyze(&program)
+            .statics
+            .into_iter()
+            .filter(|d| d.code == "E0812")
+            .map(|d| (d.code.to_owned(), d.span))
+            .collect()
+    }
+
+    #[test]
+    fn a_wrong_count_explicit_application_fails_e0812() {
+        // The corpus witness's shape (generics/explicit_apply_arity.lu):
+        // one declared parameter, two bracket types.
+        let found = arity_codes(
+            "fn pick[T](xs: List[T], i: int) -> T ! {none} {\n\
+             \x20   xs.get(i)\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   var a = List[int]()\n\
+             \x20   (mut a).push(7)\n\
+             \x20   let v = pick[int, str](a, 0) else 0\n\
+             \x20   if v == 7 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        // The span is the bracket list, types included: `[int, str]`.
+        let source_span = &found[0].1;
+        assert_eq!(source_span.end - source_span.start, "[int, str]".len());
+    }
+
+    #[test]
+    fn the_arity_judgement_is_exactly_as_narrow_as_the_syntax() {
+        // Correct arity: no diagnostic (generics/explicit_apply.lu's shape).
+        let ok = arity_codes(
+            "fn pick[T](xs: List[T], i: int) -> T ! {none} {\n\
+             \x20   xs.get(i)\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   var a = List[int]()\n\
+             \x20   (mut a).push(7)\n\
+             \x20   let v = pick[int](a, 0) else 0\n\
+             \x20   if v == 7 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert!(ok.is_empty(), "{ok:?}");
+
+        // A local shadowing the fn name makes the brackets INDEXING, and the
+        // judgement declines — never a wrong refusal.
+        let shadowed = arity_codes(
+            "fn pick[T](xs: List[T], i: int) -> T ! {none} {\n\
+             \x20   xs.get(i)\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   var pick = List[int]()\n\
+             \x20   (mut pick).push(7)\n\
+             \x20   if pick[0] == 7 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert!(shadowed.is_empty(), "{shadowed:?}");
+
+        // A builtin constructor's bracket type is not a module fn's.
+        let builtin = arity_codes(
+            "fn main() -> !int {\n\
+             \x20   var a = List[int]()\n\
+             \x20   (mut a).push(7)\n\
+             \x20   if a[0] == 7 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert!(builtin.is_empty(), "{builtin:?}");
+    }
+
+    // ---- W0305's fire-at-use (D52, [gram.expr.tagident]) ------------------
+    //
+    // A local named like a tag the expected declared row spells SHADOWS the
+    // tag — locals win, matching resolution everywhere else — and the hazard
+    // warns at the use, in every checked position: call argument, annotated
+    // `let`/`var` initializer, `return` operand.
+
+    #[test]
+    fn a_local_shadowing_a_declared_tag_warns_at_the_argument_use() {
+        // The corpus witness's own shape (rows/tag_shadow_local.lu).
+        let found = warn_codes(
+            "fn or(v: int ! {none}, d: int) -> int { v else d }\n\
+             fn main() -> !int {\n\
+             \x20   let none = 3\n\
+             \x20   if or(none, 9) == 3 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert_eq!(
+            found.iter().filter(|c| *c == "W0305").count(),
+            1,
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_local_shadowing_the_annotation_row_warns_at_the_initializer() {
+        let found = warn_codes(
+            "fn main() -> !int {\n\
+             \x20   let none = 3\n\
+             \x20   let v: int ! {none} = none\n\
+             \x20   let w = v else 5\n\
+             \x20   if w == 3 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert_eq!(
+            found.iter().filter(|c| *c == "W0305").count(),
+            1,
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_local_shadowing_the_return_row_warns_at_the_return() {
+        let found = warn_codes(
+            "fn f() -> int ! {none} {\n\
+             \x20   let none = 3\n\
+             \x20   return none\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   f() else 0\n\
+             }\n",
+        );
+        assert_eq!(
+            found.iter().filter(|c| *c == "W0305").count(),
+            1,
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn the_fire_at_use_is_exactly_as_wide_as_the_shadow() {
+        // No local: the bare tag resolves as the tag, no warning
+        // (rows/tag_arg_position.lu and tag_let_position.lu are
+        // warning-clean); a local whose name no expected row spells is an
+        // ordinary argument.
+        let clean = warn_codes(
+            "fn or(v: int ! {none}, d: int) -> int { v else d }\n\
+             fn main() -> !int {\n\
+             \x20   if or(none, 9) == 9 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert!(!clean.iter().any(|c| c == "W0305"), "{clean:?}");
+
+        let ordinary = warn_codes(
+            "fn or(v: int ! {none}, d: int) -> int { v else d }\n\
+             fn main() -> !int {\n\
+             \x20   let k = 3\n\
+             \x20   if or(k, 9) == 3 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert!(!ordinary.iter().any(|c| c == "W0305"), "{ordinary:?}");
     }
 
     // ---- the capture law's three spellings (s74, wolf-lang#71) ------------
