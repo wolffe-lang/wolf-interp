@@ -2512,6 +2512,41 @@ mod tests {
     }
 
     #[test]
+    fn a_tag_arm_no_longer_masks_the_capture_law() {
+        // The same bug from the capture law's side (the is24 honesty pass):
+        // the arm-"local" the old walk registered satisfied `holds(scopes)`
+        // inside the task closure, so a write to a CAPTURED outer var that
+        // shares the tag's name slipped past E1101. The arm is the tag; the
+        // write lands on the capture; the law fires.
+        let found = capture_codes(
+            "fn f() -> int ! {refused} {\n\
+             \x20   return refused\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   var refused = 0\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() {\n\
+             \x20           let v = f() else |e| match e {\n\
+             \x20               refused => {\n\
+             \x20                   refused = 1\n\
+             \x20                   0\n\
+             \x20               },\n\
+             \x20               _ => 0,\n\
+             \x20           }\n\
+             \x20           v\n\
+             \x20       })\n\
+             \x20   }\n\
+             \x20   refused\n\
+             }\n",
+        );
+        assert_eq!(
+            found.len(),
+            1,
+            "the tag arm binds nothing, so the write is captured: {found:?}"
+        );
+    }
+
+    #[test]
     fn the_wsm01_witness_is_verbatim_clean() {
         // wolf-interp#44's reproducer, byte-shaped as filed (the wolf-wws
         // wsm01 finding): TWO same-tag re-raises, each inside its own arm.
