@@ -148,6 +148,7 @@ pub fn analyze(program: &Program) -> Analysis {
                 item_names: &item_names,
                 fn_names: &fn_names,
                 fn_decls: &fn_decls,
+                row_tags: &module.row_tags,
                 findings: &mut findings,
                 statics: &mut statics,
                 allows: &mut allows,
@@ -320,6 +321,31 @@ struct AssignRec {
     in_when: bool,
 }
 
+/// One declared local of the enclosing function.
+struct Local {
+    name: String,
+    /// Declared `var` (reassignable) — W1102's question.
+    is_var: bool,
+    /// `Some(row)` when this local is an `else`-handler's error binder: a
+    /// tag-shaped value (`[gram.expr.tagident]`'s handler side, wolf-lang#48).
+    /// The vec holds the operand's declared row when the callee's signature
+    /// is in sight, and is empty when it is not — tag-shaped either way; a
+    /// match over the binder resolves bare lowercase arms against this row
+    /// and the module's row vocabulary before they may bind, exactly as
+    /// `eval::match_pattern` does dynamically.
+    err_row: Option<Vec<String>>,
+}
+
+impl Local {
+    fn plain(name: String, is_var: bool) -> Self {
+        Self {
+            name,
+            is_var,
+            err_row: None,
+        }
+    }
+}
+
 struct Walk<'a> {
     source: &'a str,
     from_std: bool,
@@ -334,8 +360,13 @@ struct Walk<'a> {
     findings: &'a mut Vec<(String, Span)>,
     statics: &'a mut Vec<Diag>,
     allows: &'a mut Vec<(String, Span)>,
-    /// Locals of the enclosing function, innermost last: `(name, is_var)`.
-    scopes: Vec<Vec<(String, bool)>>,
+    /// Every lowercase tag any signature of the module declares in an error
+    /// row — the pattern-resolution vocabulary (`sema::Module::row_tags`),
+    /// the same fallback the evaluator asks when a scrutinee's own row is
+    /// out of sight.
+    row_tags: &'a BTreeSet<String>,
+    /// Locals of the enclosing function, innermost last.
+    scopes: Vec<Vec<Local>>,
     /// The enclosing function's declared return-row tags — the expected row
     /// of `return` position for W0305's fire-at-use.
     ret_row: Vec<String>,
@@ -384,19 +415,24 @@ impl Walk<'_> {
     }
 
     fn declared(&self, name: &str) -> Option<bool> {
+        self.local(name).map(|local| local.is_var)
+    }
+
+    /// The innermost local of this name, if any — the resolution the
+    /// tightest-scope-wins rule gives a bare identifier.
+    fn local(&self, name: &str) -> Option<&Local> {
         self.scopes
             .iter()
             .rev()
             .flat_map(|scope| scope.iter().rev())
-            .find(|(n, _)| n == name)
-            .map(|(_, is_var)| *is_var)
+            .find(|local| local.name == name)
     }
 
     fn declare_pattern(&mut self, pattern: &Pattern, is_var: bool) {
         match &*pattern.kind {
             PatKind::Binding(ident) => {
                 if let Some(scope) = self.scopes.last_mut() {
-                    scope.push((ident.name.clone(), is_var));
+                    scope.push(Local::plain(ident.name.clone(), is_var));
                 }
             }
             PatKind::Variant { fields, .. } => {
@@ -411,11 +447,66 @@ impl Walk<'_> {
             }
             PatKind::At { name, pattern } => {
                 if let Some(scope) = self.scopes.last_mut() {
-                    scope.push((name.name.clone(), is_var));
+                    scope.push(Local::plain(name.name.clone(), is_var));
                 }
                 self.declare_pattern(pattern, is_var);
             }
             PatKind::Wildcard | PatKind::Literal(_) => {}
+        }
+    }
+
+    /// Declares an `else`-handler's binder. The binder always BINDS — a
+    /// handler pattern is irrefutable (E0806's law), so even a binder named
+    /// like a declared tag is a real local (and a real shadow, W0305-wise).
+    /// What travels with it is its tag-shapedness: the operand's declared
+    /// row, for the arm-resolution rule when a `match` scrutinizes it.
+    fn declare_err_binder(&mut self, pattern: &Pattern, row: Vec<String>) {
+        if let PatKind::Binding(ident) = &*pattern.kind {
+            if let Some(scope) = self.scopes.last_mut() {
+                scope.push(Local {
+                    name: ident.name.clone(),
+                    is_var: false,
+                    err_row: Some(row),
+                });
+            }
+        } else {
+            self.declare_pattern(pattern, false);
+        }
+    }
+
+    /// The declared error row of an `else` operand, when a signature is in
+    /// sight: a call to a module-level `fn` reads the callee's declared
+    /// return row. Anything else is tag-shaped with an unknown row (empty —
+    /// the module vocabulary still applies).
+    fn operand_row(&self, operand: &Expr) -> Vec<String> {
+        if let ExprKind::Call { callee, .. } = &*operand.kind
+            && let ExprKind::Path(path) = &*callee.kind
+            && path.is_single()
+            && self.declared(&path.segments[0].name).is_none()
+            && let Some(decl) = self.fn_decls.get(path.segments[0].name.as_str())
+        {
+            return crate::sema::declared_raise_tags(decl);
+        }
+        Vec::new()
+    }
+
+    /// Whether a match arm's pattern is a ROW-TAG PATTERN rather than a
+    /// binding — `[gram.expr.tagident]`'s handler side (wolf-lang#48,
+    /// wolf-interp#44), the static mirror of `eval::match_pattern`: over a
+    /// tag-shaped scrutinee (`scrutinee_row` is `Some`), a bare lowercase
+    /// identifier that names a declared row tag — the scrutinee's own row
+    /// first, the module's row vocabulary behind it — dispatches on the tag
+    /// and binds nothing. No binding, no shadow: W0305 has no subject in
+    /// such an arm, which is exactly where it used to false-fire.
+    fn arm_is_tag_pattern(&self, pattern: &Pattern, scrutinee_row: Option<&[String]>) -> bool {
+        let Some(row) = scrutinee_row else {
+            return false;
+        };
+        if let PatKind::Binding(ident) = &*pattern.kind {
+            ident.name.starts_with(char::is_lowercase)
+                && (row.contains(&ident.name) || self.row_tags.contains(&ident.name))
+        } else {
+            false
         }
     }
 
@@ -712,7 +803,7 @@ impl Walk<'_> {
                 self.scopes
                     .last_mut()
                     .expect("pushed above")
-                    .push((name.name.clone(), param.mode.is_some()));
+                    .push(Local::plain(name.name.clone(), param.mode.is_some()));
             }
         }
         // Nested `fn` items re-enter here; the W1102 state is per-function.
@@ -937,10 +1028,10 @@ impl Walk<'_> {
     fn capture_write(&mut self, name: &str, span: Span, stays_inside: bool) {
         let capture = self.task_depth > 0 && self.when_depth == 0 && {
             let base = *self.task_scope_base.last().expect("task_depth > 0");
-            let holds = |scopes: &[Vec<(String, bool)>]| {
+            let holds = |scopes: &[Vec<Local>]| {
                 scopes
                     .iter()
-                    .any(|scope| scope.iter().any(|(n, _)| n == name))
+                    .any(|scope| scope.iter().any(|local| local.name == name))
             };
             !holds(&self.scopes[base..]) && holds(&self.scopes[..base])
         };
@@ -1062,8 +1153,13 @@ impl Walk<'_> {
                         self.expr(fallback);
                     }
                     ElseHandler::Handler { pattern, body } => {
+                        // The binder is tag-shaped: what `else` caught is the
+                        // operand's error, and its declared row (when the
+                        // callee's signature is in sight) travels with the
+                        // name for the arm-resolution rule (#44/#48).
+                        let row = self.operand_row(inner);
                         self.scopes.push(Vec::new());
-                        self.declare_pattern(pattern, false);
+                        self.declare_err_binder(pattern, row);
                         self.expr(body);
                         self.scopes.pop();
                     }
@@ -1083,9 +1179,19 @@ impl Walk<'_> {
             ExprKind::Match { scrutinee, arms } => {
                 self.expr(scrutinee);
                 self.match_reachability(scrutinee, arms);
+                // Tag-shaped scrutinee? A single-segment path resolving to
+                // an `else`-handler's error binder carries its row here.
+                let scrutinee_row: Option<Vec<String>> = match &*scrutinee.kind {
+                    ExprKind::Path(path) if path.is_single() => self
+                        .local(&path.segments[0].name)
+                        .and_then(|local| local.err_row.clone()),
+                    _ => None,
+                };
                 for arm in arms {
                     self.scopes.push(Vec::new());
-                    self.declare_pattern(&arm.pattern, false);
+                    if !self.arm_is_tag_pattern(&arm.pattern, scrutinee_row.as_deref()) {
+                        self.declare_pattern(&arm.pattern, false);
+                    }
                     if let Some(guard) = &arm.guard {
                         self.expr(guard);
                     }
@@ -1405,7 +1511,7 @@ impl Walk<'_> {
         self.scopes.push(
             params
                 .iter()
-                .map(|param| (param.name.name.clone(), param.mode.is_some()))
+                .map(|param| Local::plain(param.name.name.clone(), param.mode.is_some()))
                 .collect(),
         );
         self.expr(body);
@@ -2174,5 +2280,270 @@ mod tests {
              }\n",
         );
         assert!(found.is_empty(), "no task, no capture law: {found:?}");
+    }
+
+    // ---- W0305 v. the arm-resolution rule (is24, wolf-interp#44) ----------
+    //
+    // THE BOUNDARY. The rule (`[gram.expr.tagident]` D52; wolf-lang#30 at
+    // raise position; wolf-lang#48 on the handler side; this machine's own
+    // `eval::match_pattern` since is19): over a tag-shaped scrutinee, a bare
+    // lowercase identifier pattern that names a *declared* row tag — the
+    // scrutinee's own row, or the module's row vocabulary — is a ROW-TAG
+    // PATTERN. It dispatches on the tag and binds NOTHING. W0305's subject
+    // is a double reading: a local BINDING standing where an expected row
+    // spells the same word. No binding, no shadow, no warning.
+    //
+    // Must NOT warn (the arm's name is the resolved tag, not a shadow):
+    //   - the same-tag re-raise in its own arm (#44's shape, wsm01 verbatim);
+    //   - ANY checked-position use of the arm's tag in its body (argument
+    //     position too — the rule, not the reported symptom);
+    //   - a cross-tag body naming a different declared tag (never warned).
+    // Must STILL warn (a real binding stands between the row and the use):
+    //   - a `let` of the tag's name, anywhere — including INSIDE the arm
+    //     whose pattern is that very tag;
+    //   - an `else |binder|` named like a tag (a handler binder is
+    //     irrefutable and always binds — E0806's law — so it truly shadows);
+    //   - a nested match over a NON-tag-shaped scrutinee whose bare-ident
+    //     arm rebinds the tag's name (a catch-all binding, per the same
+    //     rule read from its other side).
+
+    /// Every W0305 the walk raised over one program.
+    fn shadow_codes(source: &str) -> Vec<String> {
+        warn_codes(source)
+            .into_iter()
+            .filter(|code| code == "W0305")
+            .collect()
+    }
+
+    #[test]
+    fn a_local_let_shadowing_a_row_tag_still_warns_at_the_use() {
+        // The corpus witness's class (rows/tag_shadow_local.lu): the local
+        // IS a binding, locals win, and the double reading is priced. This
+        // negative is load-bearing: the #44 fix must not weaken it.
+        let found = shadow_codes(
+            "fn or(v: int ! {none}, d: int) -> int {\n\
+             \x20   v else d\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   let none = 3\n\
+             \x20   if or(none, 9) == 3 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert_eq!(found.len(), 1, "a real local still shadows: {found:?}");
+    }
+
+    #[test]
+    fn a_let_inside_the_tag_arm_itself_still_warns() {
+        // The arm is the tag (binds nothing) — but a `let` of the same name
+        // INSIDE its body is a real binding, and the use after it is the
+        // double reading again. Proves the fix is arm-resolution-scoped,
+        // never name-scoped.
+        let found = shadow_codes(
+            "fn f() -> int ! {refused} {\n\
+             \x20   return refused\n\
+             }\n\
+             fn g() -> int ! {refused} {\n\
+             \x20   let v = f() else |e| match e {\n\
+             \x20       refused => {\n\
+             \x20           let refused = 1\n\
+             \x20           if refused == 1 {\n\
+             \x20               return refused\n\
+             \x20           }\n\
+             \x20           0\n\
+             \x20       },\n\
+             \x20       _ => 0,\n\
+             \x20   }\n\
+             \x20   v\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   let a = g() else 9\n\
+             \x20   a\n\
+             }\n",
+        );
+        assert_eq!(
+            found.len(),
+            1,
+            "the inner `let` is a genuine shadow: {found:?}"
+        );
+    }
+
+    #[test]
+    fn an_else_binder_named_like_a_tag_still_warns() {
+        // `else |refused|` BINDS — a handler binder is irrefutable (E0806's
+        // law), so the name truly stands between the row and the return.
+        let found = shadow_codes(
+            "fn f() -> int ! {refused} {\n\
+             \x20   return refused\n\
+             }\n\
+             fn g() -> int ! {refused} {\n\
+             \x20   let v = f() else |refused| {\n\
+             \x20       return refused\n\
+             \x20   }\n\
+             \x20   v\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   let a = g() else 9\n\
+             \x20   a\n\
+             }\n",
+        );
+        assert_eq!(
+            found.len(),
+            1,
+            "a binder named like a tag shadows: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_nested_match_rebinding_the_tag_still_warns() {
+        // The inner match's scrutinee is a scalar, not the tag-shaped
+        // binder — its bare-ident arm is a catch-all BINDING (the same rule
+        // read from the other side), and the use under it is shadowed.
+        let found = shadow_codes(
+            "fn f() -> int ! {refused} {\n\
+             \x20   return refused\n\
+             }\n\
+             fn g(x: int) -> int ! {refused} {\n\
+             \x20   let v = f() else |e| match e {\n\
+             \x20       refused => match x {\n\
+             \x20           refused => {\n\
+             \x20               return refused\n\
+             \x20           },\n\
+             \x20       },\n\
+             \x20       _ => 0,\n\
+             \x20   }\n\
+             \x20   v\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   let a = g(3) else 9\n\
+             \x20   a\n\
+             }\n",
+        );
+        assert_eq!(
+            found.len(),
+            1,
+            "rebinding under a non-tag scrutinee shadows: {found:?}"
+        );
+    }
+
+    #[test]
+    fn the_same_tag_re_raise_in_its_own_arm_is_clean() {
+        // #44's minimal shape: the arm IS the tag ([gram.expr.tagident]'s
+        // handler side, wolf-lang#48), the return operand resolves as the
+        // tag (D52's declared-row-first), and nothing is bound anywhere —
+        // so there is no shadow for W0305 to price.
+        let found = shadow_codes(
+            "fn f() -> int ! {refused, io} {\n\
+             \x20   return refused\n\
+             }\n\
+             fn g() -> int ! {refused, io} {\n\
+             \x20   let v = f() else |e| match e {\n\
+             \x20       refused => {\n\
+             \x20           return refused\n\
+             \x20       },\n\
+             \x20       io => {\n\
+             \x20           return io\n\
+             \x20       },\n\
+             \x20   }\n\
+             \x20   v\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   let a = g() else 9\n\
+             \x20   a\n\
+             }\n",
+        );
+        assert!(
+            found.is_empty(),
+            "the arm is the tag, not a shadow: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_checked_argument_use_of_the_arm_tag_is_clean() {
+        // The rule, not the symptom: the arm's tag used in ARGUMENT position
+        // (against a callee parameter row that spells it) is the same
+        // resolved name. A fix that only silenced `return <tag>` fails here.
+        let found = shadow_codes(
+            "fn f() -> int ! {refused} {\n\
+             \x20   return refused\n\
+             }\n\
+             fn or(v: int ! {refused}, d: int) -> int {\n\
+             \x20   v else d\n\
+             }\n\
+             fn g() -> int {\n\
+             \x20   let v = f() else |e| match e {\n\
+             \x20       refused => or(refused, 7),\n\
+             \x20       _ => 0,\n\
+             \x20   }\n\
+             \x20   v\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   if g() == 7 { 0 } else { 1 }\n\
+             }\n",
+        );
+        assert!(
+            found.is_empty(),
+            "argument position is the same rule: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_cross_tag_body_naming_a_different_declared_tag_stays_clean() {
+        // `io => { return refused }` never warned (the arm's name and the
+        // body's differ); pinned so the boundary holds from both sides.
+        let found = shadow_codes(
+            "fn f() -> int ! {refused, io} {\n\
+             \x20   return io\n\
+             }\n\
+             fn g() -> int ! {refused, io} {\n\
+             \x20   let v = f() else |e| match e {\n\
+             \x20       io => {\n\
+             \x20           return refused\n\
+             \x20       },\n\
+             \x20       _ => 0,\n\
+             \x20   }\n\
+             \x20   v\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   let a = g() else 9\n\
+             \x20   a\n\
+             }\n",
+        );
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn the_wsm01_witness_is_verbatim_clean() {
+        // wolf-interp#44's reproducer, byte-shaped as filed (the wolf-wws
+        // wsm01 finding): TWO same-tag re-raises, each inside its own arm.
+        // wolfc reads this clean at 64a38f3; as of is24 this machine agrees.
+        let found = shadow_codes(
+            "fn f(x: int) -> int ! {refused, io} {\n\
+             \x20   if x == 1 {\n\
+             \x20       return refused\n\
+             \x20   }\n\
+             \x20   if x == 2 {\n\
+             \x20       return io\n\
+             \x20   }\n\
+             \x20   x\n\
+             }\n\
+             \n\
+             fn g(x: int) -> int ! {refused, io} {\n\
+             \x20   let v = f(x) else |e| match e {\n\
+             \x20       refused => {\n\
+             \x20           return refused\n\
+             \x20       },\n\
+             \x20       io => {\n\
+             \x20           return io\n\
+             \x20       },\n\
+             \x20   }\n\
+             \x20   v\n\
+             }\n\
+             \n\
+             fn main() -> int {\n\
+             \x20   let a = g(0) else 9\n\
+             \x20   a\n\
+             }\n",
+        );
+        assert!(found.is_empty(), "the wsm01 shape is clean: {found:?}");
     }
 }
