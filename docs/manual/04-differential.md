@@ -93,16 +93,16 @@ the notice dies with the amendment.
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":127,"anchors_total":346,"bundle_sha256":"…","files":399,"forward_tags":109,"out":"target/bundle","pin":"87405aca88bbdd1d571e7b3ef8da638e64fbd57a","programs":382,"records":354}
+{"anchors_covered":127,"anchors_total":346,"bundle_sha256":"…","files":405,"forward_tags":109,"out":"target/bundle","pin":"21b129e90c4589c0fc6b5698e0468e84edbd574d","programs":388,"records":360}
 notice: 16 `pkg.*` anchor(s) registered but absent from the spec's namespace clause — known upstream finding, wolf-lang#120 — [conf.anchor.ns] never amended for 08-package.md's sixteen anchors; the clause's own additive-append contract (the s39 `test` precedent) is the one-line fix
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 354 entries compared, 0 member(s) exercised through their entries
+differential: 360 entries compared, 0 member(s) exercised through their entries
 divergences: 0
 conservatism ledger: 90 entries
   unsupported(counterparty): 45
   unsupported(interp): 45
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin 87405aca88bbdd1d571e7b3ef8da638e64fbd57a verified (bundle_sha256 …)
+notice: bundle target/bundle at pin 21b129e90c4589c0fc6b5698e0468e84edbd574d verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the

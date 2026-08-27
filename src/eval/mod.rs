@@ -4346,6 +4346,25 @@ impl Machine {
             );
         }
 
+        // #42: on a wrapping type the shift COUNT masks to the TYPE's bit
+        // width — `x << 64 == x` on wrapping[u64], `y << 32 == y` on
+        // wrapping[u32] — the in-repo ruling all three compiler lanes
+        // implement (the WIR shl contract; s111's #130 mirrored it into the
+        // checked tier). The width comes from the operand's type, never a
+        // constant: u32 masks at 32, u64 at 64. Powers of two throughout, so
+        // `rem_euclid` IS the bit mask, and it also reads a negative count
+        // the way hardware reads its two's-complement pattern. Checked and
+        // saturating types keep the overflow trap `checked` below imposes —
+        // the spec's own wrapping-shift-count clause is still owed upstream
+        // ([gram] has no arith rows), recorded on the issue.
+        let shift_count = || {
+            let masked = if ty.mode == ArithMode::Wrapping {
+                b.rem_euclid(i128::from(ty.bits))
+            } else {
+                b
+            };
+            u32::try_from(masked).ok()
+        };
         let computed = match op {
             Add => a.checked_add(b),
             Sub => a.checked_sub(b),
@@ -4355,8 +4374,8 @@ impl Machine {
             BitAnd => Some(a & b),
             BitOr => Some(a | b),
             BitXor => Some(a ^ b),
-            Shl => u32::try_from(b).ok().and_then(|s| a.checked_shl(s)),
-            Shr => u32::try_from(b).ok().and_then(|s| a.checked_shr(s)),
+            Shl => shift_count().and_then(|s| a.checked_shl(s)),
+            Shr => shift_count().and_then(|s| a.checked_shr(s)),
             _ => unreachable!("handled above"),
         };
         self.checked(ty, computed, span, &format!("`{}`", spelling(op)))
@@ -6679,11 +6698,57 @@ fn type_name(ty: &Type) -> String {
     }
 }
 
-/// The integer type a type annotation names, when it names one.
+/// The `wrapping`/`saturating` mode a wrapper name spells, if either.
+fn arith_mode_named(name: &str) -> Option<ArithMode> {
+    match name {
+        "wrapping" => Some(ArithMode::Wrapping),
+        "saturating" => Some(ArithMode::Saturating),
+        _ => None,
+    }
+}
+
+/// The integer type a type annotation names, when it names one: a bare
+/// width name (`i32`, `u64`, `int`…) or a `wrapping[uN]`/`saturating[uN]`
+/// wrapper — the wrapper resolves in every position a bare width does
+/// (#43, mirroring wolf-lang#132's container-element ruling; a bare
+/// `wrapping` with no argument wraps the `int` default, as `coerce`
+/// always read it).
 fn int_of_type(ty: &Type) -> Option<IntTy> {
     match &*ty.kind {
-        TypeKind::Path { path, .. } => {
-            IntTy::named(path.segments.last().map_or("", |s| s.name.as_str()))
+        TypeKind::Path { path, args } => {
+            let name = path.segments.last().map_or("", |s| s.name.as_str());
+            if let Some(mode) = arith_mode_named(name) {
+                let inner = args.iter().find_map(|arg| match arg {
+                    TypeArg::Type(inner) => int_of_type(inner),
+                    TypeArg::Expr(_) => None,
+                });
+                return Some(inner.unwrap_or(IntTy::INT).with_mode(mode));
+            }
+            IntTy::named(name)
+        }
+        _ => None,
+    }
+}
+
+/// [`int_of_type`]'s value-position twin: the integer type a value-position
+/// type SPELLING names. `e[…]` is one production and type-vs-value is
+/// sema's call (D29), so `List[i32]`'s element annotation arrives as a
+/// value-position path and `List[wrapping[u64]]`'s as a value-position
+/// bracket apply (#43); the prefix-keyword forms arrive as real types.
+fn int_of_type_spelling(expr: &Expr) -> Option<IntTy> {
+    match &*expr.kind {
+        ExprKind::Path(path) if path.is_single() => IntTy::named(path.segments[0].name.as_str()),
+        ExprKind::BracketApply { base, args } => {
+            let ExprKind::Path(path) = &*base.kind else {
+                return None;
+            };
+            let mode = arith_mode_named(path.segments.last().map_or("", |s| s.name.as_str()))?;
+            let [arg] = &args[..] else { return None };
+            let inner = match arg {
+                IndexArg::Type(ty) => int_of_type(ty),
+                IndexArg::Value(arg) => int_of_type_spelling(&arg.expr),
+            };
+            Some(inner.unwrap_or(IntTy::INT).with_mode(mode))
         }
         _ => None,
     }
@@ -6698,17 +6763,9 @@ fn list_elem_of(callee: &Expr) -> Option<IntTy> {
         && path.segments.last().is_some_and(|s| s.name == "List")
         && let [arg] = &args[..]
     {
-        // `e[…]` is one production and type-vs-value is sema's call (D29),
-        // so `List[i32]`'s element annotation arrives as a *value-position*
-        // path; the `IndexArg::Type` arm covers the prefix-keyword forms.
         return match arg {
             IndexArg::Type(ty) => int_of_type(ty),
-            IndexArg::Value(arg) => match &*arg.expr.kind {
-                ExprKind::Path(path) if path.is_single() => {
-                    IntTy::named(path.segments[0].name.as_str())
-                }
-                _ => None,
-            },
+            IndexArg::Value(arg) => int_of_type_spelling(&arg.expr),
         };
     }
     None
@@ -6730,28 +6787,12 @@ fn coerce(value: Value, ty: Option<&Type>) -> Value {
             });
             Value::List(items, elem, home)
         }
-        (TypeKind::Path { path, args }, Value::Int(v, current)) => {
-            let name = path.segments.last().map(|s| s.name.as_str()).unwrap_or("");
-            let mode = match name {
-                "wrapping" => Some(ArithMode::Wrapping),
-                "saturating" => Some(ArithMode::Saturating),
-                _ => None,
-            };
-            if let Some(mode) = mode {
-                let inner = args.iter().find_map(|arg| match arg {
-                    TypeArg::Type(inner) => match &*inner.kind {
-                        TypeKind::Path { path, .. } => {
-                            IntTy::named(path.segments.last().map_or("", |s| s.name.as_str()))
-                        }
-                        _ => None,
-                    },
-                    TypeArg::Expr(_) => None,
-                });
-                let base = inner.unwrap_or(IntTy::INT);
-                return Value::Int(v, base.with_mode(mode));
-            }
-            match IntTy::named(name) {
-                Some(ty) => Value::Int(v, ty),
+        (TypeKind::Path { .. }, Value::Int(v, current)) => {
+            // `int_of_type` reads bare width names AND the wrapping/
+            // saturating wrappers (its doc says how a bare wrapper reads);
+            // an annotation naming neither leaves the value's type alone.
+            match int_of_type(ty) {
+                Some(named) => Value::Int(v, named),
                 None => Value::Int(v, current),
             }
         }

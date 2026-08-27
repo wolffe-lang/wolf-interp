@@ -810,6 +810,41 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // to dispatch through for `Value::Error`, and the #16 enum_variant flag
     // is where the name was waiting.
     ("typecheck/variant_value/main.lu", "exit(0)"),
+    // -- is21 (pin 21b129e) --------------------------------------------------
+    // The s110/s111 wave: the crypto probe's four debts (wolf-lang #130-#133)
+    // and the header-promotion pair. ALL SIX run and match at the pin-bump
+    // baseline — the wave's finding is the differential's favorite shape
+    // again: the compiler grew the wrapping family's semantics and this
+    // machine's independent reading already agreed on every answer.
+    //
+    // `kernels/sha256_block.lu` — one full SHA-256("abc") compression
+    // (FIPS 180-4 §6.2) over wrapping[u64] rotations; every shift here has
+    // a count < 64, which is why it never tripped this repo's #42.
+    //
+    // `generics/list_wrapping_elem.lu` — the SHA-512 K-table shape:
+    // `List[wrapping[u64]]` with full-range constants. The constants ride
+    // annotated `let`s because of THIS repo's #43 (a full-range wrapping
+    // literal trapped in argument position at 0.1.13); once #43 lands the
+    // detour is unnecessary — noted for upstream, their corpus to simplify.
+    //
+    // `typecheck/wrap_narrow_cast.lu` — `int as wrapping[u32]` is
+    // mask-to-width in both directions (300 survives, 0x1_0000_002c wraps
+    // to 44, -1 reads back 4294967295), the committed dual of widening.
+    //
+    // `memory/mut_param_field_lend.lu` — `f(mut param.field)` lends the
+    // caller's slot at the field's offset, one and two levels deep; X1's
+    // field-granular exclusivity was already this machine's semantics.
+    //
+    // `kernels/hot_header.lu` / `hot_header_alias.lu` — s110's
+    // header-promotion witness and its aliasing refusal twin; both pin
+    // semantics by exit code (62 = sum of j & 7 over 0..20; 9 = a[3]+b[3])
+    // and a tree-walk has no headers to promote, so they run at sight.
+    ("generics/list_wrapping_elem.lu", "exit(0)"),
+    ("kernels/hot_header.lu", "exit(62)"),
+    ("kernels/hot_header_alias.lu", "exit(9)"),
+    ("kernels/sha256_block.lu", "exit(0)"),
+    ("memory/mut_param_field_lend.lu", "exit(0)"),
+    ("typecheck/wrap_narrow_cast.lu", "exit(0)"),
 ];
 
 #[test]
