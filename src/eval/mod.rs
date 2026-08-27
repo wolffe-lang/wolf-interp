@@ -3186,9 +3186,48 @@ impl Machine {
                 return self.bind_pattern(&binding.pattern, value);
             }
         }
+        // D54.1 `[type.numlit.adopt]`: a float-typed binding is a float
+        // expectation. Propagate it into the initializer so an integer-literal
+        // term adopts float BEFORE its operators run — `let x: f64 = 1 / 2` is
+        // `0.5`, float division, not the C integer-division footgun
+        // (`[type.numlit.propagate]`). Its int twin (`let n: int = 1 / 2` → `0`)
+        // takes the ordinary path and defaults to int.
+        let expect_float = binding.ty.as_ref().and_then(float_ty_name).is_some();
         // Initialization moves (`[mem.tier0.move.1]`) unless the source is a
         // `Copy`-shaped value or is not a place at all.
-        let value = self.eval_for_init(&binding.value)?;
+        let value = if expect_float {
+            self.eval_float_expected(&binding.value)?
+        } else {
+            self.eval_for_init(&binding.value)?
+        };
+        // The negatives D54 pins hard. Adoption is a LITERAL's privilege
+        // (`[type.numlit.value]`): a concrete int VALUE never becomes a float —
+        // `let n = 0; let x: f64 = n` is refused, the conversion is spelled
+        // `n as f64`. And adoption is one-directional (`[type.numlit.adopt]`): a
+        // `{float}` literal never satisfies an integer expectation —
+        // `let n: int = 0.0` is refused. A tree-walk has no static E0401, so the
+        // honest refusal is `unsupported` (the census conservatism class);
+        // never a silent adopt.
+        if expect_float && matches!(&value, Value::Int(_, ty) if !ty.literal) {
+            return unsupported(
+                "a concrete `int` value does not adopt a float type; adoption is a literal's \
+                 privilege (D54.3, `[type.numlit.value]`) — spell the conversion `as f64`",
+            )
+            .map(|_: Value| ());
+        }
+        if !expect_float
+            && binding
+                .ty
+                .as_ref()
+                .is_some_and(|ty| int_of_type(ty).is_some())
+            && matches!(&value, Value::Float(_))
+        {
+            return unsupported(
+                "a `{float}` literal never satisfies an integer expectation; adoption is \
+                 one-directional (D54.1, `[type.numlit.adopt]`) — `0.0` is not an integer",
+            )
+            .map(|_: Value| ());
+        }
         let was_literal = matches!(&value, Value::Int(_, ty) if ty.literal);
         let value = coerce(value, binding.ty.as_ref());
         // A literal meets its context HERE (issue #14): the annotation types
@@ -3230,6 +3269,59 @@ impl Machine {
             value => value,
         };
         self.bind_pattern(&binding.pattern, value)
+    }
+
+    /// Evaluates an initializer under a float expectation (D54.1/D54.2). The
+    /// expectation reaches down through the arithmetic/comparison operators that
+    /// form one term (`[type.numlit.propagate]`), so an integer LITERAL at any
+    /// leaf adopts float and the operator runs as float arithmetic. The reach is
+    /// exactly those operators and a transparent `(…)` group: it does not cross
+    /// into a call or any other expression shape, matching the clause's "the
+    /// term connected by these operators". A concrete int VALUE leaf is left as
+    /// an int, so `[type.numlit.value]`'s refusal still catches it.
+    fn eval_float_expected(&mut self, expr: &Expr) -> EResult<Value> {
+        match &*expr.kind {
+            ExprKind::Group(inner) => self.eval_float_expected(inner),
+            ExprKind::Binary { op, lhs, rhs }
+                if matches!(
+                    op,
+                    BinOp::Add
+                        | BinOp::Sub
+                        | BinOp::Mul
+                        | BinOp::Div
+                        | BinOp::Rem
+                        | BinOp::Lt
+                        | BinOp::Le
+                        | BinOp::Gt
+                        | BinOp::Ge
+                        | BinOp::Cmp
+                ) =>
+            {
+                let left = self.eval_float_expected(lhs)?;
+                let right = self.eval_float_expected(rhs)?;
+                self.binary(*op, left, right, expr.span)
+            }
+            ExprKind::Unary {
+                op: UnOp::Neg,
+                operand,
+            } => match self.eval_float_expected(operand)? {
+                Value::Float(v) => Ok(Value::Float(-v)),
+                Value::Int(v, ty) if ty.literal => {
+                    self.checked(IntTy::LITERAL_WIDE, v.checked_neg(), expr.span, "negation")
+                }
+                Value::Int(v, ty) => self.checked(ty, v.checked_neg(), expr.span, "negation"),
+                other => unsupported(format!("`-` needs a number, got {}", other.kind())),
+            },
+            // A leaf: evaluate normally, then adopt an integer LITERAL to float.
+            // A value or any non-numeric leaf is returned untouched.
+            _ => {
+                let value = self.eval_for_init(expr)?;
+                Ok(match value {
+                    Value::Int(v, ty) if ty.literal => Value::Float(v as f64),
+                    other => other,
+                })
+            }
+        }
     }
 
     /// The path an expression denotes, but only when that path denotes storage
@@ -4287,6 +4379,19 @@ impl Machine {
                 _ => unsupported(format!("`{}` is not defined on two strings", spelling(op))),
             };
         }
+
+        // D54.2 `[type.numlit.propagate]`: the arithmetic/comparison bridge.
+        // A float operand carries its float type onto an integer LITERAL in the
+        // same term — `c * 1.8 + 32` and `c <= 200` with `c: f64` adopt the bare
+        // `32`/`200` as f64 before the operator runs. Adoption is literal-only
+        // (D54.3): a concrete int VALUE never adopts, so the mixed-operand
+        // `unsupported` refusal below still fires for it. A bare `{float}`
+        // literal meeting a bare `{integer}` literal with no concrete float
+        // context (`1 + 2.0`) is the static ambiguity `[type.numlit.ambig]`
+        // names; a tree-walk carries no float-literal kind, so it computes the
+        // f64 result here rather than issuing E0401 — the honest conservatism
+        // class (documented for the merger; census-neutral, no stdout change).
+        let (left, right) = adopt_numeric(left, right);
 
         if let (Value::Float(a), Value::Float(b)) = (&left, &right) {
             let (a, b) = (*a, *b);
@@ -6771,6 +6876,35 @@ fn list_elem_of(callee: &Expr) -> Option<IntTy> {
     None
 }
 
+/// The runtime half of D54.2's operator bridge (`[type.numlit.propagate]`): an
+/// integer LITERAL meeting a float operand adopts that float's type, so the
+/// operator runs as float arithmetic. Adoption is literal-only — a concrete int
+/// VALUE (`ty.literal == false`) is left untouched so the mixed-operand refusal
+/// still fires (D54.3, `[type.numlit.value]`).
+fn adopt_numeric(left: Value, right: Value) -> (Value, Value) {
+    match (left, right) {
+        (Value::Float(f), Value::Int(v, t)) if t.literal => {
+            (Value::Float(f), Value::Float(v as f64))
+        }
+        (Value::Int(v, t), Value::Float(f)) if t.literal => {
+            (Value::Float(v as f64), Value::Float(f))
+        }
+        (left, right) => (left, right),
+    }
+}
+
+/// The float type a declared type names (`f32`/`f64`), or `None`. The value-
+/// position twin of [`int_of_type`] for D54.1's float expectation.
+fn float_ty_name(ty: &Type) -> Option<&str> {
+    match &*ty.kind {
+        TypeKind::Path { path, .. } => match path.segments.last().map(|s| s.name.as_str()) {
+            Some(name @ ("f32" | "f64")) => Some(name),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// Applies a declared type to a value: the checking context sema-lite provides.
 fn coerce(value: Value, ty: Option<&Type>) -> Value {
     let Some(ty) = ty else { return value };
@@ -6788,6 +6922,15 @@ fn coerce(value: Value, ty: Option<&Type>) -> Value {
             Value::List(items, elem, home)
         }
         (TypeKind::Path { .. }, Value::Int(v, current)) => {
+            // D54.1 `[type.numlit.adopt]`: an integer LITERAL satisfies a float
+            // expectation — `let x: f64 = 0` binds `0.0`, lossless because the
+            // literal denotes an exact value. Literal-only: a concrete int VALUE
+            // is left alone here (`[type.numlit.value]` refuses it at the
+            // binding). One-directional — this never runs for a `{float}`
+            // literal, which stays a float below.
+            if current.literal && float_ty_name(ty).is_some() {
+                return Value::Float(v as f64);
+            }
             // `int_of_type` reads bare width names AND the wrapping/
             // saturating wrappers (its doc says how a bare wrapper reads);
             // an annotation naming neither leaves the value's type alone.
