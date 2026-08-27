@@ -552,9 +552,19 @@ pub struct Provenance {
     /// region id is never reused (`Store::create` only appends), so a set of
     /// ids is exact.
     region_dead: Vec<RegionId>,
-    /// The tag count at the last [`Provenance::prune`], so a prune that has
-    /// nothing to do costs a comparison.
-    pruned_at: usize,
+    /// Allocations whose tag set or bindings changed since the last
+    /// [`Provenance::prune`] — the only ones a prune must revisit. An
+    /// allocation not in this set has exactly the prunable-set it had after
+    /// the last prune (nothing that feeds prunability changed for it), so
+    /// walking it again would keep everything it kept. Keyed on: a retag
+    /// (new tag), a protector release, and every binding removal or
+    /// replacement (a tag that *was* bound becoming unbound). This is what
+    /// keeps a prune O(what changed) instead of O(every allocation the
+    /// program ever made) — wolf-interp#41 measured the latter as
+    /// per-iteration cost growing linearly with program age. A `Vec` with
+    /// consecutive-duplicate suppression at the insert and sort+dedup at
+    /// the prune, because the insert sits on the per-retag hot path.
+    dirty: Vec<AllocId>,
     /// Rule firings waiting for the machine to drain into `--trace`.
     notes: Vec<(Rule, Span, String)>,
 }
@@ -572,6 +582,15 @@ impl Provenance {
 
     fn note(&mut self, rule: Rule, span: Span, detail: String) {
         self.notes.push((rule, span, detail));
+    }
+
+    /// Queues an allocation for the next [`Provenance::prune`]. Consecutive
+    /// duplicates (the common shape: one place retagged and released per
+    /// call) collapse at the push; the prune sorts and dedups the rest.
+    fn mark_dirty(&mut self, alloc: AllocId) {
+        if self.dirty.last() != Some(&alloc) {
+            self.dirty.push(alloc);
+        }
     }
 
     #[must_use]
@@ -740,7 +759,10 @@ impl Provenance {
     /// Binds a place key to an existing `(allocation, tag)` — how a callee's
     /// parameter comes to name the child tag its caller minted.
     pub fn bind_place(&mut self, key: &str, alloc: AllocId, tag: TagId) {
-        self.places.insert(key.to_owned(), (alloc, tag));
+        if let Some((was, _)) = self.places.insert(key.to_owned(), (alloc, tag)) {
+            // The displaced binding's tag may be unreachable now.
+            self.mark_dirty(was);
+        }
     }
 
     /// Binds a place key and returns what it was bound to, for a scoped swap.
@@ -750,18 +772,22 @@ impl Provenance {
         alloc: AllocId,
         tag: TagId,
     ) -> Option<(AllocId, TagId)> {
-        self.places.insert(key.to_owned(), (alloc, tag))
+        let was = self.places.insert(key.to_owned(), (alloc, tag));
+        if let Some((displaced, _)) = was {
+            self.mark_dirty(displaced);
+        }
+        was
     }
 
     /// Restores a binding taken by [`Provenance::rebind_place`].
     pub fn restore_place(&mut self, key: &str, previous: Option<(AllocId, TagId)>) {
-        match previous {
-            Some(entry) => {
-                self.places.insert(key.to_owned(), entry);
-            }
-            None => {
-                self.places.remove(key);
-            }
+        let was = match previous {
+            Some(entry) => self.places.insert(key.to_owned(), entry),
+            None => self.places.remove(key),
+        };
+        if let Some((displaced, _)) = was {
+            // The displaced binding's tag may be unreachable now.
+            self.mark_dirty(displaced);
         }
     }
 
@@ -809,11 +835,14 @@ impl Provenance {
     /// has no children, is not bound to any place, and is not exposed: nothing
     /// can ever observe it again, so removing it changes no verdict.
     pub fn prune(&mut self) {
-        if self.tags.len() <= self.pruned_at {
+        if self.dirty.is_empty() {
             return;
         }
         let bound: Vec<TagId> = self.places.values().map(|(_, tag)| *tag).collect();
-        for index in 0..self.allocs.len() {
+        let mut dirty = std::mem::take(&mut self.dirty);
+        dirty.sort_unstable();
+        dirty.dedup();
+        for index in dirty.drain(..) {
             // Repeat per allocation until nothing more falls off: pruning a
             // leaf can make its parent a leaf. Depth is the bound, and borrow
             // trees are shallow.
@@ -842,7 +871,8 @@ impl Provenance {
                 self.allocs[index].tags = keep;
             }
         }
-        self.pruned_at = self.tags.len();
+        // Hand the emptied buffer back so the hot path keeps its capacity.
+        self.dirty = dirty;
     }
 
     /// Forgets every place of `task`'s frame `frame` and deeper: a frame's
@@ -856,11 +886,18 @@ impl Provenance {
     /// `ub(mem.ub)` pair of issue #7 (wolf-std F-0013).
     pub fn drop_frame(&mut self, task: usize, frame: usize) {
         let prefix = format!("t{task}:");
-        self.places.retain(|key, _| {
-            key.strip_prefix(&prefix)
+        let dirty = &mut self.dirty;
+        self.places.retain(|key, entry| {
+            let keep = key
+                .strip_prefix(&prefix)
                 .and_then(|rest| rest.split_once(':'))
                 .and_then(|(f, _)| f.parse::<usize>().ok())
-                .is_none_or(|f| f < frame)
+                .is_none_or(|f| f < frame);
+            if !keep && dirty.last() != Some(&entry.0) {
+                // The dying binding's tag may be unreachable now.
+                dirty.push(entry.0);
+            }
+            keep
         });
     }
 
@@ -889,6 +926,7 @@ impl Provenance {
             span,
         });
         self.allocs[alloc].tags.push(id);
+        self.mark_dirty(alloc);
         self.note(
             Rule::ProvTag,
             span,
@@ -936,6 +974,8 @@ impl Provenance {
             }
             entry.protected = false;
             let label = entry.label.clone();
+            // No longer protected: the next prune must revisit its tree.
+            self.mark_dirty(self.tags[tag].alloc);
             self.note(
                 Rule::ProvTag,
                 span,
@@ -1890,11 +1930,45 @@ mod tests {
             "nothing can reach this one again"
         );
 
-        // Releasing the protector makes it prunable in turn.
+        // Releasing the protector makes it prunable in turn — the release
+        // alone re-dirties the allocation, no new tag needed (is20, #41).
         prov.unprotect(protected_tag, span());
-        prov.pruned_at = 0;
         prov.prune();
         assert!(!prov.allocs[0].tags.contains(&protected_tag));
+
+        // A binding's death re-dirties too: unbind the placed tag and the
+        // next prune drops it.
+        prov.restore_place("0:x", None);
+        prov.prune();
+        assert!(!prov.allocs[0].tags.contains(&bound_tag));
+        assert_eq!(prov.allocs[0].tags, vec![root_tag]);
+    }
+
+    #[test]
+    fn prune_revisits_only_what_changed() {
+        // wolf-interp#41: prune ran over EVERY allocation the program had
+        // ever made, on every call return — per-iteration cost grew linearly
+        // with program age (129 CAVP vectors: 27s as four programs, 132s as
+        // one). The fix keys prune on a dirty set; an allocation nothing
+        // touched since the last prune is not revisited.
+        let mut prov = Provenance::new();
+        for i in 0..100 {
+            let key = format!("0:aged{i}");
+            let _ = prov.retag_place(&key, RetagKind::Mutable, false, span());
+            prov.restore_place(&key, None);
+        }
+        prov.prune();
+        assert!(prov.dirty.is_empty(), "a prune consumes the dirty set");
+
+        // New work dirties exactly its own allocation.
+        let (alloc, _) = prov.retag_place("0:fresh", RetagKind::Mutable, false, span());
+        assert_eq!(
+            prov.dirty,
+            vec![alloc],
+            "one retag dirties one allocation, not the program's whole history"
+        );
+        prov.prune();
+        assert!(prov.dirty.is_empty());
     }
 
     #[test]
