@@ -1437,8 +1437,8 @@ fn tier_check(program: &Program) -> Option<Diag> {
 /// spec comes, and the counterparty answers E0301 for `as bytes` — the two
 /// agree that the name is not a type.
 const BUILTIN_SCALAR_TYPES: &[&str] = &[
-    "bool", "f32", "f64", "i128", "i16", "i32", "i64", "i8", "int", "str", "u128", "u16", "u32",
-    "u64", "u8", "uint",
+    "bool", "char", "f32", "f64", "i128", "i16", "i32", "i64", "i8", "int", "str", "u128", "u16",
+    "u32", "u64", "u8", "uint",
 ];
 
 /// The class an *annotated* type names, for parameters (`greet(name: str)`).

@@ -3228,6 +3228,38 @@ impl Machine {
             )
             .map(|_: Value| ());
         }
+        // D58's negative ([type.char]): `char` is not an integer type and
+        // adopts no numeric literal — `let c: char = 65` is the checker's
+        // type error. A tree-walk has no static code for it, so the honest
+        // refusal is `unsupported` (the conservatism class), never a silent
+        // adoption; the conversion is spelled `65 as char`, and it traps on
+        // a non-scalar. The reverse direction is refused on the same
+        // grounds: a `char` value satisfies no numeric expectation.
+        let char_expected = binding
+            .ty
+            .as_ref()
+            .and_then(crate::sema::head_name)
+            .is_some_and(|name| name == "char");
+        if char_expected && matches!(&value, Value::Int(..) | Value::Float(_)) {
+            return unsupported(
+                "`char` adopts no numeric literal (D58, `[type.char]`) — spell the \
+                 conversion `n as char`, which traps on a non-scalar",
+            )
+            .map(|_: Value| ());
+        }
+        if !char_expected
+            && binding
+                .ty
+                .as_ref()
+                .is_some_and(|ty| int_of_type(ty).is_some() || float_ty_name(ty).is_some())
+            && matches!(&value, Value::Char(_))
+        {
+            return unsupported(
+                "a `char` value satisfies no numeric expectation (D58, `[type.char]`) — \
+                 the total direction is spelled `c as int`",
+            )
+            .map(|_: Value| ());
+        }
         let was_literal = matches!(&value, Value::Int(_, ty) if ty.literal);
         let value = coerce(value, binding.ty.as_ref());
         // A literal meets its context HERE (issue #14): the annotation types
@@ -3927,8 +3959,17 @@ impl Machine {
                 ));
             }
         };
+        let char_text;
         let fmt_value = match &value {
             Value::Str(s) => Some(crate::fmtspec::FmtValue::Str(s)),
+            // `[type.char.interp]`: a spec on a char hole takes the `str`
+            // spec surface — fill/align/width, width in BYTES (D25) — and a
+            // numeric spec (`{c:x}`) is the E0413 mismatch it looks like,
+            // which `apply`'s class check reports below.
+            Value::Char(c) => {
+                char_text = c.to_string();
+                Some(crate::fmtspec::FmtValue::Str(&char_text))
+            }
             Value::Bool(b) => Some(crate::fmtspec::FmtValue::Bool(*b)),
             Value::Int(v, _) => Some(crate::fmtspec::FmtValue::Int(*v)),
             Value::Float(v) => Some(crate::fmtspec::FmtValue::F64(*v)),
@@ -4362,12 +4403,46 @@ impl Machine {
                          value to compare them"
                     ));
                 }
+                // `[type.char]`: char is not an integer — `'a' == 97` is the
+                // checker's type error, and a quiet `false` here would run a
+                // program the compiler rejects (the permissive divergence,
+                // the harder kind to notice). One char operand demands the
+                // other; the bridge is spelled `c as int`.
+                if matches!(&left, Value::Char(_)) != matches!(&right, Value::Char(_)) {
+                    return unsupported(format!(
+                        "`{}` between {} and {} is the checker's refusal — `char` compares                          only with `char` ([type.char.order]); spell the bridge `c as int`",
+                        spelling(op),
+                        left.kind(),
+                        right.kind()
+                    ));
+                }
                 return match op {
                     Eq => Ok(Value::Bool(value_eq(&left, &right))),
                     _ => Ok(Value::Bool(!value_eq(&left, &right))),
                 };
             }
             _ => {}
+        }
+
+        // `[type.char.order]`: char orders by scalar value — total,
+        // locale-free, deterministic, and honestly NOT collation
+        // ('z' < 'é' because 0x7A < 0xE9). Only against another char: the
+        // comparisons never bridge into the numeric tower, and arithmetic
+        // on chars falls through to the generic refusal below — `char` is
+        // not an integer type ([type.char]).
+        if let (Value::Char(a), Value::Char(b)) = (&left, &right) {
+            let (a, b) = (*a, *b);
+            return match op {
+                Lt => Ok(Value::Bool(a < b)),
+                Le => Ok(Value::Bool(a <= b)),
+                Gt => Ok(Value::Bool(a > b)),
+                Ge => Ok(Value::Bool(a >= b)),
+                Cmp => Ok(Value::int(i128::from(a.cmp(&b) as i8))),
+                _ => unsupported(format!(
+                    "`{}` is not defined on two chars — `char` is not an integer type                      ([type.char]); spell arithmetic through `c as int`",
+                    spelling(op)
+                )),
+            };
         }
 
         // Strings compare and concatenate.
@@ -6276,6 +6351,71 @@ impl Machine {
                  that gives one is §7/T1, and it is Tier-3 reachable only"
                     .to_owned(),
             );
+        }
+
+        // `[type.char.cast]` (s121, D58) — the char type's two numeric
+        // bridges, and the only ones. `char as int` is total: every scalar
+        // names its code point. `int as char` traps on a non-scalar —
+        // negative, above 0x10FFFF, or the surrogate gap 0xD800..=0xDFFF —
+        // as D56's trapping family, `trap(overflow)`: an admitted surrogate
+        // would mint a `char` no `str` could ever encode (D24). The gap
+        // EDGES 0xD7FF and 0xE000 are legal and convert. Other widths cast
+        // through `int`; everything else is refused by name.
+        if target == "char" {
+            return match value {
+                // `c as char` is the identity — no conversion, no retag.
+                Value::Char(_) => Ok(value),
+                Value::Int(v, _) => match u32::try_from(v).ok().and_then(char::from_u32) {
+                    Some(c) => {
+                        self.fire(
+                            Rule::CharCast,
+                            span,
+                            &format!("`{v} as char` converts — {v:#X} is a scalar"),
+                        );
+                        Ok(Value::Char(c))
+                    }
+                    None => {
+                        let why = if v < 0 {
+                            "negative, and no scalar is".to_owned()
+                        } else if v > 0x0010_FFFF {
+                            format!("{v:#X}, above the last scalar 0x10FFFF")
+                        } else {
+                            format!("{v:#X}, inside the surrogate gap 0xD800..=0xDFFF")
+                        };
+                        self.trap(
+                            TrapKind::Overflow,
+                            Rule::CharCast,
+                            span,
+                            format!(
+                                "`{v} as char`: the value is {why} — it names no \
+                                     character, and admitting it would mint a `char` that \
+                                     cannot be UTF-8-encoded (D24), so the cast traps \
+                                     ([type.char.cast], D56's family)"
+                            ),
+                            None,
+                        )
+                    }
+                },
+                other => unsupported(format!(
+                    "`{} as char` is outside the cast set — only `int as char` bridges \
+                     into `char` ([type.char.cast]); other widths cast through `int`",
+                    other.kind()
+                )),
+            };
+        }
+        if let Value::Char(c) = value {
+            if target == "int" {
+                self.fire(
+                    Rule::CharCast,
+                    span,
+                    &format!("`{c:?} as int` is total — the code point {}", u32::from(c)),
+                );
+                return Ok(Value::Int(i128::from(u32::from(c)), IntTy::INT));
+            }
+            return unsupported(format!(
+                "`char as {target}` is outside the cast set — `char as int` is the total \
+                 direction ([type.char.cast]); other widths cast through `int`"
+            ));
         }
 
         // The closed cast set's numeric family (`[ty.cast.closed-set]`,

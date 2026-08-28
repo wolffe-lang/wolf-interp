@@ -106,6 +106,11 @@ fn forward_namespace_citations_are_named_so_the_debt_is_visible() {
             "err.rows",
             "err.union",
             "str.interp",
+            // is26, transitional: `Rule::CharCast` cites the closed cast
+            // set's forward tag until the pin bump lands the s121 spec,
+            // whose registered `[type.char.cast]` then owns the rule — the
+            // same commit that vendors the anchor flips the citation.
+            "ty.cast.closed-set",
             // is08: is06's `sync.when.*` forward citations are retired —
             // the s20 S-batch wrote `[conc.when.*]` into spec/03 and the
             // rules cite the registered namespace now (findings S-1..S-8

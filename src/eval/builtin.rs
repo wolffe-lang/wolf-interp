@@ -1020,6 +1020,21 @@ pub fn method(
             };
             str_get(machine, s, Some(*start), Some(*end), *inclusive, span)
         }
+        (Value::Str(s), "chars") => {
+            // `[mem.str.chars]` (s120; typed by s121/D58): the Unicode scalar
+            // values encoded in `s`, in string order, one per code point, as
+            // `char`s — `List[char]`, materialized like `bytes()`. Every
+            // `str` is valid UTF-8 (`[mem.str.get]`), so the decode is total:
+            // no yield is an error case, and a surrogate or out-of-range
+            // value cannot appear — every element fits `char`'s domain by
+            // construction. The byte tier is unchanged: `bytes()` stays the
+            // byte view; `char` is the scalar tier, never a byte.
+            Ok(Value::list(
+                s.chars().map(|c| Slot::live(Value::Char(c))).collect(),
+                None,
+                Some(machine.current_region()),
+            ))
+        }
         (Value::Str(s), "bytes") => {
             // The byte view, materialized at v0 (D25 licenses byte indexing
             // on `bytes`; `b[i]` rides List indexing).

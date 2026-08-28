@@ -85,6 +85,9 @@ pub enum Rule {
     /// An untyped integer literal defaults to `i32`, a float to `f64`, unless a
     /// checking context supplies a type.
     LiteralDefault,
+    /// `char as int` is total; `int as char` traps `overflow` on a non-scalar
+    /// — negative, above `0x10FFFF`, or the surrogate gap (s121, D58).
+    CharCast,
 
     // -- §3 Tier 1: regions (is03) ----------------------------------------
     /// `region name { }` sugar and `region(…)` values both create a region.
@@ -422,6 +425,10 @@ impl Rule {
             Rule::LiteralDefault => (
                 "arith.literal.default",
                 "an unconstrained integer literal defaults to i32 and a float literal to f64",
+            ),
+            Rule::CharCast => (
+                "ty.cast.closed-set",
+                "`char as int` is total; `int as char` traps `overflow` on a non-scalar (negative, above 0x10FFFF, or the surrogate gap)",
             ),
             Rule::RegionCreate => (
                 "mem.region.create.1",
@@ -848,7 +855,7 @@ impl Rule {
     }
 
     /// Every rule, in declaration order. The registry.
-    pub const ALL: [Rule; 114] = [
+    pub const ALL: [Rule; 115] = [
         Rule::ValueSemantics,
         Rule::PlacePath,
         Rule::PathDisjoint,
@@ -870,6 +877,7 @@ impl Rule {
         Rule::DivZero,
         Rule::Bounds,
         Rule::LiteralDefault,
+        Rule::CharCast,
         Rule::RegionCreate,
         Rule::RegionAffine,
         Rule::RegionAmbient,

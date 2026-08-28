@@ -9,7 +9,11 @@
 //! down.
 
 use wolf_interp::diag;
+use wolf_interp::frontend;
 use wolf_interp::lex::{self, Tok};
+use wolf_interp::phase::Phase;
+use wolf_interp::protocol::Verdict;
+use wolf_interp::trap::TrapKind;
 
 /// The `Tok::Char` values a source lexes to, in order.
 fn chars_of(src: &str) -> Vec<char> {
@@ -172,4 +176,223 @@ fn char_literals_parse_in_expression_and_pattern_position() {
     // CHAR_LIT would be a parse error on the arm).
     assert!(trace.contains("char '🐺'"), "{trace}");
     assert!(trace.contains("match (2 arm(s))"), "{trace}");
+}
+
+// -- the eval tier -------------------------------------------------------
+
+fn observe(body: &str) -> frontend::Observation {
+    let source = format!("fn main() -> !int {{\n{body}\n}}\n");
+    frontend::observe(source.as_bytes(), None)
+}
+
+fn exits_zero(body: &str) {
+    let observation = observe(body);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "body: {body}\nreason: {:?}",
+        observation.reason
+    );
+}
+
+fn traps_overflow(body: &str) {
+    let observation = observe(body);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Trap(TrapKind::Overflow),
+        "body: {body}\nreason: {:?}",
+        observation.reason
+    );
+    assert_eq!(observation.phase_reached, Phase::Run);
+}
+
+fn refuses(body: &str) {
+    let observation = observe(body);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Unsupported,
+        "body: {body}\nreason: {:?}",
+        observation.reason
+    );
+}
+
+#[test]
+fn char_orders_by_scalar_value() {
+    // [type.char.order]: total, locale-free, and honestly NOT collation —
+    // 'z' < 'é' because 0x7A < 0xE9, however a dictionary would sort them.
+    exits_zero(
+        "if 'a' < 'b' && 'A' < 'a' && '0' < 'A' && 'z' < 'é' && 'é' < '中' && '中' < '🐺' \
+         { 0 } else { 1 }",
+    );
+    exits_zero("if 'a' <= 'a' && 'a' >= 'a' && !('a' < 'a') { 0 } else { 1 }");
+}
+
+#[test]
+fn char_equality_is_scalar_equality() {
+    // Distinct spellings collapse; distinct scalars stay distinct — a
+    // precomposed é is NOT the letter e ([type.char.order]).
+    exits_zero(
+        "if 'é' == 'é' && '\\n' == '\\u{A}' && '\\'' == '\\x27' && 'é' != 'e' { 0 } else { 1 }",
+    );
+}
+
+#[test]
+fn char_is_not_an_integer() {
+    // [type.char]: no arithmetic, no numeric-literal adoption, no mixed
+    // comparison. Every one of these is a program the compiler rejects; a
+    // refusal beats running it (the permissive divergence).
+    refuses("let x = 'a' + 'b'\nx as int");
+    refuses("let x = 'a' + 1\nx");
+    refuses("if 'a' == 97 { 0 } else { 1 }");
+    refuses("if 'a' < 97 { 0 } else { 1 }");
+    refuses("let c: char = 65\n0");
+    refuses("let n: int = 'a'\n0");
+}
+
+#[test]
+fn char_as_int_is_total() {
+    // [type.char.cast], the total direction: every scalar names its code
+    // point.
+    exits_zero(
+        "if 'a' as int == 97 && 'é' as int == 233 && '中' as int == 20013 \
+         && '🐺' as int == 128058 { 0 } else { 1 }",
+    );
+}
+
+#[test]
+fn int_as_char_converts_every_scalar_and_round_trips() {
+    exits_zero(
+        "if 97 as char == 'a' && 233 as char == 'é' && 20013 as char == '中' \
+         && 128058 as char == '🐺' { 0 } else { 1 }",
+    );
+    // The domain's legal edges: zero, the gap's NEIGHBOURS, the last scalar
+    // — the proof the gap has the right shape ([type.char.cast]).
+    exits_zero("if 0 as char == '\\0' { 0 } else { 1 }");
+    exits_zero("if 55295 as char == '\\u{D7FF}' { 0 } else { 1 }");
+    exits_zero("if 57344 as char == '\\u{E000}' { 0 } else { 1 }");
+    exits_zero("if 1114111 as char == '\\u{10FFFF}' { 0 } else { 1 }");
+}
+
+#[test]
+fn int_as_char_traps_on_a_non_scalar() {
+    // The boundary quartet's trapping half, plus the far gap edge: the
+    // surrogate gap at both ends, past the last scalar, and negative — all
+    // trap(overflow), D56's family ([type.char.cast]).
+    traps_overflow("let n = 0xD800\nlet c = n as char\nif c == 'x' { 1 } else { 2 }");
+    traps_overflow("let n = 0xDFFF\nlet c = n as char\nif c == 'x' { 1 } else { 2 }");
+    traps_overflow("let n = 0x110000\nlet c = n as char\nif c == 'x' { 1 } else { 2 }");
+    traps_overflow("let n = 0 - 1\nlet c = n as char\nif c == 'x' { 1 } else { 2 }");
+}
+
+#[test]
+fn the_char_cast_bridges_nothing_else() {
+    // Other widths cast through `int` ([type.char.cast]); floats and
+    // strings never bridge. Refusals, by name.
+    refuses("let x = 'a' as f64\n0");
+    refuses("let x = 'a' as u32\n0");
+    refuses("let x = \"a\" as char\n0");
+    refuses("let x = 3.0 as char\n0");
+    // `bool` casts to nothing, and sema-lite can SEE this one statically —
+    // the E0805 the counterparty answers, code for code.
+    let observation = observe("let x = true as char\n0");
+    assert_eq!(observation.verdict, Verdict::Fail("E0805".to_owned()));
+}
+
+#[test]
+fn chars_yields_the_scalars_in_string_order() {
+    // [mem.str.chars]: List[char], one element per code point, at every
+    // UTF-8 width; the empty string yields nothing; ASCII is one char per
+    // byte while `s.len` stays the BYTE count.
+    exits_zero(
+        "let cs = \"aé中🐺\".chars()\n\
+         if cs.len == 4 && cs[0] == 'a' && cs[1] == 'é' && cs[2] == '中' && cs[3] == '🐺' \
+         { 0 } else { 1 }",
+    );
+    exits_zero("if \"\".chars().len == 0 { 0 } else { 1 }");
+    exits_zero(
+        "let ascii = \"wolf\".chars()\n\
+         if ascii.len == 4 && ascii[0] == 'w' && ascii[3] == 'f' && \"wolf\".len == 4 \
+         { 0 } else { 1 }",
+    );
+    exits_zero("if \"aé中🐺\".chars().len == 4 && \"aé中🐺\".len == 10 { 0 } else { 1 }");
+}
+
+#[test]
+fn the_width_identity_holds() {
+    // THE reason the primitive exists ([mem.str.chars]): a scalar's byte
+    // extent is a function of its value — 1 below 0x80, 2 below 0x800, 3
+    // below 0x10000, else 4 — and a cursor advanced that way lands on
+    // exactly the boundaries `get` accepts, ending at the byte length.
+    // Witnessed, not assumed: every `get` at a computed offset must succeed.
+    let src = r#"fn width(c: char) -> int {
+    let n = c as int
+    if n < 128 { 1 } else if n < 2048 { 2 } else if n < 65536 { 3 } else { 4 }
+}
+
+fn main() -> !int {
+    let s = "aé中🐺"
+    let cs = s.chars()
+    var off = 0
+    var hits = 0
+    for c in cs {
+        let w = width(c)
+        let piece = s.get(off..off + w) else "?"
+        if piece != "?" {
+            hits = hits + 1
+        }
+        off = off + w
+    }
+    if off == s.len && hits == 4 && s.len == 10 { 0 } else { 1 }
+}
+"#;
+    let observation = frontend::observe(src.as_bytes(), None);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "reason: {:?}",
+        observation.reason
+    );
+}
+
+#[test]
+fn a_char_prints_the_character() {
+    // [type.char.interp]: `{c}` renders the scalar's UTF-8 encoding, in
+    // interpolation and in `print` alike; the number is spelled, not
+    // ambient. A spec on a char hole takes the str surface — width in
+    // BYTES (D25), so `é` at `<4` pads with two spaces.
+    let src = "fn main() -> !int {\n    let w = '🐺'\n    let e = 'é'\n    print(\"wolf: {w}{e}\")\n    print(\"{w as int}/{w}\")\n    print(\"[{e:<4}]\")\n    0\n}\n";
+    let observation = frontend::observe(src.as_bytes(), None);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "reason: {:?}",
+        observation.reason
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&observation.stdout),
+        "wolf: 🐺é\n128058/🐺\n[é  ]\n"
+    );
+}
+
+#[test]
+fn a_numeric_spec_on_a_char_hole_is_refused() {
+    // [type.char.interp]: `{c:x}` is the E0413 mismatch it looks like —
+    // refused by name, never silently ignored.
+    refuses("let c = 'a'\nlet s = \"{c:x}\"\n0");
+}
+
+#[test]
+fn char_dispatches_through_match_by_scalar_identity() {
+    exits_zero(
+        "let c = '\\u{A}'\n\
+         let k = match c {\n    'a' | 'e' => 1,\n    '\\n' => 2,\n    '🐺' => 3,\n    _ => 0,\n}\n\
+         if k == 2 { 0 } else { 1 }",
+    );
+}
+
+#[test]
+fn for_over_a_str_stays_a_named_refusal() {
+    // Named-not-built on both sides (the s17 iteration-protocol question);
+    // a refusal beats an approximation.
+    refuses("for c in \"str\" {\n    print(\"{c}\")\n}\n0");
 }
