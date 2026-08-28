@@ -30,9 +30,14 @@ fn the_probed_edge_rows_answer_as_the_compiled_lanes_do() {
     // One program, every probed edge: unparseable listen is `io`, a dial
     // at a dead port is a row, double close is `io`, the peer's finish is
     // `closed` on read, the first write after a peer close succeeds and
-    // the second is the row, accept on a stream is `io`, a forged fd is
+    // a later write is the row, accept on a stream is `io`, a forged fd is
     // `io`, clearing a deadline is legal. Byte-for-byte the transcript the
-    // compiled lanes answered under probe.
+    // compiled lanes answered under probe — with one timing honesty: the
+    // failing write happens only once the peer's RST has been processed,
+    // and *when* that lands is the kernel's business (on Linux loopback the
+    // very next write fails; macOS needs a few ms), so the program retries
+    // the post-close write on a bounded clock instead of asserting the
+    // race. The transcript is unchanged: the row prints exactly once.
     let dir = scratch("net-edges");
     let source = "fn main() -> !int {\n\
         \x20   net_listen(\"garbage\") else |_| { print(\"listen-garbage\"); -1 }\n\
@@ -46,7 +51,15 @@ fn the_probed_edge_rows_answer_as_the_compiled_lanes_do() {
         \x20   net_close(cli) else |_| print(\"double-close\")\n\
         \x20   net_read(conn, 8) else |_| { print(\"read-after-peer-close\"); \"?\" }\n\
         \x20   net_write(conn, \"x\") else |_| print(\"write-after-peer-close-1\")\n\
-        \x20   net_write(conn, \"x\") else |_| print(\"write-after-peer-close-2\")\n\
+        \x20   var tries = 0\n\
+        \x20   while tries < 400 {\n\
+        \x20       time_sleep_ms(5)\n\
+        \x20       net_write(conn, \"x\") else |_| {\n\
+        \x20           tries = 1000000\n\
+        \x20           print(\"write-after-peer-close-2\")\n\
+        \x20       }\n\
+        \x20       tries = tries + 1\n\
+        \x20   }\n\
         \x20   net_accept(conn) else |_| { print(\"accept-on-stream\"); -1 }\n\
         \x20   net_read(99, 4) else |_| { print(\"read-forged\"); \"?\" }\n\
         \x20   net_deadline(srv, -5)?\n\
