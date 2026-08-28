@@ -9,10 +9,12 @@
 //!
 //! Per the sprint's revised families: `E000x` are the reservations spelled out
 //! in `spec/01-grammar.md` §9, `E01xx` is the lexer, `E02xx` the parser. Only
-//! two of those are fixed by a document we do not own:
+//! three of those are fixed by a document we do not own:
 //!
-//! - the eight `E000x` reservations (spec/01 §9), and
-//! - `E0108`, named in `[gram.lex.str]` as the depth-32 lexer rail.
+//! - the eight `E000x` reservations (spec/01 §9),
+//! - `E0108`, named in `[gram.lex.str]` as the depth-32 lexer rail, and
+//! - `E0110`, named in `[gram.lex.char]` (s121, D58) for malformed char
+//!   literals.
 //!
 //! Everything else in `E01xx`/`E02xx` is **this implementation's choice**. The
 //! choices are listed in [`UNPINNED_CODES`] so a divergence report can say
@@ -170,11 +172,21 @@ pub const E_INTERP_RAIL: &str = "E0108";
 /// A `"""` content line indented less than the closing delimiter's column
 /// (`[gram.lex.str.multi]`). **Unpinned.**
 pub const E_DEDENT_UNDERRUN: &str = "E0109";
-/// An interpolation with no closing `}` (`[gram.lex.str]`). **Unpinned.**
-pub const E_UNTERMINATED_INTERP: &str = "E0110";
+/// A malformed `char` literal — empty, multi-scalar, unterminated before the
+/// end of its line, or a `\x`/`\u` escape naming a non-scalar (the surrogate
+/// gap `0xD800..=0xDFFF`, or above `0x10FFFF`). **Spec-pinned by
+/// `[gram.lex.char]`** (s121, D58): "Malformed shapes are E0110 with an
+/// `Error` token, one report each." This number was this implementation's
+/// unterminated-interpolation pick until the spec claimed it; that code moved
+/// to E0112 — see [`E_UNTERMINATED_INTERP`].
+pub const E_BAD_CHAR_LITERAL: &str = "E0110";
 /// A bare `{` or `}` in string text; the escapes are `{{` and `}}`
 /// (`[gram.lex.str.escape]`). **Unpinned.**
 pub const E_BARE_BRACE_IN_STRING: &str = "E0111";
+/// An interpolation with no closing `}` (`[gram.lex.str]`). **Unpinned.**
+/// Sat at E0110 until `[gram.lex.char]` (s121, D58) pinned that number for
+/// malformed char literals; the unpinned code yielded to the spec-pinned one.
+pub const E_UNTERMINATED_INTERP: &str = "E0112";
 
 // ---------------------------------------------------------------------------
 // Parser tier, E02xx. All unpinned.
@@ -310,10 +322,11 @@ mod tests {
         let mut seen = std::collections::BTreeSet::new();
         for (code, _, _) in UNPINNED_CODES {
             assert!(seen.insert(*code), "duplicate code {code}");
-            // E000x is spec/01 §9's; E0108 is [gram.lex.str]'s. Ours live
-            // strictly outside both.
+            // E000x is spec/01 §9's; E0108 is [gram.lex.str]'s; E0110 is
+            // [gram.lex.char]'s. Ours live strictly outside all three.
             assert!(code.starts_with("E01") || code.starts_with("E02"), "{code}");
             assert_ne!(*code, E_INTERP_RAIL);
+            assert_ne!(*code, E_BAD_CHAR_LITERAL);
         }
     }
 
