@@ -1077,7 +1077,11 @@ impl Walk<'_> {
 
     fn expr(&mut self, expr: &Expr) {
         match &*expr.kind {
-            ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Bool(_) | ExprKind::Wildcard => {}
+            ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Char(_)
+            | ExprKind::Wildcard => {}
             ExprKind::Path(_) => {}
             ExprKind::Str(lit) => self.str_lit(lit),
             ExprKind::StructLit { fields, .. } => {
@@ -1755,6 +1759,7 @@ fn walk_child_exprs(expr: &Expr, visit: &mut impl FnMut(&Expr)) {
         ExprKind::Int(_)
         | ExprKind::Float(_)
         | ExprKind::Bool(_)
+        | ExprKind::Char(_)
         | ExprKind::Wildcard
         | ExprKind::Path(_)
         | ExprKind::Continue

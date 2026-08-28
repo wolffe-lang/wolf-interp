@@ -1563,7 +1563,11 @@ impl TierWalk<'_> {
     #[allow(clippy::too_many_lines)]
     fn expr(&mut self, expr: &Expr) -> Option<Diag> {
         match &*expr.kind {
-            ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Bool(_) | ExprKind::Wildcard => None,
+            ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Char(_)
+            | ExprKind::Wildcard => None,
             ExprKind::Path(_) => None,
             ExprKind::Str(lit) => self.str_lit(lit),
             ExprKind::Group(inner)
@@ -2403,6 +2407,7 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
         | ExprKind::Int(_)
         | ExprKind::Float(_)
         | ExprKind::Bool(_)
+        | ExprKind::Char(_)
         | ExprKind::Wildcard
         | ExprKind::Continue
         | ExprKind::RegionValue { .. }
@@ -2815,7 +2820,11 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
             }
         }
         ExprKind::Str(literal) => collect_strlit_refs(literal, scope),
-        ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Bool(_) | ExprKind::Wildcard => {}
+        ExprKind::Int(_)
+        | ExprKind::Float(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Char(_)
+        | ExprKind::Wildcard => {}
         ExprKind::Tuple(items) => {
             for item in items {
                 collect_expr_refs(item, scope);

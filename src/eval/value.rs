@@ -385,6 +385,13 @@ pub enum Value {
     Bool(bool),
     Int(i128, IntTy),
     Float(f64),
+    /// A `char` — one Unicode scalar value (`[type.char]`, s121/D58). Carried
+    /// as Rust's `char`, whose domain is *exactly* the spec's: `0..=0x10FFFF`
+    /// minus the surrogate gap, so a `Value::Char` holding a non-scalar is
+    /// unrepresentable by construction. NOT an integer: no arithmetic, no
+    /// literal adoption — the only numeric bridges are `[type.char.cast]`'s
+    /// two casts.
+    Char(char),
     Str(String),
     Tuple(Vec<Slot>),
     Struct {
@@ -551,6 +558,7 @@ impl Value {
             Value::Bool(_) => "bool".to_owned(),
             Value::Int(_, ty) => ty.name(),
             Value::Float(_) => "f64".to_owned(),
+            Value::Char(_) => "char".to_owned(),
             Value::Str(_) => "str".to_owned(),
             Value::Tuple(items) => format!("a {}-tuple", items.len()),
             Value::Struct { name, .. } => name.clone(),
@@ -609,6 +617,9 @@ impl fmt::Display for Value {
                 // is `inf` (a value, never a trap: X3 is integer law).
                 f.write_str(&crate::fmtspec::f64_shortest(*v))
             }
+            // `{c}` prints the CHARACTER, never the code-point number
+            // ([type.char.interp]); the number is spelled `{c as int}`.
+            Value::Char(c) => write!(f, "{c}"),
             Value::Str(s) => f.write_str(s),
             Value::Tuple(items) => {
                 f.write_str("(")?;

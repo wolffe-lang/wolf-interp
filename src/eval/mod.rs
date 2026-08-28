@@ -3524,6 +3524,9 @@ impl Machine {
             ExprKind::Int(text) => Ok(Value::Int(parse_int(text)?, IntTy::LITERAL)),
             ExprKind::Float(text) => Ok(Value::Float(parse_float(text)?)),
             ExprKind::Bool(b) => Ok(Value::Bool(*b)),
+            // A char literal is its decoded scalar ([type.char.lit]); the
+            // lexer already collapsed every spelling to the value.
+            ExprKind::Char(c) => Ok(Value::Char(*c)),
             ExprKind::Str(literal) => {
                 let mut out = String::new();
                 for part in &literal.parts {

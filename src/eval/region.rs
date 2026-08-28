@@ -977,6 +977,7 @@ pub fn references(value: &Value, out: &mut Vec<Ref>) {
         | Value::Bool(_)
         | Value::Int(..)
         | Value::Float(_)
+        | Value::Char(_)
         | Value::Str(_)
         | Value::Range { .. }
         | Value::Fn(_)

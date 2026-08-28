@@ -670,6 +670,9 @@ pub enum ExprKind {
     Int(String),
     Float(String),
     Bool(bool),
+    /// A `char` literal, already decoded by the lexer (`[gram.lex.char]`):
+    /// one Unicode scalar value, whatever its source spelling.
+    Char(char),
     Str(Box<StrLit>),
     Path(Path),
     /// `_` — the wildcard, legal in patterns and as an asm/discard position.

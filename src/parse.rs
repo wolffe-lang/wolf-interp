@@ -621,7 +621,9 @@ impl<'a> Parser<'a> {
     fn parse_literal_only(&mut self) -> PResult<Expr> {
         let anchor = "gram.item.attr";
         match self.tok() {
-            Some(Tok::Int(_) | Tok::Float(_) | Tok::StrStart(_)) => self.parse_primary(),
+            Some(Tok::Int(_) | Tok::Float(_) | Tok::Char(_) | Tok::StrStart(_)) => {
+                self.parse_primary()
+            }
             Some(Tok::Kw("true" | "false")) => self.parse_primary(),
             Some(Tok::Minus) => {
                 let start = self.advance().start;
@@ -1401,7 +1403,11 @@ impl<'a> Parser<'a> {
                 if matches!(
                     p.tok(),
                     Some(
-                        Tok::Int(_) | Tok::Float(_) | Tok::StrStart(_) | Tok::Kw("true" | "false")
+                        Tok::Int(_)
+                            | Tok::Float(_)
+                            | Tok::Char(_)
+                            | Tok::StrStart(_)
+                            | Tok::Kw("true" | "false")
                     )
                 ) || p.type_arg_is_const_expr()
                 {
@@ -1515,9 +1521,13 @@ impl<'a> Parser<'a> {
                 self.advance();
                 PatKind::Wildcard
             }
-            Some(Tok::Int(_) | Tok::Float(_) | Tok::StrStart(_) | Tok::Kw("true" | "false")) => {
-                PatKind::Literal(Box::new(self.parse_primary()?))
-            }
+            Some(
+                Tok::Int(_)
+                | Tok::Float(_)
+                | Tok::Char(_)
+                | Tok::StrStart(_)
+                | Tok::Kw("true" | "false"),
+            ) => PatKind::Literal(Box::new(self.parse_primary()?)),
             Some(Tok::Minus) => PatKind::Literal(Box::new(self.parse_literal_only()?)),
             Some(Tok::LParen) => {
                 self.advance();
@@ -2324,6 +2334,11 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(self.expr(ExprKind::Float(text), start, anchor))
             }
+            Some(Tok::Char(c)) => {
+                let c = *c;
+                self.advance();
+                Ok(self.expr(ExprKind::Char(c), start, "gram.lex.char"))
+            }
             Some(Tok::Kw("true")) => {
                 self.advance();
                 Ok(self.expr(ExprKind::Bool(true), start, anchor))
@@ -3108,6 +3123,7 @@ fn trace_expr(out: &mut String, depth: usize, expr: &Expr) {
         ExprKind::Int(text) => format!("int {text}"),
         ExprKind::Float(text) => format!("float {text}"),
         ExprKind::Bool(value) => format!("bool {value}"),
+        ExprKind::Char(c) => format!("char {c:?}"),
         ExprKind::Str(literal) => format!("string ({} part(s))", literal.parts.len()),
         ExprKind::Path(path) => format!("path {}", join_path(path)),
         ExprKind::Wildcard => "wildcard".to_owned(),

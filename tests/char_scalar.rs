@@ -157,3 +157,19 @@ fn one_malformed_literal_files_one_report() {
     assert_eq!(refused(r"let c = '\q\p'"), 1);
     assert_eq!(refused(r"let c = 'ab\q'"), 1);
 }
+
+// -- the parse tier ------------------------------------------------------
+
+#[test]
+fn char_literals_parse_in_expression_and_pattern_position() {
+    // `literal ::= INT | FLOAT | CHAR_LIT | …` ([gram.expr.primary]), and a
+    // pattern literal ([gram.pat]).
+    let src = "fn main() -> int {\n    let c = '🐺'\n    match c {\n        'a' => 1,\n        _ => 0,\n    }\n}\n";
+    let parsed = wolf_interp::parse::parse_source(src).expect("parses");
+    let trace = wolf_interp::parse::trace(&parsed.unit);
+    // Expression position shows in the parse trace; pattern position is
+    // proven by the parse succeeding at all (a pattern that failed to admit
+    // CHAR_LIT would be a parse error on the arm).
+    assert!(trace.contains("char '🐺'"), "{trace}");
+    assert!(trace.contains("match (2 arm(s))"), "{trace}");
+}
