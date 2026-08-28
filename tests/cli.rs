@@ -143,8 +143,13 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // 374 -> 385 at the 90c90df pin (is24): the s114-s116 wave lands the D56
     // wrap-cast trio, s116's imported-element pair (entry + member), the
     // diverging-else witness, and the out-of-scope signal/byte std pairs.
+    // 385 -> 403 at the a900b8c pin (is26): the s117-s121 wave — the seven
+    // char witnesses this sprint exists for (char_battery/order/interp,
+    // chars_walk, the three faults/char_cast_* twins), the boundary battery,
+    // the memory/conc cluster witnesses and the carried-quotient pair, and
+    // the out-of-scope os.random trio + comptime sandbox witness.
     // Moved with the pin, per the export.rs rule.
-    assert!(stdout.contains("385 file(s)"), "{stdout}");
+    assert!(stdout.contains("403 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -153,7 +158,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 385);
+    assert_eq!(value["total"], 403);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

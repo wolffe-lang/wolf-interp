@@ -419,14 +419,36 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             #120, retiring the standing export waiver. The spec grows
     //             `spec/11-os.md` and D56's `[type.numlit.cast.wrap]` — 380
     //             anchors; no existing corpus file changed content.)
+    //   a900b8c → 403 files (is26: the s117–s121 wave. The corpus grows 18,
+    //             all entries. Fourteen run and MATCH at this pin: the seven
+    //             char witnesses this sprint exists for —
+    //             `strings/char_battery.lu`, `char_order.lu`,
+    //             `char_interp.lu`, `chars_walk.lu` and the three
+    //             `faults/char_cast_*_trap.lu` twins (s121, D58; wolfc-lane
+    //             evidence only until this sprint's lexer/eval landed) —
+    //             plus `strings/boundary_battery.lu`, the s117/s119 value
+    //             witnesses `memory/carried_quotient_{pair,nested}.lu`,
+    //             `memory/closure_cluster_split.lu`,
+    //             `memory/list_mixed_width_struct.lu`,
+    //             `memory/list_session_struct.lu`, and
+    //             `conc/spawn_cluster_split.lu`. Four are out-of-scope std
+    //             surface declined by name: s118's entropy trio
+    //             `os/random_{differs,edges,negative_trap}.lu`
+    //             (`os.random.fill` — no pinned std here) and
+    //             `comptime/sandbox_os_random.lu` (the compiler's s16
+    //             comptime engine). The spec grows `[gram.lex.char]`,
+    //             the `[type.char]` family, `[mem.str.chars]` over
+    //             `List[char]`, and the `[os.random]` family — 393 anchors;
+    //             `strings/chars_walk.lu` is the one existing-name change,
+    //             re-expressed over `char` by s121.)
     let report = report();
     assert_eq!(
         report.total(),
-        385,
+        403,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 356);
+    assert_eq!(report.entries(), 374);
     assert_eq!(report.members(), 29);
 }
 

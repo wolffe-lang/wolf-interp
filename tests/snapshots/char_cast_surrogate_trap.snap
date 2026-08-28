@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: char_cast_surrogate_trap.lu
+trap:    overflow
+clause:  [type.char.cast]
+rule:    CharCast
+message: `55296 as char`: the value is 0xD800, inside the surrogate gap 0xD800..=0xDFFF — it names no character, and admitting it would mint a `char` that cannot be UTF-8-encoded (D24), so the cast traps ([type.char.cast], D56's family)
+at:      15:13 `n as char`
+because: (single-span fault)

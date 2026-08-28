@@ -86,7 +86,15 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // os.signal.raise (cited by the signal pair, which this machine declines
 // but the coverage table counts by citation, honestly). Raised in the
 // bump commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 144;
+// 144 → 153 at a900b8c (is26): the s117–s121 wave's nine newly covered
+// clauses — the char family the sprint implements (type.char and its
+// cast/order/interp children, cited by char_battery/char_order/char_interp
+// and the three faults/char_cast_* twins; mem.str.chars, cited by
+// char_battery and chars_walk) and the entropy family this machine
+// declines by name (os.random, os.random.checked, os.random.fill,
+// os.random.trap — counted by citation, honestly). Raised in the bump
+// commit per the test's own instruction.
+const RATCHET_FLOOR: usize = 153;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -133,7 +141,11 @@ const RATCHET_FLOOR: usize = 144;
 // anchors.json) — and s113's D56 follow-up adds [type.numlit.cast.wrap].
 // The `pkg` namespace is REGISTERED too: s115 amended [conf.anchor.ns]
 // for #120, so the FILED_REGISTRY_FINDINGS waiver dies with the filing.
-const ANCHORS_TOTAL: usize = 380;
+// 380 → 393 at a900b8c (is26): the s117–s121 wave writes thirteen anchors —
+// s121's char tier ([gram.lex.char], [type.char] and its lit/order/cast/
+// interp children), s120's [mem.str.chars] (restated over List[char] by
+// s121), and s118's entropy family ([os.random] and its five children).
+const ANCHORS_TOTAL: usize = 393;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -270,10 +282,12 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // corpus files (all entries) land; the suite programs are unmoved.
     // 411/383 → 422/393 at 90c90df (is24): the s114–s116 wave's 11 corpus
     // files (10 entries, 1 member) land; the suite programs are unmoved.
+    // 422/393 → 440/411 at a900b8c (is26): the s117–s121 wave's 18 corpus
+    // files (all entries) land; the suite programs are unmoved.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "90c90df91dc314f9d0ae322d387dd10be046c828");
-    assert_eq!(summary.programs, 422);
-    assert_eq!(summary.records, 393);
+    assert_eq!(summary.pin, "a900b8c8540246ff69aaee424ba412d06bc6b340");
+    assert_eq!(summary.programs, 440);
+    assert_eq!(summary.records, 411);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

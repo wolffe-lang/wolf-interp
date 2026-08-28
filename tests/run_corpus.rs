@@ -924,6 +924,35 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("generics/list_struct_elem.lu", "exit(0)"),
     ("rows/iter_diverging_else_bound.lu", "exit(0)"),
     ("typecheck/wrap_as_int_in_range.lu", "exit(0)"),
+    // -- is26 (pin a900b8c) --------------------------------------------------
+    // The s117–s121 wave, fourteen run-reaching entries — all matching at
+    // first sight of the pin, because this sprint taught lupin the scalar
+    // BEFORE bumping it. The seven char witnesses are the sprint's point
+    // (s121/D58: at 0.1.14 the lexer refused `'` outright, fail(E0101), so
+    // every one was wolfc-lane evidence only): the battery (literals at all
+    // four UTF-8 widths, both casts, the legal edges 0xD7FF/0xE000/0x10FFFF),
+    // scalar-value order ('z' < 'é'), `{c}` printing the character with the
+    // byte-width spec surface, the chars() width-identity walk, and the three
+    // trapping twins — surrogate gap, past-0x10FFFF, negative — all
+    // trap(overflow), D56's family. `boundary_battery` rides the existing
+    // `get` surface; the memory/conc value witnesses ran on sight. The wave's
+    // other four entries (`os/random_*`, `comptime/sandbox_os_random`) are
+    // std/comptime surface with no pinned semantics here — declined, never
+    // run.
+    ("conc/spawn_cluster_split.lu", "exit(0)"),
+    ("faults/char_cast_negative_trap.lu", "trap(overflow)"),
+    ("faults/char_cast_range_trap.lu", "trap(overflow)"),
+    ("faults/char_cast_surrogate_trap.lu", "trap(overflow)"),
+    ("memory/carried_quotient_nested.lu", "exit(0)"),
+    ("memory/carried_quotient_pair.lu", "exit(0)"),
+    ("memory/closure_cluster_split.lu", "exit(0)"),
+    ("memory/list_mixed_width_struct.lu", "exit(0)"),
+    ("memory/list_session_struct.lu", "exit(0)"),
+    ("strings/boundary_battery.lu", "exit(0)"),
+    ("strings/char_battery.lu", "exit(0)"),
+    ("strings/char_interp.lu", "exit(0)"),
+    ("strings/char_order.lu", "exit(0)"),
+    ("strings/chars_walk.lu", "exit(0)"),
 ];
 
 #[test]

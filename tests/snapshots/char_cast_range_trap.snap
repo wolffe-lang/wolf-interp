@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: char_cast_range_trap.lu
+trap:    overflow
+clause:  [type.char.cast]
+rule:    CharCast
+message: `1114112 as char`: the value is 0x110000, above the last scalar 0x10FFFF — it names no character, and admitting it would mint a `char` that cannot be UTF-8-encoded (D24), so the cast traps ([type.char.cast], D56's family)
+at:      13:13 `n as char`
+because: (single-span fault)

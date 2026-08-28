@@ -427,7 +427,7 @@ impl Rule {
                 "an unconstrained integer literal defaults to i32 and a float literal to f64",
             ),
             Rule::CharCast => (
-                "ty.cast.closed-set",
+                "type.char.cast",
                 "`char as int` is total; `int as char` traps `overflow` on a non-scalar (negative, above 0x10FFFF, or the surrogate gap)",
             ),
             Rule::RegionCreate => (

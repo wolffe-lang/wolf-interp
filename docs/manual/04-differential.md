@@ -93,15 +93,15 @@ amended the clause, and the notice died with the amendment.
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":144,"anchors_total":380,"bundle_sha256":"…","files":439,"forward_tags":109,"out":"target/bundle","pin":"90c90df91dc314f9d0ae322d387dd10be046c828","programs":422,"records":393}
+{"anchors_covered":153,"anchors_total":393,"bundle_sha256":"…","files":457,"forward_tags":109,"out":"target/bundle","pin":"a900b8c8540246ff69aaee424ba412d06bc6b340","programs":440,"records":411}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 393 entries compared, 0 member(s) exercised through their entries
+differential: 411 entries compared, 0 member(s) exercised through their entries
 divergences: 0
-conservatism ledger: 102 entries
-  unsupported(counterparty): 51
-  unsupported(interp): 51
+conservatism ledger: 110 entries
+  unsupported(counterparty): 55
+  unsupported(interp): 55
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin 90c90df91dc314f9d0ae322d387dd10be046c828 verified (bundle_sha256 …)
+notice: bundle target/bundle at pin a900b8c8540246ff69aaee424ba412d06bc6b340 verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the
