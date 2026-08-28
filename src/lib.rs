@@ -31,6 +31,7 @@ pub mod corpus;
 pub mod diag;
 pub mod differ;
 pub mod directive;
+pub mod edit;
 pub mod eval;
 pub mod explore;
 pub mod export;
