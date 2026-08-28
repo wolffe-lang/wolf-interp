@@ -96,8 +96,19 @@ pub const CHOICES: &[(&str, &str)] = &[
     (
         "gram.expr.unsafe",
         "`unsafe c { … }`'s body is skipped brace-balanced over already-lexed \
-         tokens. C text that is not also wolf-lexable (character literals, say) \
-         therefore fails at the lex rung rather than being ignored.",
+         tokens. C text that is not also wolf-lexable (a multi-character \
+         constant `'ab'`, say — is26: plain C char literals lex as wolf \
+         CHAR_LIT now) therefore fails at the lex rung rather than being \
+         ignored.",
+    ),
+    (
+        "gram.lex.char",
+        "`\\u{…}` in a char literal takes one to six hex digits — the PROSE \
+         reading. CHAR_ESC's own EBNF says `'\\u{' HEX_DIGIT+ '}'`, unbounded, \
+         so `'\\u{0000041}'` (seven digits, value 0x41) is refused here \
+         (E0110) where the EBNF reading would accept it. The string tier's \
+         `\\u{…}` ([gram.lex.str]) states no digit cap at all, so the two \
+         escape tiers differ unless an amendment says otherwise.",
     ),
 ];
 
