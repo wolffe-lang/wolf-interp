@@ -8,6 +8,7 @@ wolf> :help
 :rules [prefix]    the rule registry, optionally filtered by anchor prefix
 :schedule seed     re-seed the scheduler's decision stream from here on
 :load file.lu      textual inclusion into the implicit module ([repl.module])
+:keys              the line editor's bindings ([repl.edit.*]; TTY sessions)
 :reset             fresh world, empty module
 :quit              leave
 wolf> :rules conc.deadlock

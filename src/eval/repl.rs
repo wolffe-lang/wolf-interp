@@ -163,6 +163,42 @@ impl Session {
         }
     }
 
+    /// Abandons any buffered continuation lines (is25: the line editor's
+    /// `Ctrl-C` door, `[repl.edit.cancel]`). The session's world is
+    /// untouched — only the unfinished INPUT is discarded, which is the
+    /// `[repl.trap.alive]` temperament applied to editing.
+    pub fn cancel_pending(&mut self) {
+        self.pending.clear();
+    }
+
+    /// The surface names the session currently binds — the completion
+    /// source (is25, `[repl.edit.complete]`). Root-scope locals plus the
+    /// implicit module's items; the generational internals
+    /// (`f#2`, `Point#1` — `[repl.def.shadow]`/`[repl.type.gen]`) are
+    /// excluded: the user types the surface name, the session resolves the
+    /// generation.
+    #[must_use]
+    pub fn completion_names(&self) -> Vec<String> {
+        let mut names = std::collections::BTreeSet::new();
+        if let Some(frame) = self.machine.frames.first() {
+            for scope in &frame.scopes {
+                for (name, slot) in &scope.locals {
+                    if slot.is_live() && !name.contains('#') {
+                        names.insert(name.clone());
+                    }
+                }
+            }
+        }
+        if let Some(root) = self.machine.shared.program.modules.get("") {
+            for name in root.items.keys() {
+                if !name.contains('#') && name != "__repl__" {
+                    names.insert(name.clone());
+                }
+            }
+        }
+        names.into_iter().collect()
+    }
+
     /// Feeds one line. Directives act immediately; program text accumulates
     /// until the lexer's termination rules say the input is complete.
     pub fn feed_line(&mut self, line: &str) -> Fed {
@@ -190,6 +226,7 @@ impl Session {
         let out = match head {
             "quit" | "q" => return Fed::Quit,
             "help" => Session::help(),
+            "keys" => Session::keys(),
             "reset" => {
                 *self = Session::new(self.seed);
                 vec!["session reset: fresh world, empty implicit module".to_owned()]
@@ -221,8 +258,35 @@ impl Session {
             ":rules [prefix]    the rule registry, optionally filtered by anchor prefix",
             ":schedule seed     re-seed the scheduler's decision stream from here on",
             ":load file.lu      textual inclusion into the implicit module ([repl.module])",
+            ":keys              the line editor's bindings ([repl.edit.*]; TTY sessions)",
             ":reset             fresh world, empty module",
             ":quit              leave",
+        ]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect()
+    }
+
+    /// The `:keys` listing (is25): the line editor's bindings, written down.
+    /// Static text — the editor engages only at a TTY (`[repl.edit.tty]`),
+    /// but the listing answers identically everywhere, so transcripts that
+    /// mention it replay.
+    fn keys() -> Vec<String> {
+        [
+            "the line editor (TTY sessions; pipes and --no-edit read plain lines [repl.edit.tty]):",
+            "  motion   Ctrl-A/Ctrl-E line edges; Ctrl-B/Ctrl-F chars; Alt-B/Alt-F,",
+            "           Ctrl-Left/Ctrl-Right words; Home/End",
+            "  history  Up/Down recall (a multi-line input recalls whole); Ctrl-R reverse",
+            "           search; persistent across sessions [repl.edit.history]",
+            "  kill     Ctrl-W/Alt-Backspace word back; Alt-D word forward; Ctrl-K to end;",
+            "           Ctrl-U to start; Ctrl-Y yanks back; Alt-Y cycles the kill ring",
+            "  last arg Alt-. (or Alt-_) inserts the previous input's last word; pressed",
+            "           again it cycles to older inputs",
+            "  case     Alt-U upcase word; Alt-L downcase; Alt-C capitalize",
+            "  edit     Ctrl-T/Alt-T transpose char/word; Ctrl-_ undo; Ctrl-L clear screen;",
+            "           TAB completes :directives, session names, :load paths [repl.edit.complete]",
+            "  escape   Ctrl-C abandons the input, the session lives [repl.edit.cancel];",
+            "           Ctrl-D on an empty line quits",
         ]
         .iter()
         .map(|s| (*s).to_owned())
