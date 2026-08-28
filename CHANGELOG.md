@@ -1,5 +1,70 @@
 # Changelog
 
+## 0.1.15 — 2026-08-28
+
+THE SCALAR RELEASE (is26, one sprint behind s121/D58). At 0.1.14 the
+lexer refused `'` outright — `fail(E0101)`, "`'` begins no token" — so
+every char witness the compiler landed was wolfc-lane evidence only:
+wolf accepted programs its oracle could not even lex, the weakest
+position a differential oracle can hold. This release teaches lupin the
+scalar, independently, from `[type.char]`, `[gram.lex.char]` and
+`[mem.str.chars]` — never from the compiler's source.
+
+Released against pin `a900b8c` (the s117–s121 wave; one bump,
+`90c90df` → `a900b8c`). Corpus 385 → 403 files (374 entries + 29
+member files), all 14 new run-reaching entries matching at first sight
+because the scalar landed here BEFORE the bump; coverage ratchets
+144 → 153. The seven char witnesses — `char_battery`, `char_order`,
+`char_interp`, `chars_walk`, and the three `faults/char_cast_*` twins —
+compare for the first time: **0 → 7**, and the walk holds 0 mismatches.
+
+- **Char literals lex (`[gram.lex.char]`, D58.5).** `'a'` at every
+  UTF-8 width, with the string escape set plus `\'`
+  (`\n \t \r \\ \' \" \0 \xNN \u{1–6 hex}`). The malformed shapes are
+  **E0110** named refusals, one report per literal: empty,
+  multi-scalar (a base-plus-combining-accent pair is two scalars — a
+  char is a scalar, not a grapheme), unterminated before end of line,
+  and a `\u` naming a non-scalar — the surrogate gap and past-0x10FFFF
+  are refused AT THE LITERAL, the lex-time twin of the cast's trap.
+  E0110 moved to this clause from the unpinned unterminated-interp
+  code, which yielded and became E0112.
+
+- **`char` is a value, and not an integer (D58.1/.3).** `Value::Char`
+  carries the scalar; equality and order are total, by scalar value,
+  locale-free (`'z' < 'é'`). Arithmetic, mixed comparisons, and
+  numeric-literal adoption (`let c: char = 65`) are refused by name —
+  the permissive-direction divergence that is hardest to notice is the
+  one this machine refuses loudest. `match` over char rides scalar
+  identity; CHAR_LIT parses in primary, pattern, attr and
+  const-argument positions.
+
+- **The casts, with the trap (`[type.char.cast]`, D58.4).**
+  `char as int` is total; `int as char` traps `overflow` (D56's closed
+  family) on negative, on the surrogate gap `0xD800..=0xDFFF`, and
+  above `0x10FFFF` — with the gap edges `0xD7FF`/`0xE000` and the last
+  scalar `0x10FFFF` legal and witnessed. Everything else is refused by
+  name: only `int` bridges into `char`.
+
+- **`chars()` yields `List[char]` (`[mem.str.chars]`, D58.7).** The
+  scalars in string order; the width identity holds — the byte extent
+  of a scalar is a function of its value, and a cursor advanced that
+  way lands exactly on the boundaries `get` accepts (`chars_walk`
+  witnesses it over 1/2/3/4-byte scalars). `{c}` interpolation prints
+  the CHARACTER, never the number (spelled `{c as int}`); a spec on a
+  char hole takes the str surface, width in bytes.
+
+- **The spec tension is filed, not settled.** `\u{…}`'s one-to-six
+  digit cap is prose-only against `CHAR_ESC`'s unbounded
+  `HEX_DIGIT+`, and the string tier states no cap at all; this machine
+  takes the prose reading and records the choice (`gram.lex.char` in
+  the CHOICES register) rather than copying the compiler.
+
+- **Portability honesty (macOS).** The net edge probe asserted the
+  write-after-peer-close row on the very next write; the failing write
+  actually waits on the peer's RST, which macOS delivers a few ms
+  late. The probe now retries on a bounded clock — same transcript,
+  no race assertion. First release cut on macOS arm64.
+
 ## 0.1.14 — 2026-08-27
 
 THE CATCH-UP RELEASE (r02, sprints is14 → is25). 0.1.13 shipped on
