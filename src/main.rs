@@ -192,6 +192,10 @@ struct ReplArgs {
     /// The schedule seed for the session's scheduler (`[conc.det.seed]`).
     #[arg(long)]
     seed: Option<u64>,
+    /// Disable the line editor: plain line reads even at a TTY (the piped
+    /// path's reader, `[repl.edit.tty]`).
+    #[arg(long)]
+    no_edit: bool,
 }
 
 #[derive(Debug, Args)]
@@ -451,6 +455,7 @@ fn main() -> ExitCode {
         (None, None, None) => run_repl(&ReplArgs {
             script: None,
             seed: None,
+            no_edit: false,
         }),
     };
     ExitCode::from(code)
@@ -670,17 +675,38 @@ fn run_check(args: &CheckArgs) -> u8 {
 fn run_repl(args: &ReplArgs) -> u8 {
     match &args.script {
         Some(script) => replay_transcript(script, args.seed),
-        None => repl_loop(args.seed),
+        None => repl_loop(args.seed, args.no_edit),
     }
 }
 
-/// The live loop. Pipe-friendly on purpose: the prompt and (in pipe mode) the
-/// echoed input are printed, so a piped session's captured stdout IS a valid
-/// transcript — capture-then-grep in CI, no PTY anywhere.
-fn repl_loop(seed: Option<u64>) -> u8 {
-    use std::io::{BufRead, IsTerminal, Write};
+/// The live loop. The reader is chosen here and ONLY here (is25,
+/// `[repl.edit.tty]`): a piped session keeps the exact dumb reader — its
+/// captured stdout IS a valid transcript, byte-compared by three CI gates —
+/// while a TTY gets the line editor. `--no-edit` and `TERM=dumb` also keep
+/// the dumb reader, and an editor that cannot start degrades to it with a
+/// one-line note rather than failing to open a prompt.
+fn repl_loop(seed: Option<u64>, no_edit: bool) -> u8 {
+    use std::io::IsTerminal;
     let interactive = std::io::stdin().is_terminal();
     let mut session = wolf_interp::eval::repl::Session::new(seed);
+    let term_dumb = std::env::var("TERM").is_ok_and(|term| term == "dumb");
+    if interactive && !no_edit && !term_dumb {
+        match edit_loop(&mut session) {
+            Ok(code) => return code,
+            Err(note) => {
+                eprintln!("lupin: line editing unavailable ({note}); plain line reads");
+            }
+        }
+    }
+    dumb_loop(&mut session, interactive)
+}
+
+/// The dumb reader — the is08 loop, verbatim. Pipe-friendly on purpose: the
+/// prompt and (in pipe mode) the echoed input are printed, so a piped
+/// session's captured stdout IS a valid transcript — capture-then-grep in
+/// CI, no PTY anywhere.
+fn dumb_loop(session: &mut wolf_interp::eval::repl::Session, interactive: bool) -> u8 {
+    use std::io::{BufRead, Write};
     let stdin = std::io::stdin();
     let mut lines = stdin.lock().lines();
     loop {
@@ -703,6 +729,103 @@ fn repl_loop(seed: Option<u64>) -> u8 {
                 for rendered in out {
                     println!("{rendered}");
                 }
+            }
+        }
+    }
+}
+
+/// The line editor's loop (is25). The editor is a READER: it hands complete
+/// inputs to the same [`wolf_interp::eval::repl::Session::feed_line`] the
+/// dumb loop uses, line by line, and owns no meaning of its own.
+///
+/// `Err` means the editor could not start (raw mode unavailable) — the
+/// caller degrades to the dumb reader. Once running, `Ctrl-C` abandons the
+/// input and the session survives (`[repl.edit.cancel]`, closing the #46
+/// continuation trap); `Ctrl-D` on an empty line — and only there — exits.
+fn edit_loop(session: &mut wolf_interp::eval::repl::Session) -> Result<u8, String> {
+    use rustyline::config::{CompletionType, Config};
+    use rustyline::error::ReadlineError;
+    use rustyline::history::MemHistory;
+    use rustyline::{Editor, EventHandler, KeyEvent, Modifiers};
+    use std::sync::{Arc, Mutex};
+    use wolf_interp::edit::{
+        self, EditHelper, HISTORY_CAP, YankLastArg, load_history, save_history,
+    };
+
+    let config = Config::builder()
+        .max_history_size(HISTORY_CAP)
+        .map_err(|e| e.to_string())?
+        .history_ignore_dups(true)
+        .map_err(|e| e.to_string())?
+        .history_ignore_space(false)
+        .completion_type(CompletionType::List)
+        .auto_add_history(false)
+        .build();
+    let mut editor: Editor<EditHelper, MemHistory> =
+        Editor::with_history(config, MemHistory::new()).map_err(|e| e.to_string())?;
+    editor.set_helper(Some(EditHelper::new()));
+
+    // Persistent history ([repl.edit.history]): one store feeds the editor's
+    // recall, the disk file, and the Alt-. handler.
+    let path = edit::history_path();
+    let store = load_history(path.as_deref());
+    for entry in store.entries() {
+        let _ = editor.add_history_entry(entry);
+    }
+    let store = Arc::new(Mutex::new(store));
+    for key in [
+        KeyEvent::new('.', Modifiers::ALT),
+        KeyEvent::new('_', Modifiers::ALT),
+    ] {
+        editor.bind_sequence(
+            key,
+            EventHandler::Conditional(Box::new(YankLastArg::new(Arc::clone(&store)))),
+        );
+    }
+
+    loop {
+        if let Some(helper) = editor.helper_mut() {
+            helper.set_names(session.completion_names());
+        }
+        match editor.readline(session.prompt()) {
+            Ok(buffer) => {
+                if !buffer.trim().is_empty() {
+                    let _ = editor.add_history_entry(&buffer);
+                    if let Ok(mut store) = store.lock()
+                        && store.push(&buffer)
+                    {
+                        save_history(path.as_deref(), &store);
+                    }
+                }
+                // Feed line by line — the exact protocol the piped loop
+                // speaks, so the editor cannot introduce meaning.
+                for line in buffer.split('\n') {
+                    match session.feed_line(line) {
+                        wolf_interp::eval::repl::Fed::Quit => return Ok(EXIT_OK),
+                        wolf_interp::eval::repl::Fed::More => {}
+                        wolf_interp::eval::repl::Fed::Output(out) => {
+                            for rendered in out {
+                                println!("{rendered}");
+                            }
+                        }
+                    }
+                }
+            }
+            Err(ReadlineError::Interrupted) => {
+                // Ctrl-C: the input is abandoned, the session and its world
+                // survive ([repl.edit.cancel]). Never an exit.
+                session.cancel_pending();
+            }
+            Err(ReadlineError::Eof) => {
+                // Ctrl-D on an empty line: the one exit besides `:quit`.
+                println!();
+                return Ok(EXIT_OK);
+            }
+            Err(e) => {
+                // A read failure mid-session (terminal gone, io error):
+                // leave cleanly rather than spin.
+                eprintln!("lupin: read error: {e}");
+                return Ok(EXIT_TOOL_ERROR);
             }
         }
     }
