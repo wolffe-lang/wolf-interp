@@ -28,7 +28,14 @@ fn main() {
             // The packed form too: a packed ref has no loose file. Neither
             // path is declared unless it exists — `rerun-if-changed` on a
             // missing path forces a rebuild on every invocation.
-            for path in [dir.join(reference.trim()), dir.join("packed-refs")] {
+            // `refs/tags` too (D57): the release/dev decision below reads
+            // the tags pointing at HEAD, so a tag landing or leaving must
+            // invalidate the stamp exactly like a commit does.
+            for path in [
+                dir.join(reference.trim()),
+                dir.join("packed-refs"),
+                dir.join("refs/tags"),
+            ] {
                 if path.exists() {
                     println!("cargo:rerun-if-changed={}", path.display());
                 }
@@ -46,4 +53,32 @@ fn main() {
         .unwrap_or_else(|| "unknown".to_owned());
 
     println!("cargo:rustc-env=WOLF_INTERP_COMMIT={commit}");
+
+    // D57 (r02): an off-tag build never claims to be the release. Only a
+    // build made exactly at its own release tag — `v{version}` pointing at
+    // HEAD — prints the bare crate version; every other build (trunk, a
+    // branch, a tarball with no git at all) carries `+dev.<commit>` in
+    // `--version`, so two different interpreters can never answer with the
+    // same identity again (58 commits and eight re-vendors all reported
+    // `lupin 0.1.13`, which is the rot this suffix exists to kill).
+    // Unverifiable is dev: no git means no release claim. A tag landing on
+    // HEAD invalidates the stamp via the `refs/tags`/`packed-refs` probes
+    // above; the release build is made fresh at the tag anyway (r01 ritual).
+    let version = std::env::var("CARGO_PKG_VERSION").expect("cargo sets the version");
+    let at_release_tag = Command::new("git")
+        .args(["tag", "--points-at", "HEAD"])
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .is_some_and(|out| {
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .any(|tag| tag.trim() == format!("v{version}"))
+        });
+    let suffix = if at_release_tag {
+        String::new()
+    } else {
+        format!("+dev.{commit}")
+    };
+    println!("cargo:rustc-env=WOLF_INTERP_BUILD_SUFFIX={suffix}");
 }

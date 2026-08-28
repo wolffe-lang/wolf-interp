@@ -606,19 +606,32 @@ fn a_subcommand_name_wins_over_a_file_of_the_same_name() {
 #[test]
 fn version_names_the_binary_the_package_and_the_pairing() {
     // r01 row 7: the version line names the pairing posture — the binary,
-    // the package, and "reference interpreter at pin <sha>".
+    // the package, and "reference interpreter at pin <sha>". D57 (r02)
+    // adds the build's honesty: a build made exactly at its release tag
+    // prints the bare version; any other build carries `+dev.<commit>`,
+    // so an off-tag build never claims to be the release.
     let output = lupin(&["--version"]);
     assert_eq!(output.status.code(), Some(0));
     let text = stdout_of(&output).trim_end();
-    let prefix = concat!(
-        "lupin ",
-        env!("CARGO_PKG_VERSION"),
-        " (wolf-interp, reference interpreter at pin "
-    );
-    assert!(text.starts_with(prefix), "{text}");
-    let pin = text
-        .strip_prefix(prefix)
-        .and_then(|rest| rest.strip_suffix(')'))
+    let base = concat!("lupin ", env!("CARGO_PKG_VERSION"));
+    let rest = text
+        .strip_prefix(base)
+        .unwrap_or_else(|| panic!("the version line opens with the crate version: {text}"));
+    let (suffix, tail) = rest
+        .split_once(" (wolf-interp, reference interpreter at pin ")
+        .unwrap_or_else(|| panic!("the version line names the pairing posture: {text}"));
+    if !suffix.is_empty() {
+        let build = suffix.strip_prefix("+dev.").unwrap_or_else(|| {
+            panic!("an off-tag build spells its suffix `+dev.<commit>`: {text}")
+        });
+        assert!(
+            build == "unknown"
+                || (build.len() == 7 && build.chars().all(|c| c.is_ascii_hexdigit())),
+            "{text}"
+        );
+    }
+    let pin = tail
+        .strip_suffix(')')
         .expect("the version line closes its parenthesis");
     assert_eq!(pin.len(), 7, "{text}");
     assert!(pin.chars().all(|c| c.is_ascii_hexdigit()), "{text}");

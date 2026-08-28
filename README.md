@@ -30,8 +30,13 @@ is the binary, the package, and the posture, at the stated upstream pin:
 
 ```console
 $ lupin --version
-lupin 0.1.13 (wolf-interp, reference interpreter at pin …)
+lupin 0.1.13… (wolf-interp, reference interpreter at pin …)
 ```
+
+A build made exactly at its release tag prints the bare version; any other
+build — this one included, unless you checked out the tag — carries a
+`+dev.<commit>` suffix, so an off-tag build never claims to be the release
+(D57).
 
 ## Running a program
 

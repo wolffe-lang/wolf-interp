@@ -64,17 +64,23 @@ fn default_spec_root() -> PathBuf {
     Path::new(upstream_root()).join("spec")
 }
 
-/// `--version`'s tail: `lupin 0.1.12 (wolf-interp, reference interpreter at
-/// pin 613c3dc)` — the crate version, the package this binary is built
+/// `--version`'s tail: `lupin 0.1.14 (wolf-interp, reference interpreter at
+/// pin 90c90df)` — the crate version, the package this binary is built
 /// from, and the pairing posture r01 row 7 asks the version line to name:
 /// this binary is the wolf reference interpreter AT the stated upstream
 /// spec/corpus pin, the sha every observation is made against.
+///
+/// The version carries `+dev.<commit>` unless the build was made exactly at
+/// its own release tag (D57, decided in build.rs): a trunk build never
+/// claims to be the release, so the bare version names exactly one
+/// interpreter state and the wolf-side pairing can trust what it reads.
 fn version_string() -> &'static str {
     static VERSION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     VERSION.get_or_init(|| {
         format!(
-            "{} (wolf-interp, reference interpreter at pin {})",
+            "{}{} (wolf-interp, reference interpreter at pin {})",
             env!("CARGO_PKG_VERSION"),
+            env!("WOLF_INTERP_BUILD_SUFFIX"),
             wolf_interp::upstream_pin_short()
         )
     })
