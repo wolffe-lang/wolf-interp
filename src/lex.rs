@@ -95,6 +95,10 @@ pub enum Tok {
     Kw(&'static str),
     Int(String),
     Float(String),
+    /// A `char` literal — one Unicode scalar value between single quotes
+    /// (`[gram.lex.char]`, s121/D58). Decoded here: escape spellings and the
+    /// direct glyph produce the same token, because they are the same value.
+    Char(char),
 
     /// Opens a literal; every `StrStart` is matched by a `StrEnd`.
     StrStart(StrKind),
@@ -187,7 +191,8 @@ impl Tok {
     /// the spec's bullet list in its own order:
     ///
     /// - an identifier or `_`
-    /// - any literal (INT, FLOAT, any string-mode end, `true`, `false`)
+    /// - any literal (INT, FLOAT, CHAR_LIT, any string-mode end, `true`,
+    ///   `false`)
     /// - one of the keywords `return`, `break`, `continue`
     /// - a closing delimiter `)`, `]`, `}`
     /// - postfix `?`
@@ -195,7 +200,7 @@ impl Tok {
     pub fn ends_a_statement(&self) -> bool {
         match self {
             Tok::Ident(_) | Tok::Underscore => true,
-            Tok::Int(_) | Tok::Float(_) | Tok::StrEnd => true,
+            Tok::Int(_) | Tok::Float(_) | Tok::Char(_) | Tok::StrEnd => true,
             Tok::Kw(k) => matches!(*k, "true" | "false" | "return" | "break" | "continue"),
             Tok::RParen | Tok::RBracket | Tok::RBrace => true,
             Tok::Question => true,
@@ -246,6 +251,7 @@ impl Tok {
             Tok::Kw(k) => format!("keyword `{k}`"),
             Tok::Int(s) => format!("integer `{s}`"),
             Tok::Float(s) => format!("float `{s}`"),
+            Tok::Char(c) => format!("char literal `{}`", c.escape_debug()),
             Tok::StrStart(_) => "the start of a string literal".to_owned(),
             Tok::StrText(_) => "string text".to_owned(),
             Tok::InterpStart => "`{` of an interpolation".to_owned(),
@@ -686,6 +692,9 @@ impl<'a> Lexer<'a> {
         if c == '"' {
             return self.open_string(None);
         }
+        if c == '\'' {
+            return self.scan_char_literal();
+        }
 
         macro_rules! op {
             ($text:literal, $tok:expr) => {
@@ -959,6 +968,183 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+    }
+
+    // -- char literals -----------------------------------------------------
+
+    /// `[gram.lex.char]` (s121, D58): one Unicode scalar value between single
+    /// quotes, with the string escape set plus `\'`. Malformed shapes are
+    /// **E0110** with an [`Tok::Error`] token, one report each: an empty `''`;
+    /// more than one scalar (a base-plus-combining-accent pair included — a
+    /// `char` is a scalar, not a grapheme); a literal not closed before the
+    /// end of its line; and a `\x`/`\u` escape naming a non-scalar. The value
+    /// a `char` cannot hold is the value its literal cannot spell, so the
+    /// surrogate gap is refused *here*, not downstream.
+    fn scan_char_literal(&mut self) {
+        let start = self.pos;
+        self.pos += 1; // the opening quote
+
+        let mut scalars = 0usize;
+        let mut first: Option<char> = None;
+        // The first malformation wins; a literal files one report however
+        // many things are wrong inside it.
+        let mut bad: Option<String> = None;
+
+        loop {
+            match self.peek() {
+                None | Some('\n') => {
+                    // Not closed before the end of its line. The newline is
+                    // left for `scan_normal`, so `[gram.lex.newline]`'s
+                    // machinery is untouched.
+                    let span = Span::new(start, self.pos);
+                    self.error(
+                        diag::E_BAD_CHAR_LITERAL,
+                        span,
+                        "gram.lex.char",
+                        "this char literal is not closed before the end of its line",
+                    );
+                    self.push(Tok::Error, span);
+                    return;
+                }
+                Some('\'') => {
+                    self.pos += 1;
+                    break;
+                }
+                Some('\\') => match self.scan_char_escape() {
+                    Ok(ch) => {
+                        if first.is_none() {
+                            first = Some(ch);
+                        }
+                        scalars += 1;
+                    }
+                    Err(reason) => {
+                        if bad.is_none() {
+                            bad = Some(reason);
+                        }
+                        scalars += 1;
+                    }
+                },
+                Some(c) => {
+                    self.pos += c.len_utf8();
+                    if first.is_none() {
+                        first = Some(c);
+                    }
+                    scalars += 1;
+                }
+            }
+        }
+
+        let span = Span::new(start, self.pos);
+        let refusal = if let Some(reason) = bad {
+            Some(reason)
+        } else if scalars == 0 {
+            Some(
+                "an empty char literal names no scalar; write the character, or spell it \
+                 `'\\u{…}'`"
+                    .to_owned(),
+            )
+        } else if scalars > 1 {
+            Some(format!(
+                "a char literal holds exactly one Unicode scalar value, and this one holds \
+                 {scalars} — a base-plus-combining-accent pair is two scalars: a `char` is a \
+                 scalar, not a grapheme"
+            ))
+        } else {
+            None
+        };
+        match refusal {
+            None => self.push(Tok::Char(first.expect("exactly one scalar")), span),
+            Some(message) => {
+                self.error(diag::E_BAD_CHAR_LITERAL, span, "gram.lex.char", &message);
+                self.push(Tok::Error, span);
+            }
+        }
+    }
+
+    /// One escape inside a char literal — the string set plus `\'`
+    /// (`\n \t \r \\ \' \" \0 \xNN \u{1–6 hex}`, `[gram.lex.char]`).
+    ///
+    /// # Errors
+    ///
+    /// A malformation, as the message the caller files under E0110 — the char
+    /// literal's own code, deliberately not the string tier's E0103/E0104.
+    fn scan_char_escape(&mut self) -> Result<char, String> {
+        self.pos += 1; // the backslash
+        let Some(c) = self.bump() else {
+            return Err("the input ends inside this char literal's escape".to_owned());
+        };
+        match c {
+            'n' => Ok('\n'),
+            't' => Ok('\t'),
+            'r' => Ok('\r'),
+            '0' => Ok('\0'),
+            '\\' => Ok('\\'),
+            '\'' => Ok('\''),
+            '"' => Ok('"'),
+            'x' => {
+                let mut value = 0u32;
+                let mut digits = 0;
+                while digits < 2 {
+                    match self.peek().and_then(|c| c.to_digit(16)) {
+                        Some(d) => {
+                            value = value * 16 + d;
+                            self.pos += 1;
+                            digits += 1;
+                        }
+                        None => break,
+                    }
+                }
+                if digits != 2 {
+                    return Err("`\\x` takes exactly two hex digits".to_owned());
+                }
+                // Two hex digits reach at most 0xFF, below the surrogate gap:
+                // every `\xNN` names a scalar.
+                Ok(char::from_u32(value).expect("<= 0xFF is a scalar"))
+            }
+            'u' => self.scan_char_unicode_escape(),
+            other => Err(format!(
+                "`\\{other}` is not an escape; a char literal's set is \\n \\t \\r \\\\ \\' \
+                 \\\" \\0 \\x \\u"
+            )),
+        }
+    }
+
+    /// The `\u{…}` arm of [`scan_char_escape`]: one to six hex digits, and
+    /// the named value must be a scalar — a `\u` escape naming the surrogate
+    /// gap or a value above `0x10FFFF` is refused at the literal
+    /// (`[gram.lex.char]`), the lex-time twin of `[type.char.cast]`'s trap.
+    fn scan_char_unicode_escape(&mut self) -> Result<char, String> {
+        if self.peek() != Some('{') {
+            return Err("`\\u` takes a braced scalar value, as in `'\\u{1F43A}'`".to_owned());
+        }
+        self.pos += 1;
+        let mut value: u32 = 0;
+        let mut digits = 0usize;
+        while let Some(d) = self.peek().and_then(|c| c.to_digit(16)) {
+            value = value.saturating_mul(16).saturating_add(d);
+            self.pos += 1;
+            digits += 1;
+        }
+        if self.peek() == Some('}') {
+            self.pos += 1;
+        } else {
+            return Err("this `\\u{…}` escape is missing its closing brace".to_owned());
+        }
+        if digits == 0 || digits > 6 {
+            return Err("`\\u{…}` takes one to six hex digits".to_owned());
+        }
+        if value > 0x0010_FFFF {
+            return Err(format!(
+                "`\\u{{{value:X}}}` is above the last scalar 0x10FFFF — no `char` holds it, \
+                 so no literal spells it"
+            ));
+        }
+        char::from_u32(value).ok_or_else(|| {
+            format!(
+                "`\\u{{{value:X}}}` is in the surrogate gap 0xD800..=0xDFFF, not a Unicode \
+                 scalar value — no `char` holds it, so no literal spells it"
+            )
+        })
     }
 
     // -- string modes ------------------------------------------------------
@@ -1631,6 +1817,7 @@ fn dump_parts(tok: &Tok) -> (&'static str, String) {
         Tok::Kw(k) => ("kw", (*k).to_owned()),
         Tok::Int(s) => ("int", s.clone()),
         Tok::Float(s) => ("float", s.clone()),
+        Tok::Char(c) => ("char", format!("{c:?}")),
         Tok::StrStart(kind) => (
             "str-open",
             match kind {
