@@ -973,7 +973,7 @@ env BORROWS its captured places (the s98 loans, `[abi.native.closure]`),
 so a write to a captured binding while the closure is still needed is
 fail(E1002) upstream — and through 0.1.13 this machine ran that program to
 its stale-read answer, the one observation that can tell copy-captures
-from loans apart. Now every closure records a loan per place its body
+from loans apart. Since 0.1.14 every closure records a loan per place its body
 actually uses (frame-serial + name + write generation), and a call on the
 capturing task whose loan generation has moved traps `exclusivity` at the
 use, naming the write. Checking at the use rather than the write is what

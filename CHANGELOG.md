@@ -1,5 +1,83 @@
 # Changelog
 
+## 0.1.14 — 2026-08-27
+
+THE CATCH-UP RELEASE (r02, sprints is14 → is25). 0.1.13 shipped on
+2026-08-15 — and then twelve sprints landed, 58 commits, with the upstream
+pin re-vendored **eight times**, while the version, this file, and the tag
+never moved. Two materially different interpreters could both answer
+`lupin 0.1.13` while declaring different conformance pins: the version had
+stopped identifying a state. This entry is the correction, and it is
+honest about the gap: one release covering the whole span, grouped by
+theme — not twelve retroactive versions pretending each had shipped.
+
+Released against pin `90c90df` (the s114–s116 wave). The span advanced the
+pin `02c1e88` → `c9da6d9` → `b522b8a` → `1b149ba` → `87405ac` → `21b129e`
+→ `da8582d` → `77466a3` → `90c90df`; each re-vendor sits under its
+sprint's merge in the log, and each registered what its wave demanded (the
+`ct` namespace at `da8582d`, `type` at `77466a3`, `os` and `pkg` at
+`90c90df`). Corpus 294 → 385 files, the walk green at the pin (385
+file(s), 0 failure(s)), and the run-ledger holds 0 mismatches throughout.
+
+- **The version now tells the truth (D57, this release's own change).**
+  `--version` distinguishes a release build from everything else: built
+  exactly at its `v{version}` tag, lupin prints the bare version; built
+  anywhere else — trunk, a branch, no git at all — it prints
+  `0.1.14+dev.<commit>`. A trunk build never claims to be the release
+  again, and wolf-lang's PAIRING gate now compares the declared pin
+  whenever the sibling reports a release build, which is the check that
+  would have caught this whole gap on day one.
+
+- **The divergence families closed from the slower side (is14–is17).**
+  `?` keeps its widening promise (#33); the dispatch floor under an
+  `impl` is the trait's default (#32); the list spine is copy-on-write
+  and every write diverges its copy (#28); a container knows its home,
+  so freed-region access faults (#25) with the home consult gated on
+  region teeth (one atomic load until a free or freeze); a returned
+  region transfers instead of tearing down (#35); a `mut`-receiver
+  method demands the call-site marker (#37); a stale captured-place read
+  refuses instead of answering (#36); prim impls dispatch, so the
+  trait-qualified call reaches `impl Text for int` (#34).
+
+- **The interpreter crossed behind: net, json, process (is18).** The
+  s39/s40 std families run — sockets over `std::net` (nonblocking polls
+  under the baton), the process trio over `std::process` (wait reaps,
+  kill never tombstones), and the query tier on lupin's own RFC 8259
+  reading. Plus the twins: a nested named `fn` binds like a `let` (#38)
+  and module identity is the full path, so same-leaf modules coexist
+  (#39).
+
+- **The literal tier and the width rules (is21, is23, D52/D54).** Int
+  literals adopt a float expectation and the operator bridge propagates
+  it (D54); a declared row resolves its tags one position wider — the
+  D52 mirror; wrapping shift counts mask to the type's bit width (#42);
+  the expected-type flow reaches container-argument position, so a
+  full-range wrapping literal no longer traps there (#43).
+
+- **The lint and arm corrections (is19, is24).** E0812 lands
+  (explicit-application arity is one count against another); W0316 is
+  implemented, not absent; a match arm over a tag-shaped scrutinee
+  resolves as the tag, not a binding (#44); the capture law healed with
+  the arm fix and the `free_names` gap was filed rather than papered
+  over (#45).
+
+- **The scheduler keeps time (is20).** A sleeping task parks and the
+  park bound is the earliest pending wakeup (#40); provenance prune
+  revisits only dirty allocations, not the program's whole history
+  (#41). The witnesses moved 503ms → 66ms and 279s → 3s.
+
+- **The line editor (is25).** The REPL prompt gets readline at a TTY:
+  history (JSON-line, capped, deduped, in the platform state dir),
+  three-source TAB completion (surface names, never `f#N`), word/kill/
+  case ops, `Alt-.` yank-last-arg cycling, and a Ctrl-C that cancels the
+  pending line instead of killing the session (#46). Pipes keep the dumb
+  reader verbatim; `--no-edit` and `TERM=dumb` keep it too; a raw-mode
+  failure degrades with a note. rustyline 18 (MIT, no default features)
+  carries the glue; the editor's own layer is pure logic with PTY
+  keystroke evidence behind it. `:keys` lists the bindings. Also from
+  the span: the REPL's trap-survival reminder prints once per session,
+  not once per trap (is22).
+
 ## 0.1.13 — 2026-08-15
 
 THE ARM-SELECTION PASS (sprint is13). One silent wrong answer and one
