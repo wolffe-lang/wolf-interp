@@ -70,6 +70,46 @@ wolf> double(21)
 wolf> :quit
 ```
 
+## Line editing
+
+At a terminal the prompt is a GNU-readline-style editor (is25). Piped
+sessions are untouched: they keep the plain reader whose captured stdout is
+a transcript, byte for byte — that is what CI replays. `--no-edit` (or
+`TERM=dumb`) selects the plain reader at a terminal too, and if raw mode is
+unavailable the session degrades to it with a one-line note.
+
+`:keys` prints this listing from inside a session; the full contract is the
+`[repl.edit.*]` notes in [../repl.md](../repl.md).
+
+```text
+motion     Ctrl-A/Ctrl-E line edges; Ctrl-B/Ctrl-F chars;
+           Alt-B/Alt-F or Ctrl-Left/Ctrl-Right words; Home/End
+history    Up/Down recall — a multi-line input recalls as one whole;
+           Ctrl-R reverse search; persistent across sessions
+kill/yank  Ctrl-W or Alt-Backspace word back; Alt-D word forward;
+           Ctrl-K to line end; Ctrl-U to line start; Ctrl-Y yanks the
+           last kill back; Alt-Y cycles the kill ring
+last arg   Alt-. (or Alt-_) inserts the previous input's last word;
+           pressing it again cycles to older inputs
+case       Alt-U upcase word; Alt-L downcase; Alt-C capitalize
+edit       Ctrl-T/Alt-T transpose char/word; Ctrl-_ undo; Ctrl-L clear
+           screen; TAB completes
+escape     Ctrl-C abandons the current input (even mid-continuation) and
+           the session lives; Ctrl-D on an empty line quits
+```
+
+TAB completion draws on what the session already knows: `:` directives and
+their subcommands (`:trace on|off|show|clear`, `:rules` prefixes from the
+rule registry), the names the session has bound (always the surface name —
+never a generational internal like `f#2`), and filesystem paths after
+`:load`. An ambiguous prefix lists the candidates.
+
+History persists in `$XDG_STATE_HOME/lupin/history` (default
+`~/.local/state/lupin/history`) on unix-likes and `%APPDATA%\lupin\history`
+on Windows; `LUPIN_HISTORY` overrides the location, and an empty value
+disables persistence. Empty inputs and consecutive duplicates are not
+recorded, and the list caps at 1000 entries.
+
 ## One-shot evaluation
 
 `lupin eval 'CODE'` (short spelling `-e`) evaluates a snippet in a fresh
@@ -94,6 +134,7 @@ $ lupin eval 1+1
 :rules [prefix]    the rule registry, optionally filtered by anchor prefix
 :schedule seed     re-seed the scheduler's decision stream from here on
 :load file.lu      textual inclusion into the implicit module
+:keys              the line editor's bindings (TTY sessions)
 :reset             fresh world, empty module
 :quit              leave
 ```

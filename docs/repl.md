@@ -77,6 +77,7 @@ fork it. is09 exports them with the rest of the doc surface.
 :rules [prefix]    the rule registry, optionally filtered by anchor prefix
 :schedule seed     re-seed the scheduler's decision stream from here on
 :load file.lu      textual inclusion into the implicit module ([repl.module])
+:keys              the line editor's bindings ([repl.edit.*]; TTY sessions)
 :reset             fresh world, empty module
 :quit              leave
 ```
@@ -145,12 +146,79 @@ Every step is one input line plus one small `:mem` block: an author can
 lift the transcript into prose by narrating each pair, and CI replays the
 session against the binary so the chapter cannot rot.
 
-## 6. What the REPL is not
+## 6. The line editor (is25): the `[repl.edit.*]` notes
 
-No completion or syntax highlighting beyond stock line editing. That is a
-delta from the contract's "rustyline-class editing": no external
-line-editing crate is vendored, because the dependency policy outweighs
-polish until book feedback asks for it. Recorded for the ic04 closeout.
+The prompt line-edits. These notes are the editing contract, written down
+rather than left emergent (is08's discipline, applied to the reader). The
+editor is a *reader*: it hands complete inputs to `Session::feed_line` and
+owns no meaning — every semantic in sections 1–5 is untouched by it.
+
+- **`[repl.edit.tty]`.** The editor engages only when stdin is a terminal.
+  A piped session keeps the exact dumb reader, prompts (`wolf> `/`....> `),
+  and echo — its captured stdout IS the transcript of section 4, and the
+  three byte-compare gates hold on it. `--no-edit` and `TERM=dumb` also
+  select the dumb reader; if raw mode cannot be entered, the session
+  degrades to the dumb reader with a one-line stderr note — a prompt always
+  opens. Under the editor, a continuation is one editable buffer rendered
+  without the `....> ` marker; `....> ` remains transcript syntax, printed
+  by the piped path exactly as before.
+- **`[repl.edit.dep]`.** The editor is `rustyline` 18 (MIT; MIT composes
+  with this repository's GPL-3.0-or-later — the combined work remains
+  GPL-3.0-or-later). A dependency is *required*, not convenient:
+  `unsafe_code = "forbid"` stands, so raw-mode termios cannot be hand-rolled
+  here. Rejected alternative: `reedline` (more modern, nushell-shaped
+  keybinding vocabulary, weaker GNU-readline correspondence — the ask was
+  readline fidelity, and rustyline's `Validator` hook maps exactly onto
+  `lex::repl_input_complete`). rustyline pulls no `wolf_*` crate and no
+  wolf-lang git dependency (the Cargo.lock gate holds). Not everything came
+  free: rustyline has no yank-last-arg, so `Alt-.`/`Alt-_` (with cycling)
+  is this repo's own `ConditionalEventHandler` (`edit::YankLastArg`).
+- **`[repl.edit.keys]`.** The GNU-readline vocabulary: motion
+  (`Ctrl-A`/`Ctrl-E`, `Ctrl-B`/`Ctrl-F`, `Alt-b`/`Alt-f`,
+  `Ctrl-Left`/`Ctrl-Right`, Home/End); kill+yank ring (`Ctrl-W`,
+  `Alt-Backspace`, `Alt-d`, `Ctrl-K`, `Ctrl-U`, `Ctrl-Y`, `Alt-y`);
+  `Alt-.`/`Alt-_` yank-last-arg cycling to older entries on repeat; case
+  ops (`Alt-u`/`Alt-l`/`Alt-c`); `Ctrl-T`/`Alt-t` transpose, `Ctrl-L`
+  clear-screen, `Ctrl-_` undo; `Ctrl-R` reverse search; TAB completion.
+  `Ctrl-D` on a non-empty line is delete-char; on an empty line it exits
+  (its is08 meaning, kept). `Ctrl-W`/`Ctrl-U`/backspace — the kernel
+  freebies raw mode removes — are rebound, not lost. **No binding is
+  claimed from crate documentation**: every one is verified by keystroke
+  against the built binary (`tools/replkeys_probe.py`, unix PTY; the
+  asked→bound→verified table is the sprint's evidence). `:keys` lists the
+  bindings from inside a session.
+- **`[repl.edit.history]`.** Up/Down recall in-session and across
+  sessions. The file lives in the platform's state location —
+  `$XDG_STATE_HOME/lupin/history` (default `~/.local/state/lupin/history`)
+  on unix-likes, `%APPDATA%\lupin\history` on Windows; `LUPIN_HISTORY`
+  overrides the path (empty value disables persistence). Capped at 1000
+  entries, oldest evicted; empty inputs and consecutive duplicates are not
+  recorded. A multi-line input is ONE history item — recall brings back the
+  whole `fn`, not its last line — and the file format is one JSON string
+  per line so embedded newlines survive the round trip. A corrupt line is
+  skipped, never fatal. `Ctrl-R` searches the same list.
+- **`[repl.edit.cancel]`.** `Ctrl-C` at the prompt abandons the current
+  input — single-line or mid-continuation — and returns to a fresh
+  `wolf> ` with the session's world intact: `[repl.trap.alive]` applied to
+  editing, and the fix for wolf-interp#46 (the inescapable continuation).
+  `Ctrl-C` never exits; `Ctrl-D` on an empty line does. The contract holds
+  at the prompt: interrupting a long-*running* evaluation is not in scope
+  (named residue).
+- **`[repl.edit.complete]`.** TAB completes from three sources the process
+  already holds: the `:` directives and their subcommands (`:trace
+  on|off|show|clear`; `:rules` prefixes from the rule registry); the
+  session's own bound names — surface names only, never the generational
+  internals (`f#2`, `Point#1`) of `[repl.def.shadow]`/`[repl.type.gen]`;
+  and filesystem paths after `:load`. Ambiguity lists the candidates
+  rather than guessing.
+
+## 7. What the REPL is not
+
+Not colorized: no syntax highlighting and no highlighted prompt (named
+residue — rustyline's `Highlighter` hook is cheap to add once wanted, and
+`edit::EditHelper` already stubs it). No vi mode (rustyline ships one
+behind its config; deliberately not exposed — residue, one config line if
+asked for). No `~/.inputrc` reading (rustyline does not parse it; residue).
 Not a debugger: `:trace` is a log, not a control surface. No
-compiler-parity modules at the prompt. No session persistence across
-restarts.
+compiler-parity modules at the prompt. Session *history* persists across
+restarts (`[repl.edit.history]`); session *state* does not.
