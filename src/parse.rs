@@ -254,6 +254,8 @@ fn parse_on_this_stack(lexed: &Lexed) -> Result<Parsed, Diag> {
         no_struct_lit: false,
         in_trait_body: false,
         depth: 0,
+        pending_items: std::collections::VecDeque::new(),
+        pending_stmts: std::collections::VecDeque::new(),
     };
     let unit = parser.parse_unit()?;
 
@@ -307,6 +309,13 @@ struct Parser<'a> {
     in_trait_body: bool,
     /// Current syntactic nesting, against [`MAX_NESTING`].
     depth: usize,
+    /// The tail of a comma-grouped binding (`[gram.item.let]`, D63) parsed
+    /// at item position: the group is the SEQUENCE of single bindings, so
+    /// `parse_item` returns the first and the unit/member loops drain the
+    /// rest, in order, before parsing anything new.
+    pending_items: std::collections::VecDeque<Item>,
+    /// The same tail at statement position, drained by the block loop.
+    pending_stmts: std::collections::VecDeque<Stmt>,
 }
 
 impl<'a> Parser<'a> {
@@ -512,6 +521,12 @@ impl<'a> Parser<'a> {
         let start = self.span().start;
         let mut items = Vec::new();
         loop {
+            // A comma-grouped binding's tail (D63) comes before anything new:
+            // the group IS the sequence of single bindings, in order.
+            if let Some(item) = self.pending_items.pop_front() {
+                items.push(item);
+                continue;
+            }
             self.skip_inserted_terms();
             match self.tok() {
                 None => break,
@@ -710,10 +725,24 @@ impl<'a> Parser<'a> {
                 ItemKind::Fn(Box::new(self.parse_fn_decl()?)),
                 "gram.item.fn",
             ),
-            Some(Tok::Kw("let" | "var" | "const")) => (
-                ItemKind::Binding(Box::new(self.parse_binding()?)),
-                "gram.item.let",
-            ),
+            Some(Tok::Kw("let" | "var" | "const")) => {
+                // A comma-grouped binding (D63) is the sequence of single
+                // bindings: the first is this item, the rest go to the
+                // pending queue the calling loop drains next.
+                let mut group = self.parse_binding_group()?.into_iter();
+                let first = group.next().expect("a binding group has a binder");
+                for binding in group {
+                    let span = binding.span;
+                    self.pending_items.push_back(Item {
+                        attrs: attrs.clone(),
+                        visibility: visibility.clone(),
+                        kind: ItemKind::Binding(Box::new(binding)),
+                        span,
+                        anchor: "gram.item.let",
+                    });
+                }
+                (ItemKind::Binding(Box::new(first)), "gram.item.let")
+            }
             Some(Tok::Kw("type")) => (
                 ItemKind::TypeAlias(Box::new(self.parse_type_alias()?)),
                 "gram.item.type",
@@ -924,9 +953,18 @@ impl<'a> Parser<'a> {
         Ok(out)
     }
 
-    fn parse_binding(&mut self) -> PResult<Binding> {
+    /// `let_item ::= 'let' binder (',' binder)* TERM` — comma-grouped binders
+    /// under one keyword (`[gram.item.let]`, D63), each binder a complete
+    /// `pattern (':' type)? '=' expr`. Unambiguous by construction: every
+    /// binder has its own `=`, call arguments are bracketed, and wolf has no
+    /// unparenthesized tuple expressions, so a comma at statement depth can
+    /// only begin the next binder. The returned sequence IS the semantics:
+    /// single bindings, left to right (a later binder may read an earlier
+    /// one) — the callers flatten it into consecutive statements/items.
+    /// `const_item` keeps its single-IDENT production.
+    fn parse_binding_group(&mut self) -> PResult<Vec<Binding>> {
         let anchor = "gram.item.let";
-        let start = self.span().start;
+        let group_start = self.span().start;
         let kind = if self.eat_kw("let") {
             BindingKind::Let
         } else if self.eat_kw("var") {
@@ -935,33 +973,70 @@ impl<'a> Parser<'a> {
             self.expect_kw("const", anchor)?;
             BindingKind::Const
         };
-        // `const_item` binds an IDENT, not a pattern.
-        let pattern = if kind == BindingKind::Const {
-            let name = self.expect_ident(anchor)?;
-            let span = name.span;
-            Pattern {
-                kind: Box::new(PatKind::Binding(name)),
-                span,
-                anchor: "gram.pat",
+        let mut out: Vec<Binding> = Vec::new();
+        loop {
+            let start = if out.is_empty() {
+                group_start
+            } else {
+                self.span().start
+            };
+            // `const_item` binds an IDENT, not a pattern.
+            let pattern = if kind == BindingKind::Const {
+                let name = self.expect_ident(anchor)?;
+                let span = name.span;
+                Pattern {
+                    kind: Box::new(PatKind::Binding(name)),
+                    span,
+                    anchor: "gram.pat",
+                }
+            } else {
+                self.parse_pattern()?
+            };
+            let ty = if self.eat(&Tok::Colon) {
+                Some(self.parse_type()?)
+            } else {
+                None
+            };
+            // D63's refusals, by name: a binder without an initializer —
+            // `var i, c` / `var i: int, c: int` / one initializer for
+            // several names, `var i, c = 0` — and Python's bare-tuple
+            // `let a, b = 1, 2` all stop HERE, at a binder that is not
+            // followed by its own `=`. Bindings always initialize.
+            if !self.at(&Tok::Assign)
+                && matches!(self.tok(), None | Some(Tok::Comma | Tok::Term { .. }))
+            {
+                return Err(self.error(
+                    diag::E_UNEXPECTED_TOKEN,
+                    anchor,
+                    "this binder has no initializer — bindings always initialize, and each \
+                     binder in a group carries its own `=` (D63). One value into several names \
+                     is `(i, c) = (0, 0)` (a tuple pattern destructures); several values are \
+                     `i = 0, c = 0` (one `=` per binder). Python's bare `a, b = 1, 2` is not \
+                     adopted",
+                ));
             }
-        } else {
-            self.parse_pattern()?
-        };
-        let ty = if self.eat(&Tok::Colon) {
-            Some(self.parse_type()?)
-        } else {
-            None
-        };
-        self.expect(&Tok::Assign, anchor)?;
-        let value = self.with_struct_lit(true, Parser::parse_expr)?;
+            self.expect(&Tok::Assign, anchor)?;
+            let value = self.with_struct_lit(true, Parser::parse_expr)?;
+            out.push(Binding {
+                kind,
+                pattern,
+                ty,
+                value,
+                span: Span::new(start, self.prev_span().end),
+            });
+            if kind != BindingKind::Const && self.eat(&Tok::Comma) {
+                continue;
+            }
+            break;
+        }
         self.expect_term(anchor)?;
-        Ok(Binding {
-            kind,
-            pattern,
-            ty,
-            value,
-            span: Span::new(start, self.prev_span().end),
-        })
+        // The single-binding span always reached through the terminator; the
+        // group's LAST binder keeps that shape (earlier binders end at their
+        // own initializer — the comma is the group's, not the binder's).
+        if let Some(last) = out.last_mut() {
+            last.span = Span::new(last.span.start, self.prev_span().end);
+        }
+        Ok(out)
     }
 
     fn parse_type_alias(&mut self) -> PResult<TypeAlias> {
@@ -1135,6 +1210,11 @@ impl<'a> Parser<'a> {
     fn parse_members(&mut self) -> PResult<Vec<Item>> {
         let mut members = Vec::new();
         loop {
+            // The tail of a comma-grouped binding (D63), in order.
+            if let Some(item) = self.pending_items.pop_front() {
+                members.push(item);
+                continue;
+            }
             self.skip_terms();
             if self.at(&Tok::RBrace) || self.tok().is_none() {
                 break;
@@ -1618,6 +1698,12 @@ impl<'a> Parser<'a> {
         let mut tail: Option<Box<Expr>> = None;
 
         loop {
+            // The tail of a comma-grouped binding (D63): the sequence of
+            // single bindings, drained in order before anything new.
+            if let Some(stmt) = self.pending_stmts.pop_front() {
+                stmts.push(stmt);
+                continue;
+            }
             self.skip_inserted_terms();
             match self.tok() {
                 None => break,
@@ -1704,8 +1790,21 @@ impl<'a> Parser<'a> {
         }
 
         if matches!(self.tok(), Some(Tok::Kw("let" | "var" | "const"))) {
-            let binding = self.parse_binding()?;
+            // A comma-grouped binding (D63) is the sequence of single
+            // bindings: the first is this statement, the rest go to the
+            // pending queue the block loop drains next.
+            let mut group = self.parse_binding_group()?.into_iter();
+            let binding = group.next().expect("a binding group has a binder");
             let span = binding.span;
+            for rest in group {
+                let span = rest.span;
+                self.pending_stmts.push_back(Stmt {
+                    attrs: attrs.clone(),
+                    kind: StmtKind::Binding(Box::new(rest)),
+                    span,
+                    anchor: "gram.item.let",
+                });
+            }
             return Ok(Stmt {
                 attrs,
                 kind: StmtKind::Binding(Box::new(binding)),
@@ -3496,6 +3595,74 @@ mod tests {
             ")".repeat(MAX_NESTING + 4)
         );
         assert_eq!(rejects(&outside).code, diag::E_NESTING_RAIL);
+    }
+
+    // -- `[gram.item.let]` (D63): comma-grouped binders ---------------------
+
+    #[test]
+    fn a_comma_grouped_binding_is_the_sequence_of_single_bindings() {
+        // Statement position: the group flattens left-to-right.
+        let unit = parses("fn main() -> int {\n    var i = 0, c = 1\n    i + c\n}\n");
+        let ItemKind::Fn(decl) = &unit.items[0].kind else {
+            panic!("a fn")
+        };
+        let body = decl.body.as_ref().expect("a body");
+        let kinds: Vec<&str> = body
+            .stmts
+            .iter()
+            .map(|s| match &s.kind {
+                StmtKind::Binding(_) => "binding",
+                _ => "other",
+            })
+            .collect();
+        assert_eq!(kinds, vec!["binding", "binding"]);
+        // Each binder carries its own pattern, optional type, initializer.
+        parses("fn main() -> int {\n    let a: int = 1, (x, y) = pair()\n    a + x + y\n}\n");
+        // A later binder may read an earlier one (semantics = sequence).
+        parses("fn main() -> int {\n    let a = 1, b = a + 1\n    b\n}\n");
+    }
+
+    #[test]
+    fn a_comma_grouped_binding_flattens_at_item_level_too() {
+        // Item-level and statement-level share the grammar ([gram.item.let]).
+        let unit = parses("let A = 1, B = A + 1\nfn main() -> int { A + B }\n");
+        assert_eq!(unit.items.len(), 3);
+        assert!(matches!(unit.items[0].kind, ItemKind::Binding(_)));
+        assert!(matches!(unit.items[1].kind, ItemKind::Binding(_)));
+    }
+
+    #[test]
+    fn one_initializer_for_several_names_is_refused_with_both_spellings_named() {
+        // D63's refusals, by name — the teach-note offers the tuple pattern
+        // and the one-=-per-binder spellings.
+        for source in [
+            "fn main() -> int {\n    var i, c = 0\n    0\n}\n",
+            "fn main() -> int {\n    var i, c\n    0\n}\n",
+            "fn main() -> int {\n    var i: int, c: int\n    0\n}\n",
+            "fn main() -> int {\n    let a, b = 1, 2\n    0\n}\n",
+        ] {
+            let d = rejects(source);
+            assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN, "{source}");
+            assert_eq!(d.anchor, "gram.item.let", "{source}");
+            assert!(
+                d.message.contains("(i, c) = (0, 0)"),
+                "{source}: {}",
+                d.message
+            );
+            assert!(
+                d.message.contains("i = 0, c = 0"),
+                "{source}: {}",
+                d.message
+            );
+        }
+    }
+
+    #[test]
+    fn const_keeps_its_single_binder_production() {
+        // `const_item ::= 'const' IDENT (':' type)? '=' expr TERM` — D63
+        // grouped `let`/`var`; `const` is unchanged.
+        let d = rejects("const A = 1, B = 2\nfn main() -> int { A }\n");
+        assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
     }
 
     #[test]
