@@ -511,19 +511,32 @@ fn sched_request(
 /// Renders a static diagnostic against the text its spans index: the entry
 /// source, unless the observation's reason says a *sibling module file*
 /// failed — then that file's text (`line:col` against the wrong file would
-/// lie). An unreadable module file falls back to the offset spelling, which
-/// misleads no one about lines it cannot know.
-fn render_static_diag(diag: &wolf_interp::diag::Diag, reason: Option<&str>, entry: &str) -> String {
-    if let Some(path) = reason
+/// lie). The reason names the module file relative to the entry's directory
+/// (a record travels between machines); an unreadable module file falls
+/// back to the offset spelling, which misleads no one about lines it
+/// cannot know.
+fn render_static_diag(
+    diag: &wolf_interp::diag::Diag,
+    reason: Option<&str>,
+    entry_file: Option<&Path>,
+    entry_text: &str,
+) -> String {
+    if let Some(module) = reason
         .and_then(|r| r.strip_prefix("in module file `"))
         .and_then(|r| r.strip_suffix('`'))
     {
-        return match std::fs::read_to_string(path) {
-            Ok(text) => diag.render(&text),
-            Err(_) => diag.to_string(),
+        let resolved = match entry_file.and_then(Path::parent) {
+            Some(dir) if Path::new(module).is_relative() => dir.join(module),
+            _ => PathBuf::from(module),
+        };
+        // Name the file the line:col points into — the whole point of the
+        // spelling is that a reader can jump to it.
+        return match std::fs::read_to_string(&resolved) {
+            Ok(text) => format!("{} (in module file `{module}`)", diag.render(&text)),
+            Err(_) => format!("{diag} (in module file `{module}`)"),
         };
     }
-    diag.render(entry)
+    diag.render(entry_text)
 }
 
 /// `lupin FILE.lu` / `lupin run FILE.lu` / `lupin -`: the program's stdout
@@ -612,7 +625,7 @@ fn run_run(args: &RunArgs) -> u8 {
             if let Some(diag) = &observation.detail {
                 eprintln!(
                     "{display}: {}",
-                    render_static_diag(diag, observation.reason.as_deref(), &text)
+                    render_static_diag(diag, observation.reason.as_deref(), file, &text)
                 );
             }
             EXIT_STATIC
@@ -700,6 +713,7 @@ fn run_check(args: &CheckArgs) -> u8 {
                         render_static_diag(
                             diag,
                             observation.reason.as_deref(),
+                            Some(file),
                             &String::from_utf8_lossy(&source)
                         )
                     );
@@ -1341,7 +1355,10 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
                 .extensions
                 .get("x-unsupported")
                 .and_then(|v| v.as_str());
-            eprintln!("  {}", render_static_diag(detail, reason, &text));
+            eprintln!(
+                "  {}",
+                render_static_diag(detail, reason, Some(&args.file), &text)
+            );
         }
         if let Some(trap) = &observed.trap {
             eprintln!("  {}", trap.render(&text));

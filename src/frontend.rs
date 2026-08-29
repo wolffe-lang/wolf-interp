@@ -306,12 +306,20 @@ fn observe_with(
     };
     let program = match program {
         Ok(program) => program,
-        Err(LoadError::Syntax { file, diag }) => {
+        Err(LoadError::Syntax { file: module, diag }) => {
             // A sibling file of the same module failed the frontend. The phase
             // that failed is that file's parse rung, and its code is the one
-            // the protocol compares.
+            // the protocol compares. The reason names the module file
+            // *relative to the entry's directory* — records travel between
+            // machines and get byte-compared (the export gate re-exports and
+            // diffs), so an absolute path here would make identical
+            // observations compare unequal.
+            let display = file
+                .and_then(Path::parent)
+                .and_then(|dir| Path::new(&module).strip_prefix(dir).ok())
+                .map_or_else(|| module.clone(), crate::slash_path);
             let mut observation = Observation::failed(Phase::Parse, *diag);
-            observation.reason = Some(format!("in module file `{file}`"));
+            observation.reason = Some(format!("in module file `{display}`"));
             return observation;
         }
         Err(LoadError::Io(message)) => {
