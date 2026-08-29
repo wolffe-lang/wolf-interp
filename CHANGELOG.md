@@ -1,5 +1,82 @@
 # Changelog
 
+## 0.1.17 — 2026-08-29
+
+THE INTERPRETER KEEPS TWO PROMISES (is28). Two user-visible fixes,
+both measured live on 0.1.16: a scratch directory where every file
+says `//! member: false` still collided on `main` (#49 — the run-door
+half of D59 was never landed), and the origin marker the language
+ruled in D61 either failed at lex (`#![index(1)]` → E0101) or —
+the dangerous class — was a silently ignored statement attribute that
+ran `grammar/index_origin_scopes.lu` to the WRONG answer
+(wolf-lang#169). Both promises implemented from the ruling texts and
+the spec clauses, never from the compiler's source.
+
+Released against pin `addcd7f` (the s126 wave; one bump, `e561c6f` →
+`addcd7f`). Corpus 422 → 430 files (397 entries + 33 members);
+coverage ratchets 157 → 159; anchors 396 → 397. All six run-reaching
+`index_origin_*` witnesses MATCH at first sight — including the
+byte-exact stdout pins on the file-wide and scopes witnesses — and
+the two fail pins land the spec's own codes (E0211 by position, E0813
+by name). Every pre-existing corpus file is verdict-identical before
+and after: the judge counts moved 304→310 run / 279→287 match /
+13/41/55/1 unchanged — exactly the eight new witnesses, nothing else.
+
+- **The four standalone spellings, in module formation
+  (`[conf.directive.standalone]`, D59 — #49).** A file opts out of
+  its directory's module by an explicit `member: false`, the
+  `check:`+`phase:` entry pair (0.1.16's only exclusion), a script
+  announcement (`#!` line or `pkg { … }` frontmatter), or a
+  `_test.lu` name; an explicit `member:` key always decides; the
+  named entry always compiles; std/dep trees stay whole-package. The
+  asymmetry is kept: a standalone mark opts the FILE out and never
+  shrinks anyone's build — a plain `main` beside a standalone `main`
+  still collides, and the E0302 note now names the escape.
+- **The three E0301 situations, this machine's voice.** A name that
+  IS defined next door in a standalone entry answers with the file,
+  the marker, and the fix; an import whose files all opted out lists
+  them; a directory with no `.lu` files gets a formation note instead
+  of a layout assertion.
+- **`#![` and `#[index(…)]` lex, parse, scope (D61 —
+  wolf-lang#169).** `#![` is one token and the shebang narrows around
+  it (`#!` not followed by `[`; the script witness stays green); the
+  file-wide form is legal only as the file's first non-trivia
+  construct (E0211 anywhere else, by position); the statement form
+  scopes the annotated node's full lexical extent, nesting legal,
+  innermost wins, `#[index(0)]` restores the default; bad arguments,
+  duplicates, and unknown INNER attributes are E0813 by name — never
+  ignored, the faulty marker takes no effect.
+- **The shift, exactly per `[gram.expr.index.origin]`.** Subscript
+  reads, writes, and slice PLAIN starts lower by one CHECKED
+  subtraction; plain ends lower unchanged (the inclusivity coupling —
+  `..=` is redundant-but-legal); `^n`, open sides, `.len`, bare
+  ranges, `.get`, map keys, pool handles, tuple members and the
+  unsafe tier do not move. `xs[int.min]` under origin 1 traps
+  `overflow` before the bounds question (X3, D56's kind). The human
+  trap line renders the WRITER's numbers inside a 1-origin scope
+  (`index 0 is outside…`, `2..9 (origin 1)`) — the writer's-mode duty
+  D61 puts on the machine whose report prints numbers.
+- **`char` assignment copies (#50, D58).** `d = c` then `{c}` printed
+  `xx` under wolf and trapped use-after-move here; a `char` is now a
+  copy value in the tier-0 move discipline exactly as `int` is.
+- **Comma-grouped binders (D63 rider).** `let`/`var` admit
+  `binder (',' binder)*`, each binder with its own `=`; the group is
+  the left-to-right sequence of single bindings. One-initializer-
+  many-names and Python's bare tuple are refused by name with both
+  correct spellings offered; `const` keeps its single-binder
+  production.
+- **D62 witnesses (rider).** Nothing to build — `+`/`+=` on two strs
+  is the language and this machine's behavior IS the ruling. The
+  legal-chain run witness and the three refused mixes (`str + int`,
+  `str + char`, `int + str`, refused by name) land in-repo
+  (`tests/d62/`, upstream-ready) as the differential counterpart
+  waiting for the compiler half (wolf-lang#172); #51 closes from
+  that side.
+- **An upstream finding, filed.** c1f54f2's anchors regen DROPPED
+  `gram.lex.ident` from `anchors.json` while spec/01 §1.3 still
+  defines it — wolf-lang#177, carried as a `FILED_REGISTRY_HOLES`
+  notice on every export until the registry re-gains the anchor.
+
 ## 0.1.16 — 2026-08-28
 
 THE INTERPRETER NAMES THE LINE (is27, the lupin half of s125's
