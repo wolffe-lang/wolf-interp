@@ -353,6 +353,55 @@ fn reject_duplicate<T>(
     }
 }
 
+/// The leading `//!` block's lines, shebang skipped — the walk
+/// [`parse_header`] performs, shared with the two lenient readers below.
+fn header_lines(source: &str) -> impl Iterator<Item = &str> {
+    source
+        .lines()
+        .enumerate()
+        .skip_while(|(index, raw)| *index == 0 && raw.starts_with("#!"))
+        .map(|(_, raw)| raw)
+        .take_while(|raw| raw.starts_with("//!"))
+        .filter_map(|raw| raw.strip_prefix("//!"))
+        .map(str::trim)
+}
+
+/// The `member:` key of a leading `//!` block, read leniently — the
+/// module-formation reading of `[conf.directive.standalone]` (D59): an
+/// explicit `member:` key always decides, whatever else the header carries
+/// or gets wrong. The strict corpus dialect ([`parse_header`]) refuses a
+/// `member: false` file with no entry pair; a build must not — the
+/// user-facing spelling for "several programs in one directory" is exactly
+/// one `//! member: false` line per program, and nothing else. A value that
+/// is neither `true` nor `false` decides nothing here (the strict walk owns
+/// that refusal); duplicates answer the first sighting.
+#[must_use]
+pub fn member_key(source: &str) -> Option<bool> {
+    header_lines(source).find_map(|rest| match split_directive(rest) {
+        Some(("member", "true")) => Some(true),
+        Some(("member", "false")) => Some(false),
+        _ => None,
+    })
+}
+
+/// Whether a leading `//!` block carries both `check:` and `phase:` — the
+/// entry pair of `[conf.directive.member]`, read leniently for module
+/// formation (the values' well-formedness is the strict walk's question,
+/// not membership's).
+#[must_use]
+pub fn entry_pair(source: &str) -> bool {
+    let mut check = false;
+    let mut phase = false;
+    for rest in header_lines(source) {
+        match split_directive(rest) {
+            Some(("check", _)) => check = true,
+            Some(("phase", _)) => phase = true,
+            _ => {}
+        }
+    }
+    check && phase
+}
+
 /// Splits a header line into `(key, value)` when it opens with a known key.
 /// Prose is anything else — including prose that happens to contain a colon.
 fn split_directive(line: &str) -> Option<(&str, &str)> {
@@ -634,6 +683,44 @@ mod tests {
             message.contains("phase"),
             "the `phase:` under an off-byte-zero `#!` must not be read: {message}"
         );
+    }
+
+    // ---- the lenient module-formation readers (D59) -----------------------
+
+    #[test]
+    fn member_key_reads_the_key_alone_whatever_else_the_header_gets_wrong() {
+        // The strict dialect refuses `member: false` without the entry pair;
+        // module formation must not — the user-facing opt-out is exactly one
+        // header line (`[conf.directive.standalone]`).
+        assert_eq!(
+            member_key("//! member: false\nfn main() -> int { 0 }\n"),
+            Some(false)
+        );
+        assert_eq!(
+            member_key("//! member: true\n//! check: pass\n"),
+            Some(true)
+        );
+        assert_eq!(member_key("//! prose line\nfn f() -> int { 1 }\n"), None);
+        // A value that is neither true nor false decides nothing here.
+        assert_eq!(member_key("//! member: maybe\n"), None);
+        // The block is the LEADING run: a stray `//!` deeper in the file is
+        // a comment, not a directive.
+        assert_eq!(member_key("fn f() -> int { 1 }\n//! member: false\n"), None);
+        // A shebang line is trivia to the header (`[gram.lex.shebang]`).
+        assert_eq!(
+            member_key("#!/usr/bin/env lupin\n//! member: false\n"),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn entry_pair_requires_both_keys() {
+        assert!(entry_pair("//! check: pass\n//! phase: parse\n"));
+        assert!(!entry_pair("//! check: pass\n"));
+        assert!(!entry_pair("//! phase: run\n"));
+        // Lenient: well-formedness of the values is the strict walk's
+        // question, not membership's.
+        assert!(entry_pair("//! check: nonsense\n//! phase: nonsense\n"));
     }
 
     #[test]
