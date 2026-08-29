@@ -1,0 +1,11 @@
+---
+source: tests/fault_snapshots.rs
+assertion_line: 163
+---
+program: index_origin_zero.lu
+trap:    bounds
+clause:  [mem.ub.defined]
+rule:    Bounds
+message: index 0 is outside a collection of 1 element(s)
+at:      16:13 `xs[0]`
+because: (single-span fault)

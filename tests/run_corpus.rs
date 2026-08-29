@@ -964,6 +964,23 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // same literal — the conservatism class, stated deliberately.
     ("faults/overflow_list_pop_i32.lu", "trap(overflow)"),
     ("faults/overflow_list_pop_i64.lu", "trap(overflow)"),
+    // is28's own movers: the six run-reaching D61 origin-marker witnesses
+    // (the E0813/E0211 pins fail before run, as pinned). All six MATCH at
+    // first sight of the addcd7f pin — the sprint implemented from the D61
+    // ruling text and the two machines agree on every answer, including
+    // the scopes witness a 0.1.16 lupin ran to the WRONG answer by
+    // silently ignoring the statement marker. One honest nuance:
+    // `min_overflow` traps overflow here at the un-annotated literal
+    // (this machine's D54 default-int reading) where the compiler traps
+    // at the shift — same verdict, different site; the shift's own
+    // int.min corner is pinned with an annotated `let` in
+    // tests/index_origin.rs.
+    ("faults/index_origin_min_overflow.lu", "trap(overflow)"),
+    ("faults/index_origin_zero.lu", "trap(bounds)"),
+    ("grammar/index_origin_closure.lu", "exit(0)"),
+    ("grammar/index_origin_file.lu", "exit(0)"),
+    ("grammar/index_origin_scopes.lu", "exit(0)"),
+    ("lints/index_origin_get.lu", "exit(0)"),
     ("resolve/bare_sibling/pair.lu", "exit(0)"),
     ("resolve/plain_subdir/main.lu", "exit(0)"),
     ("resolve/standalone_pair/left.lu", "exit(0)"),

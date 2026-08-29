@@ -153,8 +153,12 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // members, legible once [conf.directive.standalone]'s plain-member
     // default landed), the s125 overflow-on-pop twins, the s123 match/str
     // cluster, and the four numlit witnesses.
+    // 422 -> 430 at the addcd7f pin (is28): the s126 wave — the eight D61
+    // index_origin_* witnesses (six run-reaching, the E0813/E0211 fail
+    // pins), the executable contract this sprint's origin-marker half is
+    // implemented against.
     // Moved with the pin, per the export.rs rule.
-    assert!(stdout.contains("422 file(s)"), "{stdout}");
+    assert!(stdout.contains("430 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -163,7 +167,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 422);
+    assert_eq!(value["total"], 430);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

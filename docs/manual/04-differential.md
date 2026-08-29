@@ -91,17 +91,24 @@ was never amended for the `pkg` namespace `spec/08-package.md` introduced
 — wolf-lang#120, filed rather than patched around — until upstream s115
 amended the clause, and the notice died with the amendment.
 
+The standing example at the addcd7f pin is a registry HOLE rather than a
+namespace: c1f54f2's anchors regen dropped `[gram.lex.ident]` while
+spec/01 §1.3 still defines it — wolf-lang#177, carried in
+`export::FILED_REGISTRY_HOLES` and reported on every export until the
+registry re-gains the anchor:
+
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":157,"anchors_total":396,"bundle_sha256":"…","files":477,"forward_tags":109,"out":"target/bundle","pin":"e561c6f6bae19515b5fc16d6361b371d723353b3","programs":460,"records":427}
+{"anchors_covered":159,"anchors_total":397,"bundle_sha256":"…","files":485,"forward_tags":109,"out":"target/bundle","pin":"addcd7f0bd90b16bfa8bec429ab7f27c46a2c1bb","programs":468,"records":435}
+notice: `gram.lex.ident` is defined in the spec but absent from anchors.json — known upstream finding, wolf-lang#177 (c1f54f2's anchors regen dropped it; spec/01 §1.3 is unchanged)
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 427 entries compared, 0 member(s) exercised through their entries
+differential: 435 entries compared, 0 member(s) exercised through their entries
 divergences: 0
 conservatism ledger: 110 entries
   unsupported(counterparty): 55
   unsupported(interp): 55
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin e561c6f6bae19515b5fc16d6361b371d723353b3 verified (bundle_sha256 …)
+notice: bundle target/bundle at pin addcd7f0bd90b16bfa8bec429ab7f27c46a2c1bb verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the

@@ -335,6 +335,22 @@ fn read_registry(spec: &Path) -> Result<BTreeMap<String, String>, String> {
 /// cross-check gates it like any other namespace again.
 pub const FILED_REGISTRY_FINDINGS: &[(&str, &str)] = &[];
 
+/// Registry HOLES triaged and FILED upstream, keyed by the exact anchor
+/// token: a clause the spec DEFINES that `anchors.json`'s own regen lost.
+/// The same standing-waiver contract as [`FILED_REGISTRY_FINDINGS`]: the
+/// finding still appears in every export as a notice (hiding it would
+/// defeat the check); it just stops failing the export that already filed
+/// it, and the row comes out — the check resumes gating — when the
+/// registry re-gains the anchor.
+///
+/// One row at the addcd7f pin: `gram.lex.ident`, registered at every pin
+/// through e561c6f, dropped by c1f54f2's "anchors + ebnf regen" while
+/// spec/01 §1.3 still defines it verbatim (wolf-lang#177).
+pub const FILED_REGISTRY_HOLES: &[(&str, &str)] = &[(
+    "gram.lex.ident",
+    "wolf-lang#177 (c1f54f2's anchors regen dropped it; spec/01 §1.3 is unchanged)",
+)];
+
 /// The independent extraction (`[conf.anchor.grammar]`): every
 /// `[registered.namespace.token]` in the pinned spec markdown, compared both
 /// ways against `anchors.json`. A mismatch is an **upstream finding** — the
@@ -367,23 +383,39 @@ pub fn cross_check_registry(
             }
         }
     }
-    let missing_from_registry: Vec<&String> = extracted
+    // A token the spec cites but the registry lacks is a fresh finding the
+    // moment it appears — the registry is upstream's own generated artifact
+    // — and it gates the export until it is FILED. A filed hole
+    // ([`FILED_REGISTRY_HOLES`], exact-token keyed) reports as a notice
+    // instead, per the standing-waiver rule.
+    let (filed_holes, missing_from_registry): (Vec<&String>, Vec<&String>) = extracted
         .keys()
         .filter(|t| !registry.contains_key(*t))
-        .collect();
+        .partition(|t| {
+            FILED_REGISTRY_HOLES
+                .iter()
+                .any(|(token, _)| *token == t.as_str())
+        });
     let filed_ns = |t: &str| {
         let ns = t.split('.').next().unwrap_or_default();
         FILED_REGISTRY_FINDINGS.iter().find(|(n, _)| *n == ns)
     };
-    // A token the spec cites but the registry lacks is never waived: the
-    // registry is upstream's own generated artifact, and a hole in it is
-    // a fresh finding whatever namespace it lands in.
     let (filed, missing_from_spec): (Vec<&String>, Vec<&String>) = registry
         .keys()
         .filter(|t| !extracted.contains_key(*t))
         .partition(|t| filed_ns(t).is_some());
     if missing_from_registry.is_empty() && missing_from_spec.is_empty() {
         let mut notices = Vec::new();
+        for token in &filed_holes {
+            let (_, filing) = FILED_REGISTRY_HOLES
+                .iter()
+                .find(|(t, _)| *t == token.as_str())
+                .expect("partitioned as filed");
+            notices.push(format!(
+                "notice: `{token}` is defined in the spec but absent from anchors.json — \
+                 known upstream finding, {filing}"
+            ));
+        }
         if !filed.is_empty() {
             let mut by_ns: BTreeMap<&str, (usize, &str)> = BTreeMap::new();
             for t in &filed {

@@ -184,9 +184,15 @@ fn files_whose_ledger_stops_at_lex_fail_at_parse_with_their_pinned_code() {
     // choice per `[mem.codes]`). E0201 joined with wolf-lang's s88, which
     // gave the corpus `grammar/range_bare.lu` — a range with no endpoint —
     // and so took that code out of this implementation's UNPINNED_CODES.
+    // E0211 joined at addcd7f (is28): `grammar/index_origin_misplaced.lu`
+    // pins the D61 position rule — a `#![…]` below the first declaration
+    // is refused by position (`[gram.attr.index]`); it sorts first because
+    // the map is path-ordered.
     assert_eq!(
         seen.values().cloned().collect::<Vec<_>>(),
-        vec!["E0001", "E0201", "E0210", "E0002", "E0006", "E0008"],
+        vec![
+            "E0211", "E0001", "E0201", "E0210", "E0002", "E0006", "E0008"
+        ],
         "the pinned grammar-tier codes changed: {seen:?}"
     );
 }
@@ -235,6 +241,9 @@ fn every_parseable_file_resolves_under_sema_lite() {
     // pattern must cover the operand's whole row). Since is19 it owns E0812
     // (explicit generic application arity, wolf-lang#111 — both counts are
     // syntax, `lint::Walk::explicit_apply`). A file
+    // Since is28 it owns E0813 (the D61 origin-marker validation,
+    // `[gram.attr.index]` — bad args, duplicates, unknown inner attributes,
+    // refused by name). A file
     // that *pins* one of these codes fails here exactly as the corpus says. Any other resolve failure
     // would mean the module machinery broke, not that a program is
     // ill-typed.
@@ -248,7 +257,7 @@ fn every_parseable_file_resolves_under_sema_lite() {
         let observation = frontend::observe(&case.source, Some(Phase::Resolve));
         if let Some(
             code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E0809"
-            | "E0812" | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
+            | "E0812" | "E0813" | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
         ) = pinned_code(case.check.as_ref())
         {
             assert_eq!(
@@ -286,7 +295,8 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
             let observation = frontend::observe(&case.source, Some(rung));
             if let Some(
                 code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
-                | "E0809" | "E0812" | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
+                | "E0809" | "E0812" | "E0813" | "E1101" | "E1102" | "E1103" | "E1301"
+                | "E1302"),
             ) = pinned_code(case.check.as_ref())
             {
                 assert_eq!(

@@ -457,14 +457,29 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             grows [conf.directive.standalone], [conf.trap.report] and
     //             [conf.trap.render] — 396 anchors; `oob_bounds.lu` is the
     //             one existing-content change, citing the report clause.)
+    //   addcd7f → 430 files (is28: the s126 wave. The corpus grows 8, all
+    //             entries — the D61 origin-marker witnesses this sprint
+    //             implements against: `grammar/index_origin_file.lu`,
+    //             `_closure.lu`, `_scopes.lu` (the statement form a 0.1.16
+    //             lupin silently ignored — the bug class the sprint
+    //             exists for), the E0813 argument pin `_bad.lu`, the
+    //             E0211 position pin `_misplaced.lu`,
+    //             `faults/index_origin_zero.lu` (bounds BY THE SHIFT),
+    //             `faults/index_origin_min_overflow.lu` (the checked-shift
+    //             corner) and `lints/index_origin_get.lu` (W0317 rides
+    //             #167's lint-parity row, not this sprint). The spec grows
+    //             [gram.attr.index] and [gram.expr.index.origin] and
+    //             narrows [gram.lex.shebang]; its anchors regen DROPPED
+    //             [gram.lex.ident] — filed as wolf-lang#177, carried as a
+    //             FILED_REGISTRY_HOLES notice — 397 anchors.)
     let report = report();
     assert_eq!(
         report.total(),
-        422,
+        430,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 389);
+    assert_eq!(report.entries(), 397);
     assert_eq!(report.members(), 33);
 }
 

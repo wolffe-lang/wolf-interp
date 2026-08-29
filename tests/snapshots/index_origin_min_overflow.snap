@@ -1,0 +1,11 @@
+---
+source: tests/fault_snapshots.rs
+assertion_line: 163
+---
+program: index_origin_min_overflow.lu
+trap:    overflow
+clause:  [arith.checked]
+rule:    ArithChecked
+message: the literal -9223372036854775808 is outside `i32`, the binding's type — checked arithmetic traps in every profile (X3)
+at:      15:13 `0 - 9223372036854775807 - 1`
+because: (single-span fault)

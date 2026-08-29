@@ -100,7 +100,11 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // and the D59 membership pair conf.directive.standalone /
 // conf.directive.member (the resolve/ witnesses). Raised in the bump
 // commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 157;
+// 157 → 159 at addcd7f (is28): the s126 wave's two newly covered clauses —
+// gram.attr.index and gram.expr.index.origin, cited by the eight
+// index_origin_* witnesses this sprint implements. Raised in the bump
+// commit per the test's own instruction.
+const RATCHET_FLOOR: usize = 159;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -155,7 +159,11 @@ const RATCHET_FLOOR: usize = 157;
 // [conf.directive.standalone] (D59 membership), [conf.trap.report] (the
 // native two-line report) and [conf.trap.render] (this sprint's contract
 // anchor: the interpreter's line:col rendering).
-const ANCHORS_TOTAL: usize = 396;
+// 396 → 397 at addcd7f (is28): s126 writes [gram.attr.index] and
+// [gram.expr.index.origin] (+2) while its regen DROPPED [gram.lex.ident]
+// (−1) — the hole is an upstream finding, wolf-lang#177, carried as a
+// FILED_REGISTRY_HOLES notice until the registry re-gains the anchor.
+const ANCHORS_TOTAL: usize = 397;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -302,10 +310,14 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // overflow-on-pop twins, the s123 match/str cluster, the four numlit
     // witnesses) and the 4 bare members `[conf.directive.standalone]`
     // makes legible; the suite is unmoved.
+    // 460/427 → 468/435 at addcd7f (is28): the s126 wave's 8 corpus files
+    // land, all entries — the D61 index_origin_* witnesses this sprint
+    // implements against (six run-reaching, the E0813 and E0211 fail
+    // pins); the suite is unmoved.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "e561c6f6bae19515b5fc16d6361b371d723353b3");
-    assert_eq!(summary.programs, 460);
-    assert_eq!(summary.records, 427);
+    assert_eq!(summary.pin, "addcd7f0bd90b16bfa8bec429ab7f27c46a2c1bb");
+    assert_eq!(summary.programs, 468);
+    assert_eq!(summary.records, 435);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
@@ -431,10 +443,13 @@ fn the_anchor_registry_cross_check_holds_at_this_pin() {
     assert_eq!(registry.len(), ANCHORS_TOTAL);
     let notices =
         export::cross_check_registry(&spec, &registry).expect("nothing unfiled disagrees");
-    // At 90c90df the pkg waiver is gone (s115 amended [conf.anchor.ns] for
-    // #120; the namespace is registered) — the cross-check holds with no
-    // standing notice at all, for the first time since c9da6d9.
-    assert_eq!(notices.len(), 0, "{notices:?}");
+    // At addcd7f one FILED hole stands: c1f54f2's anchors regen dropped
+    // `gram.lex.ident` while spec/01 §1.3 still defines it (wolf-lang#177).
+    // The notice appears on every export — the waiver dies when the
+    // registry re-gains the anchor, and this assertion then returns to 0.
+    assert_eq!(notices.len(), 1, "{notices:?}");
+    assert!(notices[0].contains("gram.lex.ident"), "{notices:?}");
+    assert!(notices[0].contains("wolf-lang#177"), "{notices:?}");
 }
 
 #[test]
