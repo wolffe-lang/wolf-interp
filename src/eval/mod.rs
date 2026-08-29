@@ -4120,6 +4120,17 @@ impl Machine {
                     row,
                 })));
             }
+            // The D59 teach-note (the compiler's E0301 situation (a), lupin's
+            // voice): the name IS defined next door, in a file that opted out
+            // of this module — say which file, which marker, and the fix.
+            let module = self
+                .frames
+                .last()
+                .map(|f| f.module.clone())
+                .unwrap_or_default();
+            if let Some(note) = self.standalone_note(&module, name) {
+                return unsupported(format!("`{name}` does not resolve{note}"));
+            }
             return unsupported(format!("`{name}` does not resolve"));
         }
 
@@ -4132,10 +4143,23 @@ impl Machine {
                     let def = def.clone();
                     self.value_of_def(&def, &head, &tail, expr.span)
                 }
-                None => unsupported(format!(
-                    "`{head}.{tail}` does not resolve; it is either absent or not `pub` \
-                     (`[mod.vis.private]` is the compiler's E0304)"
-                )),
+                None => {
+                    // The D59 teach-notes, cross-module: the member lives in
+                    // a standalone sibling of the imported directory (a), or
+                    // the directory formed an empty module because every
+                    // file opted out (b) / it holds no `.lu` files at all
+                    // (c) — the compiler's three E0301 situations.
+                    if let Some(note) = self.standalone_note(&head, &tail) {
+                        return unsupported(format!("`{head}.{tail}` does not resolve{note}"));
+                    }
+                    if let Some(note) = self.empty_module_note(&head) {
+                        return unsupported(format!("`{head}.{tail}` does not resolve{note}"));
+                    }
+                    unsupported(format!(
+                        "`{head}.{tail}` does not resolve; it is either absent or not `pub` \
+                         (`[mod.vis.private]` is the compiler's E0304)"
+                    ))
+                }
             };
         }
         if head == "c" && !self.local_exists("c") {
@@ -4215,6 +4239,57 @@ impl Machine {
                 Some(owner) => enums.iter().any(|declared| declared == owner),
                 None => !enums.is_empty(),
             })
+    }
+
+    /// The D59 teach-note when `name` misses in `module` but one of the
+    /// directory's standalone entries defines it — the compiler's E0301
+    /// situation (a), in this machine's voice: file, marker, and fix named
+    /// (`[conf.directive.standalone]`).
+    fn standalone_note(&self, module: &str, name: &str) -> Option<String> {
+        let sibling = self
+            .shared
+            .program
+            .modules
+            .get(module)?
+            .standalone
+            .iter()
+            .find(|s| s.names.iter().any(|n| n == name))?;
+        Some(format!(
+            "; it IS defined in `{}`, a standalone entry ({}) — a standalone entry is its own \
+             program and never a member of its directory's module \
+             (`[conf.directive.standalone]`, D59; the compiler's E0301). Drop the marker to \
+             make that file a member",
+            sibling.file, sibling.marker
+        ))
+    }
+
+    /// The D59 teach-notes for an import that formed an empty module: every
+    /// file opted out (situation (b) — listed), or the directory holds no
+    /// `.lu` files at all (situation (c) — a formation note, not a layout
+    /// assertion).
+    fn empty_module_note(&self, module: &str) -> Option<String> {
+        let m = self.shared.program.modules.get(module)?;
+        if !m.units.is_empty() {
+            return None;
+        }
+        if m.standalone.is_empty() {
+            return Some(
+                "; the imported directory holds no `.lu` files, so no module formed \
+                 (D32: a module is a directory of `.lu` files)"
+                    .to_owned(),
+            );
+        }
+        let opted_out: Vec<String> = m
+            .standalone
+            .iter()
+            .map(|s| format!("`{}` ({})", s.file, s.marker))
+            .collect();
+        Some(format!(
+            "; every `.lu` file in the imported directory is a standalone entry — {} — so the \
+             import formed an empty module (`[conf.directive.standalone]`, D59; the compiler's \
+             E0301). Drop a marker to give the module members",
+            opted_out.join(", ")
+        ))
     }
 
     fn value_of_def(&mut self, def: &Def, module: &str, name: &str, span: Span) -> EResult<Value> {

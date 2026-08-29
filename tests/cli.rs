@@ -642,6 +642,95 @@ fn a_subcommand_name_wins_over_a_file_of_the_same_name() {
 }
 
 #[test]
+fn a_scratch_directory_of_member_false_programs_runs_each_alone() {
+    // The wolf-interp#49 live reproducer (D59): three programs share one
+    // directory, each carrying exactly one `//! member: false` line, and
+    // each builds and runs alone — no E0302 collision on `main`.
+    let dir = std::env::temp_dir().join("lupin-d59-scratch-test");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    for (name, word) in [
+        ("hello.lu", "one"),
+        ("world.lu", "two"),
+        ("third.lu", "three"),
+    ] {
+        std::fs::write(
+            dir.join(name),
+            format!("//! member: false\nfn main() -> !int {{\n    print(\"{word}\")\n    0\n}}\n"),
+        )
+        .expect("fixture writes");
+    }
+    for (name, word) in [
+        ("hello.lu", "one"),
+        ("world.lu", "two"),
+        ("third.lu", "three"),
+    ] {
+        let output = lupin_with_stdin(&["run", name], &dir, b"");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{name}: {}",
+            stderr_of(&output)
+        );
+        assert_eq!(stdout_of(&output), format!("{word}\n"), "{name}");
+    }
+}
+
+#[test]
+fn a_standalone_mark_never_shrinks_the_module_a_build_forms_around_it() {
+    // D59's asymmetry: plain siblings are shared members of EVERY build, so
+    // a plain `main` beside a standalone `main` still collides (E0302), and
+    // the note names the escape.
+    let dir = std::env::temp_dir().join("lupin-d59-asymmetry-test");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    std::fs::write(
+        dir.join("prog.lu"),
+        "//! member: false\nfn main() -> !int {\n    print(\"s\")\n    0\n}\n",
+    )
+    .expect("fixture writes");
+    std::fs::write(
+        dir.join("plain.lu"),
+        "fn main() -> !int {\n    print(\"plain\")\n    0\n}\n",
+    )
+    .expect("fixture writes");
+    let output = lupin_with_stdin(&["run", "prog.lu"], &dir, b"");
+    assert_eq!(output.status.code(), Some(2), "{}", stderr_of(&output));
+    let stderr = stderr_of(&output);
+    assert!(stderr.contains("E0302"), "{stderr}");
+    assert!(
+        stderr.contains("`//! member: false`"),
+        "escape named: {stderr}"
+    );
+}
+
+#[test]
+fn a_name_defined_in_a_standalone_sibling_is_taught_not_just_missed() {
+    // The compiler's E0301 situation (a), this machine's voice: the missing
+    // name IS defined next door, in a file that opted out — the note names
+    // the file, the marker, and the fix.
+    let dir = std::env::temp_dir().join("lupin-d59-teachnote-test");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    std::fs::write(
+        dir.join("main.lu"),
+        "fn main() -> !int {\n    print(\"{helper()}\")\n    0\n}\n",
+    )
+    .expect("fixture writes");
+    std::fs::write(
+        dir.join("util_test.lu"),
+        "fn helper() -> int { 7 }\nfn main() -> !int { 0 }\n",
+    )
+    .expect("fixture writes");
+    let output = lupin_with_stdin(&["run", "main.lu"], &dir, b"");
+    assert_eq!(output.status.code(), Some(4), "{}", stderr_of(&output));
+    let stderr = stderr_of(&output);
+    assert!(stderr.contains("`util_test.lu`"), "{stderr}");
+    assert!(stderr.contains("`_test.lu` file name"), "{stderr}");
+    assert!(stderr.contains("conf.directive.standalone"), "{stderr}");
+}
+
+#[test]
 fn version_names_the_binary_the_package_and_the_pairing() {
     // r01 row 7: the version line names the pairing posture — the binary,
     // the package, and "reference interpreter at pin <sha>". D57 (r02)
