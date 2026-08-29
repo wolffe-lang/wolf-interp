@@ -391,6 +391,35 @@ fn char_dispatches_through_match_by_scalar_identity() {
 }
 
 #[test]
+fn char_assignment_copies_exactly_as_int_does() {
+    // wolf-interp#50 (is28): `char` is a copy value in the tier-0 move
+    // discipline exactly as `int` is (D58: a scalar, i32-shaped at every
+    // tier). Measured at 0.1.16, `d = c` MOVED `c` and the re-read trapped
+    // use-after-move while the compiler printed `xx` — the human's live
+    // reproducer, pinned here read-after-assign on both spellings.
+    let observation = observe(
+        "let c = \"x\".chars()[0]\n    var d = 0 as char\n    d = c\n    print(\"{c}{d}\")\n    0",
+    );
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "reason: {:?}\ntrap: {:?}",
+        observation.reason,
+        observation.trap
+    );
+    assert_eq!(observation.stdout, b"xx\n");
+
+    // The int control the issue names: ints copy; char now matches.
+    let observation = observe("let c = 7\n    var d = 0\n    d = c\n    print(\"{c}{d}\")\n    0");
+    assert_eq!(observation.verdict, Verdict::Exit(0));
+    assert_eq!(observation.stdout, b"77\n");
+
+    // A `let`-initializer read is the same discipline: no move, no trap.
+    let observation = observe("let c = 'w'\n    let d = c\n    if c == d { 0 } else { 1 }");
+    assert_eq!(observation.verdict, Verdict::Exit(0));
+}
+
+#[test]
 fn for_over_a_str_stays_a_named_refusal() {
     // Named-not-built on both sides (the s17 iteration-protocol question);
     // a refusal beats an approximation.

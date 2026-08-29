@@ -6979,6 +6979,13 @@ fn is_copy(value: &Value) -> bool {
         value,
         Value::Unit
             | Value::Bool(_)
+            // A `char` is a copy value in the tier-0 move discipline exactly
+            // as `int` is: D58 rules it a Unicode SCALAR (i32-shaped at every
+            // tier, ordered by scalar value), and nothing in `[type.char]`
+            // makes it move-only. Measured at 0.1.16: `d = c` then `{c}`
+            // trapped use-after-move while the compiler printed the char
+            // twice — wolf-interp#50, the permissive-direction divergence.
+            | Value::Char(_)
             | Value::Int(..)
             | Value::Float(_)
             | Value::Str(_)
