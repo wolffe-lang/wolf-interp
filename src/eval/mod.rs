@@ -3548,14 +3548,33 @@ impl Machine {
                     Member::Index(index, _) => path.project(Proj::Index(i128::from(*index))),
                 })
             }
-            ExprKind::BracketApply { base, args } => {
+            ExprKind::BracketApply { base, args, origin } => {
+                let origin = *origin;
                 let path = self.place_of(base)?;
                 let [IndexArg::Value(arg)] = args.as_slice() else {
                     return unsupported("only a single-argument index denotes a place".to_owned());
                 };
                 let key = self.eval(&arg.expr)?;
                 Ok(match key {
-                    Value::Int(i, _) => path.project(Proj::Index(i)),
+                    Value::Int(i, _) => {
+                        // An ordinal WRITE place shifts under origin 1
+                        // exactly as the read does (`xs[1] = v` stores the
+                        // first element); a map indexed by an int is a KEY,
+                        // not a position, and never shifts — the base's
+                        // current value tells the two apart, which is the
+                        // same "after the brackets resolve as ordinal
+                        // indexing" moment the read path uses.
+                        let ordinal = matches!(
+                            self.resolve(&path),
+                            Some((slot, _)) if matches!(slot.value, Value::List(..) | Value::Tuple(_))
+                        );
+                        let effective = if origin == 1 && ordinal {
+                            self.origin_shift(i, expr.span)?
+                        } else {
+                            i
+                        };
+                        path.project(Proj::Index(effective))
+                    }
                     Value::Str(s) => path.project(Proj::Key(s)),
                     // A slice expression is a *value*, not a place (issue
                     // #10, wolf-std F-0021): refusing here sends
@@ -3695,7 +3714,9 @@ impl Machine {
                 self.eval_cast(value, ty, expr.span)
             }
             ExprKind::Call { callee, args } => self.eval_call(callee, args, expr.span),
-            ExprKind::BracketApply { base, args } => self.eval_bracket(base, args, expr.span),
+            ExprKind::BracketApply { base, args, origin } => {
+                self.eval_bracket(base, args, *origin, expr.span)
+            }
             ExprKind::Member { base, member } => self.eval_member(base, member, expr.span),
             // A moded receiver evaluates as its place; the mode is consumed by
             // `method_split` when the member access is a call, and marks
@@ -5815,12 +5836,15 @@ impl Machine {
         {
             let len = Some(s.len() as i128);
             let s = s.clone();
+            // `.get` is origin-free in every mode (`[gram.expr.index.origin]`:
+            // method arguments never shift), so the endpoint values are used
+            // as resolved, whatever origin scope encloses the call.
             let from = match start {
-                Some(expr) => Some(self.eval_index_endpoint(expr, len)?),
+                Some(expr) => Some(self.eval_index_endpoint(expr, len)?.0),
                 None => None,
             };
             let to = match end {
-                Some(expr) => Some(self.eval_index_endpoint(expr, len)?),
+                Some(expr) => Some(self.eval_index_endpoint(expr, len)?.0),
                 None => None,
             };
             return builtin::str_get(self, &s, from, to, *inclusive, span);
@@ -6062,7 +6086,13 @@ impl Machine {
         matches!(slot.value, Value::List(..) | Value::Map(_) | Value::Str(_)).then_some(place)
     }
 
-    fn eval_bracket(&mut self, base: &Expr, args: &[IndexArg], span: Span) -> EResult<Value> {
+    fn eval_bracket(
+        &mut self,
+        base: &Expr,
+        args: &[IndexArg],
+        origin: u8,
+        span: Span,
+    ) -> EResult<Value> {
         // The index-read lend (issue #28, wolf-std F-0078) — the other half of
         // #24's shape. `xs[i]` evaluated `xs` in order to pick one element out
         // of it, and evaluating a place-valued `xs` deep-copies the whole
@@ -6092,7 +6122,7 @@ impl Machine {
             self.read_claim(&place, base.span)?;
             let index = self.eval(&arg.expr)?;
             let value = self.lend_path(&place);
-            let element = builtin::index(self, &value, &index, span);
+            let element = builtin::index(self, &value, &index, origin, span);
             self.restore_lent(&place, value);
             return element;
         }
@@ -6120,18 +6150,59 @@ impl Machine {
         } = &*arg.expr.kind
         {
             let len = slice_len_of(&target);
-            let start = match start {
+            let start_ep = match start {
                 Some(expr) => Some(self.eval_index_endpoint(expr, len)?),
                 None => None,
             };
-            let end = match end {
+            let end_ep = match end {
                 Some(expr) => Some(self.eval_index_endpoint(expr, len)?),
                 None => None,
             };
-            return builtin::slice(self, &target, start, end, *inclusive, span);
+            if origin == 1 {
+                // `[gram.expr.index.origin]`, the coupling: subscript-position
+                // ranges are INCLUSIVE under origin 1, so a spelled plain END
+                // is numerically the 0-based exclusive bound and lowers
+                // UNCHANGED (`..=` means the same set — redundant-but-legal);
+                // only a spelled plain START shifts down by one, checked; `^n`
+                // endpoints and open sides resolve exactly as in origin 0, in
+                // every position, including after `..=`.
+                let writer_from = start_ep.map_or(1, |(v, _)| v);
+                let writer_to = end_ep.map_or(len.unwrap_or_default(), |(v, _)| v);
+                let start0 = match start_ep {
+                    Some((v, false)) => Some(self.origin_shift(v, span)?),
+                    Some((v, true)) => Some(v),
+                    None => None,
+                };
+                let (end0, incl0) = match end_ep {
+                    Some((v, false)) => (Some(v), false),
+                    Some((v, true)) => (Some(v), *inclusive),
+                    None => (None, *inclusive),
+                };
+                return builtin::slice(
+                    self,
+                    &target,
+                    start0,
+                    end0,
+                    incl0,
+                    Some((writer_from, writer_to)),
+                    span,
+                );
+            }
+            return builtin::slice(
+                self,
+                &target,
+                start_ep.map(|(v, _)| v),
+                end_ep.map(|(v, _)| v),
+                *inclusive,
+                None,
+                span,
+            );
         }
         let index = self.eval(&arg.expr)?;
         if let Value::Raw(ptr) = target {
+            // The unsafe tier speaks the machine's 0-based offsets in every
+            // mode (`[gram.expr.index.origin]`) — no shift, same posture as
+            // the ABI.
             let Value::Int(i, _) = index else {
                 return unsupported(format!(
                     "a raw pointer is indexed by an integer, got {}",
@@ -6140,10 +6211,30 @@ impl Machine {
             };
             return self.raw_load(ptr.offset_by(i), span);
         }
-        builtin::index(self, &target, &index, span)
+        builtin::index(self, &target, &index, origin, span)
     }
 
-    fn eval_index_endpoint(&mut self, expr: &Expr, len: Option<i128>) -> EResult<i128> {
+    /// The origin-1 checked shift (`[gram.expr.index.origin]`, D61): a
+    /// spelled ordinal position lowers by one CHECKED subtraction — the one
+    /// index value with no representable predecessor, `int.min`, traps
+    /// `overflow` BEFORE the bounds question is asked (X3, D56's kind).
+    pub(crate) fn origin_shift(&mut self, i: i128, span: Span) -> EResult<i128> {
+        if i <= i128::from(i64::MIN) {
+            return self.fault(
+                TrapKind::Overflow,
+                Rule::ArithChecked,
+                span,
+                format!("the 1-origin shift computes {i} - 1, and no int holds it"),
+            );
+        }
+        Ok(i - 1)
+    }
+
+    /// A slice endpoint, resolved: the value, and whether it was spelled
+    /// end-relative (`^n` — already `len - n` here, D25). The flag is what
+    /// lets the origin-1 lowering leave `^` endpoints exactly as origin 0
+    /// resolves them.
+    fn eval_index_endpoint(&mut self, expr: &Expr, len: Option<i128>) -> EResult<(i128, bool)> {
         // `^n` counts from the end (D25): it resolves to `len - n` BEFORE
         // the bounds/boundary question is asked, exactly as `[mem.str.get]`
         // words it for the recoverable twin.
@@ -6156,7 +6247,7 @@ impl Machine {
                 ));
             };
             return match self.eval(inner)? {
-                Value::Int(n, _) => Ok(len - n),
+                Value::Int(n, _) => Ok((len - n, true)),
                 other => Err(Signal::Unsupported(format!(
                     "`^n` takes an integer, got {}",
                     other.kind()
@@ -6164,7 +6255,7 @@ impl Machine {
             };
         }
         match self.eval(expr)? {
-            Value::Int(v, _) => Ok(v),
+            Value::Int(v, _) => Ok((v, false)),
             other => Err(Signal::Unsupported(format!(
                 "a slice endpoint must be an integer, got {}",
                 other.kind()
@@ -6746,7 +6837,7 @@ impl Machine {
     /// assignment path asks here first and only falls back to [`Path`].
     fn raw_target(&mut self, expr: &Expr) -> EResult<Option<RawPtr>> {
         let (base, index) = match &*expr.kind {
-            ExprKind::BracketApply { base, args } => {
+            ExprKind::BracketApply { base, args, .. } => {
                 let [IndexArg::Value(arg)] = args.as_slice() else {
                     return Ok(None);
                 };
@@ -7094,7 +7185,7 @@ fn int_of_type(ty: &Type) -> Option<IntTy> {
 fn int_of_type_spelling(expr: &Expr) -> Option<IntTy> {
     match &*expr.kind {
         ExprKind::Path(path) if path.is_single() => IntTy::named(path.segments[0].name.as_str()),
-        ExprKind::BracketApply { base, args } => {
+        ExprKind::BracketApply { base, args, .. } => {
             let ExprKind::Path(path) = &*base.kind else {
                 return None;
             };
@@ -7114,7 +7205,7 @@ fn int_of_type_spelling(expr: &Expr) -> Option<IntTy> {
 /// callee, read off the syntax (issue #21): `eval_bracket` erases bracket
 /// type arguments from values, so this is where the annotation survives.
 fn list_elem_of(callee: &Expr) -> Option<IntTy> {
-    if let ExprKind::BracketApply { base, args } = &*callee.kind
+    if let ExprKind::BracketApply { base, args, .. } = &*callee.kind
         && let ExprKind::Path(path) = &*base.kind
         && path.segments.last().is_some_and(|s| s.name == "List")
         && let [arg] = &args[..]

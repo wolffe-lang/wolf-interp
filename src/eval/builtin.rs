@@ -1474,11 +1474,30 @@ pub fn method(
 ///
 /// `trap(bounds)` for an out-of-range index (`[mem.ub.defined]`: "OOB index /
 /// split-code-point slice (D25) → trap `bounds`"), `unsupported` otherwise.
-pub fn index(machine: &mut Machine, target: &Value, index: &Value, span: Span) -> BResult {
+pub fn index(
+    machine: &mut Machine,
+    target: &Value,
+    index: &Value,
+    origin: u8,
+    span: Span,
+) -> BResult {
     match (target, index) {
         (Value::List(..) | Value::Tuple(_), Value::Int(i, _)) => {
+            // The origin shift applies HERE — after the brackets resolved as
+            // ordinal indexing (`[gram.expr.index.origin]`): under origin 1
+            // the spelled index lowers by one checked subtraction, and the
+            // ordinary bounds check judges the lowered value. The trap line
+            // renders the index THE WRITER WROTE (`{i}`), never the lowered
+            // one — the writer's-mode duty D61 puts on a machine whose human
+            // line prints numbers. Map keys, pool handles and raw offsets
+            // never reach this arm and never shift.
+            let effective = if origin == 1 {
+                machine.origin_shift(*i, span)?
+            } else {
+                *i
+            };
             let items = target.seq_slots().expect("sequence arm");
-            match usize::try_from(*i).ok().and_then(|i| items.get(i)) {
+            match usize::try_from(effective).ok().and_then(|e| items.get(e)) {
                 Some(slot) => Ok(slot.value.clone()),
                 None => machine.fault(
                     TrapKind::Bounds,
@@ -1538,28 +1557,39 @@ pub fn slice(
     start: Option<i128>,
     end: Option<i128>,
     inclusive: bool,
+    writer: Option<(i128, i128)>,
     span: Span,
 ) -> BResult {
+    // `writer` is Some only inside a 1-origin scope: the endpoint values as
+    // the writer's mode reads them (spelled plain values as written, `^n`
+    // and open sides as resolved), for the human bounds line — D61's
+    // writer's-mode duty. The CHECK always judges the lowered `from..to`.
+    let range_text = |from: i128, to: i128| match writer {
+        Some((wf, wt)) => format!("{wf}..{wt} (origin 1)"),
+        None => format!("{from}..{to}"),
+    };
     match target {
         Value::Str(s) => {
             let len = s.len() as i128;
             let from = start.unwrap_or(0);
             let to = end.map_or(len, |e| if inclusive { e + 1 } else { e });
             if from < 0 || to > len || from > to {
+                let range = range_text(from, to);
                 return machine.fault(
                     TrapKind::Bounds,
                     Rule::Bounds,
                     span,
-                    format!("byte range {from}..{to} is outside a {len}-byte string"),
+                    format!("byte range {range} is outside a {len}-byte string"),
                 );
             }
             let (from, to) = (from as usize, to as usize);
             if !s.is_char_boundary(from) || !s.is_char_boundary(to) {
+                let range = range_text(from as i128, to as i128);
                 return machine.fault(
                     TrapKind::Bounds,
                     Rule::Bounds,
                     span,
-                    format!("byte range {from}..{to} splits a UTF-8 code point"),
+                    format!("byte range {range} splits a UTF-8 code point"),
                 );
             }
             Ok(Value::Str(s[from..to].to_owned()))
@@ -1569,11 +1599,12 @@ pub fn slice(
             let from = start.unwrap_or(0);
             let to = end.map_or(len, |e| if inclusive { e + 1 } else { e });
             if from < 0 || to > len || from > to {
+                let range = range_text(from, to);
                 return machine.fault(
                     TrapKind::Bounds,
                     Rule::Bounds,
                     span,
-                    format!("range {from}..{to} is outside a {len}-element List"),
+                    format!("range {range} is outside a {len}-element List"),
                 );
             }
             // The slice is a NEW list minted at this expression, so its home
