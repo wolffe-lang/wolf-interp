@@ -249,7 +249,12 @@ pub const E_UNTERMINATED_INTERP: &str = "E0112";
 
 /// The token here begins no legal continuation of the production. **Unpinned.**
 pub const E_UNEXPECTED_TOKEN: &str = "E0201";
-/// Input ended inside a production. **Unpinned.**
+/// Input ended inside a production. **Corpus-pinned since e561c6f**:
+/// `resolve/broken_sibling/entry.lu` pins `fail(E0202)` for the D59
+/// broken-sibling witness, so the code is the corpus's to define and no
+/// longer this implementation's to choose. (This machine currently answers
+/// that witness E0201 — it stops at the first bad token where the
+/// counterparty reads to EOF; filed as DIV-2026-019, span-or-code.)
 pub const E_UNEXPECTED_EOF: &str = "E0202";
 /// `when` needs ≥2 operands (`[gram.expr.conc]`). **Unpinned.**
 ///
@@ -322,7 +327,10 @@ pub const UNPINNED_CODES: &[(&str, &str, &str)] = &[
     // implementation's to choose. Same sentence, same `when` arity duty
     // ([gram.expr.conc]; wolf-interp#3 retired the competing E0203 in
     // favour of wolfc's established assignment) — only the authority moved.
-    (E_UNEXPECTED_EOF, "gram", "input ended inside a production"),
+    // E0202 followed at e561c6f (is27): the s124 broken-sibling witness
+    // `resolve/broken_sibling/entry.lu` pins `fail(E0202)`, so the
+    // unexpected-EOF code is the corpus's now too — see E_UNEXPECTED_EOF's
+    // note and DIV-2026-019 for the recovery-behavior divergence it exposed.
     (
         E_FN_NEEDS_BODY,
         "gram.item.fn",

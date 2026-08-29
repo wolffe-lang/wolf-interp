@@ -441,15 +441,31 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             `List[char]`, and the `[os.random]` family — 393 anchors;
     //             `strings/chars_walk.lu` is the one existing-name change,
     //             re-expressed over `char` by s121.)
+    //   e561c6f → 422 files (is27: the s122–s125 wave. The corpus grows 19 —
+    //             15 entries and the FIRST 4 bare members: D59's
+    //             [conf.directive.standalone] makes a directive-less file a
+    //             member of its directory's module by default, and
+    //             `resolve/bare_sibling/helper.lu`,
+    //             `broken_sibling/mangled.lu`, `dup_bare/other.lu` and
+    //             `plain_subdir/sub/sub.lu` are its witnesses — the walk
+    //             learned the default in the same wave. Twelve of the
+    //             thirteen new run-reaching entries MATCH at first sight
+    //             (the run_corpus ledger names them); `numlit_fit` is
+    //             conservatism (E0415 is the compiler's front-end tier);
+    //             `broken_sibling/entry.lu` is the one MISMATCH, filed as
+    //             DIV-2026-019 (E0202-vs-E0201 on junk recovery). The spec
+    //             grows [conf.directive.standalone], [conf.trap.report] and
+    //             [conf.trap.render] — 396 anchors; `oob_bounds.lu` is the
+    //             one existing-content change, citing the report clause.)
     let report = report();
     assert_eq!(
         report.total(),
-        403,
+        422,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 374);
-    assert_eq!(report.members(), 29);
+    assert_eq!(report.entries(), 389);
+    assert_eq!(report.members(), 33);
 }
 
 #[test]

@@ -84,6 +84,22 @@ fn is_filed_divergence(path: &str) -> bool {
     wolf_interp::differ::filed(path).is_some()
 }
 
+/// A `member` file in a directory whose entry's disagreement is filed — the
+/// member is the filed pin's *subject*, not a case of its own. D59's
+/// broken-sibling witness is the shape: `mangled.lu` is deliberately
+/// unparseable and `entry.lu` pins the module's parse failure
+/// (DIV-2026-019), so asserting the member parses would re-assert the filed
+/// disagreement one file over. The waiver dies with the filing, exactly as
+/// [`is_filed_divergence`]'s does.
+fn is_member_of_filed_module(case: &Case) -> bool {
+    case.ledger_phase.is_none()
+        && case.path.rsplit_once('/').is_some_and(|(dir, _)| {
+            wolf_interp::differ::FILED_DIVERGENCES
+                .iter()
+                .any(|(file, _, _)| file.starts_with(&format!("{dir}/")))
+        })
+}
+
 #[test]
 fn every_corpus_file_lexes_clean() {
     // Every ledger phase in the corpus is `lex` or deeper, so nothing here is
@@ -114,7 +130,7 @@ fn files_that_reach_parse_or_deeper_parse_clean() {
             None => true,
             Some(phase) => phase >= Phase::Parse,
         };
-        if !must_parse || is_filed_divergence(&case.path) {
+        if !must_parse || is_filed_divergence(&case.path) || is_member_of_filed_module(&case) {
             continue;
         }
         checked += 1;
@@ -223,7 +239,10 @@ fn every_parseable_file_resolves_under_sema_lite() {
     // would mean the module machinery broke, not that a program is
     // ill-typed.
     for case in cases() {
-        if case.ledger_phase.is_some_and(|p| p < Phase::Parse) || is_filed_divergence(&case.path) {
+        if case.ledger_phase.is_some_and(|p| p < Phase::Parse)
+            || is_filed_divergence(&case.path)
+            || is_member_of_filed_module(&case)
+        {
             continue;
         }
         let observation = frontend::observe(&case.source, Some(Phase::Resolve));
@@ -257,7 +276,10 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
     // tier statics) never gets that far: it fails at resolve whatever
     // deeper rung was requested.
     for case in cases() {
-        if case.ledger_phase.is_some_and(|p| p < Phase::Parse) || is_filed_divergence(&case.path) {
+        if case.ledger_phase.is_some_and(|p| p < Phase::Parse)
+            || is_filed_divergence(&case.path)
+            || is_member_of_filed_module(&case)
+        {
             continue;
         }
         for rung in [Phase::Typecheck, Phase::Mem, Phase::Wir] {

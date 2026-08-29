@@ -55,16 +55,20 @@ cargo run -- corpus
 
 The corpus walk at the end checks every pinned conformance file against
 this implementation and prints the ledger. Its last line counts
-mismatches, and the count is zero on a healthy checkout:
+mismatches; on a healthy checkout every mismatch it counts is one that
+is already triaged and filed in `docs/divergence-log.md` (the count is
+`1` at the current pin — DIV-2026-019, the broken-sibling parse-code
+disagreement; the gate in `tests/run_corpus.rs` waives exactly the
+filed set and nothing else):
 
 ```console
 $ lupin corpus
 …
 
-403 file(s) under upstream/corpus: 374 entries, 29 member(s), 0 failure(s)
-256 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
+422 file(s) under upstream/corpus: 389 entries, 33 member(s), 0 failure(s)
+259 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 291 entries reach the `run` rung; 266 match their `check:` expectation, 13 are the dynamic counterpart of the static code the corpus pins, 40 are static-conservatism entries (the compiler rejects statically what this machine never checks), 55 are out of scope, 0 mismatch
+lupin: 304 entries reach the `run` rung; 279 match their `check:` expectation, 13 are the dynamic counterpart of the static code the corpus pins, 41 are static-conservatism entries (the compiler rejects statically what this machine never checks), 55 are out of scope, 1 mismatch
 ```
 
 ## Bumping the pin

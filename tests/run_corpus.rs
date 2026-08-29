@@ -953,6 +953,28 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("strings/char_interp.lu", "exit(0)"),
     ("strings/char_order.lu", "exit(0)"),
     ("strings/chars_walk.lu", "exit(0)"),
+    // The e561c6f pin (is27): the s122–s125 wave. Twelve of the thirteen new
+    // run-reaching entries MATCH at first sight — the D59 membership quartet
+    // (`bare_sibling/pair`, `plain_subdir/main`, `standalone_pair/left`+
+    // `right`, once `[conf.directive.standalone]`'s plain-member default
+    // landed in the walk), the s125 overflow-on-pop twins, the s123
+    // match/str cluster, and three of the four numlit witnesses.
+    // `numlit_fit` pins the compiler's new E0415 front-end rejection; this
+    // machine has no typecheck tier, executes it, and traps overflow at the
+    // same literal — the conservatism class, stated deliberately.
+    ("faults/overflow_list_pop_i32.lu", "trap(overflow)"),
+    ("faults/overflow_list_pop_i64.lu", "trap(overflow)"),
+    ("resolve/bare_sibling/pair.lu", "exit(0)"),
+    ("resolve/plain_subdir/main.lu", "exit(0)"),
+    ("resolve/standalone_pair/left.lu", "exit(0)"),
+    ("resolve/standalone_pair/right.lu", "exit(0)"),
+    ("strings/match_str_const_scrutinee.lu", "exit(0)"),
+    ("typecheck/match_chain_reuse.lu", "exit(0)"),
+    ("typecheck/match_guard_const.lu", "exit(0)"),
+    ("typecheck/numlit_extremes.lu", "exit(0)"),
+    ("typecheck/numlit_fit.lu", "trap(overflow)"),
+    ("typecheck/numlit_list_element_width.lu", "exit(0)"),
+    ("typecheck/numlit_u64_edge.lu", "exit(0)"),
 ];
 
 #[test]

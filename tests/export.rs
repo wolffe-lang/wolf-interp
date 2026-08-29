@@ -94,7 +94,13 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // declines by name (os.random, os.random.checked, os.random.fill,
 // os.random.trap — counted by citation, honestly). Raised in the bump
 // commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 153;
+// 153 → 157 at e561c6f (is27): the s122–s125 wave's four newly covered
+// clauses — conf.trap.report (oob_bounds cites the two-line report),
+// conf.trap.render (the suite's trap_site.lu, this sprint's own witness),
+// and the D59 membership pair conf.directive.standalone /
+// conf.directive.member (the resolve/ witnesses). Raised in the bump
+// commit per the test's own instruction.
+const RATCHET_FLOOR: usize = 157;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -145,7 +151,11 @@ const RATCHET_FLOOR: usize = 153;
 // s121's char tier ([gram.lex.char], [type.char] and its lit/order/cast/
 // interp children), s120's [mem.str.chars] (restated over List[char] by
 // s121), and s118's entropy family ([os.random] and its five children).
-const ANCHORS_TOTAL: usize = 393;
+// 393 → 396 at e561c6f (is27): the s124/s125 pair writes three —
+// [conf.directive.standalone] (D59 membership), [conf.trap.report] (the
+// native two-line report) and [conf.trap.render] (this sprint's contract
+// anchor: the interpreter's line:col rendering).
+const ANCHORS_TOTAL: usize = 396;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -287,10 +297,15 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // 440/411 → 441/412 (is27): the suite grows one — `trap_site.lu`, the
     // `[conf.trap.render]` cross-machine site witness (6:5 on both
     // machines); the corpus is unmoved.
+    // 441/412 → 460/427 at e561c6f (is27): the s122–s125 wave's 19 corpus
+    // files land — 15 entries (the D59 resolve witnesses, the s125
+    // overflow-on-pop twins, the s123 match/str cluster, the four numlit
+    // witnesses) and the 4 bare members `[conf.directive.standalone]`
+    // makes legible; the suite is unmoved.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "a900b8c8540246ff69aaee424ba412d06bc6b340");
-    assert_eq!(summary.programs, 441);
-    assert_eq!(summary.records, 412);
+    assert_eq!(summary.pin, "e561c6f6bae19515b5fc16d6361b371d723353b3");
+    assert_eq!(summary.programs, 460);
+    assert_eq!(summary.records, 427);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
