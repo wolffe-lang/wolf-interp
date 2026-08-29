@@ -1,0 +1,12 @@
+//! check: fail(E0409)
+//! phase: resolve
+//! conforms: type.str
+//!
+//! D62: mixed operands stay E0409 — `int + str` is the third refused mix
+//! (the operand order does not open a numeric reading).
+
+fn main() -> !int {
+    let s = 1 + "a"
+    print("{s}")
+    0
+}

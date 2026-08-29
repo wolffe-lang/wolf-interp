@@ -1,0 +1,21 @@
+//! check: run(exit=0, stdout="abcdef abcdef xy4")
+//! phase: run
+//! conforms: type.str
+//!
+//! D62 (ruled 2026-08-29): `+` and `+=` on two `str` operands are
+//! interpolation-append — `s + u` means precisely `"{s}{u}"`, a new str
+//! whose bytes are the operands' bytes in order; `+` chains
+//! left-associatively; `s += u` is `s = s + u`. The interpreter's behavior
+//! IS the language (lupin ran this at 0.1.15); the compiler half is
+//! wolf-lang#172, and this witness is its differential counterpart.
+
+fn main() -> !int {
+    let a = "ab", b = "cd", c = "ef"
+    let chained = a + b + c
+    let interp = "{a}{b}{c}"
+    var t = "x"
+    t += "y"
+    t += "{2 + 2}"
+    print("{chained} {interp} {t}")
+    0
+}

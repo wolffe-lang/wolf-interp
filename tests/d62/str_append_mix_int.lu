@@ -1,0 +1,15 @@
+//! check: fail(E0409)
+//! phase: resolve
+//! conforms: type.str
+//!
+//! D62: `+` on str is legal exactly when BOTH operands are str — mixed
+//! operands stay E0409 on both machines. `str + int` is the first refused
+//! mix; the conversion is spelled inside an interpolation hole,
+//! `"{s}{count}"`. This machine refuses by name at run (unsupported, the
+//! conservatism class); the compiler's static E0409 is wolf-lang#172.
+
+fn main() -> !int {
+    let s = "a" + 1
+    print("{s}")
+    0
+}

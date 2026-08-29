@@ -1,0 +1,12 @@
+//! check: fail(E0409)
+//! phase: resolve
+//! conforms: type.str
+//!
+//! D62: mixed operands stay E0409 — `str + char` is the second refused
+//! mix (a char is a scalar, not a one-char str; spell it `"{s}{c}"`).
+
+fn main() -> !int {
+    let s = "a" + 'b'
+    print("{s}")
+    0
+}
