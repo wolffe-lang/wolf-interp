@@ -508,6 +508,24 @@ fn sched_request(
     }
 }
 
+/// Renders a static diagnostic against the text its spans index: the entry
+/// source, unless the observation's reason says a *sibling module file*
+/// failed — then that file's text (`line:col` against the wrong file would
+/// lie). An unreadable module file falls back to the offset spelling, which
+/// misleads no one about lines it cannot know.
+fn render_static_diag(diag: &wolf_interp::diag::Diag, reason: Option<&str>, entry: &str) -> String {
+    if let Some(path) = reason
+        .and_then(|r| r.strip_prefix("in module file `"))
+        .and_then(|r| r.strip_suffix('`'))
+    {
+        return match std::fs::read_to_string(path) {
+            Ok(text) => diag.render(&text),
+            Err(_) => diag.to_string(),
+        };
+    }
+    diag.render(entry)
+}
+
 /// `lupin FILE.lu` / `lupin run FILE.lu` / `lupin -`: the program's stdout
 /// passes through live and the process exit code reports the program —
 /// `exit(N)` as N, a static rejection as 2, a trap or UB finding as 3,
@@ -571,24 +589,31 @@ fn run_run(args: &RunArgs) -> u8 {
     let file = (!stdin).then_some(args.file.as_path());
     let observation =
         wolf_interp::frontend::observe_live(file, &source, &request, args.std_root.as_deref());
+    // The human fault lines carry `line:col` (`[conf.trap.render]`); the
+    // lossy decode only matters for a non-UTF-8 source, which never gets
+    // past the lexer's E0107 at offset zero.
+    let text = String::from_utf8_lossy(&source);
     match &observation.verdict {
         // The program's own exit status is the process's.
         Verdict::Exit(status) => *status,
         Verdict::Trap(_) => {
             if let Some(trap) = &observation.trap {
-                eprintln!("{display}: {trap}");
+                eprintln!("{display}: {}", trap.render(&text));
             }
             EXIT_FAULT
         }
         Verdict::Ub(_) => {
             if let Some(finding) = &observation.ub {
-                eprintln!("{display}: {finding}");
+                eprintln!("{display}: {}", finding.render(&text));
             }
             EXIT_FAULT
         }
         Verdict::Fail(_) => {
             if let Some(diag) = &observation.detail {
-                eprintln!("{display}: {diag}");
+                eprintln!(
+                    "{display}: {}",
+                    render_static_diag(diag, observation.reason.as_deref(), &text)
+                );
             }
             EXIT_STATIC
         }
@@ -670,7 +695,14 @@ fn run_check(args: &CheckArgs) -> u8 {
             _ => {
                 rejected += 1;
                 if let Some(diag) = &observation.detail {
-                    eprintln!("{display}: {diag}");
+                    eprintln!(
+                        "{display}: {}",
+                        render_static_diag(
+                            diag,
+                            observation.reason.as_deref(),
+                            &String::from_utf8_lossy(&source)
+                        )
+                    );
                 }
             }
         }
@@ -1296,19 +1328,26 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
             Err(e) => return tool_error(&format!("could not serialize the record: {e}")),
         }
     } else {
-        // Human mode is unspecified by the protocol; rich detail rides stderr.
+        // Human mode is unspecified by the protocol; rich detail rides stderr
+        // with `line:col` locations (`[conf.trap.render]` — the record itself
+        // keeps byte spans, `[proto.record.diag]`/`[proto.record.ext]`).
         println!(
             "{}: verdict={} phase_reached={} seeded={}",
             record.file, record.verdict, record.phase_reached, record.seeded
         );
+        let text = String::from_utf8_lossy(&source);
         if let Some(detail) = &observed.diagnostic {
-            eprintln!("  {detail}");
+            let reason = record
+                .extensions
+                .get("x-unsupported")
+                .and_then(|v| v.as_str());
+            eprintln!("  {}", render_static_diag(detail, reason, &text));
         }
         if let Some(trap) = &observed.trap {
-            eprintln!("  {trap}");
+            eprintln!("  {}", trap.render(&text));
         }
         if let Some(finding) = &observed.ub {
-            eprintln!("  {finding}");
+            eprintln!("  {}", finding.render(&text));
         }
         if let Some(reason) = record.extensions.get("x-unsupported") {
             eprintln!("  unsupported: {}", reason.as_str().unwrap_or_default());
@@ -1405,7 +1444,11 @@ fn run_lex(args: &FrontendArgs) -> u8 {
             EXIT_OK
         }
         Some(diag) => {
-            eprintln!("{}: {diag}", wolf_interp::slash_path(&args.file));
+            eprintln!(
+                "{}: {}",
+                wolf_interp::slash_path(&args.file),
+                diag.render(&String::from_utf8_lossy(&source))
+            );
             EXIT_REJECTED
         }
     }
@@ -1441,7 +1484,11 @@ fn run_parse(args: &FrontendArgs) -> u8 {
         }
         Err(diag) => {
             // First error wins; there is no recovery and no second opinion.
-            eprintln!("{}: {diag}", wolf_interp::slash_path(&args.file));
+            eprintln!(
+                "{}: {}",
+                wolf_interp::slash_path(&args.file),
+                diag.render(text)
+            );
             EXIT_REJECTED
         }
     }

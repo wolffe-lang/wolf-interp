@@ -75,7 +75,7 @@ enforces. The process exits `3`:
 
 ```console
 $ lupin examples/overflow.lu
-examples/overflow.lu: trap(overflow): `+` produced 2147483648, outside `i32` — checked arithmetic traps in every profile (X3); spell intended overflow `wrapping[i32]` [arith.checked] at 107..113
+examples/overflow.lu: trap(overflow): `+` produced 2147483648, outside `i32` — checked arithmetic traps in every profile (X3); spell intended overflow `wrapping[i32]` [arith.checked] at 6:5
 ```
 
 The exit codes are documented in the

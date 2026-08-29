@@ -622,6 +622,9 @@ pub fn explore_source(name: &str, source: &str, options: &Options) -> Result<Rep
     let program = match crate::sema::load_source(name, source) {
         Ok(program) => program,
         Err(crate::sema::LoadError::Syntax { file, diag }) => {
+            // Offsets, deliberately: the failing file may be a `use`d module
+            // loaded from disk, and this door holds only the entry source —
+            // rendering `line:col` against the wrong text would lie.
             return Err(format!("{file}: {diag}"));
         }
         Err(crate::sema::LoadError::Io(message)) => return Err(message),

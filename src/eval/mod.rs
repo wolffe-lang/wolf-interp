@@ -96,6 +96,32 @@ impl std::fmt::Display for Trap {
     }
 }
 
+impl Trap {
+    /// The human trap line for a caller holding the source: the
+    /// [`std::fmt::Display`] grammar with every location spelled `line:col`
+    /// (1-based, character columns — the repo's one line:col spelling,
+    /// `tests/fault_snapshots.rs` first). `[conf.trap.render]`: the reference
+    /// interpreter renders kind, message, clause, and the location as
+    /// `line:col` in the same span grammar its diagnostics use; raw byte
+    /// offsets remain available through `--json`. The REPL keeps the offset
+    /// spelling deliberately — its offsets are entry-relative and a
+    /// secondary span may point into an earlier entry (`docs/repl.md`).
+    #[must_use]
+    pub fn render(&self, source: &str) -> String {
+        let mut line = format!(
+            "trap({}): {} [{}] at {}",
+            self.kind,
+            self.message,
+            self.rule.anchor(),
+            self.span.position(source)
+        );
+        if let Some((span, note)) = &self.secondary {
+            line.push_str(&format!("; {note} at {}", span.position(source)));
+        }
+        line
+    }
+}
+
 /// Non-local control, carried up a `Result`'s error arm. Not unwinding.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Signal {

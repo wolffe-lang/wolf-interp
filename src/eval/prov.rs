@@ -343,6 +343,34 @@ impl fmt::Display for UbFinding {
     }
 }
 
+impl UbFinding {
+    /// The human finding for a caller holding the source: the
+    /// [`fmt::Display`] grammar with both locations spelled `line:col` —
+    /// the `[conf.trap.render]` one-spelling rule applied to the fault line
+    /// the run door prints. Byte offsets stay on `--json`
+    /// (`[proto.record.ext]`); the REPL keeps entry-relative offsets
+    /// deliberately (`docs/repl.md`).
+    #[must_use]
+    pub fn render(&self, source: &str) -> String {
+        let mut out = format!(
+            "ub({}) §7/{}: {} [{}] at {}",
+            self.anchor(),
+            self.row,
+            self.message,
+            self.row.clause(),
+            self.span.position(source)
+        );
+        if let Some(span) = self.tag_span {
+            out.push_str(&format!("; tag created at {}", span.position(source)));
+        }
+        out.push_str(&format!("\n  licenses {}", self.row.optimization()));
+        for line in &self.tree {
+            out.push_str(&format!("\n  {line}"));
+        }
+        out
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The machine state
 // ---------------------------------------------------------------------------

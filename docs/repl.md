@@ -23,8 +23,12 @@ this binary, and drift fails.
 - Every diagnostic renders with its **code and clause anchor**
   (`error[E0201]: … [gram.expr.primary] at 11..12`); every trap renders
   with its **kind, message and anchor**, ownership faults with both spans.
-  Spans index the input line as typed. The Elm-grade catalog stays the
-  compiler's (D22); the clause id is what the book cites.
+  Spans index the input line as typed, as **byte offsets** — deliberately,
+  where the file doors say `line:col` (`[conf.trap.render]`): a session
+  has no stable line numbering (each entry restarts at offset 0, and an
+  ownership fault's second span may point into an *earlier* entry), so an
+  entry-relative offset is the honest coordinate. The Elm-grade catalog
+  stays the compiler's (D22); the clause id is what the book cites.
 
 ## 2. Incremental definitions: the `[repl.*]` notes
 

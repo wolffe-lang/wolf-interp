@@ -77,12 +77,17 @@ when both are given.
 
 A trap is a fault of a defined execution: the program was legal, ran, and
 hit a rule the language enforces at runtime. Every trap names its kind, a
-message, the clause it enforces, and the span. At the front door the
-diagnostic prints to stderr and the process exits `3`:
+message, the clause it enforces, and where — `line:col`, 1-based, columns
+counted in characters (`[conf.trap.render]`; the raw byte span stays on
+`--json`'s `x-trap-span`). At the front door the diagnostic prints to
+stderr and the process exits `3` — a documented fact of this
+implementation, per-machine by `[conf.trap.exit]` (D60): the native tier
+exits 134 for the same fault, and conforming tools compare the *kind*,
+never the status number:
 
 ```console
 $ lupin examples/overflow.lu
-examples/overflow.lu: trap(overflow): `+` produced 2147483648, outside `i32` — checked arithmetic traps in every profile (X3); spell intended overflow `wrapping[i32]` [arith.checked] at 107..113
+examples/overflow.lu: trap(overflow): `+` produced 2147483648, outside `i32` — checked arithmetic traps in every profile (X3); spell intended overflow `wrapping[i32]` [arith.checked] at 6:5
 ```
 
 Ownership faults carry both spans: the use, and the move it conflicts with.
@@ -90,7 +95,7 @@ Ownership faults carry both spans: the use, and the move it conflicts with.
 ```console
 $ lupin conform-run examples/moved.lu
 examples/moved.lu: verdict=trap(use-after-move) phase_reached=run seeded=false
-  trap(use-after-move): `s` was moved out and is uninitialized here [mem.tier0.move.2] at 128..129; `s` moved here at 109..115
+  trap(use-after-move): `s` was moved out and is uninitialized here [mem.tier0.move.2] at 7:13; `s` moved here at 6:13
 ```
 
 The compiler rejects that program statically (E1001). This implementation
