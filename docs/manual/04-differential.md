@@ -93,9 +93,9 @@ amended the clause, and the notice died with the amendment.
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":153,"anchors_total":393,"bundle_sha256":"…","files":457,"forward_tags":109,"out":"target/bundle","pin":"a900b8c8540246ff69aaee424ba412d06bc6b340","programs":440,"records":411}
+{"anchors_covered":153,"anchors_total":393,"bundle_sha256":"…","files":458,"forward_tags":109,"out":"target/bundle","pin":"a900b8c8540246ff69aaee424ba412d06bc6b340","programs":441,"records":412}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 411 entries compared, 0 member(s) exercised through their entries
+differential: 412 entries compared, 0 member(s) exercised through their entries
 divergences: 0
 conservatism ledger: 110 entries
   unsupported(counterparty): 55

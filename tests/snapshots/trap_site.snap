@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: trap_site.lu
+trap:    bounds
+clause:  [mem.ub.defined]
+rule:    Bounds
+message: index 3 is outside a collection of 0 element(s)
+at:      6:5 `xs[3]`
+because: (single-span fault)

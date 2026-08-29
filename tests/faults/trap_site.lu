@@ -1,0 +1,8 @@
+//! check: run(exit=trap(bounds))
+//! phase: run
+//! conforms: mem.ub.defined, conf.trap.render
+fn main() -> !int {
+    var xs = List[int]()
+    xs[3]
+    0
+}

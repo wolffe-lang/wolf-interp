@@ -408,6 +408,34 @@ fn the_front_door_trap_prints_its_diagnostic_and_exits_3() {
 }
 
 #[test]
+fn the_trap_names_its_site_line_col_and_json_keeps_the_byte_span() {
+    // `[conf.trap.render]`: the human line spells the location `line:col`
+    // (1-based, character columns — the fault snapshots' own spelling) and
+    // the raw byte span stays on `--json`'s `x-trap-span`. The program is
+    // the cross-machine site witness: its trap expression sits at 6:5, the
+    // s125 witness shape, so the compiled tier's report line for the same
+    // program reads `  at <file>:6:5` (`[conf.trap.report]`) and both
+    // machines name the same place.
+    let output = lupin(&["tests/faults/trap_site.lu"]);
+    assert_eq!(output.status.code(), Some(3));
+    let stderr = stderr_of(&output);
+    assert!(stderr.contains("trap(bounds)"), "{stderr}");
+    assert!(stderr.contains("[mem.ub.defined] at 6:5"), "{stderr}");
+    assert!(
+        !stderr.contains(".."),
+        "byte offsets left the human line at is27: {stderr}"
+    );
+
+    let output = lupin(&["run", "--json", "tests/faults/trap_site.lu"]);
+    assert_eq!(output.status.code(), Some(0));
+    let value: serde_json::Value =
+        serde_json::from_str(stdout_of(&output).trim()).expect("one JSON record");
+    assert_eq!(value["verdict"], "trap(bounds)");
+    assert_eq!(value["x-trap-span"][0], 145, "{value}");
+    assert_eq!(value["x-trap-span"][1], 150, "{value}");
+}
+
+#[test]
 fn the_front_door_static_rejection_exits_2() {
     let file = format!(
         "{}/corpus/grammar/structlit_cond.lu",

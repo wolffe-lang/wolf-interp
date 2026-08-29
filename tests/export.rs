@@ -284,10 +284,13 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // files (10 entries, 1 member) land; the suite programs are unmoved.
     // 422/393 → 440/411 at a900b8c (is26): the s117–s121 wave's 18 corpus
     // files (all entries) land; the suite programs are unmoved.
+    // 440/411 → 441/412 (is27): the suite grows one — `trap_site.lu`, the
+    // `[conf.trap.render]` cross-machine site witness (6:5 on both
+    // machines); the corpus is unmoved.
     let (_, summary) = bundle();
     assert_eq!(summary.pin, "a900b8c8540246ff69aaee424ba412d06bc6b340");
-    assert_eq!(summary.programs, 440);
-    assert_eq!(summary.records, 411);
+    assert_eq!(summary.programs, 441);
+    assert_eq!(summary.records, 412);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
