@@ -103,6 +103,10 @@ pub enum FmtPart {
 /// A compilation unit: `unit ::= inner_doc* item*` (`[gram.item.unit]`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unit {
+    /// File-wide `#![…]` attributes (`[gram.attr.index]`, D61) — legal only
+    /// as the file's first non-trivia construct, so at most one group sits
+    /// here; a later `#![` is E0211 and never reaches the tree.
+    pub inner_attrs: Vec<Attribute>,
     pub items: Vec<Item>,
     pub span: Span,
 }
@@ -713,6 +717,11 @@ pub enum ExprKind {
     BracketApply {
         base: Expr,
         args: Vec<IndexArg>,
+        /// The subscript origin in lexical force at this site — 0 or 1
+        /// (`[gram.expr.index.origin]`, D61). Stamped by the parser, which
+        /// is the only tier that knows the marker scopes; 0 is today's
+        /// language and the absent-marker default.
+        origin: u8,
     },
     Member {
         base: Expr,

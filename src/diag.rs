@@ -282,6 +282,16 @@ pub const E_NESTING_RAIL: &str = "E0207";
 /// admitted only where a `.` member immediately follows the closing `)`;
 /// anywhere else it is a parse error (E0210)."
 pub const E_MODED_RECEIVER_DETACHED: &str = "E0210";
+/// A file-wide `#![…]` attribute anywhere but the file's first non-trivia
+/// construct. **Spec-pinned**: `[gram.attr.index]` (D61, s126) — "Anywhere
+/// else it is refused (E0211), parsed but never in force."
+pub const E_INNER_ATTR_MISPLACED: &str = "E0211";
+/// An origin marker with bad arguments, a duplicated `index` item on one
+/// node, or an inner attribute naming anything this implementation does not
+/// know. **Spec-pinned**: `[gram.attr.index]` (D61, s126) — refused by name,
+/// never ignored; the faulty marker takes no effect. Reported at this
+/// machine's resolve rung (wolfc's sema owns the same validation).
+pub const E_BAD_INNER_ATTR: &str = "E0813";
 
 /// Every code this implementation invented, with the clause it serves.
 ///

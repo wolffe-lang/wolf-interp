@@ -256,6 +256,7 @@ fn parse_on_this_stack(lexed: &Lexed) -> Result<Parsed, Diag> {
         depth: 0,
         pending_items: std::collections::VecDeque::new(),
         pending_stmts: std::collections::VecDeque::new(),
+        origin: 0,
     };
     let unit = parser.parse_unit()?;
 
@@ -295,6 +296,43 @@ pub fn parse_source(source: &str) -> Result<Parsed, Diag> {
     }
 }
 
+/// The origin a node's attributes put in force, when the marker is exactly
+/// well-formed: a single-segment `index` attr whose input is one integer
+/// literal `0` or `1`, appearing once across the node's attributes
+/// (`[gram.attr.index]`, D61). Anything else decides NOTHING here — a faulty
+/// marker takes no effect (one mistake is one diagnostic, the resolve-rung
+/// E0813, never a scope of shifted subscripts).
+fn index_origin_of(attrs: &[Attribute]) -> Option<u8> {
+    let mut found: Option<u8> = None;
+    for attribute in attrs {
+        for attr in &attribute.attrs {
+            if !(attr.path.is_single() && attr.path.segments[0].name == "index") {
+                continue;
+            }
+            let Some(AttrInput::Args(args)) = &attr.input else {
+                return None;
+            };
+            let [AttrArg::Literal(lit)] = args.as_slice() else {
+                return None;
+            };
+            let ExprKind::Int(text) = &*lit.kind else {
+                return None;
+            };
+            let origin = match text.as_str() {
+                "0" => 0,
+                "1" => 1,
+                _ => return None,
+            };
+            if found.is_some() {
+                // Duplicated `index` items on one node: E0813's case.
+                return None;
+            }
+            found = Some(origin);
+        }
+    }
+    found
+}
+
 struct Parser<'a> {
     tokens: &'a [Token],
     pos: usize,
@@ -316,6 +354,12 @@ struct Parser<'a> {
     pending_items: std::collections::VecDeque<Item>,
     /// The same tail at statement position, drained by the block loop.
     pending_stmts: std::collections::VecDeque<Stmt>,
+    /// The subscript origin in lexical force (`[gram.attr.index]`, D61):
+    /// 0 — today's language — unless an `index` marker's scope encloses the
+    /// current position. Purely lexical, so the PARSER is the tier that
+    /// knows it; every `BracketApply` node is stamped with the value in
+    /// force at its site.
+    origin: u8,
 }
 
 impl<'a> Parser<'a> {
@@ -519,6 +563,14 @@ impl<'a> Parser<'a> {
 
     fn parse_unit(&mut self) -> PResult<Unit> {
         let start = self.span().start;
+        // `inner_attribute` (`[gram.attr.index]`, D61): legal only as the
+        // file's first non-trivia construct — after the shebang and any
+        // `//!` header lines, before every declaration. Parsed here, once;
+        // any later `#![` is E0211 (the item/stmt parsers refuse it).
+        let inner_attrs = self.parse_inner_attributes()?;
+        if let Some(origin) = index_origin_of(&inner_attrs) {
+            self.origin = origin;
+        }
         let mut items = Vec::new();
         loop {
             // A comma-grouped binding's tail (D63) comes before anything new:
@@ -538,9 +590,54 @@ impl<'a> Parser<'a> {
         }
         let end = self.prev_span().end;
         Ok(Unit {
+            inner_attrs,
             items,
             span: Span::new(start, end.max(start)),
         })
+    }
+
+    /// The leading `#![…]` group, when the file opens with one. A SECOND
+    /// consecutive group is already "later than the first non-trivia
+    /// construct" and is refused exactly as a buried one is (E0211).
+    fn parse_inner_attributes(&mut self) -> PResult<Vec<Attribute>> {
+        let mut out = Vec::new();
+        loop {
+            self.skip_inserted_terms();
+            if !self.at(&Tok::HashBangBracket) {
+                break;
+            }
+            if !out.is_empty() {
+                return Err(self.inner_attr_misplaced());
+            }
+            let start = self.advance().start;
+            let mut attrs = vec![self.parse_attr()?];
+            while self.eat(&Tok::Comma) {
+                if self.at(&Tok::RBracket) {
+                    break;
+                }
+                attrs.push(self.parse_attr()?);
+            }
+            let end = self.expect(&Tok::RBracket, "gram.attr.index")?.end;
+            out.push(Attribute {
+                attrs,
+                span: Span::new(start, end),
+            });
+        }
+        Ok(out)
+    }
+
+    /// E0211 — `[gram.attr.index]`: "a file-wide `#![…]` attribute is legal
+    /// only as the file's first non-trivia construct; anywhere else it is
+    /// refused, parsed but never in force."
+    fn inner_attr_misplaced(&self) -> Diag {
+        Diag::new(
+            diag::E_INNER_ATTR_MISPLACED,
+            self.span(),
+            "gram.attr.index",
+            "a file-wide `#![…]` attribute speaks for the whole file, so it is legal only as \
+             the file's first non-trivia construct — move it above every declaration; the \
+             scoped spelling for one statement is the outer form `#[…]`",
+        )
     }
 
     /// E0002 — `[gram.lex.newline]`: "An empty statement (a `;` with no
@@ -713,12 +810,30 @@ impl<'a> Parser<'a> {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
     fn parse_item(&mut self) -> PResult<Item> {
         let attrs = self.parse_attributes()?;
+        // `#[index(n)]` on an item scopes the item's full lexical extent
+        // (`[gram.attr.index]`, D61) — same law as the statement form.
+        let saved = self.origin;
+        if let Some(origin) = index_origin_of(&attrs) {
+            self.origin = origin;
+        }
+        let result = self.parse_item_inner(attrs);
+        self.origin = saved;
+        result
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn parse_item_inner(&mut self, attrs: Vec<Attribute>) -> PResult<Item> {
         self.skip_inserted_terms();
         let start = self.span().start;
         let visibility = self.parse_visibility()?;
+        if self.at(&Tok::HashBangBracket) {
+            // `[gram.attr.index]`: the file-wide form is legal only as the
+            // file's first non-trivia construct; below any declaration it
+            // would silently change how every subscript ABOVE it reads.
+            return Err(self.inner_attr_misplaced());
+        }
 
         let (kind, anchor) = match self.tok() {
             Some(Tok::Kw("comptime" | "extern" | "export" | "fn")) => (
@@ -1742,11 +1857,27 @@ impl<'a> Parser<'a> {
         })
     }
 
-    #[allow(clippy::too_many_lines)]
     fn parse_stmt(&mut self) -> PResult<Stmt> {
         let attrs = self.parse_attributes()?;
+        // `#[index(n)]` scopes the annotated statement's FULL lexical extent
+        // (`[gram.attr.index]`, D61) — nested markers win innermost, so the
+        // outer origin is restored when this statement's parse ends.
+        let saved = self.origin;
+        if let Some(origin) = index_origin_of(&attrs) {
+            self.origin = origin;
+        }
+        let result = self.parse_stmt_inner(attrs);
+        self.origin = saved;
+        result
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn parse_stmt_inner(&mut self, attrs: Vec<Attribute>) -> PResult<Stmt> {
         self.skip_inserted_terms();
         let start = self.span().start;
+        if self.at(&Tok::HashBangBracket) {
+            return Err(self.inner_attr_misplaced());
+        }
 
         // `assume noalias e, e` is a statement, not an expression
         // (`[gram.expr.unsafe]`).
@@ -2191,8 +2322,15 @@ impl<'a> Parser<'a> {
                 Some(Tok::LBracket) => {
                     self.advance();
                     let args = self.parse_index_args()?;
+                    // The subscript origin is a purely lexical fact, so it is
+                    // stamped here, at the site (`[gram.expr.index.origin]`).
+                    let origin = self.origin;
                     expr = self.expr(
-                        ExprKind::BracketApply { base: expr, args },
+                        ExprKind::BracketApply {
+                            base: expr,
+                            args,
+                            origin,
+                        },
                         start,
                         "gram.amb.brackets",
                     );
@@ -3349,7 +3487,7 @@ fn trace_expr(out: &mut String, depth: usize, expr: &Expr) {
                 trace_expr(out, child, &arg.expr);
             }
         }
-        ExprKind::BracketApply { base, args } => {
+        ExprKind::BracketApply { base, args, .. } => {
             trace_expr(out, child, base);
             for arg in args {
                 if let IndexArg::Value(value) = arg {
