@@ -33,10 +33,16 @@
 //!   is compiled through its directory's entry file and is **never**
 //!   conform-run directly, so it carries no `check:` and no `phase:` — either
 //!   alongside `member: true` is an error. It may carry `conforms:`.
-//! - A non-member file is an entry: it must carry both `check:` and `phase:`.
-//!
-//! Until the queued spec/05 amendment lands, the grammar above is the contract
-//! this module implements.
+//! - An explicit `member:` always decides (`[conf.directive.standalone]`,
+//!   D59). Without one, the **entry pair decides**: a file carrying both
+//!   `check:` and `phase:` is an entry; a plain file — no directives at all —
+//!   is a member of its directory's module by default (that is the language
+//!   rule: directory = module, and plain files join it).
+//!   `corpus/resolve/bare_sibling/` is the pinned witness. Half an entry
+//!   pair (`check:` without `phase:`, or the reverse) names neither shape
+//!   and stays an error.
+//! - `member: false` marks a standalone entry, which must then carry the
+//!   entry pair like any other entry.
 
 use std::fmt;
 
@@ -267,29 +273,47 @@ pub fn parse_header(source: &str) -> Result<Directives, DirectiveError> {
         }
     }
 
-    let is_member = member.as_ref().is_some_and(|m| m.value);
+    // `[conf.directive.standalone]` (D59): an explicit `member:` always
+    // decides; otherwise the entry pair decides — both `check:` and `phase:`
+    // make an entry, a plain file is a member of its directory's module by
+    // default. Half a pair names neither shape and is an error either way.
+    let is_member = match member.as_ref().map(|m| m.value) {
+        Some(explicit) => explicit,
+        None => !(check.is_some() && phase.is_some()),
+    };
     if is_member {
+        let explicit = member.is_some();
         if let Some(seen) = &check {
             return Err(DirectiveError::at(
                 seen.line,
-                "a `member: true` file is exercised through its module's entry file and is never conform-run directly, so it carries no `check:`",
+                if explicit {
+                    "a `member: true` file is exercised through its module's entry file and is never conform-run directly, so it carries no `check:`"
+                } else {
+                    "`check:` without `phase:` is half an entry pair (`[conf.directive.member]`); add the `phase:`, or drop the `check:` to make the file a plain member (`[conf.directive.standalone]`)"
+                },
             ));
         }
         if let Some(seen) = &phase {
             return Err(DirectiveError::at(
                 seen.line,
-                "a `member: true` file is exercised through its module's entry file and is never conform-run directly, so it carries no `phase:`",
+                if explicit {
+                    "a `member: true` file is exercised through its module's entry file and is never conform-run directly, so it carries no `phase:`"
+                } else {
+                    "`phase:` without `check:` is half an entry pair (`[conf.directive.member]`); add the `check:`, or drop the `phase:` to make the file a plain member (`[conf.directive.standalone]`)"
+                },
             ));
         }
     } else {
+        // Reached only with an explicit `member: false` missing its pair —
+        // without the key, a pairless file is a member by default.
         if check.is_none() {
             return Err(DirectiveError::header(
-                "entry file has no `check:` directive (add one, or mark the file `member: true`)",
+                "a `member: false` standalone entry has no `check:` directive (`[conf.directive.standalone]`)",
             ));
         }
         if phase.is_none() {
             return Err(DirectiveError::header(
-                "entry file has no `phase:` directive (add one, or mark the file `member: true`)",
+                "a `member: false` standalone entry has no `phase:` directive (`[conf.directive.standalone]`)",
             ));
         }
     }
@@ -873,10 +897,31 @@ mod tests {
     }
 
     #[test]
-    fn entries_require_check_and_phase() {
-        assert!(err("//! phase: parse\n").contains("no `check:`"));
-        assert!(err("//! check: pass\n").contains("no `phase:`"));
-        assert!(err("// not a directive block\n").contains("no `check:`"));
+    fn half_an_entry_pair_is_an_error_either_way() {
+        assert!(err("//! phase: parse\n").contains("half an entry pair"));
+        assert!(err("//! check: pass\n").contains("half an entry pair"));
+    }
+
+    #[test]
+    fn a_plain_file_is_a_member_by_default() {
+        // `[conf.directive.standalone]` (D59): no directives at all means
+        // the file joins its directory's module — directory = module, and
+        // plain files are members by default. `corpus/resolve/bare_sibling/`
+        // is the pinned witness.
+        let d = ok("// not a directive block\nfn helper() -> int {\n    42\n}\n");
+        assert!(d.member);
+        assert!(!d.is_entry());
+        let d = ok("");
+        assert!(d.member);
+    }
+
+    #[test]
+    fn member_false_standalone_still_requires_the_entry_pair() {
+        assert!(err("//! member: false\n").contains("standalone entry has no `check:`"));
+        assert!(
+            err("//! member: false\n//! check: pass\n")
+                .contains("standalone entry has no `phase:`")
+        );
     }
 
     // ---- duplicates -------------------------------------------------------
@@ -931,7 +976,11 @@ mod tests {
     fn errors_carry_line_numbers() {
         let e = parse_header("//! check: pass\n//! phase: nope\n").expect_err("must fail");
         assert_eq!(e.line, Some(2));
+        // A half-pair error points at the half that is present.
         let e = parse_header("//! check: pass\n").expect_err("must fail");
+        assert_eq!(e.line, Some(1));
+        // A pairless `member: false` has no offending line to point at.
+        let e = parse_header("//! member: false\n").expect_err("must fail");
         assert_eq!(e.line, None);
     }
 
