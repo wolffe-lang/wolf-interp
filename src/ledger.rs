@@ -247,7 +247,7 @@ pub fn dynamic_meaning(code: &str) -> Option<TrapKind> {
         // the escape family): the corpus states the dynamic meaning itself —
         // `memory/region_escape_local.lu`'s header reads "Dynamically this
         // is a region-fault after the free" — and the counterparty's own
-        // census table (`upstream/xtask`'s `static_code_to_trap`) pairs
+        // census table (`static_code_to_trap`, in the pin's xtask) pairs
         // E1010 with `region-fault`. is16 (#25) makes this machine actually
         // produce the fault: containers carry their allocation-site region,
         // and any access through a freed home traps `[mem.region.intra.2]`.
