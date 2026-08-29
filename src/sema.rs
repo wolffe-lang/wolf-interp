@@ -577,7 +577,10 @@ fn standalone_mark(
 fn has_pkg_frontmatter(source: &str) -> bool {
     for (index, raw) in source.lines().enumerate() {
         let line = raw.trim();
-        if (index == 0 && raw.starts_with("#!")) || line.is_empty() || line.starts_with("//") {
+        if (index == 0 && raw.starts_with("#!") && !raw.starts_with("#!["))
+            || line.is_empty()
+            || line.starts_with("//")
+        {
             continue;
         }
         let Some(rest) = line.strip_prefix("pkg") else {
@@ -1796,7 +1799,7 @@ impl TierWalk<'_> {
                 }
                 args.iter().find_map(|arg| self.expr(&arg.expr))
             }
-            ExprKind::BracketApply { base, args } => {
+            ExprKind::BracketApply { base, args, .. } => {
                 if let ExprKind::Path(path) = &*base.kind
                     && path.is_single()
                 {
@@ -2540,7 +2543,7 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
                     .find_map(|arg| walk_expr_assigns(&arg.expr, env))
             })
             .or_else(|| check_call_modes(callee, args, env)),
-        ExprKind::BracketApply { base, args } => walk_expr_assigns(base, env).or_else(|| {
+        ExprKind::BracketApply { base, args, .. } => walk_expr_assigns(base, env).or_else(|| {
             args.iter().find_map(|arg| match arg {
                 crate::ast::IndexArg::Value(arg) => walk_expr_assigns(&arg.expr, env),
                 crate::ast::IndexArg::Type(_) => None,
@@ -2951,7 +2954,7 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
                 collect_expr_refs(&arg.expr, scope);
             }
         }
-        ExprKind::BracketApply { base, args } => {
+        ExprKind::BracketApply { base, args, .. } => {
             collect_expr_refs(base, scope);
             for arg in args {
                 match arg {

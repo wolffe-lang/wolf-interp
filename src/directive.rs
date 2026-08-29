@@ -201,7 +201,9 @@ pub fn parse_header(source: &str) -> Result<Directives, DirectiveError> {
         // language, so it is trivia to the header too — an executable script
         // still opens with a directive block, one line down. `index == 0` IS
         // the offset test: only the first line of `lines()` begins at byte 0.
-        if index == 0 && raw.starts_with("#!") {
+        // Narrowed with D61: `#![` opens the file-wide attribute, a construct
+        // — it ends the (empty) leading block like any other non-`//!` line.
+        if index == 0 && raw.starts_with("#!") && !raw.starts_with("#![") {
             continue;
         }
         // The block is the *leading* run of `//!` lines: the first line that
@@ -359,7 +361,7 @@ fn header_lines(source: &str) -> impl Iterator<Item = &str> {
     source
         .lines()
         .enumerate()
-        .skip_while(|(index, raw)| *index == 0 && raw.starts_with("#!"))
+        .skip_while(|(index, raw)| *index == 0 && raw.starts_with("#!") && !raw.starts_with("#!["))
         .map(|(_, raw)| raw)
         .take_while(|raw| raw.starts_with("//!"))
         .filter_map(|raw| raw.strip_prefix("//!"))
