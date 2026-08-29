@@ -160,13 +160,24 @@ use crate::schema;
 /// `range_expr` admits `a..`, `..b` and `a..b` but never a bare `..`. It
 /// lives in `docs/divergence-log.md` until a witness exists, as
 /// wolf-lang#71's stdout finding did. Filed upstream as wolf-lang#88.
-pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[(
-    "lints/raw_interp_braces.lu",
-    "DIV-2026-017",
-    "the `r\"` prefix's opening quote survives the compiler's raw-literal \
-     decode: `{who}` here, `\"{who}` there ([gram.lex.str.raw]); same on \
-     --checked/--native/--release, so it is front-end, not mid-end",
-)];
+pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
+    (
+        "lints/raw_interp_braces.lu",
+        "DIV-2026-017",
+        "the `r\"` prefix's opening quote survives the compiler's raw-literal \
+         decode: `{who}` here, `\"{who}` there ([gram.lex.str.raw]); same on \
+         --checked/--native/--release, so it is front-end, not mid-end",
+    ),
+    (
+        "resolve/broken_sibling/entry.lu",
+        "DIV-2026-019",
+        "which parse error fires on the unparseable module sibling: the \
+         corpus pins the counterparty's fail(E0202) (EOF inside the mangled \
+         item) where this machine stops at the first bad token, fail(E0201) \
+         at `{` in the parameter list; same rung, span-or-code class — the \
+         spec assigns neither code to junk recovery",
+    ),
+];
 
 /// The filing id for a corpus file, when its divergence is already filed.
 #[must_use]
@@ -1368,10 +1379,13 @@ mod tests {
         // build answers E0809, and the file compares clean under
         // `[proto.cmp.rung]`. The list is empty; these asserts resume the
         // moment anything is filed.
-        assert_eq!(FILED_DIVERGENCES.len(), 1);
+        assert_eq!(FILED_DIVERGENCES.len(), 2);
         let (id, _) = filed("upstream/corpus/lints/raw_interp_braces.lu")
             .expect("DIV-2026-017 is filed against the raw-literal file");
         assert_eq!(id, "DIV-2026-017");
+        let (id, _) = filed("upstream/corpus/resolve/broken_sibling/entry.lu")
+            .expect("DIV-2026-019 is filed against the D59 broken-sibling witness");
+        assert_eq!(id, "DIV-2026-019");
         assert_eq!(
             filed("upstream/corpus/rows/negative/handler_uncovered.lu"),
             None

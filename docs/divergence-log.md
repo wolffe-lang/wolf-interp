@@ -187,6 +187,29 @@ The three probes the re-pin was run to answer:
    the sim scheduler is deterministic by design. No tearing on either
    side, so nothing to file.
 
+### DIV-2026-019 — `resolve/broken_sibling/entry.lu` — **OPEN: which parse error fires on an unparseable module sibling**
+
+Found 2026-08-28 (is27) at the `e561c6f` pin bump: the s124 D59 wave's
+broken-sibling witness pins `check: fail(E0202)` — the counterparty
+reads `mangled.lu` (`fn mangled( {{{ not wolf at all`) to EOF inside
+the mangled item — where this machine stops at the **first bad token**
+and answers `fail(E0201)`@parse ("expected an identifier, found `{`",
+`[gram.item.fn]`, mangled.lu 4:13). Same rung, same verdict class
+(both reject at parse), **span-or-code** severity; not a soundness
+candidate.
+
+Triage (`[proto.cmp.triage]`): **spec bug**, decision-tree case 1 —
+the spec is silent. E0201/E0202 are unpinned implementation choices
+(`diag::UNPINNED_CODES`), no clause assigns either to junk recovery,
+and which failure fires on unparseable text is a parser-recovery
+choice the grammar does not rule. Mimicking the counterparty's
+read-to-EOF recovery to hit its code number would be imitation, not
+conformance (the independence doctrine). Proposal upstream: pin the
+*class* (`fail` at parse) for this witness, or rule first-error
+recovery in spec/01 — either resolves this entry. `FILED_DIVERGENCES`
+carries the waiver; the corpus-walk gate resumes on this file the
+moment the entry resolves.
+
 ### DIV-2026-018 — `s[..]` — **OPEN, filed upstream: the compiler admits a bare `..` range the grammar excludes**
 
 Filed upstream as **wolf-lang#88**. Found 2026-08-13 (lupin 0.1.11,
