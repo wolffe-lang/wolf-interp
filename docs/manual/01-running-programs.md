@@ -134,11 +134,19 @@ member:   true | false
 ```
 
 The header matters even outside the corpus, because of the module rule:
-directory = module, so sibling `.lu` files are one module unless each
-carries its own entry header. `member: true` marks a file that belongs to a
-multi-file module case and is only exercised through its directory's entry
-file. `lupin corpus` walks the pinned corpus and checks every header
-against what this implementation actually observes.
+directory = module, so sibling `.lu` files are one module unless a file
+opts OUT as a **standalone entry** (`[conf.directive.standalone]`, D59).
+The standalone set is exactly four spellings: a `//! member: false` line
+(the ordinary opt-out — several programs sharing one scratch directory is
+one header line per program), the `check:` + `phase:` entry pair, a
+script announcement (a `#!` first line or `pkg { … }` frontmatter), or a
+`_test.lu` file name. An explicit `member:` key always decides, the named
+entry always compiles, and a standalone mark never shrinks anyone else's
+build — plain siblings are shared members of every build, so two programs
+sharing a directory each mark themselves. `member: true` marks a file
+that belongs to a multi-file module case and is only exercised through
+its directory's entry file. `lupin corpus` walks the pinned corpus and
+checks every header against what this implementation actually observes.
 
 ## Determinism and schedules
 
