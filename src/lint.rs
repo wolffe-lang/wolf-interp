@@ -100,6 +100,38 @@ const REGISTERED: &[&str] = &[
 /// minus the provisional corpus stand-ins the s68 triage exempts.
 const STAND_INS: &[&str] = &["worker", "acquire", "release", "zip"];
 
+/// Why an `index` marker's shape is wrong, if it is (`[gram.attr.index]`,
+/// D61): the argument is exactly one, the integer literal `0` or `1` —
+/// another number, no argument, several, or the `=` input form are all
+/// refused, because 0 and 1 are the origins.
+fn bad_index_marker(attr: &crate::ast::Attr) -> Option<String> {
+    match &attr.input {
+        Some(AttrInput::Args(args)) => {
+            if let [AttrArg::Literal(lit)] = args.as_slice()
+                && let ExprKind::Int(text) = &*lit.kind
+                && matches!(text.as_str(), "0" | "1")
+            {
+                return None;
+            }
+            Some(
+                "`index` takes exactly one argument, the integer literal `0` or `1` — \
+                 0 and 1 are the origins (D61); the faulty marker takes no effect"
+                    .to_owned(),
+            )
+        }
+        Some(AttrInput::Literal(_)) => Some(
+            "`index = …` is not the marker's shape; spell it `index(0)` or `index(1)` \
+             (`[gram.attr.index]`)"
+                .to_owned(),
+        ),
+        None => Some(
+            "`index` takes exactly one argument, the integer literal `0` or `1` — \
+             a bare `index` names no origin (D61)"
+                .to_owned(),
+        ),
+    }
+}
+
 /// What the combined walk produced for one program.
 #[derive(Debug, Default)]
 pub struct Analysis {
@@ -512,8 +544,11 @@ impl Walk<'_> {
 
     // -- attributes ---------------------------------------------------------
 
-    /// Registers `#[allow(…)]` regions and fires the two self-lints.
+    /// Registers `#[allow(…)]` regions and fires the two self-lints; the
+    /// origin marker's E0813 validation rides the same walk (every item,
+    /// impl-member and statement attribute position passes through here).
     fn attributes(&mut self, attrs: &[Attribute], region: Span) {
+        self.index_markers(attrs);
         for attribute in attrs {
             for attr in &attribute.attrs {
                 if !attr.path.is_single() || attr.path.segments[0].name != "allow" {
@@ -554,8 +589,79 @@ impl Walk<'_> {
     // -- items --------------------------------------------------------------
 
     fn unit(&mut self, unit: &crate::ast::Unit) {
+        self.inner_attributes(&unit.inner_attrs);
         for item in &unit.items {
             self.item(item);
+        }
+    }
+
+    /// The file-wide `#![…]` group (`[gram.attr.index]`, D61): strict from
+    /// birth. At v1 `index` is the only file-wide attribute — an inner
+    /// attribute naming anything else is E0813, never ignored (a file-wide
+    /// marker an implementation silently skipped would silently change how
+    /// every subscript in the file reads) — and the `index` marker's own
+    /// argument shape is validated exactly as the statement form's is.
+    fn inner_attributes(&mut self, attrs: &[Attribute]) {
+        for attribute in attrs {
+            for attr in &attribute.attrs {
+                if !(attr.path.is_single() && attr.path.segments[0].name == "index") {
+                    let name = attr
+                        .path
+                        .segments
+                        .iter()
+                        .map(|s| s.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(".");
+                    self.statics.push(Diag::new(
+                        crate::diag::E_BAD_INNER_ATTR,
+                        attr.span,
+                        "gram.attr.index",
+                        format!(
+                            "`{name}` is not a file-wide attribute this implementation knows — \
+                             the inner form is strict from birth (at v1 `index` is the only \
+                             `#![…]` attribute), and an unknown one is refused by name, never \
+                             ignored"
+                        ),
+                    ));
+                }
+            }
+        }
+        self.index_markers(attrs);
+    }
+
+    /// The origin marker's shape (`[gram.attr.index]`, D61): exactly one
+    /// argument, the integer literal `0` or `1`, at most one `index` item
+    /// per node. E0813 at the offending attr; the faulty marker took no
+    /// effect (the parser stamps origins only from exactly well-formed
+    /// markers), so one mistake is one diagnostic, never a scope of shifted
+    /// subscripts.
+    fn index_markers(&mut self, attrs: &[Attribute]) {
+        let mut seen = false;
+        for attribute in attrs {
+            for attr in &attribute.attrs {
+                if !(attr.path.is_single() && attr.path.segments[0].name == "index") {
+                    continue;
+                }
+                if seen {
+                    self.statics.push(Diag::new(
+                        crate::diag::E_BAD_INNER_ATTR,
+                        attr.span,
+                        "gram.attr.index",
+                        "`index` appears twice on one node — one origin marker per node; \
+                         nesting is the spelling for narrower scopes, and the innermost wins",
+                    ));
+                    continue;
+                }
+                seen = true;
+                if let Some(message) = bad_index_marker(attr) {
+                    self.statics.push(Diag::new(
+                        crate::diag::E_BAD_INNER_ATTR,
+                        attr.span,
+                        "gram.attr.index",
+                        message,
+                    ));
+                }
+            }
         }
     }
 
@@ -1112,7 +1218,7 @@ impl Walk<'_> {
             ExprKind::Call { callee, args } => {
                 self.call(expr, callee, args);
             }
-            ExprKind::BracketApply { base, args } => {
+            ExprKind::BracketApply { base, args, .. } => {
                 self.explicit_apply(expr, base, args);
                 self.expr(base);
                 for arg in args {
@@ -1437,7 +1543,9 @@ impl Walk<'_> {
     fn call(&mut self, _call: &Expr, callee: &Expr, args: &[Arg]) {
         // E1102 — `channel[T](…)` with a visibly unsendable payload: a bare
         // region-interior container can never cross a channel.
-        if let ExprKind::BracketApply { base, args: targs } = &*callee.kind
+        if let ExprKind::BracketApply {
+            base, args: targs, ..
+        } = &*callee.kind
             && let ExprKind::Path(path) = &*base.kind
             && path.is_single()
             && path.segments[0].name == "channel"
@@ -1807,7 +1915,7 @@ fn walk_child_exprs(expr: &Expr, visit: &mut impl FnMut(&Expr)) {
                 visit(&arg.expr);
             }
         }
-        ExprKind::BracketApply { base, args } => {
+        ExprKind::BracketApply { base, args, .. } => {
             visit(base);
             for arg in args {
                 if let IndexArg::Value(arg) = arg {
