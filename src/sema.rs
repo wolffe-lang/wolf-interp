@@ -178,6 +178,24 @@ pub struct Module {
     pub row_tags: std::collections::BTreeSet<String>,
     /// The module's parsed files, in load order — the lint pass's input.
     pub units: Vec<SourceUnit>,
+    /// The directory's standalone entries (`[conf.directive.standalone]`,
+    /// D59) — files that opted OUT of this module, kept so the resolve-time
+    /// teach-notes can name the file, the marker, and the fix when a lookup
+    /// misses something a standalone sibling defines.
+    pub standalone: Vec<StandaloneSibling>,
+}
+
+/// One file that opted out of its directory's module (D59): the spelling it
+/// used, and the top-level names it defines (empty when the file does not
+/// parse — a standalone sibling's syntax is its own program's problem).
+#[derive(Debug, Clone)]
+pub struct StandaloneSibling {
+    /// Display path, `/`-separated.
+    pub file: String,
+    /// The standalone spelling, human-named — e.g. "`//! member: false`".
+    pub marker: &'static str,
+    /// Top-level item names the file defines.
+    pub names: Vec<String>,
 }
 
 /// One impl-block method: `impl Iter for RangeIter { fn next(…) }` records
@@ -470,7 +488,19 @@ fn load_module(
     for path in paths {
         let source = std::fs::read_to_string(&path)
             .map_err(|e| LoadError::Io(format!("{}: {e}", path.display())))?;
-        if !belongs(&path, entry, &source) {
+        if let Some(marker) = standalone_mark(&path, entry, &source, from_std) {
+            // The display name is the bare file name — the loader reads a
+            // directory's direct children only, and a note that travels on a
+            // record must not carry a machine-local path prefix.
+            let file = path.file_name().map_or_else(
+                || crate::slash_path(&path),
+                |name| name.to_string_lossy().into_owned(),
+            );
+            module.standalone.push(StandaloneSibling {
+                file,
+                marker,
+                names: top_level_names(&source),
+            });
             continue;
         }
         let parsed = crate::parse::parse_source(&source).map_err(|diag| LoadError::Syntax {
@@ -490,34 +520,102 @@ fn load_module(
     Ok(module)
 }
 
-/// Whether a `.lu` file in the module's directory is part of *this* program.
+/// The standalone mark a `.lu` file carries, or `None` when the file is a
+/// member of its directory's module — `[conf.directive.standalone]` (D59).
 ///
-/// D32 says a directory is one module, and for an ordinary package that is the
-/// end of it. The corpus is not an ordinary package: `corpus/` holds dozens of
-/// independent single-file programs side by side, and reading them as one
-/// module would make every one of them define `main` twice.
-/// `[conf.directive.member]` is the discriminator the corpus itself supplies:
+/// Membership is the default: a plain `.lu` file joins its directory's module
+/// with no marker. A file opts OUT by being a standalone entry, and the
+/// standalone set is exactly the four spellings D59 names:
 ///
-/// > `member: true` marks a file compiled through its directory's entry file
-/// > (directory = module; the package root is the entry file's directory) —
-/// > never conform-run directly. […] an entry file must carry both
-/// > [`check:` and `phase:`].
+/// 1. `//! member: false` — the user-facing opt-out (several programs in one
+///    directory is one header line per program);
+/// 2. both `//! check:` and `//! phase:` — the corpus entry pair
+///    (`[conf.directive.member]`);
+/// 3. a script announcement — a `#!` first line (`#![` is the file-wide
+///    attribute opener, not a script — `[gram.lex.shebang]`) or a
+///    `pkg { … }` frontmatter block (s53: a script is a single-file package);
+/// 4. a `_test.lu` name (s39: `wolf test` runs each test file alone).
 ///
-/// So a sibling belongs iff it is the entry itself, or it declares itself a
-/// member, or it carries no directive header at all (an ordinary package's
-/// file, which is the non-corpus case).
-fn belongs(path: &Path, entry: Option<&Path>, source: &str) -> bool {
-    if entry.is_some_and(|entry| same_file(entry, path)) {
-        return true;
+/// An explicit `member:` key always decides. Two boundaries the clause
+/// draws: the NAMED ENTRY of a compilation always belongs to its own root
+/// module, whatever its markers say; and std/dep trees stay whole-package —
+/// every file participates, so a std file is never excluded.
+fn standalone_mark(
+    path: &Path,
+    entry: Option<&Path>,
+    source: &str,
+    from_std: bool,
+) -> Option<&'static str> {
+    if from_std || entry.is_some_and(|entry| same_file(entry, path)) {
+        return None;
     }
-    match crate::directive::parse_header(source) {
-        // A well-formed entry header next door: a different program.
-        Ok(directives) => {
-            directives.member || (directives.check.is_none() && directives.phase.is_none())
+    if let Some(member) = crate::directive::member_key(source) {
+        return (!member).then_some("`//! member: false`");
+    }
+    if crate::directive::entry_pair(source) {
+        return Some("the `//! check:` + `//! phase:` entry pair");
+    }
+    if source.starts_with("#!") && !source.starts_with("#![") {
+        return Some("a `#!` script line");
+    }
+    if has_pkg_frontmatter(source) {
+        return Some("a `pkg { … }` frontmatter block");
+    }
+    if path
+        .file_name()
+        .is_some_and(|name| name.to_string_lossy().ends_with("_test.lu"))
+    {
+        return Some("a `_test.lu` file name");
+    }
+    None
+}
+
+/// Whether the file's first non-trivia line opens a `pkg { … }` frontmatter
+/// block (s53's script mode: a script is a single-file package carrying its
+/// manifest in-file). Trivia here is the shebang line, blank lines, and `//`
+/// comments of every stripe — exactly what may precede the frontmatter.
+fn has_pkg_frontmatter(source: &str) -> bool {
+    for (index, raw) in source.lines().enumerate() {
+        let line = raw.trim();
+        if (index == 0 && raw.starts_with("#!")) || line.is_empty() || line.starts_with("//") {
+            continue;
         }
-        // No legible header: an ordinary source file of this module.
-        Err(_) => true,
+        let Some(rest) = line.strip_prefix("pkg") else {
+            return false;
+        };
+        return rest.trim_start().starts_with('{');
     }
+    false
+}
+
+/// The top-level item names a source defines, for the D59 teach-notes — best
+/// effort: a file that does not parse defines nothing nameable.
+fn top_level_names(source: &str) -> Vec<String> {
+    let Ok(parsed) = crate::parse::parse_source(source) else {
+        return Vec::new();
+    };
+    let mut names = Vec::new();
+    for item in &parsed.unit.items {
+        let name = match &item.kind {
+            crate::ast::ItemKind::Fn(decl) => Some(decl.name.name.clone()),
+            crate::ast::ItemKind::Struct(def) => def.name.as_ref().map(|n| n.name.clone()),
+            crate::ast::ItemKind::Enum(def) => def.name.as_ref().map(|n| n.name.clone()),
+            crate::ast::ItemKind::TypeAlias(alias) => Some(alias.name.name.clone()),
+            crate::ast::ItemKind::Trait(def) => Some(def.name.name.clone()),
+            crate::ast::ItemKind::Binding(binding) => {
+                if let crate::ast::PatKind::Binding(ident) = &*binding.pattern.kind {
+                    Some(ident.name.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        if let Some(name) = name {
+            names.push(name);
+        }
+    }
+    names
 }
 
 fn same_file(a: &Path, b: &Path) -> bool {
@@ -989,7 +1087,8 @@ fn dup_check(program: &Program) -> Option<Diag> {
                 "mod.dup",
                 format!(
                     "the name `{}` is defined twice in this module (defined again in `{}`); \
-                     file boundaries create no scopes (D32)",
+                     file boundaries create no scopes (D32) — two separate programs sharing a \
+                     directory each mark themselves `//! member: false` (D59)",
                     dup.name, dup.file
                 ),
             ));
@@ -3111,6 +3210,132 @@ mod tests {
         };
         assert_eq!(file, "t.lu");
         assert_eq!(diag.code, crate::diag::E_LEADING_OPERATOR);
+    }
+
+    // -- `[conf.directive.standalone]` (D59): the standalone set ------------
+
+    #[test]
+    fn the_standalone_set_is_the_four_d59_spellings() {
+        let p = Path::new("dir/prog.lu");
+        assert_eq!(
+            standalone_mark(
+                p,
+                None,
+                "//! member: false\nfn main() -> int { 0 }\n",
+                false
+            ),
+            Some("`//! member: false`")
+        );
+        assert_eq!(
+            standalone_mark(p, None, "//! check: pass\n//! phase: parse\n", false),
+            Some("the `//! check:` + `//! phase:` entry pair")
+        );
+        assert_eq!(
+            standalone_mark(
+                p,
+                None,
+                "#!/usr/bin/env lupin\nfn main() -> int { 0 }\n",
+                false
+            ),
+            Some("a `#!` script line")
+        );
+        assert_eq!(
+            standalone_mark(
+                p,
+                None,
+                "pkg { name: \"o/p\" }\nfn main() -> int { 0 }\n",
+                false
+            ),
+            Some("a `pkg { … }` frontmatter block")
+        );
+        assert_eq!(
+            standalone_mark(
+                p,
+                None,
+                "// a comment above\n\npkg {\n}\nfn main() -> int { 0 }\n",
+                false
+            ),
+            Some("a `pkg { … }` frontmatter block")
+        );
+        assert_eq!(
+            standalone_mark(
+                Path::new("dir/foo_test.lu"),
+                None,
+                "fn main() -> int { 0 }\n",
+                false
+            ),
+            Some("a `_test.lu` file name")
+        );
+        // Membership is the default: a plain file carries no mark.
+        assert_eq!(
+            standalone_mark(p, None, "fn helper() -> int { 1 }\n", false),
+            None
+        );
+        // `pkg` as an ordinary identifier deeper in the file announces nothing.
+        assert_eq!(
+            standalone_mark(p, None, "fn pkg_count() -> int { 1 }\n", false),
+            None
+        );
+    }
+
+    #[test]
+    fn an_explicit_member_key_always_decides() {
+        let p = Path::new("dir/prog.lu");
+        // `member: true` joins even an entry-shaped header.
+        assert_eq!(
+            standalone_mark(
+                p,
+                None,
+                "//! member: true\n//! prose, not directives\nfn f() -> int { 1 }\n",
+                false
+            ),
+            None
+        );
+        // …and even a `_test.lu` name.
+        assert_eq!(
+            standalone_mark(
+                Path::new("dir/foo_test.lu"),
+                None,
+                "//! member: true\nfn f() -> int { 1 }\n",
+                false
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_file_wide_attribute_is_not_a_script_announcement() {
+        // `[gram.lex.shebang]` narrowed: `#![` opens the file-wide attribute,
+        // so it must not read as a `#!` script line.
+        assert_eq!(
+            standalone_mark(
+                Path::new("dir/prog.lu"),
+                None,
+                "#![index(1)]\nfn main() -> int { 0 }\n",
+                false
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn the_named_entry_and_the_std_tree_are_never_excluded() {
+        let p = Path::new("dir/prog.lu");
+        // The named entry always belongs to its own root module.
+        assert_eq!(
+            standalone_mark(
+                p,
+                Some(p),
+                "//! member: false\nfn main() -> int { 0 }\n",
+                false
+            ),
+            None
+        );
+        // std/dep trees stay whole-package: every file participates.
+        assert_eq!(
+            standalone_mark(p, None, "//! member: false\nfn main() -> int { 0 }\n", true),
+            None
+        );
     }
 
     // -- E0410: `let` reassignment at the resolve rung (issue #8) -----------
