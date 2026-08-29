@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.1.16 — 2026-08-28
+
+THE INTERPRETER NAMES THE LINE (is27, the lupin half of s125's
+trap-site pair — sequenced after 0.1.15 as that contract required). At
+0.1.15 a trap said `at 51..58` — byte offsets no editor jump-to and no
+human counts out (#158, measured in the s125 report). The renderer HAD
+the span; the gap was purely rendering. This release renders it:
+implemented from `[conf.trap.render]`, never from the compiler's
+rendering (the independence doctrine).
+
+Released against pin `e561c6f` (the s122–s125 wave; one bump,
+`a900b8c` → `e561c6f`). Corpus 403 → 422 files (389 entries + 33
+members — including the corpus's FIRST four bare members, D59);
+coverage ratchets 153 → 157; anchors 393 → 396; twelve of the
+thirteen new run-reaching entries match at first sight.
+
+- **The file doors say `line:col`.** Every human fault line `run`,
+  `check`, `lex`, `parse` and `conform-run`'s human mode print — trap,
+  UB finding, static diagnostic, secondary spans included — spells its
+  location `line:col`: 1-based line, 1-based column counted in
+  **characters**, the spelling the fault snapshots pinned first (one
+  span grammar per tool, `[conf.trap.render]`). `examples/overflow.lu`
+  now says `[arith.checked] at 6:5` where 0.1.15 said `at 107..113`.
+- **Byte spans stay on the structured door, untouched.** `--json`
+  records are byte-identical to 0.1.15's (identity fields aside):
+  `[proto.record.diag]` spans and `x-trap-span` remain byte offsets.
+  wolf-std's runner parses records only, and a filtered `std-test`
+  smoke against this build stayed green.
+- **The two machines name the same place.** `tests/faults/trap_site.lu`
+  pins the s125 witness shape: the trap expression sits at 6:5; the
+  compiled tier reports `  at ./trap_site.lu:6:5` (`[conf.trap.report]`,
+  exit 134) and this machine `[mem.ub.defined] at 6:5` (exit 3) — the
+  KIND is the contract, the statuses are per-machine documented facts
+  (`[conf.trap.exit]`, D60; **exit 3 does not move**). The differential
+  runner's trap-map site column stays a named follow-on.
+- **A module sibling's fault names its file.** A diagnostic raised in
+  a `use`d module file renders `line:col` against THAT file's text and
+  says so: `entry.lu: E0201: … at 4:13 (in module file `mangled.lu`)`.
+  The record's reason now names the module file relative to the
+  entry's directory — an absolute path there made byte-identical
+  re-exports impossible the moment the corpus grew a broken-sibling
+  witness (records travel; the export gate diffs them).
+- **The REPL keeps entry-relative byte offsets, deliberately.** A
+  session has no stable line numbering — each entry restarts at offset
+  0 and an ownership fault's second span may point into an earlier
+  entry — so `docs/repl.md` documents the offset spelling as the
+  prompt's own coordinate; `[conf.trap.render]` is a file-door clause
+  (its exit-status sentence cannot even apply to a session that
+  survives the trap, `[repl.trap.alive]`).
+- **D59 membership lands in the walk (`[conf.directive.standalone]`).**
+  An explicit `member:` decides; otherwise the entry pair does — a
+  plain `.lu` file with no directives is a member of its directory's
+  module by default (`resolve/bare_sibling/` is the witness; half an
+  entry pair stays an error either way). The corpus-walk half of #49;
+  script-header and `_test.lu` module formation remain open there.
+- **DIV-2026-019 filed.** The broken-sibling witness pins the
+  counterparty's `fail(E0202)` (it reads the junk to EOF) where this
+  machine stops at the first bad token (`fail(E0201)`@parse) — same
+  rung, span-or-code class, and the spec assigns neither code to junk
+  recovery: filed as a spec gap, waived by the filing, gating resumes
+  when it resolves. E0202 itself is corpus-pinned now and left
+  `diag::UNPINNED_CODES`.
+
 ## 0.1.15 — 2026-08-28
 
 THE SCALAR RELEASE (is26, one sprint behind s121/D58). At 0.1.14 the
