@@ -2472,3 +2472,29 @@ fn a_float_literal_never_satisfies_an_integer_expectation() {
     };
     assert!(reason.contains("one-directional"), "{reason}");
 }
+
+// -- D63: comma-grouped binders (`[gram.item.let]`) --------------------------
+
+#[test]
+fn a_grouped_binding_evaluates_left_to_right() {
+    // D63: semantics are exactly the sequence of single bindings — a later
+    // binder may read an earlier one, and evaluation order is textual.
+    let source = "fn main() -> !int {\n\
+                  \x20   var i = 0, c = i + 1\n\
+                  \x20   let a = 1, b = a + c\n\
+                  \x20   print(\"{i}{c}{a}{b}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "0112\n");
+}
+
+#[test]
+fn a_grouped_binder_destructures_like_a_single_one() {
+    // Each binder carries its own pattern: `let a = 1, (x, y) = pair` is the
+    // single-binding destructure twice ([gram.item.let]).
+    let source = "fn main() -> !int {\n\
+                  \x20   let a = 1, (x, y) = (2, 3)\n\
+                  \x20   if a + x + y == 6 { 0 } else { 1 }\n\
+                  }\n";
+    assert_eq!(outcome(source), Outcome::Exit(0));
+}
