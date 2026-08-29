@@ -78,6 +78,45 @@ impl fmt::Display for Span {
     }
 }
 
+/// 1-based `(line, column)` of a byte offset, columns counted in
+/// **characters**.
+///
+/// This is the repo's one line:col spelling — the fault snapshots pinned it
+/// first (`tests/fault_snapshots.rs`), and `[conf.trap.render]` makes it the
+/// human rendering of runtime faults: one span spelling per tool, with raw
+/// byte offsets staying available through `--json`
+/// (`[proto.record.diag]` / `[proto.record.ext]`). Offsets past the end of
+/// the source clamp to it, so a zero-width EOF span renders as the position
+/// just past the last character.
+#[must_use]
+pub fn line_col(source: &str, offset: usize) -> (usize, usize) {
+    let mut at = offset.min(source.len());
+    // A clamped or mid-code-point offset backs up to the nearest boundary
+    // rather than panicking: rendering never gets to crash the report.
+    while at > 0 && !source.is_char_boundary(at) {
+        at -= 1;
+    }
+    let before = &source[..at];
+    let line = before.matches('\n').count() + 1;
+    let column = before
+        .rsplit_once('\n')
+        .map_or(before, |(_, tail)| tail)
+        .chars()
+        .count()
+        + 1;
+    (line, column)
+}
+
+impl Span {
+    /// The span's start spelled `line:col` (see [`line_col`]) — the location
+    /// grammar of every human diagnostic line rendered with a source in hand.
+    #[must_use]
+    pub fn position(self, source: &str) -> String {
+        let (line, column) = line_col(source, self.start);
+        format!("{line}:{column}")
+    }
+}
+
 /// One diagnostic. `code` + `span` are protocol; `message` and `anchor` are
 /// ours and stay local.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,6 +152,22 @@ impl Diag {
             span: [self.span.start as u64, self.span.end as u64],
             severity: "error".to_owned(),
         }
+    }
+
+    /// The human line for a caller holding the source: the [`fmt::Display`]
+    /// grammar with the location spelled `line:col` (`[conf.trap.render]`'s
+    /// one-spelling rule; the REPL, whose offsets are entry-relative, keeps
+    /// the offset spelling deliberately — see `docs/repl.md`). The protocol
+    /// projection keeps byte offsets untouched.
+    #[must_use]
+    pub fn render(&self, source: &str) -> String {
+        format!(
+            "{}: {} [{}] at {}",
+            self.code,
+            self.message,
+            self.anchor,
+            self.span.position(source)
+        )
     }
 }
 
@@ -301,6 +356,49 @@ mod tests {
         assert!(!s.is_empty());
         assert!(Span::empty(7).is_empty());
         assert_eq!(Span::new(1, 3).join(Span::new(8, 9)), Span::new(1, 9));
+    }
+
+    #[test]
+    fn line_col_is_one_based_and_counts_characters() {
+        let source = "let a = 1\nlet bé = 2\nassert(bé == 2)\n";
+        // Offset 0: the very first character.
+        assert_eq!(line_col(source, 0), (1, 1));
+        // `let` on line 2 starts right after the first newline.
+        assert_eq!(line_col(source, 10), (2, 1));
+        // `é` is two bytes, one character: the column after it counts one.
+        let third = source.find("assert").expect("present");
+        assert_eq!(line_col(source, third), (3, 1));
+        let after_be = source.rfind("é == 2").expect("present") + "é".len();
+        assert_eq!(line_col(source, after_be), (3, 10));
+        // Past the end clamps to just after the last character.
+        assert_eq!(line_col(source, source.len()), (4, 1));
+        assert_eq!(line_col(source, source.len() + 40), (4, 1));
+        // A mid-code-point offset backs up to the boundary, never panics.
+        let mid_e = source.find('é').expect("present") + 1;
+        assert_eq!(line_col(source, mid_e), line_col(source, mid_e - 1));
+        // The empty source has exactly one position.
+        assert_eq!(line_col("", 0), (1, 1));
+    }
+
+    #[test]
+    fn the_rendered_line_spells_the_location_line_colon_col() {
+        let source = "fn main() -> int {\n    0;\n}\n";
+        let at = source.find(';').expect("present");
+        let d = Diag::new(
+            E_EMPTY_STATEMENT,
+            Span::new(at, at + 1),
+            "gram.lex.newline",
+            "stray `;`",
+        );
+        assert_eq!(
+            d.render(source),
+            "E0002: stray `;` [gram.lex.newline] at 2:6"
+        );
+        // The Display grammar (offsets) is unchanged — the REPL's spelling.
+        assert_eq!(
+            d.to_string(),
+            format!("E0002: stray `;` [gram.lex.newline] at {at}..{}", at + 1)
+        );
     }
 
     #[test]
