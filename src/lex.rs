@@ -132,6 +132,11 @@ pub enum Tok {
     /// `[gram.lex.newline]` exception, and pairing them here keeps that
     /// bookkeeping in the lexer where it belongs.
     HashBracket,
+    /// `#![` — the file-wide attribute opener, one dedicated token
+    /// (`[gram.attr.index]`, D61). The shebang rule is narrowed around it:
+    /// a byte-0 `#!` is trivia only when the byte after it is not `[`
+    /// (`[gram.lex.shebang]` — real interpreter lines start `#!/`).
+    HashBangBracket,
 
     /// `!` — unary not in expression position, the error-union constructor in
     /// type position. `[gram.amb.bang]` calls the two positions disjoint, so
@@ -276,6 +281,7 @@ fn punctuation_spelling(tok: &Tok) -> &'static str {
         Tok::LBrace => "{",
         Tok::RBrace => "}",
         Tok::HashBracket => "#[",
+        Tok::HashBangBracket => "#![",
         Tok::Bang => "!",
         Tok::Plus => "+",
         Tok::Minus => "-",
@@ -526,7 +532,10 @@ impl<'a> Lexer<'a> {
         // as a `//` line comment leaves it, so `[gram.lex.newline]`'s
         // terminator machinery is untouched — and since no token precedes it,
         // no terminator is inserted.
-        if self.pos == 0 && self.src.starts_with("#!") {
+        // …narrowed (D61, `[gram.attr.index]`): `#![` is the file-wide
+        // attribute opener, one dedicated token, never a shebang — real
+        // interpreter lines start `#!/`.
+        if self.pos == 0 && self.src.starts_with("#!") && !self.src.starts_with("#![") {
             while let Some(ch) = self.peek() {
                 if ch == '\n' {
                     break;
@@ -707,7 +716,15 @@ impl<'a> Lexer<'a> {
         }
 
         // `#[` opens an attribute; its `]` is `[gram.lex.newline]`'s exception,
-        // so the bracket is tagged on the way in.
+        // so the bracket is tagged on the way in. `#![` opens the file-wide
+        // form (`[gram.attr.index]`) — same bracket bookkeeping, its own
+        // token, at any offset (POSITION is the parser's law, E0211).
+        if self.starts_with("#![") {
+            self.pos += 3;
+            self.ctx.push(Ctx::AttrBracket);
+            self.push(Tok::HashBangBracket, Span::new(start, self.pos));
+            return;
+        }
         if self.starts_with("#[") {
             self.pos += 2;
             self.ctx.push(Ctx::AttrBracket);
