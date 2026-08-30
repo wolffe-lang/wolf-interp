@@ -1,5 +1,73 @@
 # Changelog
 
+## 0.1.18 — 2026-08-30
+
+THE FIRST ARM YIELDS (is29). The two thrice-measured lupin-side
+correctness debts behind wolf-std's four `divergent(…)` ledger rows,
+paid from the spec clauses and the F-0079 lineage, never from the
+compiler's source: a multi-arm handler over a BUILTIN-raised row took
+its first arm for every tag (#47, wolf-std F-0097), and take-mode
+reuse — a static E1001 on both compiler rungs — executed here to its
+dynamic outcome (#48, wolf-std F-0098).
+
+Released against pin `addcd7f`, unchanged from 0.1.17 — wolf-lang has
+no `v0.2.0` tag at this release, so the FILED_REGISTRY_HOLES waiver
+for wolf-lang#177 (`gram.lex.ident`) carries to is30 and the pin
+question re-opens there. Every pre-existing corpus file is
+verdict-identical before and after every commit in this span: the
+judge counts are 310 run / 287 match / 13 counterpart / 41
+conservatism / 55 out of scope / 1 mismatch — byte-for-byte the
+0.1.17 per-file table, three times over.
+
+- **The row rides with the raising builtin (#47).** The #29 mechanism
+  at its third address: entry-file raises discriminated (s70),
+  imported-module raises were fixed by 0.1.13's arm-selection pass
+  (the row travels with the value), and a BUILTIN's raise carried
+  `row: []` — so a handler's every lowercase arm read as a binding
+  and the first arm matched every tag, silently, exit 0. Builtin
+  error values now mint with the raising builtin's WHOLE declared row
+  (`eval::builtin::declared_row` — the net and process prelude
+  signatures the module docs pin, the env/json/cwd/utf8 mint-site
+  closures), so sibling arms resolve as tags and the value's own tag
+  finds its own arm in either order. Witnessed in both arm orders on
+  the issue's reproducer (one dead port, dialed twice: `-1`/`-1`
+  where 0.1.17 answered `-1`/`-9`) and hermetically on `env_get`'s
+  two-tag row. The lint walk's `operand_row` reads the same table, so
+  the static arm rule and the dynamic one keep answering alike. The
+  spec pins none of these signatures — filed as wolf-lang#181 per the
+  is26 pattern rather than absorbed.
+- **Take-mode reuse joins the static rung (#48).** The E1007
+  discipline at the moved place: an explicitly moded argument or
+  receiver over a whole binding an earlier call-site `take` marker
+  consumed is `fail(E1001)` at the reuse argument — the counterparty's
+  code, span and message shape, observed at `addcd7f` — instead of
+  executing to the trap map's answer. Straight-line certainty only:
+  re-initialization and shadowing clear (`[mem.tier0.move.4]`), moves
+  inside branches, loops, closures and `defer` never leak past them,
+  field-granular takes are not tracked, and a bare unmarked READ of a
+  moved-from place stays `[mem.tier0.move.2]`'s dynamic
+  `trap(use-after-move)` — which is what keeps
+  `memory/move_use_after.lu` on its DynamicCounterpart verdict and
+  `faults/use_after_move_field.lu` on its pinned trap, unmoved.
+- **W0317 lands the lupin half of wolf-lang#167's D61 row.** The
+  kindness lint (`[gram.expr.index.origin]`): an int literal fed to a
+  List local's `.get` inside a 1-origin scope warns at the literal —
+  span parity with the compiler on the corpus witness (`[468,469]` on
+  `lints/index_origin_get.lu`), the statement marker narrows and the
+  innermost wins, a non-literal index and a user type's `get` stay
+  silent (probed: the compiler does not warn there either). The lint
+  replays the parser's own `index_origin_of` reading, one marker
+  grammar for two consumers.
+
+Downstream, pre-recorded in wolf-std's row comments and verified on
+this build directly against wolf-std's tests/ before tagging:
+`net/refused_row` and `net/closed_row` print their directives'
+stdout (`handled: -1` / `peer-gone: handled`, then the propagated
+tag), and `net/use_after_close` + `process/use_after_wait` are
+`fail(E1001)` where 0.1.17 trapped `use-after-move` / diverted at
+`start()` — the four `divergent(…)` words flip to `run` at sc-track's
+next binary bump, which is the red the runner was built to read.
+
 ## 0.1.17 — 2026-08-29
 
 THE INTERPRETER KEEPS TWO PROMISES (is28). Two user-visible fixes,
