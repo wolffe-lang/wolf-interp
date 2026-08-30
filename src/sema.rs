@@ -995,13 +995,14 @@ fn define(
 ///
 /// Check order is fixed and deterministic: cycle (E0303), duplicate (E0302),
 /// private access (E0304), unused import (E0305), `let` reassignment (E0410),
-/// call-site mode (E1007), then the pin-`f0da6e6` tier statics — raw
-/// signature boundary (E1302), the unsafe ring plus the cast matrix's bool
-/// column, char indexing, format specs, and the s71 `else` handler
-/// row-coverage rule (E1301/E0805/E0411/E0412/E0413/E0809, one source-order
-/// body walk). Each corpus law file exercises exactly one;
-/// a program violating several reports the first in this order, which is a
-/// defensible choice the spec does not pin.
+/// call-site mode (E1007), take-mode reuse (E1001, issue #48), then the
+/// pin-`f0da6e6` tier statics — raw signature boundary (E1302), the unsafe
+/// ring plus the cast matrix's bool column, char indexing, format specs, and
+/// the s71 `else` handler row-coverage rule
+/// (E1301/E0805/E0411/E0412/E0413/E0809, one source-order body walk). Each
+/// corpus law file exercises exactly one; a program violating several
+/// reports the first in this order, which is a defensible choice the spec
+/// does not pin.
 #[must_use]
 pub fn resolve_check(program: &Program) -> Option<Diag> {
     cycle_check(program)
@@ -1010,6 +1011,7 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| unused_check(program))
         .or_else(|| reassign_check(program))
         .or_else(|| mode_check(program))
+        .or_else(|| move_check(program))
         .or_else(|| unsafe_sig_check(program))
         .or_else(|| tier_check(program))
 }
@@ -1185,7 +1187,7 @@ fn unused_check(program: &Program) -> Option<Diag> {
 /// bindings in `match`/`for`/`else |pat|`/`select` arms are not `let`
 /// bindings either. Only the latest binding of a name in scope speaks.
 fn reassign_check(program: &Program) -> Option<Diag> {
-    body_walk(program, false, false).0
+    body_walk(program, false, false, false).0
 }
 
 /// The X1 call-site mode law, statically (issue #15, the book's ch07 catch —
@@ -1209,7 +1211,31 @@ fn reassign_check(program: &Program) -> Option<Diag> {
 /// function values — is refused at run time (`eval_call`), never executed to
 /// a wrong answer.
 fn mode_check(program: &Program) -> Option<Diag> {
-    body_walk(program, false, true).0
+    body_walk(program, false, true, false).0
+}
+
+/// The take-mode reuse law, statically (issue #48, wolf-std F-0098): a
+/// call-site `mut`/`take` marker over a local whose WHOLE BINDING an earlier
+/// `take` marker already consumed is E1001 at the reuse argument — the code,
+/// span and message shape the counterparty emits (observed at pin `addcd7f`:
+/// primary span the argument identifier, "`s` is used here after its value
+/// moved away"), at this machine's only static rung.
+///
+/// Scope discipline, the E1007 pattern: the walk diagnoses only what the
+/// resolve rung can see with certainty — a bare single-segment path taken
+/// whole by an explicit call-site marker (argument or moded receiver), then
+/// re-marked in straight-line source order with no re-initialization between
+/// (`[mem.tier0.move.4]` clears; so does shadowing). Everything narrower
+/// stays the DYNAMIC discipline `[mem.tier0.move.2]` states for the
+/// interpreter and the corpus pins: a bare READ of a moved-from place still
+/// traps `use-after-move` (`memory/move_use_after.lu`'s check is satisfied
+/// either way; `faults/use_after_move_field.lu` runs to its pinned trap —
+/// field-granular takes are not tracked here), moves recorded inside a
+/// branch, loop, closure or `defer` never leak past it, and a callee's
+/// signature is never consulted — the MARKER is the spelling, exactly as it
+/// is for the dynamic move.
+fn move_check(program: &Program) -> Option<Diag> {
+    body_walk(program, false, false, true).0
 }
 
 // ---------------------------------------------------------------------------
@@ -2208,10 +2234,15 @@ fn declare_pattern_classes(pattern: &Pattern, walk: &mut TierWalk<'_>) {
 /// the *program*, not a property of the input. The refusal is `unsupported`
 /// (name resolution beyond the module laws is the checker's), never a guess.
 pub fn raise_check(program: &Program) -> Option<String> {
-    body_walk(program, true, false).1
+    body_walk(program, true, false, false).1
 }
 
-fn body_walk(program: &Program, raises: bool, modes: bool) -> (Option<Diag>, Option<String>) {
+fn body_walk(
+    program: &Program,
+    raises: bool,
+    modes: bool,
+    moves: bool,
+) -> (Option<Diag>, Option<String>) {
     // The signature map of the mode pass: every function item of every
     // module, keyed `(module, name)`, valued by its parameters' declared
     // modes. Visibility is E0304's business and ran earlier in the chain.
@@ -2284,6 +2315,7 @@ fn body_walk(program: &Program, raises: bool, modes: bool) -> (Option<Diag>, Opt
                     module: module.name.clone(),
                     sigs,
                 }),
+                moves: moves.then(MoveCtx::default),
             };
             let diag = walk_fn_assigns(decl, &mut env);
             if let Some(ctx) = env.raise
@@ -2304,6 +2336,7 @@ fn body_walk(program: &Program, raises: bool, modes: bool) -> (Option<Diag>, Opt
                         module: module.name.clone(),
                         sigs,
                     }),
+                    moves: moves.then(MoveCtx::default),
                 };
                 let diag = walk_expr_assigns(&binding.value, &mut env);
                 if diag.is_some() {
@@ -2326,6 +2359,21 @@ struct Env {
     /// the module the walked body lives in, and every function item's
     /// declared parameter modes.
     modes: Option<ModeCtx>,
+    /// Present when the walk is the take-mode reuse check ([`move_check`]):
+    /// the locals whose whole binding a call-site `take` marker consumed,
+    /// by name, valued by the move site (the `take` argument's span).
+    moves: Option<MoveCtx>,
+}
+
+/// The take-mode reuse check's state: which names are moved-from, and where
+/// each moved. Straight-line only — the walk snapshots and restores this map
+/// around every construct whose body is not certainly on the path
+/// (branches, loop bodies, handlers, `select`/`when` arms), and hands
+/// latent bodies (closures, `defer`, nested `fn` items) a fresh map: their
+/// straight line is their own.
+#[derive(Default)]
+struct MoveCtx {
+    moved: BTreeMap<String, Span>,
 }
 
 /// One declared parameter of a visible signature: its mode and its name.
@@ -2359,6 +2407,34 @@ impl Env {
     fn declare(&mut self, name: &str, assignable: bool) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.push((name.to_owned(), assignable));
+        }
+        // A fresh binding is a fresh thing: shadowing (or any pattern
+        // rebinding the name) ends the moved-from story the old binding
+        // carried ([`move_check`]).
+        if let Some(ctx) = &mut self.moves {
+            ctx.moved.remove(name);
+        }
+    }
+
+    /// The moved-map as it stands, for restore after a body the straight
+    /// line does not certainly reach ([`move_check`]); `None` outside the
+    /// move pass.
+    fn moved_snapshot(&self) -> Option<BTreeMap<String, Span>> {
+        self.moves.as_ref().map(|ctx| ctx.moved.clone())
+    }
+
+    fn moved_restore(&mut self, snapshot: Option<BTreeMap<String, Span>>) {
+        if let (Some(ctx), Some(moved)) = (&mut self.moves, snapshot) {
+            ctx.moved = moved;
+        }
+    }
+
+    /// Re-initialization by assignment makes the place live again
+    /// (`[mem.tier0.move.4]`); any projected write clears the head — the
+    /// conservative direction for a check that only ever refuses.
+    fn moved_clear(&mut self, name: &str) {
+        if let Some(ctx) = &mut self.moves {
+            ctx.moved.remove(name);
         }
     }
 
@@ -2478,9 +2554,24 @@ fn walk_stmt_assigns(stmt: &Stmt, env: &mut Env) -> Option<Diag> {
                     ),
                 ));
             }
+            if let ExprKind::Path(path) = &*place.kind
+                && let Some(head) = path.segments.first()
+            {
+                env.moved_clear(&head.name);
+            }
             None
         }
-        StmtKind::Defer { expr, .. } => walk_expr_assigns(expr, env),
+        StmtKind::Defer { expr, .. } => {
+            // A defer body is latent (it runs at scope exit): its straight
+            // line is its own — fresh moved-map in, outer map untouched.
+            let outer = env.moves.take();
+            if outer.is_some() {
+                env.moves = Some(MoveCtx::default());
+            }
+            let diag = walk_expr_assigns(expr, env);
+            env.moves = outer;
+            diag
+        }
         StmtKind::AssumeNoalias(operands) => {
             operands.iter().find_map(|op| walk_expr_assigns(op, env))
         }
@@ -2491,6 +2582,10 @@ fn walk_stmt_assigns(stmt: &Stmt, env: &mut Env) -> Option<Diag> {
                     scopes: vec![env.scopes.first().cloned().unwrap_or_default()],
                     raise: env.raise.take(),
                     modes: env.modes.take(),
+                    // A nested fn's body is latent: the enclosing straight
+                    // line's moves do not apply inside it, and its own moves
+                    // never leak out — a fresh map either way.
+                    moves: env.moves.is_some().then(MoveCtx::default),
                 };
                 let diag = walk_fn_assigns(decl, &mut nested);
                 env.raise = nested.raise;
@@ -2530,10 +2625,17 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
         | ExprKind::Unary { operand: inner, .. }
         | ExprKind::Cast { expr: inner, .. } => walk_expr_assigns(inner, env),
         ExprKind::Block(block)
-        | ExprKind::Loop { body: block }
         | ExprKind::RegionSugar { body: block, .. }
         | ExprKind::Scope { body: block, .. }
         | ExprKind::Unsafe { body: block } => walk_block_assigns(block, env),
+        ExprKind::Loop { body } => {
+            // A loop body re-runs: its moves are not straight-line facts for
+            // the code after (or before, next iteration) — see `MoveCtx`.
+            let snapshot = env.moved_snapshot();
+            let diag = walk_block_assigns(body, env);
+            env.moved_restore(snapshot);
+            diag
+        }
         ExprKind::Binary { lhs, rhs, .. } => {
             walk_expr_assigns(lhs, env).or_else(|| walk_expr_assigns(rhs, env))
         }
@@ -2542,7 +2644,8 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
                 args.iter()
                     .find_map(|arg| walk_expr_assigns(&arg.expr, env))
             })
-            .or_else(|| check_call_modes(callee, args, env)),
+            .or_else(|| check_call_modes(callee, args, env))
+            .or_else(|| check_call_moves(args, env)),
         ExprKind::BracketApply { base, args, .. } => walk_expr_assigns(base, env).or_else(|| {
             args.iter().find_map(|arg| match arg {
                 crate::ast::IndexArg::Value(arg) => walk_expr_assigns(&arg.expr, env),
@@ -2550,7 +2653,9 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
             })
         }),
         ExprKind::Member { base, .. } => walk_expr_assigns(base, env),
-        ExprKind::ModedReceiver { place, .. } => walk_expr_assigns(place, env),
+        ExprKind::ModedReceiver { place, mode } => {
+            walk_expr_assigns(place, env).or_else(|| check_marked_place(place, *mode, env))
+        }
         ExprKind::Range { start, end, .. } => start
             .as_ref()
             .and_then(|s| walk_expr_assigns(s, env))
@@ -2558,33 +2663,51 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
         ExprKind::ElseDefault {
             expr: inner,
             handler,
-        } => walk_expr_assigns(inner, env).or_else(|| match &**handler {
-            crate::ast::ElseHandler::Block(block) => walk_block_assigns(block, env),
-            crate::ast::ElseHandler::Expr(expr) => walk_expr_assigns(expr, env),
-            crate::ast::ElseHandler::Handler { pattern, body } => {
-                env.scopes.push(Vec::new());
-                declare_pattern(pattern, true, env);
-                let diag = walk_expr_assigns(body, env);
-                env.scopes.pop();
-                diag
-            }
+        } => walk_expr_assigns(inner, env).or_else(|| {
+            // The handler runs only on the error path: not straight-line.
+            let snapshot = env.moved_snapshot();
+            let diag = match &**handler {
+                crate::ast::ElseHandler::Block(block) => walk_block_assigns(block, env),
+                crate::ast::ElseHandler::Expr(expr) => walk_expr_assigns(expr, env),
+                crate::ast::ElseHandler::Handler { pattern, body } => {
+                    env.scopes.push(Vec::new());
+                    declare_pattern(pattern, true, env);
+                    let diag = walk_expr_assigns(body, env);
+                    env.scopes.pop();
+                    diag
+                }
+            };
+            env.moved_restore(snapshot);
+            diag
         }),
         ExprKind::If {
             cond,
             then,
             otherwise,
         } => walk_expr_assigns(cond, env)
-            .or_else(|| walk_block_assigns(then, env))
-            .or_else(|| otherwise.as_ref().and_then(|e| walk_expr_assigns(e, env))),
+            .or_else(|| {
+                let snapshot = env.moved_snapshot();
+                let diag = walk_block_assigns(then, env);
+                env.moved_restore(snapshot);
+                diag
+            })
+            .or_else(|| {
+                let snapshot = env.moved_snapshot();
+                let diag = otherwise.as_ref().and_then(|e| walk_expr_assigns(e, env));
+                env.moved_restore(snapshot);
+                diag
+            }),
         ExprKind::Match { scrutinee, arms } => walk_expr_assigns(scrutinee, env).or_else(|| {
             arms.iter().find_map(|arm| {
                 env.scopes.push(Vec::new());
+                let snapshot = env.moved_snapshot();
                 declare_pattern(&arm.pattern, true, env);
                 let diag = arm
                     .guard
                     .as_ref()
                     .and_then(|guard| walk_expr_assigns(guard, env))
                     .or_else(|| walk_expr_assigns(&arm.body, env));
+                env.moved_restore(snapshot);
                 env.scopes.pop();
                 diag
             })
@@ -2595,13 +2718,20 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
             body,
         } => walk_expr_assigns(iter, env).or_else(|| {
             env.scopes.push(Vec::new());
+            let snapshot = env.moved_snapshot();
             declare_pattern(pattern, true, env);
             let diag = walk_block_assigns(body, env);
+            env.moved_restore(snapshot);
             env.scopes.pop();
             diag
         }),
         ExprKind::While { cond, body } => {
-            walk_expr_assigns(cond, env).or_else(|| walk_block_assigns(body, env))
+            // Condition and body both re-run; neither leaves straight-line
+            // facts behind — see `MoveCtx`.
+            let snapshot = env.moved_snapshot();
+            let diag = walk_expr_assigns(cond, env).or_else(|| walk_block_assigns(body, env));
+            env.moved_restore(snapshot);
+            diag
         }
         ExprKind::Return(value) => {
             // The eager raise check (issue #12(c)): a bare lowercase `return`
@@ -2629,10 +2759,17 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
         ExprKind::Break(value) => value.as_ref().and_then(|v| walk_expr_assigns(v, env)),
         ExprKind::Closure { params, body, .. } => {
             env.scopes.push(Vec::new());
+            // A closure body is latent — fresh moved-map in, outer map
+            // untouched (see `MoveCtx`).
+            let outer = env.moves.take();
+            if outer.is_some() {
+                env.moves = Some(MoveCtx::default());
+            }
             for param in params {
                 env.declare(&param.name.name, true);
             }
             let diag = walk_expr_assigns(body, env);
+            env.moves = outer;
             env.scopes.pop();
             diag
         }
@@ -2644,6 +2781,7 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
             .find_map(|arg| walk_expr_assigns(&arg.expr, env)),
         ExprKind::Select { arms } => arms.iter().find_map(|arm| {
             env.scopes.push(Vec::new());
+            let snapshot = env.moved_snapshot();
             let diag = match &arm.kind {
                 crate::ast::SelectArmKind::Recv { pattern, channel } => {
                     let diag = walk_expr_assigns(channel, env);
@@ -2653,6 +2791,7 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
                 crate::ast::SelectArmKind::Timeout(expr) => walk_expr_assigns(expr, env),
             }
             .or_else(|| walk_expr_assigns(&arm.body, env));
+            env.moved_restore(snapshot);
             env.scopes.pop();
             diag
         }),
@@ -2666,6 +2805,9 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
                     // through the acquired cell, not to the binding, so the
                     // operand names are assignable inside the body whatever
                     // introduced them (`corpus/conc/when_multi.lu` pins this).
+                    // The body runs when the locks land, not on this line:
+                    // its moves are not straight-line facts (see `MoveCtx`).
+                    let snapshot = env.moved_snapshot();
                     env.scopes.push(Vec::new());
                     for op in operands {
                         // A single operand arrives grouped (`when (a) { … }`
@@ -2682,6 +2824,7 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
                         }
                     }
                     let diag = walk_block_assigns(body, env);
+                    env.moved_restore(snapshot);
                     env.scopes.pop();
                     diag
                 })
@@ -2770,6 +2913,56 @@ fn check_call_modes(callee: &Expr, args: &[Arg], env: &Env) -> Option<Diag> {
             (None, None) => unreachable!("equal modes were skipped above"),
         };
         return Some(Diag::new("E1007", arg.expr.span, anchor, message));
+    }
+    None
+}
+
+/// [`move_check`]'s call-argument half: every explicitly moded argument is a
+/// USE of its place, and a `take`-moded one is also a MOVE of it. A bare
+/// (read-moded) argument is neither — reads stay the dynamic trap's business
+/// (`[mem.tier0.move.2]`'s interpreter meaning), which is what keeps
+/// `memory/move_use_after.lu` and the faults tier on their pinned verdicts.
+fn check_call_moves(args: &[Arg], env: &mut Env) -> Option<Diag> {
+    for arg in args {
+        let Some(mode) = arg.mode else { continue };
+        if let Some(diag) = check_marked_place(&arg.expr, mode, env) {
+            return Some(diag);
+        }
+    }
+    None
+}
+
+/// One explicitly moded place — a marked call argument or a moded receiver —
+/// against the moved-map: a marker over a moved-from whole binding is E1001
+/// at the place expression (the counterparty's span, observed at `addcd7f`);
+/// a `take` marker over a live one records the move. Only a bare
+/// single-segment path naming a binding the walk has seen participates —
+/// field paths, projections and unseen names are skipped, never guessed at.
+fn check_marked_place(place: &Expr, mode: ParamMode, env: &mut Env) -> Option<Diag> {
+    env.moves.as_ref()?;
+    let ExprKind::Path(path) = &*place.kind else {
+        return None;
+    };
+    if !path.is_single() {
+        return None;
+    }
+    let head = &path.segments[0].name;
+    env.assignable(head)?;
+    let ctx = env.moves.as_mut()?;
+    if ctx.moved.contains_key(head) {
+        return Some(Diag::new(
+            "E1001",
+            place.span,
+            "mem.tier0.move.2",
+            format!(
+                "`{head}` is used here after its value moved away — a `take` argument consumed \
+                 it; re-initializing the place (assigning to it) makes it usable again, and \
+                 `take copy {head}` at the move keeps the original"
+            ),
+        ));
+    }
+    if mode == ParamMode::Take {
+        ctx.moved.insert(head.clone(), place.span);
     }
     None
 }
@@ -3469,6 +3662,139 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    // -- E1001: take-mode reuse at the resolve rung (issue #48) -------------
+
+    #[test]
+    fn a_take_marked_reuse_is_e1001_at_the_second_argument() {
+        // wolf-std `process/use_after_wait.lu`'s shape: the same binding
+        // handed to a `take` marker twice. Span: the reuse argument's
+        // identifier, matching the counterparty at pin addcd7f.
+        let source = "struct S { n: int }\n\
+                      fn eat(take s: S) -> int { s.n }\n\
+                      fn main() -> !int {\n    var s = S { n: 1 }\n    \
+                      let a = eat(take s)\n    let b = eat(take s)\n    a + b\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E1001");
+        assert_eq!(diag.anchor, "mem.tier0.move.2");
+        // The SECOND `s`-argument, not the first.
+        let reuse = source.rfind("take s").expect("spelled") + "take ".len();
+        assert_eq!((diag.span.start, diag.span.end), (reuse, reuse + 1));
+    }
+
+    #[test]
+    fn a_mut_marked_reuse_after_a_take_is_e1001_too() {
+        // wolf-std `net/use_after_close.lu`'s shape: `close(take cli)` then
+        // `write(mut cli, …)` — any explicit marker is a USE of the place.
+        let source = "struct S { n: int }\n\
+                      fn close(take s: S) -> int { s.n }\n\
+                      fn poke(mut s: S) -> int {\n    s.n += 1\n    s.n\n}\n\
+                      fn main() -> !int {\n    var s = S { n: 1 }\n    \
+                      let a = close(take s)\n    let b = poke(mut s)\n    a + b\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E1001");
+        assert_eq!(&source[diag.span.start..diag.span.end], "s");
+        assert!(source[..diag.span.start].ends_with("poke(mut "));
+    }
+
+    #[test]
+    fn reinitialization_and_shadowing_make_the_place_live_again() {
+        // `[mem.tier0.move.4]`: assignment re-initializes; a fresh binding
+        // is a fresh thing.
+        assert!(
+            resolve(
+                "struct S { n: int }\n\
+                 fn eat(take s: S) -> int { s.n }\n\
+                 fn main() -> !int {\n    var s = S { n: 1 }\n    \
+                 let a = eat(take s)\n    s = S { n: 2 }\n    \
+                 let b = eat(take s)\n    a + b\n}\n"
+            )
+            .is_none()
+        );
+        assert!(
+            resolve(
+                "struct S { n: int }\n\
+                 fn eat(take s: S) -> int { s.n }\n\
+                 fn main() -> !int {\n    let s = S { n: 1 }\n    \
+                 let a = eat(take s)\n    let s = S { n: 2 }\n    \
+                 let b = eat(take s)\n    a + b\n}\n"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn a_bare_read_after_a_take_stays_the_dynamic_traps_business() {
+        // `memory/move_use_after.lu`'s shape: the reuse is an unmarked READ.
+        // The static rung says nothing — `[mem.tier0.move.2]`'s dynamic
+        // meaning (trap `use-after-move`) is the interpreter's answer, and
+        // the corpus faults tier pins it.
+        assert!(
+            resolve(
+                "struct Big { data: int }\n\
+                 fn consume(take b: Big) -> int { b.data }\n\
+                 fn main() -> !int {\n    let b = Big { data: 2 }\n    \
+                 let n = consume(take b)\n    let m = b.data\n    n + m\n}\n"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn field_takes_and_branch_moves_are_not_tracked() {
+        // `faults/use_after_move_field.lu`'s granularity stays dynamic: a
+        // field-path take is skipped, never guessed at.
+        assert!(
+            resolve(
+                "struct Inner { n: int }\n\
+                 struct P { x: Inner, y: Inner }\n\
+                 fn eat(take i: Inner) -> int { i.n }\n\
+                 fn poke(mut i: Inner) -> int {\n    i.n += 1\n    i.n\n}\n\
+                 fn main() -> !int {\n    \
+                 var p = P { x: Inner { n: 1 }, y: Inner { n: 2 } }\n    \
+                 let a = eat(take p.x)\n    let b = poke(mut p.x)\n    a + b\n}\n"
+            )
+            .is_none()
+        );
+        // A move inside a branch (or a loop body) never leaks past it: the
+        // walk refuses only what is certain in straight-line source order.
+        assert!(
+            resolve(
+                "struct S { n: int }\n\
+                 fn eat(take s: S) -> int { s.n }\n\
+                 fn poke(mut s: S) -> int {\n    s.n += 1\n    s.n\n}\n\
+                 fn main() -> !int {\n    var s = S { n: 1 }\n    \
+                 var a = 0\n    if s.n == 2 { a = eat(take s) }\n    \
+                 let b = poke(mut s)\n    a + b\n}\n"
+            )
+            .is_none()
+        );
+        assert!(
+            resolve(
+                "struct S { n: int }\n\
+                 fn eat(take s: S) -> int { s.n }\n\
+                 fn main() -> !int {\n    var total = 0\n    \
+                 for i in 0..3 {\n        var s = S { n: i }\n        \
+                 total += eat(take s)\n    }\n    total - total\n}\n"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn a_taken_receiver_is_a_move_and_a_marked_receiver_after_it_is_e1001() {
+        // `(take c).finish()` consumes the whole binding exactly as a
+        // `take` argument does; a later moded receiver is the reuse.
+        let source = "struct Counter { n: int }\n\
+                      impl Counter {\n    \
+                      fn bump(mut self) -> int {\n        self.n += 1\n        self.n\n    }\n    \
+                      fn finish(take self) -> int {\n        self.n\n    }\n}\n\
+                      fn main() -> !int {\n    var c = Counter { n: 1 }\n    \
+                      let z = (take c).finish()\n    let a = (mut c).bump()\n    z + a\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E1001");
+        assert!(source[..diag.span.start].ends_with("(mut "));
     }
 
     // -- the variant table (issue #5) ---------------------------------------
