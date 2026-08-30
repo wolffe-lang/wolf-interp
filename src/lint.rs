@@ -508,16 +508,24 @@ impl Walk<'_> {
 
     /// The declared error row of an `else` operand, when a signature is in
     /// sight: a call to a module-level `fn` reads the callee's declared
-    /// return row. Anything else is tag-shaped with an unknown row (empty —
-    /// the module vocabulary still applies).
+    /// return row; a call to an ambient BUILTIN reads the pinned prelude row
+    /// (`eval::builtin::declared_row` — the same vocabulary the evaluator
+    /// rides since wolf-interp#47, kept in mirror so the static arm rule and
+    /// the dynamic one answer alike). Anything else is tag-shaped with an
+    /// unknown row (empty — the module vocabulary still applies).
     fn operand_row(&self, operand: &Expr) -> Vec<String> {
         if let ExprKind::Call { callee, .. } = &*operand.kind
             && let ExprKind::Path(path) = &*callee.kind
             && path.is_single()
             && self.declared(&path.segments[0].name).is_none()
-            && let Some(decl) = self.fn_decls.get(path.segments[0].name.as_str())
         {
-            return crate::sema::declared_raise_tags(decl);
+            if let Some(decl) = self.fn_decls.get(path.segments[0].name.as_str()) {
+                return crate::sema::declared_raise_tags(decl);
+            }
+            let row = crate::eval::builtin::declared_row(&path.segments[0].name);
+            if !row.is_empty() {
+                return row.iter().map(|tag| (*tag).to_owned()).collect();
+            }
         }
         Vec::new()
     }

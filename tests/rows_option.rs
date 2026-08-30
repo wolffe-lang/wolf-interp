@@ -783,3 +783,62 @@ fn main() -> !int {
         observation.reason
     );
 }
+
+// -- builtin-raised rows discriminate (issue #47) -----------------------
+
+#[test]
+fn a_builtin_raised_row_discriminates_in_both_arm_orders_hermetically() {
+    // Issue #47's mechanism without a socket: `env_get` answers the
+    // `invalid` row for a name containing `=` (its declared row is
+    // `{invalid, missing}`), and a two-arm discriminating handler must land
+    // the `invalid` arm in BOTH orders. Before the fix the value carried no
+    // row, every lowercase arm read as a binding, and the first arm won —
+    // this program answered 1 (the `missing` arm) on the first handler.
+    let source = "\
+fn main() -> !int {
+    let a = env_get(\"no=good\") else |e| match e {
+        missing => \"miss\",
+        invalid => \"bad\",
+    }
+    let b = env_get(\"no=good\") else |e| match e {
+        invalid => \"bad\",
+        missing => \"miss\",
+    }
+    if a == \"bad\" && b == \"bad\" { 0 } else { 1 }
+}
+";
+    let observation = observe(source);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "the tag finds its own arm in either order; reason: {:?}",
+        observation.reason
+    );
+}
+
+#[test]
+fn an_unset_name_lands_the_missing_arm_in_both_orders() {
+    // The sibling tag of the same row: the env overlay starts empty (the
+    // checked-lane posture), so any well-formed unset name is `missing`
+    // deterministically on every host.
+    let source = "\
+fn main() -> !int {
+    let a = env_get(\"IS29_SURELY_UNSET\") else |e| match e {
+        invalid => \"bad\",
+        missing => \"miss\",
+    }
+    let b = env_get(\"IS29_SURELY_UNSET\") else |e| match e {
+        missing => \"miss\",
+        invalid => \"bad\",
+    }
+    if a == \"miss\" && b == \"miss\" { 0 } else { 1 }
+}
+";
+    let observation = observe(source);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Exit(0),
+        "reason: {:?}",
+        observation.reason
+    );
+}

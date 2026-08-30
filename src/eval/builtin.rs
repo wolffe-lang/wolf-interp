@@ -266,13 +266,13 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             };
             if !env_name_valid(name) {
                 machine.note(Rule::ErrUnion, span, "`env_get` yields the `invalid` row");
-                return Ok(error("invalid"));
+                return Ok(error_value("env_get", "invalid"));
             }
             match machine.env_read(name) {
                 Some(value) => Ok(Value::Str(value)),
                 None => {
                     machine.note(Rule::ErrUnion, span, "`env_get` yields the `missing` row");
-                    Ok(error("missing"))
+                    Ok(error_value("env_get", "missing"))
                 }
             }
         }
@@ -283,7 +283,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             };
             if !env_name_valid(name) {
                 machine.note(Rule::ErrUnion, span, "`env_set` yields the `invalid` row");
-                return Ok(error("invalid"));
+                return Ok(error_value("env_set", "invalid"));
             }
             machine.env_write(name, value);
             Ok(Value::Unit)
@@ -295,7 +295,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             Ok(dir) => Ok(Value::Str(dir.to_string_lossy().into_owned())),
             Err(_) => {
                 machine.note(Rule::ErrUnion, span, "`os_cwd` yields the `io` row");
-                Ok(error("io"))
+                Ok(error_value("os_cwd", "io"))
             }
         },
         // `os_exit` (s40): immediate termination with the code — defers do
@@ -353,7 +353,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                         span,
                         &format!("`os_spawn` yields the `{tag}` row"),
                     );
-                    Ok(error(tag))
+                    Ok(error_value("os_spawn", tag))
                 }
             }
         }
@@ -378,7 +378,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                         span,
                         &format!("`{name}` yields the `{tag}` row"),
                     );
-                    Ok(error(tag))
+                    Ok(error_value(name, tag))
                 }
             }
         }
@@ -477,7 +477,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                         span,
                         &format!("`{name}` yields the `{tag}` row"),
                     );
-                    Ok(error(tag))
+                    Ok(error_value(name, tag))
                 }
             }
         }
@@ -538,7 +538,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                             span,
                             "`str_from_utf8` yields the `utf8` row",
                         );
-                        return Ok(error("utf8"));
+                        return Ok(error_value("str_from_utf8", "utf8"));
                     }
                 }
             }
@@ -553,7 +553,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                         span,
                         "`str_from_utf8` yields the `utf8` row",
                     );
-                    Ok(error("utf8"))
+                    Ok(error_value("str_from_utf8", "utf8"))
                 }
             }
         }
@@ -1717,12 +1717,67 @@ impl CopiedRaw for Option<&Value> {
     }
 }
 
-/// The bare-tag error value the builtin rows answer with — pub(crate)
-/// because the net tier (`eval::net`) mints the same shape.
-pub(crate) fn error_value(tag: &str) -> Value {
-    error(tag)
+/// The declared error ROW of a builtin, where this repo pins one — the
+/// prelude signatures the net and process module docs record from empirical
+/// probes (`eval::net`, `eval::os`), and the mint-site closures of the
+/// env/json/cwd/utf8 surfaces (the full set of tags each call can answer,
+/// which IS its row: nothing else ever comes out of it).
+///
+/// Why the whole row and not just the raised tag (wolf-interp#47, wolf-std
+/// F-0097): a handler's arm resolution asks the scrutinee's row which bare
+/// lowercase arm names are TAGS (`[gram.expr.tagident]`'s "exactly as wide
+/// as the declared row"; `eval::Machine::match_pattern`). A value carrying
+/// only its own tag would let the *sibling* arms read as bindings again —
+/// `match e { io => …, refused => … }` over a `refused` raise needs `io` to
+/// resolve as a tag to NOT match — so the row rides whole, exactly as a
+/// module-raised value's does (the #29 mechanism at the builtin's address).
+///
+/// The spec pins none of these signatures — the prelude "is not specified
+/// yet" — so this table is this implementation's reading of its own pinned
+/// module docs, never a guess at upstream's; the silence is filed rather
+/// than absorbed (the is26 pattern).
+pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
+    match name {
+        // The s39 net tier (`eval::net`'s module doc, probed prelude sigs).
+        "net_listen" | "net_port" | "net_close" | "net_deadline" => &["io"],
+        "net_accept" => &["timeout", "io"],
+        "net_connect" => &["refused", "timeout", "io"],
+        "net_read" => &["closed", "timeout", "utf8", "io"],
+        "net_write" => &["closed", "io"],
+        // The s40 process trio (`eval::os`'s module doc, probed prelude sigs).
+        "os_spawn" => &["not_found", "denied", "io"],
+        "os_wait" => &["signal", "io"],
+        "os_kill" | "os_cwd" => &["io"],
+        // The env pair and the json query tier: mint-site closures.
+        "env_get" => &["invalid", "missing"],
+        "env_set" => &["invalid"],
+        "json_get" | "json_type" | "json_len" => &["parse", "missing", "kind"],
+        // s81: the one str-construction border (`utf8`, never a trap).
+        "str_from_utf8" => &["utf8"],
+        _ => &[],
+    }
 }
 
+/// The row-carrying error value a named builtin raises — pub(crate) because
+/// the net tier (`eval::net`) mints the same shape. The tag travels with the
+/// raising builtin's whole declared row ([`declared_row`]) so a downstream
+/// handler's arms discriminate (wolf-interp#47).
+pub(crate) fn error_value(name: &str, tag: &str) -> Value {
+    Value::Error(Box::new(super::value::ErrorValue {
+        tag: tag.to_owned(),
+        payload: Vec::new(),
+        enum_variant: false,
+        row: declared_row(name)
+            .iter()
+            .map(|tag| (*tag).to_owned())
+            .collect(),
+    }))
+}
+
+/// The bare-tag error value of the surfaces with no pinned row (`none`,
+/// `OutOfBounds`, … — the option-shaped members): the tag alone, no row
+/// vocabulary, exactly as before #47's fix. Widening these is a separate
+/// ruling; nothing files a bug against them.
 fn error(tag: &str) -> Value {
     Value::Error(Box::new(super::value::ErrorValue {
         tag: tag.to_owned(),

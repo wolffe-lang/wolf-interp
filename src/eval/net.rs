@@ -394,7 +394,10 @@ impl Machine {
                     span,
                     &format!("`{name}` yields the `{tag}` row"),
                 );
-                Ok(super::builtin::error_value(tag))
+                // The tag rides with the raising builtin's whole declared
+                // row so a downstream handler's arms discriminate
+                // (wolf-interp#47, wolf-std F-0097).
+                Ok(super::builtin::error_value(name, tag))
             }
             Err(NetErr::Cancelled) => Ok(super::sched::cancelled_error()),
             Err(NetErr::Outside(reason)) => Err(Signal::Unsupported(reason)),

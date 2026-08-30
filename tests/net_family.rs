@@ -264,3 +264,41 @@ fn a_lone_concurrent_sleeper_parks_the_world_for_exactly_its_duration() {
         "the join woke promptly after the sleep: {elapsed:?}"
     );
 }
+
+#[test]
+fn a_handler_over_a_builtin_raised_row_discriminates_in_both_arm_orders() {
+    // Issue #47 (wolf-std F-0097): a multi-arm `else |e| match e` over a row
+    // a BUILTIN raised took its first arm for every tag — the value carried
+    // no row, so every lowercase arm read as a binding and a binding matches
+    // anything. The issue's own reproducer, verbatim in shape: one dead
+    // port, dialed twice, the discriminating handler spelled in BOTH orders.
+    // The tag really is `refused` (nothing listens on a just-closed port 0
+    // pick), so both orders must land the `refused` arm — before the fix
+    // this printed `-1` then `-9`, the answer following the arm order.
+    let dir = scratch("net-builtin-row-arms");
+    let source = "fn main() -> !int {\n\
+        \x20   let fd = net_listen(\"127.0.0.1:0\")?\n\
+        \x20   let p = net_port(fd)?\n\
+        \x20   net_close(fd)?\n\
+        \x20   let s = net_connect(\"127.0.0.1:{p}\") else |e| match e {\n\
+        \x20       refused => 0 - 1,\n\
+        \x20       timeout => 0 - 8,\n\
+        \x20       io => 0 - 9,\n\
+        \x20   }\n\
+        \x20   print(\"refused-first: {s}\")\n\
+        \x20   let t = net_connect(\"127.0.0.1:{p}\") else |e| match e {\n\
+        \x20       io => 0 - 9,\n\
+        \x20       timeout => 0 - 8,\n\
+        \x20       refused => 0 - 1,\n\
+        \x20   }\n\
+        \x20   print(\"refused-last: {t}\")\n\
+        \x20   0\n\
+        }\n";
+    let output = run_program(&dir, source);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0), "{stdout}\n{output:?}");
+    assert_eq!(
+        stdout, "refused-first: -1\nrefused-last: -1\n",
+        "the tag finds its own arm in either order — never the first arm"
+    );
+}
