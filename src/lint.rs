@@ -69,8 +69,8 @@ use crate::sema::{Def, Program};
 /// codes (`[proto.record.warn]`'s honest-absent rule covers the rest).
 pub const IMPLEMENTED: &[&str] = &[
     "W0302", "W0303", "W0304", "W0305", "W0306", "W0307", "W0308", "W0309", "W0310", "W0311",
-    "W0312", "W0313", "W0314", "W0315", "W0316", "W0401", "W0602", "W0603", "W0604", "W1002",
-    "W1003", "W1101", "W1102", "W1302", "E0802",
+    "W0312", "W0313", "W0314", "W0315", "W0316", "W0317", "W0401", "W0602", "W0603", "W0604",
+    "W1002", "W1003", "W1101", "W1102", "W1302", "E0802",
 ];
 
 /// Compiler-only for now — codes this machine's rungs cannot observe, kept
@@ -196,6 +196,8 @@ pub fn analyze(program: &Program) -> Analysis {
                 assumed: Vec::new(),
                 writes: Vec::new(),
                 literal_lets: Vec::new(),
+                origin: 0,
+                list_locals: Vec::new(),
             };
             walk.unit(&unit.unit);
         }
@@ -427,6 +429,18 @@ struct Walk<'a> {
     /// function — the one scrutinee shape whose type sema-lite knows for
     /// certain (E0802's shape-degradation evidence).
     literal_lets: Vec<String>,
+    /// The subscript origin in lexical force (`[gram.attr.index]`, D61):
+    /// the file-wide `#![index(n)]` and the node markers, innermost wins —
+    /// the same replay the parser performs to stamp `BracketApply`, here
+    /// for W0317 (`.get` is origin-free; a literal fed to it inside a
+    /// 1-origin scope warns at the literal).
+    origin: u8,
+    /// Locals visibly bound to a `List[…]()` constructor in the current
+    /// function — the one receiver shape whose `.get` this walk KNOWS is
+    /// the ordinal accessor (W0317 fires only there; a user type's `get`
+    /// is its own business, and the compiler does not warn on it either —
+    /// observed at pin addcd7f).
+    list_locals: Vec<String>,
 }
 
 impl Walk<'_> {
@@ -598,6 +612,11 @@ impl Walk<'_> {
 
     fn unit(&mut self, unit: &crate::ast::Unit) {
         self.inner_attributes(&unit.inner_attrs);
+        // The file-wide origin (`#![index(n)]`, D61) — exactly the parser's
+        // reading: only an exactly well-formed marker decides anything.
+        if let Some(origin) = crate::parse::index_origin_of(&unit.inner_attrs) {
+            self.origin = origin;
+        }
         for item in &unit.items {
             self.item(item);
         }
@@ -675,6 +694,17 @@ impl Walk<'_> {
 
     fn item(&mut self, item: &Item) {
         self.attributes(&item.attrs, item.span);
+        // `#[index(n)]` scopes the annotated item's full extent, innermost
+        // wins; the outer origin is restored when the item's walk ends.
+        let outer_origin = self.origin;
+        if let Some(origin) = crate::parse::index_origin_of(&item.attrs) {
+            self.origin = origin;
+        }
+        self.item_inner(item);
+        self.origin = outer_origin;
+    }
+
+    fn item_inner(&mut self, item: &Item) {
         // W0313 — a plain-`pub` item with no `///` (s69): the export is a
         // promise, the doc comment is where it is written down. `pub(pkg)`
         // is package-internal and exempt (observed: `pkg_item_unused`'s
@@ -721,11 +751,16 @@ impl Walk<'_> {
             ItemKind::Impl(def) => {
                 for member in &def.members {
                     self.attributes(&member.attrs, member.span);
+                    let outer_origin = self.origin;
+                    if let Some(origin) = crate::parse::index_origin_of(&member.attrs) {
+                        self.origin = origin;
+                    }
                     if let ItemKind::Fn(decl) = &member.kind {
                         self.signature(decl, member.visibility.is_some());
                         self.idiom_signature(decl);
                         self.fn_body(decl);
                     }
+                    self.origin = outer_origin;
                 }
             }
             ItemKind::TypeAlias(alias) => {
@@ -925,6 +960,7 @@ impl Walk<'_> {
         let outer_assigns = std::mem::take(&mut self.assigns);
         let outer_writes = std::mem::take(&mut self.writes);
         let outer_literal_lets = std::mem::take(&mut self.literal_lets);
+        let outer_list_locals = std::mem::take(&mut self.list_locals);
         let outer_ret_row =
             std::mem::replace(&mut self.ret_row, crate::sema::declared_raise_tags(decl));
         self.block(body);
@@ -970,6 +1006,7 @@ impl Walk<'_> {
         }
         self.writes = outer_writes;
         self.literal_lets = outer_literal_lets;
+        self.list_locals = outer_list_locals;
 
         // W1102 — a closure captured an enclosing `var` that is reassigned
         // after the closure's creation. The reassignment site is the
@@ -1013,6 +1050,15 @@ impl Walk<'_> {
 
     fn stmt(&mut self, stmt: &Stmt, tail_position: bool) {
         self.attributes(&stmt.attrs, stmt.span);
+        let outer_origin = self.origin;
+        if let Some(origin) = crate::parse::index_origin_of(&stmt.attrs) {
+            self.origin = origin;
+        }
+        self.stmt_inner(stmt, tail_position);
+        self.origin = outer_origin;
+    }
+
+    fn stmt_inner(&mut self, stmt: &Stmt, tail_position: bool) {
         match &stmt.kind {
             StmtKind::Binding(binding) => self.binding(binding),
             StmtKind::Assign {
@@ -1078,6 +1124,15 @@ impl Walk<'_> {
             )
         {
             self.literal_lets.push(ident.name.clone());
+        }
+        // W0317's receiver evidence: a name bound directly to a `List[…]()`
+        // constructor is the one receiver whose `.get` the walk KNOWS counts
+        // from 0. A rebinding to anything else ends the story.
+        if let PatKind::Binding(ident) = &*binding.pattern.kind {
+            self.list_locals.retain(|name| name != &ident.name);
+            if is_list_constructor(&binding.value) {
+                self.list_locals.push(ident.name.clone());
+            }
         }
         self.declare_pattern(&binding.pattern, binding.kind == BindingKind::Var);
     }
@@ -1549,6 +1604,24 @@ impl Walk<'_> {
     }
 
     fn call(&mut self, _call: &Expr, callee: &Expr, args: &[Arg]) {
+        // W0317 — the D61 kindness lint (`[gram.expr.index.origin]`): `.get`
+        // is origin-free, so an int literal fed to it inside a 1-origin
+        // scope is usually a subscript habit carried over, off by one. Span:
+        // the literal (`[468,469]` on `lints/index_origin_get.lu`, observed
+        // at pin addcd7f); a non-literal index warns nothing, and only a
+        // receiver visibly bound to `List[…]()` fires — a user type's `get`
+        // does not warn on the compiled lanes either (probed).
+        if self.origin == 1
+            && let ExprKind::Path(path) = &*callee.kind
+            && let [head, member] = path.segments.as_slice()
+            && member.name == "get"
+            && self.list_locals.iter().any(|local| local == &head.name)
+            && let [arg] = args
+            && arg.mode.is_none()
+            && matches!(&*arg.expr.kind, ExprKind::Int(_))
+        {
+            self.warn("W0317", arg.expr.span);
+        }
         // E1102 — `channel[T](…)` with a visibly unsendable payload: a bare
         // region-interior container can never cross a channel.
         if let ExprKind::BracketApply {
@@ -1785,6 +1858,20 @@ fn interp_shaped_braces(text: &str) -> Vec<(usize, usize)> {
         i += 1;
     }
     out
+}
+
+/// Whether an initializer is visibly the `List` constructor — `List[int]()`
+/// (generic application) or bare `List()` — W0317's receiver evidence.
+fn is_list_constructor(expr: &Expr) -> bool {
+    let ExprKind::Call { callee, .. } = &*expr.kind else {
+        return false;
+    };
+    let mut base = callee;
+    if let ExprKind::BracketApply { base: b, .. } = &*base.kind {
+        base = b;
+    }
+    matches!(&*base.kind, ExprKind::Path(path)
+        if path.is_single() && path.segments[0].name == "List")
 }
 
 /// The head type name an expression in type position spells (`List` in
@@ -2701,5 +2788,88 @@ mod tests {
              }\n",
         );
         assert!(found.is_empty(), "the wsm01 shape is clean: {found:?}");
+    }
+
+    // ---- W0317: `.get(literal)` inside a 1-origin scope (D61, #167) -------
+
+    /// Every W0317 over one program, with its span's byte range.
+    fn w0317_spans(source: &str) -> Vec<(usize, usize)> {
+        let program = crate::sema::load_source("t.lu", source).expect("loads");
+        analyze(&program)
+            .warnings
+            .into_iter()
+            .filter(|w| w.code == "W0317")
+            .map(|w| (w.span[0] as usize, w.span[1] as usize))
+            .collect()
+    }
+
+    #[test]
+    fn a_literal_fed_to_get_inside_a_1_origin_scope_warns_at_the_literal() {
+        // `lints/index_origin_get.lu`'s shape: the literal warns ([468,469]
+        // there — the span is the literal), the variable index does not.
+        let source = "#![index(1)]\n\
+             fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   (mut xs).push(5)\n\
+             \x20   let a = xs.get(1) else { 0 - 1 }\n\
+             \x20   var j = 0\n\
+             \x20   let b = xs.get(j) else { 0 - 1 }\n\
+             \x20   if a == 0 - 1 && b == 5 { 0 } else { 1 }\n\
+             }\n";
+        let found = w0317_spans(source);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(&source[found[0].0..found[0].1], "1");
+        assert!(source[..found[0].0].ends_with("xs.get("));
+    }
+
+    #[test]
+    fn the_statement_marker_narrows_and_the_innermost_wins() {
+        // `#[index(0)]` on the statement suppresses exactly that statement's
+        // `.get` (observed at addcd7f: one warning, the unannotated line's).
+        let source = "#![index(1)]\n\
+             fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   #[index(0)]\n\
+             \x20   let a = xs.get(1) else { 0 - 1 }\n\
+             \x20   let c = xs.get(1) else { 0 - 1 }\n\
+             \x20   if a == c { 0 } else { 1 }\n\
+             }\n";
+        let found = w0317_spans(source);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(source[..found[0].0].ends_with("let c = xs.get("));
+    }
+
+    #[test]
+    fn the_lint_is_exactly_as_narrow_as_the_observed_surface() {
+        // No marker, no warning — the scope IS the trigger.
+        assert!(
+            w0317_spans(
+                "fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   let a = xs.get(1) else { 0 - 1 }\n\
+             \x20   a + 1\n\
+             }\n"
+            )
+            .is_empty()
+        );
+        // A user type's `get` is its own business — the compiled lanes do
+        // not warn on it either (probed at addcd7f).
+        assert!(
+            w0317_spans(
+                "#![index(1)]\n\
+             struct Wolf { n: int }\n\
+             impl Wolf {\n\
+             \x20   fn get(self, i: int) -> int {\n\
+             \x20       self.n + i\n\
+             \x20   }\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   let b = Wolf { n: 4 }\n\
+             \x20   let v = b.get(1)\n\
+             \x20   v - 5\n\
+             }\n"
+            )
+            .is_empty()
+        );
     }
 }

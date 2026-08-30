@@ -301,8 +301,11 @@ pub fn parse_source(source: &str) -> Result<Parsed, Diag> {
 /// literal `0` or `1`, appearing once across the node's attributes
 /// (`[gram.attr.index]`, D61). Anything else decides NOTHING here — a faulty
 /// marker takes no effect (one mistake is one diagnostic, the resolve-rung
-/// E0813, never a scope of shifted subscripts).
-fn index_origin_of(attrs: &[Attribute]) -> Option<u8> {
+/// E0813, never a scope of shifted subscripts). `pub(crate)` because the
+/// lint walk replays the same lexical scoping for W0317 (`.get` is
+/// origin-free, so a literal fed to it inside a 1-origin scope warns) —
+/// one reading of the marker, two consumers.
+pub(crate) fn index_origin_of(attrs: &[Attribute]) -> Option<u8> {
     let mut found: Option<u8> = None;
     for attribute in attrs {
         for attr in &attribute.attrs {
