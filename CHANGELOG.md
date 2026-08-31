@@ -1,5 +1,69 @@
 # Changelog
 
+## 0.1.19 — 2026-08-31
+
+THE SHAPE BINDS (is30). Struct patterns land whole-pipe from the
+`[gram.pat.struct]` text alone (s129, wolf-lang#179), the destructure
+tier they generalize learns the element-move discipline it owed since
+s128, and the s106 net byte tier resolves at last (F-0102). Released
+against pin `83f83bb` — wolf-lang's s129 merge, two bumps past
+0.1.18's `addcd7f` — and the pin question 0.1.18 left open is closed
+twice over: the first bump (v0.2.0, `c88ab64`) retired the
+FILED_REGISTRY_HOLES waiver for wolf-lang#177 the day r03's
+spec-extract fix re-gained `gram.lex.ident` (403 anchors, zero export
+notices), and the second bump took the s129 merge itself the moment it
+reached origin, so the full witness set rides the census (404 anchors,
+`+gram.pat.struct`). Census at this release: 455 files / 422 entries /
+33 members; 329 reach run, 306 match, 15 dynamic counterparts, 41
+conservatism, 59 out of scope, and the one standing mismatch is still
+DIV-2026-019, filed. Every pre-existing file is verdict-identical
+across the span except two deliberate movers named below.
+
+- **Destructures move element-wise (`[mem.tier0.move.2]`, the s128
+  discipline).** `let (x, _) = p` moves `p.0` ONLY: each element is
+  its own place, a wildcard touches nothing, copy-shaped leaves still
+  copy, and the untouched elements stay readable — where 0.1.18 moved
+  the whole tuple and trapped the sibling read. The corpus twins pin
+  both halves (`destructure_partial_live` runs to "1 2";
+  `destructure_partial_move` traps use-after-move at the element that
+  DID move, E1001's counterpart), and the differ's standing
+  "element-story gap" asymmetry closes with them.
+- **Struct patterns (`[gram.pat.struct]`, s129/#179).**
+  `Point { x, y: p, .. }` in every binder position — `let`/`var`, D63
+  comma groups, `for` headers — with shorthand binding the field's own
+  name, explicit sub-patterns nesting through structs and tuples both
+  ways, fields in any order, and `..` ignoring the rest on purpose.
+  Named fields consume their own `Proj::Field` sub-place per the tuple
+  precedent: omission, `..` and wildcard fields stay live, and the
+  fault twin traps at the field that moved with the counterparty's
+  span. The refusal classes decline by the code that owns them
+  upstream — unknown field (E0403), missing-without-`..` / duplicate /
+  empty (E0814) — never guessed past. Match ARMS defer symmetric with
+  the compiler's own c06 product-domain refusal: the arm witness
+  answers `unsupported` on both machines, and the two advance together
+  the day the product match domain lands. The ten-file s129 witness
+  set compares clean across the machines: six byte-identical
+  agreements (the binder sweep and partial-live among them), one
+  dynamic counterpart, two refusals-by-name, one
+  unsupported-both-machines — zero divergences.
+- **The #184 twin joins the agreement class.** lupin ran the
+  lent-view byte slice all along; with fd42622's compiler fix in the
+  pin, `byte_view_slice_lent` answers the same bytes on both machines
+  (`4 119 4 108 2 0`) and the whole slice quartet agrees, fault twin
+  included.
+- **The net byte tier resolves (wolf-interp#52, wolf-std F-0102).**
+  `net_read_bytes`/`net_write_bytes` land as the str calls' own shape
+  with `List[int]` marshalling: one receive of up to `n` raw bytes
+  with NO utf8 row (a lone `0x80` is data), whole-or-raise writes
+  behind the WHOLE pre-write check (an element outside 0..=255 is the
+  `invalid` row and nothing reaches the wire — §14's fs vocabulary,
+  which wolf-std's facade adopts verbatim), rows declared for #47's
+  arm discrimination. The two byte-tier corpus witnesses
+  (`net/byte_roundtrip`, `net/line_reader_bytes`) leave the
+  conservatism ledger for the match column — the release's two
+  deliberate verdict movers — and wolf-std's compiler-lanes-only rows
+  can go three-lane at its next pin.
+
 ## 0.1.18 — 2026-08-30
 
 THE FIRST ARM YIELDS (is29). The two thrice-measured lupin-side
