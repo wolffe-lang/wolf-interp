@@ -3212,6 +3212,18 @@ impl Machine {
                 return self.bind_pattern(&binding.pattern, value);
             }
         }
+        // The s128 element-move discipline (#173): an un-annotated product
+        // pattern over a live place binds element-wise — each element is its
+        // own place, so the pattern consumes exactly what it binds and a
+        // wildcard touches nothing (`[mem.tier0.move.2]`). An annotated
+        // binding keeps the value path below, so the annotation logic stays
+        // the single owner of coercion.
+        if binding.ty.is_none()
+            && matches!(&*binding.pattern.kind, PatKind::Tuple(_))
+            && let Some(path) = self.live_place(&binding.value)?
+        {
+            return self.bind_pattern_from_place(&binding.pattern, &path, binding.value.span);
+        }
         // D54.1 `[type.numlit.adopt]`: a float-typed binding is a float
         // expectation. Propagate it into the initializer so an integer-literal
         // term adopts float BEFORE its operators run — `let x: f64 = 1 / 2` is
@@ -3399,16 +3411,79 @@ impl Machine {
     /// Evaluates an initializer: a bare place expression *moves*.
     fn eval_for_init(&mut self, expr: &Expr) -> EResult<Value> {
         match self.live_place(expr)? {
-            Some(path) => {
-                let value = self.read_path(&path, expr.span)?;
-                if is_copy(&value) {
-                    self.fire(Rule::ValueSemantics, expr.span, "copy (Copy-shaped value)");
-                    Ok(value)
-                } else {
-                    self.move_path(&path, expr.span)
-                }
-            }
+            Some(path) => self.consume_place(&path, expr.span),
             None => self.eval(expr),
+        }
+    }
+
+    /// Consumes one place as an initializer does: a `Copy`-shaped value is
+    /// copied, anything else moves out (`[mem.tier0.move.1]`/`.3`).
+    fn consume_place(&mut self, path: &Path, span: Span) -> EResult<Value> {
+        let value = self.read_path(path, span)?;
+        if is_copy(&value) {
+            self.fire(Rule::ValueSemantics, span, "copy (Copy-shaped value)");
+            Ok(value)
+        } else {
+            self.move_path(path, span)
+        }
+    }
+
+    /// Binds a destructuring pattern element-wise FROM ITS PLACE.
+    ///
+    /// `[mem.tier0.move.2]`'s partial-move discipline, the s128 landing
+    /// (#173): each element of a product is its own place, so `let (x, _) =
+    /// p` consumes `p.0` ONLY — the wildcard touches nothing and `p.1` stays
+    /// readable after the destructure. The corpus pins both halves
+    /// (`memory/destructure_partial_live.lu` reads the untouched element;
+    /// `memory/destructure_partial_move.lu` is the fault twin, E1001's
+    /// dynamic counterpart at the element that DID move).
+    ///
+    /// Only the product spine is walked structurally; every other pattern
+    /// shape consumes its whole sub-place and binds by value, exactly as the
+    /// initializer path always did.
+    fn bind_pattern_from_place(
+        &mut self,
+        pattern: &Pattern,
+        path: &Path,
+        span: Span,
+    ) -> EResult<()> {
+        match &*pattern.kind {
+            // A wildcard consumes nothing: the element it discards is not
+            // read, not claimed, and not moved.
+            PatKind::Wildcard => Ok(()),
+            PatKind::Tuple(items) => {
+                let arity = match self.slot_mut(path) {
+                    Some(slot) => match &slot.value {
+                        Value::Tuple(slots) => Some(slots.len()),
+                        _ => None,
+                    },
+                    None => None,
+                };
+                let Some(arity) = arity else {
+                    return unsupported(
+                        "a tuple pattern needs a tuple place; shape mismatches are the type \
+                         checker's"
+                            .to_owned(),
+                    );
+                };
+                if arity != items.len() {
+                    return unsupported(
+                        "tuple pattern arity does not match the value; the type checker owns this"
+                            .to_owned(),
+                    );
+                }
+                for (i, sub) in items.iter().enumerate() {
+                    let elem = path.clone().project(Proj::Index(i as i128));
+                    self.bind_pattern_from_place(sub, &elem, span)?;
+                }
+                Ok(())
+            }
+            // The leaf (a binding, an `@`, or a refutable shape the value
+            // path refuses): consume this sub-place whole and bind by value.
+            _ => {
+                let value = self.consume_place(path, span)?;
+                self.bind_pattern(pattern, value)
+            }
         }
     }
 

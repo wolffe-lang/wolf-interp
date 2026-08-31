@@ -2498,3 +2498,73 @@ fn a_grouped_binder_destructures_like_a_single_one() {
                   }\n";
     assert_eq!(outcome(source), Outcome::Exit(0));
 }
+
+// -- s128: element-wise destructure moves (`[mem.tier0.move.2]`) -------------
+
+#[test]
+fn a_destructure_moves_only_the_elements_it_binds() {
+    // The s128 discipline (#173): `let (x, _) = p` moves `p.0` ONLY — the
+    // wildcard touches nothing, and `p.1` stays readable after the
+    // destructure (each element its own place). The corpus pins this as
+    // `memory/destructure_partial_live.lu`.
+    let source = "struct Inner { n: int }\n\
+                  fn main() -> !int {\n\
+                  \x20   var p = (Inner { n: 1 }, Inner { n: 2 })\n\
+                  \x20   let (x, _) = p\n\
+                  \x20   let b = p.1.n\n\
+                  \x20   print(\"{x.n} {b}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "1 2\n");
+}
+
+#[test]
+fn reading_the_element_a_destructure_moved_traps_use_after_move() {
+    // The fault twin (`memory/destructure_partial_move.lu`): the destructure
+    // moved `p.0`, so `p.0.n` afterwards is use-after-move — E1001's dynamic
+    // meaning per `[conf.trap.map]` — while the sibling `p.1.n` read on the
+    // line before stays legal.
+    let trap = trap_of(
+        "struct Inner { n: int }\n\
+         fn main() -> !int {\n\
+         \x20   var p = (Inner { n: 1 }, Inner { n: 2 })\n\
+         \x20   let (x, _) = p\n\
+         \x20   let b = p.1.n\n\
+         \x20   let c = p.0.n\n\
+         \x20   x.n + b + c\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::UseAfterMove);
+    assert_eq!(trap.rule.anchor(), "mem.tier0.move.2");
+    // The secondary span names the element that moved, not the whole tuple.
+    let (_, note) = trap.secondary.expect("the move site is reported");
+    assert!(note.contains("p[0]"), "{note}");
+}
+
+#[test]
+fn copy_shaped_elements_leave_the_source_whole() {
+    // `[mem.tier0.move.3]`: copy-shaped elements copy, so destructuring a
+    // tuple of ints leaves every source element live.
+    let source = "fn main() -> !int {\n\
+                  \x20   let t = (5, 6)\n\
+                  \x20   let (m, n) = t\n\
+                  \x20   print(\"{m} {n} {t.0} {t.1}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "5 6 5 6\n");
+}
+
+#[test]
+fn a_nested_destructure_moves_leaf_wise() {
+    // The product spine recurses: `let ((a, _), _) = q` consumes `q.0.0`
+    // only — both untouched leaves stay live. (`(q.0).1` sidesteps
+    // `[gram.lex.intdot]`'s float reading of `0.1`.)
+    let source = "struct Inner { n: int }\n\
+                  fn main() -> !int {\n\
+                  \x20   var q = ((Inner { n: 3 }, Inner { n: 4 }), Inner { n: 5 })\n\
+                  \x20   let ((a, _), _) = q\n\
+                  \x20   print(\"{a.n} {(q.0).1.n} {q.1.n}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "3 4 5\n");
+}
