@@ -160,8 +160,10 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // 430 -> 445 at the c88ab64 pin (is30): the s127/s128/r03 wave to
     // v0.2.0 — the D63 let_group quartet, the s128 destructure trio, the
     // #171 slice quartet, and the D62 concat quartet.
+    // 445 -> 455 at the 83f83bb pin (is30's second bump, the s129 merge):
+    // the six [gram.pat.struct] witnesses and #184's slice quartet.
     // Moved with the pin, per the export.rs rule.
-    assert!(stdout.contains("445 file(s)"), "{stdout}");
+    assert!(stdout.contains("455 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -170,7 +172,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 445);
+    assert_eq!(value["total"], 455);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

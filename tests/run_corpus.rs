@@ -1023,6 +1023,28 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // landed them leave the conservatism ledger for the match column.
     ("net/byte_roundtrip.lu", "exit(0)"),
     ("net/line_reader_bytes.lu", "exit(0)"),
+    // The 83f83bb pin (is30's second bump, the s129 merge): the full
+    // struct-pattern and #184 witness set joins the census, and every
+    // run-reacher answers its pin at first sight — implemented in this
+    // tree one commit span earlier, off the [gram.pat.struct] text alone.
+    // `struct_destructure_partial_move` traps use-after-move at the field
+    // that DID move (E1001's counterpart, the census's 15th); the arm
+    // witness and the two refusal pins are not here because they never
+    // reach run on this machine (the symmetric c06 deferral and the
+    // E0403/E0814 refusals-by-name — out-of-scope, deliberately).
+    // `byte_view_slice_lent` is the #184 twin: lupin ran the lent-view
+    // slice all along, and with fd42622's compiler fix in the pin the two
+    // machines answer the same bytes.
+    ("memory/struct_pattern_binder.lu", "exit(0)"),
+    ("memory/struct_destructure_partial_live.lu", "exit(0)"),
+    (
+        "memory/struct_destructure_partial_move.lu",
+        "trap(use-after-move)",
+    ),
+    ("memory/list_slice_owned_call.lu", "exit(0)"),
+    ("memory/list_slice_inline_owned.lu", "exit(0)"),
+    ("strings/byte_view_slice_lent.lu", "exit(0)"),
+    ("faults/byte_view_slice_reversed.lu", "trap(bounds)"),
 ];
 
 #[test]

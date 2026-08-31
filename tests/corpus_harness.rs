@@ -489,14 +489,29 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             and the [type.str.concat] family land, and r03's
     //             scanner fix re-gains [gram.lex.ident] — 403 anchors,
     //             the wolf-lang#177 FILED_REGISTRY_HOLES waiver DEAD.)
+    //   83f83bb → 455 files (is30's second bump, taken the moment the
+    //             orchestrator pushed trunk: the s129 merge itself, so the
+    //             full witness set rides the census. The corpus grows 10,
+    //             all entries — the six [gram.pat.struct] witnesses this
+    //             sprint implemented against (binder sweep, the
+    //             partial-live/partial-move element twins, the E0403/E0814
+    //             refusal pins, the match-arm deferral pin at phase mem)
+    //             and #184's slice quartet (the lent-view witness lupin
+    //             ran all along, the two owned-isolation rows, the
+    //             reversed-range fault twin). Seven new run-reachers, all
+    //             MATCH at first sight; partial_move is the 15th dynamic
+    //             counterpart; the arm pin and the two refusal pins are
+    //             out-of-scope by the deferral/refusal-by-name design.
+    //             The spec grows [gram.pat.struct] — 404 anchors, nothing
+    //             dropped.)
     let report = report();
     assert_eq!(
         report.total(),
-        445,
+        455,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 412);
+    assert_eq!(report.entries(), 422);
     assert_eq!(report.members(), 33);
 }
 

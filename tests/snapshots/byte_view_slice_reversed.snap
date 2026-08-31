@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: byte_view_slice_reversed.lu
+trap:    bounds
+clause:  [mem.ub.defined]
+rule:    Bounds
+message: range 3..1 is outside a 4-element List
+at:      12:5 `b[3..1]`
+because: (single-span fault)
