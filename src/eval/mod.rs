@@ -3219,7 +3219,10 @@ impl Machine {
         // binding keeps the value path below, so the annotation logic stays
         // the single owner of coercion.
         if binding.ty.is_none()
-            && matches!(&*binding.pattern.kind, PatKind::Tuple(_))
+            && matches!(
+                &*binding.pattern.kind,
+                PatKind::Tuple(_) | PatKind::Struct { .. }
+            )
             && let Some(path) = self.live_place(&binding.value)?
         {
             return self.bind_pattern_from_place(&binding.pattern, &path, binding.value.span);
@@ -3478,6 +3481,43 @@ impl Machine {
                 }
                 Ok(())
             }
+            PatKind::Struct {
+                path: struct_path,
+                fields,
+                rest,
+            } => {
+                // `[gram.pat.struct]` over a place: named fields consume
+                // their own sub-place (`Proj::Field(name)`, the s128 tuple
+                // precedent generalized), omission and `..` stay live.
+                let shape = self.slot_mut(path).and_then(|slot| match &slot.value {
+                    Value::Struct { name, fields, .. } => Some((
+                        name.clone(),
+                        fields.iter().map(|(f, _)| f.clone()).collect::<Vec<_>>(),
+                    )),
+                    _ => None,
+                });
+                let Some((value_name, field_names)) = shape else {
+                    return unsupported(
+                        "a struct pattern needs a struct place; shape mismatches are the type \
+                         checker's"
+                            .to_owned(),
+                    );
+                };
+                check_struct_pattern(struct_path, fields, *rest, &value_name, &field_names)?;
+                for field in fields {
+                    let sub_place = path.clone().project(Proj::Field(field.name.name.clone()));
+                    match &field.pattern {
+                        Some(sub) => self.bind_pattern_from_place(sub, &sub_place, span)?,
+                        // Shorthand: the field binds under its own name —
+                        // a consuming leaf.
+                        None => {
+                            let value = self.consume_place(&sub_place, span)?;
+                            self.declare(&field.name.name, Slot::live(value));
+                        }
+                    }
+                }
+                Ok(())
+            }
             // The leaf (a binding, an `@`, or a refutable shape the value
             // path refuses): consume this sub-place whole and bind by value.
             _ => {
@@ -3509,6 +3549,37 @@ impl Machine {
                 }
                 for (sub, slot) in items.iter().zip(slots) {
                     self.bind_pattern(sub, slot.value)?;
+                }
+                Ok(())
+            }
+            PatKind::Struct { path, fields, rest } => {
+                // `[gram.pat.struct]` over a VALUE (a call result, an
+                // element already bound out of its place): the struct comes
+                // apart by field name over `Value::Struct`, the same field-
+                // set rules as the place path.
+                let Value::Struct {
+                    name,
+                    fields: mut slots,
+                    ..
+                } = value
+                else {
+                    return unsupported(format!(
+                        "a struct pattern was given {}; shape mismatches are the type checker's",
+                        value.kind()
+                    ));
+                };
+                let field_names: Vec<String> = slots.iter().map(|(f, _)| f.clone()).collect();
+                check_struct_pattern(path, fields, *rest, &name, &field_names)?;
+                for field in fields {
+                    let index = slots
+                        .iter()
+                        .position(|(f, _)| *f == field.name.name)
+                        .expect("the field set was checked");
+                    let value = std::mem::replace(&mut slots[index].1.value, Value::Unit);
+                    match &field.pattern {
+                        Some(sub) => self.bind_pattern(sub, value)?,
+                        None => self.declare(&field.name.name, Slot::live(value)),
+                    }
                 }
                 Ok(())
             }
@@ -5345,6 +5416,22 @@ impl Machine {
                 }
                 Ok(true)
             }
+            PatKind::Struct { .. } => {
+                // s129 (#179): struct patterns in `match` ARMS are sema-
+                // complete upstream, and then BOTH of the counterparty's
+                // lowerings refuse product patterns in arm position by name —
+                // the c06 family. This machine keeps the deferral SYMMETRIC:
+                // the arm witness (`grammar/struct_pattern_match_arm.lu`,
+                // pinned at `phase: mem`) answers `unsupported` on both
+                // machines, and the day the product match domain lands the
+                // two advance together. Binder positions bind today.
+                unsupported(
+                    "struct patterns in `match` arms are deferred with the product match \
+                     domain (s129/#179, the counterparty's c06 refusal family) — destructure \
+                     in a binder, or match on the discriminating field"
+                        .to_owned(),
+                )
+            }
             PatKind::At { name, pattern } => {
                 if self.match_pattern(pattern, value)? {
                     self.declare(&name.name, Slot::live(value.clone()));
@@ -7010,6 +7097,74 @@ fn slice_len_of(target: &Value) -> Option<i128> {
         Value::Str(s) => Some(s.len() as i128),
         _ => target.seq_slots().map(|items| items.len() as i128),
     }
+}
+
+/// The struct-pattern rules `[gram.pat.struct]` states, enforced against the
+/// value's OWN shape (this machine's sema-lite depth): the path must name the
+/// value's struct, and the field set must match — no unknowns, no
+/// duplicates, at least one field, every field named unless `..` says
+/// otherwise. Upstream these are the resolve tier's E0403 (unknown) and
+/// E0814 (missing/duplicate/empty); a tree-walk has neither code, so each
+/// class is refused by the name of the code that owns it, never guessed
+/// past.
+fn check_struct_pattern(
+    path: &crate::ast::Path,
+    fields: &[crate::ast::FieldPat],
+    rest: bool,
+    value_name: &str,
+    field_names: &[String],
+) -> EResult<()> {
+    let want = path
+        .segments
+        .last()
+        .map(|s| s.name.as_str())
+        .unwrap_or_default();
+    // A qualified value name (`Shape.Point`) answers to its last segment.
+    let value_last = value_name.rsplit('.').next().unwrap_or(value_name);
+    if want != value_last {
+        return unsupported(format!(
+            "a `{want}` pattern was given a `{value_name}` value; shape mismatches are the \
+             type checker's"
+        ));
+    }
+    if fields.is_empty() {
+        return unsupported(format!(
+            "a struct pattern names at least one field — ignoring every field of \
+             `{value_name}` is spelled `_` ([gram.pat.struct]; the counterparty's E0814)"
+        ));
+    }
+    for (index, field) in fields.iter().enumerate() {
+        let name = &field.name.name;
+        if fields[..index].iter().any(|f| f.name.name == *name) {
+            return unsupported(format!(
+                "`{name}` appears twice in this struct pattern — each field at most once \
+                 ([gram.pat.struct]; the counterparty's E0814)"
+            ));
+        }
+        if !field_names.iter().any(|f| f == name) {
+            return unsupported(format!(
+                "`{name}` is not a field of `{value_name}` — an unknown field in a struct \
+                 pattern is the resolve tier's refusal ([gram.pat.struct]; the \
+                 counterparty's E0403)"
+            ));
+        }
+    }
+    if !rest {
+        let missing: Vec<&str> = field_names
+            .iter()
+            .map(String::as_str)
+            .filter(|f| !fields.iter().any(|fp| fp.name.name == *f))
+            .collect();
+        if !missing.is_empty() {
+            return unsupported(format!(
+                "without `..` a struct pattern names every field of `{value_name}` — missing \
+                 `{}`; ignore the rest on purpose with `..` ([gram.pat.struct]; the \
+                 counterparty's E0814)",
+                missing.join("`, `")
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn prefix(path: &Path, depth: usize) -> Path {

@@ -433,6 +433,17 @@ pub enum PatKind {
         fields: Vec<Pattern>,
     },
     Tuple(Vec<Pattern>),
+    /// `path '{' field_pat (',' field_pat)* ','? '..'? '}'` — a struct
+    /// pattern (`[gram.pat.struct]`, s129/#179): takes a struct apart by
+    /// field name. `rest` is the trailing `..`, which ignores every field
+    /// the pattern does not name; without it the pattern must name every
+    /// field of the struct (the same loud default a struct literal lives
+    /// under).
+    Struct {
+        path: Path,
+        fields: Vec<FieldPat>,
+        rest: bool,
+    },
     /// `IDENT '@' closed_pattern`
     At {
         name: Ident,
@@ -441,6 +452,18 @@ pub enum PatKind {
     /// `closed_pattern ('|' closed_pattern)*` — never nested inside an
     /// or-pattern, which is what "closed" buys (`[gram.pat]`).
     Or(Vec<Pattern>),
+}
+
+/// `field_pat ::= IDENT (':' pattern)?` (`[gram.pat.struct]`).
+///
+/// The shorthand (`pattern: None`) binds the field's value under the field's
+/// own name — `x` is `x: x`; `IDENT ':' pattern` matches the field against
+/// any pattern.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldPat {
+    pub name: Ident,
+    pub pattern: Option<Pattern>,
+    pub span: Span,
 }
 
 // ---------------------------------------------------------------------------

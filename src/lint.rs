@@ -491,6 +491,20 @@ impl Walk<'_> {
                     self.declare_pattern(field, is_var);
                 }
             }
+            PatKind::Struct { fields, .. } => {
+                // `[gram.pat.struct]`: shorthand declares the field's own
+                // name; an explicit sub-pattern declares what it binds.
+                for field in fields {
+                    match &field.pattern {
+                        Some(sub) => self.declare_pattern(sub, is_var),
+                        None => {
+                            if let Some(scope) = self.scopes.last_mut() {
+                                scope.push(Local::plain(field.name.name.clone(), is_var));
+                            }
+                        }
+                    }
+                }
+            }
             PatKind::At { name, pattern } => {
                 if let Some(scope) = self.scopes.last_mut() {
                     scope.push(Local::plain(name.name.clone(), is_var));
@@ -1945,6 +1959,16 @@ fn collect_pattern_names(pattern: &Pattern, into: &mut BTreeSet<String>) {
         PatKind::Variant { fields, .. } | PatKind::Tuple(fields) | PatKind::Or(fields) => {
             for field in fields {
                 collect_pattern_names(field, into);
+            }
+        }
+        PatKind::Struct { fields, .. } => {
+            for field in fields {
+                match &field.pattern {
+                    Some(sub) => collect_pattern_names(sub, into),
+                    None => {
+                        into.insert(field.name.name.clone());
+                    }
+                }
             }
         }
         PatKind::At { name, pattern } => {

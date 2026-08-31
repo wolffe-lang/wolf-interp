@@ -1027,6 +1027,16 @@ fn collect_bound_names(pattern: &Pattern, out: &mut Vec<String>) {
                 collect_bound_names(field, out);
             }
         }
+        PatKind::Struct { fields, .. } => {
+            // `[gram.pat.struct]`: shorthand binds the field's own name;
+            // an explicit sub-pattern binds whatever it binds.
+            for field in fields {
+                match &field.pattern {
+                    Some(sub) => collect_bound_names(sub, out),
+                    None => out.push(field.name.name.clone()),
+                }
+            }
+        }
         PatKind::Or(alternatives) => {
             for alternative in alternatives {
                 collect_bound_names(alternative, out);

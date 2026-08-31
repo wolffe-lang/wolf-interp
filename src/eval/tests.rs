@@ -2568,3 +2568,234 @@ fn a_nested_destructure_moves_leaf_wise() {
                   }\n";
     assert_eq!(stdout(source), "3 4 5\n");
 }
+
+// -- s129: struct patterns (`[gram.pat.struct]`, #179) -----------------------
+
+#[test]
+fn a_struct_pattern_binds_shorthand_renamed_reordered_and_rest() {
+    // `[gram.pat.struct]`: shorthand binds the field's own name (`x` is
+    // `x: x`), `IDENT ':' pattern` renames, fields come in any order, and
+    // a trailing `..` ignores the rest on purpose.
+    let source = "struct Point { x: int, y: int }\n\
+                  fn main() -> !int {\n\
+                  \x20   let p = Point { x: 3, y: 4 }\n\
+                  \x20   let Point { x, y } = p\n\
+                  \x20   let q = Point { x: 9, y: 7 }\n\
+                  \x20   let Point { y: seven, x: nine } = q\n\
+                  \x20   let r = Point { x: 1, y: 2 }\n\
+                  \x20   let Point { x: only, .. } = r\n\
+                  \x20   print(\"{x} {y} {nine} {seven} {only}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "3 4 9 7 1\n");
+}
+
+#[test]
+fn a_struct_destructure_moves_field_wise_and_omission_stays_live() {
+    // The s128 element discipline over NAMED fields: `let Holder { a, .. }
+    // = h` moves `h.a` ONLY — `h.b` stays readable (each field its own
+    // place, `Proj::Field(name)`). The corpus pins this as
+    // `memory/struct_destructure_partial_live.lu`.
+    let source = "struct Inner { n: int }\n\
+                  struct Holder { a: Inner, b: Inner }\n\
+                  fn main() -> !int {\n\
+                  \x20   var h = Holder { a: Inner { n: 1 }, b: Inner { n: 2 } }\n\
+                  \x20   let Holder { a, .. } = h\n\
+                  \x20   let k = h.b.n\n\
+                  \x20   print(\"{a.n} {k}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "1 2\n");
+}
+
+#[test]
+fn reading_the_field_a_struct_pattern_moved_traps_use_after_move() {
+    // The fault twin (`memory/struct_destructure_partial_move.lu`): the
+    // pattern moved `h.a`, so `h.a.n` afterwards is use-after-move —
+    // E1001's dynamic meaning — while the sibling `h.b.n` read stays legal.
+    let trap = trap_of(
+        "struct Inner { n: int }\n\
+         struct Holder { a: Inner, b: Inner }\n\
+         fn main() -> !int {\n\
+         \x20   var h = Holder { a: Inner { n: 1 }, b: Inner { n: 2 } }\n\
+         \x20   let Holder { a, .. } = h\n\
+         \x20   let ok = h.b.n\n\
+         \x20   let bad = h.a.n\n\
+         \x20   a.n + ok + bad\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::UseAfterMove);
+    assert_eq!(trap.rule.anchor(), "mem.tier0.move.2");
+    let (_, note) = trap.secondary.expect("the move site is reported");
+    assert!(note.contains("h.a"), "{note}");
+}
+
+#[test]
+fn copy_shaped_fields_leave_the_source_struct_whole() {
+    // Field-granular value semantics: `int` fields copy, so the source
+    // struct stays fully live after the destructure.
+    let source = "struct Point { x: int, y: int }\n\
+                  fn main() -> !int {\n\
+                  \x20   let p = Point { x: 5, y: 6 }\n\
+                  \x20   let Point { x, y } = p\n\
+                  \x20   print(\"{x} {y} {p.x} {p.y}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "5 6 5 6\n");
+}
+
+#[test]
+fn a_wildcard_field_touches_nothing() {
+    // `y: _` names the field but consumes nothing — the wildcard rule of
+    // the product spine, per field.
+    let source = "struct Inner { n: int }\n\
+                  struct Pair { a: Inner, b: Inner }\n\
+                  fn main() -> !int {\n\
+                  \x20   var p = Pair { a: Inner { n: 7 }, b: Inner { n: 8 } }\n\
+                  \x20   let Pair { a, b: _ } = p\n\
+                  \x20   print(\"{a.n} {p.b.n}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "7 8\n");
+}
+
+#[test]
+fn struct_patterns_nest_through_tuples_and_structs_both_ways() {
+    // The product spine recurses in both directions: a struct field holding
+    // a tuple, a tuple element holding a struct ([gram.pat.struct] nesting;
+    // the binder witness's own shapes).
+    let source = "struct Point { x: int, y: int }\n\
+                  struct Seg { a: Point, b: Point }\n\
+                  fn mk() -> (Point, int) { (Point { x: 5, y: 6 }, 9) }\n\
+                  fn main() -> !int {\n\
+                  \x20   let (Point { x: px, y: py }, n) = mk()\n\
+                  \x20   let s = Seg { a: Point { x: 11, y: 12 }, b: Point { x: 13, y: 14 } }\n\
+                  \x20   let Seg { a: Point { x: ax, .. }, .. } = s\n\
+                  \x20   print(\"{px + py + n} {ax} {s.b.y}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "20 11 14\n");
+}
+
+#[test]
+fn a_grouped_binder_carries_a_struct_pattern_like_a_single_one() {
+    // D63 comma groups admit struct binders — each binder destructures
+    // like a single binding, left to right.
+    let source = "struct Point { x: int, y: int }\n\
+                  fn main() -> !int {\n\
+                  \x20   let p = Point { x: 4, y: 5 }\n\
+                  \x20   let base = 10, Point { x, .. } = p, tail = base + x\n\
+                  \x20   print(\"{tail}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "14\n");
+}
+
+#[test]
+fn an_unknown_field_in_a_struct_pattern_is_refused_by_the_counterpartys_name() {
+    // `[gram.pat.struct]`: unknown fields are the resolve tier's E0403.
+    // This machine has no resolve tier for it, so the refusal names the
+    // code — never a guess, never a silent skip.
+    let Outcome::Unsupported(reason) = outcome(
+        "struct Point { x: int, y: int }\n\
+         fn main() -> !int {\n\
+         \x20   let p = Point { x: 1, y: 2 }\n\
+         \x20   let Point { x, z, .. } = p\n\
+         \x20   x\n\
+         }\n",
+    ) else {
+        panic!("an unknown field must decline");
+    };
+    assert!(reason.contains("E0403"), "{reason}");
+    assert!(reason.contains("`z`"), "{reason}");
+}
+
+#[test]
+fn a_struct_pattern_without_rest_names_every_field_or_is_refused() {
+    // The loud default: WITHOUT `..` the pattern names every field — the
+    // same rule a struct literal lives under. Upstream E0814.
+    let Outcome::Unsupported(reason) = outcome(
+        "struct Point { x: int, y: int }\n\
+         fn main() -> !int {\n\
+         \x20   let p = Point { x: 1, y: 2 }\n\
+         \x20   let Point { x } = p\n\
+         \x20   x\n\
+         }\n",
+    ) else {
+        panic!("a missing field without `..` must decline");
+    };
+    assert!(reason.contains("E0814"), "{reason}");
+    assert!(reason.contains("`y`"), "{reason}");
+}
+
+#[test]
+fn a_duplicate_field_in_a_struct_pattern_is_refused() {
+    // Each field at most once ([gram.pat.struct]; upstream E0814).
+    let Outcome::Unsupported(reason) = outcome(
+        "struct Point { x: int, y: int }\n\
+         fn main() -> !int {\n\
+         \x20   let p = Point { x: 1, y: 2 }\n\
+         \x20   let Point { x, x, .. } = p\n\
+         \x20   x\n\
+         }\n",
+    ) else {
+        panic!("a duplicate field must decline");
+    };
+    assert!(reason.contains("E0814"), "{reason}");
+    assert!(reason.contains("twice"), "{reason}");
+}
+
+#[test]
+fn an_empty_struct_pattern_is_refused_toward_the_wildcard() {
+    // A pattern that would ignore every field is spelled `_` — the
+    // production requires at least one field_pat (upstream E0814).
+    let Outcome::Unsupported(reason) = outcome(
+        "struct Point { x: int, y: int }\n\
+         fn main() -> !int {\n\
+         \x20   let p = Point { x: 1, y: 2 }\n\
+         \x20   let Point { .. } = p\n\
+         \x20   0\n\
+         }\n",
+    ) else {
+        panic!("an empty struct pattern must decline");
+    };
+    assert!(reason.contains("E0814"), "{reason}");
+    assert!(reason.contains("`_`"), "{reason}");
+}
+
+#[test]
+fn a_struct_pattern_in_a_match_arm_defers_with_the_product_domain() {
+    // s129 (#179): the counterparty's BOTH lowerings refuse product
+    // patterns in arm position by name (the c06 family), and this machine
+    // keeps the deferral symmetric — the arm witness answers `unsupported`
+    // on both machines until the product match domain lands.
+    let Outcome::Unsupported(reason) = outcome(
+        "struct Flag { on: bool, n: int }\n\
+         fn main() -> !int {\n\
+         \x20   let f = Flag { on: true, n: 3 }\n\
+         \x20   let r = match f {\n\
+         \x20       Flag { on: true, n } => n,\n\
+         \x20       Flag { on: false, .. } => 0,\n\
+         \x20   }\n\
+         \x20   r - 3\n\
+         }\n",
+    ) else {
+        panic!("a struct pattern in a match arm must defer");
+    };
+    assert!(reason.contains("product match domain"), "{reason}");
+    assert!(reason.contains("s129"), "{reason}");
+}
+
+#[test]
+fn a_struct_pattern_binds_from_a_value_by_field_name() {
+    // The value path (a call result — no place to walk): the struct comes
+    // apart by field name over `Value::Struct`.
+    let source = "struct Point { x: int, y: int }\n\
+                  fn mk() -> Point { Point { x: 8, y: 9 } }\n\
+                  fn main() -> !int {\n\
+                  \x20   let Point { y, x } = mk()\n\
+                  \x20   print(\"{x} {y}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "8 9\n");
+}

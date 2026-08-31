@@ -1754,6 +1754,17 @@ impl<'a> Parser<'a> {
             }
             Some(Tok::Ident(_)) => {
                 let path = self.parse_path(anchor)?;
+                if self.at(&Tok::LBrace) {
+                    // `path '{' field_pat (',' field_pat)* ','? '..'? '}'`
+                    // (`[gram.pat.struct]`, s129/#179). `{` was never valid
+                    // after a path in pattern position before, so the branch
+                    // is unambiguous. `..` must be last; whether the field
+                    // SET matches the struct (unknown/duplicate/missing/
+                    // empty) is the resolve tier's question, not this one's —
+                    // the counterparty parses those shapes too and refuses
+                    // them with E0403/E0814.
+                    return self.parse_struct_pattern(path, start);
+                }
                 if self.at(&Tok::LParen) {
                     self.advance();
                     let mut fields = Vec::new();
@@ -1798,6 +1809,49 @@ impl<'a> Parser<'a> {
         };
         Ok(Pattern {
             kind: Box::new(kind),
+            span: Span::new(start, self.prev_span().end),
+            anchor,
+        })
+    }
+
+    /// The body of a struct pattern, after its path (`[gram.pat.struct]`).
+    fn parse_struct_pattern(&mut self, path: Path, start: usize) -> PResult<Pattern> {
+        let anchor = "gram.pat.struct";
+        self.expect(&Tok::LBrace, anchor)?;
+        let mut fields = Vec::new();
+        let mut rest = false;
+        loop {
+            if self.at(&Tok::RBrace) {
+                break;
+            }
+            if self.at(&Tok::DotDot) {
+                // A trailing `..` ignores every field the pattern does not
+                // name. It must be last: the production is `','? '..'? '}'`,
+                // so nothing follows it but the brace.
+                self.advance();
+                rest = true;
+                break;
+            }
+            let name = self.expect_ident(anchor)?;
+            let pattern = if self.eat(&Tok::Colon) {
+                Some(self.parse_pattern()?)
+            } else {
+                None
+            };
+            let span_end = self.prev_span().end;
+            let span_start = name.span.start;
+            fields.push(FieldPat {
+                name,
+                pattern,
+                span: Span::new(span_start, span_end),
+            });
+            if !self.eat(&Tok::Comma) {
+                break;
+            }
+        }
+        self.expect(&Tok::RBrace, anchor)?;
+        Ok(Pattern {
+            kind: Box::new(PatKind::Struct { path, fields, rest }),
             span: Span::new(start, self.prev_span().end),
             anchor,
         })
@@ -3644,6 +3698,53 @@ mod tests {
             d.span.start, d.span.end,
             "zero-width, at the token after the path"
         );
+    }
+
+    #[test]
+    fn a_struct_pattern_parses_in_binder_positions() {
+        // `[gram.pat.struct]` (s129, #179): `path '{' field_pat
+        // (',' field_pat)* ','? '..'? '}'` — shorthand, explicit
+        // `field: pattern`, nesting, the trailing `..`, and a `for` header.
+        let unit = parses(
+            "struct Point { x: int, y: int }\n\
+             fn main() -> !int {\n\
+             \x20   let p = Point { x: 1, y: 2 }\n\
+             \x20   let Point { x, y: why } = p\n\
+             \x20   let Point { y: _, .. } = p\n\
+             \x20   var pts = List[Point]()\n\
+             \x20   for Point { x: px, .. } in pts { print(\"{px}\") }\n\
+             \x20   x + why\n\
+             }\n",
+        );
+        assert_eq!(unit.items.len(), 2);
+    }
+
+    #[test]
+    fn a_struct_pattern_rest_must_be_last() {
+        // The production is `','? '..'? '}'`: nothing follows `..` but the
+        // closing brace, so a field after it is E0201 at the comma.
+        let d = rejects(
+            "struct P { x: int, y: int }\n\
+             fn main() -> int {\n\
+             \x20   let P { .., x } = P { x: 1, y: 2 }\n\
+             \x20   x\n\
+             }\n",
+        );
+        assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
+    }
+
+    #[test]
+    fn a_struct_pattern_field_is_a_name_not_a_keyword() {
+        // `field_pat ::= IDENT (':' pattern)?` — a reserved keyword in
+        // field position is E0008, like every other name position.
+        let d = rejects(
+            "struct P { x: int }\n\
+             fn main() -> int {\n\
+             \x20   let P { match } = P { x: 1 }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert_eq!(d.code, diag::E_KEYWORD_AS_IDENT);
     }
 
     #[test]

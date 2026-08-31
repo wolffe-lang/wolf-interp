@@ -2199,7 +2199,7 @@ fn handler_cover(pattern: &Pattern, row: &[String]) -> Cover {
             }
             Cover::Tags(tags)
         }
-        PatKind::Literal(_) | PatKind::Tuple(_) => Cover::Opaque,
+        PatKind::Literal(_) | PatKind::Tuple(_) | PatKind::Struct { .. } => Cover::Opaque,
     }
 }
 
@@ -2214,6 +2214,14 @@ fn declare_pattern_classes(pattern: &Pattern, walk: &mut TierWalk<'_>) {
         PatKind::Tuple(items) => {
             for item in items {
                 declare_pattern_classes(item, walk);
+            }
+        }
+        PatKind::Struct { fields, .. } => {
+            for field in fields {
+                match &field.pattern {
+                    Some(sub) => declare_pattern_classes(sub, walk),
+                    None => walk.declare(&field.name.name, LitClass::Unknown),
+                }
             }
         }
         PatKind::At { name, pattern } => {
@@ -2465,6 +2473,16 @@ fn declare_pattern(pattern: &Pattern, assignable: bool, env: &mut Env) {
         PatKind::Tuple(items) => {
             for item in items {
                 declare_pattern(item, assignable, env);
+            }
+        }
+        PatKind::Struct { fields, .. } => {
+            // `[gram.pat.struct]`: shorthand declares the field's own name;
+            // an explicit sub-pattern declares what it binds.
+            for field in fields {
+                match &field.pattern {
+                    Some(sub) => declare_pattern(sub, assignable, env),
+                    None => env.declare(&field.name.name, assignable),
+                }
             }
         }
         PatKind::At { name, pattern } => {
@@ -3288,6 +3306,21 @@ fn collect_pattern_refs(pattern: &Pattern, scope: &mut FileScope) {
         PatKind::Tuple(items) => {
             for item in items {
                 collect_pattern_refs(item, scope);
+            }
+        }
+        PatKind::Struct { path, fields, .. } => {
+            // A struct pattern's path marks its head used, exactly as a
+            // variant pattern's does; the shorthand references nothing.
+            if let Some(head) = path.segments.first() {
+                scope.refs.push(PathRef {
+                    head: head.name.clone(),
+                    tail: None,
+                });
+            }
+            for field in fields {
+                if let Some(sub) = &field.pattern {
+                    collect_pattern_refs(sub, scope);
+                }
             }
         }
         PatKind::At { pattern, .. } => collect_pattern_refs(pattern, scope),
