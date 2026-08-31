@@ -302,3 +302,100 @@ fn a_handler_over_a_builtin_raised_row_discriminates_in_both_arm_orders() {
         "the tag finds its own arm in either order — never the first arm"
     );
 }
+
+#[test]
+fn the_byte_tier_round_trips_raw_bytes_including_non_utf8() {
+    // The s106 byte pair (is30; wolf-interp#52 / wolf-std F-0102): a
+    // `List[int]` round-trip over loopback, dial-first, carrying bytes no
+    // `str` could — `0x80` alone is mis-encoded UTF-8 and the byte tier
+    // has NO utf8 row to trip. The transcript is the issue's own repro,
+    // and the compiled lanes' answer at v0.2.0: `got: 0 255 128 7`.
+    let dir = scratch("net-bytes-round-trip");
+    let source = "fn main() -> !int {\n\
+        \x20   let srv = net_listen(\"127.0.0.1:0\")?\n\
+        \x20   let p = net_port(srv)?\n\
+        \x20   let cli = net_connect(\"127.0.0.1:{p}\")?\n\
+        \x20   var msg = List[int]()\n\
+        \x20   (mut msg).push(0)\n\
+        \x20   (mut msg).push(255)\n\
+        \x20   (mut msg).push(128)\n\
+        \x20   (mut msg).push(7)\n\
+        \x20   net_write_bytes(cli, msg)?\n\
+        \x20   let conn = net_accept(srv)?\n\
+        \x20   let got = net_read_bytes(conn, 16)?\n\
+        \x20   print(\"got: {got[0]} {got[1]} {got[2]} {got[3]}\")\n\
+        \x20   net_close(cli)?\n\
+        \x20   net_close(conn)?\n\
+        \x20   net_close(srv)?\n\
+        \x20   0\n\
+        }\n";
+    let output = run_program(&dir, source);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0), "{stdout}");
+    assert_eq!(stdout, "got: 0 255 128 7\n");
+}
+
+#[test]
+fn a_non_byte_element_is_the_invalid_row_and_nothing_reaches_the_wire() {
+    // `net_write_bytes`' pre-write check is WHOLE (wolf-std's
+    // write_bytes_invalid_row witness): an element outside 0..=255 is the
+    // `invalid` row by name, and no prefix is sent — the peer then reads
+    // only what the LEGAL write carried. Both directions of the domain
+    // edge (256 and -1) answer the same tag.
+    let dir = scratch("net-bytes-invalid");
+    let source = "fn main() -> !int {\n\
+        \x20   let srv = net_listen(\"127.0.0.1:0\")?\n\
+        \x20   let p = net_port(srv)?\n\
+        \x20   let cli = net_connect(\"127.0.0.1:{p}\")?\n\
+        \x20   var bad = List[int]()\n\
+        \x20   (mut bad).push(65)\n\
+        \x20   (mut bad).push(256)\n\
+        \x20   net_write_bytes(cli, bad) else |e| match e {\n\
+        \x20       closed => { print(\"handled: closed\") },\n\
+        \x20       invalid => { print(\"handled: invalid\") },\n\
+        \x20       io => { print(\"handled: io\") },\n\
+        \x20   }\n\
+        \x20   var worse = List[int]()\n\
+        \x20   (mut worse).push(0 - 1)\n\
+        \x20   net_write_bytes(cli, worse) else |_| print(\"handled: negative\")\n\
+        \x20   var ok = List[int]()\n\
+        \x20   (mut ok).push(66)\n\
+        \x20   net_write_bytes(cli, ok)?\n\
+        \x20   let conn = net_accept(srv)?\n\
+        \x20   let got = net_read_bytes(conn, 8)?\n\
+        \x20   print(\"len: {got.len} first: {got[0]}\")\n\
+        \x20   net_close(cli)?\n\
+        \x20   net_close(conn)?\n\
+        \x20   net_close(srv)?\n\
+        \x20   0\n\
+        }\n";
+    let output = run_program(&dir, source);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0), "{stdout}");
+    assert_eq!(
+        stdout,
+        "handled: invalid\nhandled: negative\nlen: 1 first: 66\n"
+    );
+}
+
+#[test]
+fn a_zero_length_byte_read_answers_the_empty_list_never_a_false_closed() {
+    // The str tier's own n<=0 rule, mirrored: the socket is never asked.
+    let dir = scratch("net-bytes-zero");
+    let source = "fn main() -> !int {\n\
+        \x20   let srv = net_listen(\"127.0.0.1:0\")?\n\
+        \x20   let p = net_port(srv)?\n\
+        \x20   let cli = net_connect(\"127.0.0.1:{p}\")?\n\
+        \x20   let conn = net_accept(srv)?\n\
+        \x20   let none = net_read_bytes(conn, 0)?\n\
+        \x20   print(\"len: {none.len}\")\n\
+        \x20   net_close(cli)?\n\
+        \x20   net_close(conn)?\n\
+        \x20   net_close(srv)?\n\
+        \x20   0\n\
+        }\n";
+    let output = run_program(&dir, source);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0), "{stdout}");
+    assert_eq!(stdout, "len: 0\n");
+}

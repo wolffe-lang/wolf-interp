@@ -6,7 +6,13 @@
 //! `net_port(int) -> int ! {io}`; `net_accept(int) -> int ! {timeout, io}`;
 //! `net_connect(str) -> int ! {refused, timeout, io}`; `net_read(int, int)
 //! -> str ! {closed, timeout, utf8, io}`; `net_write(int, str) -> unit !
-//! {closed, io}`; `net_close(int) -> unit ! {io}`; `net_deadline(int, int)
+//! {closed, io}`; the s106 byte pair `net_read_bytes(int, int) ->
+//! List[int] ! {closed, timeout, io}` and `net_write_bytes(int, List[int])
+//! -> unit ! {closed, invalid, io}` (is30, wolf-interp#52 / wolf-std
+//! F-0102 — no `utf8` row anywhere on the byte tier, and `invalid` is the
+//! WHOLE pre-write check: an element outside 0..=255 rejects before
+//! anything reaches the wire); `net_close(int) -> unit ! {io}`;
+//! `net_deadline(int, int)
 //! -> unit ! {io}`), the four corpus witnesses under `corpus/net/`, and
 //! empirical probes of the compiled lanes — never `wolf_rt::net`. The
 //! pinned facts:
@@ -224,6 +230,20 @@ impl NetTable {
     /// One read poll: up to `n` bytes, validated. `Ok(0)` from the socket
     /// is the peer's finish — the `closed` row (probed).
     fn poll_read(&mut self, fd: i128, n: usize) -> NetResult<Poll<String>> {
+        match self.poll_read_bytes(fd, n)? {
+            Poll::NotYet => Ok(Poll::NotYet),
+            Poll::Ready(buf) => match String::from_utf8(buf) {
+                Ok(text) => Ok(Poll::Ready(text)),
+                // Bytes off a socket are data; mis-encoded data is a
+                // recoverable outcome, exactly like `str_from_utf8`.
+                Err(_) => Err(NetErr::Row("utf8")),
+            },
+        }
+    }
+
+    /// One receive poll of up to `n` RAW bytes — the byte tier's read
+    /// (s106, F-0102). No `utf8` row anywhere: a lone `0x80` is data.
+    fn poll_read_bytes(&mut self, fd: i128, n: usize) -> NetResult<Poll<Vec<u8>>> {
         let sock = self.sock(fd)?;
         let SockKind::Stream(stream) = &mut sock.kind else {
             return Err(NetErr::Row("io"));
@@ -233,12 +253,7 @@ impl NetTable {
             Ok(0) => Err(NetErr::Row("closed")),
             Ok(read) => {
                 buf.truncate(read);
-                match String::from_utf8(buf) {
-                    Ok(text) => Ok(Poll::Ready(text)),
-                    // Bytes off a socket are data; mis-encoded data is a
-                    // recoverable outcome, exactly like `str_from_utf8`.
-                    Err(_) => Err(NetErr::Row("utf8")),
-                }
+                Ok(Poll::Ready(buf))
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(Poll::NotYet),
             Err(error) => Err(NetErr::Row(closed_or_io(&error))),
@@ -361,6 +376,78 @@ impl Machine {
                     )));
                 };
                 let bytes = text.clone().into_bytes();
+                let mut at = 0usize;
+                let answer =
+                    self.net_park(fd, span, move |table| table.poll_write(fd, &bytes, &mut at))?;
+                self.net_answer(name, answer.map(|()| Value::Unit), span)
+            }
+            "net_read_bytes" => {
+                // The byte tier's read (s106; wolf-interp#52 / wolf-std
+                // F-0102): one receive of up to `n` RAW bytes as
+                // `List[int]`. The str call's own shape minus the `utf8`
+                // row — bytes are data and validate nothing.
+                let fd = int_arg(args, 0, name)?;
+                let n = int_arg(args, 1, name)?;
+                if n <= 0 {
+                    // Zero bytes wanted: the empty list, and the socket is
+                    // never asked (a 0-length receive would forge `closed`).
+                    return Ok(Value::list(
+                        Vec::new(),
+                        Some(IntTy::INT),
+                        Some(self.current_region()),
+                    ));
+                }
+                let n = usize::try_from(n).unwrap_or(usize::MAX).min(1 << 20);
+                let answer = self.net_park(fd, span, |table| table.poll_read_bytes(fd, n))?;
+                let answer = match answer {
+                    Ok(bytes) => {
+                        self.allocate(span, "net_read_bytes");
+                        let home = self.current_region();
+                        Ok(Value::list(
+                            bytes
+                                .into_iter()
+                                .map(|b| {
+                                    super::value::Slot::live(Value::Int(i128::from(b), IntTy::INT))
+                                })
+                                .collect(),
+                            Some(IntTy::INT),
+                            Some(home),
+                        ))
+                    }
+                    Err(err) => Err(err),
+                };
+                self.net_answer(name, answer, span)
+            }
+            "net_write_bytes" => {
+                // The byte tier's write (s106; wolf-interp#52 / wolf-std
+                // F-0102): the whole `List[int]` is written or the call
+                // raises. The pre-write check is WHOLE: an element outside
+                // 0..=255 is the `invalid` row and NOTHING reaches the wire
+                // — no mask, no truncation, no partial send (the fs tier's
+                // own vocabulary, adopted verbatim by wolf-std's facade).
+                let fd = int_arg(args, 0, name)?;
+                let Some(slots) = args.get(1).and_then(Value::seq_slots) else {
+                    return Err(Signal::Unsupported(format!(
+                        "`{name}` takes an fd and a `List[int]` payload"
+                    )));
+                };
+                let mut bytes = Vec::with_capacity(slots.len());
+                for slot in slots {
+                    match &slot.value {
+                        Value::Int(v, _) if (0..=255).contains(v) => {
+                            bytes.push(u8::try_from(*v).expect("checked 0..=255"));
+                        }
+                        Value::Int(..) => {
+                            return self.net_answer(name, Err(NetErr::Row("invalid")), span);
+                        }
+                        other => {
+                            return Err(Signal::Unsupported(format!(
+                                "`{name}`'s payload elements must be integers, got {}",
+                                other.kind()
+                            )));
+                        }
+                    }
+                }
                 let mut at = 0usize;
                 let answer =
                     self.net_park(fd, span, move |table| table.poll_write(fd, &bytes, &mut at))?;

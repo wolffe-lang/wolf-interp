@@ -1016,6 +1016,13 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("faults/list_slice_oob.lu", "trap(bounds)"),
     ("faults/list_slice_reversed.lu", "trap(bounds)"),
     ("strings/concat_plus.lu", "exit(0)"),
+    // is30's F-0102 movers (wolf-interp#52, wolf-std F-0102): the s106 net
+    // BYTE tier resolves now — `net_read_bytes`/`net_write_bytes` with the
+    // str calls' own List[int] marshalling and no utf8 row — so the two
+    // byte-tier witnesses that sat out-of-scope since the c88ab64 corpus
+    // landed them leave the conservatism ledger for the match column.
+    ("net/byte_roundtrip.lu", "exit(0)"),
+    ("net/line_reader_bytes.lu", "exit(0)"),
 ];
 
 #[test]

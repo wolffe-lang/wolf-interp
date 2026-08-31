@@ -95,6 +95,8 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "net_connect",
     "net_read",
     "net_write",
+    "net_read_bytes",
+    "net_write_bytes",
     "net_close",
     "net_deadline",
     "env_set",
@@ -778,13 +780,17 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // `eval::net`. No sockets on wasm — the tier declines there.
         #[cfg(target_family = "wasm")]
         "net_listen" | "net_port" | "net_accept" | "net_connect" | "net_read" | "net_write"
-        | "net_close" | "net_deadline" => unsupported(format!(
-            "`{name}` is the s39 net tier; this wasm build has no sockets to open, so the \
-             tier is declined rather than mocked"
-        )),
+        | "net_read_bytes" | "net_write_bytes" | "net_close" | "net_deadline" => {
+            unsupported(format!(
+                "`{name}` is the s39 net tier; this wasm build has no sockets to open, so the \
+                 tier is declined rather than mocked"
+            ))
+        }
         #[cfg(not(target_family = "wasm"))]
         "net_listen" | "net_port" | "net_accept" | "net_connect" | "net_read" | "net_write"
-        | "net_close" | "net_deadline" => machine.net_call(name, &args, span),
+        | "net_read_bytes" | "net_write_bytes" | "net_close" | "net_deadline" => {
+            machine.net_call(name, &args, span)
+        }
         other => unsupported(format!(
             "`{other}` is in the ambient std stub but has no pinned semantics; the real std \
              surface is not specified yet, and guessing it would put invented behavior into a \
@@ -1744,6 +1750,12 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "net_connect" => &["refused", "timeout", "io"],
         "net_read" => &["closed", "timeout", "utf8", "io"],
         "net_write" => &["closed", "io"],
+        // The s106 byte pair (is30, wolf-interp#52 / wolf-std F-0102):
+        // no `utf8` row anywhere — a lone 0x80 is data — and `invalid`
+        // is `net_write_bytes`' whole pre-write check (an element outside
+        // 0..=255; wolf-std's facade adopts both rows verbatim).
+        "net_read_bytes" => &["closed", "timeout", "io"],
+        "net_write_bytes" => &["closed", "invalid", "io"],
         // The s40 process trio (`eval::os`'s module doc, probed prelude sigs).
         "os_spawn" => &["not_found", "denied", "io"],
         "os_wait" => &["signal", "io"],
