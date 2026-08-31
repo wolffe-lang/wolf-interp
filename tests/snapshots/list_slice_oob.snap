@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: list_slice_oob.lu
+trap:    bounds
+clause:  [mem.ub.defined]
+rule:    Bounds
+message: range 2..8 is outside a 6-element List
+at:      11:15 `cs[2..8]`
+because: (single-span fault)

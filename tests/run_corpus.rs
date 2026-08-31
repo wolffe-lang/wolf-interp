@@ -992,6 +992,30 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("typecheck/numlit_fit.lu", "trap(overflow)"),
     ("typecheck/numlit_list_element_width.lu", "exit(0)"),
     ("typecheck/numlit_u64_edge.lu", "exit(0)"),
+    // The c88ab64 pin (is30): the s127/s128/r03 wave to v0.2.0. Ten new
+    // run-reachers, and every one answers its pin at first sight. The D63
+    // group pair and the s128 destructure trio land against work already
+    // in this tree — the grouped binder rode is28, and the element-wise
+    // move discipline landed one commit before this bump
+    // (`bind_pattern_from_place`), so `destructure_partial_live` reads its
+    // untouched element and `destructure_partial_move` traps
+    // use-after-move at the element that DID move (E1001's dynamic
+    // counterpart, the census's 14th). The #171 slice quartet runs on the
+    // slicing this machine has had since 0.1.16 — the corpus files
+    // themselves say lupin's copy semantics were the measured reference —
+    // and `concat_plus` is D62's legal chain, witnessed here at 0.1.18
+    // (its three fail(E0409) mix siblings are refused by name at resolve,
+    // the out-of-scope class).
+    ("grammar/let_group.lu", "exit(0)"),
+    ("grammar/let_group_destructure.lu", "exit(0)"),
+    ("memory/destructure_bind.lu", "exit(0)"),
+    ("memory/destructure_partial_live.lu", "exit(0)"),
+    ("memory/destructure_partial_move.lu", "trap(use-after-move)"),
+    ("memory/list_slice.lu", "exit(0)"),
+    ("memory/list_slice_edges.lu", "exit(0)"),
+    ("faults/list_slice_oob.lu", "trap(bounds)"),
+    ("faults/list_slice_reversed.lu", "trap(bounds)"),
+    ("strings/concat_plus.lu", "exit(0)"),
 ];
 
 #[test]

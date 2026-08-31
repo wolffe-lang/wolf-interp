@@ -472,14 +472,31 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             narrows [gram.lex.shebang]; its anchors regen DROPPED
     //             [gram.lex.ident] — filed as wolf-lang#177, carried as a
     //             FILED_REGISTRY_HOLES notice — 397 anchors.)
+    //   c88ab64 → 445 files (is30: the s127/s128/r03 wave to v0.2.0. The
+    //             corpus grows 15, all entries — D63's let_group quartet
+    //             (two run, two E0201 refusal pins this parser already
+    //             answers), the s128 destructure trio (bind + the
+    //             partial-live/partial-move element-story twins the
+    //             element-wise move commit landed for), the #171 slice
+    //             quartet (all four run, lupin's own copy semantics were
+    //             the measured reference), and the D62 concat quartet
+    //             (concat_plus runs; the three fail(E0409) mixes are
+    //             refused by name here, the out-of-scope class). Eleven
+    //             new run-reachers, all MATCH at first sight;
+    //             destructure_partial_move is the 14th dynamic
+    //             counterpart (E1001 ⇄ use-after-move). The spec delta:
+    //             [gram.item.let] grows the D63 clause, [mem.list.slice]
+    //             and the [type.str.concat] family land, and r03's
+    //             scanner fix re-gains [gram.lex.ident] — 403 anchors,
+    //             the wolf-lang#177 FILED_REGISTRY_HOLES waiver DEAD.)
     let report = report();
     assert_eq!(
         report.total(),
-        430,
+        445,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 397);
+    assert_eq!(report.entries(), 412);
     assert_eq!(report.members(), 33);
 }
 

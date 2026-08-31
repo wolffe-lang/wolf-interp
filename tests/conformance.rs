@@ -188,10 +188,15 @@ fn files_whose_ledger_stops_at_lex_fail_at_parse_with_their_pinned_code() {
     // pins the D61 position rule — a `#![…]` below the first declaration
     // is refused by position (`[gram.attr.index]`); it sorts first because
     // the map is path-ordered.
+    // The let_group pair joined at c88ab64 (is30): D63's two refusals-by-
+    // name — the bare-tuple spelling (`let a, b = 1, 2`) and the
+    // one-initializer-for-several-names spelling (`var i, c = 0`) — both
+    // E0201 at the token where the group's grammar breaks, exactly the
+    // parse this machine has answered since is28's D63 rider.
     assert_eq!(
         seen.values().cloned().collect::<Vec<_>>(),
         vec![
-            "E0211", "E0001", "E0201", "E0210", "E0002", "E0006", "E0008"
+            "E0211", "E0201", "E0201", "E0001", "E0201", "E0210", "E0002", "E0006", "E0008"
         ],
         "the pinned grammar-tier codes changed: {seen:?}"
     );

@@ -91,24 +91,25 @@ was never amended for the `pkg` namespace `spec/08-package.md` introduced
 — wolf-lang#120, filed rather than patched around — until upstream s115
 amended the clause, and the notice died with the amendment.
 
-The standing example at the addcd7f pin is a registry HOLE rather than a
-namespace: c1f54f2's anchors regen dropped `[gram.lex.ident]` while
-spec/01 §1.3 still defines it — wolf-lang#177, carried in
-`export::FILED_REGISTRY_HOLES` and reported on every export until the
-registry re-gains the anchor:
+The second retirement is the same contract over a registry HOLE rather
+than a namespace: c1f54f2's anchors regen dropped `[gram.lex.ident]`
+while spec/01 §1.3 still defined it — wolf-lang#177, carried in
+`export::FILED_REGISTRY_HOLES` and reported on every export from the
+addcd7f pin — until upstream r03 fixed the spec-extract scanner and the
+v0.2.0 registry re-gained the anchor. The waiver died at the c88ab64
+pin, exactly as filed, and every export is notice-free again:
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":159,"anchors_total":397,"bundle_sha256":"…","files":485,"forward_tags":109,"out":"target/bundle","pin":"addcd7f0bd90b16bfa8bec429ab7f27c46a2c1bb","programs":468,"records":435}
-notice: `gram.lex.ident` is defined in the spec but absent from anchors.json — known upstream finding, wolf-lang#177 (c1f54f2's anchors regen dropped it; spec/01 §1.3 is unchanged)
+{"anchors_covered":163,"anchors_total":403,"bundle_sha256":"…","files":500,"forward_tags":109,"out":"target/bundle","pin":"c88ab6441b2706e20375deeec86eaf6da9bde25b","programs":483,"records":450}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 435 entries compared, 0 member(s) exercised through their entries
+differential: 450 entries compared, 0 member(s) exercised through their entries
 divergences: 0
-conservatism ledger: 110 entries
-  unsupported(counterparty): 55
-  unsupported(interp): 55
+conservatism ledger: 116 entries
+  unsupported(counterparty): 58
+  unsupported(interp): 58
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin addcd7f0bd90b16bfa8bec429ab7f27c46a2c1bb verified (bundle_sha256 …)
+notice: bundle target/bundle at pin c88ab6441b2706e20375deeec86eaf6da9bde25b verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the

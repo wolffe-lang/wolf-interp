@@ -343,13 +343,14 @@ pub const FILED_REGISTRY_FINDINGS: &[(&str, &str)] = &[];
 /// it, and the row comes out — the check resumes gating — when the
 /// registry re-gains the anchor.
 ///
-/// One row at the addcd7f pin: `gram.lex.ident`, registered at every pin
-/// through e561c6f, dropped by c1f54f2's "anchors + ebnf regen" while
-/// spec/01 §1.3 still defines it verbatim (wolf-lang#177).
-pub const FILED_REGISTRY_HOLES: &[(&str, &str)] = &[(
-    "gram.lex.ident",
-    "wolf-lang#177 (c1f54f2's anchors regen dropped it; spec/01 §1.3 is unchanged)",
-)];
+/// Empty at the c88ab64 pin (2026-08-31, is30): the one standing hole —
+/// `gram.lex.ident`, registered at every pin through e561c6f, dropped by
+/// c1f54f2's "anchors + ebnf regen" while spec/01 §1.3 still defined it
+/// verbatim (wolf-lang#177) — died when upstream r03 fixed the spec-extract
+/// scanner and the v0.2.0 registry re-gained the anchor (403 anchors,
+/// `gram.lex.ident` among them). The row came out per the contract above,
+/// and the cross-check gates the token like any other again.
+pub const FILED_REGISTRY_HOLES: &[(&str, &str)] = &[];
 
 /// The independent extraction (`[conf.anchor.grammar]`): every
 /// `[registered.namespace.token]` in the pinned spec markdown, compared both

@@ -104,7 +104,14 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // gram.attr.index and gram.expr.index.origin, cited by the eight
 // index_origin_* witnesses this sprint implements. Raised in the bump
 // commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 159;
+// 159 → 163 at c88ab64 (is30): the s127/s128/r03 wave's four newly covered
+// clauses — mem.list.slice (the #171 slice quartet: list_slice,
+// list_slice_edges, and the oob/reversed fault twins) and the D62 concat
+// family type.str.concat / type.str.concat.mix / type.str.concat.cost
+// (concat_plus runs; the three mix refusals count by citation, honestly —
+// this machine declines them by name at resolve). Raised in the bump
+// commit per the test's own instruction.
+const RATCHET_FLOOR: usize = 163;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -163,7 +170,13 @@ const RATCHET_FLOOR: usize = 159;
 // [gram.expr.index.origin] (+2) while its regen DROPPED [gram.lex.ident]
 // (−1) — the hole is an upstream finding, wolf-lang#177, carried as a
 // FILED_REGISTRY_HOLES notice until the registry re-gains the anchor.
-const ANCHORS_TOTAL: usize = 397;
+// 397 → 403 at c88ab64 (is30): the s127/s128/r03 wave to v0.2.0 —
+// [gram.item.let] grows D63's grouped-binder clause, [mem.list.slice]
+// lands (#171), [type.str.concat] and its mix/cost children land (D62),
+// and r03's spec-extract scanner fix RE-GAINS [gram.lex.ident]: the
+// wolf-lang#177 hole closes, the FILED_REGISTRY_HOLES waiver dies, and
+// the cross-check gates the token like any other again.
+const ANCHORS_TOTAL: usize = 403;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -314,10 +327,14 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // land, all entries — the D61 index_origin_* witnesses this sprint
     // implements against (six run-reaching, the E0813 and E0211 fail
     // pins); the suite is unmoved.
+    // 468/435 → 483/450 at c88ab64 (is30): the s127/s128/r03 wave to
+    // v0.2.0 — 15 corpus files, all entries (the D63 let_group quartet,
+    // the s128 destructure trio, the #171 slice quartet, the D62 concat
+    // quartet); the suite is unmoved.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "addcd7f0bd90b16bfa8bec429ab7f27c46a2c1bb");
-    assert_eq!(summary.programs, 468);
-    assert_eq!(summary.records, 435);
+    assert_eq!(summary.pin, "c88ab6441b2706e20375deeec86eaf6da9bde25b");
+    assert_eq!(summary.programs, 483);
+    assert_eq!(summary.records, 450);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
@@ -443,13 +460,13 @@ fn the_anchor_registry_cross_check_holds_at_this_pin() {
     assert_eq!(registry.len(), ANCHORS_TOTAL);
     let notices =
         export::cross_check_registry(&spec, &registry).expect("nothing unfiled disagrees");
-    // At addcd7f one FILED hole stands: c1f54f2's anchors regen dropped
-    // `gram.lex.ident` while spec/01 §1.3 still defines it (wolf-lang#177).
-    // The notice appears on every export — the waiver dies when the
-    // registry re-gains the anchor, and this assertion then returns to 0.
-    assert_eq!(notices.len(), 1, "{notices:?}");
-    assert!(notices[0].contains("gram.lex.ident"), "{notices:?}");
-    assert!(notices[0].contains("wolf-lang#177"), "{notices:?}");
+    // Zero notices at c88ab64: the one FILED hole that stood from addcd7f —
+    // c1f54f2's anchors regen dropped `gram.lex.ident` while spec/01 §1.3
+    // still defined it (wolf-lang#177) — died at this pin, exactly as the
+    // waiver contract promised: upstream r03 fixed the spec-extract scanner,
+    // the v0.2.0 registry re-gained the anchor, the FILED_REGISTRY_HOLES row
+    // came out, and the cross-check gates the token like any other again.
+    assert_eq!(notices, Vec::<String>::new());
 }
 
 #[test]
