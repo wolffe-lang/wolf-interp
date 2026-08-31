@@ -110,6 +110,19 @@ pub const CHOICES: &[(&str, &str)] = &[
          `\\u{…}` ([gram.lex.str]) states no digit cap at all, so the two \
          escape tiers differ unless an amendment says otherwise.",
     ),
+    (
+        "gram.pat.struct",
+        "the EMPTY struct pattern's phase. The clause's production requires at \
+         least one field_pat (\"ignore everything\" is spelled `_`), which by \
+         the letter makes `Point { }` and `Point { .. }` parse errors — but \
+         the counterparty's diag registry claims \"empty\" for E0814, a \
+         resolve-tier code, so its parser must ADMIT the empty form and refuse \
+         it later. This parser matches that shape: the braces parse, and the \
+         field-set check refuses the empty pattern by E0814's name toward the \
+         `_` spelling. An amendment could settle whether emptiness is a \
+         grammar fact or a field-set fact; until then the two machines agree \
+         in class either way (is30, s129/#179).",
+    ),
 ];
 
 /// Choices is01 published that the pin bump to `[gram.lex.rails]` + the seven
