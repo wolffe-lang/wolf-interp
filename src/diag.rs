@@ -207,7 +207,11 @@ pub const E_KEYWORD_AS_IDENT: &str = "E0008";
 // Lexer tier, E01xx. Only E0108 is spec-pinned.
 // ---------------------------------------------------------------------------
 
-/// A byte that begins no token (`[gram.lex]`). **Unpinned.**
+/// A byte that begins no token (`[gram.lex]`), and — **spec-pinned since
+/// #189/r04** — a `\u{…}` escape whose digit count is outside the
+/// production's one-to-six, reported at the escape in char and string
+/// literals alike (`[gram.lex.char]`: "Seven or more digits, or none, is
+/// **E0101** at the escape").
 pub const E_UNEXPECTED_BYTE: &str = "E0101";
 /// A string literal with no closing delimiter (`[gram.lex.str]`). **Unpinned.**
 pub const E_UNTERMINATED_STRING: &str = "E0102";
@@ -301,7 +305,13 @@ pub const E_BAD_INNER_ATTR: &str = "E0813";
 /// to run that process is to publish our picks rather than discover them in a
 /// differ report.
 pub const UNPINNED_CODES: &[(&str, &str, &str)] = &[
-    (E_UNEXPECTED_BYTE, "gram.lex", "byte begins no token"),
+    // E0101 sat here until wolf-lang's r04 landed
+    // `grammar/char_uni_seven_digits.lu` at pin e6cf24e (wolf-lang#189):
+    // `[gram.lex.char]` now names **E0101** for a `\u{…}` escape whose digit
+    // count leaves the production's one to six, so the code is the corpus's
+    // to define and no longer this implementation's to choose. Its other
+    // use — a byte that begins no token — rides the same code, which the
+    // clause neither forbids nor mentions.
     (
         E_UNTERMINATED_STRING,
         "gram.lex.str",

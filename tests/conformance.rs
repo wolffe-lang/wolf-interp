@@ -102,11 +102,34 @@ fn is_member_of_filed_module(case: &Case) -> bool {
 
 #[test]
 fn every_corpus_file_lexes_clean() {
-    // Every ledger phase in the corpus is `lex` or deeper, so nothing here is
-    // allowed a lexical fault — including the counter-examples, which are
-    // syntax errors, not lexical ones.
+    // Every ledger phase in the corpus is `lex` or deeper *except* the files
+    // whose ledger is `phase: none` — a corpus file that is refused BY the
+    // lexer, and whose own directive says so. Everything else is not allowed
+    // a lexical fault, the counter-examples included: they are syntax
+    // errors, not lexical ones.
+    //
+    // The exemption arrived at e6cf24e (is32) with r04's
+    // `grammar/char_uni_seven_digits.lu` — the corpus's first `phase: none`
+    // entry, pinning `fail(E0101)` for a `\u{…}` escape whose digit count
+    // leaves the production's one-to-six.
     let mut failures = Vec::new();
     for case in cases() {
+        if case.ledger_phase == Some(Phase::None) {
+            let observation = frontend::observe(&case.source, Some(Phase::Lex));
+            assert!(
+                matches!(observation.verdict, Verdict::Fail(_)),
+                "{}: ledger says `phase: none`, so the lexer must reject it; got {}",
+                case.path,
+                observation.verdict
+            );
+            let expected = pinned_code(case.check.as_ref())
+                .unwrap_or_else(|| panic!("{}: a none-ledger file must pin a code", case.path));
+            let Verdict::Fail(code) = &observation.verdict else {
+                unreachable!("checked above")
+            };
+            assert_eq!(code, expected, "{}", case.path);
+            continue;
+        }
         let observation = frontend::observe(&case.source, Some(Phase::Lex));
         if observation.verdict != Verdict::Pass {
             failures.push(format!(
@@ -193,10 +216,17 @@ fn files_whose_ledger_stops_at_lex_fail_at_parse_with_their_pinned_code() {
     // one-initializer-for-several-names spelling (`var i, c = 0`) — both
     // E0201 at the token where the group's grammar breaks, exactly the
     // parse this machine has answered since is28's D63 rider.
+    // The comma trio joined at e6cf24e (is32): D67's tightening
+    // (wolf-lang#190) makes the separator required throughout the pattern
+    // family — `Point { x .. }`, `Point { x y }` and `(a b)` are E0201 at
+    // the token where the list breaks. All three answered at first sight:
+    // this parser's letter was the measured one, and the compiler's
+    // comma-less acceptance was the accident the clause closed.
     assert_eq!(
         seen.values().cloned().collect::<Vec<_>>(),
         vec![
-            "E0211", "E0201", "E0201", "E0001", "E0201", "E0210", "E0002", "E0006", "E0008"
+            "E0211", "E0201", "E0201", "E0001", "E0201", "E0210", "E0002", "E0201", "E0201",
+            "E0006", "E0201", "E0008"
         ],
         "the pinned grammar-tier codes changed: {seen:?}"
     );

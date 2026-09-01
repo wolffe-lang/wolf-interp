@@ -1073,6 +1073,32 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/match_arm_whole_move.lu", "trap(use-after-move)"),
     ("typecheck/match_arm_product_unreachable.lu", "exit(0)"),
     ("typecheck/match_arm_product_nonexhaustive.lu", "exit(0)"),
+    // The e6cf24e pin (is32, the s131 merge + the 2026-09-01 ledger
+    // ritual): seven new run-reachers. The two this sprint exists for are
+    // `memory/region_bytes_query.lu` and `memory/region_bytes_value.lu` —
+    // `[mem.region.account.1/.2]`, and they answer BOOLEANS, not byte
+    // counts: the clause leaves units per tier measured, so what the three
+    // lanes compare is "zero at creation / grew / stable / live_up /
+    // reclaimed" and "created / attributed / birth". lupin's ledger is its
+    // own honest arena model (`eval::region::ledger`) and the relations
+    // hold in it by construction.
+    // The other five answer at first sight against work already in this
+    // tree: `lints/region_call_allocates.lu` (a callee allocating into its
+    // caller's ambient region — D12, never not implemented here),
+    // `memory/region_unit_tail_call.lu` (a unit-returning tail call across
+    // a region boundary, with the `else` row), `grammar/defer_loop_turn.lu`
+    // (D66's scope-exit order per loop turn), and the two c06 or-pattern
+    // RESIDUE pins `match_arm_or_over_product` + `match_arm_or_inside_product`
+    // (`phase: mem` — EVERY wolfc lane refuses the first by name and its
+    // checked lane runs the second; lupin runs both, which #196 filed
+    // deliberately as a measured divergence rather than a hole).
+    ("grammar/defer_loop_turn.lu", "exit(0)"),
+    ("grammar/match_arm_or_over_product.lu", "exit(0)"),
+    ("grammar/match_arm_or_inside_product.lu", "exit(0)"),
+    ("lints/region_call_allocates.lu", "exit(0)"),
+    ("memory/region_bytes_query.lu", "exit(0)"),
+    ("memory/region_bytes_value.lu", "exit(0)"),
+    ("memory/region_unit_tail_call.lu", "exit(0)"),
 ];
 
 #[test]

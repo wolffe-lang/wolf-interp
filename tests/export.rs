@@ -120,7 +120,14 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // typecheck/match_arm_product_unreachable — E0802 over a product
 // scrutinee, which this machine's reachability walk now judges
 // column-wise. Raised in the bump commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 165;
+// 165 → 168 at e6cf24e (is32, the s131 merge + the ledger ritual): three
+// newly covered clauses, measured against the previous matrix — the two
+// this sprint implemented, mem.region.account.1 (both witnesses) and
+// mem.region.account.2 (the query witness), plus gram.lex.char, which
+// the corpus had never cited until r04's char_uni_seven_digits.lu (the
+// char battery cites the type.char family, not the lexical clause).
+// Raised in the bump commit per the test's own instruction.
+const RATCHET_FLOOR: usize = 168;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -191,7 +198,13 @@ const RATCHET_FLOOR: usize = 165;
 // HELD at 404 by b80d239 (is31, the s130 merge): the spec tree is
 // BYTE-IDENTICAL to the 83f83bb pin — s130's whole delta is lowering,
 // corpus and CHANGELOG, so the registry neither gains nor drops a row.
-const ANCHORS_TOTAL: usize = 404;
+// 404 → 407 at e6cf24e (is32, the s131 merge): [mem.region.account] and
+// its two children land in spec/02 §3 — the byte ledger and the
+// process-wide live total. The key SETS were diffed both ways: nothing
+// dropped (the wolf-lang#177 lesson). The pin's other spec edits grow no
+// anchor — D67's comma sentence tightens [gram.pat]'s existing
+// production and r04's UNI_ESC amends [gram.lex.char]'s EBNF in place.
+const ANCHORS_TOTAL: usize = 407;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -352,10 +365,15 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // 493/460 → 501/468 at b80d239 (is31, the s130 merge): 8 corpus files,
     // all entries — the match ARM witness set (#179's table); the suite is
     // unmoved.
+    // 501/468 → 512/479 at e6cf24e (is32, the s131 merge + the ledger
+    // ritual): 11 corpus files, all entries — the two [mem.region.account]
+    // relation witnesses, D67's three comma refusals, #196's two
+    // or-pattern residue pins, r04's seven-digit escape witness, and the
+    // region/lint/defer trio; the suite is unmoved.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "b80d239e2d1edf5d767108f8c01b98a7709bf35d");
-    assert_eq!(summary.programs, 501);
-    assert_eq!(summary.records, 468);
+    assert_eq!(summary.pin, "e6cf24e7c03f25c8ac6676fc9cb743827524bc8e");
+    assert_eq!(summary.programs, 512);
+    assert_eq!(summary.records, 479);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

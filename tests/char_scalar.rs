@@ -33,16 +33,16 @@ fn chars_of(src: &str) -> Vec<char> {
         .collect()
 }
 
-/// A malformed literal: every diagnostic is E0110 at `[gram.lex.char]`, and
-/// the token stream carries an `Error` token where the literal stood.
-fn refused(src: &str) -> usize {
+/// A malformed literal refused under `code` at `[gram.lex.char]`, with an
+/// `Error` token left where the literal stood.
+fn refused_as(code: &str, src: &str) -> usize {
     let lexed = lex::lex(src);
     assert!(
         !lexed.errors.is_empty(),
         "expected {src:?} to be refused, and it lexed clean"
     );
     for e in &lexed.errors {
-        assert_eq!(e.code, diag::E_BAD_CHAR_LITERAL, "{src:?}: {e}");
+        assert_eq!(e.code, code, "{src:?}: {e}");
         assert_eq!(e.anchor, "gram.lex.char", "{src:?}: {e}");
     }
     assert!(
@@ -50,6 +50,11 @@ fn refused(src: &str) -> usize {
         "{src:?}: a refused char literal still leaves an Error token"
     );
     lexed.errors.len()
+}
+
+/// A malformed SHAPE: E0110, the char literal's own code.
+fn refused(src: &str) -> usize {
+    refused_as(diag::E_BAD_CHAR_LITERAL, src)
 }
 
 // -- the literal, at every UTF-8 width ----------------------------------
@@ -148,10 +153,42 @@ fn a_non_scalar_escape_is_refused_at_the_literal() {
 #[test]
 fn malformed_escapes_are_refused() {
     assert_eq!(refused(r"let c = '\q'"), 1);
-    assert_eq!(refused(r"let c = '\u{}'"), 1);
-    assert_eq!(refused(r"let c = '\u{0000041}'"), 1); // seven digits
     assert_eq!(refused(r"let c = '\u41'"), 1); // unbraced
     assert_eq!(refused(r"let c = '\x6'"), 1); // one hex digit
+}
+
+#[test]
+fn the_unicode_escape_s_digit_count_is_e0101_at_the_escape() {
+    // `[gram.lex.char]`, amended at wolf-lang#189 (r04): the one-to-six
+    // bound is the ESCAPE's shape, not the `char`'s value, so it carries the
+    // escape set's code and the escape's span rather than the char literal's
+    // E0110 over the whole literal. `'\u{0000041}'` is refused before
+    // anything asks that `0x0000041` names `'A'` — leading zeros count.
+    assert_eq!(refused_as(diag::E_UNEXPECTED_BYTE, r"let c = '\u{}'"), 1);
+    assert_eq!(
+        refused_as(diag::E_UNEXPECTED_BYTE, r"let c = '\u{0000041}'"),
+        1
+    );
+
+    // "at the escape": the span covers `\u{…}`, not the quotes around it.
+    let src = r"let c = '\u{0000041}'";
+    let lexed = lex::lex(src);
+    let span = lexed.errors[0].span;
+    assert_eq!(&src[span.start..span.end], r"\u{0000041}");
+
+    // The bound "binds in string literals too" — same rule, same code, and
+    // the escape is judged before the value question, so the seven-digit
+    // spelling of `A` is refused rather than quietly decoded.
+    for src in [r#"let s = "x\u{0000041}""#, r#"let s = "x\u{}""#] {
+        let lexed = lex::lex(src);
+        assert_eq!(lexed.errors.len(), 1, "{src}");
+        assert_eq!(lexed.errors[0].code, diag::E_UNEXPECTED_BYTE, "{src}");
+        assert_eq!(lexed.errors[0].anchor, "gram.lex.str", "{src}");
+    }
+
+    // Six digits is in bounds, in both literal forms.
+    assert_eq!(chars_of(r"'\u{000041}'"), vec!['A']);
+    assert!(lex::lex(r#"let s = "x\u{000041}""#).errors.is_empty());
 }
 
 #[test]

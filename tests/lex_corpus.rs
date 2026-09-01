@@ -1,10 +1,15 @@
 //! The `lex` rung over the pinned corpus.
 //!
 //! Every `.lu` file in the corpus is well-formed *lexically* — including the
-//! four `corpus/grammar/` counter-examples, whose ledger `phase:` is `lex`
+//! `corpus/grammar/` counter-examples, whose ledger `phase:` is `lex`
 //! precisely because they tokenize and then die at parse. A lexer diagnostic
 //! anywhere in this walk is either a bug here or a spec divergence; both are
 //! worth stopping the build for.
+//!
+//! The one exception is the corpus's own lexical counter-example, listed by
+//! name below: a file whose ledger `phase:` is `none` is refused BY the
+//! lexer, and its diagnostic is the thing the corpus pins. It arrived at
+//! the e6cf24e pin with r04's `[gram.lex.char]` amendment (wolf-lang#189).
 
 use std::path::{Path, PathBuf};
 
@@ -37,20 +42,47 @@ fn lu_files() -> Vec<PathBuf> {
     out
 }
 
+/// The corpus entries whose ledger `phase:` is `none` — the ones the LEXER
+/// refuses, with the code the corpus pins. Every other file must lex clean.
+const LEXICAL_COUNTER_EXAMPLES: &[(&str, &str)] = &[("grammar/char_uni_seven_digits.lu", "E0101")];
+
 #[test]
 fn every_corpus_file_tokenizes_without_a_lex_diagnostic() {
     let mut failures = Vec::new();
+    let mut refused = Vec::new();
     for path in lu_files() {
+        let relative = path
+            .strip_prefix(corpus_root())
+            .expect("under the corpus root")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let expected = LEXICAL_COUNTER_EXAMPLES
+            .iter()
+            .find(|(file, _)| *file == relative)
+            .map(|(_, code)| *code);
         let source = std::fs::read(&path).expect("readable");
         let lexed = lex::lex_bytes(&source);
-        if let Some(first) = lexed.first_error() {
-            failures.push(format!("  {}: {first}", path.display()));
+        match (lexed.first_error(), expected) {
+            (Some(first), Some(code)) => {
+                assert_eq!(first.code, code, "{relative}");
+                refused.push(relative);
+            }
+            (Some(first), None) => failures.push(format!("  {}: {first}", path.display())),
+            (None, Some(code)) => {
+                failures.push(format!("  {relative}: pins {code} and lexed clean"));
+            }
+            (None, None) => {}
         }
     }
     assert!(
         failures.is_empty(),
         "the pinned corpus must lex clean:\n{}",
         failures.join("\n")
+    );
+    assert_eq!(
+        refused.len(),
+        LEXICAL_COUNTER_EXAMPLES.len(),
+        "a listed lexical counter-example left the corpus"
     );
 }
 

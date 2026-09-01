@@ -406,6 +406,34 @@ struct StrFrame {
 const NESTING_FRIENDLY_LIMIT: usize = 8;
 const NESTING_HARD_RAIL: usize = 32;
 
+/// One message for the one rule, wherever it binds — a `\u{…}` escape's
+/// digit count is `[gram.lex.char]`'s `UNI_ESC` production and it binds
+/// inside `'…'` and `"…"` identically.
+const UNI_ESC_DIGITS: &str = "`\\u{…}` takes one to six hex digits";
+
+/// Why an escape inside a char literal was refused, and under which code.
+///
+/// `[gram.lex.char]` (amended at #189/r04) splits the char literal's
+/// refusals in two, by which rule broke rather than by which literal broke
+/// it. The digit-count rule is the ESCAPE's shape — a production
+/// `[gram.lex.str.escape]` shares — so it is **E0101 at the escape**, judged
+/// before anything asks what value the escape names (leading zeros count:
+/// `'\u{0000041}'` is refused even though `0x0000041` is `'A'`). Every other
+/// malformed shape stays the char literal's own **E0110** over the whole
+/// literal.
+enum CharEscapeError {
+    /// E0110, spanned over the whole char literal by the caller.
+    Shape(String),
+    /// E0101, spanned over the escape itself.
+    DigitCount { span: Span, message: String },
+}
+
+impl CharEscapeError {
+    fn shape(message: impl Into<String>) -> CharEscapeError {
+        CharEscapeError::Shape(message.into())
+    }
+}
+
 struct Lexer<'a> {
     src: &'a str,
     pos: usize,
@@ -1005,7 +1033,7 @@ impl<'a> Lexer<'a> {
         let mut first: Option<char> = None;
         // The first malformation wins; a literal files one report however
         // many things are wrong inside it.
-        let mut bad: Option<String> = None;
+        let mut bad: Option<CharEscapeError> = None;
 
         loop {
             match self.peek() {
@@ -1052,27 +1080,39 @@ impl<'a> Lexer<'a> {
         }
 
         let span = Span::new(start, self.pos);
+        // `[gram.lex.char]` splits the refusal in two, and the split is by
+        // WHICH RULE was broken, not by which literal broke it: the escape's
+        // digit count is `[gram.lex.str.escape]`'s shape rule, E0101 **at the
+        // escape**; every other malformed shape is the char literal's own
+        // E0110 over the whole literal.
         let refusal = if let Some(reason) = bad {
             Some(reason)
         } else if scalars == 0 {
-            Some(
+            Some(CharEscapeError::Shape(
                 "an empty char literal names no scalar; write the character, or spell it \
                  `'\\u{…}'`"
                     .to_owned(),
-            )
+            ))
         } else if scalars > 1 {
-            Some(format!(
+            Some(CharEscapeError::Shape(format!(
                 "a char literal holds exactly one Unicode scalar value, and this one holds \
                  {scalars} — a base-plus-combining-accent pair is two scalars: a `char` is a \
                  scalar, not a grapheme"
-            ))
+            )))
         } else {
             None
         };
         match refusal {
             None => self.push(Tok::Char(first.expect("exactly one scalar")), span),
-            Some(message) => {
+            Some(CharEscapeError::Shape(message)) => {
                 self.error(diag::E_BAD_CHAR_LITERAL, span, "gram.lex.char", &message);
+                self.push(Tok::Error, span);
+            }
+            Some(CharEscapeError::DigitCount {
+                span: at,
+                ref message,
+            }) => {
+                self.error(diag::E_UNEXPECTED_BYTE, at, "gram.lex.char", message);
                 self.push(Tok::Error, span);
             }
         }
@@ -1083,12 +1123,17 @@ impl<'a> Lexer<'a> {
     ///
     /// # Errors
     ///
-    /// A malformation, as the message the caller files under E0110 — the char
-    /// literal's own code, deliberately not the string tier's E0103/E0104.
-    fn scan_char_escape(&mut self) -> Result<char, String> {
+    /// A malformation the caller files: [`CharEscapeError::Shape`] under
+    /// E0110 over the whole literal — the char literal's own code,
+    /// deliberately not the string tier's E0103/E0104 — or
+    /// [`CharEscapeError::DigitCount`] under E0101 at the escape.
+    fn scan_char_escape(&mut self) -> Result<char, CharEscapeError> {
+        let escape = self.pos;
         self.pos += 1; // the backslash
         let Some(c) = self.bump() else {
-            return Err("the input ends inside this char literal's escape".to_owned());
+            return Err(CharEscapeError::shape(
+                "the input ends inside this char literal's escape",
+            ));
         };
         match c {
             'n' => Ok('\n'),
@@ -1112,17 +1157,17 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 if digits != 2 {
-                    return Err("`\\x` takes exactly two hex digits".to_owned());
+                    return Err(CharEscapeError::shape("`\\x` takes exactly two hex digits"));
                 }
                 // Two hex digits reach at most 0xFF, below the surrogate gap:
                 // every `\xNN` names a scalar.
                 Ok(char::from_u32(value).expect("<= 0xFF is a scalar"))
             }
-            'u' => self.scan_char_unicode_escape(),
-            other => Err(format!(
+            'u' => self.scan_char_unicode_escape(escape),
+            other => Err(CharEscapeError::shape(format!(
                 "`\\{other}` is not an escape; a char literal's set is \\n \\t \\r \\\\ \\' \
                  \\\" \\0 \\x \\u"
-            )),
+            ))),
         }
     }
 
@@ -1130,9 +1175,16 @@ impl<'a> Lexer<'a> {
     /// the named value must be a scalar — a `\u` escape naming the surrogate
     /// gap or a value above `0x10FFFF` is refused at the literal
     /// (`[gram.lex.char]`), the lex-time twin of `[type.char.cast]`'s trap.
-    fn scan_char_unicode_escape(&mut self) -> Result<char, String> {
+    ///
+    /// The digit COUNT is judged first and separately (#189, r04): it is the
+    /// escape's *shape*, not the `char`'s value, so `'\u{0000041}'` is
+    /// refused before anything asks that `0x0000041` is `'A'` — and it is
+    /// E0101 at the escape, the code and the site the clause names.
+    fn scan_char_unicode_escape(&mut self, escape: usize) -> Result<char, CharEscapeError> {
         if self.peek() != Some('{') {
-            return Err("`\\u` takes a braced scalar value, as in `'\\u{1F43A}'`".to_owned());
+            return Err(CharEscapeError::shape(
+                "`\\u` takes a braced scalar value, as in `'\\u{1F43A}'`",
+            ));
         }
         self.pos += 1;
         let mut value: u32 = 0;
@@ -1145,22 +1197,27 @@ impl<'a> Lexer<'a> {
         if self.peek() == Some('}') {
             self.pos += 1;
         } else {
-            return Err("this `\\u{…}` escape is missing its closing brace".to_owned());
-        }
-        if digits == 0 || digits > 6 {
-            return Err("`\\u{…}` takes one to six hex digits".to_owned());
-        }
-        if value > 0x0010_FFFF {
-            return Err(format!(
-                "`\\u{{{value:X}}}` is above the last scalar 0x10FFFF — no `char` holds it, \
-                 so no literal spells it"
+            return Err(CharEscapeError::shape(
+                "this `\\u{…}` escape is missing its closing brace",
             ));
         }
+        if digits == 0 || digits > 6 {
+            return Err(CharEscapeError::DigitCount {
+                span: Span::new(escape, self.pos),
+                message: UNI_ESC_DIGITS.to_owned(),
+            });
+        }
+        if value > 0x0010_FFFF {
+            return Err(CharEscapeError::shape(format!(
+                "`\\u{{{value:X}}}` is above the last scalar 0x10FFFF — no `char` holds it, \
+                 so no literal spells it"
+            )));
+        }
         char::from_u32(value).ok_or_else(|| {
-            format!(
+            CharEscapeError::shape(format!(
                 "`\\u{{{value:X}}}` is in the surrogate gap 0xD800..=0xDFFF, not a Unicode \
                  scalar value — no `char` holds it, so no literal spells it"
-            )
+            ))
         })
     }
 
@@ -1600,9 +1657,20 @@ impl<'a> Lexer<'a> {
             );
             return;
         }
-        let scalar = (!overflow && digits > 0)
-            .then(|| char::from_u32(value))
-            .flatten();
+        // The one-to-six bound is the escape's SHAPE and `[gram.lex.char]`
+        // says it "binds in string literals too": E0101 at the escape, judged
+        // before the value question, so `"\u{0000041}"` is refused rather
+        // than quietly decoded to `A` (#189, r04).
+        if digits == 0 || digits > 6 {
+            self.error(
+                diag::E_UNEXPECTED_BYTE,
+                Span::new(start, self.pos),
+                "gram.lex.str",
+                UNI_ESC_DIGITS,
+            );
+            return;
+        }
+        let scalar = (!overflow).then(|| char::from_u32(value)).flatten();
         match scalar {
             Some(ch) => self.push_escaped(start, ch),
             None => self.error(

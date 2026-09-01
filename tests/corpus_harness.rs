@@ -521,14 +521,38 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             exists for — `grammar/struct_pattern_match_arm.lu` advances
     //             `phase: mem` → `run`. The spec is BYTE-IDENTICAL to the
     //             83f83bb pin — 404 anchors, nothing gained, nothing dropped.)
+    //   e6cf24e → 474 files (is32: the s131 merge plus the 2026-09-01 ledger
+    //             ritual. The corpus grows 11, all entries. The two this
+    //             sprint exists for: `memory/region_bytes_query.lu` and
+    //             `memory/region_bytes_value.lu`, the
+    //             `[mem.region.account.1/.2]` relation witnesses (booleans,
+    //             not byte counts — the clause leaves units per tier). D67's
+    //             comma tightening lands three E0201 refusals
+    //             (`struct_pattern_no_separator`, `struct_pattern_rest_bare`,
+    //             `tuple_pattern_no_separator`) which this parser already
+    //             answered — its letter was the measured one. #196 pins the
+    //             two or-pattern residue halves at `phase: mem`
+    //             (`match_arm_or_over_product` — EVERY wolfc lane refuses it
+    //             by name and lupin runs it, a deliberate divergence in the
+    //             differ's ledger; `match_arm_or_inside_product` — checked
+    //             runs it, native refuses). r04's `char_uni_seven_digits.lu`
+    //             is the ONE file that changed this machine: the amended
+    //             `[gram.lex.char]` makes a `\u{…}` digit count outside one
+    //             to six **E0101 at the escape**, where this lexer filed
+    //             E0110 over the whole literal — the spec is unambiguous, so
+    //             the implementation was the defendant. The rest run at first
+    //             sight: `lints/region_call_allocates.lu`,
+    //             `memory/region_unit_tail_call.lu`,
+    //             `grammar/defer_loop_turn.lu`. The spec grows the three
+    //             `mem.region.account*` anchors — 407, nothing dropped.)
     let report = report();
     assert_eq!(
         report.total(),
-        463,
+        474,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 430);
+    assert_eq!(report.entries(), 441);
     assert_eq!(report.members(), 33);
 }
 
