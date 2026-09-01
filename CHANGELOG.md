@@ -1,5 +1,86 @@
 # Changelog
 
+## 0.1.20 — 2026-08-31
+
+THE ARMS AGREE (is31). Match arms take the product domain, and with
+them the last pattern asymmetry between the two machines closes: the
+c06 refusal family s130 retired on the compiler's side had a
+deliberately symmetric twin here, and it dies in the same motion
+(s130, wolf-lang#179). Released against pin `b80d239` — wolf-lang's
+s130 merge; no `v0.2.1` tag existed at the release step, so the merge
+sha is the pin, and the spec tree it carries is BYTE-IDENTICAL to
+0.1.19's `83f83bb` (404 anchors, nothing gained, nothing dropped —
+s130's whole delta is lowering, corpus and CHANGELOG). Census at this
+release: 463 files / 430 entries / 33 members; 338 reach run, 313
+match, 16 dynamic counterparts, 42 conservatism, 58 out of scope, and
+the one standing mismatch is still DIV-2026-019, filed. Every one of
+the 455 files carried over from 0.1.19 is verdict-IDENTICAL, class
+for class.
+
+- **Struct patterns work in `match` arms (`[gram.pat.struct]`,
+  s130/#179).** An arm is a CONJUNCTION of field tests over the
+  value's own shape, exactly as a tuple arm is a conjunction of
+  element tests: literal fields test, shorthand and renamed fields
+  bind, `..` ignores the rest on purpose, and sub-patterns nest —
+  through enum payloads (`Dot(Point { x, y: 0 })`, `S((a, b))`),
+  through `@`-bindings over products (`q @ Point { x: 0, .. }`, whose
+  binds a guard can then read), and through each other. The field-set
+  rules hold in arm position exactly as they do in a binder, so an
+  unknown field still declines by E0403's name and a
+  missing-without-`..` / duplicate / empty one by E0814's, never
+  guessed past. Where 0.1.19 answered `unsupported` — "deferred with
+  the product match domain" — the arm now runs.
+- **The arm boundary takes the WHOLE scrutinee.** `[mem.tier0.move.1]`'s
+  initialization reading is what gives a BINDER its field-wise story
+  (0.1.19's element-move work); no clause extends partial moves to
+  arms, so neither machine invents finer-grained arm semantics. An arm
+  that binds a non-`Copy` piece moves the scrutinee whole, and the
+  field no arm touched is use-after-move afterwards — E1001's dynamic
+  counterpart at the same site. Testing is not taking: the scrutinee
+  is only read to run the arm chain, an all-`Copy` arm leaves it live,
+  a failing guard takes nothing, and a scrutinee that is no place
+  moves nothing.
+- **E0802 reaches product arms (`[ty.match.reachable]`).** The
+  reachability walk widens column-wise: an earlier unguarded arm kills
+  a later one when it covers it column by column, an all-binder
+  product is the catch-all later arms die behind, and the scalar
+  `_`-after-`true`/`false` rule generalizes to "two arms that split a
+  bool COLUMN and constrain nothing else close the shape". Literal
+  precision is kept: every column this static walk cannot judge is
+  opaque, so it neither covers nor is covered, and a guarded arm still
+  covers nothing.
+- **The differential, before and after.** The seven struct-bearing
+  witnesses of #179's table, at 0.1.19 and at this release:
+
+  | witness | 0.1.19 | 0.1.20 |
+  |---|---|---|
+  | `grammar/struct_pattern_match_arm` | `unsupported@resolve` (out-of-scope) | `exit(0)` — match |
+  | `grammar/match_arm_product_nested` | `unsupported@resolve` | `exit(0)` — match |
+  | `grammar/match_arm_at_binding` | `unsupported@resolve` | `exit(0)` — match |
+  | `grammar/match_arm_deep_tree` | `unsupported@resolve` | `exit(0)` — match |
+  | `typecheck/match_arm_product_unreachable` | `unsupported@resolve` | `exit(0)` + E0802 — match |
+  | `memory/match_arm_whole_move` | `unsupported@resolve` | `trap(use-after-move)` — E1001's counterpart |
+  | `typecheck/match_arm_product_nonexhaustive` | `unsupported@resolve` | `exit(0)` — conservatism |
+
+  The tuple twin (`tuple_pattern_match_arm`) and
+  `match_arm_str_in_product` already agreed and still do. Six of the
+  seven join the agreement class outright; the seventh is honest
+  conservatism, not agreement — exhaustiveness is the type checker's
+  and E0801 has no dynamic half, so `match_arm_product_nonexhaustive`
+  sits beside `match_missing` and `match_str_nonexhaustive` in the
+  same column they have always occupied.
+- **The c06 residue, stated row by row.** The compiler's NATIVE pipe
+  still refuses four shapes by name; this machine runs all four, and
+  the checked lane runs the first two, so the first two are a recorded
+  non-nesting rather than a divergence: an enum or row test inside a
+  product (deep trees), a str literal at product depth, a float
+  literal at product depth. The **or-pattern** rows —
+  `(0, true) | (1, false)` over a product, and `(0 | 1, true)` inside
+  one — are the flagged pair: refused by name natively, run here, and
+  the checked lane's posture on them is not something this repo can
+  measure. Filed on wolf-lang#179 for the residue's own sprint, not
+  fixed silently in either direction.
+
 ## 0.1.19 — 2026-08-31
 
 THE SHAPE BINDS (is30). Struct patterns land whole-pipe from the
