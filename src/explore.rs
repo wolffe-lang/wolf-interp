@@ -149,19 +149,31 @@ pub struct ScheduleOutcome {
 }
 
 impl ScheduleOutcome {
+    /// The witnessing schedule as its readable, diffable `ev:…` spelling —
+    /// the decision stream, which is what `--schedule=` replays.
+    ///
+    /// It is always available: the packed `--seed=N` handle is an encoding of
+    /// this and exists only when the stream fits 62 bits, so a report that
+    /// carried only the seed would lose the schedule for exactly the deep
+    /// findings that most need it (wolf-interp#53).
+    #[must_use]
+    pub fn stream(&self) -> String {
+        format!(
+            "ev:{}",
+            self.choices
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    }
+
     /// The copy-pasteable replay spelling for this outcome's witness.
     #[must_use]
     pub fn replay(&self) -> String {
         match self.seed {
             Some(seed) => format!("--seed={seed}"),
-            None => format!(
-                "--schedule=ev:{}",
-                self.choices
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(",")
-            ),
+            None => format!("--schedule={}", self.stream()),
         }
     }
 }
@@ -691,16 +703,7 @@ pub fn render(file: &str, report: &Report, options: &Options) -> String {
         if !report.stable() {
             // A finding prints its full decision stream, not only the packed
             // handle: `--schedule=ev:…` replays it exactly.
-            let _ = writeln!(
-                out,
-                "      decision stream: ev:{}",
-                outcome
-                    .choices
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(",")
-            );
+            let _ = writeln!(out, "      decision stream: {}", outcome.stream());
         }
     }
     let _ = writeln!(
@@ -715,6 +718,15 @@ pub fn render(file: &str, report: &Report, options: &Options) -> String {
 }
 
 /// The machine-readable report (`--explore` with `--json`).
+///
+/// Every outcome carries its **whole replay handle**, not a pointer at the
+/// human report: `replay` is the copy-pasteable flag, `schedule` is the
+/// decision stream in the readable `ev:…` form `--schedule=` takes, and
+/// `seed` is the packed 62-bit value when the stream fits one (`null`
+/// otherwise). wolf-interp#53: a rig building a replay artifact used to run
+/// the exploration twice and pair the human report's "decision stream" line
+/// with a seed by adjacency — the stream is the schedule in the form a bug
+/// report wants, and a `--json` door that omits it forces text scraping.
 #[must_use]
 pub fn to_json(file: &str, report: &Report, options: &Options) -> serde_json::Value {
     serde_json::json!({
@@ -742,6 +754,8 @@ pub fn to_json(file: &str, report: &Report, options: &Options) -> serde_json::Va
             "deadlocked": o.deadlocked,
             "preemptions": o.preemptions,
             "replay": o.replay(),
+            "schedule": o.stream(),
+            "seed": o.seed,
         })).collect::<Vec<_>>(),
     })
 }

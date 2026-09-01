@@ -216,6 +216,89 @@ fn conform_run_explore_reports_and_gates_on_stability() {
     assert_eq!(value["mode"], "dpor");
 }
 
+/// A planted schedule-dependent program: the exit code is whichever send
+/// committed first. Two distinct outcomes, each with its own decision stream.
+const ORDER_DEPENDENT: &str = "//! member: false\n\
+     fn main() -> !int {\n\
+     \x20   let ch = channel[int](2)\n\
+     \x20   scope s {\n\
+     \x20       s.spawn(fn() { ch.send(1) })\n\
+     \x20       s.spawn(fn() { ch.send(2) })\n\
+     \x20   }\n\
+     \x20   let first = ch.recv() else |_| { return 9 }\n\
+     \x20   first\n\
+     }\n";
+
+#[test]
+fn a_replay_artifact_is_built_from_one_explore_and_one_self_contained_record() {
+    // wolf-interp#53, both gaps, as the consumer that filed them: lobo's
+    // `tools/lobo-replay` writes a `.loborace` artifact {case, seed,
+    // schedule, verdict, stdout_sha256} and replays it. Before this the tool
+    // had to run the exploration TWICE — once for `--json`'s seeds, once for
+    // the human report's "decision stream:" lines — and pair the two by
+    // adjacency in the text, then carry the seed out of band because the
+    // record it saved as the artifact body did not name its own schedule.
+    //
+    // Below: ONE explore, no text scraping, and a record that is a complete
+    // artifact on its own.
+    let dir = std::env::temp_dir().join("lupin-replay-artifact-test");
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let case = dir.join("race.lu");
+    std::fs::write(&case, ORDER_DEPENDENT).expect("the case writes");
+    let case = case.to_string_lossy().into_owned();
+
+    let output = lupin(&["conform-run", &case, "--explore=200", "--json"]);
+    // A schedule-dependent finding exits 1 — that is the gate, not an error.
+    assert_eq!(output.status.code(), Some(1), "{}", stdout_of(&output));
+    let report: serde_json::Value =
+        serde_json::from_str(stdout_of(&output).trim()).expect("one JSON object");
+    assert_eq!(report["stable"], false);
+    let outcomes = report["outcomes"].as_array().expect("outcomes");
+    assert_eq!(outcomes.len(), 2);
+
+    for outcome in outcomes {
+        // Gap 1: the decision stream rides the record, per outcome, in the
+        // spelling `--schedule=` takes. `seed` is the packed handle beside it.
+        let stream = outcome["schedule"].as_str().expect("a schedule member");
+        assert!(stream.starts_with("ev:"), "{stream}");
+        let seed = outcome["seed"].as_u64().expect("these streams pack");
+        assert_eq!(outcome["replay"], format!("--seed={seed}"));
+
+        // Replay by SEED: the record is the artifact body, and gap 2 makes it
+        // self-contained — the schedule it replays is IN it.
+        let by_seed = lupin(&["conform-run", &case, "--json", &format!("--seed={seed}")]);
+        let record: serde_json::Value =
+            serde_json::from_str(stdout_of(&by_seed).trim()).expect("one JSON object");
+        assert_eq!(schema::validate(&record), Ok(()));
+        assert_eq!(record["seeded"], true);
+        assert_eq!(record["x-seed"], serde_json::json!(seed));
+        assert_eq!(record["verdict"], outcome["verdict"]);
+
+        // Replay by STREAM: the same observation, and the record names the
+        // stream instead of a seed — whichever spelling the artifact used.
+        let by_stream = lupin(&[
+            "conform-run",
+            &case,
+            "--json",
+            &format!("--schedule={stream}"),
+        ]);
+        let replayed: serde_json::Value =
+            serde_json::from_str(stdout_of(&by_stream).trim()).expect("one JSON object");
+        assert_eq!(replayed["x-schedule"], serde_json::json!(stream));
+        assert_eq!(replayed["verdict"], outcome["verdict"]);
+        assert_eq!(replayed["stdout_sha256"], record["stdout_sha256"]);
+    }
+
+    // An unseeded record stands behind neither key — honest-absent, and
+    // `[proto.cmp.defined-divergence]` never counts an absent `x-` key.
+    let plain = lupin(&["conform-run", &case, "--json"]);
+    let record: serde_json::Value =
+        serde_json::from_str(stdout_of(&plain).trim()).expect("one JSON object");
+    assert_eq!(record["seeded"], false);
+    assert!(record.get("x-seed").is_none());
+    assert!(record.get("x-schedule").is_none());
+}
+
 #[test]
 fn conform_run_explore_refuses_a_statically_rejected_program() {
     // Issue #22: `--explore` runs the SAME admission ladder as `run`. A

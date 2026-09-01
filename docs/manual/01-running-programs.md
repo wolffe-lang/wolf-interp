@@ -161,3 +161,18 @@ program the static ladder rejects (an E11xx capture-law finding, say)
 refuses to explore, with the same diagnostic and exit `2`. A schedule space
 only exists for an admitted program. `conform-run --help` lists the
 exploration budgets.
+
+Everything a replay artifact needs is in the machine-readable forms, so a
+rig never scrapes the human report (wolf-interp#53). Each outcome of
+`--explore --json` carries three replay members: `replay`, the
+copy-pasteable flag; `schedule`, the decision stream as `ev:c0,c1,…` —
+the spelling `--schedule=` takes, and the only one that survives a stream
+too deep for a packed seed; and `seed`, that packed 62-bit value or
+`null`. A record produced under `--seed=N` or `--schedule=ev:…` echoes the
+request back as the extension key `x-seed` or `x-schedule`, so
+`conform-run --json --seed=S > artifact.json` is self-contained: the file
+names the schedule it replays. Both keys are `x-` extensions
+(`[proto.record.ext]`) — the protocol's own field set is wolf-lang's to
+grow — and an absent extension key is never a divergence
+(`[proto.cmp.defined-divergence]`), so a seeded record still compares
+clean against a counterparty that emits neither.

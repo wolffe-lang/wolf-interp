@@ -249,6 +249,39 @@ fn record_of(
     // only when both records carry them — which is exactly right for a reason
     // string the other implementation has no obligation to match.
     let mut extensions = BTreeMap::new();
+    // wolf-interp#53's second gap: a record that declares `seeded: true`
+    // without saying WHICH schedule is not a replay artifact — the one fact
+    // that makes `conform-run --json --seed=S > artifact.json` self-contained
+    // had to be carried out of band by the invoker. The request is echoed
+    // back in the form it was made: `--seed=N` (packed or generator) answers
+    // `x-seed`, `--schedule=ev:…` answers `x-schedule`.
+    //
+    // These are `x-` keys and not bare `seed`/`schedule` members on purpose.
+    // `[proto.record.fields]` fixes the record's field set and only a
+    // wolf-lang clause may grow it; `[proto.record.ext]` exists for exactly
+    // this — an implementation fact the counterparty has no obligation to
+    // match — and `[proto.cmp.defined-divergence]` rules `x-` keys absent on
+    // one side never a divergence, so a seeded lupin record still compares
+    // clean against a wolfc record that carries neither.
+    match request {
+        eval::SchedRequest::Default => {}
+        eval::SchedRequest::Seed(seed) => {
+            extensions.insert("x-seed".to_owned(), serde_json::Value::from(*seed));
+        }
+        eval::SchedRequest::Stream(choices) => {
+            extensions.insert(
+                "x-schedule".to_owned(),
+                serde_json::Value::from(format!(
+                    "ev:{}",
+                    choices
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )),
+            );
+        }
+    }
     if let Some(reason) = &observation.reason {
         extensions.insert(
             "x-unsupported".to_owned(),
