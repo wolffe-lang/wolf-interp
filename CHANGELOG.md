@@ -1,5 +1,133 @@
 # Changelog
 
+## 0.1.21 — 2026-09-01
+
+THE LEDGER IN THE MIRROR (is32). The region machine learns to say how
+much it has charged: `region_bytes(r)` and `live_region_bytes()` land
+against `[mem.region.account.1/.2]` (s131, wolf-lang#187), and the
+interesting part is *what the two machines are allowed to disagree
+about*. The clause leaves the UNITS per tier — "what charges, and by
+how much, are implementation-measured facts per tier, not comparison
+surface" — and pins four RELATIONS instead. So lupin's ledger is its
+own honest arena model, the native tier's is alignment-rounded arena
+storage, the checked machine's is its shadow memory, the three numbers
+differ, and the two witnesses still agree **byte for byte**, because
+what they print is booleans. That is the differential working as
+designed rather than in spite of a divergence. Released against pin
+`e6cf24e` — wolf-lang trunk's head, the s131 merge plus the 2026-09-01
+ledger ritual; the newest tag `v0.2.1` sits seven commits behind it,
+so the merge sha is the pin (the is31 check-the-tag pattern). Census
+at this release: 474 files / 441 entries / 33 members; 345 reach run,
+324 match, 16 dynamic counterparts, 42 conservatism, 58 out of scope,
+and the one standing mismatch is still DIV-2026-019, filed. Every one
+of the 463 files carried over from 0.1.20 is verdict-IDENTICAL, class
+for class.
+
+- **The byte ledger (`[mem.region.account.1]`).** Every region carries
+  a cumulative count of the bytes charged for allocations placed in
+  it, readable through `region_bytes(r)` over a sugar block's name or
+  a first-class region value. The three contractual relations fall out
+  of the arithmetic rather than being asserted on top of it: **zero at
+  creation** is a fresh region's `bytes: 0`; **monotone within the
+  lifetime** is never subtracting, a growth realloc charging the whole
+  new buffer while the abandoned one stays charged; **stable between
+  allocations** is a push inside the already-granted capacity charging
+  nothing at all. Reading a ledger is a *touch*, so a region value
+  that outlived its region's wholesale free faults at `region_bytes`
+  exactly where it would at `in r { … }`.
+- **The live total (`[mem.region.account.2]`).** `live_region_bytes()`
+  sums every unfreed **named** region's ledger — the process-root
+  arena is never counted, and a free takes its whole row at once, so
+  `region scratch { … }` returns the total to its entry reading by
+  construction. A `Frozen` region keeps contributing: it is never
+  freed, which is its specified end state (`[mem.region.freeze.1]`),
+  not a leak.
+- **Birth-region attribution.** A container's storage charges the
+  region that was ambient at its ALLOCATION site, not the one ambient
+  at the push — `[mem.region.create.3]`'s rule, which this machine has
+  carried on `Value::home` since is16. Growing a root-born list inside
+  `in r { … }` moves `r`'s ledger not one byte.
+- **What a byte means here, written down.** There is no arena in this
+  machine: is02 made a `Value` a plain owned Rust tree, so the real
+  bytes are the Rust allocator's business and would be neither stable
+  across builds nor meaningful to a wolf program. `eval::region::ledger`
+  therefore models the storage the same program would take in a
+  compiled arena — a 16-byte grain, a 32-byte allocation header, 16
+  bytes a value slot, a `str`'s UTF-8 length, container capacity in
+  powers of two from four (this machine's own policy, never Rust's
+  `Vec`) — so the same program charges the same bytes on every host
+  and every build. It is a **high-water** accounting, never an
+  address, a placement, or an RSS proxy. One measured units
+  divergence, recorded: `str` charges the ambient region here where
+  the native tier charges the process root (wolf-lang#191, the c09
+  seam). The clause anticipates it in as many words, and the relations
+  are what the witnesses compare. `docs/approximation-contract.md`
+  §6.15 is the contract.
+- **The cap half is DEFERRED BY NAME.** wolf-lang ruled it D68 on
+  2026-09-01 — a cap breach is `trap(alloc-contract)` at the
+  allocating site, contained at the proc boundary per `[conc.proc.1]`,
+  no unwinding and no catchable row — but no cap syntax, no fault
+  semantics and no clause have landed on wolf-lang trunk at this pin,
+  so there is nothing here to implement against. No `Region.cap` in
+  0.1.21; it is the is33-era twin, and wolf-lang#187 stays open
+  tracking it.
+- **wolf-interp#53 closes, both gaps.** `--explore --json` gains a
+  per-outcome `schedule` (the decision stream as `ev:c0,c1,…`, the
+  spelling `--schedule=` takes and the only one that survives a stream
+  too deep for a packed seed) beside `seed` and the existing `replay`;
+  the human line and the JSON member share one renderer, so they
+  cannot drift. And a seeded record echoes its request as `x-seed` /
+  `x-schedule`, so `conform-run --json --seed=S > artifact.json` names
+  the schedule it replays instead of leaning on the invoker. They are
+  `x-` EXTENSION keys deliberately: `[proto.record.fields]` fixes the
+  record's field set and only a wolf-lang clause may grow it,
+  `[proto.record.ext]` exists for exactly an implementation fact the
+  counterparty need not match, and `[proto.cmp.defined-divergence]`
+  rules an absent `x-` key never a divergence. lobo's `lobo-replay`
+  double-explore-and-awk workaround is the acceptance test, run
+  without either workaround.
+- **`\u{…}`'s digit count is E0101 at the escape.** The pin's only
+  other implementation work, and the corpus caught it: r04's amended
+  `[gram.lex.char]` (wolf-lang#189) makes the one-to-six bound the
+  ESCAPE's shape rule rather than the char literal's, so seven digits
+  or none is **E0101 at the escape** where this lexer filed E0110 over
+  the whole literal — and the clause says the bound "binds in string
+  literals too", where lupin had no bound at all and quietly decoded
+  `"\u{0000041}"` to `A`. The spec is unambiguous, so the
+  implementation was the defendant (`[proto.cmp.triage]`). E0101
+  leaves `diag::UNPINNED_CODES`, and the corpus gains its first
+  `phase: none` entry — a file the LEXER refuses.
+- **The differential, before and after.** The eleven entries the pin
+  adds, at 0.1.20's binary and at this release:
+
+  | witness | 0.1.20 | 0.1.21 |
+  |---|---|---|
+  | `memory/region_bytes_query` | `unsupported@resolve` — "`live_region_bytes` does not resolve" | `exit(0)` "create true \| grew true \| stable true \| live_up true \| reclaimed true" — match |
+  | `memory/region_bytes_value` | `unsupported@resolve` — "`region_bytes` does not resolve" | `exit(0)` "create true \| attributed true \| birth true" — match |
+  | `grammar/char_uni_seven_digits` | `fail(E0110)@lex` — MISMATCH | `fail(E0101)@lex` — match |
+  | `lints/region_call_allocates` | `exit(0)` | `exit(0)` — match |
+  | `memory/region_unit_tail_call` | `exit(0)` | `exit(0)` — match |
+  | `grammar/defer_loop_turn` | `exit(0)` | `exit(0)` — match |
+  | `grammar/match_arm_or_over_product` | `exit(0)` | `exit(0)` — match (c06 residue) |
+  | `grammar/match_arm_or_inside_product` | `exit(0)` | `exit(0)` — match (c06 residue) |
+  | `grammar/struct_pattern_no_separator` | `fail(E0201)@parse` | `fail(E0201)@parse` — match |
+  | `grammar/struct_pattern_rest_bare` | `fail(E0201)@parse` | `fail(E0201)@parse` — match |
+  | `grammar/tuple_pattern_no_separator` | `fail(E0201)@parse` | `fail(E0201)@parse` — match |
+
+  Two witnesses flip (the ones this sprint exists for), one is fixed
+  (the escape), and eight answer at first sight against work already
+  in this tree — D67's comma trio included, whose letter this parser
+  already held, and #196's two or-pattern residue pins, where the
+  compiler's native pipe refuses by name and this machine runs: a
+  divergence wolf-lang filed on purpose, carried in the differ's
+  ledger rather than papered over.
+- **Ledger movements.** Anchors 404 → 407 (`+mem.region.account` and
+  its two children; the key SETS were diffed both ways — nothing
+  dropped, the wolf-lang#177 lesson). Coverage ratchet 165 → 168
+  (`+mem.region.account.1`, `+mem.region.account.2`, and
+  `+gram.lex.char`, a clause the corpus had never cited until the
+  escape witness). Bundle programs/records 501/468 → 512/479.
+
 ## 0.1.20 — 2026-08-31
 
 THE ARMS AGREE (is31). Match arms take the product domain, and with
