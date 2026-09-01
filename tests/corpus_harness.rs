@@ -504,14 +504,31 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             out-of-scope by the deferral/refusal-by-name design.
     //             The spec grows [gram.pat.struct] — 404 anchors, nothing
     //             dropped.)
+    //   b80d239 → 463 files (is31: the s130 merge — match arms take the
+    //             product domain. The corpus grows 8, all entries, all the
+    //             ARM: `grammar/tuple_pattern_match_arm.lu` (the s128 twin
+    //             lupin already ran), `match_arm_product_nested.lu` (tag +
+    //             product conjunction), `match_arm_at_binding.lu` (`@` over
+    //             products, guards over product binds),
+    //             `typecheck/match_arm_product_unreachable.lu` (E0802 over
+    //             a split bool column) and `match_arm_product_nonexhaustive.lu`
+    //             (E0801's product witness), `memory/match_arm_whole_move.lu`
+    //             (the arm-boundary ruling), and the two c06 RESIDUE pins
+    //             `match_arm_deep_tree.lu` + `match_arm_str_in_product.lu`
+    //             (phase mem: the counterparty's native pipe refuses both by
+    //             name, its checked lane runs them, and so does lupin). One
+    //             existing file changed check-visibly: the flip this sprint
+    //             exists for — `grammar/struct_pattern_match_arm.lu` advances
+    //             `phase: mem` → `run`. The spec is BYTE-IDENTICAL to the
+    //             83f83bb pin — 404 anchors, nothing gained, nothing dropped.)
     let report = report();
     assert_eq!(
         report.total(),
-        455,
+        463,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 422);
+    assert_eq!(report.entries(), 430);
     assert_eq!(report.members(), 33);
 }
 

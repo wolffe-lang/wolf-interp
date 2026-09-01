@@ -1049,6 +1049,30 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/list_slice_inline_owned.lu", "exit(0)"),
     ("strings/byte_view_slice_lent.lu", "exit(0)"),
     ("faults/byte_view_slice_reversed.lu", "trap(bounds)"),
+    // The b80d239 pin (is31, the s130 merge): the whole match-ARM witness
+    // set joins the census and every one of the eight answers its pin at
+    // first sight — the work landed in this tree one commit span earlier,
+    // off `[gram.pat.struct]` and `[mem.tier0.move.1]`'s letter alone.
+    // (`grammar/struct_pattern_match_arm.lu` is up in the grammar block: it
+    // was already pinned at the previous pin and started running there.)
+    // `match_arm_whole_move` traps use-after-move at the field NO arm
+    // touched — E1001's counterpart, the census's 16th.
+    // `match_arm_deep_tree` and `match_arm_str_in_product` are the c06
+    // RESIDUE pins, `phase: mem` because the counterparty's NATIVE pipe
+    // refuses each by name; its checked lane runs them and so does this
+    // machine, which is a recorded non-nesting rather than a divergence.
+    // `match_arm_product_nonexhaustive` runs here because exhaustiveness is
+    // the type checker's — E0801 has no dynamic half, so it joins
+    // `match_missing` and `match_str_nonexhaustive` in the conservatism
+    // column rather than refusing by name.
+    ("grammar/tuple_pattern_match_arm.lu", "exit(0)"),
+    ("grammar/match_arm_product_nested.lu", "exit(0)"),
+    ("grammar/match_arm_at_binding.lu", "exit(0)"),
+    ("grammar/match_arm_deep_tree.lu", "exit(0)"),
+    ("grammar/match_arm_str_in_product.lu", "exit(0)"),
+    ("memory/match_arm_whole_move.lu", "trap(use-after-move)"),
+    ("typecheck/match_arm_product_unreachable.lu", "exit(0)"),
+    ("typecheck/match_arm_product_nonexhaustive.lu", "exit(0)"),
 ];
 
 #[test]

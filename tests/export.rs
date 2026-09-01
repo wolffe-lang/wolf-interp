@@ -115,7 +115,12 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // newly covered clause is gram.pat.struct itself, cited by all six
 // struct-pattern witnesses — the clause this sprint implemented from.
 // Raised in the bump commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 164;
+// 164 → 165 at b80d239 (is31, the s130 merge): the one newly covered
+// clause is ty.match.reachable, cited by
+// typecheck/match_arm_product_unreachable — E0802 over a product
+// scrutinee, which this machine's reachability walk now judges
+// column-wise. Raised in the bump commit per the test's own instruction.
+const RATCHET_FLOOR: usize = 165;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -183,6 +188,9 @@ const RATCHET_FLOOR: usize = 164;
 // 403 → 404 at 83f83bb (is30's second bump, the s129 merge):
 // [gram.pat.struct] — struct patterns exist, and this machine's parser
 // cites the clause on every StructPat node. Nothing dropped.
+// HELD at 404 by b80d239 (is31, the s130 merge): the spec tree is
+// BYTE-IDENTICAL to the 83f83bb pin — s130's whole delta is lowering,
+// corpus and CHANGELOG, so the registry neither gains nor drops a row.
 const ANCHORS_TOTAL: usize = 404;
 
 fn crate_root() -> PathBuf {
@@ -341,10 +349,13 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // 483/450 → 493/460 at 83f83bb (is30's second bump, the s129 merge):
     // 10 corpus files, all entries — the six [gram.pat.struct] witnesses
     // and #184's slice quartet; the suite is unmoved.
+    // 493/460 → 501/468 at b80d239 (is31, the s130 merge): 8 corpus files,
+    // all entries — the match ARM witness set (#179's table); the suite is
+    // unmoved.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "83f83bbf44ce5dd6a8f6e2fe255fa37d1fe3954b");
-    assert_eq!(summary.programs, 493);
-    assert_eq!(summary.records, 460);
+    assert_eq!(summary.pin, "b80d239e2d1edf5d767108f8c01b98a7709bf35d");
+    assert_eq!(summary.programs, 501);
+    assert_eq!(summary.records, 468);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
