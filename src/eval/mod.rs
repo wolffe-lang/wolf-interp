@@ -1287,6 +1287,23 @@ impl Machine {
         }
     }
 
+    /// Did the innermost scope bind anything a copy would forge?
+    ///
+    /// The arm boundary's question (is31): a `match` arm takes its whole
+    /// scrutinee exactly when its pattern bound a non-`Copy` piece, so the
+    /// answer is read off what the arm's own scope now holds — every binder,
+    /// shorthand field and `@` name the pattern declared, and nothing else.
+    /// The same `is_copy` line `consume_place` draws, asked of the bindings
+    /// rather than of the source.
+    fn scope_bound_a_non_copy(&self) -> bool {
+        self.frames.last().is_some_and(|frame| {
+            frame
+                .scopes
+                .last()
+                .is_some_and(|scope| scope.locals.iter().any(|(_, slot)| !is_copy(&slot.value)))
+        })
+    }
+
     fn local_exists(&self, name: &str) -> bool {
         self.frames.last().is_some_and(|frame| {
             frame
@@ -3956,7 +3973,25 @@ impl Machine {
                 }
             }
             ExprKind::Match { scrutinee, arms } => {
-                let value = self.eval(scrutinee)?;
+                // The ARM BOUNDARY, per the spec's letter (s130's ruling, is31):
+                // an arm takes the WHOLE scrutinee when it binds a non-`Copy`
+                // piece. `[mem.tier0.move.1]`'s initialization reading is what
+                // gives a *binder* its field-wise story (the s128/is30 element
+                // discipline, `bind_pattern_from_place`); no clause extends
+                // partial moves to arms, so neither machine invents finer-
+                // grained arm semantics. `memory/match_arm_whole_move.lu` pins
+                // it: the field NO arm touched is unreadable after the arm.
+                //
+                // Testing is not taking. The scrutinee is READ to run the arm
+                // chain and only moved once an arm has matched, its guard has
+                // held, and its binds are shown to include something a copy
+                // would forge — an all-`Copy` arm leaves the scrutinee live,
+                // exactly as `consume_place` copies rather than moves.
+                let place = self.live_place(scrutinee)?;
+                let value = match &place {
+                    Some(path) => self.read_path(path, scrutinee.span)?,
+                    None => self.eval(scrutinee)?,
+                };
                 for arm in arms {
                     self.push_scope();
                     let matched = self.match_pattern(&arm.pattern, &value)?;
@@ -3970,6 +4005,12 @@ impl Machine {
                     };
                     if guard {
                         self.fire(Rule::Flow, arm.span, "match arm taken");
+                        if let Some(path) = &place
+                            && self.scope_bound_a_non_copy()
+                        {
+                            let path = path.clone();
+                            self.move_path(&path, scrutinee.span)?;
+                        }
                         let result = self.eval(&arm.body);
                         self.pop_scope();
                         return result;
@@ -5416,21 +5457,57 @@ impl Machine {
                 }
                 Ok(true)
             }
-            PatKind::Struct { .. } => {
-                // s129 (#179): struct patterns in `match` ARMS are sema-
-                // complete upstream, and then BOTH of the counterparty's
-                // lowerings refuse product patterns in arm position by name —
-                // the c06 family. This machine keeps the deferral SYMMETRIC:
-                // the arm witness (`grammar/struct_pattern_match_arm.lu`,
-                // pinned at `phase: mem`) answers `unsupported` on both
-                // machines, and the day the product match domain lands the
-                // two advance together. Binder positions bind today.
-                unsupported(
-                    "struct patterns in `match` arms are deferred with the product match \
-                     domain (s129/#179, the counterparty's c06 refusal family) — destructure \
-                     in a binder, or match on the discriminating field"
-                        .to_owned(),
-                )
+            PatKind::Struct { path, fields, rest } => {
+                // s130 (#179) retired the c06 deferral on the counterparty's
+                // side, so this machine's symmetric deferral dies with it
+                // (is31). An arm's struct pattern is a CONJUNCTION of field
+                // tests over the value's own shape, exactly as the tuple arm
+                // above is a conjunction of element tests: the field set is
+                // checked by `[gram.pat.struct]`'s rules (the binder path's
+                // `check_struct_pattern`, so an unknown/duplicate/empty/
+                // missing field declines by the counterparty's code name in
+                // arm position too), then each named field's sub-pattern is
+                // matched against that field's value and a shorthand field
+                // binds under its own name.
+                //
+                // Shape is the type checker's, so a non-struct or wrong-struct
+                // value is simply an arm that does not apply (`Ok(false)`) —
+                // the tuple arm's precedent, and the honest answer for a
+                // pattern that can only meet its own type.
+                let Value::Struct {
+                    name,
+                    fields: slots,
+                    ..
+                } = value
+                else {
+                    return Ok(false);
+                };
+                let want = path
+                    .segments
+                    .last()
+                    .map(|s| s.name.as_str())
+                    .unwrap_or_default();
+                if want != name.rsplit('.').next().unwrap_or(name) {
+                    return Ok(false);
+                }
+                let field_names: Vec<String> = slots.iter().map(|(f, _)| f.clone()).collect();
+                let values: Vec<Value> = slots.iter().map(|(_, s)| s.value.clone()).collect();
+                check_struct_pattern(path, fields, *rest, name, &field_names)?;
+                for field in fields {
+                    let index = field_names
+                        .iter()
+                        .position(|f| *f == field.name.name)
+                        .expect("the field set was checked");
+                    match &field.pattern {
+                        Some(sub) => {
+                            if !self.match_pattern(sub, &values[index])? {
+                                return Ok(false);
+                            }
+                        }
+                        None => self.declare(&field.name.name, Slot::live(values[index].clone())),
+                    }
+                }
+                Ok(true)
             }
             PatKind::At { name, pattern } => {
                 if self.match_pattern(pattern, value)? {

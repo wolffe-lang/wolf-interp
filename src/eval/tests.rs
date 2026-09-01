@@ -2764,26 +2764,161 @@ fn an_empty_struct_pattern_is_refused_toward_the_wildcard() {
 }
 
 #[test]
-fn a_struct_pattern_in_a_match_arm_defers_with_the_product_domain() {
-    // s129 (#179): the counterparty's BOTH lowerings refuse product
-    // patterns in arm position by name (the c06 family), and this machine
-    // keeps the deferral symmetric — the arm witness answers `unsupported`
-    // on both machines until the product match domain lands.
+fn a_struct_pattern_in_a_match_arm_is_a_conjunction_of_field_tests() {
+    // is31 (#179): s130 retired the c06 deferral on the counterparty's side
+    // and this machine's symmetric deferral died with it. The arm tests the
+    // literal fields and binds the rest —
+    // `corpus/grammar/struct_pattern_match_arm.lu`, phase `run` since s130.
+    let source = "struct Flag { on: bool, n: int }\n\
+                  fn main() -> !int {\n\
+                  \x20   let f = Flag { on: true, n: 3 }\n\
+                  \x20   let r = match f {\n\
+                  \x20       Flag { on: true, n } => n,\n\
+                  \x20       Flag { on: false, .. } => 0,\n\
+                  \x20   }\n\
+                  \x20   r - 3\n\
+                  }\n";
+    assert_eq!(outcome(source), Outcome::Exit(0));
+}
+
+#[test]
+fn a_failing_field_test_moves_the_arm_chain_on() {
+    // The conjunction's other half: the FIRST arm's literal field does not
+    // hold, so the arm does not apply and the next one answers.
+    let source = "struct Flag { on: bool, n: int }\n\
+                  fn main() -> !int {\n\
+                  \x20   let f = Flag { on: false, n: 3 }\n\
+                  \x20   match f {\n\
+                  \x20       Flag { on: true, n } => n,\n\
+                  \x20       Flag { on: false, n } => n * 2,\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(outcome(source), Outcome::Exit(6));
+}
+
+#[test]
+fn a_match_arm_takes_the_whole_scrutinee_when_it_binds_a_non_copy_piece() {
+    // The ARM-BOUNDARY ruling (s130/#179, `memory/match_arm_whole_move.lu`):
+    // `[mem.tier0.move.1]`'s initialization reading gives a BINDER its
+    // field-wise story; no clause extends partial moves to arms, so an arm
+    // that binds `a` moves all of `h` and the field no arm touched is
+    // use-after-move. E1001's dynamic counterpart, at the untouched field.
+    let trap = trap_of(
+        "struct Inner { n: int }\n\
+         struct Holder { a: Inner, b: Inner }\n\
+         fn main() -> !int {\n\
+         \x20   let h = Holder { a: Inner { n: 1 }, b: Inner { n: 2 } }\n\
+         \x20   let r = match h {\n\
+         \x20       Holder { a, .. } => a.n,\n\
+         \x20   }\n\
+         \x20   let k = h.b.n\n\
+         \x20   if r + k != 3 { return 1 }\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::UseAfterMove);
+    assert_eq!(trap.rule.anchor(), "mem.tier0.move.2");
+    let (move_site, note) = trap.secondary.expect("the arm's move site is reported");
+    assert!(move_site.start < trap.span.start, "{move_site}");
+    assert!(note.contains("`h`"), "{note}");
+}
+
+#[test]
+fn an_all_copy_arm_leaves_the_scrutinee_live() {
+    // Testing is not taking, and neither is copying: the arm binds `n`, an
+    // `int`, so nothing a copy would forge left `f` and the scrutinee reads
+    // again afterwards. `consume_place`'s `Copy` line, drawn at the arm
+    // boundary — `struct_pattern_match_arm.lu` runs on exactly this.
+    let source = "struct Flag { on: bool, n: int }\n\
+                  fn main() -> !int {\n\
+                  \x20   let f = Flag { on: true, n: 3 }\n\
+                  \x20   let r = match f {\n\
+                  \x20       Flag { on: true, n } => n,\n\
+                  \x20       Flag { on: false, .. } => 0,\n\
+                  \x20   }\n\
+                  \x20   r + f.n - 6\n\
+                  }\n";
+    assert_eq!(outcome(source), Outcome::Exit(0));
+}
+
+#[test]
+fn a_match_over_a_value_that_is_no_place_moves_nothing() {
+    // The arm boundary is a move OF A PLACE. A call result has none, so the
+    // arm binds out of a temporary and there is nothing to leave moved-from.
+    let source = "struct Inner { n: int }\n\
+                  struct Holder { a: Inner, b: Inner }\n\
+                  fn mk() -> Holder { Holder { a: Inner { n: 1 }, b: Inner { n: 2 } } }\n\
+                  fn main() -> !int {\n\
+                  \x20   match mk() {\n\
+                  \x20       Holder { a, .. } => a.n - 1,\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(outcome(source), Outcome::Exit(0));
+}
+
+#[test]
+fn a_struct_arm_declines_an_unknown_field_by_the_counterpartys_name() {
+    // `[gram.pat.struct]`'s field-set rules hold in ARM position exactly as
+    // they do in a binder: the same `check_struct_pattern`, so the same
+    // refusal-by-name (upstream E0403). Arm position never guesses past a
+    // field the value does not have.
     let Outcome::Unsupported(reason) = outcome(
         "struct Flag { on: bool, n: int }\n\
          fn main() -> !int {\n\
          \x20   let f = Flag { on: true, n: 3 }\n\
-         \x20   let r = match f {\n\
-         \x20       Flag { on: true, n } => n,\n\
-         \x20       Flag { on: false, .. } => 0,\n\
+         \x20   match f {\n\
+         \x20       Flag { z, .. } => z,\n\
          \x20   }\n\
-         \x20   r - 3\n\
          }\n",
     ) else {
-        panic!("a struct pattern in a match arm must defer");
+        panic!("an unknown field must decline in arm position too");
     };
-    assert!(reason.contains("product match domain"), "{reason}");
-    assert!(reason.contains("s129"), "{reason}");
+    assert!(reason.contains("E0403"), "{reason}");
+    assert!(reason.contains("`z`"), "{reason}");
+}
+
+#[test]
+fn a_struct_arm_nests_through_an_enum_payload() {
+    // `corpus/grammar/match_arm_product_nested.lu`'s core: the tag test and
+    // the field tests conjoin, and the binds are field-wise off the matched
+    // payload.
+    let source = "struct Point { x: int, y: int }\n\
+                  enum Dots { Nil, Dot(Point) }\n\
+                  fn dot_arms(s: Dots) -> int {\n\
+                  \x20   match s {\n\
+                  \x20       Nil => -5,\n\
+                  \x20       Dot(Point { x, y: 0 }) => x,\n\
+                  \x20       Dot(Point { x, y }) => x * y,\n\
+                  \x20   }\n\
+                  }\n\
+                  fn main() -> !int {\n\
+                  \x20   print(\"{dot_arms(Dots.Dot(Point { x: 8, y: 0 }))}\")\n\
+                  \x20   print(\"{dot_arms(Dots.Dot(Point { x: 3, y: 4 }))}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "8\n12\n");
+}
+
+#[test]
+fn an_at_binding_over_a_struct_arm_binds_the_whole_and_the_pieces() {
+    // `corpus/grammar/match_arm_at_binding.lu`: `IDENT '@' closed_pattern`
+    // binds the whole value under the name AND applies the sub-pattern's
+    // tests and binds; a guard sees every product bind.
+    let source = "struct Point { x: int, y: int }\n\
+                  fn at_struct(p: Point) -> int {\n\
+                  \x20   match p {\n\
+                  \x20       q @ Point { x: 0, .. } => q.y * 2,\n\
+                  \x20       Point { x, y } if x > y => x - y,\n\
+                  \x20       Point { y, .. } => y,\n\
+                  \x20   }\n\
+                  }\n\
+                  fn main() -> !int {\n\
+                  \x20   print(\"{at_struct(Point { x: 0, y: 4 })}\")\n\
+                  \x20   print(\"{at_struct(Point { x: 5, y: 2 })}\")\n\
+                  \x20   print(\"{at_struct(Point { x: 1, y: 4 })}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "8\n3\n4\n");
 }
 
 #[test]

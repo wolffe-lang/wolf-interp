@@ -153,6 +153,10 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("grammar/interp_nested.lu", "exit(0)"),
     ("grammar/newline_trailing.lu", "exit(0)"),
     ("grammar/structlit_paren.lu", "exit(0)"),
+    // is31 (#179): the struct ARM runs. s130 retired the counterparty's c06
+    // product-match refusal and this machine's symmetric deferral died in the
+    // same motion — the arm is a conjunction of field tests.
+    ("grammar/struct_pattern_match_arm.lu", "exit(0)"),
     // D32's module graph. `cycle` and `unused` left this ledger at is06: the
     // resolve rung enforces the module laws now (E0303/E0305, closing
     // DIV-2026-002 and DIV-2026-005), so both fail at `resolve` exactly as
