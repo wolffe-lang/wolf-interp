@@ -272,10 +272,18 @@ fn main() -> !int {
 }
 
 #[test]
-fn a_proc_crash_is_contained_bulk_frees_and_reports_error() {
+fn a_proc_crash_is_contained_bulk_frees_and_reports_fault_of_its_kind() {
     // [conc.proc.kill]/[conc.proc.1]: the Armstrong claim, executable — a
     // trap inside a proc crashes the proc, not the program; its regions
-    // bulk-free (the leak assertion is the proof) and the reason is an error.
+    // bulk-free (the leak assertion is the proof) and the reason is
+    // `fault(kind)`, s132's fifth member of `[conc.proc.exit]`'s closed set.
+    //
+    // The respelling is the whole change here: this machine has contained
+    // proc traps since is06 and spelled the reason `error("trap", kind)`,
+    // which made `is_error()` true of a crash — a class error the amended
+    // clause names. `is_fault()` is the class; `is_alloc_contract()` names
+    // ONE kind, so a div-zero fault answers it `false` while still being a
+    // fault, which is what keeps the region-cap predicate honest.
     let source = r#"fn crasher() -> int {
     let xs = List[int]()
     (mut xs).push(1)
@@ -287,7 +295,9 @@ fn main() -> !int {
     let w = spawn proc crasher()
     let m = w.monitor()
     select {
-        exit(reason) from m => { if reason.is_error() { 0 } else { 1 } },
+        exit(reason) from m => {
+            if !reason.is_fault() { 1 } else if reason.is_error() { 3 } else if reason.is_alloc_contract() { 4 } else { 0 }
+        },
         timeout(1.s) => { 2 },
     }
 }

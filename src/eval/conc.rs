@@ -72,6 +72,15 @@ impl Machine {
 
     /// Frees a batch of regions wholesale — the killed/exited proc's step 3
     /// (`[conc.proc.kill]`), performed by whichever task holds the baton.
+    /// Step 3 of the killed-proc sequence, and then step 4
+    /// (`[conc.proc.kill]`, `[mem.region.cap.3]`): the proc's regions
+    /// bulk-free here, and only then does the parked exit reason publish.
+    ///
+    /// The order is the clause's, stated once at the one seam that can keep
+    /// it: the scheduler hands back regions it cannot free itself, so the
+    /// publish must wait for whoever can. A join therefore reads
+    /// `live_region_bytes()` at its pre-spawn value — no postmortem query can
+    /// observe a dead proc's charge.
     pub(super) fn free_regions(&mut self, regions: Vec<RegionId>, span: Span) {
         for region in regions {
             let freed = self.store().free(region);
@@ -90,6 +99,8 @@ impl Machine {
             }
         }
         self.assert_forest(span);
+        self.shared.sched.deliver_pending();
+        self.drain_sched();
     }
 
     /// Has this run ever had a second task? (Gates the notes that only make

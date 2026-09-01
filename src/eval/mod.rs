@@ -649,6 +649,15 @@ impl Machine {
         }
     }
 
+    /// Is this machine's task inside a proc — a failure domain of its own
+    /// (`[conc.proc.1]`) rather than the root domain?
+    ///
+    /// A task's proc never changes, so this could be cached; it is asked only
+    /// on the trap path, where one lock is not the cost that matters.
+    fn inside_proc(&self) -> bool {
+        self.shared.sched.proc_of(self.task) != 0
+    }
+
     /// Mints a [`Frame::serial`] — every frame construction calls this.
     fn mint_frame_serial(&mut self) -> u64 {
         self.next_frame_serial += 1;
@@ -752,6 +761,11 @@ impl Machine {
             let freed = self.store().free(region);
             self.prov().region_freed(&freed, Span::new(0, 0));
         }
+        // Step 4 after step 3 here too (`[mem.region.cap.3]`): the reaper's
+        // kills parked their reasons, and they publish once the memory is
+        // back. Nothing can observe them at this point — the run is over —
+        // but the order is the code's everywhere or it is the code's nowhere.
+        self.shared.sched.deliver_pending();
         self.shared.sched.join_all();
         self.drain_sched();
         // The program region is freed last, by the machine: `main`'s caller is
@@ -3027,6 +3041,19 @@ impl Machine {
         // through the ordinary error-value paths below and runs them
         // (`[conc.cancel.defer]`).
         if matches!(result, Err(Signal::ProcKilled | Signal::Exit(_))) {
+            self.pop_scope();
+            return result;
+        }
+        // A trap that fired on a task INSIDE a proc is contained at the proc
+        // boundary (`[conc.proc.exit]`, s132's amendment), and containment
+        // "runs the killed-proc sequence" — so no further user code runs
+        // BELOW the boundary either, `defer`/`errdefer` included. The frames
+        // between the trapping site and the proc root unwind silently, which
+        // is what `conc/proc_cap_fault_join.lu` pins by the marker its
+        // below-boundary defer never prints. In the ROOT domain a trap is
+        // still process death by `[conf.trap.exit]`, and that path is
+        // untouched: the clause carves out the proc, not the program.
+        if matches!(result, Err(Signal::Trap(_))) && self.inside_proc() {
             self.pop_scope();
             return result;
         }

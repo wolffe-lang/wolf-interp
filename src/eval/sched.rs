@@ -53,6 +53,7 @@ use super::region::RegionId;
 use super::rules::Rule;
 use super::value::{ErrorValue, Value};
 use crate::eval::Trap;
+use crate::trap::TrapKind;
 
 pub type TaskId = usize;
 pub type ScopeId = usize;
@@ -304,18 +305,33 @@ enum TaskState {
 }
 
 /// Exit reasons, closed set (`[conc.proc.exit]`).
+///
+/// The fifth member is s132's ruled shape (D68, wolf-lang#187): a trap that
+/// fired on a task *inside* a proc is contained at the boundary and reaches
+/// the join as `fault(kind)`, where `kind` is one name from
+/// `[conf.trap.set]`'s closed vocabulary — containment adds no trap kind.
+/// This machine spelled the same containment `error("trap", kind)` from is06
+/// until the clause named it; the respelling is the whole change, because the
+/// containment itself has always been here.
 #[derive(Debug, Clone)]
 pub enum ExitReason {
     Normal(Value),
     Error(Box<ErrorValue>),
     Killed,
     Cancelled,
+    Fault(TrapKind),
 }
 
 impl ExitReason {
     /// The reason as a value (D30: reasons are values, never unwinding):
-    /// a structural tag `normal(v)` / `error(e)` / `killed` / `cancelled`,
-    /// which `reason.is_killed()`-style predicates and `match` both read.
+    /// a structural tag `normal(v)` / `error(e)` / `killed` / `cancelled` /
+    /// `fault(kind)`, which `reason.is_killed()`-style predicates and `match`
+    /// both read.
+    ///
+    /// `fault`'s payload is the kind's spelling as a `str` — the wolfgang wire
+    /// packs a reason class and a trap-kind code instead, but this machine's
+    /// reasons are structural tags, so the comparison surface the corpus pins
+    /// is the PREDICATES (`is_fault()`, `is_alloc_contract()`), not the wire.
     #[must_use]
     pub fn to_value(&self) -> Value {
         let (tag, payload) = match self {
@@ -323,6 +339,7 @@ impl ExitReason {
             ExitReason::Error(err) => ("error", vec![Value::Error(err.clone())]),
             ExitReason::Killed => ("killed", Vec::new()),
             ExitReason::Cancelled => ("cancelled", Vec::new()),
+            ExitReason::Fault(kind) => ("fault", vec![Value::Str(kind.as_str().to_owned())]),
         };
         Value::Error(Box::new(ErrorValue {
             tag: tag.to_owned(),
@@ -332,14 +349,42 @@ impl ExitReason {
         }))
     }
 
-    fn label(&self) -> &'static str {
+    pub(crate) fn label(&self) -> &'static str {
         match self {
             ExitReason::Normal(_) => "normal",
             ExitReason::Error(_) => "error",
             ExitReason::Killed => "killed",
             ExitReason::Cancelled => "cancelled",
+            ExitReason::Fault(_) => "fault",
         }
     }
+}
+
+/// A proc exit whose reason has NOT been published yet
+/// (`[mem.region.cap.3]`, `[conc.proc.kill]` step 3 before step 4).
+///
+/// The clause makes the teardown order normative — "the breaching proc's
+/// regions are reclaimed wholesale **before** the reason delivers, so at the
+/// join `live_region_bytes()` has already returned to its pre-spawn reading,
+/// and no postmortem query can observe the dead proc's charge". This module
+/// never touches the store, so it cannot free anything itself; instead it
+/// PARKS the delivery here, hands the caller the regions, and publishes only
+/// when the caller has freed them (`Machine::free_regions`). s132 measured
+/// the reverse order as a live monitor race on the native machine; lupin's
+/// cooperative baton hid the same window rather than closing it, and a hidden
+/// window is still a window — this makes the order the code's, not the
+/// scheduler's.
+#[derive(Debug)]
+struct PendingExit {
+    proc: ProcId,
+    /// The `exit(reason)` message, built at the exit — not at the delivery,
+    /// so what the join reads is the reason as of the moment the proc died.
+    message: Value,
+    /// The exit's vector clock (`[conc.mm.hb.proc]`: the exit
+    /// happens-before each delivery), likewise captured at the exit.
+    vc: Vec<u64>,
+    monitors: Vec<ChanId>,
+    label: &'static str,
 }
 
 /// One task control block.
@@ -420,7 +465,12 @@ struct Proc {
     region: Option<RegionId>,
     monitors: Vec<ChanId>,
     links: Vec<ProcId>,
-    exited: Option<&'static str>,
+    /// The reason this proc exited, once it has. Held whole rather than as a
+    /// label because a monitor registered AFTER the exit is delivered the
+    /// reason immediately (`[conc.proc.2]`), and a label cannot reconstruct
+    /// `error(e)`, `normal(v)` or s132's `fault(kind)` — the late monitor used
+    /// to be handed `normal(unit)` for all three.
+    exited: Option<ExitReason>,
 }
 
 /// A pending virtual timer (`[conc.select.timeout]`).
@@ -524,6 +574,9 @@ struct State {
     events: u64,
     /// Trace lines pending pickup by the running task's machine.
     notes: Vec<(Rule, String)>,
+    /// Exit reasons parked between step 3 and step 4 of the killed-proc
+    /// sequence — see [`PendingExit`].
+    pending: Vec<PendingExit>,
     /// Race-detector memory (`[conc.mm.race.3]`).
     accesses: std::collections::BTreeMap<RaceKey, Vec<Access>>,
     /// More than one task has ever existed — the race detector's fast path.
@@ -1147,7 +1200,7 @@ impl State {
         }
         let actor = self.actor();
         self.op(actor, ObjKey::Proc(proc), true);
-        self.procs[proc].exited = Some(reason.label());
+        self.procs[proc].exited = Some(reason.clone());
         let name = self.procs[proc].name.clone();
         self.note(
             Rule::ProcExit,
@@ -1161,21 +1214,16 @@ impl State {
             enum_variant: false,
             row: Vec::new(),
         }));
-        for chan in self.procs[proc].monitors.clone() {
-            self.op(actor, ObjKey::Chan(chan), true);
-            self.chans[chan]
-                .buf
-                .push_back((message.clone(), vc.clone()));
-            self.chans[chan].sends += 1;
-            self.note(
-                Rule::ProcMonitor,
-                format!(
-                    "exit reason `{}` delivered to monitor channel#{chan}",
-                    reason.label()
-                ),
-            );
-            self.settle_chan(chan);
-        }
+        // Step 4 is PARKED here, not taken: the regions this call returns are
+        // step 3, and `[mem.region.cap.3]` orders 3 before 4. The caller frees
+        // and then calls `Sched::deliver_pending`.
+        self.pending.push(PendingExit {
+            proc,
+            message,
+            vc,
+            monitors: self.procs[proc].monitors.clone(),
+            label: reason.label(),
+        });
         let mut regions = match self.procs[proc].region {
             Some(region) => vec![region],
             None => Vec::new(),
@@ -1191,6 +1239,36 @@ impl State {
             }
         }
         regions
+    }
+
+    /// Step 4 of the killed-proc sequence: publish every parked exit reason,
+    /// in the order the procs exited. Called only once the caller has taken
+    /// step 3 (the regions are freed), which is what makes
+    /// `live_region_bytes()` read its pre-spawn value AT the join.
+    fn publish_pending(&mut self) {
+        if self.pending.is_empty() {
+            return;
+        }
+        let actor = self.actor();
+        for exit in std::mem::take(&mut self.pending) {
+            for chan in exit.monitors {
+                self.op(actor, ObjKey::Chan(chan), true);
+                self.chans[chan]
+                    .buf
+                    .push_back((exit.message.clone(), exit.vc.clone()));
+                self.chans[chan].sends += 1;
+                self.note(
+                    Rule::ProcMonitor,
+                    format!(
+                        "exit reason `{}` delivered to monitor channel#{chan} \
+                         (proc#{} regions already reclaimed — \
+                         [mem.region.cap.3] free-then-deliver)",
+                        exit.label, exit.proc
+                    ),
+                );
+                self.settle_chan(chan);
+            }
+        }
     }
 
     /// The killed-proc sequence (`[conc.proc.kill]`), steps 1 and 4; the
@@ -1363,6 +1441,7 @@ impl Sched {
             stdout_fnv: 0xcbf2_9ce4_8422_2325,
             events: 0,
             notes: Vec::new(),
+            pending: Vec::new(),
             accesses: std::collections::BTreeMap::new(),
             concurrent: false,
             shutdown: false,
@@ -1880,12 +1959,11 @@ impl Sched {
                 let reason = match &end {
                     TaskEnd::Value(value) => ExitReason::Normal(value.clone()),
                     TaskEnd::Error(err) => ExitReason::Error(err.clone()),
-                    TaskEnd::Trapped(trap) => ExitReason::Error(Box::new(ErrorValue {
-                        tag: "trap".to_owned(),
-                        payload: vec![Value::Str(trap.kind.to_string())],
-                        enum_variant: false,
-                        row: Vec::new(),
-                    })),
+                    // `[conc.proc.exit]`, s132's amendment: a contained trap
+                    // is `fault(kind)`, not an error value that happens to be
+                    // tagged "trap" — the class is a reason of its own, and
+                    // `is_error()` is false on it.
+                    TaskEnd::Trapped(trap) => ExitReason::Fault(trap.kind),
                     TaskEnd::Ub(finding) => ExitReason::Error(Box::new(ErrorValue {
                         tag: "ub".to_owned(),
                         payload: vec![Value::Str(finding.anchor().to_owned())],
@@ -2316,12 +2394,8 @@ impl Sched {
             Rule::ProcMonitor,
             format!("monitor on proc#{proc} `{name}` → channel#{chan}"),
         );
-        if let Some(label) = state.procs[proc].exited {
-            let reason = match label {
-                "killed" => ExitReason::Killed,
-                "cancelled" => ExitReason::Cancelled,
-                _ => ExitReason::Normal(Value::Unit),
-            };
+        if let Some(reason) = state.procs[proc].exited.clone() {
+            let label = reason.label();
             let message = Value::Error(Box::new(ErrorValue {
                 tag: "exit".to_owned(),
                 payload: vec![reason.to_value()],
@@ -2361,6 +2435,14 @@ impl Sched {
     /// `w.kill()` (`[conc.proc.kill]`). Returns the regions to bulk-free.
     pub fn kill(&self, proc: ProcId) -> Vec<RegionId> {
         self.lock().kill_proc(proc)
+    }
+
+    /// Publishes every parked exit reason (`[conc.proc.kill]` step 4). The
+    /// caller must have freed the regions the exit handed back first — that
+    /// ordering is `[mem.region.cap.3]`, and `Machine::free_regions` is the
+    /// one place that keeps it.
+    pub fn deliver_pending(&self) {
+        self.lock().publish_pending();
     }
 
     /// `w.cancel()` (`[conc.proc.cancel]`): structured cancellation delivered
@@ -2554,7 +2636,7 @@ impl Sched {
                 "proc#{id} `{}` root=task{} state={}",
                 proc.name,
                 proc.root,
-                proc.exited.unwrap_or("live")
+                proc.exited.as_ref().map_or("live", ExitReason::label)
             ));
         }
         for (id, task) in state.tasks.iter().enumerate() {

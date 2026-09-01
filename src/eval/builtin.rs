@@ -1355,6 +1355,18 @@ pub fn method(
         (Value::Error(err), "is_error") => Ok(Value::Bool(err.tag == "error")),
         (Value::Error(err), "is_killed") => Ok(Value::Bool(err.tag == "killed")),
         (Value::Error(err), "is_cancelled") => Ok(Value::Bool(err.tag == "cancelled")),
+        // s132's fifth member and its one named kind (`[conc.proc.exit]`,
+        // `[mem.region.cap.3]`): the class, and the allocation contract the
+        // region-cap breach files under. `is_alloc_contract()` reads the
+        // payload rather than a second tag, because `[conf.trap.set]` is the
+        // closed vocabulary the payload is drawn from — a predicate per kind
+        // would fork it.
+        (Value::Error(err), "is_fault") => Ok(Value::Bool(err.tag == "fault")),
+        (Value::Error(err), "is_alloc_contract") => Ok(Value::Bool(
+            err.tag == "fault"
+                && matches!(err.payload.first(), Some(Value::Str(kind))
+                    if kind == crate::trap::TrapKind::AllocContract.as_str()),
+        )),
 
         // -- Tier 2: pools and handles (`[mem.shared.handle]`) -------------
         (Value::PoolRef(pool), "reserve") => {
