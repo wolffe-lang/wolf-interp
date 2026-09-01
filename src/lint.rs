@@ -1492,6 +1492,16 @@ impl Walk<'_> {
     /// operand row's tags first (#48), which this static walk cannot see.
     /// Spans: the dead arm's pattern (`[464,467]` = the duplicated `"x"`;
     /// `[337,338]` = the `_` after `true`/`false`), observed at the pin.
+    ///
+    /// is31 (#179) widens the same three rules to PRODUCT arms, column-wise:
+    /// a product pattern is a vector of per-column tests, an earlier
+    /// unguarded arm kills a later one when it covers it column by column,
+    /// and the `_`-after-`true`/`false` rule becomes "a bool COLUMN split by
+    /// two otherwise-unconstrained arms closes the shape"
+    /// (`typecheck/match_arm_product_unreachable.lu`: the third arm is dead
+    /// because arms one and two split `on`). Every column this walk cannot
+    /// judge is opaque, and an opaque column neither covers nor is covered —
+    /// `match_arm_deep_tree.lu`'s enum test at product depth stays live.
     fn match_reachability(&mut self, scrutinee: &Expr, arms: &[crate::ast::MatchArm]) {
         fn literal_key(expr: &Expr) -> Option<String> {
             match &*expr.kind {
@@ -1526,17 +1536,23 @@ impl Walk<'_> {
             _ => false,
         };
         let mut seen: Vec<String> = Vec::new();
+        let mut products: Vec<ProductKey> = Vec::new();
         let mut wildcard_seen = false;
         for arm in arms {
             let key = match &*arm.pattern.kind {
                 PatKind::Literal(expr) => literal_key(expr),
                 _ => None,
             };
+            let product = product_key(&arm.pattern, &literal_key);
             let bool_complete =
                 seen.iter().any(|k| k == "b:true") && seen.iter().any(|k| k == "b:false");
             let dead = wildcard_seen
                 || key.as_ref().is_some_and(|k| seen.contains(k))
-                || (matches!(&*arm.pattern.kind, PatKind::Wildcard) && bool_complete);
+                || (matches!(&*arm.pattern.kind, PatKind::Wildcard) && bool_complete)
+                || product.as_ref().is_some_and(|p| {
+                    products.iter().any(|earlier| earlier.covers(p))
+                        || bool_column_closes(&products, &p.shape)
+                });
             if dead {
                 self.warn("E0802", arm.pattern.span);
                 continue;
@@ -1544,6 +1560,14 @@ impl Walk<'_> {
             if arm.guard.is_none() {
                 if let Some(key) = key {
                     seen.push(key);
+                } else if let Some(product) = product {
+                    // A product every column of which is a binder is
+                    // irrefutable: it covers its whole type, so it is the
+                    // catch-all the later arms die behind.
+                    if product.columns.values().all(|c| *c == Column::Any) {
+                        wildcard_seen = true;
+                    }
+                    products.push(product);
                 } else if matches!(&*arm.pattern.kind, PatKind::Wildcard)
                     || (scalar_scrutinee && matches!(&*arm.pattern.kind, PatKind::Variant { .. }))
                 {
@@ -1948,6 +1972,130 @@ fn free_names_stmt(stmt: &Stmt, locals: &mut BTreeSet<String>, out: &mut BTreeSe
             }
         }
         StmtKind::Item(_) => {}
+    }
+}
+
+/// One column of a product pattern's coverage (is31, E0802 over products).
+///
+/// `Opaque` is the honest third answer: a shape this static walk declines to
+/// judge — a nested tag test, an or-pattern, a capitalized name that may be a
+/// variant. It never covers and is never covered, so an arm carrying one is
+/// neither declared dead nor allowed to kill a later arm.
+#[derive(PartialEq, Eq, Clone, Debug)]
+enum Column {
+    Lit(String),
+    Any,
+    Opaque,
+}
+
+impl Column {
+    /// Does a column of an earlier arm cover the same column of a later one?
+    fn covers(&self, other: &Column) -> bool {
+        match (self, other) {
+            (Column::Any, _) => true,
+            (Column::Lit(a), Column::Lit(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+/// A product arm's coverage: its shape (which product it tests) and one
+/// column per named position. A column the pattern leaves unnamed — omitted
+/// under `..`, or absent from another arm's field set — is [`Column::Any`].
+#[derive(Debug)]
+struct ProductKey {
+    shape: String,
+    columns: BTreeMap<String, Column>,
+}
+
+impl ProductKey {
+    fn column(&self, name: &str) -> &Column {
+        self.columns.get(name).unwrap_or(&Column::Any)
+    }
+
+    /// Does this (earlier, unguarded) arm cover a later one entirely?
+    fn covers(&self, other: &ProductKey) -> bool {
+        self.shape == other.shape
+            && self
+                .columns
+                .keys()
+                .chain(other.columns.keys())
+                .all(|name| self.column(name).covers(other.column(name)))
+    }
+}
+
+/// Do two earlier arms split a bool COLUMN and constrain nothing else?
+///
+/// The generalization of the scalar `_`-after-`true`/`false` rule: two arms
+/// that agree on `Any` everywhere except one column, where one tests `true`
+/// and the other `false`, together cover the whole shape — so every later arm
+/// of that shape is dead (`typecheck/match_arm_product_unreachable.lu`).
+fn bool_column_closes(products: &[ProductKey], shape: &str) -> bool {
+    let single = |key: &ProductKey, column: &str, want: &str| {
+        key.shape == shape
+            && key.column(column) == &Column::Lit(want.to_owned())
+            && key
+                .columns
+                .iter()
+                .all(|(name, value)| name == column || *value == Column::Any)
+    };
+    products
+        .iter()
+        .filter(|key| key.shape == shape)
+        .flat_map(|key| key.columns.keys())
+        .any(|column| {
+            products.iter().any(|key| single(key, column, "b:true"))
+                && products.iter().any(|key| single(key, column, "b:false"))
+        })
+}
+
+/// The coverage of a top-level product arm, or `None` for every other shape.
+///
+/// `@` is transparent here: `w @ (0, b)` tests exactly what `(0, b)` tests.
+/// Nesting is not walked — a sub-product or a tag test at depth is one opaque
+/// column, which is what keeps `match_arm_deep_tree.lu`'s arms live.
+fn product_key(
+    pattern: &Pattern,
+    literal_key: &dyn Fn(&Expr) -> Option<String>,
+) -> Option<ProductKey> {
+    fn column(pattern: &Pattern, literal_key: &dyn Fn(&Expr) -> Option<String>) -> Column {
+        match &*pattern.kind {
+            PatKind::Wildcard => Column::Any,
+            // A lowercase name binds; a capitalized one may be a variant or a
+            // row tag, which this walk cannot resolve (#48).
+            PatKind::Binding(ident) if ident.name.starts_with(char::is_lowercase) => Column::Any,
+            PatKind::Literal(expr) => literal_key(expr).map_or(Column::Opaque, Column::Lit),
+            PatKind::At { pattern, .. } => column(pattern, literal_key),
+            _ => Column::Opaque,
+        }
+    }
+    match &*pattern.kind {
+        PatKind::At { pattern, .. } => product_key(pattern, literal_key),
+        PatKind::Tuple(items) => Some(ProductKey {
+            shape: format!("tuple:{}", items.len()),
+            columns: items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| (index.to_string(), column(item, literal_key)))
+                .collect(),
+        }),
+        PatKind::Struct { path, fields, .. } => Some(ProductKey {
+            shape: format!(
+                "struct:{}",
+                path.segments.last().map(|s| s.name.as_str()).unwrap_or("")
+            ),
+            columns: fields
+                .iter()
+                .map(|field| {
+                    let value = match &field.pattern {
+                        Some(sub) => column(sub, literal_key),
+                        None => Column::Any,
+                    };
+                    (field.name.name.clone(), value)
+                })
+                .collect(),
+        }),
+        _ => None,
     }
 }
 
@@ -2892,6 +3040,115 @@ mod tests {
              \x20   let v = b.get(1)\n\
              \x20   v - 5\n\
              }\n"
+            )
+            .is_empty()
+        );
+    }
+
+    // ---- E0802 over PRODUCT arms (is31, #179) -----------------------------
+
+    /// Every E0802 the reachability walk raised over one program.
+    fn dead_arms(source: &str) -> Vec<String> {
+        warn_codes(source)
+            .into_iter()
+            .filter(|code| code == "E0802")
+            .collect()
+    }
+
+    #[test]
+    fn a_split_bool_column_closes_a_struct_shape() {
+        // `typecheck/match_arm_product_unreachable.lu`: the first two arms
+        // split `on` and constrain nothing else, so the third can never
+        // match. Exactly one warning, on the third arm.
+        let found = dead_arms(
+            "struct Flag { on: bool, n: int }\n\
+             fn main() -> !int {\n\
+             \x20   let f = Flag { on: false, n: 9 }\n\
+             \x20   let r = match f {\n\
+             \x20       Flag { on: true, n } => n,\n\
+             \x20       Flag { on: false, n } => n * 2,\n\
+             \x20       Flag { n, .. } => n * 3,\n\
+             \x20   }\n\
+             \x20   if r != 18 { return 1 }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert_eq!(found.len(), 1, "the third arm is dead: {found:?}");
+    }
+
+    #[test]
+    fn a_bool_column_under_another_test_closes_nothing() {
+        // The literal-precision half (#54's lesson, column-wise): the two
+        // `true`/`false` arms also pin element 0, so they cover only `0` —
+        // `tuple_pattern_match_arm.lu`'s four arms are all live.
+        assert!(
+            dead_arms(
+                "fn classify(p: (int, bool)) -> int {\n\
+                 \x20   match p {\n\
+                 \x20       (0, true) => 1,\n\
+                 \x20       (0, false) => 2,\n\
+                 \x20       (n, true) => n + 10,\n\
+                 \x20       (n, false) => n + 20,\n\
+                 \x20   }\n\
+                 }\n\
+                 fn main() -> !int { classify((0, true)) - 1 }\n"
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_column_this_walk_cannot_judge_kills_nothing() {
+        // `match_arm_deep_tree.lu`: the first arm's `p` column is a TAG test
+        // at product depth — opaque here — so it neither dies nor kills the
+        // arm behind it.
+        assert!(
+            dead_arms(
+                "enum Pairs { Empty, Pair(int, int) }\n\
+                 struct Box { p: Pairs, k: int }\n\
+                 fn probe(b: Box) -> int {\n\
+                 \x20   match b {\n\
+                 \x20       Box { p: Pair(a, _), .. } => a,\n\
+                 \x20       Box { k, .. } => k,\n\
+                 \x20   }\n\
+                 }\n\
+                 fn main() -> !int { probe(Box { p: Pairs.Pair(7, 1), k: 3 }) - 7 }\n"
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn an_all_binder_product_is_the_catch_all_later_arms_die_behind() {
+        // Every column a binder: the arm is irrefutable and covers its whole
+        // type, so what follows is dead exactly as after `_`.
+        let found = dead_arms(
+            "struct Flag { on: bool, n: int }\n\
+             fn main() -> !int {\n\
+             \x20   let f = Flag { on: true, n: 3 }\n\
+             \x20   match f {\n\
+             \x20       Flag { on, n } => n,\n\
+             \x20       Flag { n, .. } => n * 2,\n\
+             \x20   }\n\
+             }\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+    }
+
+    #[test]
+    fn a_guarded_product_arm_covers_nothing() {
+        // A guard can fail, so the arm behind it stays reachable —
+        // `match_arm_at_binding.lu`'s middle arm, read from the other side.
+        assert!(
+            dead_arms(
+                "struct Point { x: int, y: int }\n\
+                 fn at_struct(p: Point) -> int {\n\
+                 \x20   match p {\n\
+                 \x20       Point { x, y } if x > y => x - y,\n\
+                 \x20       Point { y, .. } => y,\n\
+                 \x20   }\n\
+                 }\n\
+                 fn main() -> !int { at_struct(Point { x: 5, y: 2 }) - 3 }\n"
             )
             .is_empty()
         );
