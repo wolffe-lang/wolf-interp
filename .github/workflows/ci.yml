@@ -82,9 +82,18 @@ jobs:
         run: |
           set -euxo pipefail
           fail=0
+          # The corpus's own LEXICAL counter-examples: entries whose ledger
+          # `phase:` is `none`, refused BY the lexer with the code the corpus
+          # pins. Everything else must lex clean. Mirrors
+          # `tests/lex_corpus.rs::LEXICAL_COUNTER_EXAMPLES` — added at the
+          # e6cf24e pin with r04's `[gram.lex.char]` amendment (wolf-lang#189).
           while IFS= read -r f; do
             out=$(cargo run --quiet -- conform-run "$f" --phase=lex --json)
-            if [[ "$out" == *'"verdict":"pass"'* && "$out" == *'"phase_reached":"lex"'* ]]; then :; else
+            case "$f" in
+              vendor/upstream/corpus/grammar/char_uni_seven_digits.lu) want='"verdict":"fail(E0101)"' ;;
+              *) want='"verdict":"pass"' ;;
+            esac
+            if [[ "$out" == *"$want"* && "$out" == *'"phase_reached":"lex"'* ]]; then :; else
               echo "::error file=$f::lex rung is not clean: $out"; fail=1
             fi
           done < <(find vendor/upstream/corpus -name '*.lu' | sort)
