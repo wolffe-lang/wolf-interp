@@ -23,7 +23,7 @@ use crate::diag::Span;
 use crate::trap::TrapKind;
 
 use super::prov::UbRow;
-use super::region::SlotLife;
+use super::region::{SlotLife, ledger};
 use super::rules::Rule;
 use super::value::{HandleValue, IntTy, Slot, Value};
 use super::{Machine, Signal};
@@ -70,6 +70,12 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "release",
     "zip",
     "region",
+    // s131's accounting surface (`[mem.region.account.1/.2]`,
+    // wolf-lang#187): the region's own byte ledger and the process-wide
+    // live total. Pure — they read the memory model's own state, not an
+    // ambient OS surface, so no capability and no sandbox category.
+    "region_bytes",
+    "live_region_bytes",
     // The s38 io/fs surface (wolf-interp#18 item 6): the names resolve so
     // the refusal is "unsupported feature", never "unknown name" — this
     // machine has no filesystem by design (see `call`'s fs arm).
@@ -463,8 +469,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             };
             match answer {
                 Ok(value) => {
-                    if matches!(value, Value::Str(_)) {
-                        machine.allocate(span, name);
+                    if let Value::Str(text) = &value {
+                        machine.allocate(span, name, ledger::str_bytes(text.len() as u64));
                     }
                     Ok(value)
                 }
@@ -546,7 +552,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             }
             match String::from_utf8(bytes) {
                 Ok(text) => {
-                    machine.allocate(span, "str_from_utf8");
+                    machine.allocate(span, "str_from_utf8", ledger::str_bytes(text.len() as u64));
                     Ok(Value::Str(text))
                 }
                 Err(_) => {
@@ -562,7 +568,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // Collection constructors are allocation sites (`[mem.model.alloc]`),
         // so they land in the current region (`[mem.region.create.3]`).
         "List" => {
-            let home = machine.allocate(span, "List");
+            let home = machine.allocate(span, "List", ledger::container_bytes(0));
             // The element checking context (issue #21) is stamped by the
             // caller (`eval_call`), which alone sees the constructor's
             // bracket type argument. The charged region is the value's home
@@ -570,7 +576,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             Ok(Value::list(Vec::new(), None, Some(home)))
         }
         "Map" => {
-            machine.allocate(span, "Map");
+            machine.allocate(span, "Map", ledger::container_bytes(0));
             Ok(Value::Map(Vec::new()))
         }
         "Pool" => {
@@ -592,6 +598,34 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 &format!("pool#{pool} built; slots are reserved then initialized"),
             );
             Ok(Value::PoolRef(pool))
+        }
+        // -- the accounting surface (`[mem.region.account]`, wolf-lang#187) --
+        //
+        // Two readings of state this machine already holds. They are *pure*:
+        // no allocation, no capability, no ambient OS surface — so nothing
+        // here charges the ledger it reports, and two adjacent reads with no
+        // intervening allocation agree by construction.
+        //
+        // What a byte means is `region::ledger`'s business, and the clause
+        // says units are per-tier measured facts. What is contractual —
+        // zero at creation, monotone, stable, reclaimed wholesale — is the
+        // ledger's arithmetic, and the two witnesses print those relations
+        // as booleans precisely so the three lanes compare where they agree.
+        "region_bytes" => {
+            let Some(value) = args.first() else {
+                return unsupported("`region_bytes` takes a region".to_owned());
+            };
+            // The liveness/generation/claim consult is the ordinary one: a
+            // region value that outlived its region's wholesale free is a
+            // `region-fault` here exactly as it is at `in r { … }`. Reading a
+            // ledger is a touch.
+            let id = machine.region_id_of(value, span, "`region_bytes`")?;
+            let bytes = machine.store().bytes(id);
+            Ok(Value::Int(i128::from(bytes), IntTy::INT))
+        }
+        "live_region_bytes" => {
+            let total = machine.store().live_bytes();
+            Ok(Value::Int(i128::from(total), IntTy::INT))
         }
         "min" | "max" => {
             let mut best: Option<i128> = None;
@@ -914,7 +948,9 @@ pub fn method(
             machine.check_home_write(*home, "this `push`", span)?;
             // The write path diverges a shared CoW list before mutating
             // (#28): a caller holding the same spine observes nothing.
+            let home = *home;
             let items = std::sync::Arc::make_mut(items);
+            let was = items.len() as u64;
             // Issue #21 (the #53 mechanism): a container-element literal
             // adopts the container's element type — or `int` (64-bit,
             // locked: `[arith.literal.default]`'s container half) when the
@@ -943,6 +979,16 @@ pub fn method(
                     arg => arg,
                 };
                 items.push(Slot::live(arg));
+            }
+            // `[mem.region.account.1]`: a growth realloc charges the whole new
+            // buffer to the list's **birth** region — the region ambient at
+            // the constructor, not the one ambient at this push
+            // (`[mem.region.create.3]`'s attribution). A push that fits the
+            // modelled capacity charges nothing, which is what makes two
+            // reads with no intervening growth agree.
+            let grown = ledger::growth_bytes(was, items.len() as u64);
+            if let Some(home) = home {
+                machine.store().charge_growth(home, grown);
             }
             machine.note(Rule::Alloc, span, "List.push");
             Ok(Value::Unit)

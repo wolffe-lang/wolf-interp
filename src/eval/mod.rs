@@ -1943,13 +1943,16 @@ impl Machine {
         }
     }
 
-    /// Charges one allocation to the current region (`[mem.region.create.3]`).
+    /// Charges one allocation of `bytes` to the current region
+    /// (`[mem.region.create.3]`, `[mem.region.account.1]`).
     ///
     /// "There is no `new` keyword. Allocation sites are struct literals,
     /// collection constructors, and closures" (`[mem.model.alloc]`) — so this
-    /// is called from exactly those, and nowhere else.
-    pub(crate) fn allocate(&mut self, span: Span, what: &str) -> RegionId {
-        let id = self.store().charge();
+    /// is called from exactly those, and nowhere else. Every site states its
+    /// own geometry through [`region::ledger`]; there is no default, because
+    /// a site that does not know what it allocated cannot charge honestly.
+    pub(crate) fn allocate(&mut self, span: Span, what: &str, bytes: u64) -> RegionId {
+        let id = self.store().charge(bytes);
         let label = self.store().label(id);
         self.fire(
             Rule::RegionAmbient,
@@ -3833,7 +3836,11 @@ impl Machine {
                 // region (`[mem.region.create.3]`), and every reference it
                 // carries is a store into that region's data — §3's table
                 // applies to each one.
-                let owner = self.allocate(expr.span, &format!("struct literal `{name}`"));
+                let owner = self.allocate(
+                    expr.span,
+                    &format!("struct literal `{name}`"),
+                    region::ledger::alloc_bytes(built.len() as u64),
+                );
                 let value = Value::Struct {
                     name,
                     fields: built,

@@ -53,7 +53,7 @@ forest (`src/eval/prov.rs`; §7 below is its contract):
 
 | component | representation |
 |---|---|
-| region table | `{id, name, state, strategy, parent, generation, allocations, depth}` |
+| region table | `{id, name, state, strategy, parent, generation, allocations, bytes, depth}` |
 | region state | `Open` \| `Suspended` \| `Frozen` \| `Freed` |
 | strategy | `arena` (default) \| `rc` \| `pool(T)` |
 | scope stack | a vector of open region ids; **the last is the current region**, the whole vector is the open set |
@@ -659,6 +659,59 @@ surface, and this pass already moved the pin and rewrote the method-call
 path for wolf-interp#24. Landing all three together would make any
 resulting divergence un-bisectable, which is the one thing an oracle
 cannot afford.
+
+### 6.15 The byte ledger's units are a model, and the model is written down (is32, 0.1.21)
+
+`[mem.region.account.1]`/`[mem.region.account.2]` (s131, wolf-lang#187) give
+wolf `region_bytes(r)` and `live_region_bytes()`. The clause pins four
+*relations* — zero at creation, monotone within the lifetime, stable between
+allocations, and (for the live total) wholesale disappearance at a free — and
+leaves the **units** per tier on purpose: "what charges, and by how much, are
+implementation-measured facts per tier, **not comparison surface**".
+
+That carve-out is what makes the surface implementable here at all. There is
+no arena in this machine: §6.1's value model makes a `Value` a plain owned Rust
+tree, so the bytes a wolf program occupies are the Rust allocator's business,
+neither stable across builds nor meaningful to the program. So the ledger
+counts a **model** of the storage the same program would take in a compiled
+arena (`src/eval/region.rs::ledger`):
+
+| charge | model |
+|---|---|
+| grain | every charge rounds up to **16 bytes** |
+| allocation header | **32 bytes**, on every allocation site |
+| value slot | **16 bytes** per struct field or container element |
+| `str` payload | its UTF-8 length in bytes |
+| container capacity | powers of two from **4** slots up, this machine's own growth policy — not Rust's `Vec` |
+| growth | a capacity step charges the **whole new buffer**; the abandoned one is never discharged |
+
+Two consequences worth stating out loud:
+
+1. **It is a high-water accounting, not an occupancy one.** It answers "how
+   much storage has this region been asked for", which is exactly the monotone
+   quantity the clause guarantees and the quantity wolf-lang#187's customer (a
+   per-region memory budget) wants. It is never an address, never a placement
+   (`[mem.region.promote.1]` is untouched), and never an RSS proxy.
+2. **`str` charges here, and does not charge on the counterparty's native
+   tier.** wolf-lang#191 (the c09 seam) is recorded *in the clause*: native
+   realizes a `str` materialization's ambient region as the process root, so
+   string bytes appear in no named region there today. This machine charges a
+   `str` allocation to the ambient region like any other. That is a units
+   divergence, which the clause rules out of comparison, and the clause's own
+   words anticipate it — "programs must not read this clause as `str` never
+   charges". The two witnesses print relation *booleans* precisely so the
+   three lanes compare where they agree.
+
+`live_region_bytes()`'s granularity here is the exact charge: the sum of every
+unfreed **named** region's ledger. The process-root arena is never counted
+(the clause's letter), and a `Frozen` region keeps contributing because
+`[mem.region.freeze.1]` means it is never freed — §4's leak reading, applied to
+the counter.
+
+The **cap** half of wolf-lang#187 (D68: a cap breach is `trap(alloc-contract)`
+at the allocating site, contained at the proc boundary) is *not* implemented
+here. It is deferred by name to the is33-era twin: no `Region.cap`, no cap
+syntax, and no clause on wolf-lang trunk to implement against at this pin.
 
 ## 7. Deliberate approximations in the **provenance** machine (is04)
 

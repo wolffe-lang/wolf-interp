@@ -323,6 +323,109 @@ fn a_first_class_region_is_freed_when_its_owner_dies() {
     assert!(run.leaks.is_empty(), "{:?}", run.leaks);
 }
 
+// -- §3 accounting: `[mem.region.account]` ---------------------------------
+
+#[test]
+fn the_region_ledger_prints_the_relations_the_clause_pins() {
+    // `[mem.region.account.1/.2]` end to end, through the two builtins and
+    // in the witnesses' own shape: zero at creation, monotone while a
+    // container fills, stable between allocations, the live total up while
+    // the region holds bytes and back to its entry reading at the free.
+    // The NUMBERS are lupin's measured units (`region::ledger`); the
+    // BOOLEANS are what the corpus compares across the three lanes.
+    let out = stdout(&main_of(
+        "    let base = live_region_bytes()\n\
+         \x20   var created = false\n\
+         \x20   var grew = false\n\
+         \x20   var stable = false\n\
+         \x20   var live_up = false\n\
+         \x20   region r {\n\
+         \x20       let c0 = region_bytes(r)\n\
+         \x20       created = c0 == 0\n\
+         \x20       var xs = List[int]()\n\
+         \x20       for i in 0..2000 { (mut xs).push(i) }\n\
+         \x20       let c1 = region_bytes(r)\n\
+         \x20       let c2 = region_bytes(r)\n\
+         \x20       grew = c1 > c0\n\
+         \x20       stable = c1 == c2\n\
+         \x20       live_up = live_region_bytes() > base\n\
+         \x20   }\n\
+         \x20   let reclaimed = live_region_bytes() == base\n\
+         \x20   print(\"{created} {grew} {stable} {live_up} {reclaimed}\")\n\
+         \x20   0",
+    ));
+    assert_eq!(out, "true true true true true\n");
+}
+
+#[test]
+fn the_ledger_charges_a_container_to_its_birth_region() {
+    // `[mem.region.create.3]`'s attribution: growing a root-born list while
+    // `r` is the ambient region moves `r`'s ledger not one byte.
+    let out = stdout(&main_of(
+        "    let r = region()\n\
+         \x20   let c0 = region_bytes(r)\n\
+         \x20   var root_born = List[int]()\n\
+         \x20   in r {\n\
+         \x20       var ys = List[int]()\n\
+         \x20       for i in 0..500 { (mut ys).push(i) }\n\
+         \x20   }\n\
+         \x20   let c1 = region_bytes(r)\n\
+         \x20   (mut root_born).push(1)\n\
+         \x20   (mut root_born).push(2)\n\
+         \x20   let c2 = region_bytes(r)\n\
+         \x20   print(\"{c0 == 0} {c1 > c0} {c2 == c1}\")\n\
+         \x20   0",
+    ));
+    assert_eq!(out, "true true true\n");
+}
+
+#[test]
+fn a_frozen_region_keeps_its_ledger_and_its_place_in_the_live_total() {
+    // `[mem.region.freeze.1]` makes a region `imm` **forever**: it is never
+    // freed, so `[mem.region.account.2]`'s "a freed region's contribution
+    // vanishes wholesale" never fires for it and the total keeps counting it.
+    // Reading the ledger is a read, and frozen data is readable from
+    // anywhere.
+    let out = stdout(
+        "struct Holder { n: int }\n\
+         fn main() -> int {\n\
+         \x20   let base = live_region_bytes()\n\
+         \x20   let r = region()\n\
+         \x20   let h = in r { Holder { n: 1 } }\n\
+         \x20   let charged = region_bytes(r)\n\
+         \x20   let f = freeze r\n\
+         \x20   print(\"{charged > 0} {region_bytes(f) == charged} \
+         {live_region_bytes() > base}\")\n\
+         \x20   h.n - 1\n\
+         }\n",
+    );
+    assert_eq!(out, "true true true\n");
+}
+
+#[test]
+fn the_ledger_builtins_decline_a_non_region_argument_by_name() {
+    // The honest refusal, not a guessed zero: region typing is the checker's
+    // and this machine says so where it cannot answer.
+    match outcome(&main_of("    region_bytes(7)")) {
+        Outcome::Unsupported(reason) => assert!(reason.contains("region"), "{reason}"),
+        other => panic!("expected `unsupported`, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_root_arena_is_never_in_the_live_total() {
+    // `[mem.region.account.2]`: "the process-root arena is never counted."
+    // Allocating in `main`'s own ambient region moves the total not at all.
+    let out = stdout(&main_of(
+        "    let before = live_region_bytes()\n\
+         \x20   var xs = List[int]()\n\
+         \x20   for i in 0..64 { (mut xs).push(i) }\n\
+         \x20   print(\"{live_region_bytes() == before}\")\n\
+         \x20   0",
+    ));
+    assert_eq!(out, "true\n");
+}
+
 #[test]
 fn two_disjoint_regions_open_simultaneously() {
     // `[mem.region.multiopen]` — the Verona relaxation, executed. This is the

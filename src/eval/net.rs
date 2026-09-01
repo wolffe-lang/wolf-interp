@@ -361,7 +361,11 @@ impl Machine {
                 let answer = self.net_park(fd, span, |table| table.poll_read(fd, n))?;
                 let answer = match answer {
                     Ok(text) => {
-                        self.allocate(span, "net_read");
+                        self.allocate(
+                            span,
+                            "net_read",
+                            super::region::ledger::str_bytes(text.len() as u64),
+                        );
                         Ok(Value::Str(text))
                     }
                     Err(err) => Err(err),
@@ -401,7 +405,11 @@ impl Machine {
                 let answer = self.net_park(fd, span, |table| table.poll_read_bytes(fd, n))?;
                 let answer = match answer {
                     Ok(bytes) => {
-                        self.allocate(span, "net_read_bytes");
+                        self.allocate(
+                            span,
+                            "net_read_bytes",
+                            super::region::ledger::container_bytes(bytes.len() as u64),
+                        );
                         let home = self.current_region();
                         Ok(Value::list(
                             bytes

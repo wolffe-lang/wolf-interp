@@ -51,6 +51,107 @@ pub type RegionId = usize;
 pub type PoolId = usize;
 pub type CellId = usize;
 
+/// The byte ledger's **shadow-memory geometry** (`[mem.region.account.1]`).
+///
+/// The clause leaves units per tier on purpose — "what charges, and by how
+/// much, are implementation-measured facts per tier, not comparison surface"
+/// — and pins four *relations* instead: zero at creation, monotone within the
+/// lifetime, stable between allocations, and (for the process-wide total)
+/// wholesale disappearance at a free. This module is lupin's answer to the
+/// units question, written down so the number is reproducible rather than
+/// incidental.
+///
+/// There is no arena here. is02 made [`super::value::Value`] a plain owned
+/// Rust tree, so the bytes a wolf program "occupies" in this machine are a
+/// Rust allocator's business and would be neither stable across builds nor
+/// meaningful to a wolf program. The ledger therefore counts a **model** of
+/// the storage the same program would take in a compiled arena:
+///
+/// - every heap allocation carries a [`HEADER_BYTES`] header;
+/// - every value slot inside it costs [`SLOT_BYTES`];
+/// - a `str`'s payload costs its UTF-8 length in bytes;
+/// - a growable container holds [`slot_capacity`] slots, not `len` of them —
+///   powers of two from four up, this machine's own growth policy, so the
+///   ledger moves in the steps a real reallocation would take;
+/// - every charge rounds up to the [`GRAIN`], the alignment story;
+/// - a growth realloc charges the **whole new buffer** and discharges
+///   nothing, which is the clause's own parenthetical ("a reallocation's
+///   abandoned buffer stays charged") made arithmetic.
+///
+/// The consequence worth stating: this ledger is a *high-water* accounting,
+/// not an occupancy one. It answers "how much storage has this region been
+/// asked for", which is exactly the monotone quantity the clause guarantees
+/// and the quantity wolf-lang#187's customer (a per-region memory budget)
+/// wants. It is never an address, a placement, or an RSS proxy.
+///
+/// Unlike the native tier's recorded gap (wolf-lang#191: `str`
+/// materialization charges the process root there, so string bytes appear in
+/// no named region), lupin charges a `str` allocation to the ambient region
+/// like any other. The clause anticipates exactly this — "programs must not
+/// read this clause as ``str`` never charges" — and the relations are what
+/// the witnesses compare, so the divergence in units is legal and recorded.
+pub mod ledger {
+    /// Every charge rounds up to this, the alignment story in one constant.
+    pub const GRAIN: u64 = 16;
+    /// One value slot: what a struct field or a container element costs.
+    pub const SLOT_BYTES: u64 = 16;
+    /// A heap allocation's own header — the thing that exists even when the
+    /// allocation holds nothing.
+    pub const HEADER_BYTES: u64 = 32;
+
+    /// Rounds a charge up to the [`GRAIN`].
+    #[must_use]
+    pub fn round_to_grain(bytes: u64) -> u64 {
+        bytes.div_ceil(GRAIN).saturating_mul(GRAIN)
+    }
+
+    /// Slots a growable container holds for `len` elements: nothing while it
+    /// is empty, then powers of two from four up. The policy is this
+    /// machine's own and deterministic — the point of modelling it rather
+    /// than asking Rust's `Vec` is that the same program charges the same
+    /// bytes on every host and every build.
+    #[must_use]
+    pub fn slot_capacity(len: u64) -> u64 {
+        if len == 0 {
+            0
+        } else {
+            len.max(4).next_power_of_two()
+        }
+    }
+
+    /// A fresh allocation holding `slots` value slots.
+    #[must_use]
+    pub fn alloc_bytes(slots: u64) -> u64 {
+        round_to_grain(HEADER_BYTES.saturating_add(SLOT_BYTES.saturating_mul(slots)))
+    }
+
+    /// A fresh growable container holding `len` elements.
+    #[must_use]
+    pub fn container_bytes(len: u64) -> u64 {
+        alloc_bytes(slot_capacity(len))
+    }
+
+    /// A fresh `str` of `len` UTF-8 bytes.
+    #[must_use]
+    pub fn str_bytes(len: u64) -> u64 {
+        round_to_grain(HEADER_BYTES.saturating_add(len))
+    }
+
+    /// What a container's growth from `old_len` to `new_len` charges: the
+    /// whole new buffer when the capacity step was crossed, and nothing
+    /// otherwise. The abandoned buffer is never discharged — monotone by
+    /// construction, and "stable between allocations" falls out of the zero.
+    #[must_use]
+    pub fn growth_bytes(old_len: u64, new_len: u64) -> u64 {
+        let grown = slot_capacity(new_len);
+        if grown > slot_capacity(old_len) {
+            round_to_grain(SLOT_BYTES.saturating_mul(grown))
+        } else {
+            0
+        }
+    }
+}
+
 /// The region-state lattice of `[mem.model.machine]`.
 ///
 /// The transitions are one-way except Open⇄Suspended: `[mem.region.open.1]`
@@ -112,6 +213,11 @@ pub struct Region {
     pub generation: u32,
     /// How many allocations were charged here (`[mem.region.create.3]`).
     pub allocations: u64,
+    /// The byte ledger (`[mem.region.account.1]`): cumulative shadow bytes
+    /// charged for allocations placed here. Zero at creation, never
+    /// decremented while the region lives. See the [`ledger`] module for what
+    /// a byte means in this machine.
+    pub bytes: u64,
     /// Re-entrant open depth. See [`Store::enter`] for why this is a count and
     /// not a flag.
     pub depth: u32,
@@ -300,6 +406,8 @@ impl Store {
             parent: None,
             generation: 0,
             allocations: 0,
+            // `[mem.region.account.1]`: "the ledger is **zero at creation**".
+            bytes: 0,
             depth: 0,
             claim: None,
             span,
@@ -376,13 +484,57 @@ impl Store {
         &self.open
     }
 
-    /// Charges one allocation to the current region (`[mem.region.create.3]`).
-    pub fn charge(&mut self) -> RegionId {
+    /// Charges one allocation of `bytes` to the current region
+    /// (`[mem.region.create.3]`, `[mem.region.account.1]`).
+    pub fn charge(&mut self, bytes: u64) -> RegionId {
         let id = self.current();
         if let Some(region) = self.regions.get_mut(id) {
             region.allocations += 1;
+            region.bytes = region.bytes.saturating_add(bytes);
         }
         id
+    }
+
+    /// Charges `bytes` to a **named** region — the birth-region attribution
+    /// `[mem.region.account.1]` inherits from `[mem.region.create.3]`.
+    ///
+    /// A container's storage charges the region that was ambient at its
+    /// *allocation* site, so growing a root-born list inside `in r { … }`
+    /// moves `r`'s ledger not one byte. The allocation-site counter does not
+    /// move: `allocations` has counted allocation *sites* since is02, and a
+    /// growth realloc is the same site asking for more.
+    pub fn charge_growth(&mut self, id: RegionId, bytes: u64) {
+        if bytes == 0 {
+            return;
+        }
+        if let Some(region) = self.regions.get_mut(id) {
+            region.bytes = region.bytes.saturating_add(bytes);
+        }
+    }
+
+    /// `region_bytes(r)` — one region's ledger (`[mem.region.account.1]`).
+    #[must_use]
+    pub fn bytes(&self, id: RegionId) -> u64 {
+        self.regions.get(id).map_or(0, |region| region.bytes)
+    }
+
+    /// `live_region_bytes()` — the process-wide total over live *named*
+    /// regions (`[mem.region.account.2]`).
+    ///
+    /// Granularity is implementation-specified and this machine's is the
+    /// exact charge: the sum of every unfreed region's ledger. Two
+    /// consequences the clause names: the process-root arena is never counted
+    /// (it is the program's own ambient, not a region a program created), and
+    /// a freed region's contribution vanishes **wholesale** at its free
+    /// because the state check drops the whole row at once. A `Frozen` region
+    /// is never freed by construction (`[mem.region.freeze.1]`), so it keeps
+    /// contributing — that is its specified end state, not a leak.
+    #[must_use]
+    pub fn live_bytes(&self) -> u64 {
+        self.regions
+            .iter()
+            .filter(|region| region.id != Store::root() && region.state != RegionState::Freed)
+            .fold(0u64, |total, region| total.saturating_add(region.bytes))
     }
 
     /// Is `ancestor` an ancestor of (or equal to) `id` in the region forest?
@@ -710,7 +862,7 @@ impl Store {
 
     /// Builds a pool in the current region (`[mem.shared.handle.1]`).
     pub fn new_pool(&mut self, elem: String) -> PoolId {
-        let region = self.charge();
+        let region = self.charge(ledger::container_bytes(0));
         let id = self.pools.len();
         self.pools.push(Pool {
             id,
@@ -1029,9 +1181,9 @@ mod tests {
         // `[mem.region.create.3]`, operationally.
         let mut store = store();
         let a = store.create(Some("a".to_owned()), Strategy::Arena, Span::new(0, 1));
-        assert_eq!(store.charge(), Store::root());
+        assert_eq!(store.charge(ledger::container_bytes(0)), Store::root());
         store.enter(a).expect("a opens");
-        assert_eq!(store.charge(), a);
+        assert_eq!(store.charge(ledger::container_bytes(0)), a);
         assert_eq!(store.region(a).expect("a").allocations, 1);
         store.leave(a);
         assert_eq!(store.current(), Store::root());
@@ -1079,6 +1231,95 @@ mod tests {
         assert_eq!(store.state(a), Some(RegionState::Open));
         store.leave(a);
         assert_eq!(store.state(a), Some(RegionState::Suspended));
+    }
+
+    #[test]
+    fn the_byte_ledger_is_zero_at_creation_monotone_and_stable() {
+        // `[mem.region.account.1]`'s three contractual relations, as store
+        // arithmetic. The NUMBERS are this machine's own measured units; the
+        // relations are the law.
+        let mut store = store();
+        let a = store.create(Some("a".to_owned()), Strategy::Arena, Span::new(0, 1));
+        assert_eq!(store.bytes(a), 0, "zero at creation");
+        store.enter(a).expect("a opens");
+        store.charge(ledger::container_bytes(0));
+        let after_alloc = store.bytes(a);
+        assert!(after_alloc > 0, "an allocation charges the ambient region");
+        assert_eq!(store.bytes(a), after_alloc, "stable between allocations");
+        // Growth is monotone and never discharges the abandoned buffer.
+        store.charge_growth(a, ledger::growth_bytes(0, 1));
+        store.charge_growth(a, ledger::growth_bytes(1, 4));
+        store.charge_growth(a, ledger::growth_bytes(4, 5));
+        let after_growth = store.bytes(a);
+        assert!(after_growth > after_alloc, "monotone within the lifetime");
+        // 0 → 1 crosses into a 4-slot buffer; 1 → 4 stays inside it and
+        // charges nothing; 4 → 5 grants an 8-slot buffer on top of it.
+        assert_eq!(after_growth - after_alloc, 4 * 16 + 8 * 16);
+    }
+
+    #[test]
+    fn the_live_total_rises_and_a_free_takes_its_whole_contribution() {
+        // `[mem.region.account.2]`: the reclamation counter, and the root
+        // arena that is never counted.
+        let mut store = store();
+        let base = store.live_bytes();
+        assert_eq!(base, 0);
+        store.charge(ledger::container_bytes(0));
+        assert_eq!(
+            store.live_bytes(),
+            base,
+            "the process-root arena is never counted"
+        );
+        let a = store.create(Some("a".to_owned()), Strategy::Arena, Span::new(0, 1));
+        store.enter(a).expect("a opens");
+        store.charge(ledger::container_bytes(0));
+        store.charge_growth(a, ledger::growth_bytes(0, 100));
+        assert!(
+            store.live_bytes() > base,
+            "rises while a region holds bytes"
+        );
+        store.leave(a);
+        store.free(a);
+        assert_eq!(
+            store.live_bytes(),
+            base,
+            "a freed region's contribution vanishes wholesale"
+        );
+    }
+
+    #[test]
+    fn growth_charges_the_birth_region_not_the_ambient_one() {
+        // `[mem.region.create.3]`'s attribution, which the ledger inherits:
+        // a container's storage charges the region ambient at its ALLOCATION
+        // site, so growing it elsewhere moves that region's ledger not one
+        // byte.
+        let mut store = store();
+        let born = store.charge(ledger::container_bytes(0));
+        assert_eq!(born, Store::root());
+        let r = store.create(Some("r".to_owned()), Strategy::Arena, Span::new(0, 1));
+        store.enter(r).expect("r opens");
+        let charged = store.bytes(r);
+        store.charge_growth(born, ledger::growth_bytes(0, 500));
+        assert_eq!(store.bytes(r), charged, "the birth region takes the growth");
+        assert!(store.bytes(Store::root()) > 0);
+    }
+
+    #[test]
+    fn the_capacity_policy_steps_in_powers_of_two_from_four() {
+        assert_eq!(ledger::slot_capacity(0), 0);
+        assert_eq!(ledger::slot_capacity(1), 4);
+        assert_eq!(ledger::slot_capacity(4), 4);
+        assert_eq!(ledger::slot_capacity(5), 8);
+        assert_eq!(ledger::slot_capacity(2000), 2048);
+        // Every charge lands on the grain.
+        for len in [0u64, 1, 3, 17, 2000] {
+            assert_eq!(ledger::container_bytes(len) % ledger::GRAIN, 0);
+            assert_eq!(ledger::str_bytes(len) % ledger::GRAIN, 0);
+        }
+        // A push inside the granted capacity charges nothing — the source of
+        // "stable between allocations".
+        assert_eq!(ledger::growth_bytes(1, 2), 0);
+        assert_eq!(ledger::growth_bytes(4, 5), 8 * ledger::SLOT_BYTES);
     }
 
     #[test]
