@@ -82,23 +82,29 @@ jobs:
         run: |
           set -euxo pipefail
           fail=0
-          # The corpus's own LEXICAL counter-examples: entries whose ledger
-          # `phase:` is `none`, refused BY the lexer with the code the corpus
-          # pins. Everything else must lex clean. Mirrors
-          # `tests/lex_corpus.rs::LEXICAL_COUNTER_EXAMPLES` — added at the
-          # e6cf24e pin with r04's `[gram.lex.char]` amendment (wolf-lang#189),
-          # and grown at the 8cda3aa pin (v0.2.2) with #198's STRING half:
-          # `STR_ESC` reaches the same `UNI_ESC` a `char` literal reaches, so
-          # `\u{0000041}` is E0101 at the escape inside `"…"` exactly as it is
-          # inside `'…'`. Both doors of one production, so both are listed —
-          # keep this case list and the test's array in step.
+          # The corpus's own LEXICAL counter-examples need no list here.
+          # A ledger `phase: none` means no rung completed, and the ladder's
+          # shallowest rung is `lex`, so such a file is refused BY the lexer
+          # and its `check: fail(CODE)` names the code the corpus pins.
+          # Everything else must lex clean.
+          #
+          # wolf-interp#58: this step and `tests/lex_corpus.rs` each used to
+          # keep a hand-written list of those files, so every by-design lex
+          # refusal that arrived with a pin reddened CI twice. Both readers
+          # now derive the set from the same place — the directive header the
+          # corpus file carries. Do not reintroduce a name here.
           while IFS= read -r f; do
             out=$(cargo run --quiet -- conform-run "$f" --phase=lex --json)
-            case "$f" in
-              vendor/upstream/corpus/grammar/char_uni_seven_digits.lu \
-              | vendor/upstream/corpus/grammar/str_uni_seven_digits.lu) want='"verdict":"fail(E0101)"' ;;
-              *) want='"verdict":"pass"' ;;
-            esac
+            phase=$(sed -n 's|^//! *phase: *\([a-z]*\).*|\1|p' "$f" | head -1)
+            if [[ "$phase" == none ]]; then
+              code=$(sed -n 's|^//! *check: *fail(\([A-Z][0-9]*\)).*|\1|p' "$f" | head -1)
+              if [[ -z "$code" ]]; then
+                echo "::error file=$f::a phase-none ledger with no check: fail(CODE)"; fail=1; continue
+              fi
+              want="\"verdict\":\"fail($code)\""
+            else
+              want='"verdict":"pass"'
+            fi
             if [[ "$out" == *"$want"* && "$out" == *'"phase_reached":"lex"'* ]]; then :; else
               echo "::error file=$f::lex rung is not clean: $out"; fail=1
             fi

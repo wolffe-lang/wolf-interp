@@ -6,14 +6,21 @@
 //! anywhere in this walk is either a bug here or a spec divergence; both are
 //! worth stopping the build for.
 //!
-//! The one exception is the corpus's own lexical counter-example, listed by
-//! name below: a file whose ledger `phase:` is `none` is refused BY the
-//! lexer, and its diagnostic is the thing the corpus pins. It arrived at
-//! the e6cf24e pin with r04's `[gram.lex.char]` amendment (wolf-lang#189).
+//! The exceptions are the corpus's own lexical counter-examples, and they are
+//! not listed here. A file whose ledger says `phase: none` **is** the
+//! exemption — `phase: none` means no rung completed, and the shallowest rung
+//! is `lex`, so the file is refused BY the lexer and its `check: fail(CODE)`
+//! names the code the corpus pins. wolf-interp#58: this walk and the
+//! workflow's `conform-run rungs` step each kept a hand-written list of those
+//! files, and every by-design lex refusal that arrived with a pin reddened CI
+//! twice before someone remembered to grow both. Both readers now derive the
+//! set from the directive header, which is the corpus's own statement of it.
 
 use std::path::{Path, PathBuf};
 
+use wolf_interp::directive::{self, Check};
 use wolf_interp::lex;
+use wolf_interp::phase::Phase;
 
 fn corpus_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -42,19 +49,24 @@ fn lu_files() -> Vec<PathBuf> {
     out
 }
 
-/// The corpus entries whose ledger `phase:` is `none` — the ones the LEXER
-/// refuses, with the code the corpus pins. Every other file must lex clean.
+/// The code this file's own ledger says the LEXER refuses it with, if any.
 ///
-/// The pair is `UNI_ESC`'s two doors. r04's `char_uni_seven_digits.lu` came
-/// first; at the 8cda3aa pin (wolf-lang v0.2.2, #198) `STR_ESC` was written
-/// into the grammar and `CHAR_ESC ::= STR_ESC | '\'' derives from it, so the
-/// one-to-six-digit bound is now a claim read off a shared production rather
-/// than prose — and `str_uni_seven_digits.lu` is the string half's witness,
-/// same code, same escape, same column.
-const LEXICAL_COUNTER_EXAMPLES: &[(&str, &str)] = &[
-    ("grammar/char_uni_seven_digits.lu", "E0101"),
-    ("grammar/str_uni_seven_digits.lu", "E0101"),
-];
+/// `phase: none` is the exemption (`[conf.directive]`'s ladder starts at
+/// `lex`, so "no rung completed" means the lexer stopped it), and the
+/// accompanying `check: fail(CODE)` is the code the corpus pins. Every other
+/// file must lex clean. Nothing is listed by name: the corpus states it, both
+/// readers derive it (wolf-interp#58).
+fn pinned_lex_refusal(source: &[u8]) -> Option<String> {
+    let text = std::str::from_utf8(source).ok()?;
+    let directives = directive::parse_header(text).ok()?;
+    if directives.phase != Some(Phase::None) {
+        return None;
+    }
+    match directives.check {
+        Some(Check::Fail(code)) => Some(code),
+        _ => None,
+    }
+}
 
 #[test]
 fn every_corpus_file_tokenizes_without_a_lex_diagnostic() {
@@ -66,13 +78,10 @@ fn every_corpus_file_tokenizes_without_a_lex_diagnostic() {
             .expect("under the corpus root")
             .to_string_lossy()
             .replace('\\', "/");
-        let expected = LEXICAL_COUNTER_EXAMPLES
-            .iter()
-            .find(|(file, _)| *file == relative)
-            .map(|(_, code)| *code);
         let source = std::fs::read(&path).expect("readable");
+        let expected = pinned_lex_refusal(&source);
         let lexed = lex::lex_bytes(&source);
-        match (lexed.first_error(), expected) {
+        match (lexed.first_error(), expected.as_deref()) {
             (Some(first), Some(code)) => {
                 assert_eq!(first.code, code, "{relative}");
                 refused.push(relative);
@@ -89,10 +98,12 @@ fn every_corpus_file_tokenizes_without_a_lex_diagnostic() {
         "the pinned corpus must lex clean:\n{}",
         failures.join("\n")
     );
-    assert_eq!(
-        refused.len(),
-        LEXICAL_COUNTER_EXAMPLES.len(),
-        "a listed lexical counter-example left the corpus"
+    // The derivation is only load-bearing while the corpus still carries such
+    // a file; if the class empties, this walk has quietly stopped testing the
+    // thing it exists for and should be re-read rather than left green.
+    assert!(
+        !refused.is_empty(),
+        "the corpus carries no `phase: none` entry — the lexical counter-example class is gone"
     );
 }
 
