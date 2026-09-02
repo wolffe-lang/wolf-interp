@@ -1,5 +1,134 @@
 # Changelog
 
+## 0.1.22 — 2026-09-01
+
+THE MIRROR HOLDS (is33). The region cap lands whole-pipe, and with it
+the last thing lupin 0.1.21 deferred by name: `region r(cap: n)` bounds
+a region's ledger, a charge past the budget is `trap(alloc-contract)` at
+the allocating site, and inside a proc that trap is contained at the
+boundary and reaches the join as `fault(alloc-contract)` — s132's ruled
+shape for `[mem.region.cap.1-3]` and `[conc.proc.exit]` (D68,
+wolf-lang#187, now closed). All three of the wave's cap witnesses flip
+from parse-refusal to running, and they compare **relations** rather
+than byte counts for the reason the account witnesses did: the clause
+denominates the budget in each tier's own ledger units, and
+wolf-lang#203 measured an order of magnitude between ledger units and
+payload bytes. Released against pin `2bfbe5e` — wolf-lang trunk's head,
+the s132 merge; no `v0.2.2` tag existed at the release step, so the
+merge sha is the pin (the is31 check-the-tag pattern). And the release
+now HAS binaries: wolf-interp had no dist workflow at all, so 0.1.22 is
+the first lupin with archives on its release page for all four tier-1
+hosts — including the `lupin.exe` the learners' path has been waiting
+for. Census at this release: 479 files / 446 entries / 33 members; 348
+reach run, 329 match, 16 dynamic counterparts, 42 conservatism, 58 out
+of scope, and the one standing mismatch is still DIV-2026-019, filed.
+Every one of the 474 files carried over from 0.1.21 is
+verdict-IDENTICAL, class for class.
+
+- **The cap (`[mem.region.cap.1]`), one field and one compare.** A
+  region may carry a creation-time byte budget, written
+  `region r(cap: n) { … }` (the cap parenthesis follows the NAME) or
+  `region(cap: n)` / `region(rc, cap: n)` (strategy first, cap last).
+  `Region.cap` is the field; `Store::admits` is the compare, written
+  once and called from both charge sites — the allocation charge and
+  the growth realloc. The test is strictly `charged + bytes > cap`, so
+  a ledger standing **exactly at** the cap is not a breach and the next
+  byte is. A refused charge does not move the ledger and does not tick
+  the allocation counter: the trap fires at the site, so the allocation
+  never happened. Growth is judged against the container's **birth**
+  region, because that is where `[mem.region.account.1]` attributes the
+  charge — a root-born list grown inside `in r { … }` is measured by
+  the root's budget, never by `r`'s. Caps are per-region, never
+  per-forest.
+- **Its domain (`[mem.region.cap.2]`).** `cap:` takes an `int`,
+  evaluated ONCE at creation and before the region exists, so nothing
+  the budget expression does can charge the region it bounds. A
+  negative budget is `trap(alloc-contract)` at the *creating* site —
+  one span, nothing allocated. `cap: 0` is legal, and a region that
+  never charges lives happily under it. The process root and a proc's
+  own arena carry no cap, because the clause puts the budget where a
+  program writes one.
+- **An anonymous sugar block cannot carry a cap**, and not by choice:
+  the value arm claims the parenthesis whenever no name precedes it, so
+  `region (cap: n)` IS the value form and no other reading exists
+  (`[gram.expr.region]`'s own disambiguation). `cap` stays contextual
+  (`[gram.inv.ctx]`) — only the two-token shape `cap` `:` inside a
+  region's parenthesis opens the clause, so `let cap = 7` and
+  `region cap { }` are untouched.
+- **The contained trap is `fault(kind)` (`[conc.proc.exit]`).** This
+  machine has contained proc traps since is06 and spelled the reason
+  `error("trap", kind)`, which made a crash answer `is_error()` true —
+  a class error the amended clause names. The fifth member of the
+  closed set is now its own reason: the join reads `is_fault()` for the
+  class and `is_alloc_contract()` for the one kind a budget contract
+  names. The predicate reads the payload rather than minting a tag per
+  kind, because `[conf.trap.set]` is the closed vocabulary the payload
+  is drawn from. wolfgang's wire packs (class 4, kind 9); lupin's
+  reasons are structural tags, so the PREDICATES are the comparison
+  surface and the wire is not — which is exactly why the witness pins
+  booleans.
+- **Teardown is free-then-deliver (`[mem.region.cap.3]`).** The dying
+  proc's regions are reclaimed wholesale BEFORE the reason publishes,
+  so a join reads `live_region_bytes()` at its pre-spawn value and no
+  postmortem query can observe a dead proc's charge. The scheduler
+  cannot free anything (it never touches the store) and so delivered
+  first; reasons are now PARKED with the exit's message and vector
+  clock, handed back with the regions, and published once the memory is
+  back. s132 measured the reverse order as a live monitor race on the
+  native machine; lupin's cooperative baton HID the same window rather
+  than closing it, and a hidden window is still a window.
+- **Below the boundary, no further user code.** Containment runs the
+  killed-proc sequence (`[conc.proc.kill]`), so the frames between the
+  trapping site and the proc root unwind silently — `defer`/`errdefer`
+  included. `eval_block` treated a trap as the error path and ran them.
+  In the ROOT domain a trap is still process death by
+  `[conf.trap.exit]` and that path is untouched: the clause carves out
+  the proc, not the program.
+- **A late monitor gets the real reason.** Monitoring an
+  already-exited proc delivered a reconstruction from a stored LABEL,
+  which meant `normal(unit)` for an `error(e)` proc — and would have
+  meant it for a faulted one. `Proc.exited` now holds the whole reason.
+- **D69's twin check, no code.** lupin already refuses lax literal and
+  closure separators, and the span parity is the interesting half:
+  `Point { x: 1 y: 2 }` reports at `y` (18:26) and `fn(a b)` at `b`
+  (14:18) — the token the missing comma should PRECEDE, byte-for-byte
+  where s132 measured wolfc pointing. This parser's letter was the
+  measured one, as it was for D67's trio at the previous pin.
+- **The dist lane exists (D57).** wolf-interp had no release workflow;
+  every lupin release since 0.1.8 was a tag with no binary behind it.
+  `.github/workflows/release.yml` mirrors wolf-lang's r03 dist matrix
+  at all four tier-1 hosts and adds what that stub leaves to each repo:
+  the D57 stamp is ASSERTED (the tag is matched against `Cargo.toml`,
+  and the BUILT binary's `--version` is read back and refused if it
+  carries `+dev.`), and every archive is unpacked outside the checkout
+  and smoke-run before it can reach the release page. `.zip` on
+  Windows, `.tar.gz` elsewhere, one directory each; on Windows the bare
+  `lupin.exe` is uploaded beside the archive so a learner-facing page
+  can link one URL (wolf-web ww09).
+- **The differential, before and after.** The five entries the pin
+  adds, at 0.1.21's binary and at this release:
+
+  | witness | 0.1.21 | 0.1.22 |
+  |---|---|---|
+  | `memory/region_cap_boundary` | `fail(E0201)@parse` — MISMATCH | `exit(0)` "at-cap true \| zero-cap true \| query true" — match |
+  | `faults/region_cap_breach` | `fail(E0201)@parse` — MISMATCH | `trap(alloc-contract)` — match |
+  | `conc/proc_cap_fault_join` | `fail(E0201)@parse` — MISMATCH | `exit(0)` "fault true \| alloc-contract true \| reclaimed true \| main-defer-ran" — match |
+  | `grammar/struct_literal_no_separator` | `fail(E0201)@parse` | `fail(E0201)@parse` — match |
+  | `grammar/closure_params_no_separator` | `fail(E0201)@parse` | `fail(E0201)@parse` — match |
+
+  Three witnesses flip — every one of them the sprint's own work, since
+  0.1.21 deferred the cap by name and `cap:` was unknown syntax — and
+  two answer at first sight, at the same code and the same span.
+- **Ledger movements.** Anchors 407 → 411 (`+mem.region.cap` and its
+  three children; the key SETS were diffed both ways — nothing dropped,
+  the wolf-lang#177 lesson). Coverage ratchet 168 → 173: the three cap
+  clauses, plus two the wave cites for the FIRST time ever —
+  `conc.proc.1`, the failure-domain clause every proc program leans on
+  and none had ever named, and `gram.expr.closure`, which D69's closure
+  pin brings. Bundle programs/records 512/479 → 517/484. The trap
+  vocabulary's reachable set grows to nine of twelve:
+  `alloc-contract` has a program at this tier now.
+
 ## 0.1.21 — 2026-09-01
 
 THE LEDGER IN THE MIRROR (is32). The region machine learns to say how
