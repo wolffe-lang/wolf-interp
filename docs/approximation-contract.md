@@ -1248,11 +1248,11 @@ and `pass` carry no output even when this machine produced some, because
 each one's own `phase_reached` says the run did not complete — bytes
 attached to such a record would describe this machine's evaluation order
 rather than an observation of the program that the counterparty also makes.
-There is exactly one corpus file where the difference is visible:
-`typecheck/main_returns_str.lu` evaluates `main`'s body, printing `hi`, and
-only then declines because `main` returned `str`. That the decline happens
-after the run rather than on the admission ladder is a real defect and is
-filed as wolf-interp#57 with a standing test, not absorbed here.
+There was exactly one corpus file where the difference was visible:
+`typecheck/main_returns_str.lu` evaluated `main`'s body, printing `hi`, and
+only then declined because `main` returned `str`. **is35 (0.1.24) closed
+that** — see §6.18 — so the corpus no longer contains such a program and the
+rule above is carried under test by a synthetic one.
 
 The second half of the posture is what did NOT change.
 `[proto.cmp.phase]` still rules the run rung "for `trap`, compare kind
@@ -1260,3 +1260,37 @@ only", and `compare`/`differ` still implement exactly that. So both
 machines now hold the trap's output and the protocol declines to compare
 it — wolf-lang#216 asks the clause to rule, and until it does, widening the
 comparison here would be private agreement rather than conformance.
+
+### 6.18 What `main` may return is decided before `main` runs (is35, 0.1.24)
+
+`main`'s return type is a **declaration** fact (wolf-lang#106), and through
+0.1.23 this implementation discovered it from the value: `eval::Interp::finish`
+looked at what came back and answered `unsupported` if it was not a status.
+The record said `unsupported@resolve`, which was true, and the process had
+meanwhile executed the whole program and written its output — so a
+`conform-run` invocation, which is supposed to be an *observation*, carried a
+side effect its own record did not report. wolf-interp#57.
+
+The decline moved to `frontend::admit`, beside the other declaration
+refusals, and `sema::main_return_check` decides it. The verdict and the rung
+did not move (`unsupported@resolve` before and after, on the one corpus file
+that shows it); what moved is that the claim is now true — nothing ran, so
+nothing printed.
+
+**The check is deliberately partial, and this is the declared part.** It
+refuses only spellings this machine can NAME as non-statuses: `str`, `bool`,
+`float`, `char`, `byte`, `List`, `Map`, `Set`, `Option`, each reached through
+any number of `!` wrappers (the error union's ok side is the status; a `main`
+that returns an *error* exits 1 by the convention `finish` documents). A
+declared return type this implementation has not resolved — a user alias, a
+struct, an enum — is **not** refused here, because refusing a spelling it has
+not resolved would be a guess, and a wrong guess stops a program running at
+all. Those still reach `finish`, which still declines by value; the two
+together are the same accept set as before, entered earlier.
+
+A `main` with **no** declared return type is untouched by any of this: there
+is no declaration to read, so `finish` remains the only judge, and
+`tests/run_corpus.rs::a_record_that_completed_no_run_reports_no_stdout` uses
+exactly that shape to keep §6.17's rule under test now that the corpus has no
+program which prints and then declines.
+

@@ -2245,6 +2245,66 @@ pub fn raise_check(program: &Program) -> Option<String> {
     body_walk(program, true, false, false).1
 }
 
+/// What the root `main` may return, checked as a **declaration** fact
+/// (wolf-lang#106) before anything runs.
+///
+/// This machine used to discover the answer from the returned VALUE, in
+/// `eval::Interp::finish`, which meant `typecheck/main_returns_str.lu`
+/// executed its whole body and printed `hi` before the decline fired —
+/// `conform-run` is an observation and that one had a side effect its record
+/// did not report. wolf-interp#57. The rung that owns declarations owns it
+/// now, so the record and the process agree: nothing ran, nothing printed.
+///
+/// The legal spellings are the ones this machine can turn into an exit
+/// status: no return type at all, `int`, `()`, and either under `!` (the
+/// error union's ok side; a `main` that returns an error exits 1 by the
+/// convention `finish` documents). The check declines nothing else it cannot
+/// NAME: an unresolved path — a user alias, a struct, an enum — is left to
+/// the dynamic backstop in `finish`, because declining a spelling this
+/// implementation has not resolved would be a guess, and a wrong guess here
+/// stops a program from running at all. Only the primitives this machine
+/// knows are not statuses are refused.
+///
+/// The refusal is `unsupported` rather than a diagnostic: the code wolfc
+/// spends on it (E0414) belongs to a typecheck rung this implementation
+/// never performs, and `[proto.record.unsupported]` is where an
+/// accept-set boundary belongs.
+pub fn main_return_check(program: &Program) -> Option<String> {
+    let Some((Def::Fn(main), _)) = program.modules.get("").and_then(|m| m.items.get("main")) else {
+        return None;
+    };
+    let ret = main.ret.as_ref()?;
+    // `-> T ! {row}` and `-> !T` both carry their ok type inside; the row
+    // itself is never the status.
+    let mut ty = &ret.ty;
+    while let crate::ast::TypeKind::ErrorUnion(inner)
+    | crate::ast::TypeKind::Fallible { ty: inner, .. } = &*ty.kind
+    {
+        ty = inner;
+    }
+    let crate::ast::TypeKind::Path { path, args } = &*ty.kind else {
+        // `()`, a tuple, a function type — the unit spelling is the only one
+        // of these `finish` accepts, and it is not a path.
+        return None;
+    };
+    if !args.is_empty() || !path.is_single() {
+        return None;
+    }
+    let name = &path.segments[0].name;
+    // Not a whitelist of the legal, but a list of the KNOWN-illegal: the
+    // scalars and containers this machine can spell and cannot exit with.
+    const NOT_A_STATUS: &[&str] = &[
+        "str", "bool", "float", "char", "byte", "List", "Map", "Set", "Option",
+    ];
+    if NOT_A_STATUS.contains(&name.as_str()) {
+        return Some(format!(
+            "`main` is declared to return `{name}`; the exit status comes from an `int` \
+             (wolf-lang#106 — what `main` may return is a declaration fact)"
+        ));
+    }
+    None
+}
+
 fn body_walk(
     program: &Program,
     raises: bool,

@@ -161,7 +161,13 @@ fn admit_with(program: &sema::Program, statics: Vec<crate::diag::Diag>) -> Optio
     if let Some(diag) = statics.into_iter().next() {
         return Some(Refusal::Reject(Box::new(diag)));
     }
-    sema::raise_check(program).map(Refusal::Unsupported)
+    if let Some(reason) = sema::raise_check(program) {
+        return Some(Refusal::Unsupported(reason));
+    }
+    // wolf-interp#57: what `main` may return is a declaration fact, so it is
+    // decided here rather than from the value `finish` was handed — a
+    // program refused for its `main` signature must not have run first.
+    sema::main_return_check(program).map(Refusal::Unsupported)
 }
 
 /// The deepest rung this implementation can reach on a well-formed program it

@@ -312,6 +312,18 @@ fn every_parseable_file_resolves_under_sema_lite() {
             assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
             continue;
         }
+        // E0414 — what `main` may return (wolf-lang#106) — is a DECLARATION
+        // fact, and since wolf-interp#57 this implementation decides it on
+        // the admission ladder rather than from the value `main` handed back.
+        // So the resolve rung completes and then declines, which is the
+        // accept-set boundary `[proto.record.unsupported]` exists for: the
+        // code itself is wolfc's typecheck rung, which this machine never
+        // performs. Before the move the program RAN first and printed.
+        if pinned_code(case.check.as_ref()) == Some("E0414") {
+            assert_eq!(observation.verdict, Verdict::Unsupported, "{}", case.path);
+            assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
+            continue;
+        }
         assert_eq!(observation.verdict, Verdict::Pass, "{}", case.path);
         assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
         assert!(observation.diagnostics.is_empty(), "{}", case.path);

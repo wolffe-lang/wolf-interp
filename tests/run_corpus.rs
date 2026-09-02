@@ -1491,15 +1491,21 @@ fn a_record_that_completed_no_run_reports_no_stdout() {
     // of THIS machine's evaluation order rather than something the
     // counterparty also observes.
     //
-    // `typecheck/main_returns_str.lu` is the file that makes the line
-    // load-bearing: this machine evaluates `main`'s body — printing `hi` —
-    // and only then declines `unsupported` because `main` returned `str`.
-    // That it printed at all is a real finding, filed as wolf-interp#57; it
-    // is not a reason to let an `unsupported` record claim a run.
-    let root = corpus_root();
-    let full = root.join("typecheck/main_returns_str.lu");
-    let source = std::fs::read(&full).expect("readable");
-    let (record, observed) = wolf_interp::observe_record(&full, &source, None);
+    // The rule needs a program that PRODUCES bytes and then declines, or it
+    // asserts nothing. `typecheck/main_returns_str.lu` used to be that
+    // program; wolf-interp#57 was that it was, and is35 moved the `main`
+    // return-type decline to the admission ladder, so the corpus no longer
+    // contains one. The buffer below is the shape that remains: `main` with
+    // no declared return type at all, which no declaration fact can refuse,
+    // reaching `finish` with a `str` after it has already printed.
+    // Its own directory: D32 makes a directory a module, so a buffer written
+    // beside other `.lu` files would load them as siblings.
+    let dir = std::env::temp_dir().join("lupin-is35-undeclared-main");
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let path = dir.join("m.lu");
+    let source: &[u8] = b"fn main() {\n    print(\"hi\")\n    \"nope\"\n}\n";
+    std::fs::write(&path, source).expect("writable");
+    let (record, observed) = wolf_interp::observe_record(&path, source, None);
     assert_eq!(record.verdict, Verdict::Unsupported);
     assert_eq!(record.phase_reached, Phase::Resolve);
     assert_eq!(observed.stdout, "hi\n", "the bytes were produced");
@@ -1508,6 +1514,35 @@ fn a_record_that_completed_no_run_reports_no_stdout() {
         "and the record does not claim them"
     );
     assert_eq!(record.stdout_sha256, None);
+}
+
+#[test]
+fn a_declared_main_return_is_refused_before_the_program_runs() {
+    // wolf-interp#57, flipped. What `main` may return is a declaration fact
+    // (wolf-lang#106), and this machine used to discover it from the value
+    // `finish` was handed: `typecheck/main_returns_str.lu` executed its whole
+    // body and wrote `hi` to the process's stdout before declining. That is an
+    // evidence-hygiene hazard — `conform-run` is an observation, and that one
+    // had a side effect its own record did not report.
+    //
+    // The verdict and the rung are unmoved (`unsupported@resolve`, which is
+    // what the record always said); what moved is that the claim is now true.
+    let root = corpus_root();
+    let full = root.join("typecheck/main_returns_str.lu");
+    let source = std::fs::read(&full).expect("readable");
+    let (record, observed) = wolf_interp::observe_record(&full, &source, None);
+    assert_eq!(record.verdict, Verdict::Unsupported);
+    assert_eq!(record.phase_reached, Phase::Resolve);
+    assert_eq!(observed.stdout, "", "nothing ran, so nothing printed");
+    assert_eq!(record.stdout_inline, None);
+    assert_eq!(record.stdout_sha256, None);
+    // The decline names the declaration, not a runtime value's kind.
+    let reason = record
+        .extensions
+        .get("x-unsupported")
+        .and_then(serde_json::Value::as_str)
+        .expect("an `unsupported` record carries its reason");
+    assert!(reason.contains("declared to return `str`"), "{reason}");
 }
 
 #[test]
