@@ -110,6 +110,165 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The byte in the mirror — is35, lupin 0.1.24, pin `3befc3e` (wolf-lang v0.2.3)
+
+The sprint that made a code mean one thing. Three findings closed, one
+opened, one waiver retired by the ruling it was waiting for, and a lint bug
+that only GitHub's checkout path could see.
+
+**wolf-lang#225 — RESOLVED HERE, and the clause never moved.**
+`[gram.lex.str.escape]` has read "`STR_ESC` … and nothing else; any other
+`\` is **E0101** at the escape" since #198 landed in v0.2.2 — the pin
+0.1.23 was released against — so the number was never this implementation's
+to choose. It answered **E0103**, and a `\u` with no braces answered
+**E0104**, which are the two numbers the catalog spends on the multiline's
+LAYOUT. A program refused for a bad escape and one refused for a badly
+shaped `"""` were the same record here. Triage case 3 all the way through:
+the clause was unambiguous and this implementation was the defendant.
+
+**Span parity was exact before the change and after it**, which is why 484
+files never showed it — #198's two witnesses pin the `\u{…}` DIGIT BOUND,
+where both machines already answered E0101, and the corpus walk compares the
+`check:` code rather than the span. Measured against
+`wolf 0.2.3 (wolfgang, pin 3befc3e)`, the whole escape family:
+
+| program | lupin 0.1.23 | lupin 0.1.24 | wolfc 0.2.3 |
+| --- | --- | --- | --- |
+| `"a\qb"` | `fail(E0103)` `[30,32]` | `fail(E0101)` `[30,32]` | `fail(E0101)` `[30,32]` |
+| `"a\xZb"` | `fail(E0103)` `[30,32]` | `fail(E0101)` `[30,32]` | `fail(E0101)` `[30,32]` |
+| `"a\x4"` | `fail(E0103)` `[30,33]` | `fail(E0101)` `[30,33]` | `fail(E0101)` `[30,33]` |
+| `"a\u41b"` | `fail(E0104)` `[30,32]` | `fail(E0101)` `[30,32]` | `fail(E0101)` `[30,32]` |
+| `"a\u{}b"` | `fail(E0101)` `[30,34]` | unmoved | `fail(E0101)` `[30,34]` |
+| `"a\u{0000041}b"` | `fail(E0101)` `[30,41]` | unmoved | `fail(E0101)` `[30,41]` |
+
+Only the number moved, on every row. The witness `grammar/multiline_bad_escape.lu`
+arrived with this pin already carrying the measured divergence and reads
+`fail(E0101)@lex` — **match** — in the commit that takes the clause. Its
+running twin `strings/multiline_escapes.lu` answered at first sight. The
+`char` literal's own E0110 did not move with the string tier's number: `'\q'`
+is still one report over the whole literal.
+
+**What freeing E0103/E0104 revealed, filed as wolf-interp#59.** They were
+free because this implementation does not implement the rules they name.
+v0.2.3's `[gram.lex.str.multi]` — new productions, #215 — states three layout
+side conditions with three codes; this machine has one rule for all of it,
+`E_DEDENT_UNDERRUN` (E0109):
+
+| program | lupin 0.1.24 | wolfc 0.2.3 |
+| --- | --- | --- |
+| text after the opening `"""` | `fail(E0109)` `[31,49]` | `fail(E0103)` `[31,35]` |
+| a content line left of the margin | `fail(E0109)` `[32,43]` | `fail(E0104)` `[32,34]` |
+
+Code **and** span, twice, and no corpus file measures either — the same shape
+as #225 one clause over. `tests/str_escape_code.rs` asserts that this machine
+answers neither number in the meantime, so the collision cannot come back
+quietly. A wolf-lang question rides along: #225 quotes the catalog assigning
+**E0104** to "a multiline string line sits left of the margin", while
+`[gram.lex.str.multi]`'s own sentence assigns E0104 to the *closing
+delimiter* condition and E0105 to the margin one. Two documents, one number,
+two readings.
+
+**wolf-interp#57 — closed.** What `main` may return is a declaration fact
+(wolf-lang#106), and this machine discovered it from the value: `finish`
+looked at what came back, so `typecheck/main_returns_str.lu` executed its
+whole body and wrote `hi` to the process's stdout before declining. The
+record said `unsupported@resolve`, which was true — and the invocation had a
+side effect the record did not report, which for an observation tool is the
+hazard is34 filed rather than absorbed. The decline is on the admission
+ladder now. Verdict and rung unmoved; the claim is true.
+
+**wolf-lang#216 — the comparator half landed, and it is MEASURED EMPTY.**
+`differ::run_rung` compares a trap's output bytes when both sides hold them.
+This is the clause's proposed reading applied to the instrument, not to
+`src/compare.rs` (which still holds `[proto.cmp.phase]` as written), and it
+is safe ahead of a ruling for two reasons: a widened comparison can only ADD
+rows, never hide one, and it is gated on both sides HOLDING the field —
+`None` on either is `[proto.record.fields]`'s honest-absent, the posture
+`[proto.cmp.warn]` already takes to a missing `warnings` array.
+
+**Every mover, classed: there are none, and here is why that is the finding
+rather than a disappointment.** The bundle has 63 trap records; **61 write
+nothing before the fault**, so the widened comparison has no field to look at
+and is honest-absent on both sides. The two that do write are is34's:
+
+| file | verdict | lupin | wolfc `--checked` | `--native` | `--release` | class |
+| --- | --- | --- | --- | --- | --- | --- |
+| `faults/trap_skips_root_defers.lu` | `trap(assert)` | `fe91a58b…` | `fe91a58b…` | `fe91a58b…` | `fe91a58b…` | **agreement** |
+| `rows/handler_diverge_trap.lu` | `trap(assert)` | `c2eba7a1…` | *unsupported* | `c2eba7a1…` | `c2eba7a1…` | **agreement** (checked lane declines to run it — conservatism, unchanged) |
+
+So: **zero new divergence rows on any tier**, and the class is not empty
+because the question is uninteresting — it is empty because the one file it
+was built for was fixed at 0.1.23. Under 0.1.22's behaviour the first row
+reads `inner inner-defer before-trap root-defer` here against
+`inner inner-defer before-trap` there: same verdict, same trap kind,
+different bytes, and **invisible for the whole of D66..r05**. That
+counterfactual is pinned as a unit test with the real digests
+(`differ::tests::a_trap_s_output_compares_when_both_sides_hold_it`), because
+"the comparison would have caught #209" is a claim and not a comment.
+
+**This also answers #216's sub-question, as far as three lanes can.** The
+flush concern was whether a trapping program's stdout is portable across
+wolfc's tiers at all. On every trapping corpus program that writes before its
+fault, `--checked`, `--native` and `--release` return the same digest as each
+other and as this machine. That is two files, not a proof — but it is two
+files more than the one r05 had, and no tier disagrees with any other
+anywhere in the corpus.
+
+**W0316 — a lint that read the checkout path.** Not a cross-implementation
+divergence at all; recorded because of how it was found. The pin brought
+`conc/proc_cross_module/main.lu`, which says `use work`. The W0316 walk asks
+whether a module imports one of its own ancestor MODULES, and its stop
+condition tested whether a candidate WAS the entry root — which never happens
+for a scope file sitting directly in it, so the walk climbed the whole
+filesystem path. GitHub checks this repository out under
+`/home/runner/work/wolf-interp/…`; the file warned on both Linux and macOS
+runners and on no developer's machine, and the corpus `warns:` ledger caught
+it. Local green is not green.
+
+#### The seventeenth corpus differential
+
+Counterparty built at v0.2.3 (`cargo build -p wolf_driver -p wolf_rt` inside
+`upstream/`), all three run-reaching tiers, 452 entries.
+
+| tier | divergences | of which filed | gating after filing | conservatism |
+| --- | --- | --- | --- | --- |
+| `checked` | 8 (was 15) | 2 | 6 | 251 |
+| `native` | 5 (was 12) | 2 | 3 | 215 |
+| `release` | 5 (was 12) | 2 | 3 | 215 |
+
+**Minus seven on every tier, and every one of them is DIV-2026-020 closing.**
+D71 ruled the strong form — the span IS the offending token — s134 aligned
+wolfc's parser, and wolf-lang#220's closing comment assigned the waiver's
+retirement to this lane's next pin bump. Seven of its eight files are
+byte-identical now. Nothing this sprint wrote caused the drop; taking the pin
+did. Conservatism rises by 2 on `checked`, which is the two new run-reaching
+corpus files.
+
+**Everything still gating is older than this sprint**, and after the two
+retirements the filed list is two entries again rather than nine.
+
+### DIV-2026-021 — `grammar/let_group_bare_tuple.lu` — **OPEN, filed upstream as wolf-lang#228**
+
+The eighth row of DIV-2026-020's table, promoted when the other seven closed.
+It was never the span-WIDTH question: both machines answer `fail(E0201)` at
+parse and disagree about **where**, ten bytes apart, on all three tiers.
+
+| | span | bytes |
+| --- | --- | --- |
+| lupin 0.1.24 | `[364,365)` | `,` — the comma in `let a, b` |
+| wolf 0.2.3 (`--checked`/`--native`/`--release`) | `[374,375)` | `\n` — the end of the initializer list |
+
+Triage: **spec bug**, case 1. `[gram.item.let]` says what a D63 let-group is
+and what the bare-tuple shape is not; it does not say where refusing it
+reports. Both readings are coherent — the comma is the first byte at which
+the input stops being a legal `let`; the end of the initializer list is where
+the count mismatch becomes knowable, and is what wolfc's teaching note is
+about ("this value has no name", with both fixes). wolfc has the better
+diagnostic and this machine the better locus, which is exactly a question a
+clause should settle rather than two implementations settle by imitation. The
+corpus directive cannot see it: `check: fail(E0201)` pins the code, and the
+walk compares codes.
+
 ### The letters in the mirror — is34, lupin 0.1.23, pin `8cda3aa` (wolf-lang v0.2.2)
 
 Not a corpus sweep but a **record honesty** finding and its consequences.
@@ -193,7 +352,7 @@ r05's transcript, and #55's second mover is confirmed right.
 
 **Everything gating is older than this sprint**, and one class dominates it.
 
-### DIV-2026-020 — the E02xx span convention — **OPEN, filed upstream as wolf-lang#220**
+### DIV-2026-020 — the E02xx span convention — **RESOLVED upstream at pin `3befc3e` (0.1.24): D71 ruled the span IS the offending token, s134 aligned wolfc, seven of eight files byte-identical; the eighth is DIV-2026-021**
 
 Eight `grammar/` files, identical on all three tiers: same code (E0201),
 same byte where the refusal starts, different span **width**. This machine
@@ -229,7 +388,7 @@ same finding** — its offsets genuinely differ — and it is named separately s
 the weaker ruling cannot silently absorb it. lupin 0.1.23 changes nothing
 here: its spans are byte-identical to 0.1.22's, and #56's teach-note is
 additive (a second line and a longer message, never a relocation).
-`differ::DIV_2026_020_FILES` carries the waiver.
+`differ::DIV_2026_020_FILES` carried the waiver and is **retired at the 3befc3e pin**, which is where wolf-lang#220's closing comment placed it: seven of the eight files are byte-identical to the counterparty now, and the eighth — `let_group_bare_tuple.lu`, whose offsets always genuinely differed — is carried on as DIV-2026-021 rather than absorbed by the ruling that does not cover it. is35 re-measured all eight on all three tiers before removing the list.
 
 #### Triage owed — carried, not filed
 
@@ -511,7 +670,18 @@ the shared-gap class the issue itself names. It cannot be filed as a
 `FILED_DIVERGENCES` entry (that list is keyed by corpus file) and is
 recorded here until a witness exists.
 
-### DIV-2026-017 — `lints/raw_interp_braces.lu` — **OPEN, filed upstream: the `r"` prefix's quote survives the compiler's raw-literal decode**
+### DIV-2026-017 — `lints/raw_interp_braces.lu` — **RESOLVED upstream (wolf-lang#76 closed); re-measured clean at pin `3befc3e` (0.1.24) on all three tiers**
+
+**CLOSED at the 3befc3e pin (is35).** wolf-lang#76 is closed and the file
+answers `{who}\n` on `--checked`, `--native` and `--release`, byte-identical
+to this machine. It had already stopped diverging by v0.2.2 — the sixteenth
+differential does not list it — so the waiver in `differ::FILED_DIVERGENCES`
+outlived the divergence by a release, which is the wolf-lang#177 lesson in a
+smaller shape: a waiver nobody re-measures is a green report that means
+nothing. It is removed, and `differ`'s own test now asserts the retired
+entries are gone rather than merely that the remaining ones are present.
+
+The original filing, kept for the record:
 
 Filed 2026-08-12 (lupin 0.1.10, CLEAN wolfgang build at `613c3dc`).
 Class **stdout**; not a soundness candidate. The first finding ever
