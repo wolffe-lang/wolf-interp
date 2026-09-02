@@ -146,6 +146,14 @@ pub fn compare(a: &ObservationRecord, b: &ObservationRecord) -> Option<Divergenc
 
     // At `run`, `exit` compares status and stdout hash; `trap` compares kind
     // only. The verdict check above already covered status and kind.
+    //
+    // This module is the published reading of `[proto.cmp.phase]` AS WRITTEN,
+    // and it stays that until the clause moves. wolf-lang#216 asks it to:
+    // both machines now hold a trapping program's output (wolf-interp#55) and
+    // the sentence rules it uncomparable, which is #55's blind spot one layer
+    // up. `differ::run_rung` — the instrument, not the reading — applies the
+    // proposed widening so the question has measurements behind it; the gap
+    // between the two is deliberate and is the thing #216 is about.
     if matches!(a.verdict, Verdict::Exit(_)) && a.stdout_sha256 != b.stdout_sha256 {
         return Some(Divergence {
             file,

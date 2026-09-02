@@ -754,16 +754,41 @@ fn compare_run(
             filed: filed(file).map(|(id, _)| id),
         });
     }
-    if matches!(va, Verdict::Exit(_)) && a.stdout_sha256 != b.stdout_sha256 {
+    // `exit` compares its output bytes by `[proto.cmp.phase]`, and since is35
+    // so does `trap` — the widening wolf-lang#216 asks the clause for, applied
+    // here as the *instrument* while the clause is decided. Two things make
+    // that honest rather than private agreement. It can only ADD rows: a
+    // widened comparison never hides a disagreement, it only surfaces one, so
+    // the risk it carries is a false row on the report and never a missed one.
+    // And it is gated on both sides HOLDING the observable — `None` on either
+    // is `[proto.record.fields]`'s honest-absent and is never a row, exactly
+    // as `[proto.cmp.warn]` treats a missing `warnings` array. Until 0.1.23
+    // this machine reported `null` on every trap (wolf-interp#55), which is
+    // why wolf-lang#209 — a divergence made of nothing but trap-path output —
+    // survived unmeasured from D66 to r05 with the two records verdict-
+    // identical. `src/compare.rs` holds the clause as WRITTEN; the difference
+    // between the two is the question, and is meant to be visible.
+    let comparable_stdout = match va {
+        Verdict::Exit(_) => true,
+        Verdict::Trap(_) => a.stdout_sha256.is_some() && b.stdout_sha256.is_some(),
+        _ => false,
+    };
+    if comparable_stdout && a.stdout_sha256 != b.stdout_sha256 {
+        let outcome = if matches!(va, Verdict::Trap(_)) {
+            "same trap kind, different output bytes before the fault \
+             (wolf-lang#216: the clause compares `trap` by kind only; this is the \
+             widening proposed there, and it can only add rows)"
+        } else {
+            "same exit status, different output bytes (byte-exact, no normalization — \
+             any needed normalization is a spec bug about underspecified output)"
+        };
         return Some(DeepDivergence {
             file: file.to_owned(),
             class: DeepClass::Stdout,
             a: format!("{:?}", a.stdout_sha256),
             b: format!("{:?}", b.stdout_sha256),
             rung: Some(Phase::Run),
-            detail: "same exit status, different output bytes (byte-exact, no normalization — \
-                     any needed normalization is a spec bug about underspecified output)"
-                .to_owned(),
+            detail: outcome.to_owned(),
             filed: filed(file).map(|(id, _)| id),
         });
     }
@@ -1338,7 +1363,9 @@ mod tests {
             DeepClass::Stdout
         );
 
-        // trap: kind only.
+        // trap: kind, and — since is35, the widening wolf-lang#216 proposes —
+        // the output bytes written before the fault, when BOTH sides hold
+        // them. Two records carrying nothing still agree by kind alone.
         let a = record(Phase::Run, Verdict::Trap(TrapKind::Bounds));
         let b = record(Phase::Run, Verdict::Trap(TrapKind::Bounds));
         assert_eq!(compare_deep(&a, &b, false).divergence, None);
@@ -1354,6 +1381,46 @@ mod tests {
         assert_eq!(
             compare_deep(&a, &b, true).divergence.expect("ub").class,
             DeepClass::SoundnessCandidate
+        );
+    }
+
+    #[test]
+    fn a_trap_s_output_compares_when_both_sides_hold_it() {
+        // wolf-lang#216, the comparator half. wolf-lang#209 was a divergence
+        // made of nothing but trap-path output and it survived from D66 to r05
+        // because `[proto.cmp.phase]` compares `trap` by kind alone. Same kind,
+        // different bytes is a row now.
+        let mut a = record(Phase::Run, Verdict::Trap(TrapKind::Assert));
+        let mut b = record(Phase::Run, Verdict::Trap(TrapKind::Assert));
+        a.stdout_sha256 = Some("aa".to_owned());
+        b.stdout_sha256 = Some("bb".to_owned());
+        let d = compare_deep(&a, &b, false).divergence.expect("stdout");
+        assert_eq!(d.class, DeepClass::Stdout);
+        assert!(d.detail.contains("before the fault"), "{}", d.detail);
+
+        // Same bytes: no row, which is what both of is34's movers do.
+        b.stdout_sha256 = Some("aa".to_owned());
+        assert_eq!(compare_deep(&a, &b, false).divergence, None);
+
+        // Honest-absent on EITHER side is never a row — the same posture
+        // `[proto.cmp.warn]` takes to a missing `warnings` array, and the
+        // reason widening the comparison cannot manufacture a divergence out
+        // of a counterparty that simply does not report the field yet.
+        b.stdout_sha256 = None;
+        assert_eq!(compare_deep(&a, &b, false).divergence, None);
+        assert_eq!(compare_deep(&b, &a, false).divergence, None);
+
+        // And an `exit` is unmoved: its bytes were always compared, absent or
+        // not, because the clause has always said so.
+        let mut x = record(Phase::Run, Verdict::Exit(0));
+        let y = record(Phase::Run, Verdict::Exit(0));
+        x.stdout_sha256 = Some("aa".to_owned());
+        assert_eq!(
+            compare_deep(&x, &y, false)
+                .divergence
+                .expect("stdout")
+                .class,
+            DeepClass::Stdout
         );
     }
 
