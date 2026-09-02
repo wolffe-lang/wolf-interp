@@ -583,15 +583,29 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             become derivable — `STR_ESC` carries the set and
     //             `CHAR_ESC ::= STR_ESC | '\\' "'"` — with no anchor
     //             movement: 411, nothing gained, nothing dropped.)
+    //   3befc3e → 486 files (is35: wolf-lang v0.2.3, the tag itself — trunk
+    //             and the r06 merge add nothing to spec/corpus beyond it.
+    //             Four files: #215's multiline pair, where
+    //             `grammar/multiline_bad_escape.lu` is the one this sprint
+    //             exists for — it arrived carrying a MEASURED code
+    //             divergence (wolf-lang#225: this machine answered E0103, a
+    //             number the catalog spends on the multiline's opening line)
+    //             and flips to agreement in the commit that takes the
+    //             clause's long-standing E0101; its running twin
+    //             `strings/multiline_escapes.lu` answered at first sight.
+    //             Plus s134's `conc/proc_cross_module/`, the first
+    //             MULTI-FILE addition in four pins, so `members` moves too.
+    //             The spec grows nine productions and the registry holds:
+    //             411, nothing gained, nothing dropped.)
     let report = report();
     assert_eq!(
         report.total(),
-        482,
+        486,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 449);
-    assert_eq!(report.members(), 33);
+    assert_eq!(report.entries(), 452);
+    assert_eq!(report.members(), 34);
 }
 
 #[test]

@@ -1129,6 +1129,19 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // none`, and is pinned in `tests/lex_corpus.rs` instead.)
     ("faults/trap_skips_root_defers.lu", "trap(assert)"),
     ("strings/str_uni_leading_zeros.lu", "exit(0)"),
+    // The 3befc3e pin (is35, wolf-lang v0.2.3 — the tag): two more, both
+    // answered at first sight. `strings/multiline_escapes.lu` is #215's
+    // running half — the escapes a `"""` literal DOES derive, which this
+    // lexer has always decoded through the same routine a plain string uses,
+    // so the file's point (that `MULTI_PART` reaches `STR_ESC`) was already
+    // this implementation's structure. Its refusal twin
+    // `grammar/multiline_bad_escape.lu` stops at the lexer, `phase: none`,
+    // and is the witness wolf-lang#225 flips: same escape, same span, and
+    // now the same CODE. `conc/proc_cross_module/main.lu` is s134's proc
+    // leaving its module — a cross-module proc under a region cap, which
+    // needed nothing here.
+    ("conc/proc_cross_module/main.lu", "exit(0)"),
+    ("strings/multiline_escapes.lu", "exit(0)"),
 ];
 
 #[test]

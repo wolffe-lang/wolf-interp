@@ -145,7 +145,16 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // `strings/str_uni_leading_zeros.lu`; the char half's witness landed at the
 // previous pin and cited gram.lex.char). Raised in the bump commit per the
 // test's own instruction.
-const RATCHET_FLOOR: usize = 175;
+// 175 to 176 at 3befc3e (is35, wolf-lang v0.2.3): one clause the corpus had
+// never cited until #215's pair gave it witnesses - gram.lex.str.multi, the
+// multiline literal itself. The FIRST citation only arrives now because the
+// multiline had no productions before #215, so there was nothing to write a
+// counter-example against; `grammar/multiline_bad_escape.lu` and
+// `strings/multiline_escapes.lu` cite it together, the refusal and the
+// running half. gram.lex.str.escape gains two more citers and was already
+// covered at the previous pin. Raised in the bump commit per the test's own
+// instruction.
+const RATCHET_FLOOR: usize = 176;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -398,10 +407,15 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // all entries — #209's `faults/trap_skips_root_defers.lu` and #198's
     // string pair; the suite is unmoved (this sprint's new suite programs are
     // inline fixtures, which the extractor does not harvest).
+    // 520/487 to 524/490 at 3befc3e (is35, wolf-lang v0.2.3): 4 corpus files
+    // - #215's multiline pair and s134's two-file `conc/proc_cross_module/`
+    // module, whose member is a program but not a record, which is why the
+    // two counts move by 4 and by 3; the suite is unmoved (is35's new suite
+    // programs are inline fixtures, which the extractor does not harvest).
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "8cda3aa41004775bb4a4c0a600d7fb673143b7d0");
-    assert_eq!(summary.programs, 520);
-    assert_eq!(summary.records, 487);
+    assert_eq!(summary.pin, "3befc3e85ca1f2c602f603f6f610d518c44530fd");
+    assert_eq!(summary.programs, 524);
+    assert_eq!(summary.records, 490);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

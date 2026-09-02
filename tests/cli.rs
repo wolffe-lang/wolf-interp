@@ -181,8 +181,13 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // `grammar/str_uni_seven_digits.lu` + `strings/str_uni_leading_zeros.lu`,
     // which this lexer answered at first sight, at E0101 and at the same
     // column its `char` twin uses.
+    // 482 -> 486 at the 3befc3e pin (is35, wolf-lang v0.2.3): #215's
+    // multiline pair (`grammar/multiline_bad_escape.lu`, the witness
+    // wolf-lang#225 flips, and `strings/multiline_escapes.lu`) and s134's
+    // two-file `conc/proc_cross_module/` module — one entry, one member, so
+    // the members count moves for the first time in four pins.
     // Moved with the pin, per the export.rs rule.
-    assert!(stdout.contains("482 file(s)"), "{stdout}");
+    assert!(stdout.contains("486 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -191,7 +196,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 482);
+    assert_eq!(value["total"], 486);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
