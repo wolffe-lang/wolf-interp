@@ -153,6 +153,14 @@ jobs:
         if: runner.os == 'Windows'
         run: cp target/release/lupin.exe "target/dist/lupin.exe"
 
+      # Four jobs upload to one release, so creation is a RACE: the
+      # `upload-or-else-create` shape the upstream stub uses lets the loser of
+      # that race drop its assets on the floor, which on this repo would mean
+      # losing exactly the windows one this lane exists for. Create first,
+      # tolerating "already exists", then upload unconditionally.
+      #
+      # Not a draft: ww09 needs a link that resolves, and a draft release's
+      # assets are not publicly fetchable.
       - name: upload to the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -162,6 +170,10 @@ jobs:
           if [ "${RUNNER_OS}" = "Windows" ]; then
             assets+=("target/dist/lupin.exe")
           fi
-          gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber \
-            || gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \
-                 --draft --title "${GITHUB_REF_NAME}"
+          if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "lupin ${GITHUB_REF_NAME#v}" \
+              --notes "Release notes: see [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md)." \
+              || echo "another matrix job created it first"
+          fi
+          gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber
