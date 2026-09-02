@@ -110,6 +110,150 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The letters in the mirror — is34, lupin 0.1.23, pin `8cda3aa` (wolf-lang v0.2.2)
+
+Not a corpus sweep but a **record honesty** finding and its consequences.
+The ledger entry is short because two of the three letters closed at
+agreement.
+
+**#209 — RESOLVED HERE, at the ruling.** `faults/trap_skips_root_defers.lu`
+arrived at this pin already carrying a measured divergence: r05 recorded
+every wolfc lane (`--checked`, `--native`, `--release`) printing
+`inner inner-defer before-trap` where lupin 0.1.22 printed
+`inner inner-defer before-trap root-defer`, both at `trap(assert)`.
+`[conf.trap.exit]` gained the sentence that settles it — *a trap runs no
+`defer` or `errdefer`, anywhere* — and this machine's root path took it.
+The witness now agrees byte for byte. Triage case 1 all the way through:
+the spec was the defendant (it ruled the proc path in s132 and was silent
+about the root), the clause was amended first, and only then was the
+implementation moved. is33 flagging the gap rather than guessing at it is
+what made that order possible.
+
+**#55 — the blind spot that hid it.** Through 0.1.22 this implementation
+reported `stdout_inline: null` and `stdout_sha256: null` on *every*
+trapping program, so the two machines were verdict-identical whatever they
+printed and no amount of corpus growth would have surfaced #209 through
+the differ. The record now carries the output for any verdict that reports
+a completed run (`exit`, `trap`, `ub`). Every record that moved, over the
+487-record bundle, compared field for field with the `commit` stamp
+excluded:
+
+| file | verdict | before | after | class |
+| --- | --- | --- | --- | --- |
+| `faults/trap_skips_root_defers.lu` | `trap(assert)` | `null` | `"inner inner-defer before-trap"` | **agreement** |
+| `rows/handler_diverge_trap.lu` | `trap(assert)` | `null` | `"FAILED: neg\n"` | **agreement** |
+
+Two, and both agree with the `stdout=` their corpus directive pins for the
+counterparty. 63 trap records in the bundle; the other 61 trap before
+writing anything, and none of the 8 `ub` records writes first. So the
+answer to "are there more #209-class divergences hiding behind the null?"
+is, at this pin, **no** — `handler_diverge_trap` was the only other file
+whose trap-path output had never been looked at, and it was right.
+
+**A conservatism, declared.** Reading the clause with no verdict condition
+at all would move a third record: `typecheck/main_returns_str.lu`,
+`unsupported@resolve`, would gain `stdout_inline: "hi\n"` — because this
+machine evaluates `main`'s body before declining that `main` returned
+`str`. A record whose `phase_reached` says the run did not complete makes
+no run observation, so it carries none; the side effect itself is a real
+finding and is filed as **wolf-interp#57** rather than smuggled onto the
+wire, with `a_record_that_completed_no_run_reports_no_stdout` standing as
+its red test.
+
+**The question this leaves open, filed as wolf-lang#216.**
+`[proto.cmp.phase]` still rules the run rung "for `trap`, compare kind
+only", and `compare`/`differ` still implement exactly that — widening the
+comparison by private agreement is what the independence doctrine forbids,
+and #209 is the proof that the letter comes first. So both machines now
+*hold* the observable and the protocol rules it uncomparable, which is #55's
+blind spot one layer up. The sub-question that makes it more than a
+one-liner: whether a trapping program's stdout is flushed to the same byte
+at all three wolfc tiers, or whether the current sentence is deliberate.
+
+#### The sixteenth corpus differential — the first since 0.1.11
+
+The table below this section is lupin **0.1.11**'s. Eleven releases went by
+on the corpus walk alone (which compares the `check:` code, never the span)
+and on record self-replay, so `diff-run` against a real counterparty had not
+been recorded since pin `f8dca42`. is34 built it — `cargo build -p wolf_driver
+-p wolf_rt` inside `upstream/` at v0.2.2, the legitimate binary acquisition
+this document rules — and ran all three run-reaching tiers.
+
+| tier | divergences | of which filed | gating after filing | conservatism |
+| --- | --- | --- | --- | --- |
+| `checked` | 15 | 9 | 6 | 249 |
+| `native` | 12 | 9 | 3 | 215 |
+| `release` | 12 | 9 | 3 | 215 |
+
+**The three letters agree on every lane.** `faults/trap_skips_root_defers.lu`,
+`rows/handler_diverge_trap.lu`, `grammar/str_uni_seven_digits.lu` and
+`strings/str_uni_leading_zeros.lu` appear in **no** divergence report at any
+tier — #209 is closed against the real counterparty and not merely against
+r05's transcript, and #55's second mover is confirmed right.
+
+**Everything gating is older than this sprint**, and one class dominates it.
+
+### DIV-2026-020 — the E02xx span convention — **OPEN, filed upstream as wolf-lang#220**
+
+Eight `grammar/` files, identical on all three tiers: same code (E0201),
+same byte where the refusal starts, different span **width**. This machine
+spans the offending token; the counterparty emits a zero-width span at its
+start. Both renderings put the caret in the same column — wolfc's own output
+for `struct_literal_no_separator.lu` carets byte 550, exactly where lupin
+points — so s132/D69's "byte-for-byte where lupin points" is true of the
+offset and not of the span, and nothing measured the difference because the
+corpus walk compares the code.
+
+| file | lupin | wolfc |
+| --- | --- | --- |
+| `grammar/struct_literal_no_separator.lu` | `[550,551)` = `y` | `[550,550)` |
+| `grammar/struct_pattern_no_separator.lu` | `[534,535)` = `y` | `[534,534)` |
+| `grammar/tuple_pattern_no_separator.lu` | `[415,416)` = `b` | `[415,415)` |
+| `grammar/closure_params_no_separator.lu` | `[581,582)` = `b` | `[581,581)` |
+| `grammar/struct_pattern_rest_bare.lu` | `[669,671)` = `..` | `[669,669)` |
+| `grammar/let_group_one_init.lu` | `[332,333)` = `,` | `[332,332)` |
+| `grammar/range_bare.lu` | `[896,897)` = `]` | `[896,896)` |
+| `grammar/let_group_bare_tuple.lu` | `[364,365)` = `,` | `[374,374)` — **offsets differ** |
+
+Triage (`[proto.cmp.triage]`): **spec bug**, case 1. `[proto.record.diag]`
+rules spans byte-offset half-open and compared; nothing says what a
+diagnostic about an *unexpected token* spans. Both conventions are
+defensible — zero-width reads "something is missing HERE" and pairs with the
+machine-applicable insertion suggestions the counterparty's parser grew in
+s131/s132; a token span reads "THIS is what went wrong". Moving either side
+to match the other without a ruling is imitation, which is the mistake #209
+was resolved by not making. The upstream ask is either the convention in
+`[proto.record.diag]` or a `[proto.cmp.rung]`-shaped tolerance in
+`[proto.cmp.phase]`: same code, same start, agree. **The last row is not the
+same finding** — its offsets genuinely differ — and it is named separately so
+the weaker ruling cannot silently absorb it. lupin 0.1.23 changes nothing
+here: its spans are byte-identical to 0.1.22's, and #56's teach-note is
+additive (a second line and a longer message, never a relocation).
+`differ::DIV_2026_020_FILES` carries the waiver.
+
+#### Triage owed — carried, not filed
+
+The residue after DIV-2026-019 and DIV-2026-020, recorded so it is not
+rediscovered as new. Each wants its own analysis; none is a soundness
+candidate and none moved this sprint.
+
+| file | tiers | shape |
+| --- | --- | --- |
+| `generics/explicit_apply_arity.lu` | all | `fail(E0812)` both, spans `[473,483)` vs `[469,483)` — same end, different start, so `[proto.cmp.rung]` cannot absorb the resolve/typecheck rung difference |
+| `grammar/index_origin_bad.lu` | all | `fail(E0813)` both, spans `[303,311)` vs `[309,310)` — disjoint extents, same clause |
+| `rows/negative/tag_undeclared_arg.lu` | all | `unsupported@resolve` here against `fail(E0301)@resolve` — a scope gap wearing a verdict, not a disagreement about the program |
+| `faults/cast_float_nan_trap.lu`, `faults/cast_float_overflow_trap.lu` | `checked` only | `trap(overflow)` here, `exit(0)` on the checked lane; both compiled lanes trap, so this is the checked executor's own tier |
+| `faults/cast_float_to_int_truncate.lu` | `checked` only | same exit, different stdout digest; likewise checked-only |
+
+**Unchanged:** DIV-2026-019 is still the one standing corpus-walk mismatch, still
+filed, still waived by `FILED_DIVERGENCES`. Corpus verdict-identity across
+the whole pin bump: 332 match, 16 dynamic counterparts, 42 conservatism,
+58 out of scope. #198's string half
+(`grammar/str_uni_seven_digits.lu`, `strings/str_uni_leading_zeros.lu`)
+answered at first sight — E0101 at the escape, column 14, the same column
+its `char` twin reports — so it never became a finding at all. #56's
+teach-note is wording, outside the protocol by D22, and moved no record.
+
 Fifteenth corpus differential: lupin 0.1.11, pin `f8dca42` (**the
 largest semantic movement the compiler has had in one wave**: s74 the
 correctness cluster, s75 `List` element access as a load with

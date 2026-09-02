@@ -61,10 +61,14 @@ write, and where. `[gram.expr.primary]`, `[gram.pat.struct]`, `[gram.pat]`,
 members (D67/D69), and a program that omits one gets a second line:
 
 ```console
-$ lupin check upstream/corpus/grammar/struct_literal_no_separator.lu
+$ lupin check vendor/upstream/corpus/grammar/struct_literal_no_separator.lu
 upstream/corpus/grammar/struct_literal_no_separator.lu: E0201: expected `}`, found identifier `y`; the members of a struct literal are separated — add the comma [gram.expr.primary] at 18:26
   the comma goes here at 18:25
 ```
+
+(The command names the vendored snapshot because CI has no submodule to
+clone; the output is normalized `vendor/upstream/` → `upstream/`, which is
+the doc-truth convention `docs/README.md` describes.)
 
 The first line's `line:col` is the offending token and is protocol surface
 (code + span); the second is the zero-width insertion point where the comma

@@ -179,13 +179,51 @@ pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// DIV-2026-020's file set (is34, wolf-lang#220): the E02xx parse refusals
+/// where both machines agree on the code and on the byte the refusal starts
+/// at, and disagree only on the span's WIDTH — this machine spans the
+/// offending token, the counterparty emits a zero-width span at its start.
+/// `[proto.record.diag]` rules spans byte-exact and says nothing about which
+/// convention an "expected X, found Y" diagnostic uses, so the clause is the
+/// defendant and neither implementation moves until it rules.
+///
+/// `let_group_bare_tuple.lu` is in the set but is NOT the same finding: its
+/// offsets genuinely differ (byte 364, the `,`, against byte 374, the newline
+/// after the initializer list). It is carried here so the ledger is one list,
+/// and named separately in the log and in the issue so the weaker ruling
+/// cannot silently absorb it.
+pub const DIV_2026_020_FILES: &[&str] = &[
+    "grammar/closure_params_no_separator.lu",
+    "grammar/let_group_bare_tuple.lu",
+    "grammar/let_group_one_init.lu",
+    "grammar/range_bare.lu",
+    "grammar/struct_literal_no_separator.lu",
+    "grammar/struct_pattern_no_separator.lu",
+    "grammar/struct_pattern_rest_bare.lu",
+    "grammar/tuple_pattern_no_separator.lu",
+];
+
 /// The filing id for a corpus file, when its divergence is already filed.
 #[must_use]
 pub fn filed(file: &str) -> Option<(&'static str, &'static str)> {
-    FILED_DIVERGENCES
+    if let Some(found) = FILED_DIVERGENCES
         .iter()
         .find(|(f, _, _)| file.ends_with(f))
         .map(|(_, id, summary)| (*id, *summary))
+    {
+        return Some(found);
+    }
+    DIV_2026_020_FILES
+        .iter()
+        .any(|f| file.ends_with(f))
+        .then_some((
+            "DIV-2026-020",
+            "the E02xx span convention: same code, same start byte, different \
+             WIDTH — this machine spans the offending token, the counterparty \
+             emits a zero-width span there. Filed upstream as wolf-lang#220; \
+             `let_group_bare_tuple.lu` is the one row whose offsets really do \
+             differ and wants its own triage",
+        ))
 }
 
 // ---------------------------------------------------------------------------
