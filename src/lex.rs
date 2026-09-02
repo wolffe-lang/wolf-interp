@@ -1125,7 +1125,7 @@ impl<'a> Lexer<'a> {
     ///
     /// A malformation the caller files: [`CharEscapeError::Shape`] under
     /// E0110 over the whole literal — the char literal's own code,
-    /// deliberately not the string tier's E0103/E0104 — or
+    /// deliberately not the string tier's E0101 — or
     /// [`CharEscapeError::DigitCount`] under E0101 at the escape.
     fn scan_char_escape(&mut self) -> Result<char, CharEscapeError> {
         let escape = self.pos;
@@ -1627,7 +1627,7 @@ impl<'a> Lexer<'a> {
     fn scan_unicode_escape(&mut self, start: usize) {
         if self.peek() != Some('{') {
             self.error(
-                diag::E_BAD_UNICODE_ESCAPE,
+                diag::E_BAD_ESCAPE,
                 Span::new(start, self.pos),
                 "gram.lex.str",
                 "`\\u` takes a braced scalar value, as in `\\u{1F43A}`",
@@ -1650,7 +1650,7 @@ impl<'a> Lexer<'a> {
             self.pos += 1;
         } else {
             self.error(
-                diag::E_BAD_UNICODE_ESCAPE,
+                diag::E_BAD_ESCAPE,
                 Span::new(start, self.pos),
                 "gram.lex.str",
                 "this `\\u{…}` escape is missing its closing brace",
@@ -1674,7 +1674,7 @@ impl<'a> Lexer<'a> {
         match scalar {
             Some(ch) => self.push_escaped(start, ch),
             None => self.error(
-                diag::E_BAD_UNICODE_ESCAPE,
+                diag::E_BAD_ESCAPE,
                 Span::new(start, self.pos),
                 "gram.lex.str",
                 "not a Unicode scalar value",

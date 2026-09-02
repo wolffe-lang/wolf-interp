@@ -261,10 +261,19 @@ pub const E_KEYWORD_AS_IDENT: &str = "E0008";
 pub const E_UNEXPECTED_BYTE: &str = "E0101";
 /// A string literal with no closing delimiter (`[gram.lex.str]`). **Unpinned.**
 pub const E_UNTERMINATED_STRING: &str = "E0102";
-/// An escape outside the closed set (`[gram.lex.str]`). **Unpinned.**
-pub const E_BAD_ESCAPE: &str = "E0103";
-/// A malformed `\u{…}` escape (`[gram.lex.str]`). **Unpinned.**
-pub const E_BAD_UNICODE_ESCAPE: &str = "E0104";
+/// An escape outside the closed set, in any shape: an unknown letter after
+/// the `\`, a `\x` without its two hex digits, a `\u` without its braces.
+/// **Spec-pinned since #198/r05** — `[gram.lex.str.escape]`: "`STR_ESC` …
+/// and nothing else; any other `\` is **E0101** at the escape", which the
+/// multiline reaches through the same production (#215).
+///
+/// This was **E0103** through 0.1.23, and `\u`-without-braces was
+/// **E0104** — two numbers the catalog spends on the multiline's LAYOUT
+/// (the opening `"""` must end its line; the closing one must stand
+/// alone), so a bad escape and a badly-shaped multiline were
+/// indistinguishable in this machine's record. wolf-lang#225 measured it;
+/// the span was already identical on both sides, so only the number moved.
+pub const E_BAD_ESCAPE: &str = "E0101";
 /// A byte order mark (`[gram.lex.source]` rejects them). **Unpinned.**
 pub const E_BYTE_ORDER_MARK: &str = "E0105";
 /// A numeric literal with no digits after its base prefix, or a malformed
@@ -363,12 +372,13 @@ pub const UNPINNED_CODES: &[(&str, &str, &str)] = &[
         "gram.lex.str",
         "unterminated string literal",
     ),
-    (
-        E_BAD_ESCAPE,
-        "gram.lex.str",
-        "escape outside the closed set",
-    ),
-    (E_BAD_UNICODE_ESCAPE, "gram.lex.str", "malformed `\\u{…}`"),
+    // E_BAD_ESCAPE sat here as E0103, and a malformed `\u` beside it as
+    // E0104, until wolf-lang#225: `[gram.lex.str.escape]` had already said
+    // "any other `\` is **E0101** at the escape", so neither number was
+    // ever this implementation's to choose — and both collided with the
+    // multiline-layout codes the catalog assigns. Both sites are E0101 now,
+    // pinned, and E0103/E0104 are unspoken by this implementation until it
+    // implements the layout rules they name (wolf-interp#59).
     (E_BYTE_ORDER_MARK, "gram.lex.source", "byte order mark"),
     (E_BAD_NUMBER, "gram.lex.number", "malformed numeric literal"),
     (E_NOT_UTF8, "gram.lex.source", "source is not UTF-8"),
