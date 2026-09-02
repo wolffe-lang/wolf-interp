@@ -121,6 +121,7 @@ pub enum Rule {
     RegionTransfer,
     /// Freezing or transferring a region with an open child is refused.
     RegionClosedSubtree,
+    RegionCap,
 
     // -- §4 Tier 2: `shared` and `handle` (is03) --------------------------
     /// `shared T` is a refcounted cell; the value drops at the last strong
@@ -495,6 +496,10 @@ impl Rule {
                 "mem.region.freeze.3",
                 "freezing or transferring a region containing an open child is refused: closed subtrees only",
             ),
+            Rule::RegionCap => (
+                "mem.region.cap.1",
+                "a region may carry a creation-time byte budget; a charge that would take its ledger PAST the cap traps `alloc-contract` at the allocating site",
+            ),
             Rule::SharedRc => (
                 "mem.shared.rc.1",
                 "`shared T` is a refcounted cell; clones share ownership and it drops at the last strong release",
@@ -855,7 +860,7 @@ impl Rule {
     }
 
     /// Every rule, in declaration order. The registry.
-    pub const ALL: [Rule; 115] = [
+    pub const ALL: [Rule; 116] = [
         Rule::ValueSemantics,
         Rule::PlacePath,
         Rule::PathDisjoint,
@@ -893,6 +898,7 @@ impl Rule {
         Rule::RegionFreeze,
         Rule::RegionTransfer,
         Rule::RegionClosedSubtree,
+        Rule::RegionCap,
         Rule::SharedRc,
         Rule::SharedAcyclic,
         Rule::SharedWeak,

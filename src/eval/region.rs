@@ -218,6 +218,22 @@ pub struct Region {
     /// decremented while the region lives. See the [`ledger`] module for what
     /// a byte means in this machine.
     pub bytes: u64,
+    /// The creation-time byte budget (`[mem.region.cap.1]`), when the region
+    /// was created with one, beside the span of the `cap:` clause that set
+    /// it — a breach points at its allocating site and at the budget, and
+    /// the region's own span is the whole block, which is not the same
+    /// place. `None` is unbounded — today's region exactly.
+    ///
+    /// The budget bounds [`Region::bytes`] **in this machine's own ledger
+    /// units** (the clause's own sentence: caps are denominated in ledger
+    /// units, not payload bytes), so the same source breaches here, in the
+    /// native arena and under the checked machine at different byte numbers
+    /// and at the same *allocation*. It is the region's for life: it crosses
+    /// `move`/adoption with the region, and it is never re-read after
+    /// creation.
+    pub cap: Option<u64>,
+    /// Where `cap: n` was written, for the breach's second span.
+    pub cap_span: Option<Span>,
     /// Re-entrant open depth. See [`Store::enter`] for why this is a count and
     /// not a flag.
     pub depth: u32,
@@ -227,6 +243,25 @@ pub struct Region {
     /// region has never been transferred and the single-task rules apply.
     pub claim: Option<TaskClaim>,
     pub span: Span,
+}
+
+/// A cap breach (`[mem.region.cap.1]`): the charge that would take a region's
+/// ledger **past** its creation-time budget.
+///
+/// Carrying the numbers rather than a rendered string keeps the one compare
+/// ([`Store::admits`]) free of message formatting and lets the fault site —
+/// which knows *what* it was allocating — say so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapBreach {
+    /// The region whose budget refused, which is the allocation's BIRTH
+    /// region, not necessarily the ambient one.
+    pub region: RegionId,
+    /// The budget, in this machine's ledger units.
+    pub cap: u64,
+    /// What the ledger stood at before this charge — unchanged by the breach.
+    pub charged: u64,
+    /// What this charge asked for.
+    pub bytes: u64,
 }
 
 /// Where a transferred region currently lives (spec/03 §3).
@@ -367,7 +402,15 @@ impl Store {
     #[must_use]
     pub fn new() -> Store {
         let mut store = Store::default();
-        let root = store.create(Some("program".to_owned()), Strategy::Arena, Span::new(0, 0));
+        // The process root is never capped: `[mem.region.cap.1]` puts the
+        // budget on a region a program *creates*, and the program region is
+        // the ambient `main` is handed.
+        let root = store.create(
+            Some("program".to_owned()),
+            Strategy::Arena,
+            None,
+            Span::new(0, 0),
+        );
         store.open.push(root);
         store.regions[root].state = RegionState::Open;
         store.regions[root].depth = 1;
@@ -396,7 +439,13 @@ impl Store {
     /// value freshly bound to a local is owned by a *stack* slot, which is not
     /// a region. The parent edge appears only when the value is stored into
     /// region data — see [`Store::classify_edge`].
-    pub fn create(&mut self, name: Option<String>, strategy: Strategy, span: Span) -> RegionId {
+    pub fn create(
+        &mut self,
+        name: Option<String>,
+        strategy: Strategy,
+        cap: Option<(u64, Span)>,
+        span: Span,
+    ) -> RegionId {
         let id = self.regions.len();
         self.regions.push(Region {
             id,
@@ -408,6 +457,8 @@ impl Store {
             allocations: 0,
             // `[mem.region.account.1]`: "the ledger is **zero at creation**".
             bytes: 0,
+            cap: cap.map(|(bytes, _)| bytes),
+            cap_span: cap.map(|(_, at)| at),
             depth: 0,
             claim: None,
             span,
@@ -484,15 +535,38 @@ impl Store {
         &self.open
     }
 
+    /// The ONE cap compare (`[mem.region.cap.1]`), written once and called
+    /// from every charge site.
+    ///
+    /// "A ledger standing **exactly at** the cap is not a breach — the next
+    /// byte is": the test is `charged + bytes > cap`, strictly. A capped
+    /// region whose charge fits answers the new total; one whose charge would
+    /// step past answers the breach, and the ledger does **not** move — the
+    /// trap fires at the allocating site, so the allocation never happened.
+    fn admits(region: &Region, bytes: u64) -> Result<u64, CapBreach> {
+        let total = region.bytes.saturating_add(bytes);
+        match region.cap {
+            Some(cap) if total > cap => Err(CapBreach {
+                region: region.id,
+                cap,
+                charged: region.bytes,
+                bytes,
+            }),
+            _ => Ok(total),
+        }
+    }
+
     /// Charges one allocation of `bytes` to the current region
-    /// (`[mem.region.create.3]`, `[mem.region.account.1]`).
-    pub fn charge(&mut self, bytes: u64) -> RegionId {
+    /// (`[mem.region.create.3]`, `[mem.region.account.1]`), against its cap
+    /// (`[mem.region.cap.1]`).
+    pub fn charge(&mut self, bytes: u64) -> Result<RegionId, CapBreach> {
         let id = self.current();
         if let Some(region) = self.regions.get_mut(id) {
+            let total = Store::admits(region, bytes)?;
             region.allocations += 1;
-            region.bytes = region.bytes.saturating_add(bytes);
+            region.bytes = total;
         }
-        id
+        Ok(id)
     }
 
     /// Charges `bytes` to a **named** region — the birth-region attribution
@@ -503,13 +577,21 @@ impl Store {
     /// moves `r`'s ledger not one byte. The allocation-site counter does not
     /// move: `allocations` has counted allocation *sites* since is02, and a
     /// growth realloc is the same site asking for more.
-    pub fn charge_growth(&mut self, id: RegionId, bytes: u64) {
+    /// The cap is the BIRTH region's, for the same reason the charge is
+    /// (`[mem.region.cap.1]` bounds `[mem.region.account.1]`'s ledger, and
+    /// that ledger is attributed by birth): growing a root-born list inside
+    /// `in r { … }` is measured against the root's budget, not `r`'s. Caps
+    /// are per-region, never per-forest — a child region's charge counts
+    /// against the CHILD's cap.
+    pub fn charge_growth(&mut self, id: RegionId, bytes: u64) -> Result<(), CapBreach> {
         if bytes == 0 {
-            return;
+            return Ok(());
         }
         if let Some(region) = self.regions.get_mut(id) {
-            region.bytes = region.bytes.saturating_add(bytes);
+            let total = Store::admits(region, bytes)?;
+            region.bytes = total;
         }
+        Ok(())
     }
 
     /// `region_bytes(r)` — one region's ledger (`[mem.region.account.1]`).
@@ -861,8 +943,8 @@ impl Store {
     // -- pools & handles (§4) ----------------------------------------------
 
     /// Builds a pool in the current region (`[mem.shared.handle.1]`).
-    pub fn new_pool(&mut self, elem: String) -> PoolId {
-        let region = self.charge(ledger::container_bytes(0));
+    pub fn new_pool(&mut self, elem: String) -> Result<PoolId, CapBreach> {
+        let region = self.charge(ledger::container_bytes(0))?;
         let id = self.pools.len();
         self.pools.push(Pool {
             id,
@@ -870,7 +952,7 @@ impl Store {
             elem,
             slots: Vec::new(),
         });
-        id
+        Ok(id)
     }
 
     /// Every pool, in creation order — the REPL's `:mem` dump reads them
@@ -1180,10 +1262,16 @@ mod tests {
     fn allocations_land_in_the_innermost_open_region() {
         // `[mem.region.create.3]`, operationally.
         let mut store = store();
-        let a = store.create(Some("a".to_owned()), Strategy::Arena, Span::new(0, 1));
-        assert_eq!(store.charge(ledger::container_bytes(0)), Store::root());
+        let a = store.create(Some("a".to_owned()), Strategy::Arena, None, Span::new(0, 1));
+        assert_eq!(
+            store.charge(ledger::container_bytes(0)).expect("uncapped"),
+            Store::root()
+        );
         store.enter(a).expect("a opens");
-        assert_eq!(store.charge(ledger::container_bytes(0)), a);
+        assert_eq!(
+            store.charge(ledger::container_bytes(0)).expect("uncapped"),
+            a
+        );
         assert_eq!(store.region(a).expect("a").allocations, 1);
         store.leave(a);
         assert_eq!(store.current(), Store::root());
@@ -1195,8 +1283,8 @@ mod tests {
         // `[mem.region.multiopen]`, the relaxation this interpreter exists to
         // test: two sibling roots, both open.
         let mut store = store();
-        let a = store.create(None, Strategy::Arena, Span::new(0, 1));
-        let b = store.create(None, Strategy::Arena, Span::new(2, 3));
+        let a = store.create(None, Strategy::Arena, None, Span::new(0, 1));
+        let b = store.create(None, Strategy::Arena, None, Span::new(2, 3));
         store.enter(a).expect("a opens");
         store.enter(b).expect("b opens beside a");
         assert_eq!(store.open_set(), &[Store::root(), a, b]);
@@ -1207,8 +1295,8 @@ mod tests {
     fn an_ancestor_and_its_descendant_do_not_open_together() {
         // The finding: "distinct region values" is not "disjoint regions".
         let mut store = store();
-        let parent = store.create(None, Strategy::Arena, Span::new(0, 1));
-        let child = store.create(None, Strategy::Arena, Span::new(2, 3));
+        let parent = store.create(None, Strategy::Arena, None, Span::new(0, 1));
+        let child = store.create(None, Strategy::Arena, None, Span::new(2, 3));
         store.adopt(parent, child);
         store.enter(parent).expect("the parent opens");
         let refused = store.enter(child).expect_err("the child must not join it");
@@ -1221,7 +1309,7 @@ mod tests {
         // What `corpus/memory/region_multiopen_swap.lu` requires and
         // `[mem.region.open.1]` does not say.
         let mut store = store();
-        let a = store.create(Some("a".to_owned()), Strategy::Arena, Span::new(0, 1));
+        let a = store.create(Some("a".to_owned()), Strategy::Arena, None, Span::new(0, 1));
         store.enter(a).expect("a opens");
         store
             .enter(a)
@@ -1239,17 +1327,23 @@ mod tests {
         // arithmetic. The NUMBERS are this machine's own measured units; the
         // relations are the law.
         let mut store = store();
-        let a = store.create(Some("a".to_owned()), Strategy::Arena, Span::new(0, 1));
+        let a = store.create(Some("a".to_owned()), Strategy::Arena, None, Span::new(0, 1));
         assert_eq!(store.bytes(a), 0, "zero at creation");
         store.enter(a).expect("a opens");
-        store.charge(ledger::container_bytes(0));
+        store.charge(ledger::container_bytes(0)).expect("uncapped");
         let after_alloc = store.bytes(a);
         assert!(after_alloc > 0, "an allocation charges the ambient region");
         assert_eq!(store.bytes(a), after_alloc, "stable between allocations");
         // Growth is monotone and never discharges the abandoned buffer.
-        store.charge_growth(a, ledger::growth_bytes(0, 1));
-        store.charge_growth(a, ledger::growth_bytes(1, 4));
-        store.charge_growth(a, ledger::growth_bytes(4, 5));
+        store
+            .charge_growth(a, ledger::growth_bytes(0, 1))
+            .expect("uncapped");
+        store
+            .charge_growth(a, ledger::growth_bytes(1, 4))
+            .expect("uncapped");
+        store
+            .charge_growth(a, ledger::growth_bytes(4, 5))
+            .expect("uncapped");
         let after_growth = store.bytes(a);
         assert!(after_growth > after_alloc, "monotone within the lifetime");
         // 0 → 1 crosses into a 4-slot buffer; 1 → 4 stays inside it and
@@ -1264,16 +1358,18 @@ mod tests {
         let mut store = store();
         let base = store.live_bytes();
         assert_eq!(base, 0);
-        store.charge(ledger::container_bytes(0));
+        store.charge(ledger::container_bytes(0)).expect("uncapped");
         assert_eq!(
             store.live_bytes(),
             base,
             "the process-root arena is never counted"
         );
-        let a = store.create(Some("a".to_owned()), Strategy::Arena, Span::new(0, 1));
+        let a = store.create(Some("a".to_owned()), Strategy::Arena, None, Span::new(0, 1));
         store.enter(a).expect("a opens");
-        store.charge(ledger::container_bytes(0));
-        store.charge_growth(a, ledger::growth_bytes(0, 100));
+        store.charge(ledger::container_bytes(0)).expect("uncapped");
+        store
+            .charge_growth(a, ledger::growth_bytes(0, 100))
+            .expect("uncapped");
         assert!(
             store.live_bytes() > base,
             "rises while a region holds bytes"
@@ -1294,12 +1390,14 @@ mod tests {
         // site, so growing it elsewhere moves that region's ledger not one
         // byte.
         let mut store = store();
-        let born = store.charge(ledger::container_bytes(0));
+        let born = store.charge(ledger::container_bytes(0)).expect("uncapped");
         assert_eq!(born, Store::root());
-        let r = store.create(Some("r".to_owned()), Strategy::Arena, Span::new(0, 1));
+        let r = store.create(Some("r".to_owned()), Strategy::Arena, None, Span::new(0, 1));
         store.enter(r).expect("r opens");
         let charged = store.bytes(r);
-        store.charge_growth(born, ledger::growth_bytes(0, 500));
+        store
+            .charge_growth(born, ledger::growth_bytes(0, 500))
+            .expect("uncapped");
         assert_eq!(store.bytes(r), charged, "the birth region takes the growth");
         assert!(store.bytes(Store::root()) > 0);
     }
@@ -1325,8 +1423,8 @@ mod tests {
     #[test]
     fn freeing_is_wholesale_and_recursive_and_idempotent() {
         let mut store = store();
-        let parent = store.create(None, Strategy::Arena, Span::new(0, 1));
-        let child = store.create(None, Strategy::Arena, Span::new(2, 3));
+        let parent = store.create(None, Strategy::Arena, None, Span::new(0, 1));
+        let child = store.create(None, Strategy::Arena, None, Span::new(2, 3));
         store.adopt(parent, child);
         let freed = store.free(parent);
         assert_eq!(freed, vec![parent, child]);
@@ -1338,7 +1436,7 @@ mod tests {
     #[test]
     fn a_frozen_region_is_immutable_forever_and_never_reopens() {
         let mut store = store();
-        let a = store.create(None, Strategy::Arena, Span::new(0, 1));
+        let a = store.create(None, Strategy::Arena, None, Span::new(0, 1));
         store.freeze(a).expect("a closed region freezes");
         assert_eq!(store.state(a), Some(RegionState::Frozen));
         assert!(store.enter(a).is_err());
@@ -1351,8 +1449,8 @@ mod tests {
     fn a_subtree_with_an_open_child_neither_freezes_nor_transfers() {
         // `[mem.region.freeze.3]`, E1005's dynamic half.
         let mut store = store();
-        let parent = store.create(None, Strategy::Arena, Span::new(0, 1));
-        let child = store.create(None, Strategy::Arena, Span::new(2, 3));
+        let parent = store.create(None, Strategy::Arena, None, Span::new(0, 1));
+        let child = store.create(None, Strategy::Arena, None, Span::new(2, 3));
         store.adopt(parent, child);
         store.enter(child).expect("the child opens");
         let refused = store.freeze(parent).expect_err("an open child blocks it");
@@ -1362,13 +1460,13 @@ mod tests {
     #[test]
     fn the_edge_table_reads_as_the_document_writes_it() {
         let mut store = store();
-        let a = store.create(None, Strategy::Arena, Span::new(0, 1));
-        let b = store.create(None, Strategy::Arena, Span::new(2, 3));
-        let frozen = store.create(None, Strategy::Arena, Span::new(4, 5));
+        let a = store.create(None, Strategy::Arena, None, Span::new(0, 1));
+        let b = store.create(None, Strategy::Arena, None, Span::new(2, 3));
+        let frozen = store.create(None, Strategy::Arena, None, Span::new(4, 5));
         store.freeze(frozen).expect("freezes");
         let pool_in_a = {
             store.enter(a).expect("a opens");
-            let id = store.new_pool("Node".to_owned());
+            let id = store.new_pool("Node".to_owned()).expect("uncapped");
             store.leave(a);
             id
         };
@@ -1406,8 +1504,8 @@ mod tests {
         // The sprint's "a planted invariant-breaking mutation demonstrably
         // trips it".
         let mut store = store();
-        let a = store.create(None, Strategy::Arena, Span::new(0, 1));
-        let b = store.create(None, Strategy::Arena, Span::new(2, 3));
+        let a = store.create(None, Strategy::Arena, None, Span::new(0, 1));
+        let b = store.create(None, Strategy::Arena, None, Span::new(2, 3));
         store.adopt(a, b);
         assert_eq!(store.assert_forest(), Ok(()));
         store.adopt(b, a);
@@ -1418,7 +1516,7 @@ mod tests {
     #[test]
     fn handles_are_generational_and_slots_are_reused() {
         let mut store = store();
-        let pool = store.new_pool("Node".to_owned());
+        let pool = store.new_pool("Node".to_owned()).expect("uncapped");
         let (index, generation) = store.reserve(pool).expect("reserve");
         assert!(store.init_slot(pool, index, generation, Value::int(1)));
         assert!(store.slot(pool, index, generation).is_some());
@@ -1434,9 +1532,14 @@ mod tests {
     #[test]
     fn freeing_a_pool_region_kills_every_slot_in_it() {
         let mut store = store();
-        let r = store.create(None, Strategy::Pool("Node".to_owned()), Span::new(0, 1));
+        let r = store.create(
+            None,
+            Strategy::Pool("Node".to_owned()),
+            None,
+            Span::new(0, 1),
+        );
         store.enter(r).expect("opens");
-        let pool = store.new_pool("Node".to_owned());
+        let pool = store.new_pool("Node".to_owned()).expect("uncapped");
         let (index, generation) = store.reserve(pool).expect("reserve");
         store.init_slot(pool, index, generation, Value::int(1));
         store.leave(r);
@@ -1471,12 +1574,75 @@ mod tests {
     #[test]
     fn leaks_are_regions_neither_freed_nor_frozen() {
         let mut store = store();
-        let leaked = store.create(None, Strategy::Arena, Span::new(0, 1));
-        let frozen = store.create(None, Strategy::Arena, Span::new(2, 3));
-        let freed = store.create(None, Strategy::Arena, Span::new(4, 5));
+        let leaked = store.create(None, Strategy::Arena, None, Span::new(0, 1));
+        let frozen = store.create(None, Strategy::Arena, None, Span::new(2, 3));
+        let freed = store.create(None, Strategy::Arena, None, Span::new(4, 5));
         store.freeze(frozen).expect("freezes");
         store.free(freed);
         store.free(Store::root());
         assert_eq!(store.leaks(), vec![leaked]);
+    }
+
+    #[test]
+    fn the_cap_compare_admits_exactly_at_the_budget_and_refuses_the_next_byte() {
+        // `[mem.region.cap.1]`, at the Store: the ONE compare, both sides of
+        // its boundary, with no evaluator in the way.
+        let mut store = store();
+        let a = store.create(
+            None,
+            Strategy::Arena,
+            Some((64, Span::new(0, 1))),
+            Span::new(0, 1),
+        );
+        store.enter(a).expect("a opens");
+        store
+            .charge(64)
+            .expect("exactly at the cap is not a breach");
+        assert_eq!(store.bytes(a), 64);
+        let breach = store.charge(1).expect_err("the next byte is");
+        assert_eq!(breach.region, a);
+        assert_eq!(breach.cap, 64);
+        assert_eq!(breach.charged, 64);
+        assert_eq!(breach.bytes, 1);
+        // The refused charge does not move the ledger: the trap fires at the
+        // allocating site, so the allocation never happened.
+        assert_eq!(store.bytes(a), 64);
+        assert_eq!(store.region(a).expect("a").allocations, 1);
+    }
+
+    #[test]
+    fn a_growth_charge_is_measured_against_the_birth_regions_cap() {
+        // `charge_growth` takes the BIRTH region explicitly, so the compare
+        // it runs is that region's — not the ambient one's. A zero budget on
+        // the open region cannot refuse a root-born buffer's growth.
+        let mut store = store();
+        let born = store.charge(ledger::container_bytes(0)).expect("root");
+        assert_eq!(born, Store::root());
+        let idle = store.create(
+            None,
+            Strategy::Arena,
+            Some((0, Span::new(0, 1))),
+            Span::new(0, 1),
+        );
+        store.enter(idle).expect("idle opens");
+        store
+            .charge_growth(born, ledger::growth_bytes(0, 40))
+            .expect("the root is uncapped; idle's budget is not consulted");
+        assert_eq!(store.bytes(idle), 0);
+        store
+            .charge(1)
+            .expect_err("a charge to idle itself does breach");
+    }
+
+    #[test]
+    fn an_uncapped_region_is_todays_region_exactly() {
+        let mut store = store();
+        let a = store.create(None, Strategy::Arena, None, Span::new(0, 1));
+        store.enter(a).expect("a opens");
+        for _ in 0..64 {
+            store.charge(1 << 20).expect("unbounded");
+        }
+        assert_eq!(store.region(a).expect("a").cap, None);
+        assert_eq!(store.bytes(a), 64 << 20);
     }
 }

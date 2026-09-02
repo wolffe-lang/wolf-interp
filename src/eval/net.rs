@@ -365,7 +365,7 @@ impl Machine {
                             span,
                             "net_read",
                             super::region::ledger::str_bytes(text.len() as u64),
-                        );
+                        )?;
                         Ok(Value::Str(text))
                     }
                     Err(err) => Err(err),
@@ -409,7 +409,7 @@ impl Machine {
                             span,
                             "net_read_bytes",
                             super::region::ledger::container_bytes(bytes.len() as u64),
-                        );
+                        )?;
                         let home = self.current_region();
                         Ok(Value::list(
                             bytes

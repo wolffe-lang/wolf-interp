@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: region_cap_breach.lu
+trap:    alloc-contract
+clause:  [mem.region.cap.1]
+rule:    RegionCap
+message: `push` growing the list would charge 4096 ledger byte(s) to `tight` (region #2), taking it to 8160 — past its 8159-byte cap (4064 already charged)
+at:      27:27 `(mut ys).push(i)`
+because: 25:23 `measured - 1` — `tight` (region #2)'s budget is set here

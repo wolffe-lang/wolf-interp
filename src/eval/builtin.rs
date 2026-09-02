@@ -470,7 +470,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             match answer {
                 Ok(value) => {
                     if let Value::Str(text) = &value {
-                        machine.allocate(span, name, ledger::str_bytes(text.len() as u64));
+                        machine.allocate(span, name, ledger::str_bytes(text.len() as u64))?;
                     }
                     Ok(value)
                 }
@@ -552,7 +552,11 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             }
             match String::from_utf8(bytes) {
                 Ok(text) => {
-                    machine.allocate(span, "str_from_utf8", ledger::str_bytes(text.len() as u64));
+                    machine.allocate(
+                        span,
+                        "str_from_utf8",
+                        ledger::str_bytes(text.len() as u64),
+                    )?;
                     Ok(Value::Str(text))
                 }
                 Err(_) => {
@@ -568,7 +572,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // Collection constructors are allocation sites (`[mem.model.alloc]`),
         // so they land in the current region (`[mem.region.create.3]`).
         "List" => {
-            let home = machine.allocate(span, "List", ledger::container_bytes(0));
+            let home = machine.allocate(span, "List", ledger::container_bytes(0))?;
             // The element checking context (issue #21) is stamped by the
             // caller (`eval_call`), which alone sees the constructor's
             // bracket type argument. The charged region is the value's home
@@ -576,7 +580,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             Ok(Value::list(Vec::new(), None, Some(home)))
         }
         "Map" => {
-            machine.allocate(span, "Map", ledger::container_bytes(0));
+            machine.allocate(span, "Map", ledger::container_bytes(0))?;
             Ok(Value::Map(Vec::new()))
         }
         "Pool" => {
@@ -591,7 +595,13 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 Some(super::region::Strategy::Pool(ty)) => ty,
                 _ => "_".to_owned(),
             };
-            let pool = machine.store().new_pool(elem);
+            let built = machine.store().new_pool(elem);
+            let pool = match built {
+                Ok(pool) => pool,
+                // The pool's own backing allocation is a charge like any
+                // other, so a capped region refuses it at this site too.
+                Err(breach) => return machine.cap_breach(breach, span, "`Pool`"),
+            };
             machine.note(
                 Rule::HandleTwoPhase,
                 span,
@@ -988,7 +998,13 @@ pub fn method(
             // reads with no intervening growth agree.
             let grown = ledger::growth_bytes(was, items.len() as u64);
             if let Some(home) = home {
-                machine.store().charge_growth(home, grown);
+                let charged = machine.store().charge_growth(home, grown);
+                if let Err(breach) = charged {
+                    // The growth realloc is an allocating site like any other,
+                    // and it is measured against the BIRTH region's cap — the
+                    // same attribution the charge itself uses.
+                    return machine.cap_breach(breach, span, "`push` growing the list");
+                }
             }
             machine.note(Rule::Alloc, span, "List.push");
             Ok(Value::Unit)

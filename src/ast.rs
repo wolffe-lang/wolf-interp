@@ -813,12 +813,19 @@ pub enum ExprKind {
     /// `freeze region { … }` builds anonymously and promotes (X4).
     RegionSugar {
         name: Option<Ident>,
+        /// `region r(cap: n) { … }` (`[mem.region.cap.1]`): the creation-time
+        /// byte budget. The cap parenthesis follows the NAME, which is what
+        /// keeps the anonymous sugar unambiguous — `region (cap: n)` with no
+        /// name is the value form, by the grammar's own disambiguation.
+        cap: Option<Expr>,
         strategy: Option<RegionStrategy>,
         body: Block,
     },
-    /// `region()`, `region(rc)` — the first-class value form (X4).
+    /// `region()`, `region(rc)`, `region(cap: n)`, `region(rc, cap: n)` — the
+    /// first-class value form (X4). Strategy first, cap last.
     RegionValue {
         strategy: Option<RegionStrategy>,
+        cap: Option<Expr>,
     },
     /// `in r { … }` — allocations in the block land in `r`.
     In {

@@ -2974,22 +2974,44 @@ impl<'a> Parser<'a> {
         let anchor = "gram.expr.region";
         let start = self.expect_kw("region", anchor)?.start;
 
-        // Value form: `region()`, `region(rc)`, `region(pool(Node))`.
+        // Value form: `region()`, `region(rc)`, `region(pool(Node))`, and
+        // s132's cap arms `region(cap: n)` / `region(rc, cap: n)` —
+        // strategy first, cap last (`[mem.region.cap.1]`).
         if self.at(&Tok::LParen) {
             self.advance();
-            let strategy = if self.at(&Tok::RParen) {
-                None
+            let (strategy, cap) = if self.at(&Tok::RParen) {
+                (None, None)
+            } else if self.at_region_cap() {
+                (None, Some(self.parse_region_cap()?))
             } else {
-                Some(self.parse_region_strategy()?)
+                let strategy = Some(self.parse_region_strategy()?);
+                let cap = if self.eat(&Tok::Comma) {
+                    Some(self.parse_region_cap()?)
+                } else {
+                    None
+                };
+                (strategy, cap)
             };
             self.expect(&Tok::RParen, anchor)?;
-            return Ok(self.expr(ExprKind::RegionValue { strategy }, start, anchor));
+            return Ok(self.expr(ExprKind::RegionValue { strategy, cap }, start, anchor));
         }
 
         // Sugar: `region tmp { … }`, `region r: pool(Node) { … }`, and the
         // anonymous `region { … }` that `freeze region { … }` builds on.
         let name = if matches!(self.tok(), Some(Tok::Ident(_))) {
             Some(self.expect_ident(anchor)?)
+        } else {
+            None
+        };
+        // `region r(cap: n) { … }`: the cap parenthesis follows the NAME, so
+        // an anonymous sugar block can never carry one — `region (cap: n)`
+        // took the value arm above. That is the grammar's own disambiguation
+        // (`[gram.expr.region]`), not a parser convenience.
+        let cap = if name.is_some() && self.at(&Tok::LParen) {
+            self.advance();
+            let cap = self.parse_region_cap()?;
+            self.expect(&Tok::RParen, anchor)?;
+            Some(cap)
         } else {
             None
         };
@@ -3002,12 +3024,33 @@ impl<'a> Parser<'a> {
         Ok(self.expr(
             ExprKind::RegionSugar {
                 name,
+                cap,
                 strategy,
                 body,
             },
             start,
             anchor,
         ))
+    }
+
+    /// Is the cursor at `cap :`? `cap` is contextual (`[gram.inv.ctx]`), so a
+    /// region named `cap` or a strategy spelled by a variable stays legal:
+    /// only the two-token shape `cap` `:` opens the budget clause.
+    fn at_region_cap(&self) -> bool {
+        self.at_ctx("cap") && self.tok_at(1) == Some(&Tok::Colon)
+    }
+
+    /// `region_cap ::= 'cap' ':' expr` (`[mem.region.cap.1]`).
+    fn parse_region_cap(&mut self) -> PResult<Expr> {
+        let anchor = "gram.expr.region";
+        if !self.at_region_cap() {
+            return Err(self.unexpected(anchor, "`cap:`"));
+        }
+        self.advance();
+        self.expect(&Tok::Colon, anchor)?;
+        // The budget expression is fully parenthesised, so struct literals are
+        // unambiguous inside it even in the sugar's block-header position.
+        self.with_struct_lit(true, Parser::parse_expr)
     }
 
     /// `region_strategy ::= 'rc' | 'pool' '(' type ')'` — both contextual.
@@ -3926,5 +3969,51 @@ mod tests {
             "fn main() -> int {\n    let t = xs.sorted_by(fn(a, b) b.1 <=> a.1).take(1)\n    0\n}\n",
         );
         assert_eq!(unit.items.len(), 1);
+    }
+
+    /// `[gram.expr.region]`, s132's amendment: the cap production, both arms.
+    #[test]
+    fn the_region_cap_production_parses_on_both_creation_forms() {
+        for source in [
+            // Sugar: the cap parenthesis follows the NAME.
+            "fn main() -> int {\n    region r(cap: 4096) { }\n    0\n}\n",
+            // Sugar with a strategy after it, in the production's order.
+            "fn main() -> int {\n    region r(cap: 4096): rc { }\n    0\n}\n",
+            // Value form, cap alone.
+            "fn main() -> int {\n    let r = region(cap: 4096)\n    0\n}\n",
+            // Value form, strategy first and cap last.
+            "fn main() -> int {\n    let r = region(rc, cap: 4096)\n    0\n}\n",
+            // The budget is an expression, not a literal.
+            "fn main() -> int {\n    let n = 8\n    let r = region(cap: n * 512)\n    0\n}\n",
+        ] {
+            parses(source);
+        }
+    }
+
+    /// "An anonymous sugar block takes no cap, by the grammar's own
+    /// disambiguation (`region (cap: n)` is the value form); name the region
+    /// or use the value form."
+    ///
+    /// The disambiguation is not a preference this parser expresses — it is
+    /// the only reading available, because the value arm claims the
+    /// parenthesis whenever no name precedes it. What follows is then a bare
+    /// block, and the refusal lands there rather than at `cap`.
+    #[test]
+    fn an_anonymous_sugar_block_cannot_carry_a_cap() {
+        let d = rejects("fn main() -> int {\n    region (cap: 4096) { }\n    0\n}\n");
+        assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
+    }
+
+    /// `cap` is contextual (`[gram.inv.ctx]`): only `cap` `:` opens the
+    /// budget clause, so the strategy arms are undisturbed and a region may
+    /// still be NAMED `cap`.
+    #[test]
+    fn cap_stays_a_contextual_keyword() {
+        parses("fn main() -> int {\n    let r = region(rc)\n    0\n}\n");
+        parses("fn main() -> int {\n    region cap { }\n    0\n}\n");
+        // `cap` without its colon inside the parenthesis is not the budget
+        // clause, and the strategy arm refuses it by name.
+        let d = rejects("fn main() -> int {\n    let r = region(cap)\n    0\n}\n");
+        assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
     }
 }

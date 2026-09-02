@@ -384,9 +384,12 @@ impl Machine {
         let values = evaluated.values.clone();
         self.finish_args(&[], &values, evaluated.held, &evaluated.protectors, span);
 
+        // A proc's own region carries no cap: `[mem.region.cap.1]` puts the
+        // budget where a program writes one, and the proc region is the
+        // failure domain's ambient, not a region the source created.
         let region = self
             .store()
-            .create(Some(format!("proc:{name}")), Strategy::Arena, span);
+            .create(Some(format!("proc:{name}")), Strategy::Arena, None, span);
         self.store().force_open(region);
         self.fire(
             Rule::ProcModel,

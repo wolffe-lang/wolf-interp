@@ -222,11 +222,19 @@ fn files_whose_ledger_stops_at_lex_fail_at_parse_with_their_pinned_code() {
     // the token where the list breaks. All three answered at first sight:
     // this parser's letter was the measured one, and the compiler's
     // comma-less acceptance was the accident the clause closed.
+    // The comma PAIR joined at 2bfbe5e (is33): D69 carries D67's method into
+    // the struct-LITERAL and closure-parameter loops
+    // (`grammar/struct_literal_no_separator.lu`,
+    // `grammar/closure_params_no_separator.lu`), and this parser answered
+    // both at first sight and at the same span — `Point { x: 1 y: 2 }`
+    // reports at `y` (18:26) and `fn(a b)` at `b` (14:18), the token the
+    // missing comma should precede, which is byte-for-byte where s132
+    // measured wolfc pointing.
     assert_eq!(
         seen.values().cloned().collect::<Vec<_>>(),
         vec![
-            "E0211", "E0201", "E0201", "E0001", "E0201", "E0210", "E0002", "E0201", "E0201",
-            "E0006", "E0201", "E0008"
+            "E0201", "E0211", "E0201", "E0201", "E0001", "E0201", "E0210", "E0002", "E0201",
+            "E0201", "E0201", "E0006", "E0201", "E0008"
         ],
         "the pinned grammar-tier codes changed: {seen:?}"
     );

@@ -171,8 +171,11 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // exists for, D67's three comma refusals, #196's two or-pattern residue
     // pins, r04's seven-digit escape witness, and the region/lint trio
     // (region_call_allocates, region_unit_tail_call, defer_loop_turn).
+    // 474 -> 479 at the 2bfbe5e pin (is33, the s132 merge): the three
+    // [mem.region.cap] witnesses this sprint exists for (the breach, the
+    // boundary cases, the proc-join fault) and D69's two separator refusals.
     // Moved with the pin, per the export.rs rule.
-    assert!(stdout.contains("474 file(s)"), "{stdout}");
+    assert!(stdout.contains("479 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -181,7 +184,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 474);
+    assert_eq!(value["total"], 479);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

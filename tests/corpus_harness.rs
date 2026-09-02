@@ -545,14 +545,31 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             `memory/region_unit_tail_call.lu`,
     //             `grammar/defer_loop_turn.lu`. The spec grows the three
     //             `mem.region.account*` anchors — 407, nothing dropped.)
+    //   2bfbe5e → 479 files (is33: the s132 merge. The corpus grows 5, all
+    //             entries. The three this sprint exists for are the
+    //             `[mem.region.cap]` witnesses — `faults/region_cap_breach.lu`
+    //             (the budget is measured-minus-one, so the replay breaches in
+    //             ANY tier's ledger units), `memory/region_cap_boundary.lu`
+    //             (at-cap-exactly is not a breach, `cap: 0` is legal, and the
+    //             account queries answer on capped regions) and
+    //             `conc/proc_cap_fault_join.lu` (the containment story whole:
+    //             `fault true | alloc-contract true | reclaimed true |
+    //             main-defer-ran`, with the below-boundary defer pinned
+    //             ABSENT). All three parse-refused at 0.1.21 — the cap was
+    //             deferred by name — and all three run here. D69's two
+    //             separator refusals (`struct_literal_no_separator`,
+    //             `closure_params_no_separator`) answered at first sight, at
+    //             E0201 and at the same token, exactly as D67's trio did at
+    //             the previous pin. The spec grows the four `mem.region.cap*`
+    //             anchors — 411, nothing dropped.)
     let report = report();
     assert_eq!(
         report.total(),
-        474,
+        479,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 441);
+    assert_eq!(report.entries(), 446);
     assert_eq!(report.members(), 33);
 }
 

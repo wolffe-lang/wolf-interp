@@ -86,9 +86,19 @@ fn production(document: &str, name: &str) -> String {
                 .expect("just matched")
                 .1
                 .to_owned();
-            // Continuation lines of an alternation begin with `|`.
+            // Continuation lines of an alternation begin with `|` — and, as
+            // of s132's `region_cap` amendment, a single alternative may also
+            // WRAP onto an indented line that begins with neither (the sugar
+            // arm carries its cap parenthesis on one line and its strategy on
+            // the next). Absorb both: anything indented that is not itself a
+            // new `name ::=` production and not blank belongs to this body.
             while let Some(next) = lines.peek() {
-                if next.trim_start().starts_with('|') {
+                let trimmed = next.trim_start();
+                let wrapped = trimmed.starts_with('|')
+                    || (next.starts_with(char::is_whitespace)
+                        && !trimmed.is_empty()
+                        && !trimmed.contains("::="));
+                if wrapped {
                     body.push(' ');
                     body.push_str(next.trim());
                     lines.next();

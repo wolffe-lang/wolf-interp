@@ -1099,6 +1099,22 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/region_bytes_query.lu", "exit(0)"),
     ("memory/region_bytes_value.lu", "exit(0)"),
     ("memory/region_unit_tail_call.lu", "exit(0)"),
+    // The 2bfbe5e pin (is33, the s132 merge): three new run-reachers, and
+    // all three are the sprint's own flip — each parse-REFUSED at 0.1.21
+    // (`cap:` was unknown syntax), so this is the add set the #187 table
+    // named, not work that answered at first sight.
+    // `memory/region_cap_boundary.lu` pins the two non-breaching boundary
+    // cases (at-cap-exactly is legal, `cap: 0` is legal) and both creation
+    // forms; `faults/region_cap_breach.lu` derives its budget from a MEASURED
+    // ledger reading and sets it one short, so the breach lands in whatever
+    // units the tier counts in — lupin's 16-grain/32-byte-header arena model
+    // reaches it at the growth realloc, the native arena at its own;
+    // `conc/proc_cap_fault_join.lu` is the containment story whole, and it
+    // answers BOOLEANS (`fault`, `alloc-contract`, `reclaimed`) rather than
+    // byte counts for the same reason the account witnesses do.
+    ("conc/proc_cap_fault_join.lu", "exit(0)"),
+    ("faults/region_cap_breach.lu", "trap(alloc-contract)"),
+    ("memory/region_cap_boundary.lu", "exit(0)"),
 ];
 
 #[test]

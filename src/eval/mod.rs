@@ -1965,15 +1965,86 @@ impl Machine {
     /// is called from exactly those, and nowhere else. Every site states its
     /// own geometry through [`region::ledger`]; there is no default, because
     /// a site that does not know what it allocated cannot charge honestly.
-    pub(crate) fn allocate(&mut self, span: Span, what: &str, bytes: u64) -> RegionId {
-        let id = self.store().charge(bytes);
+    pub(crate) fn allocate(&mut self, span: Span, what: &str, bytes: u64) -> EResult<RegionId> {
+        let charged = self.store().charge(bytes);
+        let id = match charged {
+            Ok(id) => id,
+            // `[mem.region.cap.1]`: the breach is a trap AT the allocating
+            // site, not at the region's `}` and not at the join.
+            Err(breach) => return self.cap_breach(breach, span, what),
+        };
         let label = self.store().label(id);
         self.fire(
             Rule::RegionAmbient,
             span,
             &format!("{what} allocated in {label}"),
         );
-        id
+        Ok(id)
+    }
+
+    /// The cap breach, rendered (`[mem.region.cap.1]`, `[conf.trap.map]`: a
+    /// byte budget is an allocation contract, so the kind is the existing
+    /// `alloc-contract` — containment adds no trap kind).
+    ///
+    /// The numbers are this machine's ledger units and the message says so:
+    /// a reader comparing tiers must not read them as payload bytes
+    /// (wolf-lang#203 measured an order of magnitude between the two).
+    pub(crate) fn cap_breach<T>(
+        &mut self,
+        breach: region::CapBreach,
+        span: Span,
+        what: &str,
+    ) -> EResult<T> {
+        let label = self.store().label(breach.region);
+        let would = breach.charged.saturating_add(breach.bytes);
+        let budget = self
+            .store()
+            .region(breach.region)
+            .and_then(|region| region.cap_span);
+        self.trap(
+            TrapKind::AllocContract,
+            Rule::RegionCap,
+            span,
+            format!(
+                "{what} would charge {} ledger byte(s) to {label}, taking it to \
+                 {would} — past its {}-byte cap ({} already charged)",
+                breach.bytes, breach.cap, breach.charged
+            ),
+            budget.map(|at| (at, format!("{label}'s budget is set here"))),
+        )
+    }
+
+    /// `cap: n` (`[mem.region.cap.2]`): evaluated **once** at region creation,
+    /// before any allocation can charge — so the budget is a number by the
+    /// time the region exists, and nothing re-reads the expression.
+    ///
+    /// The domain is nonnegative: a negative budget is `trap(alloc-contract)`
+    /// at the *creating* site, the same contract class as a negative
+    /// allocation size. `cap: 0` is legal, and every charge breaches it.
+    fn eval_region_cap(&mut self, cap: Option<&Expr>) -> EResult<Option<(u64, Span)>> {
+        let Some(expr) = cap else {
+            return Ok(None);
+        };
+        let value = self.eval(expr)?;
+        match value {
+            Value::Int(n, _) if n >= 0 => {
+                Ok(Some((u64::try_from(n).unwrap_or(u64::MAX), expr.span)))
+            }
+            Value::Int(n, _) => self.fault(
+                TrapKind::AllocContract,
+                Rule::RegionCap,
+                expr.span,
+                format!(
+                    "`cap: {n}` is a negative byte budget; the domain is \
+                     nonnegative (`cap: 0` is the empty budget, and every \
+                     charge breaches it)"
+                ),
+            ),
+            other => unsupported(format!(
+                "`cap:` takes an `int` byte budget, not {}",
+                other.kind()
+            )),
+        }
     }
 
     /// The current (ambient) region.
@@ -2109,6 +2180,7 @@ impl Machine {
     fn eval_region_sugar(
         &mut self,
         name: Option<&crate::ast::Ident>,
+        cap: Option<&Expr>,
         strategy: Option<&RegionStrategy>,
         body: &Block,
         span: Span,
@@ -2116,13 +2188,25 @@ impl Machine {
     ) -> EResult<Value> {
         let strategy = self.strategy_of(strategy);
         let binder = name.map(|ident| ident.name.clone());
-        let id = self.store().create(binder.clone(), strategy.clone(), span);
+        // `[mem.region.cap.2]`: the budget is evaluated BEFORE the region
+        // exists, so nothing it does can charge the region it bounds.
+        let cap = self.eval_region_cap(cap)?;
+        let id = self
+            .store()
+            .create(binder.clone(), strategy.clone(), cap, span);
         let label = self.store().label(id);
         self.fire(
             Rule::RegionCreate,
             span,
             &format!("create {label} with strategy {strategy} (sugar)"),
         );
+        if let Some((budget, _)) = cap {
+            self.fire(
+                Rule::RegionCap,
+                span,
+                &format!("{label} carries a {budget}-byte ledger budget for life"),
+            );
+        }
         self.fire(
             Rule::RegionIdentity,
             span,
@@ -2216,6 +2300,7 @@ impl Machine {
     fn eval_freeze(&mut self, operand: &Expr, span: Span) -> EResult<Value> {
         if let ExprKind::RegionSugar {
             name,
+            cap,
             strategy,
             body,
         } = &*operand.kind
@@ -2224,6 +2309,7 @@ impl Machine {
             // block's value is the frozen data, and the region is never freed.
             return self.eval_region_sugar(
                 name.as_ref(),
+                cap.as_ref(),
                 strategy.as_ref(),
                 body,
                 span,
@@ -3867,7 +3953,7 @@ impl Machine {
                     expr.span,
                     &format!("struct literal `{name}`"),
                     region::ledger::alloc_bytes(built.len() as u64),
-                );
+                )?;
                 let value = Value::Struct {
                     name,
                     fields: built,
@@ -4132,24 +4218,34 @@ impl Machine {
             // -- Tier 1: regions (is03) -------------------------------------
             ExprKind::RegionSugar {
                 name,
+                cap,
                 strategy,
                 body,
             } => self.eval_region_sugar(
                 name.as_ref(),
+                cap.as_ref(),
                 strategy.as_ref(),
                 body,
                 expr.span,
                 SugarExit::Free,
             ),
-            ExprKind::RegionValue { strategy } => {
+            ExprKind::RegionValue { strategy, cap } => {
                 let strategy = self.strategy_of(strategy.as_ref());
-                let id = self.store().create(None, strategy.clone(), expr.span);
+                let cap = self.eval_region_cap(cap.as_ref())?;
+                let id = self.store().create(None, strategy.clone(), cap, expr.span);
                 let label = self.store().label(id);
                 self.fire(
                     Rule::RegionCreate,
                     expr.span,
                     &format!("create {label} with strategy {strategy} (first-class value)"),
                 );
+                if let Some((budget, _)) = cap {
+                    self.fire(
+                        Rule::RegionCap,
+                        expr.span,
+                        &format!("{label} carries a {budget}-byte ledger budget for life"),
+                    );
+                }
                 self.fire(
                     Rule::RegionAffine,
                     expr.span,

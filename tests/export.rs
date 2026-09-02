@@ -127,7 +127,16 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // the corpus had never cited until r04's char_uni_seven_digits.lu (the
 // char battery cites the type.char family, not the lexical clause).
 // Raised in the bump commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 168;
+// 168 → 173 at 2bfbe5e (is33, the s132 merge): five newly covered clauses,
+// measured against the previous matrix — the three this sprint implemented,
+// mem.region.cap.1 (the breach and boundary witnesses), mem.region.cap.2 (the
+// boundary witness's `cap: 0` and negative domain) and mem.region.cap.3 (the
+// proc-join witness) — plus two the wave's files cite for the FIRST time:
+// conc.proc.1, the failure-domain clause every proc program has relied on and
+// none had ever named, and gram.expr.closure, which D69's
+// closure_params_no_separator cites because no closure witness had. Raised in
+// the bump commit per the test's own instruction.
+const RATCHET_FLOOR: usize = 173;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -204,7 +213,10 @@ const RATCHET_FLOOR: usize = 168;
 // dropped (the wolf-lang#177 lesson). The pin's other spec edits grow no
 // anchor — D67's comma sentence tightens [gram.pat]'s existing
 // production and r04's UNI_ESC amends [gram.lex.char]'s EBNF in place.
-const ANCHORS_TOTAL: usize = 407;
+// 407 → 411 at 2bfbe5e (is33, the s132 merge): [mem.region.cap] and its
+// three children land with D68's ruling. Key sets diffed BOTH ways — four
+// added, NOTHING dropped (wolf-lang#177's lesson, still standing).
+const ANCHORS_TOTAL: usize = 411;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -370,10 +382,13 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // relation witnesses, D67's three comma refusals, #196's two
     // or-pattern residue pins, r04's seven-digit escape witness, and the
     // region/lint/defer trio; the suite is unmoved.
+    // 512/479 → 517/484 at 2bfbe5e (is33, the s132 merge): 5 corpus files,
+    // all entries — the three [mem.region.cap] witnesses and D69's two
+    // separator refusals; the suite is unmoved.
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "e6cf24e7c03f25c8ac6676fc9cb743827524bc8e");
-    assert_eq!(summary.programs, 512);
-    assert_eq!(summary.records, 479);
+    assert_eq!(summary.pin, "2bfbe5e6e877d3b6b43a9d8a68b56b1ef74c21c4");
+    assert_eq!(summary.programs, 517);
+    assert_eq!(summary.records, 484);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

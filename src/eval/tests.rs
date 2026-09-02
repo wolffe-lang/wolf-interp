@@ -3037,3 +3037,156 @@ fn a_struct_pattern_binds_from_a_value_by_field_name() {
                   }\n";
     assert_eq!(stdout(source), "8 9\n");
 }
+
+// -- §3 region caps (`[mem.region.cap]`, is33) ------------------------------
+
+#[test]
+fn a_charge_that_steps_past_the_cap_traps_alloc_contract_at_its_site() {
+    // `[mem.region.cap.1]`: "a charge that would take the ledger *past* the
+    // cap is the deterministic trap `alloc-contract` at the allocating site".
+    // `cap: 0` is the sharpest budget there is — the constructor's own
+    // container allocation already breaches it, so the trap's span is the
+    // constructor, not the region's `}`.
+    let trap = trap_of(
+        "fn main() -> int {\n\
+         \x20   region tight(cap: 0) {\n\
+         \x20       var xs = List[int]()\n\
+         \x20       (mut xs).push(1)\n\
+         \x20   }\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::AllocContract);
+    assert_eq!(trap.rule, Rule::RegionCap);
+    assert_eq!(trap.rule.anchor(), "mem.region.cap.1");
+    // Two spans: the site that charged, and the budget that refused.
+    let (budget, why) = trap.secondary.expect("the cap clause is reported");
+    assert!(budget.start < trap.span.start, "{budget} vs {}", trap.span);
+    assert!(why.contains("budget is set here"), "{why}");
+}
+
+#[test]
+fn a_ledger_standing_exactly_at_the_cap_is_not_a_breach() {
+    // The clause's own boundary sentence: "A ledger standing **exactly at**
+    // the cap is not a breach — the next byte is." Measured, not guessed: the
+    // budget is read off an uncapped dry run of the same pattern, so this
+    // holds in whatever units the ledger counts in.
+    let source = "fn main() -> !int {\n\
+                  \x20   let probe = region()\n\
+                  \x20   var measured = 0\n\
+                  \x20   in probe {\n\
+                  \x20       var xs = List[int]()\n\
+                  \x20       for i in 0..40 { (mut xs).push(i) }\n\
+                  \x20       measured = region_bytes(probe)\n\
+                  \x20   }\n\
+                  \x20   let capped = region(cap: measured)\n\
+                  \x20   in capped {\n\
+                  \x20       var ys = List[int]()\n\
+                  \x20       for i in 0..40 { (mut ys).push(i) }\n\
+                  \x20   }\n\
+                  \x20   print(\"{region_bytes(capped) == measured}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "true\n");
+}
+
+#[test]
+fn one_byte_short_of_the_measured_charge_is_the_breach() {
+    // The other half of the same boundary, and the shape
+    // `corpus/faults/region_cap_breach.lu` uses to stay portable across
+    // tiers: measured-minus-one must fail wherever measured succeeds.
+    let source = "fn main() -> int {\n\
+                  \x20   let probe = region()\n\
+                  \x20   var measured = 0\n\
+                  \x20   in probe {\n\
+                  \x20       var xs = List[int]()\n\
+                  \x20       for i in 0..40 { (mut xs).push(i) }\n\
+                  \x20       measured = region_bytes(probe)\n\
+                  \x20   }\n\
+                  \x20   let tight = region(cap: measured - 1)\n\
+                  \x20   in tight {\n\
+                  \x20       var ys = List[int]()\n\
+                  \x20       for i in 0..40 { (mut ys).push(i) }\n\
+                  \x20   }\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(trap_kind(source), TrapKind::AllocContract);
+}
+
+#[test]
+fn a_negative_cap_traps_at_the_creating_site() {
+    // `[mem.region.cap.2]`: "The domain is nonnegative: a negative budget is
+    // `trap(alloc-contract)` at the *creating* site (the same contract class
+    // as a negative allocation size)". Nothing is allocated in this program:
+    // the refusal is the region's creation, not any charge.
+    let trap = trap_of(
+        "fn main() -> int {\n\
+         \x20   region bad(cap: 0 - 1) { }\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::AllocContract);
+    assert_eq!(trap.rule, Rule::RegionCap);
+    assert!(trap.secondary.is_none(), "the creating site is one span");
+}
+
+#[test]
+fn a_capped_region_that_never_charges_lives_happily_under_cap_zero() {
+    // `[mem.region.cap.2]`: "`cap: 0` is legal and every charge breaches it"
+    // — legal, so a region that charges nothing runs clean, and the account
+    // query answers on it exactly as on an uncapped region.
+    let source = "fn main() -> !int {\n\
+                  \x20   region idle(cap: 0) {\n\
+                  \x20       print(\"{region_bytes(idle)}\")\n\
+                  \x20   }\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "0\n");
+}
+
+#[test]
+fn the_cap_is_the_birth_regions_even_when_the_growth_happens_elsewhere() {
+    // The cap bounds `[mem.region.account.1]`'s ledger, and that ledger is
+    // attributed by BIRTH (`[mem.region.create.3]`). So a list born in the
+    // root and grown inside a capped region charges the ROOT, and the capped
+    // region's budget — zero here — is untouched. Caps are per-region, never
+    // per-forest.
+    let source = "fn main() -> !int {\n\
+                  \x20   var xs = List[int]()\n\
+                  \x20   region idle(cap: 0) {\n\
+                  \x20       for i in 0..40 { (mut xs).push(i) }\n\
+                  \x20       print(\"{region_bytes(idle)}\")\n\
+                  \x20   }\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "0\n");
+}
+
+#[test]
+fn both_creation_forms_carry_a_cap_and_the_value_form_takes_a_strategy_too() {
+    // `[mem.region.cap.1]`'s two surfaces and `[gram.expr.region]`'s
+    // production: `region r(cap: n) { … }` (cap parenthesis after the NAME),
+    // `region(cap: n)`, and `region(rc, cap: n)` — strategy first, cap last.
+    let source = "fn main() -> !int {\n\
+                  \x20   let a = region(cap: 4096)\n\
+                  \x20   let b = region(rc, cap: 4096)\n\
+                  \x20   region c(cap: 4096) {\n\
+                  \x20       print(\"{region_bytes(a)} {region_bytes(b)} {region_bytes(c)}\")\n\
+                  \x20   }\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "0 0 0\n");
+}
+
+#[test]
+fn cap_is_contextual_and_still_an_ordinary_name() {
+    // `[gram.inv.ctx]`: `rc`, `pool` and `cap` are contextual keywords. Only
+    // the two-token shape `cap` `:` inside a region's parenthesis opens the
+    // budget clause; everywhere else `cap` is a name like any other.
+    let source = "fn main() -> !int {\n\
+                  \x20   let cap = 7\n\
+                  \x20   print(\"{cap}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "7\n");
+}
