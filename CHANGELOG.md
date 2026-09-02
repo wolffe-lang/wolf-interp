@@ -1,5 +1,137 @@
 # Changelog
 
+## 0.1.23 — 2026-09-02
+
+THE LETTERS IN THE MIRROR (is34). Three letters came back from r05 with
+v0.2.2, and the one that mattered was a sentence about death: **a trap runs
+no `defer` or `errdefer`, anywhere**. is33 implemented the proc half of
+`[conf.trap.exit]` and left the ROOT path alone by name, because the clause
+ruled the proc and was silent about the root — the correct posture when the
+spec is the defendant. wolf-lang#209 closed that silence the consistent way,
+and lupin's root domain took it: `faults/trap_skips_root_defers.lu` printed
+`inner inner-defer before-trap root-defer` at 0.1.22 and prints
+`inner inner-defer before-trap` here, which is what all three wolfc lanes
+print. The inner block's defer still runs, at that block's own exit, before
+the trap — that is an ordinary scope exit and not a trap path at all.
+
+The second letter is why nobody could see the first. Through 0.1.22 this
+implementation reported `stdout_inline: null` on **every** trapping program,
+so the two machines were verdict-identical whatever they printed, and #209 —
+a divergence made of nothing but trap-path output — survived unmeasured from
+D66 to r05. wolf-interp#55 is fixed: the record now carries the output for
+every verdict that reports a completed run. Two records moved over the
+487-record bundle, both traps, and **both agree**.
+
+The third is a kindness. wolf-interp#56: the D67/D69 comma refusals now say
+what to write and point at where it goes, which the strict implementation —
+the one that has always demanded the separator — was the one not saying.
+
+Released against pin `8cda3aa`, wolf-lang **v0.2.2**, the tag itself: trunk
+and the r05 merge add nothing to `spec/` or `corpus/` beyond it, so the
+check-the-tag pattern lands on the tag rather than a merge sha. Census at
+this release: 482 files / 449 entries / 33 members; 350 reach run, 332
+match, 16 dynamic counterparts, 42 conservatism, 58 out of scope, and the
+one standing walk mismatch is still DIV-2026-019, filed. Every one of the
+479 files carried over from 0.1.22 is verdict-IDENTICAL, class for class.
+
+- **A trap runs no defers, anywhere (`[conf.trap.exit]`, #209).** One
+  guard, one sentence. `eval_block`'s trap arm drops its `inside_proc()`
+  half, so the same rule governs both domains: inside a proc the trap is
+  contained at the boundary and runs the killed-proc sequence below it
+  (s132's amendment, unchanged); in the root domain death is immediate and
+  the pending scope-exit effects of the trapping scope **and of every scope
+  enclosing it** are abandoned. A trap is not an error value and never
+  unwinds (`[abi.native.nounwind]`); effects that had already run, ran.
+  `inside_proc` had no other caller and goes with it, and `Signal::Trap`
+  joins `ProcKilled` and `Exit` in the unreachable arm because a trap now
+  returns before the error path is ever computed. Three unit litmuses carry
+  the claim where the corpus cannot reach: the reduced witness, the
+  multi-FRAME form (callee defer, caller defer AND caller errdefer, all
+  abandoned), and the boundary case.
+- **The observation the ruling took away, given back.** A method call may
+  LEND its receiver — the slot holds a placeholder while the builtin runs —
+  and the lend must end whatever the call did, a trap included. That was
+  tested from a `defer` on the trap path, which no longer runs, so in a
+  compiled program the restore is not observable from wolf code at all. It
+  moved to where a session outlives its trap: the new
+  `repl_session::a_lent_receiver_is_back_in_its_slot_after_the_trap`
+  (`[repl.trap.alive]`) traps on `pop` of an empty `List` and asks `xs.len`
+  on the very next line. It answers 0; a leftover placeholder would refuse
+  with "`()` has no member `len`".
+- **The record carries the trap's output (wolf-interp#55).**
+  `[proto.record.fields]`'s "whenever the program wrote output" is read as a
+  floor rather than a ceiling: the digest and the inline text are present for
+  `exit`, `trap` and `ub` alike. The movers, all of them, compared field for
+  field with the `commit` stamp excluded —
+  `faults/trap_skips_root_defers.lu` gains `"inner inner-defer before-trap"`
+  and `rows/handler_diverge_trap.lu` gains `"FAILED: neg\n"`, each
+  byte-identical to the `stdout=` its corpus directive pins for the
+  counterparty. 63 trap records in the bundle; the other 61 trap before
+  writing anything, and none of the 8 `ub` records writes first. So the
+  answer to "is anything else hiding behind the null?" is, at this pin, no.
+  What did NOT change is the comparison: `[proto.cmp.phase]` still says "for
+  `trap`, compare kind only" and `compare`/`differ` still implement exactly
+  that, because widening it by private agreement is what the independence
+  doctrine forbids — filed as wolf-lang#216 instead.
+- **A conservatism, declared and filed rather than papered over (§6.17).**
+  Dropping the verdict condition entirely would move a third record:
+  `typecheck/main_returns_str.lu` would gain `"hi\n"`, because this machine
+  evaluates `main`'s body and only then declines that `main` returned `str`.
+  A record whose `phase_reached` says the run did not complete carries no
+  output. That it printed at all is a real defect — the decline belongs on
+  the admission ladder — and it is filed as wolf-interp#57 with a standing
+  test, not smuggled onto the wire.
+- **The comma refusals teach the comma (wolf-interp#56).** `Diag` gains
+  `help`: a zero-width insertion point and the text that belongs at it,
+  rendered as a second line. All five D67/D69 list closers use it —
+  struct literal, struct pattern, tuple and tuple-struct patterns, closure
+  parameters, inline-C capture lists:
+
+      E0201: expected `}`, found identifier `y`; the members of a struct
+             literal are separated — add the comma [gram.expr.primary] at 18:26
+        the comma goes here at 18:25
+
+  **Span parity holds and is asserted structurally**: every primary span is
+  byte-identical to 0.1.22's, because the note is additive and never a
+  relocation. The multi-line form is the one that needed care — D69 reports
+  at the FIELD the missing comma should precede while the comma belongs
+  after the previous field, one line up — so the insertion point is captured
+  before the terminator run is skipped. The note is not a blanket suffix: an
+  empty list, a list that ended at its closer, and end-of-input (E0203) get
+  none, because "add the comma" would be teaching a lie there. Wording is
+  outside the differential protocol (D22), so no record moved.
+- **#198's string half answered at first sight.** `\u{…}` inside a string
+  literal at every width the bound admits: `strings/str_uni_leading_zeros.lu`
+  runs (`\u{41}`, `\u{0041}`, `\u{000041}` all spell `A`) and
+  `grammar/str_uni_seven_digits.lu` is refused **E0101 at the escape**, line
+  22 column 14 — the same column, code and message its `char` twin gets at
+  21:14. The spec now derives both from one production (`STR_ESC` carries the
+  set, `CHAR_ESC ::= STR_ESC | '\''`), so the "binds in string literals too"
+  prose is a claim read off the grammar; this lexer implemented the prose at
+  0.1.21 and the pair proves it. The corpus now has two files that stop at
+  the lexer, `UNI_ESC`'s two doors.
+- **The sixteenth corpus differential — the first since 0.1.11.** The
+  counterparty was built at v0.2.2 and all three run-reaching tiers were run:
+  15/12/12 divergences (`checked`/`native`/`release`), 9 of them filed, 6/3/3
+  gating after filing. **The three letters agree on every lane** — the four
+  new witnesses appear in no divergence report at any tier, so #209 is closed
+  against the real counterparty and not merely against r05's transcript.
+  Everything gating is older than this sprint. **DIV-2026-020** (wolf-lang
+  #220) is the dominant class: eight `grammar/` files, same code, same byte
+  where the refusal starts, different span WIDTH — this machine spans the
+  offending token, the counterparty emits a zero-width span at its start.
+  s132/D69's "byte-for-byte where lupin points" is true of the offset and not
+  of the span, and nothing measured it because the walk compares codes.
+  Neither side moves until the clause rules. The residue is written into a
+  "triage owed" table rather than filed half-analysed.
+- **Pin, census, ratchets.** Pin `2bfbe5e` -> `8cda3aa`. Corpus 479 -> 482,
+  all three entries. Anchors 411, unmoved — the amendments are sentences
+  inside clauses that already existed. Coverage ratchets 173 -> 175, and both
+  new anchors are clauses the corpus had never cited: `conf.trap.exit` (that
+  no file anywhere named it is precisely how its root sentence stayed
+  unwritten until #209) and `gram.lex.str.escape`. Bundle 517/484 ->
+  520/487.
+
 ## 0.1.22 — 2026-09-01
 
 THE MIRROR HOLDS (is33). The region cap lands whole-pipe, and with it

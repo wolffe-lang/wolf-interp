@@ -1230,3 +1230,33 @@ tag-creation span (`x-ub-tag-span`), the rendered borrow-tree slice
 last one is the D2 pairing, executable. `[mem.ub.closed]` makes it an invariant:
 a row that licenses nothing is a rule this language does not have, so a reader
 who is stopped by one can always find out what it bought.
+
+### 6.17 A record reports the run it completed, not the bytes it happened to write (is34, 0.1.23)
+
+`[proto.record.fields]` requires `stdout_sha256`/`stdout_inline` "when
+`verdict` is `exit(0-255)` and the program wrote output". Through 0.1.22
+this implementation read the verdict condition as a ceiling and reported
+`null` on every trapping program; wolf-interp#55 measured what that cost —
+wolf-lang#209's root-defer divergence is a difference in trap-path output
+and nothing else, so the two machines were verdict-identical whatever they
+printed, and no amount of corpus growth would have surfaced it. Since
+0.1.23 the pair is present for every verdict that reports a **completed
+run**: `exit`, `trap`, `ub`.
+
+The line stops there, and this is the declared part. `unsupported`, `fail`
+and `pass` carry no output even when this machine produced some, because
+each one's own `phase_reached` says the run did not complete — bytes
+attached to such a record would describe this machine's evaluation order
+rather than an observation of the program that the counterparty also makes.
+There is exactly one corpus file where the difference is visible:
+`typecheck/main_returns_str.lu` evaluates `main`'s body, printing `hi`, and
+only then declines because `main` returned `str`. That the decline happens
+after the run rather than on the admission ladder is a real defect and is
+filed as wolf-interp#57 with a standing test, not absorbed here.
+
+The second half of the posture is what did NOT change.
+`[proto.cmp.phase]` still rules the run rung "for `trap`, compare kind
+only", and `compare`/`differ` still implement exactly that. So both
+machines now hold the trap's output and the protocol declines to compare
+it — wolf-lang#216 asks the clause to rule, and until it does, widening the
+comparison here would be private agreement rather than conformance.
