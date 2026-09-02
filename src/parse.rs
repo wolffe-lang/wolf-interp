@@ -475,6 +475,45 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// The closer of a comma-separated list, with the D67/D69 teach-note
+    /// (wolf-interp#56).
+    ///
+    /// A separator loop breaks the moment it fails to eat a `,`; if the very
+    /// next token is not the closer, the reason is almost always that the
+    /// comma is missing, and saying only "expected `}`, found identifier `y`"
+    /// leaves the learner to work that out. `after` carries the byte offset
+    /// where the comma belongs — the end of the last member the loop DID
+    /// parse — and is `None` when the list was empty or ended at its closer,
+    /// the two cases where the missing comma is not the story.
+    ///
+    /// The primary span never moves: it stays on the offending token, byte
+    /// for byte where the counterparty puts it. All that grows is the
+    /// sentence and the pointer, both of which `[proto.record.diag]` (D22)
+    /// keeps off the wire.
+    fn expect_list_close(
+        &mut self,
+        closer: &Tok,
+        anchor: &'static str,
+        members: &str,
+        after: Option<usize>,
+    ) -> PResult<Span> {
+        if self.at(closer) {
+            return Ok(self.advance());
+        }
+        let diag = self.unexpected(anchor, &closer.describe());
+        let Some(at) = after else {
+            return Err(diag);
+        };
+        // At the end of input the refusal is E0203 ("the file ends where …
+        // was required") and the fix is a closer, not a comma.
+        if diag.code != diag::E_UNEXPECTED_TOKEN {
+            return Err(diag);
+        }
+        let message = format!("{}; {members} are separated — add the comma", diag.message);
+        Err(Diag::new(diag.code, diag.span, anchor, message)
+            .with_help(diag::Help::insert(at, "the comma goes here")))
+    }
+
     fn expect_kw(&mut self, kw: &'static str, anchor: &'static str) -> PResult<Span> {
         if self.at_kw(kw) {
             Ok(self.advance())
@@ -1754,15 +1793,26 @@ impl<'a> Parser<'a> {
             Some(Tok::LParen) => {
                 self.advance();
                 let mut items = Vec::new();
+                let mut comma_at = None;
                 if !self.at(&Tok::RParen) {
                     loop {
                         items.push(self.parse_pattern()?);
-                        if !self.eat(&Tok::Comma) || self.at(&Tok::RParen) {
+                        let iend = self.prev_span().end;
+                        if !self.eat(&Tok::Comma) {
+                            comma_at = Some(iend);
+                            break;
+                        }
+                        if self.at(&Tok::RParen) {
                             break;
                         }
                     }
                 }
-                self.expect(&Tok::RParen, anchor)?;
+                self.expect_list_close(
+                    &Tok::RParen,
+                    anchor,
+                    "the members of a tuple pattern",
+                    comma_at,
+                )?;
                 PatKind::Tuple(items)
             }
             Some(Tok::Ident(_)) => {
@@ -1781,15 +1831,26 @@ impl<'a> Parser<'a> {
                 if self.at(&Tok::LParen) {
                     self.advance();
                     let mut fields = Vec::new();
+                    let mut comma_at = None;
                     if !self.at(&Tok::RParen) {
                         loop {
                             fields.push(self.parse_pattern()?);
-                            if !self.eat(&Tok::Comma) || self.at(&Tok::RParen) {
+                            let fend = self.prev_span().end;
+                            if !self.eat(&Tok::Comma) {
+                                comma_at = Some(fend);
+                                break;
+                            }
+                            if self.at(&Tok::RParen) {
                                 break;
                             }
                         }
                     }
-                    self.expect(&Tok::RParen, anchor)?;
+                    self.expect_list_close(
+                        &Tok::RParen,
+                        anchor,
+                        "the members of a tuple-struct pattern",
+                        comma_at,
+                    )?;
                     PatKind::Variant { path, fields }
                 } else if path.is_single() && self.at(&Tok::At) {
                     self.advance();
@@ -1833,6 +1894,7 @@ impl<'a> Parser<'a> {
         self.expect(&Tok::LBrace, anchor)?;
         let mut fields = Vec::new();
         let mut rest = false;
+        let mut comma_at = None;
         loop {
             if self.at(&Tok::RBrace) {
                 break;
@@ -1859,10 +1921,16 @@ impl<'a> Parser<'a> {
                 span: Span::new(span_start, span_end),
             });
             if !self.eat(&Tok::Comma) {
+                comma_at = Some(span_end);
                 break;
             }
         }
-        self.expect(&Tok::RBrace, anchor)?;
+        self.expect_list_close(
+            &Tok::RBrace,
+            anchor,
+            "the members of a struct pattern",
+            comma_at,
+        )?;
         Ok(Pattern {
             kind: Box::new(PatKind::Struct { path, fields, rest }),
             span: Span::new(start, self.prev_span().end),
@@ -2603,6 +2671,11 @@ impl<'a> Parser<'a> {
         let anchor = "gram.expr.primary";
         self.expect(&Tok::LBrace, anchor)?;
         let mut fields = Vec::new();
+        // Where the comma belongs, if the loop stopped for want of one
+        // (wolf-interp#56). Captured BEFORE the terminator run is skipped:
+        // in the multi-line literal the layout newline sits between the
+        // field and the closer, and the comma goes after the FIELD.
+        let mut comma_at = None;
         self.with_struct_lit(true, |p| -> PResult<()> {
             loop {
                 p.skip_inserted_terms();
@@ -2618,20 +2691,27 @@ impl<'a> Parser<'a> {
                 } else {
                     None
                 };
+                let fend = p.prev_span().end;
                 fields.push(FieldInit {
                     name,
                     value,
-                    span: Span::new(fstart, p.prev_span().end),
+                    span: Span::new(fstart, fend),
                 });
                 p.skip_inserted_terms();
                 if !p.eat(&Tok::Comma) {
+                    comma_at = Some(fend);
                     break;
                 }
             }
             Ok(())
         })?;
         self.skip_inserted_terms();
-        self.expect(&Tok::RBrace, anchor)?;
+        self.expect_list_close(
+            &Tok::RBrace,
+            anchor,
+            "the members of a struct literal",
+            comma_at,
+        )?;
         Ok(self.expr(ExprKind::StructLit { path, fields }, start, anchor))
     }
 
@@ -2915,6 +2995,7 @@ impl<'a> Parser<'a> {
         let start = self.expect_kw("fn", anchor)?.start;
         self.expect(&Tok::LParen, anchor)?;
         let mut params = Vec::new();
+        let mut comma_at = None;
         self.with_struct_lit(true, |p| -> PResult<()> {
             loop {
                 p.skip_inserted_terms();
@@ -2929,19 +3010,21 @@ impl<'a> Parser<'a> {
                 } else {
                     None
                 };
+                let pend = p.prev_span().end;
                 params.push(ClosureParam {
                     mode,
                     name,
                     ty,
-                    span: Span::new(pstart, p.prev_span().end),
+                    span: Span::new(pstart, pend),
                 });
                 if !p.eat(&Tok::Comma) {
+                    comma_at = Some(pend);
                     break;
                 }
             }
             Ok(())
         })?;
-        self.expect(&Tok::RParen, anchor)?;
+        self.expect_list_close(&Tok::RParen, anchor, "closure parameters", comma_at)?;
 
         // `[gram.amb.closure]`: an expression body is one `else_expr`. It
         // extends maximally rightward and is terminated only by a token the
@@ -3164,16 +3247,26 @@ impl<'a> Parser<'a> {
             let mut captures = Vec::new();
             if self.at(&Tok::LBracket) {
                 self.advance();
+                let mut comma_at = None;
                 loop {
                     if self.at(&Tok::RBracket) {
                         break;
                     }
-                    captures.push(self.expect_ident(anchor)?);
+                    let name = self.expect_ident(anchor)?;
+                    comma_at = None;
+                    let cend = name.span.end;
+                    captures.push(name);
                     if !self.eat(&Tok::Comma) {
+                        comma_at = Some(cend);
                         break;
                     }
                 }
-                self.expect(&Tok::RBracket, anchor)?;
+                self.expect_list_close(
+                    &Tok::RBracket,
+                    anchor,
+                    "the names in a capture list",
+                    comma_at,
+                )?;
             }
             let open = self.expect(&Tok::LBrace, anchor)?;
             let mut depth = 1usize;
@@ -3952,6 +4045,113 @@ mod tests {
                 "{source}: {}",
                 d.message
             );
+        }
+    }
+
+    #[test]
+    fn the_d67_d69_comma_refusals_teach_the_comma_and_point_at_it() {
+        // wolf-interp#56. Every one of these was already E0201 at the right
+        // token with the right anchor — that half is the differential's and
+        // it must not move. What was missing is the half a LEARNER needs:
+        // the counterparty grew a machine-applicable "add the comma" in
+        // s131/s132 and the strict implementation, the one that has always
+        // demanded the comma, was the one that would not say so.
+        //
+        // Each row: the source, the anchor, the byte the E0201 sits on (the
+        // offending token — UNMOVED), and the byte the comma goes at (the
+        // zero-width insertion point, the end of the last member parsed).
+        let cases: &[(&str, &str, &str, &str)] = &[
+            (
+                "struct P { x: int, y: int }\nfn main() -> int {\n    let p = P { x: 1 y: 2 }\n    0\n}\n",
+                "gram.expr.primary",
+                "the members of a struct literal",
+                "y",
+            ),
+            (
+                "struct P { x: int, y: int }\nfn main() -> int {\n    let P { x y } = P { x: 1, y: 2 }\n    0\n}\n",
+                "gram.pat.struct",
+                "the members of a struct pattern",
+                "y",
+            ),
+            (
+                "fn main() -> int {\n    let (a b) = (1, 2)\n    a + b\n}\n",
+                "gram.pat",
+                "the members of a tuple pattern",
+                "b",
+            ),
+            (
+                "fn main() -> int {\n    let f = fn(a b) a + b\n    f(1, 2)\n}\n",
+                "gram.expr.closure",
+                "closure parameters",
+                "b",
+            ),
+            (
+                "fn main() -> int {\n    let a = 1\n    let b = 2\n    unsafe c [a b] { }\n    0\n}\n",
+                "gram.expr.unsafe",
+                "the names in a capture list",
+                "b",
+            ),
+        ];
+        for (source, anchor, members, offender) in cases {
+            let d = rejects(source);
+            assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN, "{source}");
+            assert_eq!(d.anchor, *anchor, "{source}");
+            // The primary span still covers the offending token, byte for
+            // byte: the teach-note is additive, never a relocation.
+            assert_eq!(&source[d.span.start..d.span.end], *offender, "{source}");
+            assert!(
+                d.message.contains(members) && d.message.contains("add the comma"),
+                "{source}: {}",
+                d.message
+            );
+            let help = d.help.as_ref().unwrap_or_else(|| panic!("{source}"));
+            assert!(help.span.is_empty(), "an insertion is zero-width");
+            assert_eq!(help.note, "the comma goes here");
+            // It points at the gap between the two members, never at the
+            // offender and never inside the member before it.
+            assert!(help.span.start < d.span.start, "{source}");
+            assert_eq!(
+                &source[help.span.start..d.span.start],
+                " ",
+                "{source}: only the separator's own whitespace lies between"
+            );
+        }
+    }
+
+    #[test]
+    fn the_multiline_literal_points_the_comma_at_the_field_not_the_newline() {
+        // D69's newline-separated form: "a terminator run before `}` is
+        // layout, never a separator", and the refusal is reported at the
+        // FIELD the missing comma should precede. The comma itself belongs
+        // at the end of the PREVIOUS field, one line up — which is why the
+        // insertion point is captured before the terminator run is skipped.
+        let source = "struct P { x: int, y: int }\n                      fn main() -> int {\n                      \x20   let p = P {\n                      \x20       x: 1\n                      \x20       y: 2\n                      \x20   }\n                      \x20   0\n                      }\n";
+        let d = rejects(source);
+        assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
+        assert_eq!(&source[d.span.start..d.span.end], "y");
+        let help = d.help.as_ref().expect("the teach-note");
+        assert_eq!(&source[help.span.start - 4..help.span.start], "x: 1");
+        assert!(
+            source[help.span.start..d.span.start].contains('\n'),
+            "the insertion is on the previous line"
+        );
+    }
+
+    #[test]
+    fn a_list_that_never_wanted_a_comma_gets_no_comma_note() {
+        // The note is not a blanket suffix on E0201. An EMPTY list and a
+        // list whose closer is simply missing are refused exactly as before
+        // — claiming "add the comma" there would be teaching a lie.
+        for source in [
+            // Nothing parsed inside the braces: the offender is the first
+            // member position, not a separator position.
+            "struct P { x: int }\nfn main() -> int {\n    let p = P { 1 }\n    0\n}\n",
+            // A trailing comma and then the file ends: E0203, not E0201.
+            "fn main() -> int {\n    let f = fn(a,\n",
+        ] {
+            let d = rejects(source);
+            assert!(d.help.is_none(), "{source}: {d}");
+            assert!(!d.message.contains("add the comma"), "{source}: {d}");
         }
     }
 

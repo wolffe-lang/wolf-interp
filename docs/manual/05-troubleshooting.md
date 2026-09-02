@@ -52,3 +52,24 @@ incorrect, that is a finding to file upstream with both readings attached,
 never a local edit. The triage order is normative and the spec document is
 the defendant first; [CONTRIBUTING.md](../../CONTRIBUTING.md) walks the
 filing rule.
+
+## A refusal that names the fix
+
+Most diagnostics say what was wrong. The separator refusals say what to
+write, and where. `[gram.expr.primary]`, `[gram.pat.struct]`, `[gram.pat]`,
+`[gram.expr.closure]` and `[gram.expr.unsafe]` all require a `,` between
+members (D67/D69), and a program that omits one gets a second line:
+
+```console
+$ lupin check upstream/corpus/grammar/struct_literal_no_separator.lu
+upstream/corpus/grammar/struct_literal_no_separator.lu: E0201: expected `}`, found identifier `y`; the members of a struct literal are separated — add the comma [gram.expr.primary] at 18:26
+  the comma goes here at 18:25
+```
+
+The first line's `line:col` is the offending token and is protocol surface
+(code + span); the second is the zero-width insertion point where the comma
+belongs — after the previous member, which in the multi-line layout is on
+the line above. Both the sentence and the pointer are quality concerns and
+never reach the observation record: `[proto.record.diag]` (D22) carries
+`{code, span, severity}` and nothing else, so growing a teach-note can
+never move a differential result (wolf-interp#56).

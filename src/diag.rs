@@ -117,8 +117,35 @@ impl Span {
     }
 }
 
-/// One diagnostic. `code` + `span` are protocol; `message` and `anchor` are
-/// ours and stay local.
+/// A teach-note: what to WRITE, and where it goes.
+///
+/// The counterparty's diagnostics grew these in s131/s132 as machine-applicable
+/// suggestions (`wolf fix --apply` round-trips them). This implementation does
+/// not rewrite source, so the note is not machine-applicable here — it is the
+/// same fact rendered for a human: a zero-width insertion point and the text
+/// that belongs at it. Like `message`, it is a quality concern and never
+/// reaches the wire (D22, `[proto.record.diag]`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Help {
+    /// Where the insertion goes — zero-width by construction for an
+    /// insertion suggestion.
+    pub span: Span,
+    pub note: String,
+}
+
+impl Help {
+    /// An insertion at `at`: the span is zero-width there, per
+    /// [`Span::empty`].
+    pub fn insert(at: usize, note: impl Into<String>) -> Help {
+        Help {
+            span: Span::empty(at),
+            note: note.into(),
+        }
+    }
+}
+
+/// One diagnostic. `code` + `span` are protocol; `message`, `anchor` and
+/// `help` are ours and stay local.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diag {
     pub code: &'static str,
@@ -127,6 +154,9 @@ pub struct Diag {
     /// one, which is what makes is02's "every rule cites a clause" cheap.
     pub anchor: &'static str,
     pub message: String,
+    /// The fix, when the refusal knows one (wolf-interp#56). Rendered as a
+    /// second line; absent from `to_protocol`, like the message.
+    pub help: Option<Help>,
 }
 
 impl Diag {
@@ -141,7 +171,15 @@ impl Diag {
             span,
             anchor,
             message: message.into(),
+            help: None,
         }
+    }
+
+    /// Attaches the fix suggestion (wolf-interp#56).
+    #[must_use]
+    pub fn with_help(mut self, help: Help) -> Diag {
+        self.help = Some(help);
+        self
     }
 
     /// Projects onto the protocol shape: code, span, severity — nothing else.
@@ -161,13 +199,17 @@ impl Diag {
     /// projection keeps byte offsets untouched.
     #[must_use]
     pub fn render(&self, source: &str) -> String {
-        format!(
+        let head = format!(
             "{}: {} [{}] at {}",
             self.code,
             self.message,
             self.anchor,
             self.span.position(source)
-        )
+        );
+        match &self.help {
+            None => head,
+            Some(help) => format!("{head}\n  {} at {}", help.note, help.span.position(source)),
+        }
     }
 }
 
@@ -177,7 +219,11 @@ impl fmt::Display for Diag {
             f,
             "{}: {} [{}] at {}",
             self.code, self.message, self.anchor, self.span
-        )
+        )?;
+        match &self.help {
+            None => Ok(()),
+            Some(help) => write!(f, "\n  {} at {}", help.note, help.span),
+        }
     }
 }
 
