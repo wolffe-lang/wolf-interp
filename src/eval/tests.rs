@@ -2041,10 +2041,19 @@ fn a_lent_receiver_is_the_same_machine_only_cheaper() {
 #[test]
 fn a_lend_hands_the_receiver_back_when_the_method_traps() {
     // `pop` on an empty `List` faults `bounds`. The receiver was lent, so the
-    // slot held `Value::Unit` while the builtin ran — and a `defer` runs on
-    // the trap path (`[err.errdefer]`'s sibling), so it can SEE the slot. The
-    // list has to be back in it: were the placeholder left behind, `xs.len`
-    // below would refuse ("`()` has no member `len`") instead of printing 0.
+    // slot held `Value::Unit` while the builtin ran, and it has to be back in
+    // the slot whatever the call did — were the placeholder left behind, a
+    // later `xs.len` would refuse ("`()` has no member `len`").
+    //
+    // Until r05 this test read the slot from a `defer` that ran on the way
+    // out. `[conf.trap.exit]` now rules that a trap runs NO defer anywhere
+    // (wolf-lang#209), so in a compiled program the restored slot is no
+    // longer observable from wolf code at all: the trap IS the end. What is
+    // asserted here is therefore the half that survives — the trap's kind,
+    // and that nothing was printed on the way out — and the restore itself is
+    // observed where a session outlives its trap, in
+    // `tests/repl_session.rs::a_lent_receiver_is_back_in_its_slot_after_the_trap`
+    // (`[repl.trap.alive]`).
     let run = run("fn main() -> int {\n\
          \x20   var xs = List[int]()\n\
          \x20   (mut xs).push(1)\n\
@@ -2057,7 +2066,62 @@ fn a_lend_hands_the_receiver_back_when_the_method_traps() {
         Outcome::Trap(trap) => assert_eq!(trap.kind, TrapKind::Bounds),
         other => panic!("expected the bounds trap, got {other:?}"),
     }
-    assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "after=0\n");
+    assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "");
+}
+
+#[test]
+fn a_trap_abandons_every_pending_defer_at_the_root() {
+    // `[conf.trap.exit]` (r05's sentence, wolf-lang#209): "A trap runs no
+    // `defer` or `errdefer`, anywhere" — in the root domain death is
+    // immediate, so the pending scope-exit effects of the trapping scope AND
+    // of every scope enclosing it are abandoned. This is the reduced form of
+    // `corpus/faults/trap_skips_root_defers.lu`.
+    //
+    // The inner block is the control: its defer runs at the inner block's own
+    // exit, BEFORE the trap. Without it a green here could not tell "the
+    // pending defer was abandoned" from "defers do not run at all".
+    let run = run("fn main() -> int {\n\
+         \x20   defer print_raw(\" root-defer\")\n\
+         \x20   {\n\
+         \x20       defer print_raw(\" inner-defer\")\n\
+         \x20       print_raw(\"inner\")\n\
+         \x20   }\n\
+         \x20   print_raw(\" before-trap\")\n\
+         \x20   assert(1 == 2)\n\
+         \x20   0\n\
+         }\n");
+    match &run.outcome {
+        Outcome::Trap(trap) => assert_eq!(trap.kind, TrapKind::Assert),
+        other => panic!("expected the assert trap, got {other:?}"),
+    }
+    assert_eq!(
+        String::from_utf8(run.stdout).expect("utf-8"),
+        "inner inner-defer before-trap"
+    );
+}
+
+#[test]
+fn a_trap_abandons_the_pending_defers_of_every_frame_it_unwinds() {
+    // "…and of every scope enclosing it" reaches through CALLS too: the
+    // callee's pending defer and the caller's are both abandoned, and so is
+    // the caller's `errdefer` (a trap is not an error value — it never takes
+    // the error path, it takes no path).
+    let run = run("fn deep() -> int {\n\
+         \x20   defer print_raw(\" callee-defer\")\n\
+         \x20   assert(1 == 2)\n\
+         \x20   0\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   defer print_raw(\" caller-defer\")\n\
+         \x20   errdefer print_raw(\" caller-errdefer\")\n\
+         \x20   print_raw(\"before\")\n\
+         \x20   deep()\n\
+         }\n");
+    match &run.outcome {
+        Outcome::Trap(trap) => assert_eq!(trap.kind, TrapKind::Assert),
+        other => panic!("expected the assert trap, got {other:?}"),
+    }
+    assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "before");
 }
 
 #[test]

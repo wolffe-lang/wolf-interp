@@ -1115,6 +1115,20 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("conc/proc_cap_fault_join.lu", "exit(0)"),
     ("faults/region_cap_breach.lu", "trap(alloc-contract)"),
     ("memory/region_cap_boundary.lu", "exit(0)"),
+    // The 8cda3aa pin (is34, wolf-lang v0.2.2): r05's letters bring two new
+    // run-reachers, and they are opposite kinds of arrival.
+    // `faults/trap_skips_root_defers.lu` is this sprint's flip: it landed a
+    // MEASURED divergence — the verdict matched, the stdout did not, and the
+    // record could not carry the difference (wolf-interp#55) — and it reaches
+    // agreement only because `[conf.trap.exit]`'s new sentence is now
+    // implemented (a trap runs no defer or errdefer, anywhere; wolf-lang#209).
+    // `strings/str_uni_leading_zeros.lu` answered at first sight: `\u{41}`,
+    // `\u{0041}` and `\u{000041}` all spell `A` in this lexer already, which
+    // is the agreement #198's string half existed to measure. (Its refusal
+    // twin `grammar/str_uni_seven_digits.lu` stops at the lexer, `phase:
+    // none`, and is pinned in `tests/lex_corpus.rs` instead.)
+    ("faults/trap_skips_root_defers.lu", "trap(assert)"),
+    ("strings/str_uni_leading_zeros.lu", "exit(0)"),
 ];
 
 #[test]

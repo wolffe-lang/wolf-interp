@@ -174,8 +174,15 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // 474 -> 479 at the 2bfbe5e pin (is33, the s132 merge): the three
     // [mem.region.cap] witnesses this sprint exists for (the breach, the
     // boundary cases, the proc-join fault) and D69's two separator refusals.
+    // 479 -> 482 at the 8cda3aa pin (is34, wolf-lang v0.2.2): r05's three
+    // letters land — `faults/trap_skips_root_defers.lu` (#209's witness, the
+    // one this sprint exists for: it arrived a MEASURED divergence and flips
+    // in the same commit that takes the ruling) and #198's string half,
+    // `grammar/str_uni_seven_digits.lu` + `strings/str_uni_leading_zeros.lu`,
+    // which this lexer answered at first sight, at E0101 and at the same
+    // column its `char` twin uses.
     // Moved with the pin, per the export.rs rule.
-    assert!(stdout.contains("479 file(s)"), "{stdout}");
+    assert!(stdout.contains("482 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -184,7 +191,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 479);
+    assert_eq!(value["total"], 482);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

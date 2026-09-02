@@ -562,14 +562,35 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             E0201 and at the same token, exactly as D67's trio did at
     //             the previous pin. The spec grows the four `mem.region.cap*`
     //             anchors — 411, nothing dropped.)
+    //   8cda3aa → 482 files (is34: wolf-lang v0.2.2, the tag itself — r05's
+    //             merge adds nothing to spec/corpus beyond it. The corpus
+    //             grows 3, all entries, and they are r05's three letters.
+    //             `faults/trap_skips_root_defers.lu` is the one this sprint
+    //             exists for and the only one that changed this machine:
+    //             `[conf.trap.exit]` gained the ruling sentence — a trap runs
+    //             NO `defer` or `errdefer`, ANYWHERE — and lupin 0.1.22's
+    //             root domain ran the pending defer on its way out, so the
+    //             file arrived carrying a measured divergence
+    //             (`inner inner-defer before-trap root-defer` against every
+    //             wolfc lane's `inner inner-defer before-trap`) and flips to
+    //             agreement in the commit that takes the ruling — #209.
+    //             #198's string half answered at first sight:
+    //             `grammar/str_uni_seven_digits.lu` (E0101 at the escape,
+    //             column 14, exactly where the `char` twin
+    //             `grammar/char_uni_seven_digits.lu` reports it) and
+    //             `strings/str_uni_leading_zeros.lu` (one, four and six
+    //             digits all spelling `A`). The spec's escape productions
+    //             become derivable — `STR_ESC` carries the set and
+    //             `CHAR_ESC ::= STR_ESC | '\\' "'"` — with no anchor
+    //             movement: 411, nothing gained, nothing dropped.)
     let report = report();
     assert_eq!(
         report.total(),
-        479,
+        482,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 446);
+    assert_eq!(report.entries(), 449);
     assert_eq!(report.members(), 33);
 }
 

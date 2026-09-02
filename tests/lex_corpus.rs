@@ -44,7 +44,17 @@ fn lu_files() -> Vec<PathBuf> {
 
 /// The corpus entries whose ledger `phase:` is `none` — the ones the LEXER
 /// refuses, with the code the corpus pins. Every other file must lex clean.
-const LEXICAL_COUNTER_EXAMPLES: &[(&str, &str)] = &[("grammar/char_uni_seven_digits.lu", "E0101")];
+///
+/// The pair is `UNI_ESC`'s two doors. r04's `char_uni_seven_digits.lu` came
+/// first; at the 8cda3aa pin (wolf-lang v0.2.2, #198) `STR_ESC` was written
+/// into the grammar and `CHAR_ESC ::= STR_ESC | '\'' derives from it, so the
+/// one-to-six-digit bound is now a claim read off a shared production rather
+/// than prose — and `str_uni_seven_digits.lu` is the string half's witness,
+/// same code, same escape, same column.
+const LEXICAL_COUNTER_EXAMPLES: &[(&str, &str)] = &[
+    ("grammar/char_uni_seven_digits.lu", "E0101"),
+    ("grammar/str_uni_seven_digits.lu", "E0101"),
+];
 
 #[test]
 fn every_corpus_file_tokenizes_without_a_lex_diagnostic() {

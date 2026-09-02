@@ -649,15 +649,6 @@ impl Machine {
         }
     }
 
-    /// Is this machine's task inside a proc — a failure domain of its own
-    /// (`[conc.proc.1]`) rather than the root domain?
-    ///
-    /// A task's proc never changes, so this could be cached; it is asked only
-    /// on the trap path, where one lock is not the cost that matters.
-    fn inside_proc(&self) -> bool {
-        self.shared.sched.proc_of(self.task) != 0
-    }
-
     /// Mints a [`Frame::serial`] — every frame construction calls this.
     fn mint_frame_serial(&mut self) -> u64 {
         self.next_frame_serial += 1;
@@ -3130,16 +3121,26 @@ impl Machine {
             self.pop_scope();
             return result;
         }
-        // A trap that fired on a task INSIDE a proc is contained at the proc
-        // boundary (`[conc.proc.exit]`, s132's amendment), and containment
-        // "runs the killed-proc sequence" — so no further user code runs
-        // BELOW the boundary either, `defer`/`errdefer` included. The frames
-        // between the trapping site and the proc root unwind silently, which
-        // is what `conc/proc_cap_fault_join.lu` pins by the marker its
-        // below-boundary defer never prints. In the ROOT domain a trap is
-        // still process death by `[conf.trap.exit]`, and that path is
-        // untouched: the clause carves out the proc, not the program.
-        if matches!(result, Err(Signal::Trap(_))) && self.inside_proc() {
+        // A TRAP RUNS NO `defer` OR `errdefer`, ANYWHERE (`[conf.trap.exit]`,
+        // r05's amendment for wolf-lang#209). Two domains, one sentence:
+        //
+        //   - inside a proc, the trap is contained at the proc boundary
+        //     (`[conc.proc.exit]`, s132's amendment) and containment "runs
+        //     the killed-proc sequence", so no further user code runs BELOW
+        //     the boundary — `conc/proc_cap_fault_join.lu` pins that by the
+        //     marker its below-boundary defer never prints;
+        //   - in the ROOT domain death is immediate, so the pending
+        //     scope-exit effects of the trapping scope and of every scope
+        //     enclosing it are abandoned too.
+        //
+        // is33 left the root path running its defers because the clause
+        // ruled only the proc and was silent about the root; the letter
+        // closed that silence the consistent way — a trap is not an error
+        // value and never unwinds (`[abi.native.nounwind]`), and effects
+        // that had already run, ran. `faults/trap_skips_root_defers.lu` is
+        // the witness: the inner block's defer runs at that block's own
+        // exit (before the trap), the root `defer` never does.
+        if matches!(result, Err(Signal::Trap(_))) {
             self.pop_scope();
             return result;
         }
@@ -3148,8 +3149,10 @@ impl Machine {
         let errored = match &result {
             Ok(value) => value.is_error(),
             Err(Signal::Return(value)) => value.is_error(),
-            Err(Signal::ProcKilled | Signal::Exit(_)) => unreachable!("returned above"),
-            Err(Signal::Trap(_) | Signal::Ub(_) | Signal::Unsupported(_)) => true,
+            Err(Signal::ProcKilled | Signal::Exit(_) | Signal::Trap(_)) => {
+                unreachable!("returned above")
+            }
+            Err(Signal::Ub(_) | Signal::Unsupported(_)) => true,
             Err(Signal::Break(_) | Signal::Continue) => false,
         };
         let defers = self.run_defers(errored);

@@ -262,3 +262,30 @@ fn every_repl_note_in_the_doc_is_a_wellformed_tag() {
         "the six [repl.*] notes must appear; found {found}"
     );
 }
+
+#[test]
+fn a_lent_receiver_is_back_in_its_slot_after_the_trap() {
+    // The observation `[conf.trap.exit]`'s r05 sentence took away from
+    // `src/eval/tests.rs` and the REPL gives back. A method call may LEND its
+    // receiver — the slot holds a placeholder while the builtin runs — and the
+    // lend has to end whatever the call did, a trap included. In a compiled
+    // program a trap runs no defer anywhere (wolf-lang#209), so nothing after
+    // it can look; a REPL session outlives its trap (`[repl.trap.alive]`), so
+    // the very next line can. Were the placeholder left behind, `xs.len` would
+    // refuse with "`()` has no member `len`" instead of answering 0.
+    let out = String::from_utf8(pipe_session(
+        "var xs = List[int]()\n\
+         (mut xs).push(1)\n\
+         let a = (mut xs).pop()\n\
+         let b = (mut xs).pop()\n\
+         xs.len\n",
+    ))
+    .expect("utf-8");
+    assert!(
+        out.contains("trap(bounds): `pop` on an empty List"),
+        "{out}"
+    );
+    assert!(out.contains("[repl.trap.alive]"), "{out}");
+    assert!(out.contains("0 : i64"), "{out}");
+    assert!(!out.contains("has no member `len`"), "{out}");
+}

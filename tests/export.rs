@@ -136,7 +136,16 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // none had ever named, and gram.expr.closure, which D69's
 // closure_params_no_separator cites because no closure witness had. Raised in
 // the bump commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 173;
+// 173 → 175 at 8cda3aa (is34, wolf-lang v0.2.2): two clauses the corpus had
+// never cited until r05's letters gave them witnesses — conf.trap.exit, the
+// trap-exit clause (`faults/trap_skips_root_defers.lu` is the FIRST file
+// anywhere to name it, which is precisely how its root sentence stayed
+// unwritten until #209), and gram.lex.str.escape, the string half of the
+// escape bound (`grammar/str_uni_seven_digits.lu` +
+// `strings/str_uni_leading_zeros.lu`; the char half's witness landed at the
+// previous pin and cited gram.lex.char). Raised in the bump commit per the
+// test's own instruction.
+const RATCHET_FLOOR: usize = 175;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -385,10 +394,14 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // 512/479 → 517/484 at 2bfbe5e (is33, the s132 merge): 5 corpus files,
     // all entries — the three [mem.region.cap] witnesses and D69's two
     // separator refusals; the suite is unmoved.
+    // 517/484 → 520/487 at 8cda3aa (is34, wolf-lang v0.2.2): 3 corpus files,
+    // all entries — #209's `faults/trap_skips_root_defers.lu` and #198's
+    // string pair; the suite is unmoved (this sprint's new suite programs are
+    // inline fixtures, which the extractor does not harvest).
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "2bfbe5e6e877d3b6b43a9d8a68b56b1ef74c21c4");
-    assert_eq!(summary.programs, 517);
-    assert_eq!(summary.records, 484);
+    assert_eq!(summary.pin, "8cda3aa41004775bb4a4c0a600d7fb673143b7d0");
+    assert_eq!(summary.programs, 520);
+    assert_eq!(summary.records, 487);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
