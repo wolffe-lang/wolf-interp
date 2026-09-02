@@ -3253,7 +3253,6 @@ impl<'a> Parser<'a> {
                         break;
                     }
                     let name = self.expect_ident(anchor)?;
-                    comma_at = None;
                     let cend = name.span.end;
                     captures.push(name);
                     if !self.eat(&Tok::Comma) {
