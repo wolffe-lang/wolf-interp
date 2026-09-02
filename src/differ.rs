@@ -160,14 +160,15 @@ use crate::schema;
 /// `range_expr` admits `a..`, `..b` and `a..b` but never a bare `..`. It
 /// lives in `docs/divergence-log.md` until a witness exists, as
 /// wolf-lang#71's stdout finding did. Filed upstream as wolf-lang#88.
+///
+/// DIV-2026-017 CLOSED at pin `3befc3e` (0.1.24): wolf-lang#76 is closed and
+/// `lints/raw_interp_braces.lu` answers `{who}\n` on `--checked`, `--native`
+/// and `--release` alike, byte-identical to this machine. DIV-2026-020
+/// CLOSED at the same pin by D71 + s134: the span IS the offending token, so
+/// seven of its eight files are byte-identical and the eighth was never a
+/// width question — it is DIV-2026-021 now, and it is about where a D63
+/// let-group refusal points rather than how wide the pointing is.
 pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
-    (
-        "lints/raw_interp_braces.lu",
-        "DIV-2026-017",
-        "the `r\"` prefix's opening quote survives the compiler's raw-literal \
-         decode: `{who}` here, `\"{who}` there ([gram.lex.str.raw]); same on \
-         --checked/--native/--release, so it is front-end, not mid-end",
-    ),
     (
         "resolve/broken_sibling/entry.lu",
         "DIV-2026-019",
@@ -177,53 +178,41 @@ pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
          at `{` in the parameter list; same rung, span-or-code class — the \
          spec assigns neither code to junk recovery",
     ),
+    (
+        "grammar/let_group_bare_tuple.lu",
+        "DIV-2026-021",
+        "where a D63 let-group refusal POINTS: both machines answer E0201 at \
+         parse, this one at the first comma (byte 364) and the counterparty \
+         at the end of the initializer list (byte 374), which is a locus \
+         disagreement and never was the span-WIDTH question D71 settled; \
+         `[gram.item.let]` says what the shape is and not where refusing it \
+         reports. Filed upstream as wolf-lang#228",
+    ),
 ];
 
-/// DIV-2026-020's file set (is34, wolf-lang#220): the E02xx parse refusals
-/// where both machines agree on the code and on the byte the refusal starts
-/// at, and disagree only on the span's WIDTH — this machine spans the
-/// offending token, the counterparty emits a zero-width span at its start.
-/// `[proto.record.diag]` rules spans byte-exact and says nothing about which
-/// convention an "expected X, found Y" diagnostic uses, so the clause is the
-/// defendant and neither implementation moves until it rules.
-///
-/// `let_group_bare_tuple.lu` is in the set but is NOT the same finding: its
-/// offsets genuinely differ (byte 364, the `,`, against byte 374, the newline
-/// after the initializer list). It is carried here so the ledger is one list,
-/// and named separately in the log and in the issue so the weaker ruling
-/// cannot silently absorb it.
-pub const DIV_2026_020_FILES: &[&str] = &[
-    "grammar/closure_params_no_separator.lu",
-    "grammar/let_group_bare_tuple.lu",
-    "grammar/let_group_one_init.lu",
-    "grammar/range_bare.lu",
-    "grammar/struct_literal_no_separator.lu",
-    "grammar/struct_pattern_no_separator.lu",
-    "grammar/struct_pattern_rest_bare.lu",
-    "grammar/tuple_pattern_no_separator.lu",
-];
+// DIV-2026-017 stood here from is05 to is34 —
+// `lints/raw_interp_braces.lu`, the compiler's raw-literal decode keeping
+// the `r"` prefix's opening quote (`"{who}` there, `{who}` here). It retires
+// at the 3befc3e pin: wolf-lang#76 is CLOSED and all four lanes now answer
+// `{who}\n`, measured at this pin on `--checked`, `--native` and `--release`.
+// It had already stopped diverging at v0.2.2; the waiver outliving the
+// divergence is the thing wolf-lang#177 taught, so it goes.
+//
+// DIV_2026_020_FILES stood beside it from is34 — the eight E02xx parse
+// refusals where both machines agreed on the code and the starting byte and
+// differed on the span's WIDTH. D71 ruled the strong form (the span IS the
+// offending token), s134 aligned wolfc, and wolf-lang#220's own closing
+// comment assigns the waiver's retirement to this lane's next pin bump.
+// Seven of the eight are byte-identical here now. The eighth was never a
+// width question and is carried above under its own id.
 
 /// The filing id for a corpus file, when its divergence is already filed.
 #[must_use]
 pub fn filed(file: &str) -> Option<(&'static str, &'static str)> {
-    if let Some(found) = FILED_DIVERGENCES
+    FILED_DIVERGENCES
         .iter()
         .find(|(f, _, _)| file.ends_with(f))
         .map(|(_, id, summary)| (*id, *summary))
-    {
-        return Some(found);
-    }
-    DIV_2026_020_FILES
-        .iter()
-        .any(|f| file.ends_with(f))
-        .then_some((
-            "DIV-2026-020",
-            "the E02xx span convention: same code, same start byte, different \
-             WIDTH — this machine spans the offending token, the counterparty \
-             emits a zero-width span there. Filed upstream as wolf-lang#220; \
-             `let_group_bare_tuple.lu` is the one row whose offsets really do \
-             differ and wants its own triage",
-        ))
 }
 
 // ---------------------------------------------------------------------------
@@ -1402,6 +1391,27 @@ mod tests {
         b.stdout_sha256 = Some("aa".to_owned());
         assert_eq!(compare_deep(&a, &b, false).divergence, None);
 
+        // wolf-lang#209, as this comparator would have seen it. lupin 0.1.22
+        // ran the root domain's pending defers on its way out and printed
+        // `inner inner-defer before-trap root-defer`; every wolfc lane
+        // printed `inner inner-defer before-trap`. Same verdict, same trap
+        // kind, different bytes — invisible for the whole of D66..r05, and a
+        // `stdout` row here. The digests are the real ones.
+        let sha = |text: &str| Some(crate::sha256::hex(text.as_bytes()));
+        let mut old = record(Phase::Run, Verdict::Trap(TrapKind::Assert));
+        let mut now = record(Phase::Run, Verdict::Trap(TrapKind::Assert));
+        old.stdout_sha256 = sha("inner inner-defer before-trap root-defer");
+        now.stdout_sha256 = sha("inner inner-defer before-trap");
+        assert_eq!(
+            compare_deep(&old, &now, false)
+                .divergence
+                .expect("#209 is a row now")
+                .class,
+            DeepClass::Stdout
+        );
+        // And 0.1.23's answer, which is the one this machine gives: agreement.
+        assert_eq!(compare_deep(&now, &now, false).divergence, None);
+
         // Honest-absent on EITHER side is never a row — the same posture
         // `[proto.cmp.warn]` takes to a missing `warnings` array, and the
         // reason widening the comparison cannot manufacture a divergence out
@@ -1484,13 +1494,39 @@ mod tests {
         // build answers E0809, and the file compares clean under
         // `[proto.cmp.rung]`. The list is empty; these asserts resume the
         // moment anything is filed.
+        // DIV-2026-017 and DIV-2026-020 CLOSED at the 3befc3e pin (0.1.24),
+        // both upstream: wolf-lang#76 fixed the raw-literal decode, and D71 +
+        // s134 ruled the E02xx span the offending token, which retires the
+        // eight-file waiver by name (wolf-lang#220's own closing comment
+        // assigns that retirement to this lane's pin bump). Seven of those
+        // eight are byte-identical now; the eighth is DIV-2026-021, a
+        // different finding wearing the same file.
         assert_eq!(FILED_DIVERGENCES.len(), 2);
-        let (id, _) = filed("upstream/corpus/lints/raw_interp_braces.lu")
-            .expect("DIV-2026-017 is filed against the raw-literal file");
-        assert_eq!(id, "DIV-2026-017");
         let (id, _) = filed("upstream/corpus/resolve/broken_sibling/entry.lu")
             .expect("DIV-2026-019 is filed against the D59 broken-sibling witness");
         assert_eq!(id, "DIV-2026-019");
+        let (id, _) = filed("upstream/corpus/grammar/let_group_bare_tuple.lu")
+            .expect("DIV-2026-021 is filed against the D63 let-group witness");
+        assert_eq!(id, "DIV-2026-021");
+        // A retired waiver must actually be gone: a file whose divergence was
+        // fixed upstream and still carries a filing id is a green report that
+        // means nothing, which is the wolf-lang#177 lesson in this shape.
+        assert_eq!(filed("upstream/corpus/lints/raw_interp_braces.lu"), None);
+        for retired in [
+            "grammar/closure_params_no_separator.lu",
+            "grammar/let_group_one_init.lu",
+            "grammar/range_bare.lu",
+            "grammar/struct_literal_no_separator.lu",
+            "grammar/struct_pattern_no_separator.lu",
+            "grammar/struct_pattern_rest_bare.lu",
+            "grammar/tuple_pattern_no_separator.lu",
+        ] {
+            assert_eq!(
+                filed(&format!("upstream/corpus/{retired}")),
+                None,
+                "{retired}"
+            );
+        }
         assert_eq!(
             filed("upstream/corpus/rows/negative/handler_uncovered.lu"),
             None
