@@ -708,10 +708,40 @@ unfreed **named** region's ledger. The process-root arena is never counted
 `[mem.region.freeze.1]` means it is never freed — §4's leak reading, applied to
 the counter.
 
-The **cap** half of wolf-lang#187 (D68: a cap breach is `trap(alloc-contract)`
-at the allocating site, contained at the proc boundary) is *not* implemented
-here. It is deferred by name to the is33-era twin: no `Region.cap`, no cap
-syntax, and no clause on wolf-lang trunk to implement against at this pin.
+### 6.16 The cap is denominated in the model's units, and that is the clause's own answer (is33, 0.1.22)
+
+`[mem.region.cap.1]` (s132, D68, wolf-lang#187) puts a creation-time budget on
+§6.15's ledger — and because the ledger's units are a model, the budget is a
+budget **in that model**. The same source breaches here, on the native arena
+and under the checked machine at *different byte numbers* and, in general, at
+different allocations. Nothing about that is an approximation this machine
+chose: the clause says it in as many words ("the budget is denominated in
+ledger units, not payload bytes"), and it says why — wolf-lang#203 measured a
+64 KiB io chunk at roughly 1 MiB of ledger, an order of magnitude, so a cap set
+by payload arithmetic is not portable in any tier.
+
+What the clause therefore asks of a *program*, and what the corpus witnesses
+do, is derive the budget from a measured `region_bytes` reading. The breach
+witness sets it one short of a measured dry run, so "the next byte is the
+breach" is reached in whatever units the tier counts in — under this machine's
+16-byte grain and pow2 capacity that happens to be a growth realloc, and where
+it happens is not comparison surface either. **The comparison surface is the
+booleans**, exactly as it is for the account witnesses.
+
+One consequence specific to this tier, recorded rather than hidden: §6.15's
+`str` divergence (wolf-lang#191 — this machine charges a `str` to the ambient
+region where native charges the process root) is now *visible as a refusal*, not
+only as a number. A capped region here can breach on string bytes that would
+charge no named region on the native tier. That is a units divergence wearing a
+trap, and it is the same divergence the clause already rules out of comparison;
+a portable program derives its cap from a dry run that allocates the same
+shapes, which is what makes the witness portable.
+
+The containment half carries no approximation: `[mem.region.cap.3]`'s
+free-then-deliver order is implemented as an order (the scheduler parks the
+exit reason and the machine publishes it after the bulk free) rather than left
+to the cooperative scheduler's baton, which happened to hide the window this
+machine would otherwise have had.
 
 ## 7. Deliberate approximations in the **provenance** machine (is04)
 
