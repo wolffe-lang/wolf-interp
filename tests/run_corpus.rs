@@ -1166,6 +1166,60 @@ fn no_corpus_file_mismatches_its_expectation() {
 }
 
 #[test]
+fn w0316_stops_at_the_package_root_and_not_at_the_filesystem_s() {
+    // The W0316 walk asks "does this module import one of its own ancestor
+    // MODULES", and modules stop at the entry's directory. It used to stop
+    // only when a candidate WAS the entry root, which never happens for a
+    // scope file sitting directly in it — so the walk climbed the whole
+    // filesystem path looking for a directory named like the `use` target.
+    //
+    // GitHub's runner found it before any test did:
+    // `conc/proc_cross_module/main.lu` says `use work`, the runner checks
+    // this repository out under `/home/runner/work/wolf-interp/…`, and the
+    // corpus file warned W0316 on CI and on no developer's machine. A lint
+    // whose answer depends on where the checkout lives is not an observation
+    // of the program. Reproduced here by BUILDING that path shape.
+    let base = std::env::temp_dir().join("lupin-is35-w0316").join("work");
+    let pkg = base.join("pkg");
+    std::fs::create_dir_all(pkg.join("work")).expect("scratch tree");
+    std::fs::write(
+        pkg.join("work/work.lu"),
+        b"//! member: true
+
+pub fn n() -> int { 7 }
+",
+    )
+    .expect("writable");
+    let entry = pkg.join("main.lu");
+    let source: &[u8] = b"use work
+
+fn main() -> !int { work.n() - 7 }
+";
+    std::fs::write(&entry, source).expect("writable");
+
+    let (record, _) = wolf_interp::observe_record(&entry, source, None);
+    assert_eq!(record.verdict, Verdict::Exit(0));
+    let warnings = record.warnings.expect("the analyses ran");
+    assert!(
+        warnings.iter().all(|w| w.code != "W0316"),
+        "an ancestor of the CHECKOUT is not an ancestor module: {warnings:?}"
+    );
+
+    // And the real shape still warns, so the fix narrowed the walk rather
+    // than disabling it: `lints/ancestor_import/` has a leaf importing the
+    // `outer` module it lives under, and that is W0316 at the `use` target's
+    // own ident.
+    let root = corpus_root();
+    let full = root.join("lints/ancestor_import/main.lu");
+    let source = std::fs::read(&full).expect("readable");
+    let (record, _) = wolf_interp::observe_record(&full, &source, None);
+    let warnings = record.warnings.expect("the analyses ran");
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].code, "W0316");
+    assert_eq!(warnings[0].span, [92, 97]);
+}
+
+#[test]
 fn the_warns_ledger_is_enforced_for_the_analyses_this_machine_runs() {
     // `warns:` is the exact set of warning codes an entry is expected to
     // produce; its absence is the empty set (a file with no `warns:` must be

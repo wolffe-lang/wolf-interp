@@ -300,7 +300,23 @@ pub fn analyze(program: &Program) -> Analysis {
             for use_ref in &scope.uses {
                 let mut ancestor = dir.and_then(std::path::Path::parent);
                 while let Some(candidate) = ancestor {
-                    if Some(candidate) == entry_root || candidate.as_os_str().is_empty() {
+                    // The walk climbs MODULE directories, and modules stop at
+                    // the entry's own directory. It used to stop only when a
+                    // candidate WAS the entry root, which never happens for a
+                    // scope file sitting directly in it — the first candidate
+                    // is already the entry root's parent, and the walk then
+                    // climbed the whole filesystem path looking for a
+                    // directory named like the `use` target.
+                    //
+                    // That is not hypothetical: `conc/proc_cross_module/main.lu`
+                    // says `use work`, and GitHub's runner checks this
+                    // repository out under `/home/runner/WORK/wolf-interp/…`,
+                    // so the corpus file warned W0316 on CI and nowhere else.
+                    // A lint whose answer depends on where the checkout lives
+                    // is not an observation of the program.
+                    let inside = entry_root
+                        .is_some_and(|root| candidate != root && candidate.starts_with(root));
+                    if !inside || candidate.as_os_str().is_empty() {
                         break;
                     }
                     if candidate
