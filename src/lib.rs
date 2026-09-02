@@ -224,11 +224,44 @@ fn record_of(
     request: &eval::SchedRequest,
 ) -> (ObservationRecord, Observed) {
     // `[proto.record.fields]`: the digest whenever the program wrote output,
-    // the inline text up to 4096 bytes. Only an `exit` verdict has "the program
-    // wrote output" to speak of — a trap's partial output is not a comparison
-    // surface the protocol defines.
+    // the inline text up to 4096 bytes.
+    //
+    // "Whenever the program wrote output" is read literally, and that is a
+    // change (wolf-interp#55, is34). Through 0.1.22 this read "whenever an
+    // `exit` verdict wrote output", on the argument that only `exit` has a
+    // comparison surface the protocol defines — the clause makes the pair
+    // REQUIRED for `exit(0-255)`, and `[proto.cmp.phase]` compares stdout
+    // only there. But required-for-`exit` is a floor, not a ceiling, and the
+    // narrow reading cost the differential a real finding: on every trapping
+    // program this implementation reported `stdout_inline: null`, so the two
+    // machines were verdict-identical WHATEVER they printed, and wolf-lang
+    // #209's root-defer divergence — which is nothing but a difference in
+    // trap-path output — survived unmeasured from D66 to r05. A record that
+    // silently drops an observation the program actually made is not a
+    // conservative record; it is an incomplete one. The counterparty carries
+    // the bytes it printed up to the trap, so now this side does too.
+    //
+    // What this does NOT do is compare them. `[proto.cmp.phase]` still says
+    // "for `trap`, compare kind only", and `compare`/`differ` still implement
+    // exactly that: widening the comparison by private agreement is the thing
+    // the independence doctrine forbids. Filed as wolf-lang#216 — both
+    // machines now hold the observable and the protocol rules it
+    // uncomparable, which is #55's blind spot one layer up.
+    //
+    // The condition is the verdicts that report a COMPLETED RUN — `exit`,
+    // `trap`, `ub`. `unsupported`, `fail` and `pass` are excluded on purpose:
+    // each one's own `phase_reached` says the run did not complete, so bytes
+    // attached to it would be an artifact of this machine's evaluation order
+    // rather than an observation of the program that the counterparty also
+    // makes. (That this machine HAS such bytes at all is a real finding —
+    // `typecheck/main_returns_str.lu` prints `hi` and then declines
+    // `unsupported` because `main` returned `str` — and it is filed as
+    // wolf-interp#57 rather than smuggled into the record.)
     let observed_stdout = String::from_utf8_lossy(&observation.stdout).into_owned();
-    let wrote = matches!(observation.verdict, Verdict::Exit(_)) && !observation.stdout.is_empty();
+    let wrote = matches!(
+        observation.verdict,
+        Verdict::Exit(_) | Verdict::Trap(_) | Verdict::Ub(_)
+    ) && !observation.stdout.is_empty();
     let (digest, inline) = if wrote {
         let text = String::from_utf8_lossy(&observation.stdout).into_owned();
         // The cap is in *bytes*; truncating mid-code-point would produce a

@@ -1439,13 +1439,75 @@ fn every_record_is_schema_valid_including_the_running_ones() {
             "{}",
             file.path
         );
-        if let Verdict::Exit(_) = record.verdict
-            && record.stdout_inline.as_ref().is_some_and(|s| !s.is_empty())
-        {
+        if record.stdout_inline.as_ref().is_some_and(|s| !s.is_empty()) {
             let digest = record.stdout_sha256.as_ref().expect("a digest");
             assert_eq!(digest.len(), 64, "{}", file.path);
         }
     }
+}
+
+#[test]
+fn a_trapping_program_reports_the_stdout_it_produced_before_the_trap() {
+    // wolf-interp#55. Through 0.1.22 the record read `stdout_inline: null` on
+    // EVERY trapping program, on the argument that `[proto.cmp.phase]`
+    // compares stdout only for `exit`. The cost was measured: wolf-lang#209's
+    // root-defer divergence is a difference in trap-path output and nothing
+    // else, so the two machines were verdict-identical whatever they printed
+    // and the question survived from D66 to r05 with no file able to see it.
+    // `[proto.record.fields]`'s "whenever the program wrote output" is a
+    // floor, not a ceiling, and the counterparty carries these bytes.
+    let root = corpus_root();
+    for (path, want) in [
+        (
+            "faults/trap_skips_root_defers.lu",
+            "inner inner-defer before-trap",
+        ),
+        ("rows/handler_diverge_trap.lu", "FAILED: neg\n"),
+    ] {
+        let full = root.join(path);
+        let source = std::fs::read(&full).expect("readable");
+        let (record, _) = wolf_interp::observe_record(&full, &source, None);
+        assert!(
+            matches!(record.verdict, Verdict::Trap(_)),
+            "{path}: {}",
+            record.verdict
+        );
+        assert_eq!(record.stdout_inline.as_deref(), Some(want), "{path}");
+        assert_eq!(
+            record.stdout_sha256.as_deref(),
+            Some(wolf_interp::sha256::hex(want.as_bytes()).as_str()),
+            "{path}"
+        );
+        let value = serde_json::to_value(&record).expect("serializes");
+        assert_eq!(wolf_interp::schema::validate(&value), Ok(()), "{path}");
+    }
+}
+
+#[test]
+fn a_record_that_completed_no_run_reports_no_stdout() {
+    // The other side of wolf-interp#55, and the line the change stops at. A
+    // record whose `phase_reached` says the run did not complete makes no run
+    // observation, so it carries no output — bytes there would be an artifact
+    // of THIS machine's evaluation order rather than something the
+    // counterparty also observes.
+    //
+    // `typecheck/main_returns_str.lu` is the file that makes the line
+    // load-bearing: this machine evaluates `main`'s body — printing `hi` —
+    // and only then declines `unsupported` because `main` returned `str`.
+    // That it printed at all is a real finding, filed as wolf-interp#57; it
+    // is not a reason to let an `unsupported` record claim a run.
+    let root = corpus_root();
+    let full = root.join("typecheck/main_returns_str.lu");
+    let source = std::fs::read(&full).expect("readable");
+    let (record, observed) = wolf_interp::observe_record(&full, &source, None);
+    assert_eq!(record.verdict, Verdict::Unsupported);
+    assert_eq!(record.phase_reached, Phase::Resolve);
+    assert_eq!(observed.stdout, "hi\n", "the bytes were produced");
+    assert_eq!(
+        record.stdout_inline, None,
+        "and the record does not claim them"
+    );
+    assert_eq!(record.stdout_sha256, None);
 }
 
 #[test]
