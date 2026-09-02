@@ -86,11 +86,17 @@ jobs:
           # `phase:` is `none`, refused BY the lexer with the code the corpus
           # pins. Everything else must lex clean. Mirrors
           # `tests/lex_corpus.rs::LEXICAL_COUNTER_EXAMPLES` — added at the
-          # e6cf24e pin with r04's `[gram.lex.char]` amendment (wolf-lang#189).
+          # e6cf24e pin with r04's `[gram.lex.char]` amendment (wolf-lang#189),
+          # and grown at the 8cda3aa pin (v0.2.2) with #198's STRING half:
+          # `STR_ESC` reaches the same `UNI_ESC` a `char` literal reaches, so
+          # `\u{0000041}` is E0101 at the escape inside `"…"` exactly as it is
+          # inside `'…'`. Both doors of one production, so both are listed —
+          # keep this case list and the test's array in step.
           while IFS= read -r f; do
             out=$(cargo run --quiet -- conform-run "$f" --phase=lex --json)
             case "$f" in
-              vendor/upstream/corpus/grammar/char_uni_seven_digits.lu) want='"verdict":"fail(E0101)"' ;;
+              vendor/upstream/corpus/grammar/char_uni_seven_digits.lu \
+              | vendor/upstream/corpus/grammar/str_uni_seven_digits.lu) want='"verdict":"fail(E0101)"' ;;
               *) want='"verdict":"pass"' ;;
             esac
             if [[ "$out" == *"$want"* && "$out" == *'"phase_reached":"lex"'* ]]; then :; else
