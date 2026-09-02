@@ -1,0 +1,167 @@
+# The dist lane (is33, D57). Mirrors wolf-lang's r03 dist matrix — the four
+# tier-1 hosts — and adds what that stub leaves to each repo: the D57 stamp is
+# ASSERTED on every host, and every archive is unpacked and smoke-run on the
+# runner that built it before it is allowed near the release page.
+#
+# Why the assertion is a step and not a comment: the D57 stamp is granted by
+# `build.rs` only when `v{version}` points at HEAD, and a checkout that did not
+# fetch the tag silently produces a `+dev.<commit>` build that looks fine and
+# claims to be a nightly. That is exactly the class of failure is32 met at its
+# release step (green locally, red in the workflow's own steps), so the
+# workflow checks its own product rather than trusting the build.
+#
+# windows/x86-64 is here because the learners' path needs `lupin.exe`
+# (wolf-web ww09): the archive carries it, and the bare executable is uploaded
+# beside the archive so a link can point straight at it.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  dist:
+    name: dist (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # tier-1 hosts: linux x86-64, linux aarch64, macOS aarch64, windows x86-64
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Full history AND tags: `build.rs` reads `git tag --points-at HEAD` to
+      # decide the D57 stamp, and a shallow tag-only fetch does not always
+      # leave the tag readable that way.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain
+
+      - name: Toolchain versions
+        run: |
+          rustc --version
+          cargo --version
+
+      # The tag must be visible to git AND must be this crate's own release
+      # tag, or the stamp below cannot be granted. Say so here rather than
+      # letting the assertion fail with a confusing message.
+      - name: The tag is at HEAD
+        run: |
+          set -euxo pipefail
+          git fetch --force --tags --quiet
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "crate version: $version"
+          echo "tag pushed:    ${GITHUB_REF_NAME}"
+          test "v${version}" = "${GITHUB_REF_NAME}" \
+            || { echo "::error::tag ${GITHUB_REF_NAME} does not match Cargo.toml v${version}"; exit 1; }
+          git tag --points-at HEAD | grep -qx "${GITHUB_REF_NAME}" \
+            || { echo "::error::${GITHUB_REF_NAME} does not point at HEAD in this checkout — the D57 stamp cannot be granted"; exit 1; }
+
+      # The dist build is the stamped build (never a plain `cargo build` from
+      # somewhere else): `build.rs` runs here, at the tag, and only here.
+      - name: build
+        run: cargo build --release --locked
+
+      - name: the D57 stamp is on this binary
+        run: |
+          set -euxo pipefail
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            bin=target/release/lupin.exe
+          else
+            bin=target/release/lupin
+          fi
+          out=$("$bin" --version)
+          echo "$out"
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          case "$out" in
+            *"+dev."*)
+              echo "::error::the release build carries the dev suffix — D57 refused the stamp on ${{ matrix.os }}: $out"
+              exit 1 ;;
+          esac
+          case "$out" in
+            "lupin ${version} "*) ;;
+            *) echo "::error::--version does not name the release: $out"; exit 1 ;;
+          esac
+
+      # Archive layout: one directory, so an unpack cannot scatter files into
+      # the user's cwd. `.zip` on Windows and `.tar.gz` everywhere else — the
+      # convention each platform's users already have a tool for.
+      - name: build archive
+        id: archive
+        run: |
+          set -euxo pipefail
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          target=$(rustc -vV | sed -n 's/^host: //p')
+          stem="lupin-${version}-${target}"
+          mkdir -p "target/dist/${stem}"
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            cp target/release/lupin.exe "target/dist/${stem}/"
+          else
+            cp target/release/lupin "target/dist/${stem}/"
+          fi
+          cp README.md LICENSE CHANGELOG.md "target/dist/${stem}/"
+          cd target/dist
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            7z a -tzip "${stem}.zip" "${stem}" >/dev/null
+            echo "archive=target/dist/${stem}.zip" >> "$GITHUB_OUTPUT"
+          else
+            tar -czf "${stem}.tar.gz" "${stem}"
+            echo "archive=target/dist/${stem}.tar.gz" >> "$GITHUB_OUTPUT"
+          fi
+          echo "stem=${stem}" >> "$GITHUB_OUTPUT"
+
+      # The smoke: unpack the archive the way a user would, in a directory
+      # that is not the checkout, and run a program with the unpacked binary.
+      # `vendor/upstream/PIN` is baked in at compile time, so the unpacked
+      # binary is self-contained and this proves it — a `--version` that
+      # needed the repo beside it would fail right here.
+      - name: unpack and smoke a hello
+        run: |
+          set -euxo pipefail
+          work="$RUNNER_TEMP/smoke"
+          rm -rf "$work" && mkdir -p "$work"
+          cp "${{ steps.archive.outputs.archive }}" "$work/"
+          cd "$work"
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            7z x "$(basename '${{ steps.archive.outputs.archive }}')" >/dev/null
+            bin="./${{ steps.archive.outputs.stem }}/lupin.exe"
+          else
+            tar -xzf "$(basename '${{ steps.archive.outputs.archive }}')"
+            bin="./${{ steps.archive.outputs.stem }}/lupin"
+          fi
+          printf 'fn main() -> !int {\n    print("hello, wolf")\n    0\n}\n' > hello.lu
+          "$bin" --version
+          out=$("$bin" run hello.lu)
+          echo "$out"
+          test "$out" = "hello, wolf" \
+            || { echo "::error::the unpacked ${{ matrix.os }} binary did not print the hello: $out"; exit 1; }
+
+      # The learners' direct link (wolf-web ww09): the bare executable beside
+      # the archive, so a page can point at one URL and get a runnable file.
+      - name: the bare windows executable
+        if: runner.os == 'Windows'
+        run: cp target/release/lupin.exe "target/dist/lupin.exe"
+
+      - name: upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          assets=("${{ steps.archive.outputs.archive }}")
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            assets+=("target/dist/lupin.exe")
+          fi
+          gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber \
+            || gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \
+                 --draft --title "${GITHUB_REF_NAME}"
