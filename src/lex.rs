@@ -400,6 +400,17 @@ struct StrFrame {
     pending_start: usize,
     /// Multiline bookkeeping (empty for every other kind).
     pieces: Vec<Piece>,
+    /// Byte offsets of the multiline body's own physical line starts — the
+    /// first content line (when the opener's newline was dropped) and every
+    /// line begun by a `\n` scanned as body TEXT. Never a line begun inside
+    /// an interpolation, and never the opening delimiter's own remainder:
+    /// neither has a column the margin rule can measure (D74).
+    ///
+    /// The layout rules are stated over SOURCE offsets rather than over the
+    /// stripped text because their spans are source spans — the short line's
+    /// leading whitespace, the mismatching margin — and the text pieces have
+    /// long since lost where they came from.
+    line_starts: Vec<usize>,
 }
 
 /// The depth-8 friendly limit and the depth-32 hard rail (`[gram.lex.str]`).
@@ -539,14 +550,13 @@ pub fn lex_bytes(bytes: &[u8]) -> Lexed {
 
 impl<'a> Lexer<'a> {
     fn run(&mut self) {
-        // `[gram.lex.source]`: byte order marks are rejected.
+        // `[gram.lex.source]` (D74): a byte order mark at the very START of a
+        // file is STRIPPED — tolerated, never a diagnostic, and kept in place
+        // by the formatter. Anywhere else the same three bytes are a stray
+        // character, E0107, which `scan_token` reports where it finds one.
+        // This implementation rejected every BOM under an invented E0105
+        // until the ruling; that number belongs to the mixed-margin rule.
         if self.src.starts_with('\u{feff}') {
-            self.error(
-                diag::E_BYTE_ORDER_MARK,
-                Span::new(0, 3),
-                "gram.lex.source",
-                "byte order marks are rejected; save the file as plain UTF-8",
-            );
             self.pos = 3;
         }
 
@@ -640,6 +650,44 @@ impl<'a> Lexer<'a> {
         self.ctx.iter().filter(|c| matches!(c, Ctx::Str(_))).count()
     }
 
+    /// The span of the innermost still-open PLAIN string, from its opening
+    /// quote to `end` — or `None` when the innermost open string frame may
+    /// span lines (`"""`, `r"…"`) and when none is open at all.
+    ///
+    /// The frame is on the stack while token mode runs only because an
+    /// interpolation inside it is open, so this answering `Some` IS the
+    /// finding: the line is ending inside a plain string.
+    fn open_plain_string(&self, end: usize) -> Option<Span> {
+        let frame = self.ctx.iter().rev().find_map(|c| match c {
+            Ctx::Str(frame) => Some(frame),
+            _ => None,
+        })?;
+        matches!(frame.kind, StrKind::Plain)
+            .then(|| Span::new(frame.body_start.saturating_sub(1), end))
+    }
+
+    /// Pops everything up to and including the innermost plain string frame,
+    /// closing the token structure on the way out so downstream code never
+    /// sees an unbalanced literal — [`Self::abandon_string`]'s job, one frame
+    /// deeper. The newline itself is left for the caller to rescan as
+    /// ordinary trivia.
+    fn unwind_plain_string(&mut self) {
+        // No text to flush: the frame's pending was emitted at the `{` that
+        // opened the interpolation we are standing inside.
+        while let Some(ctx) = self.ctx.pop() {
+            match ctx {
+                Ctx::Str(_) => {
+                    self.push(Tok::StrEnd, Span::empty(self.pos));
+                    return;
+                }
+                Ctx::Interp | Ctx::Fmt => {
+                    self.push(Tok::InterpEnd, Span::empty(self.pos));
+                }
+                Ctx::Paren | Ctx::Bracket | Ctx::AttrBracket | Ctx::Brace => {}
+            }
+        }
+    }
+
     /// `[gram.lex.newline]`, in the document's own order: insert iff the last
     /// token on the line ends a statement, *and* the innermost enclosing
     /// delimiter permits it.
@@ -689,6 +737,29 @@ impl<'a> Lexer<'a> {
             let Some(c) = self.peek() else { return false };
             match c {
                 '\n' => {
+                    // D74 + `[gram.lex.str]`: a plain `"…"` — and every `{…}`
+                    // interpolation inside it — must close before the line
+                    // ends. Reaching a newline in TOKEN mode with a plain
+                    // string frame still open means a `{` opened an
+                    // interpolation that never closed, which is the bare-brace
+                    // mistake `"hello {world"`: E0102, the unterminated
+                    // family, spanning the string from its opening `"` to the
+                    // end of its line. Without this the interpolation swallows
+                    // the rest of the file — `[gram.lex.newline]` says a
+                    // newline inside an interpolation never terminates — and
+                    // the report lands wherever the runaway finally stopped.
+                    if let Some(span) = self.open_plain_string(self.pos) {
+                        self.error(
+                            diag::E_UNTERMINATED_STRING,
+                            span,
+                            "gram.lex.str",
+                            "this string never closes: a `{` inside it opens an interpolation \
+                             that is still open when the line ends — close it with `}`, or \
+                             write `{{` for a literal brace",
+                        );
+                        self.unwind_plain_string();
+                        continue;
+                    }
                     let at = self.pos;
                     self.pos += 1;
                     self.insert_terminator(at);
@@ -836,6 +907,21 @@ impl<'a> Lexer<'a> {
             ',' => Tok::Comma,
             '@' => Tok::At,
             ';' => Tok::Term { explicit: true },
+            // `[gram.lex.source]` (D74): a byte order mark is stripped only at
+            // offset 0. Reaching one HERE means it sits somewhere else in the
+            // file, where the clause calls it a stray character and names
+            // E0107 — its own code, because "a zero-width byte you cannot see"
+            // is a different repair from "this punctuation begins no token".
+            '\u{feff}' => {
+                self.error(
+                    diag::E_STRAY_CHARACTER,
+                    span,
+                    "gram.lex.source",
+                    "a byte order mark (U+FEFF) is stripped only at the very start of a file; \
+                     here it is a stray character — delete it",
+                );
+                Tok::Error
+            }
             _ => {
                 self.error(
                     diag::E_UNEXPECTED_BYTE,
@@ -1251,15 +1337,39 @@ impl<'a> Lexer<'a> {
             self.pos + quote_len
         };
 
-        // `[gram.lex.str.multi]`: the first newline after the opening `"""` is
-        // dropped.
+        // `[gram.lex.str.multi]` + D74: the opening `"""` STANDS ALONE on its
+        // line. Text after it is E0103 — one rule, one code, both delimiters
+        // — because a line that opens with `"""oops` has no column for the
+        // margin rule to measure `oops` against. Trailing whitespace after
+        // the opener is not text: it is hygiene, and it stays content the
+        // margin never sees (the opening line is exempt from the margin rule
+        // exactly because it has no column).
+        let mut first_content_line = None;
         if matches!(kind, StrKind::Multiline) {
+            let after = self.pos;
+            let eol = self.src[after..]
+                .find('\n')
+                .map_or(self.src.len(), |off| after + off);
+            if !self.src[after..eol].trim().is_empty() {
+                self.error(
+                    diag::E_DELIMITER_SHARES_LINE,
+                    Span::new(after, eol),
+                    "gram.lex.str.multi",
+                    "the opening `\"\"\"` must be the last thing on its line; text after it \
+                     sits on a line with no margin column to measure",
+                );
+            }
+
+            // `[gram.lex.str.multi]`: the first newline after the opening
+            // `"""` is dropped — and when it is, what follows IS a content
+            // line, the first one the margin rule judges.
             let save = self.pos;
             if self.peek() == Some('\r') {
                 self.pos += 1;
             }
             if self.peek() == Some('\n') {
                 self.pos += 1;
+                first_content_line = Some(self.pos);
             } else {
                 self.pos = save;
             }
@@ -1267,6 +1377,9 @@ impl<'a> Lexer<'a> {
 
         self.push(Tok::StrStart(kind.clone()), Span::new(start, self.pos));
         self.enter_string(kind);
+        if let Some(at) = first_content_line {
+            self.frame().line_starts.push(at);
+        }
     }
 
     /// `r"…"`, `r#"…"#`, `r##"…"##` — `#`-fences balance
@@ -1297,6 +1410,7 @@ impl<'a> Lexer<'a> {
             pending: String::new(),
             pending_start: self.pos,
             pieces: Vec::new(),
+            line_starts: Vec::new(),
         };
         self.ctx.push(Ctx::Str(Box::new(frame)));
         let depth = self.string_depth();
@@ -1391,6 +1505,35 @@ impl<'a> Lexer<'a> {
             }
 
             match &kind {
+                StrKind::Generalized { .. } if c == '\n' => {
+                    // `[gram.lex.str.gen]`: `GEN_TEXT ::= (SCALAR - ('"' | NL))*`
+                    // — the production EXCLUDES the newline, which is how a
+                    // literal whose body may not cross a line says so (#215).
+                    // A raw literal's `RAW_TEXT ::= SCALAR*` does not exclude
+                    // it, so `r"…"` still spans lines and this arm is the
+                    // generalized one alone.
+                    //
+                    // This mattered the moment D74 landed
+                    // `grammar/str_bare_brace.lu`: `"hello {world"` puts
+                    // `world"` inside an open interpolation, where it spells a
+                    // generalized literal, and a generalized body that ate
+                    // newlines swallowed the rest of the file — which is
+                    // exactly the wrong-family answer (E0109, "unterminated
+                    // generalized literal") the ruling took away from the bare
+                    // brace. The refusal stays E0109 here, which is the
+                    // meaning D74 leaves that code; the bare brace's own
+                    // E0102 is reported at the plain string that contains it
+                    // and wins the record by sitting earlier in the file.
+                    let span = Span::new(self.pos, self.pos + 1);
+                    self.error(
+                        diag::E_UNTERMINATED_RAW,
+                        span,
+                        "gram.lex.str.gen",
+                        "a generalized literal's body does not cross a line; close it with `\"` \
+                         before the line ends",
+                    );
+                    return self.abandon_string();
+                }
                 StrKind::Raw { .. } | StrKind::Generalized { .. } => {
                     // Raw-mode body: no escapes, no interpolation, nothing but
                     // bytes until the fence.
@@ -1441,6 +1584,19 @@ impl<'a> Lexer<'a> {
                             );
                             return self.abandon_string();
                         }
+                        '\n' => {
+                            // A multiline's body newline: the next byte begins
+                            // a physical content line, which the margin rules
+                            // judge at the close (D74). Recorded here because
+                            // this is the only place a body line start is
+                            // known — a `\n` ESCAPE puts a newline in the
+                            // VALUE and none in the source, and a newline
+                            // inside an interpolation begins no content line.
+                            self.text_push(c);
+                            self.pos += 1;
+                            let at = self.pos;
+                            self.frame().line_starts.push(at);
+                        }
                         _ => {
                             self.text_push(c);
                             self.pos += c.len_utf8();
@@ -1470,21 +1626,48 @@ impl<'a> Lexer<'a> {
         true
     }
 
-    /// `[gram.lex.str.multi]`: the closing delimiter's column is the dedent.
+    /// `[gram.lex.str.multi]` + D74: the closing delimiter's column is the
+    /// margin, and the three layout rules are one rule per code.
     ///
     /// Applied on close, because that is the first moment the column is known.
-    /// Every content line must start with at least that much whitespace, which
-    /// is stripped; blank lines are exempt (they have nothing to strip and
-    /// requiring them to carry the indentation would make trailing-whitespace
-    /// hygiene a compile error).
+    ///
+    /// - **E0103** — the closing `"""` shares its line with text before it.
+    ///   Its column IS the margin, so text before it leaves nothing to
+    ///   measure. The opening side of the same rule is judged at
+    ///   [`Self::open_string`]; one rule, one code, both delimiters.
+    /// - **E0104** — a content line sits LEFT of the margin: fewer leading
+    ///   whitespace bytes than the delimiter carries, so the strip would eat
+    ///   bytes that are not indentation.
+    /// - **E0105** — the counts agree and the BYTES do not: eight tabs against
+    ///   eight spaces. "The comparison is byte-for-byte and never by visual
+    ///   width", so this is its own rule and its own code.
+    ///
+    /// Blank lines are exempt (they have nothing to strip, and requiring them
+    /// to carry the indentation would make trailing-whitespace hygiene a
+    /// compile error), and so is the opening delimiter's own remainder, which
+    /// has no column. One report: the first fault in source order, which is
+    /// this lexer's standing posture — the rest are a courtesy nobody reads.
     fn apply_dedent(&mut self, close_start: usize) {
         let line_start = self.src[..close_start].rfind('\n').map_or(0, |nl| nl + 1);
         let prefix = &self.src[line_start..close_start];
-        let column = prefix.chars().count();
-        let prefix_is_blank = prefix.chars().all(|c| c == ' ' || c == '\t');
+        let column = prefix.len();
+        let prefix_is_blank = prefix.bytes().all(|b| b == b' ' || b == b'\t');
+
+        if !prefix_is_blank {
+            self.error(
+                diag::E_DELIMITER_SHARES_LINE,
+                Span::new(close_start, close_start + 3),
+                "gram.lex.str.multi",
+                "the closing `\"\"\"` must be the first thing on its line after whitespace; \
+                 its column is the margin stripped from every content line, and text before \
+                 it leaves no column to strip",
+            );
+            self.frame().line_starts.clear();
+            return;
+        }
 
         // The closing line's indentation is delimiter, not content.
-        if prefix_is_blank && column > 0 {
+        if column > 0 {
             let frame = self.frame();
             for _ in 0..column {
                 if frame.pending.ends_with([' ', '\t']) {
@@ -1495,7 +1678,21 @@ impl<'a> Lexer<'a> {
             }
         }
         if column == 0 {
+            self.frame().line_starts.clear();
             return;
+        }
+
+        // The opening delimiter's own line is exempt from the margin rule
+        // (it has no column), and therefore from the STRIP as well: the
+        // literal's text begins at a line start only when the opener's
+        // newline was dropped. `"""   \n…` keeps its three spaces.
+        let body_is_line_start = {
+            let frame = self.frame();
+            frame.line_starts.first() == Some(&frame.body_start)
+        };
+
+        if let Some((code, span, message)) = self.margin_fault(column, prefix, line_start) {
+            self.error(code, span, "gram.lex.str.multi", &message);
         }
 
         // Walk the literal's pieces in order, stripping `column` leading
@@ -1503,48 +1700,88 @@ impl<'a> Lexer<'a> {
         let mut pieces = std::mem::take(&mut self.frame().pieces);
         // The pending tail is one more (not yet emitted) text piece.
         let pending = std::mem::take(&mut self.frame().pending);
-        let pending_span = Span::new(self.frame().pending_start, close_start);
 
-        let mut at_line_start = true;
-        let mut underrun: Option<Span> = None;
+        let mut at_line_start = body_is_line_start;
 
         for piece in &mut pieces {
             match piece {
                 Piece::Interp => at_line_start = false,
                 Piece::Text(index) => {
-                    let span = self.tokens[*index].span;
                     let Tok::StrText(text) = &self.tokens[*index].tok else {
                         continue;
                     };
-                    let (stripped, ends_at_line_start, bad) =
-                        dedent_chunk(text, column, at_line_start, span);
+                    let (stripped, ends_at_line_start) = dedent_chunk(text, column, at_line_start);
                     at_line_start = ends_at_line_start;
-                    if underrun.is_none() {
-                        underrun = bad;
-                    }
                     self.tokens[*index].tok = Tok::StrText(stripped);
                 }
             }
         }
-        let (stripped, _, bad) = dedent_chunk(&pending, column, at_line_start, pending_span);
-        if underrun.is_none() {
-            underrun = bad;
-        }
+        let (stripped, _) = dedent_chunk(&pending, column, at_line_start);
         let frame = self.frame();
         frame.pieces = pieces;
         frame.pending = stripped;
+    }
 
-        if let Some(span) = underrun {
-            self.error(
-                diag::E_DEDENT_UNDERRUN,
-                span,
-                "gram.lex.str.multi",
-                &format!(
-                    "every line of a `\"\"\"` literal must be indented at least to the closing \
-                     delimiter's column ({column})"
-                ),
-            );
+    /// The first content line whose margin breaks D74's two margin rules, in
+    /// source order — E0104 when it is SHORT, E0105 when it is the wrong
+    /// BYTES, tested in that order because "a margin shorter than the
+    /// delimiter's is E0104's rule".
+    ///
+    /// `margin` is the closing delimiter's own indentation, ASCII whitespace
+    /// by construction, so its byte length and its column are the same number
+    /// and the comparison below is the clause's byte-for-byte one.
+    fn margin_fault(
+        &mut self,
+        column: usize,
+        margin: &str,
+        closing_line: usize,
+    ) -> Option<(&'static str, Span, String)> {
+        let starts = std::mem::take(&mut self.frame().line_starts);
+        let bytes = self.src.as_bytes();
+        for &start in &starts {
+            // The closing delimiter's own line is delimiter, not content.
+            if start >= closing_line {
+                break;
+            }
+            let mut run = start;
+            while run < bytes.len() && matches!(bytes[run], b' ' | b'\t') {
+                run += 1;
+            }
+            // A blank line has nothing to strip and nothing to complain about.
+            if run >= bytes.len() || matches!(bytes[run], b'\n' | b'\r') {
+                continue;
+            }
+            if run - start < column {
+                // "the short line's leading whitespace (its first byte when
+                // there is none)" — a zero-width span would point at nothing.
+                let end = if run == start { start + 1 } else { run };
+                return Some((
+                    diag::E_SHORT_MARGIN,
+                    Span::new(start, end),
+                    format!(
+                        "this line sits left of the margin: the closing `\"\"\"` is indented \
+                         {column} columns and that much whitespace is stripped from every \
+                         content line, so this line has {} to give",
+                        if run == start {
+                            "none".to_owned()
+                        } else {
+                            format!("only {}", run - start)
+                        }
+                    ),
+                ));
+            }
+            if &self.src[start..start + column] != margin {
+                return Some((
+                    diag::E_MIXED_MARGIN,
+                    Span::new(start, start + column),
+                    "this line's margin mixes tabs and spaces differently from the closing \
+                     `\"\"\"`'s; the margin is compared byte for byte, never by visual width, \
+                     so widths that agree on screen still do not match"
+                        .to_owned(),
+                ));
+            }
         }
+        None
     }
 
     /// Gives up on a string whose body is unterminated, without losing the
@@ -1772,16 +2009,14 @@ impl<'a> Lexer<'a> {
 }
 
 /// Strips `column` leading whitespace characters at every line start of one
-/// text chunk. Returns the stripped text, whether the chunk ends at a line
-/// start, and the span of the first line that had too little indentation.
-fn dedent_chunk(
-    text: &str,
-    column: usize,
-    mut at_line_start: bool,
-    span: Span,
-) -> (String, bool, Option<Span>) {
+/// text chunk. Returns the stripped text and whether the chunk ends at a line
+/// start.
+///
+/// It reports nothing: a line that cannot give `column` whitespace characters
+/// is D74's E0104 or E0105, judged over SOURCE offsets in
+/// [`Lexer::margin_fault`] where the spans the clause names actually live.
+fn dedent_chunk(text: &str, column: usize, mut at_line_start: bool) -> (String, bool) {
     let mut out = String::with_capacity(text.len());
-    let mut underrun = None;
     let mut chars = text.chars().peekable();
 
     while let Some(c) = chars.next() {
@@ -1804,9 +2039,6 @@ fn dedent_chunk(
                     _ => break,
                 }
             }
-            if taken < column && underrun.is_none() && current.is_some() {
-                underrun = Some(span);
-            }
             at_line_start = false;
             if let Some(ch) = current {
                 if ch == '\n' {
@@ -1821,7 +2053,7 @@ fn dedent_chunk(
         }
         out.push(c);
     }
-    (out, at_line_start, underrun)
+    (out, at_line_start)
 }
 
 /// The radix a `0x`/`0o`/`0b` prefix introduces (`[gram.lex.number]`).

@@ -274,18 +274,59 @@ pub const E_UNTERMINATED_STRING: &str = "E0102";
 /// indistinguishable in this machine's record. wolf-lang#225 measured it;
 /// the span was already identical on both sides, so only the number moved.
 pub const E_BAD_ESCAPE: &str = "E0101";
-/// A byte order mark (`[gram.lex.source]` rejects them). **Unpinned.**
-pub const E_BYTE_ORDER_MARK: &str = "E0105";
+/// A `"""` delimiter that shares its line with text — the OPENING one with
+/// text after it, the CLOSING one with text before it on the line.
+/// **Spec-pinned by D74** (`[gram.lex.str.multi]`): "a `"""` delimiter
+/// stands alone on its line … one rule and one code for both (E0103)".
+///
+/// One rule, one code, both delimiters: before D74 the spec spent E0104 on
+/// the closing side while the catalog spent it on a short margin, and this
+/// implementation spent neither — every multiline layout fault came out as
+/// this machine's own E0109 (wolf-interp#59). The fold is the ruling's.
+pub const E_DELIMITER_SHARES_LINE: &str = "E0103";
+/// A `"""` content line that sits LEFT of the margin — fewer leading
+/// whitespace bytes than the closing delimiter's own indentation, which is
+/// the width stripped from every content line. **Spec-pinned by D74**
+/// (`[gram.lex.str.multi]`): the catalog's meaning, which the spec sentence
+/// amended to at the ruling. Blank lines are exempt (they have nothing to
+/// strip), and so is the opening delimiter's own line, whose remainder has
+/// no column to measure.
+pub const E_SHORT_MARGIN: &str = "E0104";
+/// A `"""` content line whose margin holds the right NUMBER of whitespace
+/// bytes but not the right ones — tabs where the closing delimiter has
+/// spaces, or the reverse. **Spec-pinned by D74** (`[gram.lex.str.multi]`):
+/// "the comparison is byte-for-byte and never by visual width", so eight
+/// tabs against eight spaces is this code even though the widths agree.
+/// A margin that is SHORT is [`E_SHORT_MARGIN`]'s, tested first.
+pub const E_MIXED_MARGIN: &str = "E0105";
 /// A numeric literal with no digits after its base prefix, or a malformed
 /// exponent (`[gram.lex.number]`). **Unpinned.**
 pub const E_BAD_NUMBER: &str = "E0106";
 /// Source that is not UTF-8 (`[gram.lex.source]`). **Unpinned.**
 pub const E_NOT_UTF8: &str = "E0107";
+/// A stray character that begins no token but is not merely an unexpected
+/// byte: a byte order mark anywhere but at offset 0. **Spec-pinned by D74**
+/// (`[gram.lex.source]`): a BOM "at the very start of a file is stripped and
+/// is never a diagnostic … anywhere else it is a stray character (E0107)".
+///
+/// This shares E0107 with [`E_NOT_UTF8`] the way [`E_BAD_ESCAPE`] shares
+/// E0101 with [`E_UNEXPECTED_BYTE`]: one number, two sites, and the clause
+/// names the number for this one. This implementation's own
+/// `E_BYTE_ORDER_MARK` (an E0105 it invented, colliding with the margin
+/// code the catalog assigns) retires here.
+pub const E_STRAY_CHARACTER: &str = "E0107";
 /// The depth-32 interpolation rail. **Spec-pinned by `[gram.lex.str]`.**
 pub const E_INTERP_RAIL: &str = "E0108";
-/// A `"""` content line indented less than the closing delimiter's column
-/// (`[gram.lex.str.multi]`). **Unpinned.**
-pub const E_DEDENT_UNDERRUN: &str = "E0109";
+/// A raw or generalized literal that never closes — in practice a
+/// generalized one whose body reaches the end of its line, since
+/// `[gram.lex.str.gen]`'s `GEN_TEXT` excludes `NL` and `[gram.lex.str.raw]`'s
+/// `RAW_TEXT` does not. **Named by D74**: "E0109 stays 'unterminated raw or
+/// generalized string'", the family the ruling took the bare `{` OUT of.
+///
+/// This implementation spent E0109 on the multiline dedent underrun until
+/// D74 gave that rule E0104's number; the code lands on the meaning the
+/// ruling leaves it, rather than going quiet.
+pub const E_UNTERMINATED_RAW: &str = "E0109";
 /// A malformed `char` literal — empty, multi-scalar, unterminated before the
 /// end of its line, or a `\x`/`\u` escape naming a non-scalar (the surrogate
 /// gap `0xD800..=0xDFFF`, or above `0x10FFFF`). **Spec-pinned by
@@ -367,26 +408,27 @@ pub const UNPINNED_CODES: &[(&str, &str, &str)] = &[
     // to define and no longer this implementation's to choose. Its other
     // use — a byte that begins no token — rides the same code, which the
     // clause neither forbids nor mentions.
-    (
-        E_UNTERMINATED_STRING,
-        "gram.lex.str",
-        "unterminated string literal",
-    ),
+    // E_UNTERMINATED_STRING (E0102) sat here until D74 and s136's
+    // `grammar/str_bare_brace.lu`: the bare `{` in a plain string belongs to
+    // the unterminated family — "an interpolation still open when the line
+    // ends is E0102 — the string never closed" — so the corpus defines the
+    // number and this implementation no longer chooses it.
+    //
     // E_BAD_ESCAPE sat here as E0103, and a malformed `\u` beside it as
     // E0104, until wolf-lang#225: `[gram.lex.str.escape]` had already said
     // "any other `\` is **E0101** at the escape", so neither number was
     // ever this implementation's to choose — and both collided with the
-    // multiline-layout codes the catalog assigns. Both sites are E0101 now,
-    // pinned, and E0103/E0104 are unspoken by this implementation until it
-    // implements the layout rules they name (wolf-interp#59).
-    (E_BYTE_ORDER_MARK, "gram.lex.source", "byte order mark"),
+    // multiline-layout codes the catalog assigns. Both sites are E0101 now.
+    //
+    // E_BYTE_ORDER_MARK — an E0105 this implementation invented for a
+    // rejected BOM — retires at D74: a BOM at offset 0 is stripped and is
+    // never a diagnostic, elsewhere it is E0107, and E0105 belongs to the
+    // mixed-margin rule. E_DEDENT_UNDERRUN — an E0109 that stood in for the
+    // whole multiline layout tier (wolf-interp#59) — retires beside it now
+    // that E0103/E0104/E0105 are implemented and corpus-pinned; E0109 is
+    // unspoken by this implementation.
     (E_BAD_NUMBER, "gram.lex.number", "malformed numeric literal"),
     (E_NOT_UTF8, "gram.lex.source", "source is not UTF-8"),
-    (
-        E_DEDENT_UNDERRUN,
-        "gram.lex.str.multi",
-        "`\"\"\"` line under the dedent column",
-    ),
     (
         E_UNTERMINATED_INTERP,
         "gram.lex.str",

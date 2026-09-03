@@ -181,19 +181,39 @@ fn a_shebang_is_only_a_shebang_at_byte_zero() {
 
 #[test]
 fn a_byte_order_mark_pushes_the_shebang_off_byte_zero() {
-    // The BOM is rejected on its own account (`[gram.lex.source]`), and it
-    // also means the `#!` now starts at offset 3 — so it is NOT a shebang,
-    // and the stray `#` is a second diagnostic rather than a swallowed line.
+    // D74: the BOM itself is STRIPPED at offset 0 and is never a diagnostic.
+    // It still means the `#!` now starts at offset 3 — so it is NOT a
+    // shebang (`[gram.lex.shebang]`'s domain is byte offset 0 and nothing
+    // else), and the stray `#` is the only diagnostic rather than a
+    // swallowed line.
     let lexed = lex::lex("\u{feff}#!/usr/bin/env wolf\nfn main() -> !int { 0 }\n");
     let codes: Vec<&str> = lexed.errors.iter().map(|d| d.code).collect();
     assert_eq!(
         codes.first().copied(),
-        Some(wolf_interp::diag::E_BYTE_ORDER_MARK)
-    );
-    assert!(
-        codes.contains(&wolf_interp::diag::E_UNEXPECTED_BYTE),
+        Some(wolf_interp::diag::E_UNEXPECTED_BYTE),
         "the `#!` after a BOM is not at byte zero, so it stays a stray byte: {codes:?}"
     );
+}
+
+#[test]
+fn a_byte_order_mark_is_stripped_at_offset_zero_and_stray_anywhere_else() {
+    // `[gram.lex.source]` (D74), both halves in one test. At the very start
+    // it is tolerated — the corpus runs `grammar/bom_at_start.lu` on every
+    // lane — and anywhere else it is E0107, a stray character, spanning the
+    // three bytes it occupies.
+    let clean = lex::lex("\u{feff}fn main() -> !int { 0 }\n");
+    assert!(
+        clean.first_error().is_none(),
+        "a leading BOM is stripped, never a diagnostic: {:?}",
+        clean.errors
+    );
+
+    let stray = lex::lex("fn main() -> !int {\n    let x = \u{feff}1\n    0\n}\n");
+    let first = stray
+        .first_error()
+        .expect("a mid-file BOM is a stray character");
+    assert_eq!(first.code, wolf_interp::diag::E_STRAY_CHARACTER);
+    assert_eq!(first.span, wolf_interp::diag::Span::new(32, 35));
 }
 
 #[test]
