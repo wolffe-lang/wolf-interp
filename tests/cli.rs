@@ -187,7 +187,15 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // two-file `conc/proc_cross_module/` module — one entry, one member, so
     // the members count moves for the first time in four pins.
     // Moved with the pin, per the export.rs rule.
-    assert!(stdout.contains("486 file(s)"), "{stdout}");
+    // 486 -> 503 at the 4230b00 pin (is36, wolf-lang trunk after the s136
+    // merge): the twelve s136 adds — D74's five layout witnesses plus
+    // `grammar/bom_at_start.lu`, `typecheck/byte_{shapes,casts,narrow_fail,
+    // elem_arith_fail}.lu`, `strings/bytes_roundtrip.lu`,
+    // `memory/byte_{list,producers}_ledger.lu`,
+    // `memory/consumed_walk_charges_nothing.lu`, and
+    // `net/{echo_bytes,peer_close_after_serve,unix_echo}.lu`. Moved with the
+    // pin, per the export.rs rule.
+    assert!(stdout.contains("503 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -196,7 +204,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 486);
+    assert_eq!(value["total"], 503);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

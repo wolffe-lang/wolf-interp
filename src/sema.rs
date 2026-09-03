@@ -1560,13 +1560,15 @@ fn tier_check(program: &Program) -> Option<Diag> {
 /// one constant is the point — a name known to one and unknown to the other
 /// would make a cast both classified and unresolvable.
 ///
-/// The language has no `char`, and no `bytes`: `[mem.str.cmp]`'s note that the
-/// string library is "in-library with **no bytes accessor**" is the closest the
-/// spec comes, and the counterparty answers E0301 for `as bytes` — the two
-/// agree that the name is not a type.
+/// The language has no `bytes`: `[mem.str.cmp]`'s note that the string library
+/// is "in-library with **no bytes accessor**" is the closest the spec comes,
+/// and the counterparty answers E0301 for `as bytes` — the two agree that the
+/// name is not a type. `byte` (singular) IS one since D72/s135: an 8-bit
+/// unsigned scalar resolved in type position like `int` and `char`, and not a
+/// keyword — `[gram.inv.kw]`'s closed set stays at 50.
 const BUILTIN_SCALAR_TYPES: &[&str] = &[
-    "bool", "char", "f32", "f64", "i128", "i16", "i32", "i64", "i8", "int", "str", "u128", "u16",
-    "u32", "u64", "u8", "uint",
+    "bool", "byte", "char", "f32", "f64", "i128", "i16", "i32", "i64", "i8", "int", "str", "u128",
+    "u16", "u32", "u64", "u8", "uint",
 ];
 
 /// The class an *annotated* type names, for parameters (`greet(name: str)`).

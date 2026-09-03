@@ -392,6 +392,28 @@ pub enum Value {
     /// literal adoption — the only numeric bridges are `[type.char.cast]`'s
     /// two casts.
     Char(char),
+    /// A `byte` — one octet (`[type.byte]`, D72/s135). Carried as Rust's `u8`,
+    /// whose domain is *exactly* the clause's `0..=255`, so a `Value::Byte`
+    /// outside the octet range is unrepresentable by construction.
+    ///
+    /// NOT an integer type — the posture is `char`'s, so there is one rule for
+    /// width-bearing scalars rather than two: no numeric-literal adoption
+    /// (`let b: byte = 65` is refused; the spelling is `65 as byte`), no
+    /// closed arithmetic (`[type.byte.op]` widens every operand to `int` and
+    /// yields `int`, so a `byte` never holds the result of `+` and there is no
+    /// compound assignment), and no indexing with one. Its two numeric bridges
+    /// are `[type.byte.cast]`'s: `byte as int` widens by zero-extension,
+    /// `int as byte` truncates to the low eight bits and never traps.
+    ///
+    /// Comparisons between two `byte`s are octet compares — unsigned, which is
+    /// what makes `200 as byte > 100 as byte` true where a signed `i8` would
+    /// disagree — and `{b}` prints the NUMBER, never a character
+    /// (`[type.byte.interp]`).
+    ///
+    /// One byte of ledger per element: [`super::region::ledger`] strides a
+    /// `List[byte]` by 1, which is the property wolf-lang#203 measured the
+    /// absence of.
+    Byte(u8),
     Str(String),
     Tuple(Vec<Slot>),
     Struct {
@@ -559,6 +581,7 @@ impl Value {
             Value::Int(_, ty) => ty.name(),
             Value::Float(_) => "f64".to_owned(),
             Value::Char(_) => "char".to_owned(),
+            Value::Byte(_) => "byte".to_owned(),
             Value::Str(_) => "str".to_owned(),
             Value::Tuple(items) => format!("a {}-tuple", items.len()),
             Value::Struct { name, .. } => name.clone(),
@@ -620,6 +643,10 @@ impl fmt::Display for Value {
             // `{c}` prints the CHARACTER, never the code-point number
             // ([type.char.interp]); the number is spelled `{c as int}`.
             Value::Char(c) => write!(f, "{c}"),
+            // `{b}` prints the NUMBER — the decimal octet value, `0` through
+            // `255`, never a character ([type.byte.interp]). A byte is a
+            // quantity; the character it might encode is `str`'s business.
+            Value::Byte(b) => write!(f, "{b}"),
             Value::Str(s) => f.write_str(s),
             Value::Tuple(items) => {
                 f.write_str("(")?;

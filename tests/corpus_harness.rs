@@ -597,14 +597,21 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             MULTI-FILE addition in four pins, so `members` moves too.
     //             The spec grows nine productions and the registry holds:
     //             411, nothing gained, nothing dropped.)
+    // (486 -> 503 at 4230b00 (is36, the s136 merge): twelve byte and
+    //             unix-socket witnesses, D74's five layout counter-examples
+    //             and `grammar/bom_at_start.lu` — the first corpus file
+    //             whose FIRST THREE BYTES are a byte order mark, which is
+    //             why `directive::without_bom` exists. `members` holds at
+    //             34; the registry gains six anchors (`type.byte` ×4,
+    //             `os.net` ×2) and drops none, key sets diffed both ways.)
     let report = report();
     assert_eq!(
         report.total(),
-        486,
+        503,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 452);
+    assert_eq!(report.entries(), 469);
     assert_eq!(report.members(), 34);
 }
 

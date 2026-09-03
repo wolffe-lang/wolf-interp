@@ -95,6 +95,12 @@ pub mod ledger {
     pub const GRAIN: u64 = 16;
     /// One value slot: what a struct field or a container element costs.
     pub const SLOT_BYTES: u64 = 16;
+    /// One `byte` element: what `[type.byte]`'s "`List[byte]` **strides by
+    /// 1**" costs in this model. It is the whole point of the type — a byte
+    /// buffer charges one ledger byte per payload byte instead of
+    /// [`SLOT_BYTES`] of them, which is the 8×/16× wolf-lang#203 measured and
+    /// D72 retired.
+    pub const BYTE_SLOT_BYTES: u64 = 1;
     /// A heap allocation's own header — the thing that exists even when the
     /// allocation holds nothing.
     pub const HEADER_BYTES: u64 = 32;
@@ -131,6 +137,21 @@ pub mod ledger {
         alloc_bytes(slot_capacity(len))
     }
 
+    /// A byte buffer minted at EXACT capacity — a producer's answer, never a
+    /// push history.
+    ///
+    /// `[mem.region.account.1]`'s growth clause charges every abandoned buffer,
+    /// so a list PUSHED to 64 KiB pays the doubling history on top of the
+    /// payload. A builtin that already knows the length has no history to pay:
+    /// `fs_read_bytes`, `s.bytes()` and the net byte reader mint the buffer
+    /// once, at the size the answer needs, which is what makes
+    /// `memory/byte_producers_ledger.lu`'s `read_tight` relation hold on every
+    /// tier ("at most the payload plus a header").
+    #[must_use]
+    pub fn byte_buffer_bytes(len: u64) -> u64 {
+        round_to_grain(HEADER_BYTES.saturating_add(BYTE_SLOT_BYTES.saturating_mul(len)))
+    }
+
     /// A fresh `str` of `len` UTF-8 bytes.
     #[must_use]
     pub fn str_bytes(len: u64) -> u64 {
@@ -143,9 +164,19 @@ pub mod ledger {
     /// construction, and "stable between allocations" falls out of the zero.
     #[must_use]
     pub fn growth_bytes(old_len: u64, new_len: u64) -> u64 {
+        growth_bytes_strided(old_len, new_len, SLOT_BYTES)
+    }
+
+    /// [`growth_bytes`] at a stated element width — [`BYTE_SLOT_BYTES`] for a
+    /// `List[byte]`, [`SLOT_BYTES`] for everything else. The growth POLICY is
+    /// unchanged (powers of two from four up, the abandoned buffer never
+    /// discharged); only the stride moves, which is exactly what `[type.byte]`
+    /// says changes.
+    #[must_use]
+    pub fn growth_bytes_strided(old_len: u64, new_len: u64, stride: u64) -> u64 {
         let grown = slot_capacity(new_len);
         if grown > slot_capacity(old_len) {
-            round_to_grain(SLOT_BYTES.saturating_mul(grown))
+            round_to_grain(stride.saturating_mul(grown))
         } else {
             0
         }
@@ -1212,6 +1243,7 @@ pub fn references(value: &Value, out: &mut Vec<Ref>) {
         | Value::Int(..)
         | Value::Float(_)
         | Value::Char(_)
+        | Value::Byte(_)
         | Value::Str(_)
         | Value::Range { .. }
         | Value::Fn(_)

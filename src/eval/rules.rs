@@ -88,6 +88,10 @@ pub enum Rule {
     /// `char as int` is total; `int as char` traps `overflow` on a non-scalar
     /// — negative, above `0x10FFFF`, or the surrogate gap (s121, D58).
     CharCast,
+    /// `byte as int` widens by zero-extension; `int as byte` truncates to the
+    /// low eight bits and never traps — the only narrowing `as` in the
+    /// language that does not (s135, D72).
+    ByteCast,
 
     // -- §3 Tier 1: regions (is03) ----------------------------------------
     /// `region name { }` sugar and `region(…)` values both create a region.
@@ -430,6 +434,10 @@ impl Rule {
             Rule::CharCast => (
                 "type.char.cast",
                 "`char as int` is total; `int as char` traps `overflow` on a non-scalar (negative, above 0x10FFFF, or the surrogate gap)",
+            ),
+            Rule::ByteCast => (
+                "type.byte.cast",
+                "`byte as int` widens by zero-extension; `int as byte` truncates to the low eight bits and never traps",
             ),
             Rule::RegionCreate => (
                 "mem.region.create.1",
@@ -860,7 +868,7 @@ impl Rule {
     }
 
     /// Every rule, in declaration order. The registry.
-    pub const ALL: [Rule; 116] = [
+    pub const ALL: [Rule; 117] = [
         Rule::ValueSemantics,
         Rule::PlacePath,
         Rule::PathDisjoint,
@@ -883,6 +891,7 @@ impl Rule {
         Rule::Bounds,
         Rule::LiteralDefault,
         Rule::CharCast,
+        Rule::ByteCast,
         Rule::RegionCreate,
         Rule::RegionAffine,
         Rule::RegionAmbient,

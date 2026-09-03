@@ -388,37 +388,36 @@ impl Machine {
             "net_read_bytes" => {
                 // The byte tier's read (s106; wolf-interp#52 / wolf-std
                 // F-0102): one receive of up to `n` RAW bytes as
-                // `List[int]`. The str call's own shape minus the `utf8`
-                // row — bytes are data and validate nothing.
+                // `List[byte]` (s136, wolf-lang#231 — `List[int]` from s115
+                // to s135). The str call's own shape minus the `utf8` row —
+                // bytes are data and validate nothing — and the read's result
+                // is the write's argument BY TYPE, so an echo converts
+                // nothing (`corpus/net/echo_bytes.lu`).
                 let fd = int_arg(args, 0, name)?;
                 let n = int_arg(args, 1, name)?;
                 if n <= 0 {
                     // Zero bytes wanted: the empty list, and the socket is
                     // never asked (a 0-length receive would forge `closed`).
-                    return Ok(Value::list(
-                        Vec::new(),
-                        Some(IntTy::INT),
-                        Some(self.current_region()),
-                    ));
+                    return Ok(Value::list(Vec::new(), None, Some(self.current_region())));
                 }
                 let n = usize::try_from(n).unwrap_or(usize::MAX).min(1 << 20);
                 let answer = self.net_park(fd, span, |table| table.poll_read_bytes(fd, n))?;
                 let answer = match answer {
                     Ok(bytes) => {
-                        self.allocate(
+                        // Minted at EXACT capacity: a reader knows its length
+                        // before it mints, so it pays no growth history —
+                        // `[type.byte]`'s 1-byte stride and nothing else.
+                        let home = self.allocate(
                             span,
                             "net_read_bytes",
-                            super::region::ledger::container_bytes(bytes.len() as u64),
+                            super::region::ledger::byte_buffer_bytes(bytes.len() as u64),
                         )?;
-                        let home = self.current_region();
                         Ok(Value::list(
                             bytes
                                 .into_iter()
-                                .map(|b| {
-                                    super::value::Slot::live(Value::Int(i128::from(b), IntTy::INT))
-                                })
+                                .map(|b| super::value::Slot::live(Value::Byte(b)))
                                 .collect(),
-                            Some(IntTy::INT),
+                            None,
                             Some(home),
                         ))
                     }
@@ -428,20 +427,24 @@ impl Machine {
             }
             "net_write_bytes" => {
                 // The byte tier's write (s106; wolf-interp#52 / wolf-std
-                // F-0102): the whole `List[int]` is written or the call
-                // raises. The pre-write check is WHOLE: an element outside
-                // 0..=255 is the `invalid` row and NOTHING reaches the wire
-                // — no mask, no truncation, no partial send (the fs tier's
-                // own vocabulary, adopted verbatim by wolf-std's facade).
+                // F-0102): the whole `List[byte]` is written or the call
+                // raises (s136, wolf-lang#231 — `List[int]` before). The
+                // `invalid` row survives the retype without a caller who can
+                // reach it from typed source: an element outside `0..=255` is
+                // now unrepresentable, since a `byte` IS the octet, so the
+                // pre-write check answers for the untyped shapes machinery can
+                // still build. When it does fire it is still WHOLE — nothing
+                // reaches the wire, no mask, no truncation, no partial send.
                 let fd = int_arg(args, 0, name)?;
                 let Some(slots) = args.get(1).and_then(Value::seq_slots) else {
                     return Err(Signal::Unsupported(format!(
-                        "`{name}` takes an fd and a `List[int]` payload"
+                        "`{name}` takes an fd and a `List[byte]` payload"
                     )));
                 };
                 let mut bytes = Vec::with_capacity(slots.len());
                 for slot in slots {
                     match &slot.value {
+                        Value::Byte(b) => bytes.push(*b),
                         Value::Int(v, _) if (0..=255).contains(v) => {
                             bytes.push(u8::try_from(*v).expect("checked 0..=255"));
                         }
@@ -450,7 +453,7 @@ impl Machine {
                         }
                         other => {
                             return Err(Signal::Unsupported(format!(
-                                "`{name}`'s payload elements must be integers, got {}",
+                                "`{name}`'s payload elements must be bytes, got {}",
                                 other.kind()
                             )));
                         }

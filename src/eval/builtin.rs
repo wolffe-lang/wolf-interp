@@ -524,29 +524,41 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // mis-encoded data is an outcome a caller handles with `else`.
         "str_from_utf8" => {
             let Some(Value::List(items, _, _)) = args.first() else {
-                return unsupported("`str_from_utf8` takes a `List[int]` of bytes".to_owned());
+                return unsupported("`str_from_utf8` takes a `List[byte]`".to_owned());
             };
             let mut bytes: Vec<u8> = Vec::with_capacity(items.len());
             for slot in items.iter() {
-                let Value::Int(n, _) = slot.value else {
+                match slot.value {
+                    // s136 (#231): the argument is a `List[byte]` now, so the
+                    // element IS an octet and the range check below has
+                    // nothing left to reject — the type carries the domain.
+                    Value::Byte(b) => bytes.push(b),
+                    // The `List[int]` shape the signature carried from s81 to
+                    // s135. A typed program can no longer produce it, but a
+                    // list built by machinery still can, and an element
+                    // outside `0..=255` is refused BEFORE the decoder sees the
+                    // sequence — the first of the two refusals, whose order is
+                    // observable because it is not UTF-8's.
+                    Value::Int(n, _) => match u8::try_from(n) {
+                        Ok(byte) => bytes.push(byte),
+                        Err(_) => {
+                            machine.note(
+                                Rule::ErrUnion,
+                                span,
+                                "`str_from_utf8` yields the `utf8` row",
+                            );
+                            return Ok(error_value("str_from_utf8", "utf8"));
+                        }
+                    },
                     // Unreachable from typed source — sema types the argument
-                    // `List[int]` — so this is the counterparty's `refuse`
+                    // `List[byte]` — so this is the counterparty's `refuse`
                     // ("unmodelled"), NOT the `utf8` row. Conflating the two
                     // would answer a row where the compiler answers nothing.
-                    return unsupported(format!(
-                        "`str_from_utf8` was given a list holding {}, not bytes",
-                        slot.value.kind()
-                    ));
-                };
-                match u8::try_from(n) {
-                    Ok(byte) => bytes.push(byte),
-                    Err(_) => {
-                        machine.note(
-                            Rule::ErrUnion,
-                            span,
-                            "`str_from_utf8` yields the `utf8` row",
-                        );
-                        return Ok(error_value("str_from_utf8", "utf8"));
+                    _ => {
+                        return unsupported(format!(
+                            "`str_from_utf8` was given a list holding {}, not bytes",
+                            slot.value.kind()
+                        ));
                     }
                 }
             }
@@ -823,18 +835,16 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // The s39 net family (is18): one dispatch arm, the semantics in
         // `eval::net`. No sockets on wasm — the tier declines there.
         #[cfg(target_family = "wasm")]
-        "net_listen" | "net_port" | "net_accept" | "net_connect" | "net_read" | "net_write"
-        | "net_read_bytes" | "net_write_bytes" | "net_close" | "net_deadline" => {
-            unsupported(format!(
-                "`{name}` is the s39 net tier; this wasm build has no sockets to open, so the \
+        "net_listen" | "net_listen_unix" | "net_port" | "net_accept" | "net_connect"
+        | "net_connect_unix" | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes"
+        | "net_close" | "net_deadline" => unsupported(format!(
+            "`{name}` is the s39 net tier; this wasm build has no sockets to open, so the \
                  tier is declined rather than mocked"
-            ))
-        }
+        )),
         #[cfg(not(target_family = "wasm"))]
-        "net_listen" | "net_port" | "net_accept" | "net_connect" | "net_read" | "net_write"
-        | "net_read_bytes" | "net_write_bytes" | "net_close" | "net_deadline" => {
-            machine.net_call(name, &args, span)
-        }
+        "net_listen" | "net_listen_unix" | "net_port" | "net_accept" | "net_connect"
+        | "net_connect_unix" | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes"
+        | "net_close" | "net_deadline" => machine.net_call(name, &args, span),
         other => unsupported(format!(
             "`{other}` is in the ambient std stub but has no pinned semantics; the real std \
              surface is not specified yet, and guessing it would put invented behavior into a \
@@ -996,7 +1006,22 @@ pub fn method(
             // (`[mem.region.create.3]`'s attribution). A push that fits the
             // modelled capacity charges nothing, which is what makes two
             // reads with no intervening growth agree.
-            let grown = ledger::growth_bytes(was, items.len() as u64);
+            // `[type.byte]`: a `List[byte]` strides by 1, so the growth
+            // realloc charges one ledger byte per element rather than a full
+            // value slot. The stride is read off the ELEMENT rather than off a
+            // declared element type, because a wolf list is homogeneous and
+            // the value in hand is the one thing this machine always has —
+            // `List[byte]()` carries no elements to be read from, and an empty
+            // container charges its header either way.
+            let stride = if items
+                .last()
+                .is_some_and(|s| matches!(s.value, Value::Byte(_)))
+            {
+                ledger::BYTE_SLOT_BYTES
+            } else {
+                ledger::SLOT_BYTES
+            };
+            let grown = ledger::growth_bytes_strided(was, items.len() as u64, stride);
             if let Some(home) = home {
                 let charged = machine.store().charge_growth(home, grown);
                 if let Err(breach) = charged {
@@ -1104,15 +1129,32 @@ pub fn method(
             ))
         }
         (Value::Str(s), "bytes") => {
-            // The byte view, materialized at v0 (D25 licenses byte indexing
-            // on `bytes`; `b[i]` rides List indexing).
-            Ok(Value::list(
-                s.bytes()
-                    .map(|b| Slot::live(Value::Int(i128::from(b), IntTy::INT)))
-                    .collect(),
-                Some(IntTy::INT),
-                Some(machine.current_region()),
-            ))
+            // `[mem.str.chars]` (s136, wolf-lang#231): the byte tier has its
+            // element type — `bytes()` returns `List[byte]`, not `List[int]`.
+            // A `byte` IS the octet, so nothing converts on the way out and
+            // `str_from_utf8` takes the answer straight back.
+            //
+            // The MATERIALIZING position charges (`[mem.str.view]`: a `let`
+            // binding and a return materialize), at exact capacity, because
+            // the length is known before the buffer is minted and there is no
+            // push history to pay. `bytes()` in a CONSUMED position — the
+            // walk, the index, the length — never reaches here: `eval` takes
+            // it as the receiver's own view and charges nothing (#232).
+            let bytes: Vec<Slot> = s.bytes().map(|b| Slot::live(Value::Byte(b))).collect();
+            if machine.is_consumed_view(span) {
+                // The view: the receiver's own `{ptr, len}`, charged to
+                // nobody. The list this machine hands back is a
+                // representation detail — a tree-walk has no pointers — and
+                // the LEDGER is where the two positions differ, which is the
+                // only place a wolf program can tell them apart.
+                return Ok(Value::list(bytes, None, None));
+            }
+            let home = machine.allocate(
+                span,
+                "str.bytes",
+                ledger::byte_buffer_bytes(bytes.len() as u64),
+            )?;
+            Ok(Value::list(bytes, None, Some(home)))
         }
         (Value::Str(s), "repeat") => {
             let Some(Value::Int(n, _)) = args.first() else {

@@ -1142,6 +1142,39 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // needed nothing here.
     ("conc/proc_cross_module/main.lu", "exit(0)"),
     ("strings/multiline_escapes.lu", "exit(0)"),
+    // The 4230b00 pin (is36, wolf-lang trunk after the s136 merge): EIGHT
+    // more reach `run`, and nothing left — the check the assertion below
+    // actually cares about.
+    //
+    // Six are the `byte` scalar arriving (D72, s135) and the producers that
+    // speak it (wolf-lang#231). `typecheck/byte_shapes.lu` and
+    // `byte_casts.lu` are the type's own shapes and its two casts;
+    // `strings/bytes_roundtrip.lu` is the producer/consumer agreement —
+    // `str_from_utf8(s.bytes())` with nothing between them;
+    // `memory/byte_list_ledger.lu` is wolf-lang#203's evidence as RELATIONS
+    // (a `List[byte]` strides by 1, so the 8×/16× width multiplier is gone);
+    // `memory/consumed_walk_charges_nothing.lu` is #232's phantom 16×, the
+    // view that allocates nothing until something binds it; and
+    // `net/echo_bytes.lu` is the byte pair's read handed straight back to
+    // its write, which converts nothing because the types agree.
+    //
+    // `grammar/bom_at_start.lu` runs because D74 says a leading byte order
+    // mark is stripped rather than refused — and it is the first corpus file
+    // whose first three bytes are one, which is how `directive::without_bom`
+    // came to exist.
+    //
+    // `net/peer_close_after_serve.lu` (wolf-lang#224, lobo ws14) needed
+    // nothing here: this machine's `net_deadline` is a per-socket budget the
+    // parking loop honors, never a `setsockopt` pair, so the macOS EINVAL
+    // that killed lobo's client on a reset socket has no site to happen at.
+    ("grammar/bom_at_start.lu", "exit(0)"),
+    ("memory/byte_list_ledger.lu", "exit(0)"),
+    ("memory/consumed_walk_charges_nothing.lu", "exit(0)"),
+    ("net/echo_bytes.lu", "exit(0)"),
+    ("net/peer_close_after_serve.lu", "exit(0)"),
+    ("strings/bytes_roundtrip.lu", "exit(0)"),
+    ("typecheck/byte_casts.lu", "exit(0)"),
+    ("typecheck/byte_shapes.lu", "exit(0)"),
 ];
 
 #[test]

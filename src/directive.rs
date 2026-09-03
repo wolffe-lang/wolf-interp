@@ -195,7 +195,7 @@ pub fn parse_header(source: &str) -> Result<Directives, DirectiveError> {
     let mut member: Option<Seen<bool>> = None;
     let mut prose = Vec::new();
 
-    for (index, raw) in source.lines().enumerate() {
+    for (index, raw) in without_bom(source).lines().enumerate() {
         let lineno = index + 1;
         // `[gram.lex.shebang]`: a `#!` line at byte offset 0 is trivia to the
         // language, so it is trivia to the header too — an executable script
@@ -357,8 +357,24 @@ fn reject_duplicate<T>(
 
 /// The leading `//!` block's lines, shebang skipped — the walk
 /// [`parse_header`] performs, shared with the two lenient readers below.
+/// The source with a leading byte order mark stripped.
+///
+/// `[gram.lex.source]` (D74): "A byte order mark at the very start of a file
+/// is stripped and is never a diagnostic." That governs how the FILE is read,
+/// and the directive block is a run of `//!` comments in that same file — so a
+/// header reader that does not strip it sees `\u{feff}//! check: …` as prose
+/// and the file loses its whole header. The consequence is not cosmetic:
+/// a corpus file with no `check:`/`phase:` pair is not a standalone entry
+/// (`[conf.directive.member]`, D59), so it joins its directory's module and
+/// its `main` collides with every sibling's — which is exactly what
+/// `grammar/bom_at_start.lu` did to all 31 of its neighbours the moment the
+/// pin brought it (E0302, `[mod.dup]`).
+fn without_bom(source: &str) -> &str {
+    source.strip_prefix('\u{feff}').unwrap_or(source)
+}
+
 fn header_lines(source: &str) -> impl Iterator<Item = &str> {
-    source
+    without_bom(source)
         .lines()
         .enumerate()
         .skip_while(|(index, raw)| *index == 0 && raw.starts_with("#!") && !raw.starts_with("#!["))

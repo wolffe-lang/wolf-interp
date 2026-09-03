@@ -154,7 +154,12 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // running half. gram.lex.str.escape gains two more citers and was already
 // covered at the previous pin. Raised in the bump commit per the test's own
 // instruction.
-const RATCHET_FLOOR: usize = 176;
+// 176 -> 182 at 4230b00 (is36, the s136 merge): `type.byte` and its three
+// children, cited by the byte witnesses D72 landed, plus `os.net` and
+// `os.net.unix` — the net tier's FIRST clause anchors, since the TCP family
+// was the prelude's documentation until #227 wrote the second address family
+// down. Raised in the bump commit per the test's own instruction.
+const RATCHET_FLOOR: usize = 182;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -234,7 +239,11 @@ const RATCHET_FLOOR: usize = 176;
 // 407 → 411 at 2bfbe5e (is33, the s132 merge): [mem.region.cap] and its
 // three children land with D68's ruling. Key sets diffed BOTH ways — four
 // added, NOTHING dropped (wolf-lang#177's lesson, still standing).
-const ANCHORS_TOTAL: usize = 411;
+// 411 -> 417 at 4230b00 (is36, the s136 merge): `[type.byte]` with
+// `.cast`/`.op`/`.interp` (D72) and `[os.net]` with `[os.net.unix]` (#227).
+// Key sets diffed BOTH ways — six added, NOTHING dropped (wolf-lang#177's
+// lesson, still standing).
+const ANCHORS_TOTAL: usize = 417;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -413,9 +422,9 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // two counts move by 4 and by 3; the suite is unmoved (is35's new suite
     // programs are inline fixtures, which the extractor does not harvest).
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "3befc3e85ca1f2c602f603f6f610d518c44530fd");
-    assert_eq!(summary.programs, 524);
-    assert_eq!(summary.records, 490);
+    assert_eq!(summary.pin, "4230b008e39d6541f31ac9858057e4345a337271");
+    assert_eq!(summary.programs, 541);
+    assert_eq!(summary.records, 507);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

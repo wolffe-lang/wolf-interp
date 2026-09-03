@@ -511,6 +511,21 @@ pub struct Machine {
     /// Retags produced by the current call's arguments, waiting for
     /// [`Machine::call_fn`] to bind them to the callee's parameter places.
     pending_retags: Vec<Option<PendingRetag>>,
+    /// The spans of `.bytes()` calls currently being evaluated in a CONSUMED
+    /// position (`[mem.str.view]`, wolf-lang#232).
+    ///
+    /// `s.bytes()` "yields a view when it is consumed on the spot — iterated,
+    /// indexed, asked for `len`/`count`/`is_empty`/`get`/`first`/`last` — and
+    /// materializes a `List[byte]` in every other position". A view is the
+    /// receiver's own `{ptr, len}` and allocates nothing; the materializing
+    /// position charges the buffer. Only the ledger can tell the two apart in
+    /// this machine — the value is the same list either way — and only the
+    /// PARENT expression knows which position its child sits in, so the parent
+    /// records the child's span here and the `bytes` arm asks.
+    ///
+    /// A span identifies one syntactic site, so a nested `.bytes()` inside the
+    /// receiver of a consumed one keeps its own answer.
+    consumed_views: Vec<Span>,
     /// The next [`Frame::serial`] this task will mint (#36).
     next_frame_serial: u64,
     /// The places some live closure has captured, `(frame serial, name)` —
@@ -642,6 +657,7 @@ impl Machine {
             unsafe_depth: 0,
             when_held: Vec::new(),
             pending_retags: Vec::new(),
+            consumed_views: Vec::new(),
             next_frame_serial: 0,
             captured_places: BTreeSet::new(),
             capture_gens: BTreeMap::new(),
@@ -3437,6 +3453,39 @@ impl Machine {
             )
             .map(|_: Value| ());
         }
+        // D72's negative ([type.byte]), which is D58's for `char` word for
+        // word: `byte` is not an integer type and adopts NO numeric literal in
+        // any position. `let b: byte = 65` is not a narrowing — it is a
+        // literal that has no byte to become — and the counterparty answers
+        // E0401 whose note names the fix. A tree-walk has no static code for
+        // it, so the honest refusal is `unsupported` (the conservatism class),
+        // never a silent adoption; the spelling is `65 as byte`, which keeps
+        // the low eight bits.
+        let byte_expected = binding
+            .ty
+            .as_ref()
+            .and_then(crate::sema::head_name)
+            .is_some_and(|name| name == "byte");
+        if byte_expected && matches!(&value, Value::Int(..) | Value::Float(_)) {
+            return unsupported(
+                "`byte` adopts no numeric literal (D72, `[type.byte]`) — spell the \
+                 conversion `n as byte`, which keeps the low eight bits",
+            )
+            .map(|_: Value| ());
+        }
+        if !byte_expected
+            && binding
+                .ty
+                .as_ref()
+                .is_some_and(|ty| int_of_type(ty).is_some() || float_ty_name(ty).is_some())
+            && matches!(&value, Value::Byte(_))
+        {
+            return unsupported(
+                "a `byte` value satisfies no numeric expectation (D72, `[type.byte]`) — \
+                 the total direction is spelled `b as int`",
+            )
+            .map(|_: Value| ());
+        }
         let was_literal = matches!(&value, Value::Int(_, ty) if ty.literal);
         let value = coerce(value, binding.ty.as_ref());
         // A literal meets its context HERE (issue #14): the annotation types
@@ -4338,6 +4387,11 @@ impl Machine {
                 Some(crate::fmtspec::FmtValue::Str(&char_text))
             }
             Value::Bool(b) => Some(crate::fmtspec::FmtValue::Bool(*b)),
+            // `[type.byte.interp]`: a spec on a byte hole takes the INTEGER
+            // spec surface — the same surface `int` has, because the hole
+            // widens the byte to `int` before formatting. `{b:x}` is `ff` at
+            // most, and `{b}` with no spec prints the decimal octet.
+            Value::Byte(b) => Some(crate::fmtspec::FmtValue::Int(i128::from(*b))),
             Value::Int(v, _) => Some(crate::fmtspec::FmtValue::Int(*v)),
             Value::Float(v) => Some(crate::fmtspec::FmtValue::F64(*v)),
             _ => None,
@@ -4713,6 +4767,10 @@ impl Machine {
                 }
                 Value::Int(v, ty) => self.checked(ty, v.checked_neg(), span, "negation"),
                 Value::Float(v) => Ok(Value::Float(-v)),
+                // `[type.byte.op]` names `-b` among the operators that widen:
+                // the operand is read through `[type.byte.cast]`'s widening
+                // and the negation is `int`'s, so `-(200 as byte)` is `-200`.
+                Value::Byte(b) => Ok(Value::Int(-i128::from(b), IntTy::INT)),
                 other => unsupported(format!("`-` needs a number, got {}", other.kind())),
             },
             UnOp::Borrow | UnOp::BorrowMut => {
@@ -4821,6 +4879,27 @@ impl Machine {
             Add, BitAnd, BitOr, BitXor, Cmp, Div, Eq, Ge, Gt, Le, Lt, Mul, Ne, Rem, Shl, Shr, Sub,
         };
 
+        // `[type.byte.op]` (D72, s135): **every arithmetic and bitwise
+        // operator widens a `byte` operand to `int` first, and the result is
+        // `int`.** `b + 1`, `b * 2`, `b & 0x0F`, `b >> 4` and `b1 + b2` are
+        // `int`-typed, so `200 as byte + 200 as byte` is 400 (the term is
+        // int's, never an 8-bit overflow) and `0 as byte - 1` is `-1` (no
+        // wrap, no trap). The widening is `[type.byte.cast]`'s zero-extension
+        // and it lands on `int`, not on a literal, so a `{integer}` literal
+        // beside a byte operand adopts `int` at the rule below. Narrowing the
+        // result back is spelled `(b + 1) as byte`; the consequence the clause
+        // draws is that `byte` has no compound assignment, since `b + 1` is an
+        // `int` and assigning one to a `byte` is the ordinary mismatch.
+        //
+        // COMPARISONS are deliberately not in this list: they are total and
+        // closed on `byte` and answer below on the octets themselves.
+        let (left, right) = match op {
+            Add | Sub | Mul | Div | Rem | Shl | Shr | BitAnd | BitXor | BitOr => {
+                (widen_byte(left), widen_byte(right))
+            }
+            _ => (left, right),
+        };
+
         // Equality is over *values*, never over the type a value carries: an
         // `i32` 3 and an untyped literal 3 are the same value
         // (`[mem.model.value]` — "values have no identity beyond their current
@@ -4858,6 +4937,20 @@ impl Machine {
                         right.kind()
                     ));
                 }
+                // `[type.byte.op]`: "`byte` against `int` is the ordinary type
+                // mismatch — widen the byte". Same shape as `char`'s above and
+                // for the same reason: a quiet `false` would run a program the
+                // compiler rejects, which is the permissive divergence and the
+                // harder kind to notice.
+                if matches!(&left, Value::Byte(_)) != matches!(&right, Value::Byte(_)) {
+                    return unsupported(format!(
+                        "`{}` between {} and {} is the checker's refusal — a `byte` compares \
+                         only with a `byte` ([type.byte.op]); widen it, `b as int`",
+                        spelling(op),
+                        left.kind(),
+                        right.kind()
+                    ));
+                }
                 return match op {
                     Eq => Ok(Value::Bool(value_eq(&left, &right))),
                     _ => Ok(Value::Bool(!value_eq(&left, &right))),
@@ -4882,6 +4975,29 @@ impl Machine {
                 Cmp => Ok(Value::int(i128::from(a.cmp(&b) as i8))),
                 _ => unsupported(format!(
                     "`{}` is not defined on two chars — `char` is not an integer type                      ([type.char]); spell arithmetic through `c as int`",
+                    spelling(op)
+                )),
+            };
+        }
+
+        // `[type.byte.op]`: comparisons between two `byte`s are total and
+        // closed, and they compare OCTET values — the unsigned order, which is
+        // the whole point of the type: `200 as byte > 100 as byte` is true
+        // where a signed `i8` reading of the same eight bits says `-56 < 100`.
+        // `<=>` yields `int`. Arithmetic never reaches here (it widened
+        // above), so the refusal below is unreachable from a byte pair and
+        // exists for the shapes `[type.byte.op]` leaves undefined.
+        if let (Value::Byte(a), Value::Byte(b)) = (&left, &right) {
+            let (a, b) = (*a, *b);
+            return match op {
+                Lt => Ok(Value::Bool(a < b)),
+                Le => Ok(Value::Bool(a <= b)),
+                Gt => Ok(Value::Bool(a > b)),
+                Ge => Ok(Value::Bool(a >= b)),
+                Cmp => Ok(Value::int(i128::from(a.cmp(&b) as i8))),
+                _ => unsupported(format!(
+                    "`{}` is not defined on two bytes ([type.byte.op]); the arithmetic and \
+                     bitwise operators widen to `int` and this one has no byte rule",
                     spelling(op)
                 )),
             };
@@ -5038,7 +5154,8 @@ impl Machine {
         body: &Block,
         span: Span,
     ) -> EResult<Value> {
-        let iterable = self.eval(iter)?;
+        // The `for` head is `[mem.str.view]`'s first consumed position.
+        let iterable = self.eval_consumed(iter)?;
         // `for v in ch` iterates a channel lazily until drained-close
         // ([conc.chan.close]) — each iteration is a blocking point.
         if let Value::Chan(chan) = iterable {
@@ -5662,6 +5779,34 @@ impl Machine {
     }
 
     // -- calls, members, indexing -----------------------------------------
+
+    /// Evaluates `expr` in a position that CONSUMES a byte view on the spot
+    /// (`[mem.str.view]`, wolf-lang#232): a `for` head, an index base, a
+    /// member base. When `expr` is syntactically `<receiver>.bytes()` the view
+    /// is the receiver's own storage and charges nothing; everything else
+    /// evaluates exactly as it did.
+    ///
+    /// The clause's own list is the reason the parent decides: `for b in
+    /// s.bytes()` compiles to `ptr.off` + `load.i8` on the native tier and
+    /// reads the string here, while `let bs = s.bytes()` materializes on both.
+    /// Modelling the walk as the materializing fallback charged a full buffer
+    /// for a payload the program never took — 16× on a 64 KiB `str` — which is
+    /// why a `region r(cap: n)` derived on one tier mis-fired by an order of
+    /// magnitude on the other, on the exact idiom `std.bytes` teaches.
+    fn eval_consumed(&mut self, expr: &Expr) -> EResult<Value> {
+        if !is_byte_view_call(expr) {
+            return self.eval(expr);
+        }
+        self.consumed_views.push(expr.span);
+        let out = self.eval(expr);
+        self.consumed_views.pop();
+        out
+    }
+
+    /// Is the `.bytes()` call at `span` being consumed on the spot?
+    pub(crate) fn is_consumed_view(&self, span: Span) -> bool {
+        self.consumed_views.contains(&span)
+    }
 
     fn eval_call(&mut self, callee: &Expr, args: &[Arg], span: Span) -> EResult<Value> {
         // A method call is a call whose callee projects a member out of a
@@ -6415,7 +6560,11 @@ impl Machine {
             }
         }
 
-        let value = self.eval(base)?;
+        // The member base is `[mem.str.view]`'s third consumed position:
+        // `s.bytes().len` asks the receiver its byte length and materializes
+        // nothing. The clause's `count`/`is_empty`/`get`/`first`/`last` arrive
+        // as METHOD calls, whose receiver is evaluated in `eval_method`.
+        let value = self.eval_consumed(base)?;
         match member {
             Member::Named(ident) => builtin::property(self, &value, &ident.name, span),
             Member::Index(index, _) => match &value {
@@ -6498,7 +6647,10 @@ impl Machine {
             self.restore_lent(&place, value);
             return element;
         }
-        let target = self.eval(base)?;
+        // The index base is `[mem.str.view]`'s second consumed position:
+        // `s.bytes()[i]` picks one octet out of the receiver's own storage and
+        // materializes nothing.
+        let target = self.eval_consumed(base)?;
 
         // `e[…]` is one production (`[gram.amb.brackets]`): generic application
         // or indexing, told apart here by what the base turned out to be.
@@ -6967,6 +7119,59 @@ impl Machine {
                 )),
             };
         }
+        // `[type.byte.cast]` (D72, s135) — the byte type's two numeric
+        // bridges, and the only ones.
+        //
+        // `int as byte` TRUNCATES: it keeps the value's low eight bits and
+        // discards the rest, so `255 as byte` is 255, `256 as byte` is 0,
+        // `300 as byte` is 44 and `-1 as byte` is 255. It is **the only
+        // narrowing `as` in the language that never traps**, ruled that way
+        // because a byte type exists to hold the low octet of whatever
+        // arithmetic produced it — a mask, a shift, a checksum step — and a
+        // trap there would make every such site an `as wrapping[u8] as …`
+        // dance. W0401 (a literal outside the target's range) does not fire
+        // either: truncation is the clause, not an accident.
+        //
+        // Other widths cast through `int` (`x as int as byte`), and `byte`
+        // and `char` bridge through `int` too — there is no `byte as f64`.
+        if target == "byte" {
+            return match value {
+                // `b as byte` is the identity — no conversion, no retag.
+                Value::Byte(_) => Ok(value),
+                Value::Int(v, _) => {
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    let octet = (v & 0xFF) as u8;
+                    self.fire(
+                        Rule::ByteCast,
+                        span,
+                        &format!("`{v} as byte` keeps the low eight bits — {octet}"),
+                    );
+                    Ok(Value::Byte(octet))
+                }
+                other => unsupported(format!(
+                    "`{} as byte` is outside the cast set — only `int as byte` bridges into \
+                     `byte` ([type.byte.cast]); other widths cast through `int`, and `char` \
+                     bridges the same way (`c as int as byte`)",
+                    other.kind()
+                )),
+            };
+        }
+        if let Value::Byte(b) = value {
+            if target == "int" {
+                self.fire(
+                    Rule::ByteCast,
+                    span,
+                    &format!("`{b} as int` is total — every octet fits an `int`"),
+                );
+                return Ok(Value::Int(i128::from(b), IntTy::INT));
+            }
+            return unsupported(format!(
+                "`byte as {target}` is outside the cast set — `byte as int` is the total \
+                 direction ([type.byte.cast], a zero-extension); other widths cast through \
+                 `int`, and there is no `byte as f64`"
+            ));
+        }
+
         if let Value::Char(c) = value {
             if target == "int" {
                 self.fire(
@@ -7663,6 +7868,57 @@ fn list_elem_of(callee: &Expr) -> Option<IntTy> {
 /// operator runs as float arithmetic. Adoption is literal-only — a concrete int
 /// VALUE (`ty.literal == false`) is left untouched so the mixed-operand refusal
 /// still fires (D54.3, `[type.numlit.value]`).
+/// Is this expression syntactically `<receiver>.bytes()` — a zero-argument
+/// `bytes` method call, the one shape `[mem.str.view]` speaks about?
+///
+/// Syntactic on purpose: the clause's rule is about the POSITION a call sits
+/// in, and the position is a fact about the tree, not about the value that
+/// comes back. A receiver that turns out not to be a `str` simply never
+/// reaches the `bytes` arm and the recorded span is never asked about.
+fn is_byte_view_call(expr: &Expr) -> bool {
+    let ExprKind::Call { callee, args } = &*expr.kind else {
+        return false;
+    };
+    if !args.is_empty() {
+        return false;
+    }
+    // Two shapes reach `eval_method`, because `[gram.item.use]`'s `path`
+    // production swallows the dots: `(mut xs).bytes()` arrives as a `Member`,
+    // and the ordinary `s.bytes()` as a multi-segment `Path` whose last
+    // segment is the method. `method_split` tells them apart with the local
+    // scope in hand; this test needs only the name, so it reads both.
+    match &*callee.kind {
+        ExprKind::Member {
+            member: Member::Named(name),
+            ..
+        } => name.name == "bytes",
+        ExprKind::Path(path) => {
+            path.segments.len() >= 2
+                && path
+                    .segments
+                    .last()
+                    .is_some_and(|last| last.name == "bytes")
+        }
+        _ => false,
+    }
+}
+
+/// `[type.byte.cast]`'s widening, applied where `[type.byte.op]` says an
+/// operator reads its operands: a `byte` becomes the `int` its octet names,
+/// by ZERO-extension (the domain has no negatives, so `200 as byte as int` is
+/// `200` and never `-56`). Everything else passes through untouched.
+///
+/// It lands on `IntTy::INT` rather than on a literal deliberately: the clause
+/// says a `{integer}` literal beside a byte operand adopts `int`, and that
+/// falls out of `[arith.literal.default]`'s "an unconstrained literal adopts
+/// the other operand's type" once the byte has one.
+fn widen_byte(value: Value) -> Value {
+    match value {
+        Value::Byte(b) => Value::Int(i128::from(b), IntTy::INT),
+        other => other,
+    }
+}
+
 fn adopt_numeric(left: Value, right: Value) -> (Value, Value) {
     match (left, right) {
         (Value::Float(f), Value::Int(v, t)) if t.literal => {
