@@ -136,10 +136,18 @@ fn every_bind_and_dial_row_is_about_the_path() {
     // The fourth shape is the clause's own — a real `AF_UNIX` path whose
     // listener is gone, which is what a process that died without closing
     // leaves behind — so the stale file is made by BINDING and dropping,
-    // not by writing bytes. A plain regular file at dial is neither "no
-    // socket file" nor "a file nobody listens on": the kernel answers
-    // `ENOTSOCK` and both machines call it `io` (measured against wolfc at
-    // pin 4230b00: `dial-plain io | bind-over-plain exists`).
+    // not by writing bytes.
+    //
+    // A plain regular file at dial is neither of the clause's two dial
+    // cases: it is not "no socket file" and it is not "a file nobody listens
+    // on". The KERNEL decides, and the two hosts disagree — macOS answers
+    // `ENOTSOCK` (this machine's `io`) and linux answers `ECONNREFUSED`
+    // (`refused`), which GitHub's ubuntu runner said and no developer's
+    // machine did. So the assertion reads the row and accepts either, the
+    // same posture `corpus/net/peer_close_after_serve.lu` takes to a reply
+    // the kernel may or may not deliver past an RST: pin what the clause
+    // rules, never what the host happens to do. Measured against wolfc on
+    // macOS at this pin: `dial-plain io | bind-over-plain exists`.
     let dir = scratch("unix-rows");
     {
         let stale = std::os::unix::net::UnixListener::bind(dir.join("stale.sock"))
@@ -172,17 +180,27 @@ fn main() -> !int {
     var non_socket = "none"
     let f = net_connect_unix("plain") else |e| match e {
         io => { non_socket = "io"; 0 },
+        refused => { non_socket = "refused"; 0 },
         _ => { non_socket = "other"; 0 },
     }
-    print("{exists} {missing_dir} {no_file} {not_listening} {non_socket} {a}{b}{c}{d}{f}")
+    print("{exists} {missing_dir} {no_file} {not_listening} | {non_socket} {a}{b}{c}{d}{f}")
     0
 }
 "#;
     let output = run_in(&dir, source);
     assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let stdout = stdout_of(&output);
+    let (clause_rows, rest) = stdout
+        .split_once(" | ")
+        .unwrap_or_else(|| panic!("the two halves are separated: {stdout:?}"));
     assert_eq!(
-        stdout_of(&output),
-        "exists not_found not_found refused io 00000\n"
+        clause_rows, "exists not_found not_found refused",
+        "the four rows `[os.net.unix]` rules"
+    );
+    assert!(
+        rest == "io 00000\n" || rest == "refused 00000\n",
+        "a non-socket file at dial is the kernel's answer — `ENOTSOCK` on macOS, \
+         `ECONNREFUSED` on linux — and either is a row, never a trap: {rest:?}"
     );
     assert!(
         dir.join("stale.sock").exists(),
