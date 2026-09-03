@@ -225,6 +225,19 @@ filesystem path. GitHub checks this repository out under
 runners and on no developer's machine, and the corpus `warns:` ledger caught
 it. Local green is not green.
 
+**`byte` — DEFERRED to is36, by name.** D72 rules a byte-width scalar into
+the language (`[type.byte]`, modelled on `[type.char]`: 8-bit, unsigned, no
+arithmetic promotion, `List[byte]` charging 1x on every tier, literals via
+`as byte` only) and assigns the landing to wolf-lang s135, with is35
+mirroring it. s135 has not merged: at the pin step and again at the release
+commit, `origin/trunk` was `5241ab7` (the r06 merge), no `s135` branch
+existed, no PR was open, and wolf-lang#203 was still OPEN. So this pin is
+v0.2.3 and nothing here parses the type name, sizes a 1-byte ledger slot, or
+implements the two casts. The `byte` spelling is already in this
+implementation's known-non-status list for `main`'s return type
+(wolf-interp#57's whitelist), which costs nothing today and is correct the
+moment the type exists. is36 takes it at whichever pin carries s135.
+
 #### The seventeenth corpus differential
 
 Counterparty built at v0.2.3 (`cargo build -p wolf_driver -p wolf_rt` inside

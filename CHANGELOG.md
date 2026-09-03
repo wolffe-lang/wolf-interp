@@ -1,5 +1,129 @@
 # Changelog
 
+## 0.1.24 — 2026-09-02
+
+THE BYTE IN THE MIRROR (is35). A diagnostic code is a name two machines say
+to each other, and this release is about one that meant two things. lupin
+answered **E0103** for an escape wolf does not have — `"a\qb"` — while
+`[gram.lex.str.escape]` had read "any other `\` is **E0101** at the escape"
+since v0.2.2, and while wolfc's catalog spends E0103 on something else
+entirely: text after a multiline's opening `"""`. A program refused for a bad
+escape and a program refused for a badly shaped `"""` were the same record
+here, so the differential could not tell them apart. r06 found it the moment
+a corpus file carried an unknown escape (wolf-lang#225).
+
+The span was identical on both machines before the change and after it. Only
+the number moved — which is exactly why 484 files never showed it: #198's two
+witnesses pin the `\u{…}` DIGIT bound, where both machines already agreed at
+E0101, and the corpus walk compares the `check:` code rather than the span.
+
+Released against pin `3befc3e`, wolf-lang **v0.2.3**, the tag itself: trunk
+and the r06 merge add nothing to `spec/` or `corpus/` beyond it. Census at
+this release: 486 files / 452 entries / 34 members; 352 reach run, 335 match,
+16 dynamic counterparts, 42 conservatism, 58 out of scope, and the one
+standing walk mismatch is still DIV-2026-019, filed. **Every one of the 482
+files carried over from 0.1.23 is verdict-IDENTICAL, class for class** — the
+single field that moved anywhere is one file's human-only `x-unsupported`
+sentence.
+
+- **The escape's code is E0101 (`[gram.lex.str.escape]`, wolf-lang#225).**
+  Not a rule this implementation had to write — a number it had to stop
+  choosing. `\q`, a `\x` short of its two hex digits, and a `\u` with no
+  braces all answer E0101 now, at the escape, in a plain string and inside a
+  `"""` alike (`MULTI_PART` reaches the same `STR_ESC`, which is the point
+  #215's witness exists to make). The `char` literal's own E0110 did not move
+  with them: `'\q'` is still one report over the whole literal. Both codes
+  leave `UNPINNED_CODES` — they are the corpus's now.
+  `grammar/multiline_bad_escape.lu` arrived with the pin carrying a MEASURED
+  divergence and flips to agreement in the commit that takes the clause.
+- **E0103 and E0104 are now unspoken here, and that is asserted rather than
+  documented.** Freeing them showed why they were free: this implementation
+  does not implement the layout rules they name. v0.2.3's
+  `[gram.lex.str.multi]` gives the multiline three side conditions with three
+  codes; lupin has one, `E_DEDENT_UNDERRUN` (E0109), and it disagrees with
+  wolfc on both the code and the span for each. Filed as **wolf-interp#59**
+  with the measurements, and `tests/str_escape_code.rs` fails if either
+  number comes back in the meantime.
+- **What `main` may return is decided before `main` runs (wolf-interp#57).**
+  `typecheck/main_returns_str.lu` used to execute its whole body and write
+  `hi` to the process's stdout before declining that `main` returned `str`.
+  The record said `unsupported@resolve`, which was true; the invocation had a
+  side effect the record did not report, which for an observation tool is a
+  hazard rather than a wart. `sema::main_return_check` runs on the admission
+  ladder now, beside the other declaration refusals. Verdict and rung
+  unmoved; the claim is true. §6.18 declares the boundary: the check refuses
+  only spellings it can NAME as non-statuses, through any number of `!`
+  wrappers, and leaves an unresolved path — a user alias, a struct — to the
+  dynamic backstop, because refusing a spelling it has not resolved would be
+  a guess that stops a program running at all.
+- **A trap's output bytes compare when both machines hold them
+  (wolf-lang#216) — and it moved NOTHING.** `[proto.cmp.phase]` rules the run
+  rung "for `trap`, compare kind only", and wolf-lang#209 is the proof of
+  what that costs: a divergence made of nothing but trap-path output, which
+  survived from D66 to r05 with the two records verdict-identical. The
+  widening is applied to `differ` — the instrument — and not to
+  `src/compare.rs`, which still holds the clause as written and says why. It
+  is safe ahead of the ruling because a widened comparison can only ADD rows,
+  and because it is gated on both sides HOLDING the field (`None` on either
+  is honest-absent, the posture `[proto.cmp.warn]` already takes). The
+  measurement: 63 trap records in the bundle, **61 write nothing before the
+  fault**; the two that do agree byte-for-byte with every wolfc tier that
+  runs them. Zero new rows on any lane. The class is empty because the file
+  it was built for was fixed at 0.1.23 — so the counterfactual is pinned as a
+  unit test with the real digests, because "it would have caught #209" is a
+  claim and not a comment. The clause text is proposed on the issue.
+- **The lex exemption is the corpus ledger, not two lists (wolf-interp#58).**
+  A `phase: none` ledger means no rung completed and the ladder starts at
+  `lex`, so the file is refused BY the lexer and its `check: fail(CODE)` is
+  the code the corpus pins. `tests/lex_corpus.rs` and the workflow's
+  `conform-run rungs` step both derive the set from that header now; neither
+  keeps a name. It was load-bearing three commits later, when the pin brought
+  `grammar/multiline_bad_escape.lu` — under the old shape, the third
+  consecutive CI red on one cause.
+- **A lint that read the checkout path.** `conc/proc_cross_module/main.lu`
+  says `use work`; GitHub checks this repository out under
+  `/home/runner/work/wolf-interp/…`; W0316's ancestor walk had no stop
+  condition that fired for a file sitting directly in the entry directory, so
+  it climbed the whole filesystem path, found `work`, and warned — on two
+  runners and on no developer's machine. The corpus `warns:` ledger caught
+  it. The walk stops at the package now, `lints/ancestor_import/` still warns
+  at the same ident, and the regression test BUILDS a package under a
+  directory named `work` rather than trusting a comment. Local green is not
+  green.
+- **Two waivers retire; the eighth row gets its own name.** DIV-2026-020
+  closes where wolf-lang#220's own closing comment said it would — D71 ruled
+  the span IS the offending token, s134 aligned wolfc, and seven of its eight
+  files are byte-identical here now. The eighth was never the width question:
+  `grammar/let_group_bare_tuple.lu` is `fail(E0201)@parse` on both machines,
+  ten bytes apart, on every tier — this one at the comma in `let a, b`, the
+  counterparty at the end of the initializer list. It becomes **DIV-2026-021**
+  and is filed as wolf-lang#228. DIV-2026-017 goes too: wolf-lang#76 is
+  closed and `lints/raw_interp_braces.lu` answers `{who}` on every lane. It
+  had stopped diverging by v0.2.2, so that waiver outlived its divergence by
+  a release — wolf-lang#177's lesson in a smaller shape — and `differ`'s test
+  now asserts the retired entries are GONE.
+- **The seventeenth corpus differential.** Counterparty built at v0.2.3, all
+  three run-reaching tiers: **8/5/5** divergences (`checked`/`native`/
+  `release`) against 0.1.23's 15/12/12, 2 of them filed, 6/3/3 gating after
+  filing. Minus seven on every tier, and every one is DIV-2026-020 closing —
+  nothing this sprint wrote caused the drop, taking the pin did. Conservatism
+  251/215/215. Everything still gating is older than this sprint.
+- **`byte` is DEFERRED to is36, by name.** D72 rules the byte-width scalar
+  and assigns the landing to wolf-lang s135, with this lane mirroring it.
+  s135 has not merged — checked at the pin step and again at the release
+  commit: `origin/trunk` at `5241ab7`, no `s135` branch, no open PR,
+  wolf-lang#203 still OPEN — so nothing here parses the type name, sizes a
+  1-byte ledger slot, or implements the casts. is36 takes it at whichever pin
+  carries s135.
+- **Pin, census, ratchets.** Pin `8cda3aa` -> `3befc3e`. Corpus 482 -> 486:
+  #215's multiline pair and s134's two-file `conc/proc_cross_module/`, the
+  first MULTI-FILE addition in four pins, so members move too (33 -> 34).
+  Anchors 411, diffed both ways — nothing gained, nothing dropped, which is
+  the #177 check run rather than assumed. Coverage ratchets 175 -> 176:
+  `gram.lex.str.multi`, cited by anything for the first time, because before
+  #215 the multiline had no productions to write a counter-example against.
+  Bundle 520/487 -> 524/490.
+
 ## 0.1.23 — 2026-09-02
 
 THE LETTERS IN THE MIRROR (is34). Three letters came back from r05 with
