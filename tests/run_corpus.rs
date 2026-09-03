@@ -1142,7 +1142,7 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // needed nothing here.
     ("conc/proc_cross_module/main.lu", "exit(0)"),
     ("strings/multiline_escapes.lu", "exit(0)"),
-    // The 4230b00 pin (is36, wolf-lang trunk after the s136 merge): EIGHT
+    // The v0.2.4 pin (982f857; is36, wolf-lang trunk after the s136 merge): EIGHT
     // more reach `run`, and nothing left — the check the assertion below
     // actually cares about.
     //

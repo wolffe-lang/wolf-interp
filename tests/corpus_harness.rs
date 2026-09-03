@@ -597,7 +597,7 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             MULTI-FILE addition in four pins, so `members` moves too.
     //             The spec grows nine productions and the registry holds:
     //             411, nothing gained, nothing dropped.)
-    // (486 -> 503 at 4230b00 (is36, the s136 merge): twelve byte and
+    // (486 -> 503 at v0.2.4 / 982f857 (is36, the s136 merge): twelve byte and
     //             unix-socket witnesses, D74's five layout counter-examples
     //             and `grammar/bom_at_start.lu` — the first corpus file
     //             whose FIRST THREE BYTES are a byte order mark, which is

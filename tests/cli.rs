@@ -187,7 +187,7 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // two-file `conc/proc_cross_module/` module — one entry, one member, so
     // the members count moves for the first time in four pins.
     // Moved with the pin, per the export.rs rule.
-    // 486 -> 503 at the 4230b00 pin (is36, wolf-lang trunk after the s136
+    // 486 -> 503 at the v0.2.4 pin (982f857) (is36, wolf-lang trunk after the s136
     // merge): the twelve s136 adds — D74's five layout witnesses plus
     // `grammar/bom_at_start.lu`, `typecheck/byte_{shapes,casts,narrow_fail,
     // elem_arith_fail}.lu`, `strings/bytes_roundtrip.lu`,
