@@ -110,6 +110,158 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The byte arrives — is36, lupin 0.1.25, pin `982f857` (wolf-lang v0.2.4)
+
+The sprint that took the deferral back. is35 recorded `byte` as DEFERRED BY
+NAME because s135 had not merged; s135 and s136 merged together, and this
+release mirrors both halves at once. Three findings, none of them a
+cross-implementation divergence at the end of it: every one of the seventeen
+corpus files this pin adds answers the counterparty's record, and the whole
+byte and layout flip set is **agreement**.
+
+**wolf-lang#203/D72 — the type, and the two programs it stopped from
+running.** The permissive divergence is the one that is hard to notice, and
+`byte` closed two at once. Measured against
+`lupin 0.1.24 (pin 3befc3e)` on the same files:
+
+| program | lupin 0.1.24 | lupin 0.1.25 | corpus pins |
+| --- | --- | --- | --- |
+| `typecheck/byte_narrow_fail.lu` | `exit(0)`, stdout `65 300` | `unsupported@resolve` | `fail(E0401)` |
+| `typecheck/byte_elem_arith_fail.lu` | `trap(bounds)` | `unsupported@resolve` | `fail(E0401)` |
+| `typecheck/byte_shapes.lu` | `fail(E0301)` `[1131,1135]` | `exit(0)` — **match** | `run(exit=0, …)` |
+| `typecheck/byte_casts.lu` | `fail(E0301)` `[1214,1218]` | `exit(0)` — **match** | `run(exit=0, …)` |
+| `strings/bytes_roundtrip.lu` | `exit(0)` (by accident) | `exit(0)` — **match** | `run(exit=0, …)` |
+| `memory/byte_list_ledger.lu` | `fail(E0301)` `[2212,2216]` | `exit(0)` — **match** | `run(exit=0, …)` |
+| `memory/consumed_walk_charges_nothing.lu` | `exit(0)`, `bound_view_charges FALSE` | `exit(0)` — **match** | `run(exit=0, …)` |
+| `net/echo_bytes.lu` | `fail(E0301)` `[1218,1222]` | `exit(0)` — **match** | `run(exit=0, …)` |
+| `strings/from_utf8_border.lu` | `fail(E0301)` `[1531,1535]` | `exit(0)` — **match** | `run(exit=0, …)` |
+| `net/byte_roundtrip.lu` | `fail(E0301)` `[1186,1190]` | `exit(0)` — **match** | `run(exit=0, …)` |
+| `net/line_reader_bytes.lu` | `fail(E0301)` `[1118,1122]` | `exit(0)` — **match** | `run(exit=0, …)` |
+
+The first row is the finding. `let b: byte = 65` and `let c: byte = n` with
+`n = 300` ran to completion at 0.1.24 and printed **`65 300`** — a "byte"
+holding three hundred — because an annotation naming no known scalar left the
+value alone, and only a CAST target was resolved (#17's E0301 rung). The
+counterparty rejects the program at `resolve`. Both refusals are
+`unsupported` here rather than E0401, which is where this machine's type
+mismatches live and where its `char` twins have sat since s121: the class is
+out-of-scope, not a divergence.
+
+The seventh row is the other kind of quiet wrong answer. #232's witness has
+three relations that read `true` when NOTHING is charged and a fourth,
+`bound_view_charges`, that exists to prove the region is being read at all.
+0.1.24 passed three and failed the fourth, because `s.bytes()` charged
+nothing in any position. Now the consumed positions charge nothing *by rule*
+and the materializing one charges the buffer.
+
+**D74/wolf-lang#230 — five witnesses, five exact spans.** Measured against
+`wolf 0.2.4 (wolfgang)` at this pin, code and span, both machines' records:
+
+| witness | lupin 0.1.24 | lupin 0.1.25 | wolfc 0.2.4 |
+| --- | --- | --- | --- |
+| `grammar/multiline_open_shares_line.lu` | `E0109` `[437,460]` | `E0103` `[437,441]` | `E0103` `[437,441]` |
+| `grammar/multiline_close_shares_line.lu` | `E0109` `[579,598]` | `E0103` `[598,601]` | `E0103` `[598,601]` |
+| `grammar/multiline_short_margin.lu` | `E0109` `[507,538]` | `E0104` `[520,526]` | `E0104` `[520,526]` |
+| `grammar/multiline_mixed_margin.lu` | `exit(0)` — it RAN | `E0105` `[575,583]` | `E0105` `[575,583]` |
+| `grammar/str_bare_brace.lu` | `E0102` `[680,716]` | `E0102` `[680,694]` | `E0102` `[680,694]` |
+| `grammar/bom_at_start.lu` | `fail(E0105)` `[0,3]` | `exit(0)` `bom ok` | `exit(0)` `bom ok` |
+
+Every row is agreement now, span for span. Two are worth their own sentence.
+`multiline_mixed_margin.lu` **ran** at 0.1.24, silently eating eight tabs
+against an eight-space margin, which is the layout tier's own permissive
+divergence. And `str_bare_brace.lu` had the right code with a span running to
+the end of the FILE: `[gram.lex.newline]` says a newline inside an
+interpolation never terminates, and `world"` inside the runaway interpolation
+spells a *generalized* literal whose body this lexer let cross lines —
+`GEN_TEXT ::= (SCALAR - ('"' | NL))*` excludes `NL` and `RAW_TEXT ::= SCALAR*`
+does not, so the neighbouring rule is read off the production. **wolf-interp#59
+closes**: the layout tier the freed codes named is implemented.
+
+**The finding the pin produced, and it was not in the lexer.**
+`grammar/bom_at_start.lu` is the first corpus file whose first three bytes are
+`EF BB BF`. `[gram.lex.source]` governs how the FILE is read, and the corpus
+DIRECTIVE header is a run of `//!` comments in that same file — so a header
+reader that does not strip the mark sees `\u{feff}//! check: …` as prose and
+the file loses its entire header. A file with no `check:`/`phase:` pair is
+not a standalone entry (`[conf.directive.member]`, D59), so it joins its
+directory's module, and its `main` collides with every sibling's:
+
+| | files answering `E0302` `[mod.dup]` |
+| --- | --- |
+| pin taken, header reader unfixed | **32** (`grammar/` entire, plus the file itself) |
+| header reader strips the mark | 0 |
+
+Thirty-two of the raw pin's forty-three walk mismatches were one missing
+`strip_prefix`. Recorded here because the shape generalizes: a lexical rule
+about how a file is READ binds every reader of that file, not only the lexer.
+
+**wolf-lang#227 — the unix family serves, and its witness still does not
+run.** `[os.net.unix]` is implemented whole: both binders, the row vocabulary
+that distinguishes the HOST (`unsupported`, by name, never a bare `io`) from
+the PATH, `net_port` answering `io` because a path has no port, and the
+cleanup posture — a LISTENER's close unlinks, a stream's close does not. A
+plain regular file at dial is neither of the clause's two dial cases; the
+kernel answers `ENOTSOCK` and both machines call it `io` (measured).
+
+`corpus/net/unix_echo.lu` is nevertheless **out of scope here, and not for
+the sockets**: its first statement is `fs_exists(path)` and its cleanup is
+`fs_remove(path)`, and this machine declines the whole s38 fs surface by
+design (wolf-interp#18 item 6 — an interpreter observing the HOST's
+filesystem puts the host into a differential comparison). The tension is
+worth stating rather than papering over: this release serves a socket family
+whose entire surface is filesystem PATHS while declining the filesystem.
+`tests/net_unix.rs` carries the witness's three lanes and the row table
+instead. The four `fs_*` byte producers are absent for the same standing
+reason, which is why `memory/byte_producers_ledger.lu` and
+`fs/bytes_dirs.lu` remain out of scope: the FS tier, never the byte one.
+
+**wolf-interp#50's shape, one type over, caught the same day.** The first
+`byte` this machine ran moved on assignment:
+
+| program | lupin, first cut | lupin 0.1.25 | wolfc 0.2.4 `--checked` |
+| --- | --- | --- | --- |
+| `let a = 65 as byte` / `let b = a` / `{a} {b}` | `trap(use-after-move)` | `65 65` | `65 65` |
+
+`[mem.tier0.move.3]` admits "POD-shaped types only", and D72 rules `byte` an
+8-bit unsigned SCALAR — "an `i8`-shaped storage cell at every tier" — so it
+is POD by the same clause `char` is. `char` took this exact wrong turn and
+kept it until 0.1.16 (wolf-interp#50); `byte` kept it for an afternoon,
+because the new type was walked against the clause's sentences one at a time
+rather than only against the corpus. It never shipped. Recorded because the
+lesson is about the method: a new `Value` variant inherits nothing, and the
+move discipline is a list this machine keeps by hand.
+
+**wolf-interp#61 — OPENED: the literal-adoption rule is enforced in two
+positions out of four.** Walking `[type.byte]`'s "no numeric-literal adoption
+… **in every position**" found four places to test, and this machine enforced
+one of them (the annotated `let`). Two more were closed here, because the
+missing check produced a WRONG ANSWER rather than a missing refusal:
+
+| position | lupin, before | lupin 0.1.25 | wolfc 0.2.4 |
+| --- | --- | --- | --- |
+| `let b: byte = 65` | refused | refused | `E0401` |
+| `match b { 65 => …, _ => … }` | `exit(0)`, **`other`** | refused | `E0401` |
+| `b = 66` / `b += 1` | `exit(0)`, `b` **becomes an int** | refused | `E0401`/`E0409` |
+| `fn f(b: byte)` called `f(65)` | `exit(0)` | unchanged | `E0401` |
+| `fn g() -> byte { 65 }` | `exit(0)` | unchanged | `E0401` |
+
+The match arm took the **wrong branch** — `other` for a byte that is 65 —
+and the assignment silently retyped a live variable, so every later `{b}`
+rendered an int. The last two positions do not do that: the value passes
+through and the program computes what a correctly-spelled one would, which is
+this machine's ordinary conservatism class and the class every other type
+mismatch here already sits in.
+
+The `char` twin is identical in all four, and its ASSIGNMENT position is
+still open (`var c = 'a'` then `c = 65` prints `65` here, and has since
+s121). Filed rather than widened: the fix is ONE rule — a declared-scalar
+check at every typed boundary sema-lite can see, applied to `char` and `byte`
+together — and the two byte-local guards added here should collapse into it.
+Triage: this implementation is the defendant; both clauses are unambiguous.
+No corpus file measures any of the four, which is why the census is
+unaffected and why this was found by reading the clause rather than by
+running the walk.
+
 ### The byte in the mirror — is35, lupin 0.1.24, pin `3befc3e` (wolf-lang v0.2.3)
 
 The sprint that made a code mean one thing. Three findings closed, one

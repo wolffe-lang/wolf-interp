@@ -1,5 +1,160 @@
 # Changelog
 
+## 0.1.25 — 2026-09-03
+
+THE BYTE ARRIVES (is36). Last release deferred `byte` by name: D72 had ruled
+the scalar in and s135 had not merged, so this machine answered **E0301** —
+"nothing with this name is in scope" — to every program that wrote the type.
+s135 and s136 merged together, and this release is the mirror catching up to
+both halves at once: the type, its two casts, its widening operators and its
+octet compares; the producers that speak it; the 1-byte ledger slot the whole
+ruling exists for; the unix-domain socket family beside them; and D74's
+string-layout codes, which this implementation had exactly one of.
+
+Released against pin `982f857`, wolf-lang **v0.2.4**, the tag itself — trunk's
+r07 merge (`1323c4e`) carries a byte-identical `spec/` and `corpus/`, so the
+check-the-tag pattern lands on the tag as it did at v0.2.3. Census at this
+release: 503 files / 469 entries / 34 members; 360 reach run, 348 match, 16
+dynamic counterparts, 42 conservatism, 62 out of scope, and the one standing
+walk mismatch is still DIV-2026-019, filed. **Eight files newly reach `run`
+and not one stopped.**
+
+- **`byte` is a type here now (`[type.byte]`, D72/s135).** `Value::Byte(u8)`,
+  whose Rust domain IS the clause's `0..=255`, so an out-of-range byte is
+  unrepresentable rather than checked. The posture is `char`'s, which is the
+  ruling's own point — one rule for width-bearing scalars instead of two: no
+  numeric-literal adoption in either direction, no closed arithmetic, no
+  `byte as f64`, and the name resolves in type position without joining
+  `[gram.inv.kw]`'s closed set of 50 keywords. `int as byte` truncates to the
+  low eight bits and is **the only narrowing `as` in the language that never
+  traps** (255/256/300/-1 → 255/0/44/255, and no W0401); `byte as int` widens
+  by zero-extension, so `200 as byte as int` is 200 and never -56. Every
+  arithmetic and bitwise operator widens first and yields `int` — `200 + 200`
+  is 400 because the term is int's — while the comparisons do NOT widen: they
+  are total, closed, and octet order, which is the unsigned one. `{b}` prints
+  the number.
+- **Two programs the compiler rejects used to RUN here.** The permissive
+  divergence is the one that is hard to notice, and the type closed two of
+  them at once. `typecheck/byte_narrow_fail.lu` — `let b: byte = 65` and
+  `let c: byte = n` with `n = 300` — ran to completion at 0.1.24 and printed
+  `65 300`, a "byte" holding three hundred, because an annotation naming no
+  known scalar simply left the value alone. `typecheck/byte_elem_arith_fail.lu`
+  used a `.bytes()` element as an index into an empty list and trapped
+  `bounds`, which is a true statement about a program that should never have
+  been admitted. Both are refused by name now, which is where this machine's
+  type mismatches live (its `char` twins have sat there since s121).
+- **The producers speak `List[byte]` (wolf-lang#231).** `str.bytes()`,
+  `str_from_utf8`, `net_read_bytes` and `net_write_bytes` — the four of the
+  eight this machine serves — are declared over the octet type, so a net echo
+  hands its read straight to its write and converts nothing, because the types
+  agree. The other four are the `fs_*` byte calls, which are not here and
+  never were: this machine declines the whole s38 fs surface by design
+  (wolf-interp#18 item 6), so `fs/bytes_dirs.lu` and
+  `memory/byte_producers_ledger.lu` stay out of scope for the FS tier and not
+  for the byte one.
+- **A `List[byte]` strides by 1, and that is wolf-lang#203's whole point.**
+  sc32/sc33 measured a 64 KiB buffer held as `List[int]` at 16× its payload,
+  which made a region cap on io-heavy code a fiction. `memory/byte_list_ledger.lu`
+  pins the RELATIONS rather than the units and every one holds here: the
+  ledger is at least the payload, at most twice it plus a header (the width
+  multiplier gone, only the growth history left), and the same 65,536 pushes
+  as `List[int]` charge at least seven times more. A producer that already
+  knows its length mints at EXACT capacity and pays no growth history at all.
+  The relations are what the clause compares and the units are per-tier, so
+  it is a coincidence worth recording rather than a claim: this machine's
+  64 KiB byte push charges **131,120** — the number s135 measured on the
+  NATIVE arena, to the byte — and its exact-capacity read charges 65,568
+  against native's 65,584, the two headers differing by sixteen.
+- **The phantom 16× (wolf-lang#232).** `s.bytes()` CONSUMED on the spot — a
+  `for` head, an index, a `len` — is the receiver's own view and allocates
+  nothing, where a `let` binding materializes. At 0.1.24 this machine passed
+  the witness's three consumed relations for the wrong reason (nothing ever
+  charged) and failed its fourth, `bound_view_charges`, which is the contrast
+  that proves the region is being read at all. Only the parent expression
+  knows which position its child sits in, so the parent records the child's
+  span and the `bytes` arm asks.
+- **D74's string-layout codes, one rule per code (wolf-lang#230).** This
+  implementation had one of the three multiline rules and spent an invented
+  E0109 on all of it, with the whole text chunk under the span. E0103 is now
+  a `"""` delimiter sharing its line with text, BOTH sides — the fold the
+  ruling performed; E0104 is a content line sitting left of the margin; E0105
+  is a margin with the right number of whitespace bytes and the wrong ones,
+  compared byte for byte so eight tabs against eight spaces is a fault even
+  though the widths agree. **All five of s136's witnesses answer wolfc's code
+  and wolfc's span exactly** — `[437,441]`, `[598,601]`, `[520,526]`,
+  `[575,583]`, `[680,694]` — measured against the counterparty at the pin,
+  and `multiline_mixed_margin.lu` is the one that RAN here before, silently
+  eating eight tabs.
+- **The bare `{` ran away to the end of the file, and a generalized literal
+  is why.** lupin had E0102 right — the family D74 confirms — and reported it
+  at the wrong span, because `[gram.lex.newline]` says a newline inside an
+  interpolation never terminates and `world"` inside the open interpolation
+  spells a *generalized* literal, whose body this lexer let cross lines.
+  `GEN_TEXT ::= (SCALAR - ('"' | NL))*` excludes the newline; `RAW_TEXT ::=
+  SCALAR*` does not, so `r"…"` still spans lines and the neighbouring rule is
+  read off the production rather than assumed. The generalized refusal is
+  E0109, the meaning D74 leaves that code.
+- **A byte order mark is stripped at byte 0 — and it broke 32 files first.**
+  `[gram.lex.source]` makes a leading BOM tolerated and never a diagnostic
+  (this machine rejected every one under an invented E0105, colliding with
+  the margin code); anywhere else it is E0107, a stray character. The finding
+  the pin produced is bigger than the lexer: the corpus DIRECTIVE reader did
+  not strip it either, so `grammar/bom_at_start.lu` — the first corpus file
+  whose first three bytes are `EF BB BF` — lost its whole `//!` header, was
+  therefore not a standalone entry (D59), joined its directory's module, and
+  collided its `main` with every sibling's. Thirty-two `grammar/` files
+  answered E0302 `[mod.dup]` at the raw pin. `[gram.lex.source]` governs how
+  the FILE is read, and the header is a run of comments in that file.
+- **Unix-domain sockets (`[os.net.unix]`, wolf-lang#227).**
+  `net_listen_unix`/`net_connect_unix`, with the rest of the tier serving the
+  fd call for call. The clause's point is the row vocabulary and it is
+  implemented as the distinction it was filed to make: `unsupported` is the
+  HOST, refused by name and never a bare `io`; every other row is the path
+  (`exists`, `not_found`, `denied`, `refused`). `net_port` on one is `io` — a
+  path has no port — and `net_close` of a LISTENER unlinks its path while a
+  stream's close never touches it. A socket path that is absolute or climbs
+  out of the working directory is refused BY NAME, the path-shaped twin of
+  the TCP family's loopback + port 0 discipline. `corpus/net/unix_echo.lu`
+  still does not run here — its first statement is `fs_exists` — so the
+  witness's three lanes are carried by `tests/net_unix.rs` instead, and the
+  tension between serving a family made of filesystem paths and declining the
+  filesystem is named rather than papered over.
+- **A `byte` is Copy-shaped, caught the day the type landed.** `let b = a`
+  trapped `use-after-move` on the next read of `a` — wolf-interp#50's shape
+  one type over, where `char` assignment moved here through 0.1.16 while the
+  compiler printed the char twice. D72 rules `byte` a SCALAR, "an `i8`-shaped
+  storage cell at every tier", so it joins `[mem.tier0.move.3]`'s POD set.
+  Measured against `wolf 0.2.4 --checked`, which prints the octet twice.
+- **Two wrong answers the clause found and the corpus never would
+  (wolf-interp#61 opened).** `[type.byte]` says a byte adopts no numeric
+  literal "in every position", which is four positions; this machine enforced
+  one. A literal `match` arm against a byte scrutinee took the **wrong
+  branch** — `match b { 65 => "sixtyfive", _ => "other" }` printed `other`
+  for a byte that is 65 — and `b = 66` / `b += 1` silently **retyped the
+  variable**, so every later `{b}` rendered an int. Both are refused now.
+  Parameter and return positions still accept what the compiler rejects and
+  compute the right answer anyway, which is this machine's ordinary
+  conservatism class; the `char` twin is identical in all four, so the fix is
+  one rule at every typed boundary and it is filed rather than widened into
+  this release. No corpus file measures any of them.
+- **The eighteenth corpus differential, and it did not move.** Counterparty
+  built at v0.2.4, all three run-reaching tiers over 469 entries: **8/5/5**
+  divergences (`checked`/`native`/`release`), 2 filed, 6/3/3 gating —
+  file-for-file the same table as 0.1.24's seventeenth over 452. **Not one of
+  the seventeen corpus files this pin adds diverges on any tier**, and
+  neither the byte flip set, nor the unix family, nor D74's five witnesses
+  contributes a row. Conservatism 251/215/215 -> 257/221/221. Everything
+  still gating is older than this sprint and older than the last one.
+- **Pin, census, ratchets.** Pin `3befc3e` -> `982f857`, wolf-lang v0.2.4.
+  Corpus 486 -> 503 (469 entries / 34 members): D74's five layout
+  counter-examples, `grammar/bom_at_start.lu`, four `typecheck/byte_*`, two
+  `memory/byte_*_ledger`, `memory/consumed_walk_charges_nothing.lu`,
+  `strings/bytes_roundtrip.lu`, and three under `net/`. Anchors 411 -> 417 —
+  `[type.byte]` with its three children and `[os.net]` with `[os.net.unix]`,
+  the net tier's first clause anchors — key sets diffed BOTH ways, six
+  gained, nothing dropped (the #177 check run rather than assumed). Coverage
+  ratchets 176 -> 182. Bundle 524/490 -> 541/507.
+
 ## 0.1.24 — 2026-09-02
 
 THE BYTE IN THE MIRROR (is35). A diagnostic code is a name two machines say
