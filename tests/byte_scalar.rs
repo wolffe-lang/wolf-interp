@@ -208,6 +208,102 @@ fn a_byte_value_satisfies_no_numeric_expectation() {
     );
 }
 
+#[test]
+fn a_byte_is_copy_shaped_so_assignment_does_not_move_it() {
+    // `[mem.tier0.move.3]`'s "POD-shaped types only": D72 rules `byte` an
+    // 8-bit unsigned SCALAR — "an `i8`-shaped storage cell at every tier" —
+    // so `let b = a` copies and `a` stays live. This is wolf-interp#50's
+    // shape one type over (`char` assignment moved here through 0.1.16 while
+    // the compiler printed the char twice), caught the day the type landed
+    // instead of a release later, because the permissive direction reversed
+    // is the one this machine must never take on its own. Measured against
+    // `wolf 0.2.4 --checked`: `65 65`.
+    let stdout = out(
+        "byte-copy",
+        r#"    let a = 65 as byte
+    let b = a
+    var xs = List[byte]()
+    (mut xs).push(a)
+    (mut xs).push(b)
+    print("{a} {b} {xs.len} {xs[0]}")"#,
+    );
+    assert_eq!(stdout, "65 65 2 65\n");
+}
+
+#[test]
+fn a_byte_scrutinee_takes_no_literal_arm() {
+    // `[type.byte]`: no literal adoption "in every position, a `match` arm
+    // included: a `byte` scrutinee binds or wildcards, and a literal arm is
+    // spelled over `b as int`". Silence here is not an option — a literal
+    // that merely FAILS to match a byte does not just run a program the
+    // compiler rejects, it runs it down the WRONG ARM and prints a wrong
+    // answer ("other" for a byte that is 65). wolfc answers E0401 at the arm.
+    let stderr = refused(
+        "byte-match-lit",
+        r#"    let b = 65 as byte
+    let s = match b {
+        65 => "sixtyfive",
+        _ => "other",
+    }
+    print("{s}")"#,
+    );
+    assert!(stderr.contains("takes no literal arm"), "{stderr}");
+    assert!(
+        stderr.contains("b as int"),
+        "the note names the fix: {stderr}"
+    );
+}
+
+#[test]
+fn a_byte_scrutinee_binds_and_wildcards_and_matches_over_the_widening() {
+    // The two spellings the clause leaves: widen the scrutinee, or bind it.
+    let stdout = out(
+        "byte-match-ok",
+        r#"    let b = 65 as byte
+    let s = match b as int {
+        65 => "sixtyfive",
+        _ => "other",
+    }
+    let t = match b {
+        x => if x as int > 127 { "high" } else { "low" },
+    }
+    print("{s} {t}")"#,
+    );
+    assert_eq!(stdout, "sixtyfive low\n");
+}
+
+#[test]
+fn a_byte_place_takes_no_int_and_has_no_compound_assignment() {
+    // `[type.byte.op]` draws the consequence by name: "`byte` has no compound
+    // assignment — `b += 1` is the E0401 an `int` assigned to a `byte` is,
+    // because `b + 1` is an `int`." Both spellings retyped the VARIABLE here
+    // before this rule: `var b = 65 as byte` then `b = 66` left an `int` in a
+    // byte's place, and every later `{b}` printed an int's rendering of
+    // whatever the arithmetic produced. wolfc answers E0401 (and E0409 for
+    // the compound form).
+    let plain = refused(
+        "byte-assign-int",
+        "    var b = 65 as byte\n    b = 66\n    print(\"{b}\")",
+    );
+    assert!(plain.contains("takes no"), "{plain}");
+    let compound = refused(
+        "byte-compound",
+        "    var b = 65 as byte\n    b += 1\n    print(\"{b}\")",
+    );
+    assert!(compound.contains("no compound assignment"), "{compound}");
+    assert!(
+        compound.contains("as byte"),
+        "the note names the spelling: {compound}"
+    );
+
+    // And the spelling the clause names does work.
+    let stdout = out(
+        "byte-narrow-back",
+        "    var b = 65 as byte\n    b = (b + 1) as byte\n    print(\"{b}\")",
+    );
+    assert_eq!(stdout, "66\n");
+}
+
 // ---------------------------------------------------------------------------
 // `[type.byte.interp]` — `{b}` prints the NUMBER.
 // ---------------------------------------------------------------------------

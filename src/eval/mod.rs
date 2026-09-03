@@ -3819,10 +3819,40 @@ impl Machine {
                 }
                 (_, value) => value,
             };
+            // `[type.byte]`: a `byte` adopts no numeric literal "in every
+            // position", and `[type.byte.op]` draws the consequence by name —
+            // "`byte` has no compound assignment: `b += 1` is the E0401 an
+            // `int` assigned to a `byte` is, because `b + 1` is an `int`".
+            // A `var` is typed once, so a slot holding a byte takes bytes; a
+            // tree-walk has no declared type to consult but it has the value
+            // that is there, which for this question is the same fact.
+            //
+            // Refusing matters more here than at the binding: assigning an
+            // `int` over a byte does not merely run a program the compiler
+            // rejects, it silently RETYPES the variable, and every later
+            // `{b}` prints an int's rendering of whatever the arithmetic
+            // produced. (The same hole is open one type over — `var c = 'a'`
+            // then `c = 65` retypes a `char` here and has since s121 — and it
+            // is filed rather than widened into this commit, because the fix
+            // is one rule for every scalar and belongs in one place.)
+            if matches!(
+                self.slot_mut(&path).map(|s| s.value.clone()),
+                Some(Value::Byte(_))
+            ) && !matches!(value, Value::Byte(_))
+            {
+                return unsupported(format!(
+                    "a `byte` place takes no {} ([type.byte]) — a `byte` adopts no numeric \
+                     literal and holds no result of `+`, so `b += 1` and `b = n` are both the \
+                     mismatch; narrow the value back with `(…) as byte`",
+                    value.kind()
+                ))
+                .map(|_: Value| ());
+            }
             return self.write_path(&path, value, span);
         }
 
         let current = self.read_path(&path, place.span)?;
+        let byte_place = Some(matches!(current, Value::Byte(_)));
         let rhs = self.eval(value)?;
         let binop = assign_binop(op);
         // A map's absent key defaults to its value type's zero, which is what
@@ -3832,6 +3862,19 @@ impl Machine {
         } else {
             current
         };
+        // `[type.byte.op]`'s named consequence, the compound half: `b += 1` is
+        // refused because `b + 1` is an `int` and the place is a `byte`. The
+        // test is on the place's CURRENT value rather than the result,
+        // because the widening has already happened by the time `result`
+        // exists — which is exactly the clause's reasoning.
+        if matches!(byte_place, Some(true)) {
+            return unsupported(
+                "`byte` has no compound assignment ([type.byte.op]): every arithmetic and \
+                 bitwise operator widens its byte operand to `int` first, so `b += 1` assigns \
+                 an `int` to a `byte`. Spell it `b = (b + 1) as byte`",
+            )
+            .map(|_: Value| ());
+        }
         let result = self.binary(binop, current, rhs, span)?;
         self.write_path(&path, result, span)
     }
@@ -5629,6 +5672,24 @@ impl Machine {
             }
             PatKind::Literal(expr) => {
                 let literal = self.eval(expr)?;
+                // `[type.byte]`: a `byte` adopts no numeric literal "in every
+                // position, a `match` arm included: a `byte` scrutinee binds
+                // or wildcards, and a literal arm is spelled over `b as int`".
+                // The counterparty answers E0401 at the arm; this machine has
+                // no static code for it, so the honest answer is the by-name
+                // refusal, and it must not be silence — a literal that simply
+                // FAILS to match a byte does not merely run a rejected
+                // program, it runs it down the wrong arm and prints a wrong
+                // answer, which is the worst shape a permissive divergence
+                // takes. The same rule the other way: a byte literal cannot
+                // exist, so only the scrutinee side needs the guard.
+                if matches!(value, Value::Byte(_)) && matches!(literal, Value::Int(..)) {
+                    return unsupported(format!(
+                        "a `byte` scrutinee takes no literal arm ([type.byte]) — `{literal}` \
+                         here is an `int`, and a `byte` adopts no numeric literal in any \
+                         position; match over `b as int`, or bind the byte and compare"
+                    ));
+                }
                 Ok(match (&literal, value) {
                     (Value::Int(a, _), Value::Int(b, _)) => a == b,
                     _ => literal == *value,
@@ -7722,6 +7783,16 @@ fn is_copy(value: &Value) -> bool {
             // trapped use-after-move while the compiler printed the char
             // twice — wolf-interp#50, the permissive-direction divergence.
             | Value::Char(_)
+            // A `byte` is a copy value for the same reason and by the same
+            // clause: D72 rules it an 8-bit unsigned SCALAR modelled on
+            // `[type.char]`, "an `i8`-shaped storage cell at every tier",
+            // and nothing in `[type.byte]` makes it move-only. It is
+            // wolf-interp#50's shape one type over, caught the day the type
+            // landed rather than a release later: `let b = a` then `{a}`
+            // trapped use-after-move here while the compiler prints the
+            // octet twice — the permissive direction reversed, which is the
+            // one this machine must never take on its own.
+            | Value::Byte(_)
             | Value::Int(..)
             | Value::Float(_)
             | Value::Str(_)
