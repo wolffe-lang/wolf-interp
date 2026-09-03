@@ -66,6 +66,10 @@
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+// `[os.net.unix]`'s half only: a socket PATH exists where the family does.
+// Unconditional, these are three unused imports on windows and `-D warnings`
+// is a gate, not a preference.
+#[cfg(unix)]
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -356,6 +360,11 @@ impl NetTable {
             drop(listener);
             let _ = std::fs::remove_file(&path);
         }
+        // No unix family here, so the socket is only a socket: dropping it is
+        // the whole of its close, and naming the drop keeps `-D warnings`
+        // honest on a host where the arm above does not exist.
+        #[cfg(not(unix))]
+        drop(sock);
         Ok(())
     }
 
