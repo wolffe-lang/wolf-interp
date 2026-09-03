@@ -24,6 +24,22 @@ cargo test
 cargo run -- corpus
 ```
 
+**Touched a `#[cfg(...)]` arm? Run clippy for the other hosts too.**
+
+```sh
+cargo clippy --target x86_64-pc-windows-msvc --all-targets -- -D warnings
+cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings
+```
+
+CI is a three-host matrix and `-D warnings` is a gate on each of them, so an
+import or a binding used only inside `#[cfg(unix)]` is dead code on windows
+and red there while every local gate is green. Add the targets once
+(`rustup target add x86_64-pc-windows-msvc x86_64-unknown-linux-gnu`); each
+check then takes about a minute, far less than a round trip through the
+runner. is36 learned this landing `[os.net.unix]`; is35 learned the same
+thing one lint over, from a walk that read GitHub's checkout path. **Local
+green is not green.**
+
 `cargo test` includes the doc-truth harness (`tests/doc_truth.rs`). Every
 command/output pair in README.md and `docs/manual/` runs against the built
 binary and is byte-compared, so a doc edit that invents output fails CI.
