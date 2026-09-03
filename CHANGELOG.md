@@ -114,11 +114,14 @@ and not one stopped.**
   path has no port — and `net_close` of a LISTENER unlinks its path while a
   stream's close never touches it. A socket path that is absolute or climbs
   out of the working directory is refused BY NAME, the path-shaped twin of
-  the TCP family's loopback + port 0 discipline. `corpus/net/unix_echo.lu`
-  still does not run here — its first statement is `fs_exists` — so the
-  witness's three lanes are carried by `tests/net_unix.rs` instead, and the
-  tension between serving a family made of filesystem paths and declining the
-  filesystem is named rather than papered over.
+  the TCP family's loopback + port 0 discipline. A plain regular file at dial
+  is neither of the clause's two dial cases, so the kernel decides and the
+  hosts split — `ENOTSOCK`/`io` on macOS, `ECONNREFUSED`/`refused` on linux —
+  and the test pins the four rows the clause rules while reading the fifth.
+  `corpus/net/unix_echo.lu` still does not run here — its first statement is
+  `fs_exists` — so the witness's three lanes are carried by `tests/net_unix.rs`
+  instead, and the tension between serving a family made of filesystem paths
+  and declining the filesystem is named rather than papered over.
 - **A `byte` is Copy-shaped, caught the day the type landed.** `let b = a`
   trapped `use-after-move` on the next read of `a` — wolf-interp#50's shape
   one type over, where `char` assignment moved here through 0.1.16 while the
@@ -145,6 +148,14 @@ and not one stopped.**
   neither the byte flip set, nor the unix family, nor D74's five witnesses
   contributes a row. Conservatism 251/215/215 -> 257/221/221. Everything
   still gating is older than this sprint and older than the last one.
+- **The unix family broke clippy on a host that has no unix family.** Three
+  `std::path` imports and one `let Some(sock)` binding are used only inside
+  `#[cfg(unix)]` arms, so on windows they are dead and `-D warnings` is a
+  gate rather than a preference. Local green is not green — is35's lesson in
+  a different shape, and the answer is the same one: the check that finds it
+  runs BEFORE the push. `cargo clippy --target x86_64-pc-windows-msvc
+  --all-targets -- -D warnings` reproduces the runner's verdict on a laptop
+  in a minute, and linux's target does too.
 - **Pin, census, ratchets.** Pin `3befc3e` -> `982f857`, wolf-lang v0.2.4.
   Corpus 486 -> 503 (469 entries / 34 members): D74's five layout
   counter-examples, `grammar/bom_at_start.lu`, four `typecheck/byte_*`, two

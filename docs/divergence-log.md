@@ -195,13 +195,30 @@ Thirty-two of the raw pin's forty-three walk mismatches were one missing
 `strip_prefix`. Recorded here because the shape generalizes: a lexical rule
 about how a file is READ binds every reader of that file, not only the lexer.
 
+**A cross-compilation gate, not a divergence: the unix family broke clippy
+on a host that has no unix family.** Three `std::path` imports and one
+`let Some(sock)` binding are used only inside `#[cfg(unix)]` arms, so on
+windows they are dead code and `-D warnings` fails. Every local gate was
+green; GitHub's windows runner was not. is35 recorded the same lesson from
+W0316's checkout-path walk, and this is the answer to it that costs a minute
+rather than a round trip: `cargo clippy --target x86_64-pc-windows-msvc
+--all-targets -- -D warnings` reproduces the runner's verdict on the laptop,
+and `--target x86_64-unknown-linux-gnu` covers the other half of the matrix.
+Both targets were installed already; nobody had run them.
+
 **wolf-lang#227 — the unix family serves, and its witness still does not
 run.** `[os.net.unix]` is implemented whole: both binders, the row vocabulary
 that distinguishes the HOST (`unsupported`, by name, never a bare `io`) from
 the PATH, `net_port` answering `io` because a path has no port, and the
 cleanup posture — a LISTENER's close unlinks, a stream's close does not. A
-plain regular file at dial is neither of the clause's two dial cases; the
-kernel answers `ENOTSOCK` and both machines call it `io` (measured).
+plain regular file at dial is neither of the clause's two dial cases, so the
+KERNEL decides and the hosts disagree: macOS answers `ENOTSOCK` (this
+machine's `io` row, and wolfc's, measured), linux answers `ECONNREFUSED`
+(`refused`). The witness reads the row and accepts either — the posture
+`net/peer_close_after_serve.lu` takes to a reply the kernel may or may not
+deliver past an RST — because the clause rules the two cases it names and
+this is not one of them. GitHub's ubuntu runner said so and no developer's
+machine did; local green is not green, twice in one sprint.
 
 `corpus/net/unix_echo.lu` is nevertheless **out of scope here, and not for
 the sockets**: its first statement is `fs_exists(path)` and its cleanup is
