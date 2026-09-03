@@ -96,6 +96,11 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // loopback + port 0, rows never traps — see `eval::net` for the
     // semantics and their witnesses.
     "net_listen",
+    // `[os.net.unix]` (s136, wolf-lang#227): the second address family. The
+    // rest of the tier serves a unix fd call for call, so only the two
+    // binders are new names.
+    "net_listen_unix",
+    "net_connect_unix",
     "net_port",
     "net_accept",
     "net_connect",
@@ -1862,6 +1867,12 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
     match name {
         // The s39 net tier (`eval::net`'s module doc, probed prelude sigs).
         "net_listen" | "net_port" | "net_close" | "net_deadline" => &["io"],
+        // `[os.net.unix]` (s136, wolf-lang#227) — the ONE tier whose rows the
+        // spec pins outright, so these two rows are the clause's and not this
+        // implementation's reading. `unsupported` is the HOST, refused by
+        // name and never a bare `io`; every other row is the path.
+        "net_listen_unix" => &["unsupported", "exists", "not_found", "denied", "io"],
+        "net_connect_unix" => &["unsupported", "refused", "not_found", "denied", "io"],
         "net_accept" => &["timeout", "io"],
         "net_connect" => &["refused", "timeout", "io"],
         "net_read" => &["closed", "timeout", "utf8", "io"],

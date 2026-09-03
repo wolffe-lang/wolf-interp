@@ -66,6 +66,7 @@
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::diag::Span;
@@ -118,6 +119,37 @@ struct NetSock {
 enum SockKind {
     Listener(TcpListener),
     Stream(TcpStream),
+    /// `[os.net.unix]` (s136, wolf-lang#227): an `AF_UNIX` stream listener,
+    /// carrying the path it bound. The path rides the socket because the
+    /// clause's cleanup posture is "the runtime created the socket file, so
+    /// the runtime removes it" — `net_close` of a LISTENER unlinks, and
+    /// nothing else does.
+    #[cfg(unix)]
+    UnixListener(std::os::unix::net::UnixListener, PathBuf),
+    #[cfg(unix)]
+    UnixStream(std::os::unix::net::UnixStream),
+}
+
+/// A connected socket, whichever family it belongs to.
+///
+/// `[os.net.unix]`: "The fd either answers is an ordinary net stream: …
+/// `net_read`/`net_write`, the byte pair, `net_deadline` and `net_close`
+/// serve it call for call." One trait object is that sentence — the read and
+/// write polls below are written once and neither one knows the family.
+trait Duplex: Read + Write {}
+impl<T: Read + Write> Duplex for T {}
+
+impl NetSock {
+    /// The connected socket behind this fd, or `None` when the fd names a
+    /// listener (which cannot read or write: the wrong-kind `io` row).
+    fn duplex(&mut self) -> Option<&mut dyn Duplex> {
+        match &mut self.kind {
+            SockKind::Stream(stream) => Some(stream),
+            #[cfg(unix)]
+            SockKind::UnixStream(stream) => Some(stream),
+            _ => None,
+        }
+    }
 }
 
 impl NetTable {
@@ -171,6 +203,11 @@ impl NetTable {
         let addr = match &sock.kind {
             SockKind::Listener(listener) => listener.local_addr(),
             SockKind::Stream(stream) => stream.local_addr(),
+            // `[os.net.unix]`: "`net_port` on it is `io` — a path has no
+            // port." Stated by the clause rather than derived, so it is
+            // answered here rather than left to a failing `local_addr`.
+            #[cfg(unix)]
+            SockKind::UnixListener(..) | SockKind::UnixStream(_) => return Err(NetErr::Row("io")),
         };
         addr.map(|addr| i128::from(addr.port()))
             .map_err(|_| NetErr::Row("io"))
@@ -208,23 +245,41 @@ impl NetTable {
     /// One accept poll: the new stream's fd, or not yet.
     fn poll_accept(&mut self, fd: i128) -> NetResult<Poll<i128>> {
         let sock = self.sock(fd)?;
-        let SockKind::Listener(listener) = &sock.kind else {
+        let accepted = match &sock.kind {
+            SockKind::Listener(listener) => match listener.accept() {
+                Ok((stream, _)) => {
+                    stream
+                        .set_nonblocking(true)
+                        .map_err(|_| NetErr::Row("io"))?;
+                    SockKind::Stream(stream)
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    return Ok(Poll::NotYet);
+                }
+                Err(_) => return Err(NetErr::Row("io")),
+            },
+            // `[os.net.unix]`: `net_accept` serves a unix listener call for
+            // call, and the stream it answers is an ordinary net stream.
+            #[cfg(unix)]
+            SockKind::UnixListener(listener, _) => match listener.accept() {
+                Ok((stream, _)) => {
+                    stream
+                        .set_nonblocking(true)
+                        .map_err(|_| NetErr::Row("io"))?;
+                    SockKind::UnixStream(stream)
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    return Ok(Poll::NotYet);
+                }
+                Err(_) => return Err(NetErr::Row("io")),
+            },
             // A stream cannot accept: wrong-kind fd, the `io` row (probed).
-            return Err(NetErr::Row("io"));
+            _ => return Err(NetErr::Row("io")),
         };
-        match listener.accept() {
-            Ok((stream, _)) => {
-                stream
-                    .set_nonblocking(true)
-                    .map_err(|_| NetErr::Row("io"))?;
-                Ok(Poll::Ready(self.fd(NetSock {
-                    kind: SockKind::Stream(stream),
-                    deadline_ms: None,
-                })))
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(Poll::NotYet),
-            Err(_) => Err(NetErr::Row("io")),
-        }
+        Ok(Poll::Ready(self.fd(NetSock {
+            kind: accepted,
+            deadline_ms: None,
+        })))
     }
 
     /// One read poll: up to `n` bytes, validated. `Ok(0)` from the socket
@@ -245,7 +300,7 @@ impl NetTable {
     /// (s106, F-0102). No `utf8` row anywhere: a lone `0x80` is data.
     fn poll_read_bytes(&mut self, fd: i128, n: usize) -> NetResult<Poll<Vec<u8>>> {
         let sock = self.sock(fd)?;
-        let SockKind::Stream(stream) = &mut sock.kind else {
+        let Some(stream) = sock.duplex() else {
             return Err(NetErr::Row("io"));
         };
         let mut buf = vec![0u8; n];
@@ -263,7 +318,7 @@ impl NetTable {
     /// One write poll from `at`: how far the write is now, or done.
     fn poll_write(&mut self, fd: i128, bytes: &[u8], at: &mut usize) -> NetResult<Poll<()>> {
         let sock = self.sock(fd)?;
-        let SockKind::Stream(stream) = &mut sock.kind else {
+        let Some(stream) = sock.duplex() else {
             return Err(NetErr::Row("io"));
         };
         while *at < bytes.len() {
@@ -280,12 +335,75 @@ impl NetTable {
     }
 
     /// `net_close`: the fd is spent; closing it again is `io` (probed).
+    ///
+    /// `[os.net.unix]`'s cleanup posture rides here: "the runtime created the
+    /// socket file, so the runtime removes it — `net_close` of a unix
+    /// LISTENER unlinks its path; a stream's close never touches the path".
+    /// A process that dies without closing leaves the file, which the next
+    /// bind refuses as `exists`, and that is the nginx/haproxy posture the
+    /// clause states rather than implies.
     fn close(&mut self, fd: i128) -> NetResult<()> {
         let slot = self.slot(fd)?;
-        if slot.take().is_none() {
+        let Some(sock) = slot.take() else {
             return Err(NetErr::Row("io"));
+        };
+        #[cfg(unix)]
+        if let SockKind::UnixListener(listener, path) = sock.kind {
+            // Drop the listener FIRST so the fd is gone before the path is,
+            // then unlink. A failed unlink is not the caller's error — the
+            // socket is closed either way, and the clause makes the leftover
+            // file the next bind's `exists`.
+            drop(listener);
+            let _ = std::fs::remove_file(&path);
         }
         Ok(())
+    }
+
+    /// `net_listen_unix` (`[os.net.unix]`, s136/wolf-lang#227): bind and
+    /// listen an `AF_UNIX` stream socket at `path`.
+    ///
+    /// The row vocabulary distinguishes the two things a caller must tell
+    /// apart, which is what #227 was filed about. **`unsupported` is the
+    /// HOST** — the runtime does not serve the family there, refused by name
+    /// and never a bare `io`; every other row is the PATH: an existing path
+    /// is `exists` (a stale socket file is the operator's to remove — the
+    /// runtime never clobbers a path it did not bind), a missing directory
+    /// `not_found`, a permission the caller lacks `denied`.
+    #[cfg(unix)]
+    fn listen_unix(&mut self, path: &str) -> NetResult<i128> {
+        let path = socket_path(path, "net_listen_unix")?;
+        // "an existing path is `exists`" — asked BEFORE the bind, because
+        // `bind(2)` answers `EADDRINUSE` for a live socket and for a stale
+        // file alike, and the clause makes both the same row anyway.
+        if path.symlink_metadata().is_ok() {
+            return Err(NetErr::Row("exists"));
+        }
+        let listener =
+            std::os::unix::net::UnixListener::bind(&path).map_err(|e| unix_bind_row(&e))?;
+        listener
+            .set_nonblocking(true)
+            .map_err(|_| NetErr::Row("io"))?;
+        Ok(self.fd(NetSock {
+            kind: SockKind::UnixListener(listener, path),
+            deadline_ms: None,
+        }))
+    }
+
+    /// `net_connect_unix` (`[os.net.unix]`): dial an `AF_UNIX` stream socket.
+    /// At dial, no socket file is `not_found`, a file nobody listens on is
+    /// `refused`, and `denied` is the permission the caller lacks.
+    #[cfg(unix)]
+    fn connect_unix(&mut self, path: &str) -> NetResult<i128> {
+        let path = socket_path(path, "net_connect_unix")?;
+        let stream =
+            std::os::unix::net::UnixStream::connect(&path).map_err(|e| unix_dial_row(&e))?;
+        stream
+            .set_nonblocking(true)
+            .map_err(|_| NetErr::Row("io"))?;
+        Ok(self.fd(NetSock {
+            kind: SockKind::UnixStream(stream),
+            deadline_ms: None,
+        }))
     }
 
     /// `net_deadline`: arm (`ms > 0`) or clear (`ms <= 0`) the budget.
@@ -303,6 +421,64 @@ impl NetTable {
     fn armed(&mut self, fd: i128) -> Option<u64> {
         self.slot(fd).ok()?.as_ref()?.deadline_ms
     }
+}
+
+/// The socket path a unix-domain call may bind or dial.
+///
+/// The v0 discipline the TCP family states as "loopback + port 0" has a
+/// path-shaped twin: a socket path is a host filesystem object, and this
+/// machine declines the host's filesystem by design (wolf-interp#18 item 6,
+/// `[proto.cmp.defined-divergence]` — an interpreter observing the HOST's
+/// filesystem puts the host into a differential comparison). Binding an
+/// arbitrary absolute path would walk straight through that posture, so the
+/// admitted shape is a RELATIVE path that does not climb out of the working
+/// directory — `target/x.sock`, which is what the corpus witness writes.
+/// Anything else is refused BY NAME (`unsupported`, the by-name refusal and
+/// never the `unsupported` ROW, which would be a lie about the host).
+#[cfg(unix)]
+fn socket_path(path: &str, name: &str) -> NetResult<PathBuf> {
+    let candidate = Path::new(path);
+    let escapes = candidate.is_absolute()
+        || candidate.components().any(|c| {
+            matches!(
+                c,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        });
+    if escapes {
+        return Err(NetErr::Outside(format!(
+            "`{name}(\"{path}\")` names a path outside the working directory; a unix socket \
+             path is a host filesystem object, and this machine's declined fs surface \
+             (wolf-interp#18 item 6) admits only a relative path that does not climb out — \
+             the shape is refused by name rather than observed"
+        )));
+    }
+    Ok(candidate.to_path_buf())
+}
+
+/// `[os.net.unix]`'s bind rows: a missing directory is `not_found`, a
+/// permission the caller lacks is `denied`, an existing path is `exists`
+/// (asked before the bind, so this arm sees it only from a race).
+#[cfg(unix)]
+fn unix_bind_row(error: &std::io::Error) -> NetErr {
+    NetErr::Row(match error.kind() {
+        std::io::ErrorKind::NotFound => "not_found",
+        std::io::ErrorKind::PermissionDenied => "denied",
+        std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::AddrInUse => "exists",
+        _ => "io",
+    })
+}
+
+/// `[os.net.unix]`'s dial rows: no socket file is `not_found`, a file nobody
+/// listens on is `refused`, `denied` as at bind.
+#[cfg(unix)]
+fn unix_dial_row(error: &std::io::Error) -> NetErr {
+    NetErr::Row(match error.kind() {
+        std::io::ErrorKind::NotFound => "not_found",
+        std::io::ErrorKind::PermissionDenied => "denied",
+        std::io::ErrorKind::ConnectionRefused => "refused",
+        _ => "io",
+    })
 }
 
 /// `closed` for the peer-finish error kinds, `io` for the rest.
@@ -336,6 +512,30 @@ impl Machine {
                     self.net().listen(addr)
                 } else {
                     self.net().connect(addr)
+                };
+                self.net_answer(name, answer.map(|fd| Value::Int(fd, IntTy::INT)), span)
+            }
+            "net_listen_unix" | "net_connect_unix" => {
+                let Some(Value::Str(path)) = args.first() else {
+                    return Err(Signal::Unsupported(format!(
+                        "`{name}` takes a socket path `str` like \"target/x.sock\""
+                    )));
+                };
+                // `[os.net.unix]`'s host posture, this machine's half:
+                // linux and macOS serve the family, and every other host
+                // answers the `unsupported` ROW — refused BY NAME, never a
+                // bare `io`, which is the distinction #227 was filed to make
+                // measurable from inside a program.
+                #[cfg(unix)]
+                let answer = if name == "net_listen_unix" {
+                    self.net().listen_unix(path)
+                } else {
+                    self.net().connect_unix(path)
+                };
+                #[cfg(not(unix))]
+                let answer = {
+                    let _ = path;
+                    Err::<i128, NetErr>(NetErr::Row("unsupported"))
                 };
                 self.net_answer(name, answer.map(|fd| Value::Int(fd, IntTy::INT)), span)
             }
