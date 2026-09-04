@@ -1589,6 +1589,42 @@ fn class_of_type(ty: &Type) -> LitClass {
     }
 }
 
+/// E0301's sentence for a cast target that resolves nowhere (wolf-interp#60).
+///
+/// ww13 put `corpus/typecheck/byte_casts.lu` on the playground at the 0.1.24
+/// pin and found the report saying the wrong thing: `200 as itn` (a typo) and
+/// `200 as byte` (a scalar the pinned specification declares, which that
+/// release did not carry) answered **byte-identically**, and the sentence
+/// named a misspelling that was not there. The verdict and the span were
+/// right; the words beside them were not doing their job — #56's shape one
+/// diagnostic over.
+///
+/// The pin runs ahead of this implementation BY DESIGN — that lag is what the
+/// differential measures — so the two readings will collide again at every
+/// tag where the compiler lands a type first. What separates them for good is
+/// the **closed set**: the note names every built-in type name this release
+/// carries, so a reader can see at a glance whether the name they wrote is a
+/// near-miss of one of them or absent from a list that is complete. The list
+/// is rendered from [`BUILTIN_SCALAR_TYPES`] rather than typed out, so it
+/// cannot drift from the set the check actually consults.
+fn unknown_cast_target_note() -> String {
+    let carried = BUILTIN_SCALAR_TYPES
+        .iter()
+        .map(|name| format!("`{name}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "nothing with this name is in scope, so this cast names no target type. Two \
+         different mistakes read alike here, and the note names the set that tells them \
+         apart: a MISSPELLED target used to pass the value through unchanged, which is \
+         how a wrong type reaches the rest of the program; or a target the pinned \
+         specification declares and this release does not carry yet, which is ordinary \
+         — the pin runs ahead of this implementation by design. The built-in type names \
+         this release carries are {carried}, and the set is closed; a lower-case name \
+         outside it that this module does not declare is one of those two things"
+    )
+}
+
 /// The span of a cast target that names nothing at all, or `None` when this
 /// rung cannot say (issue #17 ask 1).
 ///
@@ -1721,9 +1757,7 @@ impl TierWalk<'_> {
                         "E0301",
                         span,
                         "mod.scope",
-                        "nothing with this name is in scope, so this cast names no target \
-                         type — a typo in a cast target used to pass the value through \
-                         unchanged, which is how a wrong type reaches the rest of the program",
+                        unknown_cast_target_note(),
                     ));
                 }
                 // Issue #17 ask 2: `str` is not a cast SOURCE either. The

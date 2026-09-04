@@ -375,3 +375,48 @@ fn main() -> int {
     assert!(reason.contains("not in the cast set"), "{reason}");
     assert!(reason.contains("E0805"), "{reason}");
 }
+
+// -- wolf-interp#60: the report tells the two mistakes apart ----------------
+
+/// E0301's note names the CLOSED SET of built-in type names this release
+/// carries (is37, wolf-interp#60).
+///
+/// ww13 put `corpus/typecheck/byte_casts.lu` on the playground at the 0.1.24
+/// pin and read the report: `200 as itn` (a typo) and `200 as byte` (a scalar
+/// `[type.byte]` declares, which 0.1.24 did not carry) answered
+/// byte-identically, and the sentence sent the reader hunting a misspelling
+/// that was not there. `byte` arrived at 0.1.25, so that particular pair is
+/// gone — but the pin runs ahead of this implementation by design, so the
+/// collision recurs at every tag where the compiler lands a type first. The
+/// fix that survives the next one is the set: a reader who can see the whole
+/// list can tell a near-miss from an absence.
+#[test]
+fn the_unresolved_cast_target_note_names_the_closed_type_set() {
+    let source = "fn main() -> int {\n    let a = 200 as itn\n    0\n}\n";
+    let observation = frontend::observe(source.as_bytes(), None);
+    assert_eq!(observation.verdict, Verdict::Fail("E0301".to_owned()));
+    let message = observation
+        .detail
+        .expect("the refusal carries its diagnostic")
+        .message;
+    // Both readings are stated, so neither is asserted as fact.
+    assert!(message.contains("MISSPELLED"), "{message}");
+    assert!(
+        message.contains("does not carry yet"),
+        "the other reading is named too: {message}"
+    );
+    // And the set itself, rendered from the check's own table.
+    for name in [
+        "`bool`", "`byte`", "`char`", "`f32`", "`f64`", "`int`", "`str`", "`u8`", "`uint`",
+    ] {
+        assert!(message.contains(name), "{name} missing from: {message}");
+    }
+    assert!(message.contains("the set is closed"), "{message}");
+}
+
+/// And the type that started the issue resolves: `byte` is carried since
+/// 0.1.25, so a cast to it is not a scope question at all.
+#[test]
+fn byte_is_a_cast_target_this_release_carries() {
+    exits_zero("if (200 as byte) as int == 200 { 0 } else { 1 }");
+}
