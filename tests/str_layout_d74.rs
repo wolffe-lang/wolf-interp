@@ -235,3 +235,88 @@ fn the_three_layout_codes_are_no_longer_this_implementations_to_choose() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// is37 — wolf-interp#59's closing measurement, against the pinned witnesses.
+// ---------------------------------------------------------------------------
+
+/// The five corpus files s136 landed for D74, each with the code AND the span
+/// `wolf conform-run --json` reported for it at pin `982f857` (wolf-lang
+/// v0.2.4).
+///
+/// wolf-interp#59 asked for two things: the three layout conditions as three
+/// rules carrying the catalog's codes, and **wolfc's spans**. The unit half
+/// above proves the rules; this is the differential half, and it is the one
+/// the issue's own table indicts — 0.1.23 answered its invented E0109 at
+/// `[31,49]` where wolfc answered E0103 at `[31,35]`, "a code divergence AND
+/// a span divergence, twice". Every row below was re-measured on BOTH sides
+/// before it was written down; a pin bump that moves a witness moves this
+/// table, which is the point.
+#[test]
+fn the_five_witnesses_answer_wolfc_code_and_span() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(wolf_interp::upstream_root())
+        .join("corpus/grammar");
+    let witnesses: &[(&str, &str, [usize; 2], &str)] = &[
+        // The opening `"""` shares its line with text.
+        ("multiline_open_shares_line.lu", "E0103", [437, 441], "oops"),
+        // The closing one does — D74 folds it into E0103, one rule per code.
+        (
+            "multiline_close_shares_line.lu",
+            "E0103",
+            [598, 601],
+            "\"\"\"",
+        ),
+        // A content line sits left of the margin (the catalog's E0104).
+        ("multiline_short_margin.lu", "E0104", [520, 526], "      "),
+        // The margin mixes tabs and spaces: eight tabs against eight spaces,
+        // compared byte for byte and never by visual width.
+        (
+            "multiline_mixed_margin.lu",
+            "E0105",
+            [575, 583],
+            "\t\t\t\t\t\t\t\t",
+        ),
+        // And the escape that freed E0103/E0104 in the first place (#225).
+        ("multiline_bad_escape.lu", "E0101", [1566, 1568], "\\q"),
+    ];
+    for (file, code, span, text) in witnesses {
+        let source = std::fs::read_to_string(root.join(file)).expect("witness readable");
+        let lexed = lex::lex(&source);
+        let diag = lexed
+            .first_error()
+            .unwrap_or_else(|| panic!("{file} lexed clean, wanted {code}"));
+        assert_eq!(
+            (diag.code, [diag.span.start, diag.span.end]),
+            (*code, *span),
+            "{file}: the counterparty's code and span are the contract"
+        );
+        assert_eq!(&&source[diag.span.start..diag.span.end], text, "{file}");
+    }
+}
+
+/// The BOM's two positions, as the corpus and the catalog split them.
+///
+/// `grammar/bom_at_start.lu` is the only corpus file whose first three bytes
+/// are `EF BB BF`; it is a `run(exit=0)` file on every lane, because a leading
+/// mark is stripped and never a diagnostic. Mid-file the same bytes are a
+/// stray character, and no corpus row can pin that alone — the stray token the
+/// lexer leaves behind is also the parser's E0201, which the file's own
+/// directive block says. So the mid-file case is asserted here, and the
+/// leading case is asserted against the pinned file.
+#[test]
+fn the_pinned_bom_file_lexes_clean_and_the_mid_file_mark_does_not() {
+    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(wolf_interp::upstream_root())
+        .join("corpus/grammar/bom_at_start.lu");
+    let source = std::fs::read_to_string(&file).expect("witness readable");
+    assert!(
+        source.starts_with('\u{feff}'),
+        "the witness must actually begin with the mark"
+    );
+    lexes_clean(&source);
+
+    let (code, text) = first_error(&source.replacen("fn main", "\u{feff}fn main", 1));
+    assert_eq!(code, "E0107");
+    assert_eq!(text, "\u{feff}");
+}
