@@ -38,6 +38,11 @@ struct Case {
     /// `None` for `member: true` files.
     ledger_phase: Option<Phase>,
     check: Option<Check>,
+    /// The file's own `conforms:` tags. is37 reads them: E0401 is pinned both
+    /// by files this rung owns and by files it does not, and `type.byte` is
+    /// the corpus's own statement of which is which (wolf-interp#58's rule —
+    /// derive the set from the directive, never hand-write it).
+    conforms: Vec<String>,
 }
 
 fn cases() -> Vec<Case> {
@@ -48,9 +53,9 @@ fn cases() -> Vec<Case> {
         .into_iter()
         .map(|file| {
             let source = std::fs::read(root.join(&file.path)).expect("readable");
-            let (ledger_phase, check) = match &file.outcome {
-                Outcome::Entry(d) => (d.phase, d.check.clone()),
-                Outcome::Member(_) => (None, None),
+            let (ledger_phase, check, conforms) = match &file.outcome {
+                Outcome::Entry(d) => (d.phase, d.check.clone(), d.conforms.clone()),
+                Outcome::Member(_) => (None, None, Vec::new()),
                 Outcome::Failed(reason) => panic!("{}: {reason}", file.path),
             };
             Case {
@@ -58,6 +63,7 @@ fn cases() -> Vec<Case> {
                 source,
                 ledger_phase,
                 check,
+                conforms,
             }
         })
         .collect()
@@ -69,6 +75,19 @@ fn pinned_code(check: Option<&Check>) -> Option<&str> {
         Some(Check::Fail(code)) => Some(code.as_str()),
         _ => None,
     }
+}
+
+/// Does this file pin the E0401 the **resolve** rung owns?
+///
+/// E0401 is the one code the two rungs share. Since is37 (wolf-interp#62)
+/// resolve owns `[type.byte]`'s domain — an `int` in a byte slot, refused at
+/// the counterparty's own span — while the D54 numeric-literal files pinning
+/// the same code stay the conservatism class, because their rule is the
+/// checker's. The corpus says which is which: a byte-domain witness tags
+/// `type.byte`.
+fn is_byte_domain_case(case: &Case) -> bool {
+    pinned_code(case.check.as_ref()) == Some("E0401")
+        && case.conforms.iter().any(|tag| tag == "type.byte")
 }
 
 /// A corpus file whose disagreement with this implementation is already
@@ -298,6 +317,16 @@ fn every_parseable_file_resolves_under_sema_lite() {
             continue;
         }
         let observation = frontend::observe(&case.source, Some(Phase::Resolve));
+        if is_byte_domain_case(&case) {
+            assert_eq!(
+                observation.verdict,
+                Verdict::Fail("E0401".to_owned()),
+                "{}",
+                case.path
+            );
+            assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
+            continue;
+        }
         if let Some(
             code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E0809"
             | "E0812" | "E0813" | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
@@ -348,6 +377,16 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
         }
         for rung in [Phase::Typecheck, Phase::Mem, Phase::Wir] {
             let observation = frontend::observe(&case.source, Some(rung));
+            if is_byte_domain_case(&case) {
+                assert_eq!(
+                    observation.verdict,
+                    Verdict::Fail("E0401".to_owned()),
+                    "{}",
+                    case.path
+                );
+                assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
+                continue;
+            }
             if let Some(
                 code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
                 | "E0809" | "E0812" | "E0813" | "E1101" | "E1102" | "E1103" | "E1301"

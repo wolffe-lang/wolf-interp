@@ -1014,6 +1014,7 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| move_check(program))
         .or_else(|| unsafe_sig_check(program))
         .or_else(|| tier_check(program))
+        .or_else(|| byte_check(program))
 }
 
 /// `[mod.cycle]` (D32): imports form a DAG. E0303 at the `use` that closes
@@ -3473,6 +3474,773 @@ fn collect_type_refs(ty: &Type, scope: &mut FileScope) {
         }
         TypeKind::TypeOfTypes | TypeKind::Region => {}
     }
+}
+
+// ---------------------------------------------------------------------------
+// D72's domain: a `byte` is `0..=255` by construction (is37, wolf-interp#62)
+// ---------------------------------------------------------------------------
+
+/// What the byte pass can say about an expression, and nothing more.
+///
+/// [`ByteTy::Unknown`] is the answer to everything the walk cannot see, and it
+/// is the answer by default: **no rule below fires unless BOTH sides are
+/// known**. That is the sema boundary restated for one type. A type checker is
+/// not growing here — `[type.byte]` gives this machine a value whose domain is
+/// `0..=255` *by construction* (`Value::Byte` is a `u8`), so the only two
+/// outcomes for an `int` reaching a byte slot are a refusal and a lie. is36
+/// shipped the type and left the domain to the compilers; wolf-interp#62 is
+/// what that cost — `List[byte].push(256)` stored 256 here and the compilers
+/// answered E0401, eight wolf-std rows divergent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ByteTy {
+    /// `[type.byte]`'s octet.
+    Byte,
+    /// Any integer type, an unsuffixed `{integer}` literal included. The pass
+    /// never distinguishes widths: `byte` versus `int` is the only question
+    /// it asks, and `i32` versus `u64` belongs to a checker this is not.
+    Int,
+    /// A `List` whose element is a `byte`.
+    ListByte,
+    /// A `List` whose element is an integer type.
+    ListInt,
+    /// Say nothing.
+    Unknown,
+}
+
+impl ByteTy {
+    /// The element type a load out of this container yields.
+    fn elem(self) -> ByteTy {
+        match self {
+            ByteTy::ListByte => ByteTy::Byte,
+            ByteTy::ListInt => ByteTy::Int,
+            _ => ByteTy::Unknown,
+        }
+    }
+
+    fn is_list(self) -> bool {
+        matches!(self, ByteTy::ListByte | ByteTy::ListInt)
+    }
+}
+
+/// The pass's single rule: a `byte` slot takes no `int`, an `int` slot takes
+/// no `byte`. `[type.byte]` says why — a `byte` "adopts no numeric literal in
+/// any position" and is not an integer type, so neither direction is a
+/// conversion the language performs for you. Both bridges are spelled
+/// (`[type.byte.cast]`).
+fn byte_int_clash(slot: ByteTy, found: ByteTy) -> bool {
+    matches!(
+        (slot, found),
+        (ByteTy::Byte, ByteTy::Int) | (ByteTy::Int, ByteTy::Byte)
+    )
+}
+
+/// The E0401 a clash earns, at the offending expression's own span — which is
+/// the counterparty's span, observed at pin `982f857` on both witnesses:
+/// `typecheck/byte_narrow_fail.lu` `[588,590]` (the `65` of
+/// `let b: byte = 65`) and `typecheck/byte_elem_arith_fail.lu` `[849,850]`
+/// (the `b` of `table[b]`). The wrong-typed OPERAND is spanned, never the
+/// annotation and never the whole statement.
+fn byte_clash_diag(slot: ByteTy, span: Span, position: &str) -> Diag {
+    if slot == ByteTy::Byte {
+        Diag::new(
+            "E0401",
+            span,
+            "type.byte.cast",
+            format!(
+                "{position} is a `byte` and this is an `int`: a `byte` adopts no numeric \
+                 literal in any position and never narrows implicitly (`[type.byte]`) — \
+                 spell it `… as byte`, which keeps the low eight bits and never traps \
+                 (`[type.byte.cast]`)"
+            ),
+        )
+    } else {
+        Diag::new(
+            "E0401",
+            span,
+            "type.byte.cast",
+            format!(
+                "{position} is an `int` and this is a `byte`: a `byte` is not an integer \
+                 type (`[type.byte]`) — widen it with `… as int`, which zero-extends \
+                 (`[type.byte.cast]`)"
+            ),
+        )
+    }
+}
+
+/// The `ByteTy` a declared type names. Bare names only: a qualified path, a
+/// generic parameter and an alias all resolve somewhere this pass does not
+/// walk, so they are `Unknown`.
+fn byte_ty_of_type(ty: &Type) -> ByteTy {
+    let TypeKind::Path { path, args } = &*ty.kind else {
+        return ByteTy::Unknown;
+    };
+    if !path.is_single() {
+        return ByteTy::Unknown;
+    }
+    let name = path.segments[0].name.as_str();
+    if args.is_empty() {
+        return byte_ty_of_name(name);
+    }
+    if name != "List" {
+        return ByteTy::Unknown;
+    }
+    let [TypeArg::Type(elem)] = &args[..] else {
+        return ByteTy::Unknown;
+    };
+    match byte_ty_of_type(elem) {
+        ByteTy::Byte => ByteTy::ListByte,
+        ByteTy::Int => ByteTy::ListInt,
+        _ => ByteTy::Unknown,
+    }
+}
+
+/// The scalar a bare type NAME denotes. `byte` is its own thing; every integer
+/// width — and `u8`, deliberately, because D72 declined the alias — is `Int`.
+fn byte_ty_of_name(name: &str) -> ByteTy {
+    match name {
+        "byte" => ByteTy::Byte,
+        "int" | "uint" | "i8" | "i16" | "i32" | "i64" | "i128" | "u8" | "u16" | "u32" | "u64"
+        | "u128" => ByteTy::Int,
+        _ => ByteTy::Unknown,
+    }
+}
+
+/// The `List[T]` element a **value-position** type spelling names.
+/// `[gram.amb.brackets]` makes `List[byte]()` one production, so the element
+/// arrives as an ordinary expression argument and this is where it is read
+/// back (`eval::list_elem_of`'s static twin).
+fn byte_ty_of_index_arg(arg: &crate::ast::IndexArg) -> ByteTy {
+    match arg {
+        crate::ast::IndexArg::Type(ty) => byte_ty_of_type(ty),
+        crate::ast::IndexArg::Value(arg) => match &*arg.expr.kind {
+            ExprKind::Path(path) if path.is_single() => {
+                byte_ty_of_name(path.segments[0].name.as_str())
+            }
+            _ => ByteTy::Unknown,
+        },
+    }
+}
+
+/// A function's byte-relevant signature: the positional parameter types and
+/// the declared return type. Collected per module, for the two boundaries a
+/// call crosses.
+struct ByteSig {
+    params: Vec<ByteTy>,
+    ret: ByteTy,
+}
+
+/// The byte walk's lexical state: one pass per function body, source order,
+/// first finding wins (`[proto.cmp.phase]` compares the first diagnostic).
+struct ByteWalk<'a> {
+    scopes: Vec<Vec<(String, ByteTy)>>,
+    /// This module's plain function items, by name.
+    sigs: &'a BTreeMap<String, ByteSig>,
+    /// This module's struct fields, by struct name then field name.
+    fields: &'a BTreeMap<String, BTreeMap<String, ByteTy>>,
+    /// The enclosing function's declared return type.
+    ret: ByteTy,
+}
+
+impl ByteWalk<'_> {
+    fn lookup(&self, name: &str) -> ByteTy {
+        for scope in self.scopes.iter().rev() {
+            for (n, ty) in scope.iter().rev() {
+                if n == name {
+                    return *ty;
+                }
+            }
+        }
+        ByteTy::Unknown
+    }
+
+    fn declare(&mut self, name: &str, ty: ByteTy) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.push((name.to_owned(), ty));
+        }
+    }
+
+    /// Every name a pattern binds, declared `Unknown`. A `for` element, a
+    /// match arm's payload and a closure parameter all bind names this pass
+    /// does not model; declaring them keeps an outer `b: byte` from being
+    /// read through a shadow that is not one.
+    fn declare_pat_kind(&mut self, pattern: &PatKind) {
+        match pattern {
+            PatKind::Binding(ident) => self.declare(&ident.name, ByteTy::Unknown),
+            PatKind::At { name, pattern } => {
+                self.declare(&name.name, ByteTy::Unknown);
+                self.declare_pat_kind(&pattern.kind);
+            }
+            PatKind::Variant { fields, .. } | PatKind::Tuple(fields) | PatKind::Or(fields) => {
+                for field in fields {
+                    self.declare_pat_kind(&field.kind);
+                }
+            }
+            PatKind::Struct { fields, .. } => {
+                for field in fields {
+                    match &field.pattern {
+                        Some(pattern) => self.declare_pat_kind(&pattern.kind),
+                        None => self.declare(&field.name.name, ByteTy::Unknown),
+                    }
+                }
+            }
+            PatKind::Wildcard | PatKind::Literal(_) => {}
+        }
+    }
+
+    /// The type of an expression, conservatively.
+    fn classify(&self, expr: &Expr) -> ByteTy {
+        match &*expr.kind {
+            ExprKind::Int(_) => ByteTy::Int,
+            ExprKind::Group(inner) => self.classify(inner),
+            ExprKind::Path(path) if path.is_single() => self.lookup(&path.segments[0].name),
+            ExprKind::Cast { ty, .. } => byte_ty_of_type(ty),
+            // `[type.byte.op]`: every arithmetic and bitwise operator widens
+            // its byte operand to `int` FIRST and yields `int`, which is why
+            // `b + 1` is not a finding and `b += 1` is (the compound half is
+            // the assignment rule below). Measured at pin `982f857`: wolfc
+            // accepts `let s = b + 1` on a `byte` `b`.
+            ExprKind::Unary { operand, .. } => match self.classify(operand) {
+                ByteTy::Int => ByteTy::Int,
+                _ => ByteTy::Unknown,
+            },
+            ExprKind::Binary { op, lhs, rhs } => {
+                if !is_widening_op(*op) {
+                    return ByteTy::Unknown;
+                }
+                match (self.classify(lhs), self.classify(rhs)) {
+                    (ByteTy::Int | ByteTy::Byte, ByteTy::Int | ByteTy::Byte) => ByteTy::Int,
+                    _ => ByteTy::Unknown,
+                }
+            }
+            ExprKind::BracketApply { base, args, .. } => {
+                let base_ty = self.classify(base);
+                if base_ty.is_list() && args.len() == 1 {
+                    base_ty.elem()
+                } else {
+                    ByteTy::Unknown
+                }
+            }
+            ExprKind::Call { callee, args } => self.classify_call(callee, args),
+            _ => ByteTy::Unknown,
+        }
+    }
+
+    /// `List[byte]()`, `s.bytes()`, and a call to a function of this module
+    /// whose return type is a bare scalar. Everything else says nothing.
+    fn classify_call(&self, callee: &Expr, args: &[Arg]) -> ByteTy {
+        if let ExprKind::BracketApply {
+            base, args: targs, ..
+        } = &*callee.kind
+            && let ExprKind::Path(path) = &*base.kind
+            && path.segments.last().is_some_and(|s| s.name == "List")
+            && let [arg] = &targs[..]
+        {
+            return match byte_ty_of_index_arg(arg) {
+                ByteTy::Byte => ByteTy::ListByte,
+                ByteTy::Int => ByteTy::ListInt,
+                _ => ByteTy::Unknown,
+            };
+        }
+        // `[mem.str.view]`'s producer: `s.bytes()` is a `List[byte]` (s136,
+        // wolf-lang#231 — "a `.bytes()` element is a `byte`"). Read
+        // syntactically, receiver-shaped only, so a module-level `bytes()`
+        // of someone's own is never mistaken for it.
+        if args.is_empty()
+            && let Some((_, name)) = self.method_of(callee)
+            && name == "bytes"
+        {
+            return ByteTy::ListByte;
+        }
+        if let ExprKind::Path(path) = &*callee.kind
+            && path.is_single()
+            && let Some(sig) = self.sigs.get(&path.segments[0].name)
+        {
+            return sig.ret;
+        }
+        ByteTy::Unknown
+    }
+
+    /// A method call's receiver type and method name, for the two receiver
+    /// shapes `[gram.item.use]`'s path production leaves behind:
+    /// `(mut xs).push(…)` arrives as a `Member` over a moded receiver, and
+    /// `xs.push(…)` as a two-segment path.
+    fn method_of(&self, callee: &Expr) -> Option<(ByteTy, String)> {
+        match &*callee.kind {
+            ExprKind::Member {
+                base,
+                member: crate::ast::Member::Named(name),
+            } => {
+                let receiver = match &*base.kind {
+                    ExprKind::ModedReceiver { place, .. } => place,
+                    _ => base,
+                };
+                Some((self.classify(receiver), name.name.clone()))
+            }
+            ExprKind::Path(path) if path.segments.len() == 2 => Some((
+                self.lookup(&path.segments[0].name),
+                path.segments[1].name.clone(),
+            )),
+            _ => None,
+        }
+    }
+}
+
+/// The operators `[type.byte.op]` widens through: every arithmetic and bitwise
+/// one. Comparisons are deliberately absent — they compare two values of one
+/// type (octet order for two bytes) and never widen, which is why `b == 119`
+/// is the mismatch it looks like.
+fn is_widening_op(op: crate::ast::BinOp) -> bool {
+    use crate::ast::BinOp;
+    matches!(
+        op,
+        BinOp::Add
+            | BinOp::Sub
+            | BinOp::Mul
+            | BinOp::Div
+            | BinOp::Rem
+            | BinOp::Shl
+            | BinOp::Shr
+            | BinOp::BitAnd
+            | BinOp::BitXor
+            | BinOp::BitOr
+    )
+}
+
+/// A comparison operator — the family that takes two operands of ONE type.
+fn is_comparison_op(op: crate::ast::BinOp) -> bool {
+    use crate::ast::BinOp;
+    matches!(
+        op,
+        BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge | BinOp::Cmp
+    )
+}
+
+impl ByteWalk<'_> {
+    fn block(&mut self, block: &Block) -> Option<Diag> {
+        self.scopes.push(Vec::new());
+        for stmt in &block.stmts {
+            if let Some(diag) = self.stmt(stmt) {
+                self.scopes.pop();
+                return Some(diag);
+            }
+        }
+        let out = block
+            .tail
+            .as_deref()
+            .and_then(|tail| self.expr(tail).or_else(|| self.returned(tail)));
+        self.scopes.pop();
+        out
+    }
+
+    /// The declared return type is a slot like any other: a function that says
+    /// `-> byte` and hands back an `int` is the E0401 a binding would be.
+    fn returned(&self, value: &Expr) -> Option<Diag> {
+        byte_int_clash(self.ret, self.classify(value))
+            .then(|| byte_clash_diag(self.ret, value.span, "this function's return type"))
+    }
+
+    fn stmt(&mut self, stmt: &Stmt) -> Option<Diag> {
+        match &stmt.kind {
+            StmtKind::Binding(binding) => self.binding(binding),
+            StmtKind::Assign { place, op, value } => {
+                if let Some(diag) = self.expr(place).or_else(|| self.expr(value)) {
+                    return Some(diag);
+                }
+                let slot = self.classify(place);
+                // `[type.byte.op]`'s named consequence, the compound half:
+                // every arithmetic and bitwise operator widens its byte
+                // operand first, so `b += 1` assigns an `int` to a `byte`.
+                // The machine refuses it dynamically since is36; this is the
+                // same refusal one phase earlier, where the compilers answer.
+                let found = if matches!(op, crate::ast::AssignOp::Assign) {
+                    self.classify(value)
+                } else {
+                    ByteTy::Int
+                };
+                byte_int_clash(slot, found)
+                    .then(|| byte_clash_diag(slot, value.span, "this place's type"))
+            }
+            StmtKind::AssumeNoalias(operands) => {
+                operands.iter().find_map(|operand| self.expr(operand))
+            }
+            StmtKind::Defer { expr, .. } => self.expr(expr),
+            StmtKind::Expr(expr) => self.expr(expr),
+            StmtKind::Item(item) => match &item.kind {
+                ItemKind::Binding(binding) => self.binding(binding),
+                ItemKind::Fn(decl) => decl.body.as_ref().and_then(|body| self.block(body)),
+                _ => None,
+            },
+        }
+    }
+
+    fn binding(&mut self, binding: &crate::ast::Binding) -> Option<Diag> {
+        if let Some(diag) = self.expr(&binding.value) {
+            return Some(diag);
+        }
+        let annotated = binding.ty.as_ref().map_or(ByteTy::Unknown, byte_ty_of_type);
+        let found = self.classify(&binding.value);
+        if byte_int_clash(annotated, found) {
+            return Some(byte_clash_diag(
+                annotated,
+                binding.value.span,
+                "this binding's declared type",
+            ));
+        }
+        if let PatKind::Binding(ident) = &*binding.pattern.kind {
+            let ty = if annotated == ByteTy::Unknown {
+                found
+            } else {
+                annotated
+            };
+            self.declare(&ident.name, ty);
+        } else {
+            self.declare_pat_kind(&binding.pattern.kind);
+        }
+        None
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn expr(&mut self, expr: &Expr) -> Option<Diag> {
+        match &*expr.kind {
+            ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Char(_)
+            | ExprKind::Path(_)
+            | ExprKind::Wildcard
+            | ExprKind::Continue
+            | ExprKind::RegionValue { .. }
+            | ExprKind::UnsafeC { .. }
+            | ExprKind::Asm { .. } => None,
+            // An interpolation hole is an ordinary expression position
+            // (`[gram.lex.str]`), and `print("{f(65)}")` is where most of
+            // this machine's programs make their calls.
+            ExprKind::Str(lit) => self.str_lit(lit),
+            ExprKind::Group(inner)
+            | ExprKind::Try(inner)
+            | ExprKind::FromEnd(inner)
+            | ExprKind::Freeze(inner)
+            | ExprKind::Unary { operand: inner, .. }
+            | ExprKind::ModedReceiver { place: inner, .. }
+            | ExprKind::Member { base: inner, .. }
+            | ExprKind::Cast { expr: inner, .. } => self.expr(inner),
+            ExprKind::Binary { op, lhs, rhs } => {
+                if let Some(diag) = self.expr(lhs).or_else(|| self.expr(rhs)) {
+                    return Some(diag);
+                }
+                // A comparison takes two operands of ONE type: two `byte`s
+                // compare in octet order, and a `byte` against an `int` is
+                // the mismatch it looks like. The counterparty spans the INT
+                // side — `byte_elem_arith_fail.lu` `[883,886]`, the `119` of
+                // `b == 119` — which is the operand that has to change.
+                if !is_comparison_op(*op) {
+                    return None;
+                }
+                match (self.classify(lhs), self.classify(rhs)) {
+                    (ByteTy::Byte, ByteTy::Int) => Some(byte_clash_diag(
+                        ByteTy::Byte,
+                        rhs.span,
+                        "the other side of this comparison",
+                    )),
+                    (ByteTy::Int, ByteTy::Byte) => Some(byte_clash_diag(
+                        ByteTy::Byte,
+                        lhs.span,
+                        "the other side of this comparison",
+                    )),
+                    _ => None,
+                }
+            }
+            ExprKind::BracketApply { base, args, .. } => {
+                if let Some(diag) = self.expr(base) {
+                    return Some(diag);
+                }
+                for arg in args {
+                    if let crate::ast::IndexArg::Value(arg) = arg
+                        && let Some(diag) = self.expr(&arg.expr)
+                    {
+                        return Some(diag);
+                    }
+                }
+                // `[type.byte]` gives a `byte` "no indexing with one", and
+                // the counterparty says so at the subscript's own span
+                // (`byte_elem_arith_fail.lu` `[849,850]`). Only a container
+                // this pass KNOWS is a `List` is judged: a `Map[byte, …]`
+                // subscript is a byte by design.
+                if !self.classify(base).is_list() {
+                    return None;
+                }
+                args.iter().find_map(|arg| {
+                    let crate::ast::IndexArg::Value(arg) = arg else {
+                        return None;
+                    };
+                    (self.classify(&arg.expr) == ByteTy::Byte)
+                        .then(|| byte_clash_diag(ByteTy::Int, arg.expr.span, "a `List` subscript"))
+                })
+            }
+            ExprKind::Call { callee, args } => self.call(callee, args),
+            ExprKind::StructLit { path, fields } => {
+                for field in fields {
+                    if let Some(value) = &field.value
+                        && let Some(diag) = self.expr(value)
+                    {
+                        return Some(diag);
+                    }
+                }
+                let declared = path
+                    .segments
+                    .last()
+                    .and_then(|segment| self.fields.get(&segment.name))?;
+                fields.iter().find_map(|field| {
+                    let value = field.value.as_ref()?;
+                    let slot = *declared.get(&field.name.name)?;
+                    byte_int_clash(slot, self.classify(value))
+                        .then(|| byte_clash_diag(slot, value.span, "this field's declared type"))
+                })
+            }
+            ExprKind::Tuple(items) => items.iter().find_map(|item| self.expr(item)),
+            ExprKind::Block(block) | ExprKind::Unsafe { body: block } => self.block(block),
+            ExprKind::Scope { body, .. } => self.block(body),
+            ExprKind::Range { start, end, .. } => start
+                .as_ref()
+                .and_then(|start| self.expr(start))
+                .or_else(|| end.as_ref().and_then(|end| self.expr(end))),
+            ExprKind::ElseDefault { expr, handler } => {
+                self.expr(expr).or_else(|| self.else_handler(handler))
+            }
+            ExprKind::If {
+                cond,
+                then,
+                otherwise,
+            } => self
+                .expr(cond)
+                .or_else(|| self.block(then))
+                .or_else(|| otherwise.as_ref().and_then(|tail| self.expr(tail))),
+            ExprKind::Match { scrutinee, arms } => {
+                if let Some(diag) = self.expr(scrutinee) {
+                    return Some(diag);
+                }
+                arms.iter().find_map(|arm| {
+                    self.scopes.push(Vec::new());
+                    self.declare_pat_kind(&arm.pattern.kind);
+                    let out = arm
+                        .guard
+                        .as_ref()
+                        .and_then(|guard| self.expr(guard))
+                        .or_else(|| self.expr(&arm.body));
+                    self.scopes.pop();
+                    out
+                })
+            }
+            ExprKind::For {
+                pattern,
+                iter,
+                body,
+            } => {
+                if let Some(diag) = self.expr(iter) {
+                    return Some(diag);
+                }
+                self.scopes.push(Vec::new());
+                self.declare_pat_kind(&pattern.kind);
+                let out = self.block(body);
+                self.scopes.pop();
+                out
+            }
+            ExprKind::While { cond, body } => self.expr(cond).or_else(|| self.block(body)),
+            ExprKind::Loop { body } => self.block(body),
+            ExprKind::Return(value) => {
+                let value = value.as_ref()?;
+                self.expr(value).or_else(|| self.returned(value))
+            }
+            ExprKind::Break(value) => value.as_ref().and_then(|value| self.expr(value)),
+            ExprKind::Closure { params, body, .. } => {
+                self.scopes.push(Vec::new());
+                for param in params {
+                    let ty = param.ty.as_ref().map_or(ByteTy::Unknown, byte_ty_of_type);
+                    self.declare(&param.name.name, ty);
+                }
+                let out = self.expr(body);
+                self.scopes.pop();
+                out
+            }
+            ExprKind::RegionSugar { cap, body, .. } => cap
+                .as_ref()
+                .and_then(|cap| self.expr(cap))
+                .or_else(|| self.block(body)),
+            ExprKind::In { region, body } => self.expr(region).or_else(|| self.block(body)),
+            ExprKind::SpawnProc { args, .. } => args.iter().find_map(|arg| self.expr(&arg.expr)),
+            ExprKind::Select { arms } => arms.iter().find_map(|arm| self.select_arm(arm)),
+            ExprKind::When { operands, body } => operands
+                .iter()
+                .find_map(|operand| self.expr(operand))
+                .or_else(|| self.block(body)),
+            ExprKind::Borrow { place, from } => self.expr(place).or_else(|| self.expr(from)),
+        }
+    }
+
+    /// Every interpolation hole of a string literal, format specs included
+    /// (`"{x:>{w}}"` interpolates twice).
+    fn str_lit(&mut self, lit: &StrLit) -> Option<Diag> {
+        lit.parts.iter().find_map(|part| {
+            let StrPart::Interp(interp) = part else {
+                return None;
+            };
+            self.expr(&interp.expr).or_else(|| {
+                interp.format.as_ref().and_then(|parts| {
+                    parts.iter().find_map(|part| match part {
+                        crate::ast::FmtPart::Interp(expr) => self.expr(expr),
+                        crate::ast::FmtPart::Text(_) => None,
+                    })
+                })
+            })
+        })
+    }
+
+    /// A call, and the two byte boundaries one crosses: `List[byte].push(…)`,
+    /// and a parameter of a function this module declares. wolf-interp#61 left
+    /// both conservative dynamically; here they are static, which is where the
+    /// counterparty answers them (measured at pin `982f857`: `f(65)` against
+    /// `fn f(b: byte)` is E0401 at the `65`).
+    fn call(&mut self, callee: &Expr, args: &[Arg]) -> Option<Diag> {
+        if let Some(diag) = self.expr(callee) {
+            return Some(diag);
+        }
+        for arg in args {
+            if let Some(diag) = self.expr(&arg.expr) {
+                return Some(diag);
+            }
+        }
+        if let Some((receiver, name)) = self.method_of(callee)
+            && receiver.is_list()
+            && name == "push"
+        {
+            let slot = receiver.elem();
+            if let Some(diag) = args.iter().find_map(|arg| {
+                byte_int_clash(slot, self.classify(&arg.expr))
+                    .then(|| byte_clash_diag(slot, arg.expr.span, "this `List`'s element type"))
+            }) {
+                return Some(diag);
+            }
+        }
+        if let ExprKind::Path(path) = &*callee.kind
+            && path.is_single()
+            && let Some(sig) = self.sigs.get(&path.segments[0].name)
+            && sig.params.len() == args.len()
+        {
+            return sig.params.iter().zip(args).find_map(|(slot, arg)| {
+                byte_int_clash(*slot, self.classify(&arg.expr)).then(|| {
+                    byte_clash_diag(*slot, arg.expr.span, "this parameter's declared type")
+                })
+            });
+        }
+        None
+    }
+
+    fn else_handler(&mut self, handler: &crate::ast::ElseHandler) -> Option<Diag> {
+        match handler {
+            crate::ast::ElseHandler::Block(block) => self.block(block),
+            crate::ast::ElseHandler::Expr(expr) => self.expr(expr),
+            crate::ast::ElseHandler::Handler { pattern, body } => {
+                self.scopes.push(Vec::new());
+                self.declare_pat_kind(&pattern.kind);
+                let out = self.expr(body);
+                self.scopes.pop();
+                out
+            }
+        }
+    }
+
+    fn select_arm(&mut self, arm: &crate::ast::SelectArm) -> Option<Diag> {
+        self.scopes.push(Vec::new());
+        let head = match &arm.kind {
+            crate::ast::SelectArmKind::Recv { pattern, channel } => {
+                let out = self.expr(channel);
+                self.declare_pat_kind(&pattern.kind);
+                out
+            }
+            crate::ast::SelectArmKind::Timeout(expr) => self.expr(expr),
+        };
+        let out = head.or_else(|| self.expr(&arm.body));
+        self.scopes.pop();
+        out
+    }
+}
+
+/// `[type.byte]`'s domain, statically: an `int` never reaches a `byte` slot and
+/// a `byte` never reaches an `int` one without the `as` that says so.
+///
+/// E0401 at the offending operand's span, which is the counterparty's — both
+/// witnesses measured at pin `982f857`, `typecheck/byte_narrow_fail.lu`
+/// `[588,590]` and `typecheck/byte_elem_arith_fail.lu` `[849,850]`. One
+/// deterministic pass per function body; the first finding wins, because
+/// `[proto.cmp.phase]` compares the first diagnostic and a record carries one.
+fn byte_check(program: &Program) -> Option<Diag> {
+    for module in program.modules.values() {
+        let mut sigs: BTreeMap<String, ByteSig> = BTreeMap::new();
+        let mut fields: BTreeMap<String, BTreeMap<String, ByteTy>> = BTreeMap::new();
+        for (name, (def, _)) in &module.items {
+            match def {
+                Def::Fn(decl) => {
+                    let params = decl
+                        .params
+                        .iter()
+                        .map(|param| match &param.kind {
+                            crate::ast::ParamKind::Named { ty, .. } => byte_ty_of_type(ty),
+                            crate::ast::ParamKind::SelfParam { .. } => ByteTy::Unknown,
+                        })
+                        .collect();
+                    let ret = decl
+                        .ret
+                        .as_ref()
+                        .map_or(ByteTy::Unknown, |ret| byte_ty_of_type(&ret.ty));
+                    sigs.insert(name.clone(), ByteSig { params, ret });
+                }
+                Def::Struct(def) => {
+                    let declared = def
+                        .fields
+                        .iter()
+                        .map(|field| (field.name.name.clone(), byte_ty_of_type(&field.ty)))
+                        .collect();
+                    fields.insert(name.clone(), declared);
+                }
+                _ => {}
+            }
+        }
+        for decl in each_fn(module) {
+            let mut walk = ByteWalk {
+                scopes: vec![Vec::new()],
+                sigs: &sigs,
+                fields: &fields,
+                ret: decl
+                    .ret
+                    .as_ref()
+                    .map_or(ByteTy::Unknown, |ret| byte_ty_of_type(&ret.ty)),
+            };
+            for param in &decl.params {
+                if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
+                    walk.declare(&name.name, byte_ty_of_type(ty));
+                }
+            }
+            if let Some(body) = &decl.body
+                && let Some(diag) = walk.block(body)
+            {
+                return Some(diag);
+            }
+        }
+        for (def, _) in module.items.values() {
+            if let Def::Binding(binding) = def {
+                let mut walk = ByteWalk {
+                    scopes: vec![Vec::new()],
+                    sigs: &sigs,
+                    fields: &fields,
+                    ret: ByteTy::Unknown,
+                };
+                if let Some(diag) = walk.binding(binding) {
+                    return Some(diag);
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]

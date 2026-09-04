@@ -57,6 +57,26 @@ fn refused(name: &str, body: &str) -> String {
     String::from_utf8(output.stderr).expect("utf8 stderr")
 }
 
+/// Runs `body` expecting a STATIC rejection (exit 2) and returns stderr.
+///
+/// is36 answered every one of these with the by-name refusal above, because a
+/// tree-walk had no static rung for a type error. is37 gave it one for this
+/// one type (wolf-interp#62, `sema::byte_check`): the domain of `[type.byte]`
+/// is refused where the compilers refuse it, with their code and their span.
+/// The four tests that moved from `refused` to here are the visible half of
+/// that change, and the by-name refusals they used to make are still the
+/// answer wherever the static pass cannot see the types — see
+/// [`a_byte_place_still_refuses_dynamically_when_the_pass_cannot_see_it`].
+fn refused_statically(name: &str, body: &str) -> String {
+    let output = run(name, body);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "wanted a static rejection, got {output:?}"
+    );
+    String::from_utf8(output.stderr).expect("utf8 stderr")
+}
+
 // ---------------------------------------------------------------------------
 // `[type.byte.cast]` — the two bridges, and the only ones.
 // ---------------------------------------------------------------------------
@@ -167,15 +187,15 @@ fn a_byte_compares_only_with_a_byte() {
     // "`byte` against `int` is the ordinary type mismatch — widen the byte."
     // A quiet `false` here would run a program the compiler rejects, which
     // is the permissive divergence and the harder kind to notice.
-    let stderr = refused(
+    let stderr = refused_statically(
         "byte-mismatch",
         r#"    let b = 119 as byte
     print("{b == 119}")"#,
     );
-    assert!(stderr.contains("compares"), "{stderr}");
+    assert!(stderr.contains("E0401"), "{stderr}");
     assert!(
-        stderr.contains("b as int"),
-        "the note names the fix: {stderr}"
+        stderr.contains("comparison"),
+        "the note names the position: {stderr}"
     );
 }
 
@@ -186,25 +206,29 @@ fn a_byte_compares_only_with_a_byte() {
 #[test]
 fn a_byte_adopts_no_numeric_literal() {
     // `let b: byte = 65` is not a narrowing — it is a literal that has no
-    // byte to become. The counterparty answers E0401; a tree-walk has no
-    // static code for it, so the honest answer is the by-name refusal.
-    let stderr = refused("byte-adopt", "    let b: byte = 65\n    print(\"{b}\")");
+    // byte to become. The counterparty answers E0401, and since is37 so does
+    // this machine, at the counterparty's span (`typecheck/byte_narrow_fail.lu`
+    // `[588,590]`, the `65`).
+    let stderr = refused_statically("byte-adopt", "    let b: byte = 65\n    print(\"{b}\")");
+    assert!(stderr.contains("E0401"), "{stderr}");
     assert!(stderr.contains("adopts no numeric literal"), "{stderr}");
     assert!(
-        stderr.contains("n as byte"),
+        stderr.contains("as byte"),
         "the note names the fix: {stderr}"
     );
 }
 
 #[test]
 fn a_byte_value_satisfies_no_numeric_expectation() {
-    let stderr = refused(
+    let stderr = refused_statically(
         "byte-reverse",
         "    let b = 65 as byte\n    let n: int = b\n    print(\"{n}\")",
     );
+    assert!(stderr.contains("E0401"), "{stderr}");
+    assert!(stderr.contains("not an integer type"), "{stderr}");
     assert!(
-        stderr.contains("satisfies no numeric expectation"),
-        "{stderr}"
+        stderr.contains("as int"),
+        "the note names the fix: {stderr}"
     );
 }
 
@@ -281,16 +305,16 @@ fn a_byte_place_takes_no_int_and_has_no_compound_assignment() {
     // byte's place, and every later `{b}` printed an int's rendering of
     // whatever the arithmetic produced. wolfc answers E0401 (and E0409 for
     // the compound form).
-    let plain = refused(
+    let plain = refused_statically(
         "byte-assign-int",
         "    var b = 65 as byte\n    b = 66\n    print(\"{b}\")",
     );
-    assert!(plain.contains("takes no"), "{plain}");
-    let compound = refused(
+    assert!(plain.contains("E0401"), "{plain}");
+    let compound = refused_statically(
         "byte-compound",
         "    var b = 65 as byte\n    b += 1\n    print(\"{b}\")",
     );
-    assert!(compound.contains("no compound assignment"), "{compound}");
+    assert!(compound.contains("E0401"), "{compound}");
     assert!(
         compound.contains("as byte"),
         "the note names the spelling: {compound}"
@@ -449,4 +473,24 @@ fn a_byte_producer_mints_at_exact_capacity() {
     print("holds {view >= 4096} tight {view <= 4096 + hdr + 64}")"#,
     );
     assert_eq!(stdout, "holds true tight true\n");
+}
+
+// ---------------------------------------------------------------------------
+// The dynamic boundary, where the static pass declines to guess (is37).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_byte_place_still_refuses_dynamically_when_the_pass_cannot_see_it() {
+    // `sema::byte_check` refuses only where BOTH sides are known. A `List()`
+    // with no element annotation types nothing, so `xs[0]` is not an `int`
+    // this machine can name at `resolve` — and the write into a byte place
+    // still must not land. is36's dynamic rule is what catches it, which is
+    // why is37 kept it rather than letting the static pass inherit the job:
+    // `[type.byte]`'s domain has to hold at BOTH rungs, since the static one
+    // is deliberately partial.
+    let stderr = refused(
+        "byte-place-dynamic",
+        "    var b = 65 as byte\n    var xs = List()\n    (mut xs).push(66)\n    b = xs[0]\n    print(\"{b}\")",
+    );
+    assert!(stderr.contains("byte"), "{stderr}");
 }
