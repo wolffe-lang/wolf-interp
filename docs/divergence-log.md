@@ -110,6 +110,105 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The byte has a domain — is37, lupin 0.1.26, pin `982f857` (wolf-lang v0.2.4)
+
+is36 shipped the byte TYPE and left the DOMAIN to the compilers. sc35 measured
+what that cost, re-running wolf-std's 181 byte rows against 0.1.25: the casts,
+the widening and the ledger slots all held, and then `push(256)` into a
+`List[byte]` **stored 256**. Eight std rows carried `divergent(…)` for exactly
+that shape — the compilers refuse at typecheck with E0401, this machine ran the
+program to an honest end — and the word had never before been used outside the
+take-mode pair. wolf-interp#62.
+
+The fix is two rules at two rungs, and the split is the interesting part.
+
+**The resolve-time refusal (`sema::byte_check`).** `[type.byte]` says a `byte`
+"adopts no numeric literal in any position" and is not an integer type, so an
+`int` reaching a byte slot is a type error whatever its VALUE — the domain is
+not a range check, it is a refusal. This rung now performs that one rule, for
+that one type, at the counterparty's code and the counterparty's span. It fires
+only where both sides are KNOWN; `Unknown` is the default answer and no rule
+fires on one, which is the sema boundary restated rather than abandoned.
+Measured on both machines at this pin:
+
+| program | lupin 0.1.25 | lupin 0.1.26 | wolfc 0.2.4 |
+| --- | --- | --- | --- |
+| `typecheck/byte_narrow_fail.lu` | `unsupported@resolve` | `fail(E0401)` `[588,590]` | `fail(E0401)` `[588,590]` |
+| `typecheck/byte_elem_arith_fail.lu` | `unsupported@resolve` | `fail(E0401)` `[849,850]` | `fail(E0401)` `[849,850]` |
+
+Both are **match** against their `check: fail(E0401)` now, where 0.1.25 was
+out-of-scope. `[proto.cmp.rung]` covers the rung difference the way it covers
+E0805: the counterparty answers at `typecheck`, this machine at `resolve`, and
+the corpus directive itself says `phase: resolve`.
+
+**The dynamic boundary (`Value::List`'s element type).** The static pass is
+deliberately partial, so the domain has to hold at the run rung too. Until this
+release the element context was `Option<IntTy>` — it could spell integer widths
+and nothing else — so `List[byte]()` and a bare `List()` were the SAME VALUE at
+runtime, which is the mechanism behind #62 in one sentence. `ElemTy` splits the
+two, `str.bytes()` and `net_read_bytes` hand back lists that carry it, and an
+`int` reaching a byte element is refused by name (a static property never
+becomes a trap here). is36's byte-place rule is the same posture one slot over
+and stays exactly where it was, for the flows the static pass declines to guess
+about.
+
+**The acceptance: sc35's eight rows, and two more.** Re-measured with
+`--std-root std` on both machines at wolf-std `d71776e`; every row is
+code-and-span identical to the counterparty's first diagnostic:
+
+| wolf-std row | ledger word (sc35) | lupin 0.1.26 | wolfc 0.2.4 |
+| --- | --- | --- | --- |
+| `hex/encode_non_byte_refused.lu` | `divergent(trap(assert))` | `fail(E0401)` `[1744,1747]` | same |
+| `net/write_bytes_invalid_row.lu` | `divergent(exit(1))` | `fail(E0401)` `[1766,1768]` | same |
+| `x/crypto/sha2/non_byte_refused.lu` | `divergent(exit(0))` | `fail(E0401)` `[1767,1769]` | same |
+| `x/crypto/chacha20/non_byte_refused.lu` | `divergent(exit(0))` | `fail(E0401)` `[1817,1818]` | same |
+| `x/crypto/curve25519/non_byte_refused.lu` | `divergent(exit(0))` | `fail(E0401)` `[1827,1828]` | same |
+| `x/tls/record/non_byte_refused.lu` | `divergent(exit(0))` | `fail(E0401)` `[2001,2004]` | same |
+| `x/tls/handshake/non_byte_refused.lu` | `divergent(exit(0))` | `fail(E0401)` `[1777,1780]` | same |
+| `x/tls/cert/non_byte_refused.lu` | `divergent(exit(1))` | `fail(E0401)` `[1757,1759]` | same |
+| `fs/invalid_row.lu` | `unsupported` | `fail(E0401)` `[1652,1655]` | same |
+| `x/crypto/p256/non_byte_refused.lu` | `unsupported` | `fail(E0401)` `[1800,1801]` | same |
+
+The last two are the corpus twins: both were ledgered `unsupported` for a
+reason that had nothing to do with bytes — this machine declines the fs tier by
+design, and p256's ladder is outside the modelled surface — and both now answer
+the directive because the refusal arrives BEFORE the decline. Ten rows move,
+all of them toward agreement, and `divergent(…)` returns to zero carriers
+(`cargo xtask std-test` says so in as many words). The ledger edits are
+wolf-std's to make.
+
+**What did NOT move.** A full resolve-rung sweep of wolf-std's 376 `.lu` files
+found exactly these ten new E0401s and nothing else; the three standing E1001
+rows (is29's static rung) are untouched, and the 503-file corpus walk gained
+exactly two matches with no new refusal anywhere. `[type.byte.op]`'s widening is
+the guard rail that makes that possible: `b + 1` is an `int` by clause, so the
+pass says nothing about it, and it was measured against the counterparty before
+it was written down.
+
+**wolf-interp#60 — the report that could not tell two mistakes apart.** ww13 put
+`typecheck/byte_casts.lu` on the playground at the 0.1.24 pin and found
+`200 as itn` (a typo) and `200 as byte` (a scalar the pinned spec declares,
+which that release did not carry) answering **byte-identically**, with a
+sentence that sent the reader hunting a misspelling that was not there. `byte`
+arrived at 0.1.25, so that pair is gone — but the pin runs ahead of this
+implementation BY DESIGN, so the collision recurs at every tag where the
+compiler lands a type first. E0301's note now names the **closed set** of
+built-in type names this release carries, rendered from the check's own table
+so it cannot drift, and states both readings instead of asserting one.
+
+**wolf-interp#59 — closed, by measurement.** D74's three layout rules landed at
+0.1.25 and is36's release note claimed the issue closed; the claim was never
+checked on this side against the counterparty. It is now. All five of s136's
+witnesses answer wolfc's CODE at wolfc's SPAN, re-measured on both machines at
+this pin: E0103 `[437,441]` and `[598,601]`, E0104 `[520,526]`, E0105
+`[575,583]`, E0101 `[1566,1568]`. The issue's own table — `fail(E0109)`
+`[31,49]` against `fail(E0103)` `[31,35]`, "a code divergence AND a span
+divergence, twice" — has no surviving row. The BOM's two positions hold too: a
+leading mark is stripped and never a diagnostic (`grammar/bom_at_start.lu` runs
+to `exit(0)` on this lane), and mid-file the same three bytes are E0107 at the
+mark. `E0105` is gone from `UNPINNED_CODES`, which is the third collision the
+issue asked to move.
+
 ### The byte arrives — is36, lupin 0.1.25, pin `982f857` (wolf-lang v0.2.4)
 
 The sprint that took the deferral back. is35 recorded `byte` as DEFERRED BY

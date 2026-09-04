@@ -1,5 +1,88 @@
 # Changelog
 
+## 0.1.26 — 2026-09-04
+
+THE BYTE HAS A DOMAIN (is37). Last release gave this machine the byte TYPE and
+left the DOMAIN to the compilers. sc35 measured what that cost: `push(256)`
+into a `List[byte]` **stored 256**, an un-cast `int` flowed into a byte slot,
+and eight wolf-std rows carried `divergent(…)` — the word for "the compilers
+refuse this at typecheck and the interpreter runs it to an honest end", used
+for the first time outside the take-mode pair. All eight flip to agreement
+here, and two more rows with them.
+
+Released against pin `982f857`, wolf-lang **v0.2.4** — unchanged: s137 has not
+merged, and trunk's head (`1323c4e`, the r07 merge) is tree-identical to the
+tag, so there was nothing newer to take. Census at this release: 503 files /
+469 entries / 34 members; 360 reach run, **350 match** (348 at 0.1.25), 16
+dynamic counterparts, 42 conservatism, 60 out of scope, and the one standing
+walk mismatch is still DIV-2026-019, filed. Anchors 417 / 182 covered and
+bundle 541 / 507, both unchanged — no corpus moved, only this machine's
+answers.
+
+- **A `byte` value is `0..=255` BY CONSTRUCTION, and the refusal is what says
+  so (wolf-interp#62).** `Value::Byte` is a `u8`, so 256 was never
+  representable; what was missing is the refusal at the boundary.
+  `[type.byte]` gives a `byte` no numeric-literal adoption "in any position"
+  and makes it not an integer type, so an `int` reaching a byte slot is a type
+  error whatever its value — a domain, not a range check. Two rules at two
+  rungs:
+  - **`sema::byte_check`, at `resolve`**, refuses an `int` in a byte slot and a
+    `byte` in an `int` slot with **E0401 at the counterparty's own span**. The
+    two pinned witnesses now answer wolfc byte for byte:
+    `typecheck/byte_narrow_fail.lu` `[588,590]` (the `65` of `let b: byte = 65`,
+    not the annotation) and `typecheck/byte_elem_arith_fail.lu` `[849,850]`
+    (the `b` of `table[b]`). Six slots are covered — a binding's annotation, an
+    assignment, a `List[byte]` push, a struct field, a call argument and a
+    declared return type — the last two being wolf-interp#61's parameter and
+    return boundaries answered statically, where the compilers answer them. The
+    pass fires only where BOTH sides are known: `Unknown` is the default and no
+    rule fires on one, so the sema boundary is restated for one type rather
+    than abandoned.
+  - **The list knows its element, at `run`.** Until now the element context was
+    `Option<IntTy>` — integer widths and nothing else — so `List[byte]()` and a
+    bare `List()` were the SAME VALUE at runtime, which is #62's mechanism in
+    one sentence. `ElemTy` splits them, `str.bytes()` and `net_read_bytes` hand
+    back lists carrying it, and an `int` reaching a byte element is refused by
+    name. A static property never becomes a trap here, so the answer is
+    `unsupported` naming E0401 — the same posture is36's byte-place rule takes,
+    which stays where it is for the flows the static pass declines to guess
+    about.
+- **`[type.byte.op]`'s widening is the guard rail, and it was measured.** `b + 1`
+  is an `int` by clause, so the pass says nothing about it — verified against
+  wolfc, which accepts it — while `b += 1` is refused, because the compound
+  form stores that `int` back. Comparisons do not widen: `b == 119` is E0401 at
+  the **`119`**, the operand that has to change, which is what wolfc spans.
+- **sc35's eight rows, and the two corpus twins.** Re-measured on both machines
+  with `--std-root std` at wolf-std `d71776e`, every one code-and-span identical
+  to the counterparty's first diagnostic: `hex/encode_non_byte_refused`,
+  `net/write_bytes_invalid_row`, `x/crypto/sha2|chacha20|curve25519/…`,
+  `x/tls/record|handshake|cert/…` — all eight `divergent(…)` words retire — plus
+  `fs/invalid_row.lu` and `x/crypto/p256/non_byte_refused.lu`, ledgered
+  `unsupported` for reasons that had nothing to do with bytes (the fs tier is
+  declined by design; p256's ladder is outside the modelled surface) and now
+  answering their `check: fail(E0401)` because the refusal arrives before the
+  decline. `cargo xtask std-test` over all 376 files on all three lanes reports
+  `divergent rows: 0` and names **exactly these ten** as moved, nothing else on
+  any lane.
+- **E0301 tells the two mistakes apart (wolf-interp#60).** At the 0.1.24 pin
+  `200 as itn` (a typo) and `200 as byte` (a scalar the pinned specification
+  declares, which that release did not carry) answered byte-identically, and
+  the sentence sent the reader hunting a misspelling that was not there. `byte`
+  arrived at 0.1.25, so that pair is gone — but the pin runs ahead of this
+  implementation BY DESIGN, so the collision recurs at every tag where the
+  compiler lands a type first. The note now names the **closed set** of built-in
+  type names this release carries, rendered from the check's own table so it
+  cannot drift, and states both readings instead of asserting one.
+- **wolf-interp#59 closes by measurement, not by assertion.** D74's three layout
+  rules landed at 0.1.25; this release verified them on both machines rather
+  than taking the release note's word, and pinned the result in a test that
+  reads the corpus. All five of s136's witnesses answer wolfc's code at wolfc's
+  span: E0103 `[437,441]` and `[598,601]`, E0104 `[520,526]`, E0105 `[575,583]`,
+  E0101 `[1566,1568]`. The issue's own table — this machine's invented E0109 at
+  `[31,49]` against wolfc's E0103 at `[31,35]` — has no surviving row. The BOM's
+  two positions hold: a leading mark is stripped and never a diagnostic, and
+  mid-file the same three bytes are E0107 at the mark.
+
 ## 0.1.25 — 2026-09-03
 
 THE BYTE ARRIVES (is36). Last release deferred `byte` by name: D72 had ruled

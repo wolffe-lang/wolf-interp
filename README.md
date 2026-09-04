@@ -30,7 +30,7 @@ is the binary, the package, and the posture, at the stated upstream pin:
 
 ```console
 $ lupin --version
-lupin 0.1.25… (wolf-interp, reference interpreter at pin …)
+lupin 0.1.26… (wolf-interp, reference interpreter at pin …)
 ```
 
 A build made exactly at its release tag prints the bare version; any other
