@@ -60,8 +60,8 @@ use prov::{AccessKind, Prov, Provenance, RawPtr, RetagKind, UbFinding, UbRow};
 use region::{Edge, Ref, RegionId, RegionState, Store, Strategy};
 use rules::Rule;
 use value::{
-    ArithMode, CaptureLoan, ClosureValue, ErrorValue, HandleValue, IntTy, RegionValue, Slot,
-    SlotState, Value,
+    ArithMode, CaptureLoan, ClosureValue, ElemTy, ErrorValue, HandleValue, IntTy, RegionValue,
+    Slot, SlotState, Value,
 };
 
 /// A trap: a fault of a *defined* execution, named by the closed vocabulary.
@@ -7917,18 +7917,47 @@ fn int_of_type_spelling(expr: &Expr) -> Option<IntTy> {
     }
 }
 
+/// [`int_of_type`]'s ELEMENT twin: the container-element type a declared type
+/// names, `byte` included (is37, wolf-interp#62).
+///
+/// A `byte` is not an integer type (`[type.byte]`), so [`int_of_type`] cannot
+/// answer for it — and until this existed, `List[byte]()` carried the same
+/// `None` element context as a bare `List()`, which is exactly why
+/// `push(256)` stored 256.
+fn elem_of_type(ty: &Type) -> Option<ElemTy> {
+    if let TypeKind::Path { path, args } = &*ty.kind
+        && args.is_empty()
+        && path.segments.last().is_some_and(|s| s.name == "byte")
+    {
+        return Some(ElemTy::Byte);
+    }
+    int_of_type(ty).map(ElemTy::Int)
+}
+
+/// [`elem_of_type`]'s value-position twin, for the `List[byte]` spelling that
+/// `[gram.amb.brackets]` delivers as an ordinary expression argument.
+fn elem_of_type_spelling(expr: &Expr) -> Option<ElemTy> {
+    if let ExprKind::Path(path) = &*expr.kind
+        && path.is_single()
+        && path.segments[0].name == "byte"
+    {
+        return Some(ElemTy::Byte);
+    }
+    int_of_type_spelling(expr).map(ElemTy::Int)
+}
+
 /// `List[i32]()` — the element checking context on a `List` constructor's
 /// callee, read off the syntax (issue #21): `eval_bracket` erases bracket
 /// type arguments from values, so this is where the annotation survives.
-fn list_elem_of(callee: &Expr) -> Option<IntTy> {
+fn list_elem_of(callee: &Expr) -> Option<ElemTy> {
     if let ExprKind::BracketApply { base, args, .. } = &*callee.kind
         && let ExprKind::Path(path) = &*base.kind
         && path.segments.last().is_some_and(|s| s.name == "List")
         && let [arg] = &args[..]
     {
         return match arg {
-            IndexArg::Type(ty) => int_of_type(ty),
-            IndexArg::Value(arg) => int_of_type_spelling(&arg.expr),
+            IndexArg::Type(ty) => elem_of_type(ty),
+            IndexArg::Value(arg) => elem_of_type_spelling(&arg.expr),
         };
     }
     None
@@ -8025,7 +8054,7 @@ fn coerce(value: Value, ty: Option<&Type>) -> Value {
             if path.segments.last().is_some_and(|s| s.name == "List") =>
         {
             let elem = args.iter().find_map(|arg| match arg {
-                TypeArg::Type(inner) => int_of_type(inner),
+                TypeArg::Type(inner) => elem_of_type(inner),
                 TypeArg::Expr(_) => None,
             });
             Value::List(items, elem, home)

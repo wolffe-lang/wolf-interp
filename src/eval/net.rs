@@ -76,7 +76,7 @@ use std::time::{Duration, Instant};
 use crate::diag::Span;
 
 use super::rules::Rule;
-use super::value::{IntTy, Value};
+use super::value::{ElemTy, IntTy, Value};
 use super::{Machine, Signal};
 
 /// The no-deadline poll rail: generous against the corpus's 40ms budgets,
@@ -626,7 +626,7 @@ impl Machine {
                                 .into_iter()
                                 .map(|b| super::value::Slot::live(Value::Byte(b)))
                                 .collect(),
-                            None,
+                            Some(ElemTy::Byte),
                             Some(home),
                         ))
                     }

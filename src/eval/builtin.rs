@@ -25,7 +25,7 @@ use crate::trap::TrapKind;
 use super::prov::UbRow;
 use super::region::{SlotLife, ledger};
 use super::rules::Rule;
-use super::value::{HandleValue, IntTy, Slot, Value};
+use super::value::{ElemTy, HandleValue, IntTy, Slot, Value};
 use super::{Machine, Signal};
 
 type BResult = Result<Value, Signal>;
@@ -984,9 +984,30 @@ pub fn method(
             // before the write lands (X3).
             let elem = *elem;
             for arg in args {
+                // is37 (wolf-interp#62): a `List[byte]` element takes no
+                // `int`, whatever its value. `[type.byte]` gives a `byte` no
+                // numeric-literal adoption "in any position", so there is
+                // nothing here to range-check and nothing to adopt — the
+                // element type decides before the width does. The compilers
+                // refuse the program at typecheck (E0401) and `sema::byte_check`
+                // now refuses it at `resolve` wherever it can see both types;
+                // this is the same law at the rung where a list's element type
+                // is a fact about the VALUE, which is where the flows the
+                // static pass declined to guess about arrive. A static
+                // property never becomes a trap here (CONTRIBUTING, "the sema
+                // boundary"), so the answer is the by-name refusal.
+                if matches!(elem, Some(ElemTy::Byte)) && matches!(arg, Value::Int(..)) {
+                    return unsupported(
+                        "a `List[byte]` element takes no `int` (`[type.byte]`) — a `byte` \
+                         adopts no numeric literal in any position; narrow the value with \
+                         `… as byte`, which keeps the low eight bits (`[type.byte.cast]`). \
+                         The counterparty refuses the program at typecheck with E0401"
+                            .to_owned(),
+                    );
+                }
                 let arg = match arg {
                     Value::Int(v, ty) if ty.literal => {
-                        let target = elem.unwrap_or(IntTy::INT);
+                        let target = elem.and_then(ElemTy::int).unwrap_or(IntTy::INT);
                         if !target.holds(v) {
                             return machine.fault(
                                 TrapKind::Overflow,
@@ -1152,14 +1173,14 @@ pub fn method(
                 // representation detail — a tree-walk has no pointers — and
                 // the LEDGER is where the two positions differ, which is the
                 // only place a wolf program can tell them apart.
-                return Ok(Value::list(bytes, None, None));
+                return Ok(Value::list(bytes, Some(ElemTy::Byte), None));
             }
             let home = machine.allocate(
                 span,
                 "str.bytes",
                 ledger::byte_buffer_bytes(bytes.len() as u64),
             )?;
-            Ok(Value::list(bytes, None, Some(home)))
+            Ok(Value::list(bytes, Some(ElemTy::Byte), Some(home)))
         }
         (Value::Str(s), "repeat") => {
             let Some(Value::Int(n, _)) = args.first() else {

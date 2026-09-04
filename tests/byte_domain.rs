@@ -264,3 +264,107 @@ fn the_pinned_witnesses_answer_wolfc_span_for_span() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// The dynamic half: a `List[byte]` knows its element type.
+// ---------------------------------------------------------------------------
+
+/// Runs a program through the `run` rung and returns the observation.
+fn observe_run(source: &str) -> wolf_interp::frontend::Observation {
+    frontend::observe(source.as_bytes(), None)
+}
+
+#[test]
+fn a_list_of_bytes_carries_its_element_type_at_runtime() {
+    // Until is37 the element context could spell integer widths and nothing
+    // else, so `List[byte]()` and `List()` were the same value at runtime and
+    // wolf-interp#62's `push(256)` stored 256. The static pass catches the
+    // literal; this is the flow it declines to guess about — the pushed value
+    // comes out of a container this pass cannot type — and the list itself is
+    // what refuses.
+    let source = "\
+fn main() -> !int {
+    var src = List()
+    (mut src).push(256)
+    var out = List[byte]()
+    (mut out).push(src[0])
+    print(\"{out[0]}\")
+    0
+}
+";
+    let observed = observe_run(source);
+    assert_eq!(
+        observed.verdict,
+        Verdict::Unsupported,
+        "an int must never land in a byte list: {observed:?}"
+    );
+    let reason = observed.reason.unwrap_or_default();
+    assert!(reason.contains("List[byte]"), "{reason}");
+    assert!(
+        reason.contains("as byte"),
+        "the note names the fix: {reason}"
+    );
+    assert!(
+        reason.contains("E0401"),
+        "and the code that owns it: {reason}"
+    );
+}
+
+#[test]
+fn a_byte_producer_hands_back_a_list_that_knows_its_element() {
+    // `s.bytes()` is a `List[byte]` (s136, wolf-lang#231), so the list it
+    // returns carries the element type too — pushing an `int` into it is the
+    // same refusal as pushing one into `List[byte]()`.
+    let source = "\
+fn main() -> !int {
+    var src = List()
+    (mut src).push(66)
+    var bs = \"wolf\".bytes()
+    (mut bs).push(src[0])
+    print(\"{bs.len}\")
+    0
+}
+";
+    let observed = observe_run(source);
+    assert_eq!(observed.verdict, Verdict::Unsupported, "{observed:?}");
+    assert!(
+        observed.reason.unwrap_or_default().contains("List[byte]"),
+        "the byte view's element type survives the hand-back"
+    );
+}
+
+#[test]
+fn a_byte_list_still_takes_bytes_and_still_strides_by_one() {
+    // The refusal must not cost the type its ordinary use: a `byte` pushed
+    // into a `List[byte]` is exactly what the container is for.
+    let source = "\
+fn main() -> !int {
+    var out = List[byte]()
+    (mut out).push(65 as byte)
+    (mut out).push(300 as byte)
+    print(\"{out[0]} {out[1]} {out.len}\")
+    0
+}
+";
+    let observed = observe_run(source);
+    assert_eq!(observed.verdict, Verdict::Exit(0), "{observed:?}");
+    assert_eq!(String::from_utf8_lossy(&observed.stdout), "65 44 2\n");
+}
+
+#[test]
+fn a_list_of_ints_is_untouched_by_any_of_this() {
+    // The element context still does its original job (issue #21): a pushed
+    // literal adopts the container's integer width, and an out-of-width
+    // literal still traps rather than being refused by name.
+    let source = "\
+fn main() -> !int {
+    var xs = List[i32]()
+    (mut xs).push(7)
+    print(\"{xs[0]}\")
+    0
+}
+";
+    let observed = observe_run(source);
+    assert_eq!(observed.verdict, Verdict::Exit(0), "{observed:?}");
+    assert_eq!(String::from_utf8_lossy(&observed.stdout), "7\n");
+}

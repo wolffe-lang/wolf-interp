@@ -377,6 +377,54 @@ pub struct HandleValue {
     pub generation: u32,
 }
 
+/// A container element's declared type, where the syntax stated one.
+///
+/// Until is37 this was a bare `Option<IntTy>`, and that is precisely how
+/// wolf-interp#62 happened: the element context could spell integer widths and
+/// nothing else, so `List[byte]()` was indistinguishable from `List()` at
+/// runtime and `push(256)` stored 256. A `byte` is not an integer type
+/// (`[type.byte]`), so it gets its own arm rather than an eighth width.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ElemTy {
+    /// An integer element, with the checking context a pushed literal adopts.
+    Int(IntTy),
+    /// A `byte` element (`[type.byte]`). Adopts NO literal — there is no
+    /// number a `byte` slot takes without the `as byte` that says so — which
+    /// is why this arm carries no payload.
+    Byte,
+}
+
+impl ElemTy {
+    /// The integer checking context this element imposes, or `None` for a
+    /// `byte`, which imposes none because it accepts no integer at all.
+    #[must_use]
+    pub fn int(self) -> Option<IntTy> {
+        match self {
+            ElemTy::Int(ty) => Some(ty),
+            ElemTy::Byte => None,
+        }
+    }
+
+    /// The element type a declared type NAME denotes, or `None` when the name
+    /// is neither `byte` nor an integer width.
+    #[must_use]
+    pub fn named(name: &str) -> Option<ElemTy> {
+        if name == "byte" {
+            return Some(ElemTy::Byte);
+        }
+        IntTy::named(name).map(ElemTy::Int)
+    }
+
+    /// How the element reads in a diagnostic.
+    #[must_use]
+    pub fn name(self) -> String {
+        match self {
+            ElemTy::Int(ty) => ty.name(),
+            ElemTy::Byte => "byte".to_owned(),
+        }
+    }
+}
+
 /// A wolf runtime value.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -449,7 +497,7 @@ pub enum Value {
     /// values would claim one home. `None` only for values minted by
     /// machinery with no allocation site; region ids are never reused, so a
     /// bare id stays meaningful forever.
-    List(std::sync::Arc<Vec<Slot>>, Option<IntTy>, Option<RegionId>),
+    List(std::sync::Arc<Vec<Slot>>, Option<ElemTy>, Option<RegionId>),
     /// Insertion-ordered; wolf's `Map` has no specified iteration order, and
     /// insertion order is the one that makes output reproducible.
     Map(Vec<(Value, Slot)>),
@@ -516,7 +564,7 @@ impl Value {
     /// see the variant's field doc (#25); callers with an allocation site
     /// pass the machine's current region, machinery passes `None`.
     #[must_use]
-    pub fn list(items: Vec<Slot>, elem: Option<IntTy>, home: Option<RegionId>) -> Value {
+    pub fn list(items: Vec<Slot>, elem: Option<ElemTy>, home: Option<RegionId>) -> Value {
         Value::List(std::sync::Arc::new(items), elem, home)
     }
 
