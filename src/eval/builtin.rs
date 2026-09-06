@@ -96,6 +96,15 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // loopback + port 0, rows never traps — see `eval::net` for the
     // semantics and their witnesses.
     "net_listen",
+    // `[os.net.listen.opts]` / `[os.proc.inherit]` / `[os.net.wait]` (s137,
+    // wolf-lang#234/#235/#127): the listener options, the child's half of
+    // the descriptor handoff, and readiness over a SET. The handle
+    // `net_listen_with` and `net_adopt_listener` answer is the ordinary
+    // listener, so the rest of the tier serves it call for call and only
+    // these three are new names.
+    "net_listen_with",
+    "net_adopt_listener",
+    "net_wait",
     // `[os.net.unix]` (s136, wolf-lang#227): the second address family. The
     // rest of the tier serves a unix fd call for call, so only the two
     // binders are new names.
@@ -112,8 +121,17 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "net_deadline",
     "env_set",
     "os_cwd",
+    // `[os.cpus]` (s137, wolf-lang#233): the machine's size. Named beside
+    // `os_cwd` because it is the same capability — host state a running
+    // process reads, never a constant a build folds in — and s90's
+    // `os_exe`, which the corpus first calls at this pin.
+    "os_cpus",
+    "os_exe",
     "os_exit",
     "os_spawn",
+    // `[os.proc.inherit]` (s137, wolf-lang#235): the program named apart
+    // from its arguments, and the descriptors it hands down.
+    "os_spawn_with",
     "os_wait",
     "os_kill",
     "time_now_ms",
@@ -311,6 +329,34 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 Ok(error_value("os_cwd", "io"))
             }
         },
+        // `[os.cpus]` (s137, wolf-lang#233): the count of cores this process
+        // may actually be SCHEDULED on, which on linux honours a cgroup
+        // quota and an affinity mask — the clause's whole content, and the
+        // reason it is not a `/proc/cpuinfo` row count. `available_parallelism`
+        // reads the same sources the clause names (the quota and mask on
+        // linux, `hw.ncpu` on macOS, `GetSystemInfo` on windows), so the
+        // lanes agree on the NUMBER on one host rather than on a relation.
+        // A host that cannot answer is the `io` row and never a silent 1.
+        "os_cpus" => match std::thread::available_parallelism() {
+            Ok(n) => Ok(Value::Int(n.get() as i128, IntTy::INT)),
+            Err(_) => {
+                machine.note(Rule::ErrUnion, span, "`os_cpus` yields the `io` row");
+                Ok(error_value("os_cpus", "io"))
+            }
+        },
+        // s90's `os_exe` (wolf-lang#69): the running executable's path. The
+        // corpus calls it for the first time at the v0.2.5 pin
+        // (`net/inherit_listener.lu` re-executes itself), and the honest
+        // answer HERE is this binary — `lupin` is the process that is
+        // running, and a wolf program interpreted by it has no separate
+        // image. Witnesses assert predicates over the answer, never a path.
+        "os_exe" => match std::env::current_exe() {
+            Ok(path) => Ok(Value::Str(path.to_string_lossy().into_owned())),
+            Err(_) => {
+                machine.note(Rule::ErrUnion, span, "`os_exe` yields the `io` row");
+                Ok(error_value("os_exe", "io"))
+            }
+        },
         // `os_exit` (s40): immediate termination with the code — defers do
         // NOT run (the documented contract), and the code masks to the
         // process range identically on both lanes. Inside a task tier the
@@ -334,10 +380,69 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // {signal, io} on wait (which REAPS), {io} on kill (which never
         // tombstones). No `std::process` on wasm: the tier declines there.
         #[cfg(target_family = "wasm")]
-        "os_spawn" | "os_wait" | "os_kill" => unsupported(format!(
+        "os_spawn" | "os_spawn_with" | "os_wait" | "os_kill" => unsupported(format!(
             "`{name}` is the s40 process trio; this wasm build has no processes to spawn, \
              so the tier is declined rather than mocked"
         )),
+        // `[os.proc.inherit]` (s137, wolf-lang#235): the program named apart
+        // from its arguments, and the descriptors it hands down.
+        //
+        // The EMPTY inherit set is served — the clause says it "is
+        // `os_spawn` with the program named apart", and that is exactly what
+        // it lowers to here. A NON-EMPTY set is refused BY NAME with the
+        // construct s137 published, for the reason the clause gives the
+        // checked machine: this is a binary INTERPRETING a program, so a
+        // descriptor handed to "the program's child" would be handed to the
+        // interpreter's child. (The mechanism seals it independently: the
+        // handoff is a `pre_exec` hook running `dup2`, and this crate
+        // forbids `unsafe`.) Never the `unsupported` ROW — that would be a
+        // claim about the HOST, and both hosts this machine runs on serve
+        // the handoff.
+        #[cfg(not(target_family = "wasm"))]
+        "os_spawn_with" => {
+            let (Some(Value::Str(exe)), Some(Value::List(args_list, _, _))) =
+                (args.first(), args.get(1))
+            else {
+                return unsupported(
+                    "`os_spawn_with` takes an executable `str`, a `List[str]` of arguments \
+                     and a `List[int]` inherit set"
+                        .to_owned(),
+                );
+            };
+            let Some(Value::List(inherit, _, _)) = args.get(2) else {
+                return unsupported(
+                    "`os_spawn_with`'s third argument is the `List[int]` inherit set".to_owned(),
+                );
+            };
+            if !inherit.is_empty() {
+                return unsupported(
+                    "fd inheritance across os_spawn_with in checked execution".to_owned(),
+                );
+            }
+            let mut argv = Vec::with_capacity(args_list.len() + 1);
+            argv.push(exe.clone());
+            for slot in args_list.iter() {
+                let Value::Str(part) = &slot.value else {
+                    return unsupported(format!(
+                        "`os_spawn_with`'s arguments hold {}, not `str`",
+                        slot.value.kind()
+                    ));
+                };
+                argv.push(part.clone());
+            }
+            let spawned = machine.children().spawn(&argv);
+            match spawned {
+                Ok(handle) => Ok(Value::Int(handle, IntTy::INT)),
+                Err(tag) => {
+                    machine.note(
+                        Rule::ErrUnion,
+                        span,
+                        &format!("`os_spawn_with` yields the `{tag}` row"),
+                    );
+                    Ok(error_value("os_spawn_with", tag))
+                }
+            }
+        }
         #[cfg(not(target_family = "wasm"))]
         "os_spawn" => {
             let Some(Value::List(items, _, _)) = args.first() else {
@@ -840,16 +945,18 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // The s39 net family (is18): one dispatch arm, the semantics in
         // `eval::net`. No sockets on wasm — the tier declines there.
         #[cfg(target_family = "wasm")]
-        "net_listen" | "net_listen_unix" | "net_port" | "net_accept" | "net_connect"
-        | "net_connect_unix" | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes"
-        | "net_close" | "net_deadline" => unsupported(format!(
+        "net_listen" | "net_listen_unix" | "net_listen_with" | "net_adopt_listener"
+        | "net_wait" | "net_port" | "net_accept" | "net_connect" | "net_connect_unix"
+        | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes" | "net_close"
+        | "net_deadline" => unsupported(format!(
             "`{name}` is the s39 net tier; this wasm build has no sockets to open, so the \
                  tier is declined rather than mocked"
         )),
         #[cfg(not(target_family = "wasm"))]
-        "net_listen" | "net_listen_unix" | "net_port" | "net_accept" | "net_connect"
-        | "net_connect_unix" | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes"
-        | "net_close" | "net_deadline" => machine.net_call(name, &args, span),
+        "net_listen" | "net_listen_unix" | "net_listen_with" | "net_adopt_listener"
+        | "net_wait" | "net_port" | "net_accept" | "net_connect" | "net_connect_unix"
+        | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes" | "net_close"
+        | "net_deadline" => machine.net_call(name, &args, span),
         other => unsupported(format!(
             "`{other}` is in the ambient std stub but has no pinned semantics; the real std \
              surface is not specified yet, and guessing it would put invented behavior into a \
@@ -1888,6 +1995,15 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
     match name {
         // The s39 net tier (`eval::net`'s module doc, probed prelude sigs).
         "net_listen" | "net_port" | "net_close" | "net_deadline" => &["io"],
+        // `[os.net.wait]` — the one s137 clause that names no host, so the
+        // row is a single tag and no `unsupported` sits beside it.
+        "net_wait" => &["io"],
+        // `[os.net.listen.opts]` and `[os.proc.inherit]`'s child half: two
+        // more rows the spec pins outright. `exists` is the "already in
+        // use" answer, `denied` the privileged port, `unsupported` the
+        // option or the construct refused BY NAME.
+        "net_listen_with" => &["unsupported", "exists", "denied", "io"],
+        "net_adopt_listener" => &["unsupported", "io"],
         // `[os.net.unix]` (s136, wolf-lang#227) — the ONE tier whose rows the
         // spec pins outright, so these two rows are the clause's and not this
         // implementation's reading. `unsupported` is the HOST, refused by
@@ -1908,6 +2024,15 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "os_spawn" => &["not_found", "denied", "io"],
         "os_wait" => &["signal", "io"],
         "os_kill" | "os_cwd" => &["io"],
+        // s90's `os_exe` (wolf-lang#69) and `[os.cpus]`'s single row: a
+        // host that cannot answer, which is a ROW rather than a silent
+        // default precisely so a program can say it did not learn the
+        // number ([os.cpus], wolf-lang#233).
+        "os_exe" | "os_cpus" => &["io"],
+        // `[os.proc.inherit]`: `unsupported` is the HOST (or, here, the
+        // machine) refusing the handoff BY NAME; the rest is `os_spawn`'s
+        // own row.
+        "os_spawn_with" => &["unsupported", "not_found", "denied", "io"],
         // The env pair and the json query tier: mint-site closures.
         "env_get" => &["invalid", "missing"],
         "env_set" => &["invalid"],
