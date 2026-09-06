@@ -30,7 +30,7 @@ is the binary, the package, and the posture, at the stated upstream pin:
 
 ```console
 $ lupin --version
-lupin 0.1.26… (wolf-interp, reference interpreter at pin …)
+lupin 0.1.27… (wolf-interp, reference interpreter at pin …)
 ```
 
 A build made exactly at its release tag prints the bare version; any other
@@ -145,8 +145,8 @@ static analysis needed to run programs. The type checker, borrow checker and
 region checker are the compiler's half. Every property they prove statically
 is enforced dynamically here, so an ownership violation surfaces as a runtime
 trap where the compiler would refuse the program outright
-([manual](docs/manual/03-phases.md)). Of the 241 entry files in the pinned
-corpus, 171 reach the `run` rung. The corpus walk (`lupin corpus`) prints the
+([manual](docs/manual/03-phases.md)). Of the 473 entry files in the pinned
+corpus, 363 reach the `run` rung. The corpus walk (`lupin corpus`) prints the
 exact ledger.
 
 ## Documentation

@@ -1,5 +1,192 @@
 # Changelog
 
+## 0.1.27 — 2026-09-06
+
+THE CORES IN THE MIRROR (is38). r08 shipped a server's other half: several
+processes holding one listening address, a parent handing a listener down to
+its children, one call that waits on a whole SET of sockets instead of
+time-slicing across them, and a program that can ask how many cores it may
+actually be scheduled on. This release is the reference interpreter catching up
+to all five anchors at once — and the half worth reading is that catching up
+does **not** mean serving everything. Two of the five are refused BY NAME here,
+in s137's own words, because the reason the checked machine refuses them is the
+reason this machine does.
+
+Released against pin `6ade878`, wolf-lang **v0.2.5**, the tag itself — trunk's
+head `6263ffa` carries a byte-identical `spec/` and `corpus/`, so the
+check-the-tag pattern lands on the tag as it did at v0.2.4. Census at this
+release: 507 files / 473 entries / 34 members; 363 reach run (360 at 0.1.26),
+**353 match** (350), 16 dynamic counterparts, 42 conservatism, 61 out of scope,
+and the one standing walk mismatch is still DIV-2026-019. Anchors 417 -> 422
+with the key sets diffed both ways — five added, nothing dropped — and the
+ratchet floor 182 -> 186. Bundle 545 programs / 511 records; conservatism
+ledger 120 -> 122.
+
+**Three corpus files newly reach a verdict that matches, and none stopped.**
+
+**wolf-lang v0.2.6 tagged while this sprint was in flight and is deliberately
+NOT taken here.** r09's delta is one corpus file (`net/accept_race.lu`), spec/05's
+`[conf.anchor.ns]` amendment for #239, and a new `[os.net.accept]` in spec/11 for
+#242 — the fair-accept re-wait, which is an implementation surface and not a
+mirror of anything in this release. A pin bump is a deliberate act that lands in
+its own commit (`docs/manual/00-building.md`), and taking one mid-sprint would
+have moved every census, anchor and ratchet number in the two commits already
+gated against `6ade878`. #239 asks nothing of this machine either way:
+`anchor::REGISTERED_NAMESPACES` has carried `os`, `type`, `ct` and `diag` since
+the 90c90df, 77466a3, da8582d and f0da6e6 pins, so the clause's letter is
+catching up to what this side already did, and both standing-waiver lists
+(`export::FILED_REGISTRY_FINDINGS`, `FILED_REGISTRY_HOLES`) are empty.
+
+### The count of cores, and this machine's own path (`[os.cpus]`, wolf-lang#233)
+
+**`os_cpus()` answers how many cores this process may actually be SCHEDULED
+on**, which is the whole content of the clause: on linux the number honours a
+cgroup cpu quota and a cpu affinity mask, so a container given two cpus of
+quota on a sixty-four-core host answers 2, where counting `processor` rows in
+`/proc/cpuinfo` answers 64 and starts sixty-two workers that will never get a
+core between them. `available_parallelism` reads exactly the sources the clause
+names on every host, which is what makes the clause's stronger claim true here:
+every tier answers from the same source, so `wolf run`, `wolf run --checked`
+and `lupin` agree on the NUMBER on one host and not merely on a relation. A
+host that cannot answer is the `io` row and never a silent 1 — the distinction
+#233 was filed about, kept where a program can act on it.
+
+s90's **`os_exe()`** lands beside it, because the corpus calls it for the first
+time at this pin: `net/inherit_listener.lu` re-executes itself. The honest
+answer here is this binary — `lupin` is the process that is running, and a wolf
+program it interprets has no separate image — and the witness asserts a
+predicate over the answer, never a path.
+
+### Readiness over a set (`[os.net.wait]`, wolf-lang#127)
+
+`net_wait(fds, deadline_ms)` is the one s137 clause that names no host and no
+refusal, so it serves on every lane this machine has. There is no `poll(2)` to
+reach from here — this crate forbids `unsafe` and `std::net` exposes no
+readiness surface — so the question is asked of each socket in turn, on the
+non-blocking handles this machine has held since is18:
+
+- a **listener** by accepting and HOLDING the connection: `net_accept` takes it
+  back before it touches the socket;
+- a **TCP stream** by `peek`, which leaves the bytes where they were;
+- a **unix stream** by reading and holding the bytes, because
+  `UnixStream::peek` is not stable; `net_read` drains what was held before it
+  asks the socket again, so the byte stream a program sees is unchanged.
+
+All three keep the sentences a program can actually check, which is what the
+clause is made of: **an empty answer is the deadline expiring with nothing
+ready — an answer, not a failure**; readiness is level-triggered, so asking
+consumes nothing and two waits answer the same until something is actually read
+or accepted; a stream whose peer has gone is READY and the `net_read` that
+follows is what reports `closed`. `io` is a forged handle anywhere in the set —
+the set is validated WHOLE before a single socket is asked, so a bad member
+never leaves a held connection behind on a good one — or an empty set with an
+unbounded deadline, which nothing could ever end.
+
+### A listener several hands can hold (`[os.net.listen.opts]`, wolf-lang#234)
+
+`net_listen_with(addr, reuse_port, backlog)` serves, and **the group is a MODEL
+that is written down where it lives** rather than a `SO_REUSEPORT` this machine
+cannot reach (the option must be set before the bind, and `setsockopt` needs
+`unsafe`).
+
+What the clause promises a caller is narrower than the option, and that is the
+opening: every dial is accepted by SOME member, and the survivor takes every
+dial after the others close. What the kernel does INSIDE a live group is
+explicitly the host's — linux distributes by 4-tuple hash, macOS hands every
+SYN to the newest bound socket — and a program may not depend on it, which is
+why `corpus/net/reuse_port.lu` asserts the two guarantees and prints nothing
+about delivery. So a group here is ONE listening socket with a duplicated
+handle per member (`TcpListener::try_clone`), which is `[os.proc.inherit]`'s
+own shape — one queue, several accepters — and both guarantees hold by
+construction: every member accepts from the same queue, and the queue outlives
+any member that closes.
+
+Two smaller things the clause decides and this release takes: `net_listen_with(
+addr, false, 0)` **is** `net_listen(addr)`, call for call, on the ordinary
+listener every other net call already serves; and this call admits a fixed
+LOOPBACK port where `net_listen` refuses one, because `exists` and `denied` are
+rows about a NAMED port and a machine that refuses every fixed port can never
+answer either. Non-loopback stays refused by name, and `backlog` is a hint
+`std` gives no setter for and no observation in the protocol can see.
+
+### The two constructs refused BY NAME (`[os.proc.inherit]`, wolf-lang#235)
+
+`net_adopt_listener(fd)` and a **non-empty** `os_spawn_with` inherit set
+decline here, with the construct strings s137 published for the checked
+machine, verbatim:
+
+```
+listener adoption in checked execution
+fd inheritance across os_spawn_with in checked execution
+```
+
+Never the `unsupported` ROW — that would be a claim about the HOST, and both
+hosts this machine runs on serve the handoff. The reason the clause gives the
+checked machine is the reason here: this is a binary INTERPRETING a program, so
+a descriptor handed to "the program's child" would be handed to the
+interpreter's child. The mechanism seals it independently — the handoff is a
+`pre_exec` hook running `dup2` and the adopt is `FromRawFd`, both `unsafe`,
+which this crate forbids. `[proto.cmp.defined-divergence]` never compares an
+`unsupported`, so nothing in the differential would ever notice these two
+strings drifting; `tests/cores_s137.rs` asserts them on the words.
+
+An **empty** inherit set is served, exactly as the clause requires: it is
+`os_spawn` with the program named apart, so it reaches the spawn and answers
+the spawn's own row.
+
+### wolf-lang#228 / DIV-2026-021 — the locus row gets a gate, not a ruling
+
+is38 offered two branches: implement the span comparison at that rung so the
+row becomes measurable, or rule the divergence and close it.
+
+**The first is already done and has been since is01.** `compare::compare` and
+`differ::compare_deep` compare the first diagnostic's code AND span at every
+rung through `mem`, and `lupin diff-run` reports the row today. r08's "no
+harness surfaces it" is true of the harness it was written about — wolf-lang's
+pairing ritual compares codes at `parse` — and not of this one. Re-measured at
+the v0.2.5 pin, neither locus moved: lupin `E0201 [364,365)` at the comma, wolf
+0.2.5 `E0201 [374,375)` at the end of the initializer list.
+
+**The second this lane may not take.** CONTRIBUTING's standing
+divergence-filing rule is `[proto.cmp.triage]` in one sentence — neither
+implementation is patched to match the other before the clause is fixed — and
+`[gram.item.let]` still says what a D63 let-group IS and what the bare-tuple
+shape is not, without saying where refusing it reports. Moving this machine's
+locus onto the counterparty's would close the row with the clause having
+decided nothing.
+
+So what landed is the two gates the row actually lacked, and neither touches
+the locus:
+
+- **`tests/let_group_locus.rs`** pins this machine's half hermetically —
+  `E0201` at `[364,365)`, with the byte sliced back out of the source and
+  asserted to be the comma. Nothing in `cargo test` had ever checked it: the
+  corpus directive is `check: fail(E0201)` and the walk compares CODES, so a
+  drift to byte 374 would have closed the divergence in silence and left the
+  ledger asserting a disagreement that no longer existed. The counterparty's
+  half is re-measured beside it when a `wolf` binary is present.
+- **`differ::retired_waivers`** reports and GATES on a filed divergence that a
+  FOREIGN counterparty compared clean. wolf-lang#177 taught that a waiver
+  outliving its divergence is a hole exactly where a gate used to be, and both
+  times a human noticed rather than a gate. The self-differential and a
+  `--replay` retire nothing, because a machine compared against itself agrees
+  with itself everywhere.
+
+A divergence no gate can see is the shape this project keeps finding the hard
+way; so is a waiver no gate can retire. Both are closed, and the locus stays
+where the clause left it.
+
+### `zext` from `bool`, and why there is nothing to do about it here
+
+v0.2.5's second fix makes `zext` from `bool` legal WIR, so `channel[bool]` stops
+compiling to an internal compiler error. **This machine has no site for it**:
+there is no WIR here and no lowering to verify, `channel` is one of the names
+carried in the ambient stub with no pinned semantics (so a program that uses one
+is declined by name rather than guessed at), and neither `zext` nor
+`channel[bool]` appears anywhere in the pinned `spec/` or `corpus/` at this pin.
+Recorded rather than absorbed: a fix on the other side with no mirror image is
+still a fact about the pair.
+
 ## 0.1.26 — 2026-09-04
 
 THE BYTE HAS A DOMAIN (is37). Last release gave this machine the byte TYPE and

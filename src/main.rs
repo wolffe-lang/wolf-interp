@@ -1266,6 +1266,9 @@ fn run_conformance_check(args: &ConformanceCheckArgs) -> u8 {
         ledger: outcome.ledger,
         compared: outcome.compared,
         skipped_members: 0,
+        // A replay is this machine against its own records: no waiver can be
+        // retired on that evidence, so none is offered.
+        compared_files: Vec::new(),
     };
     report_diff(&as_diff, false)
 }
@@ -1577,6 +1580,17 @@ struct DiffOutcome {
     ledger: Vec<LedgerEntry>,
     compared: usize,
     skipped_members: usize,
+    /// The corpus files a **foreign** counterparty answered for, which is
+    /// the only evidence a waiver may be retired on (see
+    /// [`retired_waivers`]).
+    ///
+    /// Empty wherever that evidence does not exist, and both cases are
+    /// deliberate: a `--replay` of this machine's own bundle compares it
+    /// with itself, and the self-differential (`differ_cli`'s lane, and the
+    /// oracle the fuzzer runs) points `--compiler` at this binary. In both,
+    /// every filed divergence "does not occur" for a reason that says
+    /// nothing at all about the counterparty it was filed against.
+    compared_files: Vec<String>,
 }
 
 fn diff_corpus(args: &DiffRunArgs, compiler: &Path) -> Result<DiffOutcome, u8> {
@@ -1591,6 +1605,7 @@ fn diff_corpus(args: &DiffRunArgs, compiler: &Path) -> Result<DiffOutcome, u8> {
         ledger: Vec::new(),
         compared: 0,
         skipped_members: 0,
+        compared_files: Vec::new(),
     };
     for file in &report.files {
         match &file.outcome {
@@ -1615,6 +1630,13 @@ fn diff_corpus(args: &DiffRunArgs, compiler: &Path) -> Result<DiffOutcome, u8> {
         let b = differ::invoke_tier(compiler, &full, timeout, args.counterparty_tier.into());
         let comparison = differ::compare_invocations(&file.path, &a, &b, has_unsafe);
         out.compared += 1;
+        // Only a FOREIGN record is evidence about a filed divergence: this
+        // binary compared against itself agrees with itself everywhere.
+        if let differ::Invocation::Record(record) = &b
+            && record.impl_name != wolf_interp::IMPL_NAME
+        {
+            out.compared_files.push(file.path.clone());
+        }
         if let Some(divergence) = comparison.divergence {
             out.divergences.push(divergence);
         }
@@ -1699,6 +1721,16 @@ fn report_diff(outcome: &DiffOutcome, args_filing: bool) -> u8 {
         }
     }
 
+    let diverged: Vec<String> = outcome.divergences.iter().map(|d| d.file.clone()).collect();
+    for (file, id) in differ::retired_waivers(&outcome.compared_files, &diverged) {
+        println!(
+            "retired-waiver  {file}  [{id}] — the counterparty compared it CLEAN. Retire the \
+             entry in docs/divergence-log.md and in differ::FILED_DIVERGENCES; a waiver that \
+             outlives its divergence is a hole where a gate used to be (wolf-lang#177)."
+        );
+        gating += 1;
+    }
+
     if gating == 0 {
         println!(
             "differential: GREEN — every divergence is filed in docs/divergence-log.md \
@@ -1707,8 +1739,9 @@ fn report_diff(outcome: &DiffOutcome, args_filing: bool) -> u8 {
         EXIT_OK
     } else {
         println!(
-            "differential: {gating} gating divergence(s) — soundness candidates gate always; \
-             everything else gates until filed with a triage in docs/divergence-log.md"
+            "differential: {gating} gating finding(s) — soundness candidates gate always; \
+             everything else gates until filed with a triage in docs/divergence-log.md, and a \
+             filed entry gates again once its divergence is gone"
         );
         EXIT_CHECK_FAILED
     }

@@ -206,6 +206,38 @@ pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
 // Seven of the eight are byte-identical here now. The eighth was never a
 // width question and is carried above under its own id.
 
+/// The filed divergences a real counterparty compared **clean** — waivers
+/// that have outlived their divergence.
+///
+/// wolf-lang#177 taught this repository the shape twice, and both times a
+/// human noticed rather than a gate: a waiver is a promise that some gate
+/// has ALREADY seen the disagreement, so a waiver nothing re-measures is a
+/// hole exactly where a gate used to be. The check is keyed by corpus file,
+/// like the waivers themselves: for every filed entry whose file the
+/// counterparty actually answered for, did a divergence come back? A "no"
+/// is a finding against `docs/divergence-log.md` rather than against either
+/// implementation, and reporting it in the round it becomes true is what
+/// keeps `FILED_DIVERGENCES` a list of live disagreements.
+///
+/// `compared` must hold only files a **foreign** counterparty answered for.
+/// This machine compared against itself agrees with itself everywhere, so
+/// the self-differential and a `--replay` of this machine's own bundle pass
+/// an empty list and retire nothing.
+#[must_use]
+pub fn retired_waivers(
+    compared: &[String],
+    diverged: &[String],
+) -> Vec<(&'static str, &'static str)> {
+    let holds = |file: &str, candidate: &String| candidate.ends_with(file);
+    FILED_DIVERGENCES
+        .iter()
+        .filter(|(file, _, _)| {
+            compared.iter().any(|c| holds(file, c)) && !diverged.iter().any(|d| holds(file, d))
+        })
+        .map(|(file, id, _)| (*file, *id))
+        .collect()
+}
+
 /// The filing id for a corpus file, when its divergence is already filed.
 #[must_use]
 pub fn filed(file: &str) -> Option<(&'static str, &'static str)> {
@@ -1535,6 +1567,46 @@ mod tests {
         assert_eq!(filed("upstream/corpus/memory/mode_missing_mut.lu"), None);
         assert_eq!(filed("upstream/corpus/typecheck/cast_bad.lu"), None);
         assert_eq!(filed("upstream/corpus/hello.lu"), None);
+    }
+
+    #[test]
+    fn a_waiver_retires_only_when_its_file_was_compared_and_came_back_clean() {
+        // The three states a filed entry can be in after a differential, and
+        // only the middle one is a finding.
+        let filed = FILED_DIVERGENCES[0].0.to_owned();
+        let elsewhere = "grammar/hello.lu".to_owned();
+
+        let one = std::slice::from_ref(&filed);
+        // Compared, and it still diverges: the waiver is doing its job.
+        assert!(
+            retired_waivers(one, one).is_empty(),
+            "a live divergence retired its own waiver"
+        );
+        // Never compared (skipped, or unsupported on a side): no evidence,
+        // so no claim — the wrong answer here is the loud one.
+        assert!(
+            retired_waivers(std::slice::from_ref(&elsewhere), &[]).is_empty(),
+            "a file nobody compared retired a waiver"
+        );
+        // Compared and CLEAN: the waiver has outlived its divergence.
+        let retired = retired_waivers(one, &[]);
+        assert_eq!(retired.len(), 1, "{retired:?}");
+        assert_eq!(retired[0].0, FILED_DIVERGENCES[0].0);
+        assert_eq!(retired[0].1, FILED_DIVERGENCES[0].1);
+    }
+
+    #[test]
+    fn every_filed_waiver_is_retired_by_the_check_when_the_pair_agrees() {
+        // The list is small and the claim is about ALL of it: hand the check
+        // every filed file as compared-and-clean and it must name every one.
+        let compared: Vec<String> = FILED_DIVERGENCES
+            .iter()
+            .map(|(file, _, _)| (*file).to_owned())
+            .collect();
+        assert_eq!(
+            retired_waivers(&compared, &[]).len(),
+            FILED_DIVERGENCES.len()
+        );
     }
 
     #[test]

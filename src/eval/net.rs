@@ -64,6 +64,7 @@
 //!   (`unsupported`, the fuel posture): a verdict is refused rather than
 //!   a hang, and never a wrong answer.
 
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 // `[os.net.unix]`'s half only: a socket PATH exists where the family does.
@@ -118,6 +119,50 @@ struct NetSock {
     kind: SockKind,
     /// The armed per-socket budget, ms. `None` is unarmed.
     deadline_ms: Option<u64>,
+    /// `[os.net.listen.opts]`: this listener was bound with `reuse_port`,
+    /// so it is a member of a GROUP and a later bind of its address joins
+    /// the group instead of colliding with it. False on every stream and on
+    /// every option-less listener, which is `net_listen`'s own posture.
+    reuse_port: bool,
+    /// `[os.net.wait]`'s level-triggered readiness, on a listener.
+    ///
+    /// This machine has no `poll(2)` to ask (no `unsafe`, and `std::net`
+    /// exposes no readiness surface), so a listener's "can `net_accept`
+    /// proceed without blocking?" is answered by ACCEPTING and holding the
+    /// connection here. That keeps the clause's two sentences true where a
+    /// program can see them: asking consumes nothing (a second wait finds
+    /// the same stashed connection and answers the same), and the accept
+    /// that follows drains it. `net_accept` takes from this queue before it
+    /// touches the socket, and closing the listener drops whatever is left
+    /// — which is what closing a listener does to its backlog anyway.
+    pending: VecDeque<SockKind>,
+    /// The same question on a STREAM, and the same answer one asymmetry
+    /// further down.
+    ///
+    /// `TcpStream::peek` is stable and answers "is there anything to read?"
+    /// without taking it, which is the whole of the TCP half. `UnixStream`'s
+    /// `peek` is not stable, so the unix half asks by READING and holds what
+    /// it found here; `poll_read_bytes` drains this before it touches the
+    /// socket, so the byte stream a program sees is unchanged and the
+    /// clause's sentence stays true — asking consumes nothing a program can
+    /// observe. `eof` is the same trick for the peer's finish: the read that
+    /// follows is still the one that reports `closed`.
+    held: Vec<u8>,
+    eof: bool,
+}
+
+impl NetSock {
+    /// A fresh socket slot: unarmed, in no group, nothing stashed.
+    fn new(kind: SockKind) -> Self {
+        Self {
+            kind,
+            deadline_ms: None,
+            reuse_port: false,
+            pending: VecDeque::new(),
+            held: Vec::new(),
+            eof: false,
+        }
+    }
 }
 
 enum SockKind {
@@ -195,10 +240,96 @@ impl NetTable {
         listener
             .set_nonblocking(true)
             .map_err(|_| NetErr::Row("io"))?;
-        Ok(self.fd(NetSock {
-            kind: SockKind::Listener(listener),
-            deadline_ms: None,
-        }))
+        Ok(self.fd(NetSock::new(SockKind::Listener(listener))))
+    }
+
+    /// `net_listen_with` (`[os.net.listen.opts]`, s137/wolf-lang#234): the
+    /// two options a prefork server needs, on the ordinary listener.
+    ///
+    /// # The group is MODELLED, and the model is exactly the clause's two
+    /// guarantees
+    ///
+    /// `SO_REUSEPORT` has to be set *before* the bind, and there is no way
+    /// to reach `setsockopt` from `std` — this crate forbids `unsafe`, so
+    /// the option itself is unreachable here. What the clause actually
+    /// promises a caller is narrower than the option: **every dial is
+    /// accepted by SOME member, and the survivor takes every dial after the
+    /// others close.** What the kernel does *inside* a live group is
+    /// explicitly the host's (linux hashes the 4-tuple across the group,
+    /// macOS hands every SYN to the newest bound socket) and a program may
+    /// not depend on it, which is why `corpus/net/reuse_port.lu` asserts
+    /// the two guarantees and prints nothing about delivery.
+    ///
+    /// So a group here is ONE listening socket with a duplicated handle per
+    /// member (`TcpListener::try_clone`) — the inherit shape from
+    /// `[os.proc.inherit]`, one queue with several accepters — and both
+    /// guarantees hold by construction: every member accepts from the same
+    /// queue, and the queue outlives any member that closes. It names no
+    /// host, because a model has no host to name; the runtime's own
+    /// `unsupported` row on windows is the option's, not the guarantee's.
+    ///
+    /// # Why this call admits a FIXED port where `net_listen` does not
+    ///
+    /// `net_listen`'s v0 surface is loopback + port 0, so a fixed port is
+    /// refused by name and never a collision generator. But `exists` and
+    /// `denied` are rows about a NAMED port — "another socket already holds
+    /// this address", "you may not have this one" — and a machine that
+    /// refuses every fixed port can never answer either. The clause hands
+    /// this call those two rows precisely so a server can tell them apart,
+    /// so the option call admits a fixed LOOPBACK port; a caller reaches it
+    /// with a number the OS gave it (`net_port` of a port-0 bind), which is
+    /// what the witness does. Non-loopback stays refused by name.
+    ///
+    /// `backlog` is the `listen(2)` queue hint. `std::net` binds and listens
+    /// in one call with its own depth and exposes no setter, so the hint is
+    /// accepted and not applied — no observation in the protocol can see a
+    /// queue depth, and `<= 0` asks for the default anyway.
+    fn listen_with(&mut self, addr: &str, reuse_port: bool, backlog: i128) -> NetResult<i128> {
+        let _ = backlog;
+        let parsed: SocketAddr = addr.parse().map_err(|_| NetErr::Row("io"))?;
+        if !parsed.ip().is_loopback() {
+            return Err(NetErr::Outside(format!(
+                "`net_listen_with(\"{addr}\", …)` binds a non-loopback address; the v0 \
+                 surface this machine implements is loopback only (the corpus's own \
+                 discipline), so the shape is refused by name rather than observed"
+            )));
+        }
+        if reuse_port
+            && parsed.port() != 0
+            && let Some(member) = self.join_group(parsed)
+        {
+            return Ok(member);
+        }
+        let listener = TcpListener::bind(parsed).map_err(|error| NetErr::Row(bind_row(&error)))?;
+        listener
+            .set_nonblocking(true)
+            .map_err(|_| NetErr::Row("io"))?;
+        let mut sock = NetSock::new(SockKind::Listener(listener));
+        sock.reuse_port = reuse_port;
+        Ok(self.fd(sock))
+    }
+
+    /// A second hand on the group holding `addr`, or `None` when no member
+    /// of this run holds it under the option (in which case the caller
+    /// binds, and a foreign holder answers `exists`).
+    fn join_group(&mut self, addr: SocketAddr) -> Option<i128> {
+        let cloned = self.slots.iter().find_map(|slot| {
+            let sock = slot.as_ref()?;
+            if !sock.reuse_port {
+                return None;
+            }
+            let SockKind::Listener(listener) = &sock.kind else {
+                return None;
+            };
+            if listener.local_addr().ok()? != addr {
+                return None;
+            }
+            listener.try_clone().ok()
+        })?;
+        cloned.set_nonblocking(true).ok()?;
+        let mut sock = NetSock::new(SockKind::Listener(cloned));
+        sock.reuse_port = true;
+        Some(self.fd(sock))
     }
 
     /// `net_port`: the socket's own (local) port.
@@ -233,10 +364,7 @@ impl NetTable {
                 stream
                     .set_nonblocking(true)
                     .map_err(|_| NetErr::Row("io"))?;
-                Ok(self.fd(NetSock {
-                    kind: SockKind::Stream(stream),
-                    deadline_ms: None,
-                }))
+                Ok(self.fd(NetSock::new(SockKind::Stream(stream))))
             }
             Err(error) => Err(NetErr::Row(match error.kind() {
                 std::io::ErrorKind::ConnectionRefused => "refused",
@@ -247,7 +375,14 @@ impl NetTable {
     }
 
     /// One accept poll: the new stream's fd, or not yet.
+    ///
+    /// A connection a `net_wait` already took off the queue to answer its
+    /// readiness question is handed over FIRST — that is what makes
+    /// `[os.net.wait]`'s "the accept drains it" true here.
     fn poll_accept(&mut self, fd: i128) -> NetResult<Poll<i128>> {
+        if let Some(stashed) = self.sock(fd)?.pending.pop_front() {
+            return Ok(Poll::Ready(self.fd(NetSock::new(stashed))));
+        }
         let sock = self.sock(fd)?;
         let accepted = match &sock.kind {
             SockKind::Listener(listener) => match listener.accept() {
@@ -280,10 +415,7 @@ impl NetTable {
             // A stream cannot accept: wrong-kind fd, the `io` row (probed).
             _ => return Err(NetErr::Row("io")),
         };
-        Ok(Poll::Ready(self.fd(NetSock {
-            kind: accepted,
-            deadline_ms: None,
-        })))
+        Ok(Poll::Ready(self.fd(NetSock::new(accepted))))
     }
 
     /// One read poll: up to `n` bytes, validated. `Ok(0)` from the socket
@@ -304,6 +436,16 @@ impl NetTable {
     /// (s106, F-0102). No `utf8` row anywhere: a lone `0x80` is data.
     fn poll_read_bytes(&mut self, fd: i128, n: usize) -> NetResult<Poll<Vec<u8>>> {
         let sock = self.sock(fd)?;
+        // Whatever a `net_wait` had to take in order to answer comes back
+        // first, in order, before the socket is asked again (see
+        // [`NetSock::held`]). Empty on every TCP socket, always.
+        if !sock.held.is_empty() {
+            let take = n.min(sock.held.len());
+            return Ok(Poll::Ready(sock.held.drain(..take).collect()));
+        }
+        if sock.eof {
+            return Err(NetErr::Row("closed"));
+        }
         let Some(stream) = sock.duplex() else {
             return Err(NetErr::Row("io"));
         };
@@ -336,6 +478,99 @@ impl NetTable {
             }
         }
         Ok(Poll::Ready(()))
+    }
+
+    /// `[os.net.wait]`, one socket: can this fd be READ without blocking?
+    ///
+    /// A listener is ready when an accept would not block; a stream when a
+    /// read would answer bytes **or `closed`**. Both halves are the
+    /// clause's: "a stream whose peer has closed is READY — the `net_read`
+    /// that follows is what reports `closed`, which is how a loop learns to
+    /// drop it", and `POLLHUP`/`POLLERR` count as ready for the same
+    /// reason. Asking consumes nothing a program can observe: the listener
+    /// half stashes what it accepted (see [`NetSock::pending`]) and the
+    /// stream half PEEKS, which leaves the bytes on the socket.
+    fn poll_ready(&mut self, fd: i128) -> NetResult<bool> {
+        let sock = self.sock(fd)?;
+        if !sock.pending.is_empty() {
+            return Ok(true);
+        }
+        let accepted = match &mut sock.kind {
+            SockKind::Listener(listener) => match listener.accept() {
+                Ok((stream, _)) => {
+                    stream
+                        .set_nonblocking(true)
+                        .map_err(|_| NetErr::Row("io"))?;
+                    SockKind::Stream(stream)
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    return Ok(false);
+                }
+                Err(_) => return Err(NetErr::Row("io")),
+            },
+            #[cfg(unix)]
+            SockKind::UnixListener(listener, _) => match listener.accept() {
+                Ok((stream, _)) => {
+                    stream
+                        .set_nonblocking(true)
+                        .map_err(|_| NetErr::Row("io"))?;
+                    SockKind::UnixStream(stream)
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    return Ok(false);
+                }
+                Err(_) => return Err(NetErr::Row("io")),
+            },
+            SockKind::Stream(stream) => return Ok(peek_is_ready(stream.peek(&mut [0u8; 1]))),
+            #[cfg(unix)]
+            SockKind::UnixStream(stream) => {
+                if !sock.held.is_empty() || sock.eof {
+                    return Ok(true);
+                }
+                let mut buf = [0u8; 4096];
+                let read = stream.read(&mut buf);
+                return match read {
+                    Ok(0) => {
+                        sock.eof = true;
+                        Ok(true)
+                    }
+                    Ok(n) => {
+                        sock.held.extend_from_slice(&buf[..n]);
+                        Ok(true)
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
+                    // The `POLLERR` posture: ready, and the read that follows
+                    // is the one that names it.
+                    Err(_) => Ok(true),
+                };
+            }
+        };
+        sock.pending.push_back(accepted);
+        Ok(true)
+    }
+
+    /// Every fd in the set names a live socket, or the whole call is `io`.
+    ///
+    /// `[os.net.wait]`: a forged or closed handle ANYWHERE in the set is
+    /// `io` and **nothing is waited on** — so the set is validated whole
+    /// before a single socket is asked, and a bad member never leaves a
+    /// stashed connection behind on a good one.
+    fn wait_validate(&mut self, fds: &[i128]) -> NetResult<()> {
+        for fd in fds {
+            self.sock(*fd)?;
+        }
+        Ok(())
+    }
+
+    /// The SUBSET of `fds` that can be read now, in the caller's order.
+    fn ready_now(&mut self, fds: &[i128]) -> NetResult<Vec<i128>> {
+        let mut ready = Vec::new();
+        for fd in fds {
+            if self.poll_ready(*fd)? {
+                ready.push(*fd);
+            }
+        }
+        Ok(ready)
     }
 
     /// `net_close`: the fd is spent; closing it again is `io` (probed).
@@ -392,10 +627,7 @@ impl NetTable {
         listener
             .set_nonblocking(true)
             .map_err(|_| NetErr::Row("io"))?;
-        Ok(self.fd(NetSock {
-            kind: SockKind::UnixListener(listener, path),
-            deadline_ms: None,
-        }))
+        Ok(self.fd(NetSock::new(SockKind::UnixListener(listener, path))))
     }
 
     /// `net_connect_unix` (`[os.net.unix]`): dial an `AF_UNIX` stream socket.
@@ -409,10 +641,7 @@ impl NetTable {
         stream
             .set_nonblocking(true)
             .map_err(|_| NetErr::Row("io"))?;
-        Ok(self.fd(NetSock {
-            kind: SockKind::UnixStream(stream),
-            deadline_ms: None,
-        }))
+        Ok(self.fd(NetSock::new(SockKind::UnixStream(stream))))
     }
 
     /// `net_deadline`: arm (`ms > 0`) or clear (`ms <= 0`) the budget.
@@ -490,6 +719,31 @@ fn unix_dial_row(error: &std::io::Error) -> NetErr {
     })
 }
 
+/// `[os.net.listen.opts]`'s bind rows: an address another socket already
+/// holds is `exists` — the "already in use" answer wolf-lang#234 asked for,
+/// spelled in the vocabulary `[os.net.unix]` gave the family — a privileged
+/// port the caller may not bind is `denied`, and the rest is `io`.
+fn bind_row(error: &std::io::Error) -> Row {
+    match error.kind() {
+        std::io::ErrorKind::AddrInUse => "exists",
+        std::io::ErrorKind::PermissionDenied => "denied",
+        _ => "io",
+    }
+}
+
+/// `[os.net.wait]` for a TCP stream: what a non-blocking PEEK means.
+///
+/// `Ok(0)` is the peer's finish and is READY, not quiet — the clause is
+/// explicit that the `net_read` after it is what reports `closed`. Any
+/// other error is ready too, for the reason `POLLERR` is: the read that
+/// follows is the one that names it.
+fn peek_is_ready(peeked: std::io::Result<usize>) -> bool {
+    match peeked {
+        Ok(_) => true,
+        Err(error) => error.kind() != std::io::ErrorKind::WouldBlock,
+    }
+}
+
 /// `closed` for the peer-finish error kinds, `io` for the rest.
 fn closed_or_io(error: &std::io::Error) -> Row {
     match error.kind() {
@@ -523,6 +777,78 @@ impl Machine {
                     self.net().connect(addr)
                 };
                 self.net_answer(name, answer.map(|fd| Value::Int(fd, IntTy::INT)), span)
+            }
+            // `[os.net.listen.opts]` (s137, wolf-lang#234). The clause's own
+            // equality holds here call for call: `net_listen_with(addr,
+            // false, 0)` IS `net_listen(addr)` — same bind, same handle,
+            // same rows minus the two this call can also answer.
+            "net_listen_with" => {
+                let Some(Value::Str(addr)) = args.first() else {
+                    return Err(Signal::Unsupported(format!(
+                        "`{name}` takes an address `str` like \"127.0.0.1:0\""
+                    )));
+                };
+                let Some(Value::Bool(reuse_port)) = args.get(1) else {
+                    return Err(Signal::Unsupported(format!(
+                        "`{name}`'s second argument is the `reuse_port` bool"
+                    )));
+                };
+                let (addr, reuse_port) = (addr.clone(), *reuse_port);
+                let backlog = int_arg(args, 2, name)?;
+                let answer = self.net().listen_with(&addr, reuse_port, backlog);
+                self.net_answer(name, answer.map(|fd| Value::Int(fd, IntTy::INT)), span)
+            }
+            // `[os.proc.inherit]`'s child half (s137, wolf-lang#235).
+            // Refused BY NAME with the construct s137 published, and the
+            // refusal has TWO reasons that arrive at the same place: this is
+            // the interpreter running the program, so a descriptor handed to
+            // "the program's child" would be handed to the interpreter's;
+            // and adopting a number means `FromRawFd`, which is `unsafe`,
+            // which this crate forbids. Never the `unsupported` ROW — that
+            // would be a claim about the HOST, and the host serves this.
+            "net_adopt_listener" => Err(Signal::Unsupported(
+                "listener adoption in checked execution".to_owned(),
+            )),
+            // `[os.net.wait]` (s137, wolf-lang#127). Alone in s137 this
+            // clause names no host and no refusal, so it serves on every
+            // lane this machine has.
+            "net_wait" => {
+                let Some(Value::List(items, _, _)) = args.first() else {
+                    return Err(Signal::Unsupported(format!(
+                        "`{name}` takes a `List[int]` of handles and a deadline in ms"
+                    )));
+                };
+                let mut fds = Vec::with_capacity(items.len());
+                for slot in items.iter() {
+                    let Value::Int(fd, _) = &slot.value else {
+                        return Err(Signal::Unsupported(format!(
+                            "`{name}`'s set holds {}, not a handle",
+                            slot.value.kind()
+                        )));
+                    };
+                    fds.push(*fd);
+                }
+                let deadline_ms = int_arg(args, 1, name)?;
+                let answer = self.net_wait_set(&fds, deadline_ms, span)?;
+                let answer = match answer {
+                    Ok(ready) => {
+                        let home = self.allocate(
+                            span,
+                            "net_wait",
+                            super::region::ledger::container_bytes(ready.len() as u64),
+                        )?;
+                        Ok(Value::list(
+                            ready
+                                .into_iter()
+                                .map(|fd| super::value::Slot::live(Value::Int(fd, IntTy::INT)))
+                                .collect(),
+                            Some(ElemTy::Int(IntTy::INT)),
+                            Some(home),
+                        ))
+                    }
+                    Err(err) => Err(err),
+                };
+                self.net_answer(name, answer, span)
             }
             "net_listen_unix" | "net_connect_unix" => {
                 let Some(Value::Str(path)) = args.first() else {
@@ -711,6 +1037,86 @@ impl Machine {
         }
     }
 
+    /// `[os.net.wait]`'s loop: the ready subset, or the empty answer.
+    ///
+    /// Four sentences of the clause live in this function. **An EMPTY answer
+    /// is the deadline expiring with nothing ready — an answer, not a
+    /// failure** (`{io}` is the whole row set and no timeout tag is in it).
+    /// **`deadline_ms`**: negative waits until something is ready, `0` asks
+    /// and returns at once, positive is milliseconds. **`io`** is a forged
+    /// or closed handle anywhere in the set, with nothing waited on, or an
+    /// empty set with an unbounded deadline — nothing could ever end that
+    /// wait, and a program that means to sleep says `time_sleep_ms`. And
+    /// the call touches no task state: it parks nothing and registers
+    /// nothing, so it mixes with `spawn` freely; in the task tier its wait
+    /// hands the baton on exactly as every other net call's does.
+    fn net_wait_set(
+        &mut self,
+        fds: &[i128],
+        deadline_ms: i128,
+        span: Span,
+    ) -> Result<NetResult<Vec<i128>>, Signal> {
+        if let Err(err) = self.net().wait_validate(fds) {
+            return Ok(Err(err));
+        }
+        if fds.is_empty() && deadline_ms < 0 {
+            return Ok(Err(NetErr::Row("io")));
+        }
+        let started = Instant::now();
+        let budget = (deadline_ms > 0)
+            .then(|| Duration::from_millis(u64::try_from(deadline_ms).unwrap_or(u64::MAX)));
+        loop {
+            match self.net().ready_now(fds) {
+                Err(err) => return Ok(Err(err)),
+                Ok(ready) if !ready.is_empty() => return Ok(Ok(ready)),
+                Ok(_) => {}
+            }
+            if deadline_ms == 0 {
+                return Ok(Ok(Vec::new()));
+            }
+            if let Some(budget) = budget
+                && started.elapsed() >= budget
+            {
+                return Ok(Ok(Vec::new()));
+            }
+            if started.elapsed() >= Duration::from_millis(NET_RAIL_MS) {
+                // The unbounded wait, unbounded: decline the verdict rather
+                // than hang, exactly as a deadline-free park does.
+                return Err(Signal::Unsupported(format!(
+                    "`net_wait` waited past the machine's {NET_RAIL_MS}ms rail with an \
+                     unbounded deadline; a verdict is declined rather than a hang"
+                )));
+            }
+            if let Some(err) = self.net_tick(span)? {
+                return Ok(Err(err));
+            }
+        }
+    }
+
+    /// One pass of a net wait: in the task tier hand the baton on through an
+    /// ordinary scheduling decision so the peer that will resolve this can
+    /// run, otherwise sleep a host millisecond. `Some(_)` is a cancellation
+    /// delivered at this blocking point ([conc.cancel.points]).
+    fn net_tick(&mut self, span: Span) -> Result<Option<NetErr>, Signal> {
+        if self.concurrent() {
+            let wake = self.sched_block(|sched, task| sched.net_yield(task));
+            match wake {
+                super::sched::Wake::Killed => return Err(Signal::ProcKilled),
+                super::sched::Wake::Cancelled => {
+                    self.fire(
+                        Rule::CancelPoint,
+                        span,
+                        "cancellation delivered at a net blocking point",
+                    );
+                    return Ok(Some(NetErr::Cancelled));
+                }
+                _ => {}
+            }
+        }
+        std::thread::sleep(Duration::from_millis(1));
+        Ok(None)
+    }
+
     /// The parking loop (module doc, "Blocking honesty"): poll until ready,
     /// a row, the fd's armed deadline (the `timeout` row), or the rail.
     fn net_park<T>(
@@ -742,26 +1148,13 @@ impl Machine {
                      armed deadline; a verdict is declined rather than a hang"
                 )));
             }
-            if self.concurrent() {
-                // The task tier: hand the baton through an ordinary
-                // scheduling decision so the peer can make progress. A
-                // cancellation or kill racing in resolves exactly as it
-                // would at a channel's blocking point.
-                let wake = self.sched_block(|sched, task| sched.net_yield(task));
-                match wake {
-                    super::sched::Wake::Killed => return Err(Signal::ProcKilled),
-                    super::sched::Wake::Cancelled => {
-                        self.fire(
-                            Rule::CancelPoint,
-                            span,
-                            "cancellation delivered at a net blocking point",
-                        );
-                        return Ok(Err(NetErr::Cancelled));
-                    }
-                    _ => {}
-                }
+            // The task tier hands the baton through an ordinary scheduling
+            // decision so the peer that will resolve this accept/read gets
+            // to run; a cancellation or kill racing in resolves exactly as
+            // it would at a channel's blocking point.
+            if let Some(err) = self.net_tick(span)? {
+                return Ok(Err(err));
             }
-            std::thread::sleep(Duration::from_millis(1));
         }
     }
 }

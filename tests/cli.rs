@@ -195,7 +195,13 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // `memory/consumed_walk_charges_nothing.lu`, and
     // `net/{echo_bytes,peer_close_after_serve,unix_echo}.lu`. Moved with the
     // pin, per the export.rs rule.
-    assert!(stdout.contains("503 file(s)"), "{stdout}");
+    // 503 -> 507 at the v0.2.5 pin (6ade878) (is38, wolf-lang's own tag — the
+    // spec and corpus trees of trunk's head `6263ffa` are byte-identical to
+    // it, so the is31 check-the-tag pattern lands on the tag): s137's four
+    // witnesses, `net/{reuse_port,inherit_listener,wait_readiness}.lu` and
+    // `os/cpus.lu`. All four are ENTRIES; `members` holds at 34. Moved with
+    // the pin, per the export.rs rule.
+    assert!(stdout.contains("507 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -204,7 +210,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 503);
+    assert_eq!(value["total"], 507);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

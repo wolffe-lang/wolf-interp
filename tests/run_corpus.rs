@@ -1175,6 +1175,30 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("strings/bytes_roundtrip.lu", "exit(0)"),
     ("typecheck/byte_casts.lu", "exit(0)"),
     ("typecheck/byte_shapes.lu", "exit(0)"),
+    // The v0.2.5 pin (6ade878; is38, wolf-lang's own tag): THREE more reach
+    // `run` and nothing left, and the fourth of s137's witnesses is the one
+    // that cannot.
+    //
+    // `os/cpus.lu` is `[os.cpus]`'s relations — answered, at least one, two
+    // reads agree — over `available_parallelism`, which reads the sources the
+    // clause names on every host, so the lanes agree on the NUMBER.
+    // `net/wait_readiness.lu` is `[os.net.wait]`'s six, over a readiness
+    // question this machine answers by asking each socket in turn: a listener
+    // by accepting and holding what it found, a stream by peeking. And
+    // `net/reuse_port.lu` is `[os.net.listen.opts]`'s five, over a group that
+    // is one listening socket with a duplicated handle per member — the model
+    // is in `eval::net`'s `listen_with`, and it satisfies exactly the two
+    // guarantees the clause lets a caller build on.
+    //
+    // `net/inherit_listener.lu` is NOT here and cannot be: a non-empty
+    // `os_spawn_with` inherit set is refused BY NAME with s137's own
+    // construct string, for the reason the clause gives the checked machine —
+    // this is a binary interpreting a program, so the child would be the
+    // interpreter's. It stays `unsupported@resolve`, which is a verdict and
+    // not an absence.
+    ("net/reuse_port.lu", "exit(0)"),
+    ("net/wait_readiness.lu", "exit(0)"),
+    ("os/cpus.lu", "exit(0)"),
 ];
 
 #[test]

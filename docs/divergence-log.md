@@ -110,6 +110,36 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The cores in the mirror — is38, lupin 0.1.27, pin `6ade878` (wolf-lang v0.2.5)
+
+s137 landed a server's other half and r08 shipped it. This sprint is the
+mirror catching up to all five anchors at once, and the ledger entry is short
+because **no class opened**: the walk's one mismatch is still DIV-2026-019,
+and the four witnesses moved exactly as far as each one's lane allows.
+
+| witness | lupin at 0.1.26 (the v0.2.5 pin, unimplemented) | lupin at 0.1.27 | the counterparty (`--checked`) |
+| --- | --- | --- | --- |
+| `net/reuse_port.lu` | `unsupported@resolve` | **`exit(0)@run`, match** | `exit(0)@run` |
+| `net/wait_readiness.lu` | `unsupported@resolve` | **`exit(0)@run`, match** | `exit(0)@run` |
+| `os/cpus.lu` | `unsupported@resolve` | **`exit(0)@run`, match** | `exit(0)@run` |
+| `net/inherit_listener.lu` | `unsupported@resolve` | **`unsupported@resolve`, by NAME** | `unsupported@mem`, by NAME |
+
+The fourth row is the one worth reading. Both machines decline it and both
+name the same construct — `fd inheritance across os_spawn_with in checked
+execution` — at different RUNGS, because the counterparty refuses it at
+lowering and this machine at the builtin call, and `phase_reached` is the
+deepest rung each COMPLETED. `[proto.cmp.defined-divergence]` makes an
+`unsupported` on either side a scope gap rather than a divergence, so the row
+never reaches the comparison at all; the two strings agree because
+`tests/cores_s137.rs` asserts them, not because anything compares them.
+
+**Three files newly reach a verdict that matches, none stopped**, and the
+conservatism ledger falls 128 -> 122 on the interp side with the three.
+
+The one thing this sprint declined to do is in DIV-2026-021 above: is38 ruled
+the LOCUS row open rather than closing it by imitation, and closed the two
+holes that let it sit unmeasured instead.
+
 ### The byte has a domain — is37, lupin 0.1.26, pin `982f857` (wolf-lang v0.2.4)
 
 is36 shipped the byte TYPE and left the DOMAIN to the compilers. sc35 measured
@@ -538,6 +568,8 @@ parse and disagree about **where**, ten bytes apart, on all three tiers.
 | --- | --- | --- |
 | lupin 0.1.24 | `[364,365)` | `,` — the comma in `let a, b` |
 | wolf 0.2.3 (`--checked`/`--native`/`--release`) | `[374,375)` | `\n` — the end of the initializer list |
+| **lupin 0.1.27** (is38) | `[364,365)` | unmoved |
+| **wolf 0.2.5** (`--checked` and the default lane) | `[374,375)` | unmoved |
 
 Triage: **spec bug**, case 1. `[gram.item.let]` says what a D63 let-group is
 and what the bare-tuple shape is not; it does not say where refusing it
@@ -549,6 +581,62 @@ diagnostic and this machine the better locus, which is exactly a question a
 clause should settle rather than two implementations settle by imitation. The
 corpus directive cannot see it: `check: fail(E0201)` pins the code, and the
 walk compares codes.
+
+#### is38's reading, and why this lane does not close the row
+
+The is38 contract offered two branches: implement the span comparison at that
+rung so the row becomes measurable, or rule the divergence and close it. The
+premise for the first branch is r08's pairing note — "this harness compares
+codes at that rung, not spans" — and that sentence is TRUE OF THE HARNESS IT
+WAS WRITTEN ABOUT and false here. `compare::compare` and
+`differ::compare_deep` have compared the first diagnostic's code **and span**
+at every rung through `mem` since is01, and this row is exactly what they
+report, re-measured at the v0.2.5 pin:
+
+```
+span-or-code  …/grammar/let_group_bare_tuple.lu  a=E0201@[364, 365]  b=E0201@[374, 375]  parse [filed: DIV-2026-021]
+```
+
+So the span comparison at that rung exists, and the row is measurable in this
+repository today. **What is38 declines is the other branch, and the reason is
+a standing rule rather than a preference.** CONTRIBUTING's divergence-filing
+rule is `[proto.cmp.triage]` in one sentence: *the two parsers never reconcile
+by private agreement, and neither one is patched to match the other before the
+clause is fixed.* `[gram.item.let]` has not moved and wolf-lang#228 has no
+comment on it. Moving this machine's locus onto the counterparty's would close
+the row without the clause ever deciding anything — two implementations
+agreeing on something undocumented, which is the exact failure the rule
+exists to prevent. The ask is unchanged and it is one sentence in
+`[gram.item.let]`; the loser then moves.
+
+#### What DID land, because "measurable" was doing too much work
+
+The row was measurable only in a harness that needs a counterparty binary and
+runs on nobody's schedule. Two gates close that gap, and neither of them
+touches the locus:
+
+1. **This machine's half is pinned hermetically** — `tests/let_group_locus.rs`.
+   Nothing in `cargo test` had ever asserted that this parser points at the
+   comma: the corpus directive is `check: fail(E0201)` and the walk compares
+   codes, so a drift to byte 374 would have closed the divergence in silence
+   and left this entry asserting a disagreement that no longer existed. The
+   test reads the pinned witness, pins `E0201` at `[364,365)` and slices the
+   byte back out of the source to name it (`","`), and the counterparty's half
+   is re-measured beside it whenever a counterparty binary exists — SKIPping
+   loudly when one does not, as the differential lane does.
+2. **A waiver can no longer outlive its divergence** —
+   `differ::retired_waivers`, reported and GATING in `lupin diff-run`. For
+   every entry in `FILED_DIVERGENCES` whose file a **foreign** counterparty
+   actually answered for, the runner asks whether a divergence came back; a
+   "no" is now a finding against this document. wolf-lang#177 taught the shape
+   twice and both times a human noticed instead of a gate. The self-
+   differential and a `--replay` of this machine's own bundle retire nothing,
+   because a machine compared against itself agrees with itself everywhere and
+   that is evidence about nobody.
+
+A divergence no gate can see is the shape this project keeps finding the hard
+way; so is a waiver no gate can retire. The locus stays where the clause left
+it, and both of those holes are closed.
 
 ### The letters in the mirror — is34, lupin 0.1.23, pin `8cda3aa` (wolf-lang v0.2.2)
 
