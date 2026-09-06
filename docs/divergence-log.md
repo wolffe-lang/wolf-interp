@@ -110,6 +110,36 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The cores in the mirror — is38, lupin 0.1.27, pin `6ade878` (wolf-lang v0.2.5)
+
+s137 landed a server's other half and r08 shipped it. This sprint is the
+mirror catching up to all five anchors at once, and the ledger entry is short
+because **no class opened**: the walk's one mismatch is still DIV-2026-019,
+and the four witnesses moved exactly as far as each one's lane allows.
+
+| witness | lupin at 0.1.26 (the v0.2.5 pin, unimplemented) | lupin at 0.1.27 | the counterparty (`--checked`) |
+| --- | --- | --- | --- |
+| `net/reuse_port.lu` | `unsupported@resolve` | **`exit(0)@run`, match** | `exit(0)@run` |
+| `net/wait_readiness.lu` | `unsupported@resolve` | **`exit(0)@run`, match** | `exit(0)@run` |
+| `os/cpus.lu` | `unsupported@resolve` | **`exit(0)@run`, match** | `exit(0)@run` |
+| `net/inherit_listener.lu` | `unsupported@resolve` | **`unsupported@resolve`, by NAME** | `unsupported@mem`, by NAME |
+
+The fourth row is the one worth reading. Both machines decline it and both
+name the same construct — `fd inheritance across os_spawn_with in checked
+execution` — at different RUNGS, because the counterparty refuses it at
+lowering and this machine at the builtin call, and `phase_reached` is the
+deepest rung each COMPLETED. `[proto.cmp.defined-divergence]` makes an
+`unsupported` on either side a scope gap rather than a divergence, so the row
+never reaches the comparison at all; the two strings agree because
+`tests/cores_s137.rs` asserts them, not because anything compares them.
+
+**Three files newly reach a verdict that matches, none stopped**, and the
+conservatism ledger falls 128 -> 122 on the interp side with the three.
+
+The one thing this sprint declined to do is in DIV-2026-021 above: is38 ruled
+the LOCUS row open rather than closing it by imitation, and closed the two
+holes that let it sit unmeasured instead.
+
 ### The byte has a domain — is37, lupin 0.1.26, pin `982f857` (wolf-lang v0.2.4)
 
 is36 shipped the byte TYPE and left the DOMAIN to the compilers. sc35 measured
