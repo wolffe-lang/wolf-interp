@@ -604,14 +604,22 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             why `directive::without_bom` exists. `members` holds at
     //             34; the registry gains six anchors (`type.byte` ×4,
     //             `os.net` ×2) and drops none, key sets diffed both ways.)
+    // (503 -> 507 at v0.2.5 / 6ade878 (is38, wolf-lang's v0.2.5 tag): s137's
+    //             four witnesses — `net/reuse_port.lu`,
+    //             `net/inherit_listener.lu`, `net/wait_readiness.lu` and
+    //             `os/cpus.lu`. All four are entries, so `members` holds at
+    //             34; the registry gains five anchors (`os.cpus`,
+    //             `os.net.listen.opts`, `os.net.wait`, `os.proc`,
+    //             `os.proc.inherit`) and drops none, key sets diffed both
+    //             ways.)
     let report = report();
     assert_eq!(
         report.total(),
-        503,
+        507,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 469);
+    assert_eq!(report.entries(), 473);
     assert_eq!(report.members(), 34);
 }
 

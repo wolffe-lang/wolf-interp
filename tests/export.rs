@@ -159,7 +159,13 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // `os.net.unix` — the net tier's FIRST clause anchors, since the TCP family
 // was the prelude's documentation until #227 wrote the second address family
 // down. Raised in the bump commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 182;
+// 182 -> 186 at v0.2.5 / 6ade878 (is38, wolf-lang v0.2.5): the four s137
+// clauses their witnesses cite — os.cpus, os.net.listen.opts, os.net.wait
+// and os.proc.inherit. The fifth anchor the registry gained, `os.proc`, is
+// the SECTION heading `[os.proc]` and no witness cites it, which is why the
+// registry moves by five and the floor by four. Raised in the bump commit
+// per the test's own instruction.
+const RATCHET_FLOOR: usize = 186;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -243,7 +249,12 @@ const RATCHET_FLOOR: usize = 182;
 // `.cast`/`.op`/`.interp` (D72) and `[os.net]` with `[os.net.unix]` (#227).
 // Key sets diffed BOTH ways — six added, NOTHING dropped (wolf-lang#177's
 // lesson, still standing).
-const ANCHORS_TOTAL: usize = 417;
+// 417 -> 422 at v0.2.5 / 6ade878 (is38, wolf-lang v0.2.5): s137's spec/11
+// delta — `[os.net.listen.opts]`, `[os.net.wait]`, `[os.cpus]`, and the new
+// §4 heading `[os.proc]` with its `[os.proc.inherit]`. Key sets diffed BOTH
+// ways — five added, NOTHING dropped (wolf-lang#177's lesson, still
+// standing).
+const ANCHORS_TOTAL: usize = 422;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -421,10 +432,17 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // module, whose member is a program but not a record, which is why the
     // two counts move by 4 and by 3; the suite is unmoved (is35's new suite
     // programs are inline fixtures, which the extractor does not harvest).
+    // 524/490 to 541/507 at 982f857 (is36, wolf-lang v0.2.4): the seventeen
+    // s136 adds, all entries.
+    // 541/507 -> 545/511 at 6ade878 (is38, wolf-lang v0.2.5): 4 corpus files
+    // — s137's `net/{reuse_port,inherit_listener,wait_readiness}.lu` and
+    // `os/cpus.lu`, all entries, so both counts move by 4; the suite is
+    // unmoved (is38's new suite programs are inline fixtures, which the
+    // extractor does not harvest).
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "982f857885b991e686c6b045de213d10cab013c1");
-    assert_eq!(summary.programs, 541);
-    assert_eq!(summary.records, 507);
+    assert_eq!(summary.pin, "6ade878c1f5f48bcb5c9ee804c749fbbc8634a02");
+    assert_eq!(summary.programs, 545);
+    assert_eq!(summary.records, 511);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
