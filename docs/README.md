@@ -1,6 +1,6 @@
 # docs/
 
-Two audiences, two shelves.
+The docs here serve two audiences.
 
 ## The manual — `manual/`
 
@@ -12,10 +12,10 @@ of it, and defines no language semantics of its own.
 ## Engineering documents
 
 The record of how this implementation relates to the spec and to the
-compiler. These are contracts and ledgers. They are not tutorials.
+compiler. These are contracts and ledgers, and none of them is a tutorial.
 
 - [approximation-contract.md](approximation-contract.md): what the dynamic
-  machine checks, what it deliberately approximates, and every finding filed
+  machine checks, what it approximates, and every finding filed
   against `spec/02` and `spec/03`.
 - [divergence-log.md](divergence-log.md): every divergence the differential
   runner has found, with its triage and its fate.

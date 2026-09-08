@@ -4,7 +4,7 @@ How to build the reference interpreter, run wolf programs on it, and read
 what its tools print. The wolf-interp package builds a binary named
 `lupin`, and the manual calls it that throughout.
 
-The ground rules, in one sentence: the
+The ground rules: the
 [spec](../../vendor/upstream/spec) is normative, this implementation is one
 reading of it, and where a manual page explains semantics it cites the
 clause and defines nothing.
