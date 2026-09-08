@@ -201,7 +201,10 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // witnesses, `net/{reuse_port,inherit_listener,wait_readiness}.lu` and
     // `os/cpus.lu`. All four are ENTRIES; `members` holds at 34. Moved with
     // the pin, per the export.rs rule.
-    assert!(stdout.contains("507 file(s)"), "{stdout}");
+    // 507 -> 508 at the v0.2.6 pin (398e5f5) (is39, wolf-lang's own tag):
+    // s138's one witness, `net/accept_race.lu`. An ENTRY; `members` holds at
+    // 34. Moved with the pin, per the export.rs rule.
+    assert!(stdout.contains("508 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -210,7 +213,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 507);
+    assert_eq!(value["total"], 508);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

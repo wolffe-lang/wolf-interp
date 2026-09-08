@@ -879,6 +879,18 @@ impl Machine {
                 let answer = self.net().port(fd);
                 self.net_answer(name, answer.map(|port| Value::Int(port, IntTy::INT)), span)
             }
+            // `[os.net.accept]` (s138, wolf-lang#242 — the clause arrived at
+            // the v0.2.6 pin and names this machine's posture directly: "its
+            // budgeted accept polls a non-blocking listener and retries
+            // `would_block` against the same budget"). Nothing moved to meet
+            // it, because that posture is what `poll_accept` + `net_park`
+            // have been since is18: the listener is non-blocking, a take that
+            // finds nothing is `Poll::NotYet` and NOT a row, and `net_park`
+            // measures from ONE `started` against ONE `armed(fd)` — a lost
+            // race re-waits inside the budget the call began with, never a
+            // fresh one. A wake is not a connection, and this machine can
+            // lose the race to its OWN second hand: see
+            // `tests/net_accept_race.rs`.
             "net_accept" => {
                 let fd = int_arg(args, 0, name)?;
                 let answer = self.net_park(fd, span, |table| table.poll_accept(fd))?;

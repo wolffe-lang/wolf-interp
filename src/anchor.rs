@@ -33,6 +33,21 @@ use std::fmt;
 /// `os` joined at the 90c90df pin (s114 — `spec/11-os.md` lands with the
 /// `[os.signal]` family, and every `os.*` anchor is in `anchors.json`, so
 /// the namespace is checkable, not forward).
+///
+/// **`sched` is NOT here yet, and that is the correct list at this pin.**
+/// wolf-lang s139 ruled `spec/07-schedule-points.md` normative and admitted
+/// `sched` (#246, anchors 424 -> 431) at `ed8f526` — **one merge after the
+/// `v0.2.6` tag this repository pins**. At `398e5f5` the clause registers
+/// these eleven and `anchors.json` publishes zero `sched.*`, so a twelfth
+/// entry here would put this side on the *permissive* half of exactly the
+/// silence `[conf.anchor.ns.admit]` was written to stop: tooling admitting a
+/// namespace its clause has not registered, publishing past the letter and
+/// passing CI — which is #239, and this list carried `diag`, `ct`, `type`
+/// and `os` that way for four pins before v0.2.6's amendment caught up.
+/// The admission lands with the pin that carries it, in one change, as the
+/// clause requires. `tests/anchor_admission.rs` holds both directions and
+/// carries the s139 clause text as a planted control, so the deferral is
+/// checkable now and goes red on its own the moment the pin advances.
 pub const REGISTERED_NAMESPACES: [&str; 11] = [
     "gram", "mem", "conc", "abi", "conf", "proto", "diag", "ct", "type", "pkg", "os",
 ];

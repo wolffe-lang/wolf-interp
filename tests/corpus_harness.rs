@@ -612,14 +612,21 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             `os.net.listen.opts`, `os.net.wait`, `os.proc`,
     //             `os.proc.inherit`) and drops none, key sets diffed both
     //             ways.)
+    // (507 -> 508 at v0.2.6 / 398e5f5 (is39, wolf-lang's v0.2.6 TAG): one
+    //             witness, `net/accept_race.lu` — s138's #242, two hands on
+    //             one inherited listener. An entry, so `members` holds at
+    //             34; the registry gains two anchors (`conf.anchor.ns.admit`,
+    //             `os.net.accept`) and drops none, key sets diffed both
+    //             ways. NOT s139's seven `[sched.*]`: those land at ed8f526,
+    //             one merge AFTER this tag — see `anchor::REGISTERED_NAMESPACES`.)
     let report = report();
     assert_eq!(
         report.total(),
-        507,
+        508,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 473);
+    assert_eq!(report.entries(), 474);
     assert_eq!(report.members(), 34);
 }
 
