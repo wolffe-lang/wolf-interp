@@ -38,7 +38,7 @@ exists depends on the environment. Without one, `diff-run` says so in
 
 The compiler's `conform-run` is one process contract over several engines,
 chosen by flag, and `--counterparty-tier` picks which one the comparison
-drives. It matters more than it sounds:
+drives:
 
 | tier | invokes | counterparty reaches `run` on |
 | --- | --- | --- |
@@ -48,19 +48,19 @@ drives. It matters more than it sounds:
 | `release` | `conform-run --release` | 104 |
 
 Measured at pin `613c3dc`. At `default` the compiler walks its static
-pipeline and stops — `unsupported` at `wir` — so no run-tier program has a
+pipeline and stops (`unsupported` at `wir`), so no run-tier program has a
 counterparty claim to compare against and the whole dynamic half of the
 corpus lands in the conservatism ledger uncompared. Prefer `checked` or
 `native` for coverage, and `release` when the question is whether
 optimization preserved behavior: that lane runs the mid-end and the
-whole-program layer, so comparing it against this machine is the
-falsifiable form of that claim.
+whole-program layer, so comparing it against this machine is what tests
+that claim.
 
 `native` and `release` need `libwolf_rt.a` beside the `wolf` binary;
-without it the compiler declines as a tool and the runner reports it rather
-than quietly comparing a shallower lane. This machine has one engine, so
-its own side is always invoked plainly — the tier selects the
-counterparty's engine, never ours.
+without it the compiler declines as a tool and the runner says so; it does
+not fall back to a shallower lane. This machine has one engine, so its own
+side is always invoked plainly, and the tier selects only the
+counterparty's engine.
 
 A divergence is reported with its class, in descending severity:
 `soundness-candidate` (one side reports UB where the other runs defined),
@@ -88,16 +88,16 @@ line on every export without failing the export that already filed it
 (`export::FILED_REGISTRY_FINDINGS`, the divergence-log waiver pattern).
 The long-standing example retired at the 90c90df pin: `[conf.anchor.ns]`
 was never amended for the `pkg` namespace `spec/08-package.md` introduced
-— wolf-lang#120, filed rather than patched around — until upstream s115
-amended the clause, and the notice died with the amendment.
+(wolf-lang#120, filed upstream), until s115 amended the clause, and the
+notice died with the amendment.
 
-The second retirement is the same contract over a registry HOLE rather
-than a namespace: c1f54f2's anchors regen dropped `[gram.lex.ident]`
-while spec/01 §1.3 still defined it — wolf-lang#177, carried in
+The second retirement is the same contract over a registry hole instead
+of a namespace: c1f54f2's anchors regen dropped `[gram.lex.ident]`
+while spec/01 §1.3 still defined it (wolf-lang#177, carried in
 `export::FILED_REGISTRY_HOLES` and reported on every export from the
-addcd7f pin — until upstream r03 fixed the spec-extract scanner and the
+addcd7f pin), until upstream r03 fixed the spec-extract scanner and the
 v0.2.0 registry re-gained the anchor. The waiver died at the c88ab64
-pin, exactly as filed, and every export is notice-free again:
+pin as filed, and every export is notice-free again:
 
 ```console
 $ lupin conformance export --out target/bundle --json

@@ -13,8 +13,8 @@ lupin: corpus root `does/not/exist` is not a directory
   hint: run `git submodule update --init upstream` (or use the tracked vendor/upstream snapshot)
 ```
 
-A bare clone already contains `vendor/upstream/`, so this normally means
-the working directory is wrong, not the checkout.
+A bare clone already contains `vendor/upstream/`, so the usual cause is a
+working directory somewhere other than the repository root.
 
 ## Submodule not initialized
 
@@ -30,8 +30,8 @@ they are byte-identical, and a mismatch means a half-finished pin bump
 
 `diff-run` needs a counterparty binary and looks for the conventional build
 products of `cargo build -p wolf_driver` inside `upstream/`. Without one it
-SKIPs and exits `0`, loudly, with `notice:` lines naming what was tried. A
-missing compiler is an environment fact, not a divergence. Pass
+SKIPs and exits `0`, with `notice:` lines naming what was tried. A missing
+compiler is an environment fact, and the run counts no divergence. Pass
 `--require-counterparty` to hard-fail instead, or `--compiler <path>` to
 name a binary explicitly.
 
@@ -48,8 +48,8 @@ Observation records always spell paths with `/`, on every platform.
 ## A corpus expectation looks wrong
 
 The corpus is a pinned, read-only input. If a file's directive seems
-incorrect, that is a finding to file upstream with both readings attached,
-never a local edit. The triage order is normative and the spec document is
+incorrect, that is a finding to file upstream with both readings attached;
+do not edit it here. The triage order is normative and the spec document is
 the defendant first; [CONTRIBUTING.md](../../CONTRIBUTING.md) walks the
 filing rule.
 
@@ -72,7 +72,7 @@ the doc-truth convention `docs/README.md` describes.)
 
 The first line's `line:col` is the offending token and is protocol surface
 (code + span); the second is the zero-width insertion point where the comma
-belongs — after the previous member, which in the multi-line layout is on
+belongs, after the previous member, which in the multi-line layout is on
 the line above. Both the sentence and the pointer are quality concerns and
 never reach the observation record: `[proto.record.diag]` (D22) carries
 `{code, span, severity}` and nothing else, so growing a teach-note can
