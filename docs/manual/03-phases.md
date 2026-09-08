@@ -13,7 +13,7 @@ completes four of those rungs and enforces the rest dynamically:
 | `typecheck`, `mem`, `wir` | not performed (the compiler's half) |
 | `run` | the tree-walk evaluator, the region store, the provenance oracle |
 
-The design decision behind the gap: the interpreter implements full
+Behind the gap is a design decision. The interpreter implements full
 *dynamic* semantics and only the static analysis it needs to run programs.
 Every property the type checker, borrow checker and region checker prove
 statically is enforced as a runtime check here instead. The obligations
@@ -33,10 +33,10 @@ note: --phase=typecheck requested; this implementation completes `resolve` and d
 ```
 
 `--phase=run` can still report `run`, because the run itself completed. The
-skipped static rungs are exactly the properties enforced dynamically.
+skipped static rungs are the properties enforced dynamically.
 `unsupported` is also the verdict for anything outside scope: a std name
 with no pinned semantics, a construct the compiler owns. It is never a
-crash and never a trap. The trap vocabulary is reserved for faults of
+crash and never a trap, since the trap vocabulary is reserved for faults of
 defined executions.
 
 ## Reading a record
@@ -56,7 +56,7 @@ Field by field:
 - `impl`, `impl_version`, `commit`: who produced the record. `commit`
   varies per build, so the `…` above is the manual's placeholder.
 - `file`: the program, always with `/` separators, on every platform.
-- `phase_reached`: the deepest rung that completed, never more.
+- `phase_reached`: the deepest rung that completed.
 - `seeded`: `true` exactly when a deterministic schedule was requested.
 - `diagnostics`: on a rejection, the failing entry first (code, span,
   severity). There is no error recovery, so there is never a second error.
@@ -71,15 +71,15 @@ Field by field:
   constructor; reasons ride `x-` extension keys.
 - `stdout_sha256`, `stdout_inline`: present when the program wrote output.
   The digest covers all of it, the text goes up to 4096 bytes. "Wrote
-  output" means any verdict that reports a completed run — `exit`, `trap`
-  and `ub` alike, so a program's prints up to the trap that killed it are
+  output" means any verdict that reports a completed run (`exit`, `trap`
+  and `ub` alike), so a program's prints up to the trap that killed it are
   in the record (wolf-interp#55, since 0.1.23; through 0.1.22 a trapping
   program reported `null` here and its output was invisible to the
-  differential). A verdict that completed no run — `unsupported`, `fail`,
-  `pass` — carries neither field, whatever this machine happened to
+  differential). A verdict that completed no run (`unsupported`, `fail`,
+  `pass`) carries neither field, whatever this machine happened to
   evaluate first. Note that `[proto.cmp.phase]` still compares stdout only
-  for `exit`: the trap's bytes are in the record to be READ, not yet to be
-  compared.
+  for `exit`: the trap's bytes are in the record for reading, and comparing
+  them is not yet part of the protocol.
 - `x-…`: extension keys. `x-trap-clause` and `x-trap-span` on a trap,
   `x-unsupported` with the reason, the `x-ub-*` family on an oracle
   finding. They participate in comparison only when both records carry

@@ -45,17 +45,17 @@ Worth noticing in that transcript:
 
 - Creating a region does not open it. `region(rc)` shows up in `:regions`
   as `suspended`, and the `in r { … }` window allocated one object into it.
-- A move is a move. Reading `s` afterwards traps, with both spans: the
-  read, and the move it conflicts with. The value lives on in `t`.
+- Reading `s` after the move traps, with both spans: the read, and the
+  move it conflicts with. The value lives on in `t`.
 - A trap does not end the session (`[repl.trap.alive]`). The world is
   whatever the fault left behind. Nothing rolls back, and that state is
-  inspectable, which is the point. The survival guarantee holds on every
+  inspectable. The survival guarantee holds on every
   fault; the reminder line is printed once per session (the first fault,
   trap or UB), so the second trap here shows only its trap line.
 
 ## Multi-line input
 
-The lexer decides continuation, not a heuristic. An input continues under
+The lexer decides continuation. An input continues under
 the `....>` prompt while a delimiter is open or the last token cannot end a
 statement.
 
@@ -73,8 +73,8 @@ wolf> :quit
 ## Line editing
 
 At a terminal the prompt is a GNU-readline-style editor (is25). Piped
-sessions are untouched: they keep the plain reader whose captured stdout is
-a transcript, byte for byte — that is what CI replays. `--no-edit` (or
+sessions keep the plain reader, whose captured stdout is a transcript byte
+for byte, and that is what CI replays. `--no-edit` (or
 `TERM=dumb`) selects the plain reader at a terminal too, and if raw mode is
 unavailable the session degrades to it with a one-line note.
 
@@ -100,8 +100,8 @@ escape     Ctrl-C abandons the current input (even mid-continuation) and
 
 TAB completion draws on what the session already knows: `:` directives and
 their subcommands (`:trace on|off|show|clear`, `:rules` prefixes from the
-rule registry), the names the session has bound (always the surface name —
-never a generational internal like `f#2`), and filesystem paths after
+rule registry), the names the session has bound (the surface name, with
+generational internals like `f#2` kept out), and filesystem paths after
 `:load`. An ambiguous prefix lists the candidates.
 
 History persists in `$XDG_STATE_HOME/lupin/history` (default
@@ -145,13 +145,13 @@ The REPL is one implicit module growing over time; the compiler's module
 rules do not apply at a prompt. Redefining a function or type shadows the
 old one. Closures and values that captured the old definition keep it, and
 values of a superseded type print with a generation marker (`Point#1`).
-`use` is refused at the prompt. `:load` is textual inclusion, nothing more.
+`use` is refused at the prompt. `:load` is textual inclusion.
 The full semantics, including the `[repl.*]` notes and the transcript
 format, are specified in [../repl.md](../repl.md).
 
 ## Transcripts
 
-A transcript is exactly what a piped session prints. `lupin repl
+A transcript is what a piped session prints. `lupin repl
 < inputs.txt > session.transcript` produces one;
 `lupin repl --script session.transcript` replays the inputs against a
 fresh session and byte-compares the whole rendering, exiting `1` on any
