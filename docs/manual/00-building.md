@@ -40,11 +40,11 @@ whichever is present:
   clone works from this snapshot without touching submodules at all.
 
 The corpus is read-only in both forms. A corpus file that looks wrong is a
-finding to report upstream, never a local edit.
+finding to report upstream; do not patch it here.
 
 ## Verifying the build
 
-The test suite is the warranty. From a fresh clone:
+Run the four gates from a fresh clone:
 
 ```sh
 cargo fmt --check
@@ -57,9 +57,9 @@ The corpus walk at the end checks every pinned conformance file against
 this implementation and prints the ledger. Its last line counts
 mismatches; on a healthy checkout every mismatch it counts is one that
 is already triaged and filed in `docs/divergence-log.md` (the count is
-`1` at the current pin — DIV-2026-019, the broken-sibling parse-code
-disagreement; the gate in `tests/run_corpus.rs` waives exactly the
-filed set and nothing else):
+`1` at the current pin, DIV-2026-019, the broken-sibling parse-code
+disagreement; the gate in `tests/run_corpus.rs` waives only the filed
+set):
 
 ```console
 $ lupin corpus
@@ -73,7 +73,7 @@ lupin: 363 entries reach the `run` rung; 353 match their `check:` expectation, 1
 
 ## Bumping the pin
 
-A pin bump is a deliberate act. It lands in its own commit, CI-green:
+A pin bump lands in its own commit, CI-green:
 
 ```sh
 git -C upstream fetch origin trunk
@@ -87,5 +87,5 @@ git commit -m "pin: bump wolf-lang to <rev>"
 `conforms:` tag resolves against the pinned `spec/anchors.json`. If the
 upstream corpus grew or a clause anchor moved, the bump commit is where you
 find out. The vendored snapshot is re-vendored in the same commit
-(`vendor/README.md` has the exact commands). There is no quick version of
-this. Put on something with a long slow movement.
+(`vendor/README.md` has the commands). It takes a while; put on something
+with a long slow movement.
