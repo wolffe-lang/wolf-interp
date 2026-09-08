@@ -563,30 +563,30 @@ sentence.
 ## 0.1.23 — 2026-09-02
 
 THE LETTERS IN THE MIRROR (is34). Three letters came back from r05 with
-v0.2.2, and the one that mattered was a sentence about death: **a trap runs
-no `defer` or `errdefer`, anywhere**. is33 implemented the proc half of
+v0.2.2, and the one that mattered was a sentence about death: a trap runs no
+`defer` or `errdefer`, anywhere. is33 implemented the proc half of
 `[conf.trap.exit]` and left the ROOT path alone by name, because the clause
-ruled the proc and was silent about the root — the correct posture when the
+ruled the proc and was silent about the root, the correct posture when the
 spec is the defendant. wolf-lang#209 closed that silence the consistent way,
 and lupin's root domain took it: `faults/trap_skips_root_defers.lu` printed
-`inner inner-defer before-trap root-defer` at 0.1.22 and prints
-`inner inner-defer before-trap` here, which is what all three wolfc lanes
-print. The inner block's defer still runs, at that block's own exit, before
-the trap — that is an ordinary scope exit and not a trap path at all.
+`inner inner-defer before-trap root-defer` at 0.1.22 and prints `inner
+inner-defer before-trap` here, which is what all three wolfc lanes print.
+The inner block's defer still runs, at that block's own exit, before the
+trap; that is an ordinary scope exit and not a trap path at all.
 
 The second letter is why nobody could see the first. Through 0.1.22 this
-implementation reported `stdout_inline: null` on **every** trapping program,
-so the two machines were verdict-identical whatever they printed, and #209 —
-a divergence made of nothing but trap-path output — survived unmeasured from
+implementation reported `stdout_inline: null` on every trapping program, so
+the two machines were verdict-identical whatever they printed, and #209 (a
+divergence made of nothing but trap-path output), survived unmeasured from
 D66 to r05. wolf-interp#55 is fixed: the record now carries the output for
 every verdict that reports a completed run. Two records moved over the
-487-record bundle, both traps, and **both agree**.
+487-record bundle, both traps, and both agree.
 
 The third is a kindness. wolf-interp#56: the D67/D69 comma refusals now say
-what to write and point at where it goes, which the strict implementation —
-the one that has always demanded the separator — was the one not saying.
+what to write and point at where it goes, which the strict implementation
+(the one that has always demanded the separator) was the one not saying.
 
-Released against pin `8cda3aa`, wolf-lang **v0.2.2**, the tag itself: trunk
+Released against pin `8cda3aa`, wolf-lang v0.2.2, the tag itself: trunk
 and the r05 merge add nothing to `spec/` or `corpus/` beyond it, so the
 check-the-tag pattern lands on the tag rather than a merge sha. Census at
 this release: 482 files / 449 entries / 33 members; 350 reach run, 332
@@ -594,13 +594,13 @@ match, 16 dynamic counterparts, 42 conservatism, 58 out of scope, and the
 one standing walk mismatch is still DIV-2026-019, filed. Every one of the
 479 files carried over from 0.1.22 is verdict-IDENTICAL, class for class.
 
-- **A trap runs no defers, anywhere (`[conf.trap.exit]`, #209).** One
+- A trap runs no defers, anywhere (`[conf.trap.exit]`, #209). One
   guard, one sentence. `eval_block`'s trap arm drops its `inside_proc()`
   half, so the same rule governs both domains: inside a proc the trap is
   contained at the boundary and runs the killed-proc sequence below it
   (s132's amendment, unchanged); in the root domain death is immediate and
-  the pending scope-exit effects of the trapping scope **and of every scope
-  enclosing it** are abandoned. A trap is not an error value and never
+  the pending scope-exit effects of the trapping scope and of every scope
+  enclosing it are abandoned. A trap is not an error value and never
   unwinds (`[abi.native.nounwind]`); effects that had already run, ran.
   `inside_proc` had no other caller and goes with it, and `Signal::Trap`
   joins `ProcKilled` and `Exit` in the unreachable arm because a trap now
@@ -608,21 +608,21 @@ one standing walk mismatch is still DIV-2026-019, filed. Every one of the
   the claim where the corpus cannot reach: the reduced witness, the
   multi-FRAME form (callee defer, caller defer AND caller errdefer, all
   abandoned), and the boundary case.
-- **The observation the ruling took away, given back.** A method call may
-  LEND its receiver — the slot holds a placeholder while the builtin runs —
-  and the lend must end whatever the call did, a trap included. That was
-  tested from a `defer` on the trap path, which no longer runs, so in a
-  compiled program the restore is not observable from wolf code at all. It
-  moved to where a session outlives its trap: the new
+- The observation the ruling took away, given back. A method call may LEND
+  its receiver (the slot holds a placeholder while the builtin runs) and the
+  lend must end whatever the call did, a trap included. That was tested from
+  a `defer` on the trap path, which no longer runs, so in a compiled program
+  the restore is not observable from wolf code at all. It moved to where a
+  session outlives its trap: the new
   `repl_session::a_lent_receiver_is_back_in_its_slot_after_the_trap`
   (`[repl.trap.alive]`) traps on `pop` of an empty `List` and asks `xs.len`
   on the very next line. It answers 0; a leftover placeholder would refuse
   with "`()` has no member `len`".
-- **The record carries the trap's output (wolf-interp#55).**
+- The record carries the trap's output (wolf-interp#55).
   `[proto.record.fields]`'s "whenever the program wrote output" is read as a
-  floor rather than a ceiling: the digest and the inline text are present for
-  `exit`, `trap` and `ub` alike. The movers, all of them, compared field for
-  field with the `commit` stamp excluded —
+  floor rather than a ceiling: the digest and the inline text are present
+  for `exit`, `trap` and `ub` alike. The movers, all of them, compared field
+  for field with the `commit` stamp excluded,
   `faults/trap_skips_root_defers.lu` gains `"inner inner-defer before-trap"`
   and `rows/handler_diverge_trap.lu` gains `"FAILED: neg\n"`, each
   byte-identical to the `stdout=` its corpus directive pins for the
@@ -632,134 +632,126 @@ one standing walk mismatch is still DIV-2026-019, filed. Every one of the
   What did NOT change is the comparison: `[proto.cmp.phase]` still says "for
   `trap`, compare kind only" and `compare`/`differ` still implement exactly
   that, because widening it by private agreement is what the independence
-  doctrine forbids — filed as wolf-lang#216 instead.
-- **A conservatism, declared and filed rather than papered over (§6.17).**
+  doctrine forbids, filed as wolf-lang#216 instead.
+- A conservatism, declared and filed rather than papered over (§6.17).
   Dropping the verdict condition entirely would move a third record:
   `typecheck/main_returns_str.lu` would gain `"hi\n"`, because this machine
   evaluates `main`'s body and only then declines that `main` returned `str`.
   A record whose `phase_reached` says the run did not complete carries no
-  output. That it printed at all is a real defect — the decline belongs on
-  the admission ladder — and it is filed as wolf-interp#57 with a standing
+  output. That it printed at all is a real defect (the decline belongs on
+  the admission ladder) and it is filed as wolf-interp#57 with a standing
   test, not smuggled onto the wire.
-- **The comma refusals teach the comma (wolf-interp#56).** `Diag` gains
-  `help`: a zero-width insertion point and the text that belongs at it,
-  rendered as a second line. All five D67/D69 list closers use it —
-  struct literal, struct pattern, tuple and tuple-struct patterns, closure
-  parameters, inline-C capture lists:
+- The comma refusals teach the comma (wolf-interp#56). `Diag` gains `help`:
+  a zero-width insertion point and the text that belongs at it, rendered as
+  a second line. All five D67/D69 list closers use it, struct literal,
+  struct pattern, tuple and tuple-struct patterns, closure parameters,
+  inline-C capture lists:
 
       E0201: expected `}`, found identifier `y`; the members of a struct
-             literal are separated — add the comma [gram.expr.primary] at 18:26
-        the comma goes here at 18:25
+             literal are separated, add the comma [gram.expr.primary] at
+             18:26 the comma goes here at 18:25
 
-  **Span parity holds and is asserted structurally**: every primary span is
+  Span parity holds and is asserted structurally: every primary span is
   byte-identical to 0.1.22's, because the note is additive and never a
-  relocation. The multi-line form is the one that needed care — D69 reports
+  relocation. The multi-line form is the one that needed care (D69 reports
   at the FIELD the missing comma should precede while the comma belongs
-  after the previous field, one line up — so the insertion point is captured
+  after the previous field, one line up), so the insertion point is captured
   before the terminator run is skipped. The note is not a blanket suffix: an
   empty list, a list that ended at its closer, and end-of-input (E0203) get
   none, because "add the comma" would be teaching a lie there. Wording is
   outside the differential protocol (D22), so no record moved.
-- **#198's string half answered at first sight.** `\u{…}` inside a string
-  literal at every width the bound admits: `strings/str_uni_leading_zeros.lu`
-  runs (`\u{41}`, `\u{0041}`, `\u{000041}` all spell `A`) and
-  `grammar/str_uni_seven_digits.lu` is refused **E0101 at the escape**, line
-  22 column 14 — the same column, code and message its `char` twin gets at
-  21:14. The spec now derives both from one production (`STR_ESC` carries the
-  set, `CHAR_ESC ::= STR_ESC | '\''`), so the "binds in string literals too"
-  prose is a claim read off the grammar; this lexer implemented the prose at
-  0.1.21 and the pair proves it. The corpus now has two files that stop at
-  the lexer, `UNI_ESC`'s two doors.
-- **The sixteenth corpus differential — the first since 0.1.11.** The
-  counterparty was built at v0.2.2 and all three run-reaching tiers were run:
-  15/12/12 divergences (`checked`/`native`/`release`), 9 of them filed, 6/3/3
-  gating after filing. **The three letters agree on every lane** — the four
-  new witnesses appear in no divergence report at any tier, so #209 is closed
-  against the real counterparty and not merely against r05's transcript.
-  Everything gating is older than this sprint. **DIV-2026-020** (wolf-lang
-  #220) is the dominant class: eight `grammar/` files, same code, same byte
-  where the refusal starts, different span WIDTH — this machine spans the
-  offending token, the counterparty emits a zero-width span at its start.
-  s132/D69's "byte-for-byte where lupin points" is true of the offset and not
-  of the span, and nothing measured it because the walk compares codes.
-  Neither side moves until the clause rules. The residue is written into a
-  "triage owed" table rather than filed half-analysed.
-- **Pin, census, ratchets.** Pin `2bfbe5e` -> `8cda3aa`. Corpus 479 -> 482,
-  all three entries. Anchors 411, unmoved — the amendments are sentences
-  inside clauses that already existed. Coverage ratchets 173 -> 175, and both
-  new anchors are clauses the corpus had never cited: `conf.trap.exit` (that
-  no file anywhere named it is precisely how its root sentence stayed
-  unwritten until #209) and `gram.lex.str.escape`. Bundle 517/484 ->
-  520/487.
+- #198's string half answered at first sight. `\u{…}` inside a string
+  literal at every width the bound admits:
+  `strings/str_uni_leading_zeros.lu` runs (`\u{41}`, `\u{0041}`,
+  `\u{000041}` all spell `A`) and `grammar/str_uni_seven_digits.lu` is
+  refused E0101 at the escape, line 22 column 14, the same column, code and
+  message its `char` twin gets at 21:14. The spec now derives both from one
+  production (`STR_ESC` carries the set, `CHAR_ESC ::= STR_ESC | '\''`), so
+  the "binds in string literals too" prose is a claim read off the grammar;
+  this lexer implemented the prose at 0.1.21 and the pair proves it. The
+  corpus now has two files that stop at the lexer, `UNI_ESC`'s two doors.
+- The sixteenth corpus differential, the first since 0.1.11. The
+  counterparty was built at v0.2.2 and all three run-reaching tiers were
+  run: 15/12/12 divergences (`checked`/`native`/`release`), 9 of them filed,
+  6/3/3 gating after filing. The three letters agree on every lane, the four
+  new witnesses appear in no divergence report at any tier, so #209 is
+  closed against the real counterparty and not merely against r05's
+  transcript. Everything gating is older than this sprint. DIV-2026-020
+  (wolf-lang #220) is the dominant class: eight `grammar/` files, same code,
+  same byte where the refusal starts, different span WIDTH, this machine
+  spans the offending token, the counterparty emits a zero-width span at its
+  start. s132/D69's "byte-for-byte where lupin points" is true of the offset
+  and not of the span, and nothing measured it because the walk compares
+  codes. Neither side moves until the clause rules. The residue is written
+  into a "triage owed" table rather than filed half-analysed.
+- Pin, census, ratchets. Pin `2bfbe5e` -> `8cda3aa`. Corpus 479 -> 482, all
+  three entries. Anchors 411, unmoved; the amendments are sentences inside
+  clauses that already existed. Coverage ratchets 173 -> 175, and both new
+  anchors are clauses the corpus had never cited: `conf.trap.exit` (that no
+  file anywhere named it is precisely how its root sentence stayed unwritten
+  until #209) and `gram.lex.str.escape`. Bundle 517/484 -> 520/487.
 
 ## 0.1.22 — 2026-09-01
 
-THE MIRROR HOLDS (is33). The region cap lands whole-pipe, and with it
-the last thing lupin 0.1.21 deferred by name: `region r(cap: n)` bounds
-a region's ledger, a charge past the budget is `trap(alloc-contract)` at
-the allocating site, and inside a proc that trap is contained at the
-boundary and reaches the join as `fault(alloc-contract)` — s132's ruled
-shape for `[mem.region.cap.1-3]` and `[conc.proc.exit]` (D68,
-wolf-lang#187, now closed). All three of the wave's cap witnesses flip
-from parse-refusal to running, and they compare **relations** rather
-than byte counts for the reason the account witnesses did: the clause
-denominates the budget in each tier's own ledger units, and
-wolf-lang#203 measured an order of magnitude between ledger units and
-payload bytes. Released against pin `2bfbe5e` — wolf-lang trunk's head,
-the s132 merge; no `v0.2.2` tag existed at the release step, so the
-merge sha is the pin (the is31 check-the-tag pattern). And the release
-now HAS binaries: wolf-interp had no dist workflow at all, so 0.1.22 is
-the first lupin with archives on its release page for all four tier-1
-hosts — including the `lupin.exe` the learners' path has been waiting
-for. Census at this release: 479 files / 446 entries / 33 members; 348
-reach run, 329 match, 16 dynamic counterparts, 42 conservatism, 58 out
-of scope, and the one standing mismatch is still DIV-2026-019, filed.
-Every one of the 474 files carried over from 0.1.21 is
-verdict-IDENTICAL, class for class.
+THE MIRROR HOLDS (is33). The region cap lands whole-pipe, and with it the
+last thing lupin 0.1.21 deferred by name: `region r(cap: n)` bounds a
+region's ledger, a charge past the budget is `trap(alloc-contract)` at the
+allocating site, and inside a proc that trap is contained at the boundary
+and reaches the join as `fault(alloc-contract)`, s132's ruled shape for
+`[mem.region.cap.1-3]` and `[conc.proc.exit]` (D68, wolf-lang#187, now
+closed). All three of the wave's cap witnesses flip from parse-refusal to
+running, and they compare relations rather than byte counts for the reason
+the account witnesses did: the clause denominates the budget in each tier's
+own ledger units, and wolf-lang#203 measured an order of magnitude between
+ledger units and payload bytes. Released against pin `2bfbe5e`, wolf-lang
+trunk's head, the s132 merge; no `v0.2.2` tag existed at the release step,
+so the merge sha is the pin (the is31 check-the-tag pattern). And the
+release now HAS binaries: wolf-interp had no dist workflow at all, so 0.1.22
+is the first lupin with archives on its release page for all four tier-1
+hosts, including the `lupin.exe` the learners' path has been waiting for.
+Census at this release: 479 files / 446 entries / 33 members; 348 reach run,
+329 match, 16 dynamic counterparts, 42 conservatism, 58 out of scope, and
+the one standing mismatch is still DIV-2026-019, filed. Every one of the 474
+files carried over from 0.1.21 is verdict-IDENTICAL, class for class.
 
-- **The cap (`[mem.region.cap.1]`), one field and one compare.** A
-  region may carry a creation-time byte budget, written
-  `region r(cap: n) { … }` (the cap parenthesis follows the NAME) or
-  `region(cap: n)` / `region(rc, cap: n)` (strategy first, cap last).
-  `Region.cap` is the field; `Store::admits` is the compare, written
-  once and called from both charge sites — the allocation charge and
-  the growth realloc. The test is strictly `charged + bytes > cap`, so
-  a ledger standing **exactly at** the cap is not a breach and the next
-  byte is. A refused charge does not move the ledger and does not tick
-  the allocation counter: the trap fires at the site, so the allocation
-  never happened. Growth is judged against the container's **birth**
-  region, because that is where `[mem.region.account.1]` attributes the
-  charge — a root-born list grown inside `in r { … }` is measured by
-  the root's budget, never by `r`'s. Caps are per-region, never
-  per-forest.
-- **Its domain (`[mem.region.cap.2]`).** `cap:` takes an `int`,
-  evaluated ONCE at creation and before the region exists, so nothing
-  the budget expression does can charge the region it bounds. A
-  negative budget is `trap(alloc-contract)` at the *creating* site —
-  one span, nothing allocated. `cap: 0` is legal, and a region that
-  never charges lives happily under it. The process root and a proc's
-  own arena carry no cap, because the clause puts the budget where a
-  program writes one.
-- **An anonymous sugar block cannot carry a cap**, and not by choice:
-  the value arm claims the parenthesis whenever no name precedes it, so
-  `region (cap: n)` IS the value form and no other reading exists
-  (`[gram.expr.region]`'s own disambiguation). `cap` stays contextual
-  (`[gram.inv.ctx]`) — only the two-token shape `cap` `:` inside a
-  region's parenthesis opens the clause, so `let cap = 7` and
-  `region cap { }` are untouched.
-- **The contained trap is `fault(kind)` (`[conc.proc.exit]`).** This
-  machine has contained proc traps since is06 and spelled the reason
-  `error("trap", kind)`, which made a crash answer `is_error()` true —
-  a class error the amended clause names. The fifth member of the
-  closed set is now its own reason: the join reads `is_fault()` for the
-  class and `is_alloc_contract()` for the one kind a budget contract
-  names. The predicate reads the payload rather than minting a tag per
-  kind, because `[conf.trap.set]` is the closed vocabulary the payload
-  is drawn from. wolfgang's wire packs (class 4, kind 9); lupin's
-  reasons are structural tags, so the PREDICATES are the comparison
-  surface and the wire is not — which is exactly why the witness pins
-  booleans.
-- **Teardown is free-then-deliver (`[mem.region.cap.3]`).** The dying
+- The cap (`[mem.region.cap.1]`), one field and one compare. A region may
+  carry a creation-time byte budget, written `region r(cap: n) { … }` (the
+  cap parenthesis follows the NAME) or `region(cap: n)` / `region(rc, cap:
+  n)` (strategy first, cap last). `Region.cap` is the field; `Store::admits`
+  is the compare, written once and called from both charge sites, the
+  allocation charge and the growth realloc. The test is strictly `charged +
+  bytes > cap`, so a ledger standing exactly at the cap is not a breach and
+  the next byte is. A refused charge does not move the ledger and does not
+  tick the allocation counter: the trap fires at the site, so the allocation
+  never happened. Growth is judged against the container's birth region,
+  because that is where `[mem.region.account.1]` attributes the charge, a
+  root-born list grown inside `in r { … }` is measured by the root's budget,
+  never by `r`'s. Caps are per-region, never per-forest.
+- Its domain (`[mem.region.cap.2]`). `cap:` takes an `int`, evaluated ONCE
+  at creation and before the region exists, so nothing the budget expression
+  does can charge the region it bounds. A negative budget is
+  `trap(alloc-contract)` at the *creating* site, one span, nothing
+  allocated. `cap: 0` is legal, and a region that never charges lives
+  happily under it. The process root and a proc's own arena carry no cap,
+  because the clause puts the budget where a program writes one.
+- An anonymous sugar block cannot carry a cap, and not by choice: the value
+  arm claims the parenthesis whenever no name precedes it, so `region (cap:
+  n)` IS the value form and no other reading exists (`[gram.expr.region]`'s
+  own disambiguation). `cap` stays contextual (`[gram.inv.ctx]`), only the
+  two-token shape `cap` `:` inside a region's parenthesis opens the clause,
+  so `let cap = 7` and `region cap { }` are untouched.
+- The contained trap is `fault(kind)` (`[conc.proc.exit]`). This machine has
+  contained proc traps since is06 and spelled the reason `error("trap",
+  kind)`, which made a crash answer `is_error()` true, a class error the
+  amended clause names. The fifth member of the closed set is now its own
+  reason: the join reads `is_fault()` for the class and
+  `is_alloc_contract()` for the one kind a budget contract names. The
+  predicate reads the payload rather than minting a tag per kind, because
+  `[conf.trap.set]` is the closed vocabulary the payload is drawn from.
+  wolfgang's wire packs (class 4, kind 9); lupin's reasons are structural
+  tags, so the PREDICATES are the comparison surface and the wire is not,
+  which is exactly why the witness pins booleans.
+- Teardown is free-then-deliver (`[mem.region.cap.3]`). The dying
   proc's regions are reclaimed wholesale BEFORE the reason publishes,
   so a join reads `live_region_bytes()` at its pre-spawn value and no
   postmortem query can observe a dead proc's charge. The scheduler
@@ -769,24 +761,23 @@ verdict-IDENTICAL, class for class.
   back. s132 measured the reverse order as a live monitor race on the
   native machine; lupin's cooperative baton HID the same window rather
   than closing it, and a hidden window is still a window.
-- **Below the boundary, no further user code.** Containment runs the
-  killed-proc sequence (`[conc.proc.kill]`), so the frames between the
-  trapping site and the proc root unwind silently — `defer`/`errdefer`
-  included. `eval_block` treated a trap as the error path and ran them.
-  In the ROOT domain a trap is still process death by
-  `[conf.trap.exit]` and that path is untouched: the clause carves out
-  the proc, not the program.
-- **A late monitor gets the real reason.** Monitoring an
-  already-exited proc delivered a reconstruction from a stored LABEL,
-  which meant `normal(unit)` for an `error(e)` proc — and would have
-  meant it for a faulted one. `Proc.exited` now holds the whole reason.
-- **D69's twin check, no code.** lupin already refuses lax literal and
-  closure separators, and the span parity is the interesting half:
-  `Point { x: 1 y: 2 }` reports at `y` (18:26) and `fn(a b)` at `b`
-  (14:18) — the token the missing comma should PRECEDE, byte-for-byte
-  where s132 measured wolfc pointing. This parser's letter was the
-  measured one, as it was for D67's trio at the previous pin.
-- **The dist lane exists (D57).** wolf-interp had no release workflow;
+- Below the boundary, no further user code. Containment runs the killed-proc
+  sequence (`[conc.proc.kill]`), so the frames between the trapping site and
+  the proc root unwind silently, `defer`/`errdefer` included. `eval_block`
+  treated a trap as the error path and ran them. In the ROOT domain a trap
+  is still process death by `[conf.trap.exit]` and that path is untouched:
+  the clause carves out the proc, not the program.
+- A late monitor gets the real reason. Monitoring an already-exited proc
+  delivered a reconstruction from a stored LABEL, which meant `normal(unit)`
+  for an `error(e)` proc, and would have meant it for a faulted one.
+  `Proc.exited` now holds the whole reason.
+- D69's twin check, no code. lupin already refuses lax literal and closure
+  separators, and the span parity is the interesting half: `Point { x: 1 y:
+  2 }` reports at `y` (18:26) and `fn(a b)` at `b` (14:18), the token the
+  missing comma should PRECEDE, byte-for-byte where s132 measured wolfc
+  pointing. This parser's letter was the measured one, as it was for D67's
+  trio at the previous pin.
+- The dist lane exists (D57). wolf-interp had no release workflow;
   every lupin release since 0.1.8 was a tag with no binary behind it.
   `.github/workflows/release.yml` mirrors wolf-lang's r03 dist matrix
   at all four tier-1 hosts and adds what that stub leaves to each repo:
@@ -797,7 +788,7 @@ verdict-IDENTICAL, class for class.
   Windows, `.tar.gz` elsewhere, one directory each; on Windows the bare
   `lupin.exe` is uploaded beside the archive so a learner-facing page
   can link one URL (wolf-web ww09).
-- **The differential, before and after.** The five entries the pin
+- The differential, before and after. The five entries the pin
   adds, at 0.1.21's binary and at this release:
 
   | witness | 0.1.21 | 0.1.22 |
@@ -808,91 +799,84 @@ verdict-IDENTICAL, class for class.
   | `grammar/struct_literal_no_separator` | `fail(E0201)@parse` | `fail(E0201)@parse` — match |
   | `grammar/closure_params_no_separator` | `fail(E0201)@parse` | `fail(E0201)@parse` — match |
 
-  Three witnesses flip — every one of them the sprint's own work, since
-  0.1.21 deferred the cap by name and `cap:` was unknown syntax — and
-  two answer at first sight, at the same code and the same span.
-- **Ledger movements.** Anchors 407 → 411 (`+mem.region.cap` and its
-  three children; the key SETS were diffed both ways — nothing dropped,
-  the wolf-lang#177 lesson). Coverage ratchet 168 → 173: the three cap
-  clauses, plus two the wave cites for the FIRST time ever —
-  `conc.proc.1`, the failure-domain clause every proc program leans on
-  and none had ever named, and `gram.expr.closure`, which D69's closure
-  pin brings. Bundle programs/records 512/479 → 517/484. The trap
-  vocabulary's reachable set grows to nine of twelve:
-  `alloc-contract` has a program at this tier now.
+  Three witnesses flip (every one of them the sprint's own work, since
+  0.1.21 deferred the cap by name and `cap:` was unknown syntax) and two
+  answer at first sight, at the same code and the same span.
+- Ledger movements. Anchors 407 → 411 (`+mem.region.cap` and its three
+  children; the key SETS were diffed both ways, nothing dropped, the
+  wolf-lang#177 lesson). Coverage ratchet 168 → 173: the three cap clauses,
+  plus two the wave cites for the FIRST time ever, `conc.proc.1`, the
+  failure-domain clause every proc program leans on and none had ever named,
+  and `gram.expr.closure`, which D69's closure pin brings. Bundle
+  programs/records 512/479 → 517/484. The trap vocabulary's reachable set
+  grows to nine of twelve: `alloc-contract` has a program at this tier now.
 
 ## 0.1.21 — 2026-09-01
 
-THE LEDGER IN THE MIRROR (is32). The region machine learns to say how
-much it has charged: `region_bytes(r)` and `live_region_bytes()` land
-against `[mem.region.account.1/.2]` (s131, wolf-lang#187), and the
-interesting part is *what the two machines are allowed to disagree
-about*. The clause leaves the UNITS per tier — "what charges, and by
-how much, are implementation-measured facts per tier, not comparison
-surface" — and pins four RELATIONS instead. So lupin's ledger is its
-own honest arena model, the native tier's is alignment-rounded arena
-storage, the checked machine's is its shadow memory, the three numbers
-differ, and the two witnesses still agree **byte for byte**, because
-what they print is booleans. That is the differential working as
-designed rather than in spite of a divergence. Released against pin
-`e6cf24e` — wolf-lang trunk's head, the s131 merge plus the 2026-09-01
-ledger ritual; the newest tag `v0.2.1` sits seven commits behind it,
-so the merge sha is the pin (the is31 check-the-tag pattern). Census
-at this release: 474 files / 441 entries / 33 members; 345 reach run,
-324 match, 16 dynamic counterparts, 42 conservatism, 58 out of scope,
-and the one standing mismatch is still DIV-2026-019, filed. Every one
-of the 463 files carried over from 0.1.20 is verdict-IDENTICAL, class
-for class.
+THE LEDGER IN THE MIRROR (is32). The region machine learns to say how much
+it has charged: `region_bytes(r)` and `live_region_bytes()` land against
+`[mem.region.account.1/.2]` (s131, wolf-lang#187), and the interesting part
+is *what the two machines are allowed to disagree about*. The clause leaves
+the UNITS per tier ("what charges, and by how much, are
+implementation-measured facts per tier, not comparison surface") and pins
+four RELATIONS instead. So lupin's ledger is its own honest arena model, the
+native tier's is alignment-rounded arena storage, the checked machine's is
+its shadow memory, the three numbers differ, and the two witnesses still
+agree byte for byte, because what they print is booleans. That is the
+differential working as designed rather than in spite of a divergence.
+Released against pin `e6cf24e`, wolf-lang trunk's head, the s131 merge plus
+the 2026-09-01 ledger ritual; the newest tag `v0.2.1` sits seven commits
+behind it, so the merge sha is the pin (the is31 check-the-tag pattern).
+Census at this release: 474 files / 441 entries / 33 members; 345 reach run,
+324 match, 16 dynamic counterparts, 42 conservatism, 58 out of scope, and
+the one standing mismatch is still DIV-2026-019, filed. Every one of the 463
+files carried over from 0.1.20 is verdict-IDENTICAL, class for class.
 
-- **The byte ledger (`[mem.region.account.1]`).** Every region carries
+- The byte ledger (`[mem.region.account.1]`). Every region carries
   a cumulative count of the bytes charged for allocations placed in
   it, readable through `region_bytes(r)` over a sugar block's name or
   a first-class region value. The three contractual relations fall out
-  of the arithmetic rather than being asserted on top of it: **zero at
-  creation** is a fresh region's `bytes: 0`; **monotone within the
-  lifetime** is never subtracting, a growth realloc charging the whole
-  new buffer while the abandoned one stays charged; **stable between
-  allocations** is a push inside the already-granted capacity charging
+  of the arithmetic rather than being asserted on top of it: zero at
+  creation is a fresh region's `bytes: 0`; monotone within the
+  lifetime is never subtracting, a growth realloc charging the whole
+  new buffer while the abandoned one stays charged; stable between
+  allocations is a push inside the already-granted capacity charging
   nothing at all. Reading a ledger is a *touch*, so a region value
   that outlived its region's wholesale free faults at `region_bytes`
   exactly where it would at `in r { … }`.
-- **The live total (`[mem.region.account.2]`).** `live_region_bytes()`
-  sums every unfreed **named** region's ledger — the process-root
-  arena is never counted, and a free takes its whole row at once, so
-  `region scratch { … }` returns the total to its entry reading by
-  construction. A `Frozen` region keeps contributing: it is never
-  freed, which is its specified end state (`[mem.region.freeze.1]`),
-  not a leak.
-- **Birth-region attribution.** A container's storage charges the
-  region that was ambient at its ALLOCATION site, not the one ambient
-  at the push — `[mem.region.create.3]`'s rule, which this machine has
-  carried on `Value::home` since is16. Growing a root-born list inside
-  `in r { … }` moves `r`'s ledger not one byte.
-- **What a byte means here, written down.** There is no arena in this
-  machine: is02 made a `Value` a plain owned Rust tree, so the real
-  bytes are the Rust allocator's business and would be neither stable
-  across builds nor meaningful to a wolf program. `eval::region::ledger`
-  therefore models the storage the same program would take in a
-  compiled arena — a 16-byte grain, a 32-byte allocation header, 16
-  bytes a value slot, a `str`'s UTF-8 length, container capacity in
-  powers of two from four (this machine's own policy, never Rust's
-  `Vec`) — so the same program charges the same bytes on every host
-  and every build. It is a **high-water** accounting, never an
-  address, a placement, or an RSS proxy. One measured units
-  divergence, recorded: `str` charges the ambient region here where
-  the native tier charges the process root (wolf-lang#191, the c09
-  seam). The clause anticipates it in as many words, and the relations
-  are what the witnesses compare. `docs/approximation-contract.md`
-  §6.15 is the contract.
-- **The cap half is DEFERRED BY NAME.** wolf-lang ruled it D68 on
-  2026-09-01 — a cap breach is `trap(alloc-contract)` at the
-  allocating site, contained at the proc boundary per `[conc.proc.1]`,
-  no unwinding and no catchable row — but no cap syntax, no fault
-  semantics and no clause have landed on wolf-lang trunk at this pin,
-  so there is nothing here to implement against. No `Region.cap` in
-  0.1.21; it is the is33-era twin, and wolf-lang#187 stays open
-  tracking it.
-- **wolf-interp#53 closes, both gaps.** `--explore --json` gains a
+- The live total (`[mem.region.account.2]`). `live_region_bytes()` sums
+  every unfreed named region's ledger; the process-root arena is never
+  counted, and a free takes its whole row at once, so `region scratch { … }`
+  returns the total to its entry reading by construction. A `Frozen` region
+  keeps contributing: it is never freed, which is its specified end state
+  (`[mem.region.freeze.1]`), not a leak.
+- Birth-region attribution. A container's storage charges the region that
+  was ambient at its ALLOCATION site, not the one ambient at the push,
+  `[mem.region.create.3]`'s rule, which this machine has carried on
+  `Value::home` since is16. Growing a root-born list inside `in r { … }`
+  moves `r`'s ledger not one byte.
+- What a byte means here, written down. There is no arena in this machine:
+  is02 made a `Value` a plain owned Rust tree, so the real bytes are the
+  Rust allocator's business and would be neither stable across builds nor
+  meaningful to a wolf program. `eval::region::ledger` therefore models the
+  storage the same program would take in a compiled arena (a 16-byte grain,
+  a 32-byte allocation header, 16 bytes a value slot, a `str`'s UTF-8
+  length, container capacity in powers of two from four (this machine's own
+  policy, never Rust's `Vec`)), so the same program charges the same bytes
+  on every host and every build. It is a high-water accounting, never an
+  address, a placement, or an RSS proxy. One measured units divergence,
+  recorded: `str` charges the ambient region here where the native tier
+  charges the process root (wolf-lang#191, the c09 seam). The clause
+  anticipates it in as many words, and the relations are what the witnesses
+  compare. `docs/approximation-contract.md` §6.15 is the contract.
+- The cap half is DEFERRED BY NAME. wolf-lang ruled it D68 on 2026-09-01 (a
+  cap breach is `trap(alloc-contract)` at the allocating site, contained at
+  the proc boundary per `[conc.proc.1]`, no unwinding and no catchable row)
+  but no cap syntax, no fault semantics and no clause have landed on
+  wolf-lang trunk at this pin, so there is nothing here to implement
+  against. No `Region.cap` in 0.1.21; it is the is33-era twin, and
+  wolf-lang#187 stays open tracking it.
+- wolf-interp#53 closes, both gaps. `--explore --json` gains a
   per-outcome `schedule` (the decision stream as `ev:c0,c1,…`, the
   spelling `--schedule=` takes and the only one that survives a stream
   too deep for a packed seed) beside `seed` and the existing `replay`;
@@ -900,25 +884,24 @@ for class.
   cannot drift. And a seeded record echoes its request as `x-seed` /
   `x-schedule`, so `conform-run --json --seed=S > artifact.json` names
   the schedule it replays instead of leaning on the invoker. They are
-  `x-` EXTENSION keys deliberately: `[proto.record.fields]` fixes the
+  `x-` EXTENSION keys: `[proto.record.fields]` fixes the
   record's field set and only a wolf-lang clause may grow it,
   `[proto.record.ext]` exists for exactly an implementation fact the
   counterparty need not match, and `[proto.cmp.defined-divergence]`
   rules an absent `x-` key never a divergence. lobo's `lobo-replay`
   double-explore-and-awk workaround is the acceptance test, run
   without either workaround.
-- **`\u{…}`'s digit count is E0101 at the escape.** The pin's only
-  other implementation work, and the corpus caught it: r04's amended
-  `[gram.lex.char]` (wolf-lang#189) makes the one-to-six bound the
-  ESCAPE's shape rule rather than the char literal's, so seven digits
-  or none is **E0101 at the escape** where this lexer filed E0110 over
-  the whole literal — and the clause says the bound "binds in string
-  literals too", where lupin had no bound at all and quietly decoded
-  `"\u{0000041}"` to `A`. The spec is unambiguous, so the
-  implementation was the defendant (`[proto.cmp.triage]`). E0101
-  leaves `diag::UNPINNED_CODES`, and the corpus gains its first
-  `phase: none` entry — a file the LEXER refuses.
-- **The differential, before and after.** The eleven entries the pin
+- `\u{…}`'s digit count is E0101 at the escape. The pin's only other
+  implementation work, and the corpus caught it: r04's amended
+  `[gram.lex.char]` (wolf-lang#189) makes the one-to-six bound the ESCAPE's
+  shape rule rather than the char literal's, so seven digits or none is
+  E0101 at the escape where this lexer filed E0110 over the whole literal,
+  and the clause says the bound "binds in string literals too", where lupin
+  had no bound at all and quietly decoded `"\u{0000041}"` to `A`. The spec
+  is unambiguous, so the implementation was the defendant
+  (`[proto.cmp.triage]`). E0101 leaves `diag::UNPINNED_CODES`, and the
+  corpus gains its first `phase: none` entry, a file the LEXER refuses.
+- The differential, before and after. The eleven entries the pin
   adds, at 0.1.20's binary and at this release:
 
   | witness | 0.1.20 | 0.1.21 |
@@ -935,61 +918,56 @@ for class.
   | `grammar/struct_pattern_rest_bare` | `fail(E0201)@parse` | `fail(E0201)@parse` — match |
   | `grammar/tuple_pattern_no_separator` | `fail(E0201)@parse` | `fail(E0201)@parse` — match |
 
-  Two witnesses flip (the ones this sprint exists for), one is fixed
-  (the escape), and eight answer at first sight against work already
-  in this tree — D67's comma trio included, whose letter this parser
-  already held, and #196's two or-pattern residue pins, where the
-  compiler's native pipe refuses by name and this machine runs: a
-  divergence wolf-lang filed on purpose, carried in the differ's
-  ledger rather than papered over.
-- **Ledger movements.** Anchors 404 → 407 (`+mem.region.account` and
-  its two children; the key SETS were diffed both ways — nothing
-  dropped, the wolf-lang#177 lesson). Coverage ratchet 165 → 168
-  (`+mem.region.account.1`, `+mem.region.account.2`, and
-  `+gram.lex.char`, a clause the corpus had never cited until the
-  escape witness). Bundle programs/records 501/468 → 512/479.
+  Two witnesses flip (the ones this sprint exists for), one is fixed (the
+  escape), and eight answer at first sight against work already in this
+  tree, D67's comma trio included, whose letter this parser already held,
+  and #196's two or-pattern residue pins, where the compiler's native pipe
+  refuses by name and this machine runs: a divergence wolf-lang filed on
+  purpose, carried in the differ's ledger rather than papered over.
+- Ledger movements. Anchors 404 → 407 (`+mem.region.account` and its two
+  children; the key SETS were diffed both ways, nothing dropped, the
+  wolf-lang#177 lesson). Coverage ratchet 165 → 168
+  (`+mem.region.account.1`, `+mem.region.account.2`, and `+gram.lex.char`, a
+  clause the corpus had never cited until the escape witness). Bundle
+  programs/records 501/468 → 512/479.
 
 ## 0.1.20 — 2026-08-31
 
-THE ARMS AGREE (is31). Match arms take the product domain, and with
-them the last pattern asymmetry between the two machines closes: the
-c06 refusal family s130 retired on the compiler's side had a
-deliberately symmetric twin here, and it dies in the same motion
-(s130, wolf-lang#179). Released against pin `b80d239` — wolf-lang's
-s130 merge; no `v0.2.1` tag existed at the release step, so the merge
-sha is the pin, and the spec tree it carries is BYTE-IDENTICAL to
-0.1.19's `83f83bb` (404 anchors, nothing gained, nothing dropped —
-s130's whole delta is lowering, corpus and CHANGELOG). Census at this
-release: 463 files / 430 entries / 33 members; 338 reach run, 313
-match, 16 dynamic counterparts, 42 conservatism, 58 out of scope, and
-the one standing mismatch is still DIV-2026-019, filed. Every one of
-the 455 files carried over from 0.1.19 is verdict-IDENTICAL, class
-for class.
+THE ARMS AGREE (is31). Match arms take the product domain, and with them the
+last pattern asymmetry between the two machines closes: the c06 refusal
+family s130 retired on the compiler's side had a deliberately symmetric twin
+here, and it dies in the same motion (s130, wolf-lang#179). Released against
+pin `b80d239` (wolf-lang's s130 merge; no `v0.2.1` tag existed at the
+release step, so the merge sha is the pin, and the spec tree it carries is
+BYTE-IDENTICAL to 0.1.19's `83f83bb` (404 anchors, nothing gained, nothing
+dropped), s130's whole delta is lowering, corpus and CHANGELOG). Census at
+this release: 463 files / 430 entries / 33 members; 338 reach run, 313
+match, 16 dynamic counterparts, 42 conservatism, 58 out of scope, and the
+one standing mismatch is still DIV-2026-019, filed. Every one of the 455
+files carried over from 0.1.19 is verdict-IDENTICAL, class for class.
 
-- **Struct patterns work in `match` arms (`[gram.pat.struct]`,
-  s130/#179).** An arm is a CONJUNCTION of field tests over the
-  value's own shape, exactly as a tuple arm is a conjunction of
-  element tests: literal fields test, shorthand and renamed fields
-  bind, `..` ignores the rest on purpose, and sub-patterns nest —
-  through enum payloads (`Dot(Point { x, y: 0 })`, `S((a, b))`),
-  through `@`-bindings over products (`q @ Point { x: 0, .. }`, whose
-  binds a guard can then read), and through each other. The field-set
-  rules hold in arm position exactly as they do in a binder, so an
-  unknown field still declines by E0403's name and a
-  missing-without-`..` / duplicate / empty one by E0814's, never
-  guessed past. Where 0.1.19 answered `unsupported` — "deferred with
-  the product match domain" — the arm now runs.
-- **The arm boundary takes the WHOLE scrutinee.** `[mem.tier0.move.1]`'s
+- Struct patterns work in `match` arms (`[gram.pat.struct]`, s130/#179). An
+  arm is a CONJUNCTION of field tests over the value's own shape, exactly as
+  a tuple arm is a conjunction of element tests: literal fields test,
+  shorthand and renamed fields bind, `..` ignores the rest on purpose, and
+  sub-patterns nest, through enum payloads (`Dot(Point { x, y: 0 })`, `S((a,
+  b))`), through `@`-bindings over products (`q @ Point { x: 0, .. }`, whose
+  binds a guard can then read), and through each other. The field-set rules
+  hold in arm position exactly as they do in a binder, so an unknown field
+  still declines by E0403's name and a missing-without-`..` / duplicate /
+  empty one by E0814's, never guessed past. Where 0.1.19 answered
+  `unsupported` ("deferred with the product match domain"), the arm now
+  runs.
+- The arm boundary takes the WHOLE scrutinee. `[mem.tier0.move.1]`'s
   initialization reading is what gives a BINDER its field-wise story
-  (0.1.19's element-move work); no clause extends partial moves to
-  arms, so neither machine invents finer-grained arm semantics. An arm
-  that binds a non-`Copy` piece moves the scrutinee whole, and the
-  field no arm touched is use-after-move afterwards — E1001's dynamic
-  counterpart at the same site. Testing is not taking: the scrutinee
-  is only read to run the arm chain, an all-`Copy` arm leaves it live,
-  a failing guard takes nothing, and a scrutinee that is no place
-  moves nothing.
-- **E0802 reaches product arms (`[ty.match.reachable]`).** The
+  (0.1.19's element-move work); no clause extends partial moves to arms, so
+  neither machine invents finer-grained arm semantics. An arm that binds a
+  non-`Copy` piece moves the scrutinee whole, and the field no arm touched
+  is use-after-move afterwards, E1001's dynamic counterpart at the same
+  site. Testing is not taking: the scrutinee is only read to run the arm
+  chain, an all-`Copy` arm leaves it live, a failing guard takes nothing,
+  and a scrutinee that is no place moves nothing.
+- E0802 reaches product arms (`[ty.match.reachable]`). The
   reachability walk widens column-wise: an earlier unguarded arm kills
   a later one when it covers it column by column, an all-binder
   product is the catch-all later arms die behind, and the scalar
@@ -998,7 +976,7 @@ for class.
   precision is kept: every column this static walk cannot judge is
   opaque, so it neither covers nor is covered, and a guarded arm still
   covers nothing.
-- **The differential, before and after.** The seven struct-bearing
+- The differential, before and after. The seven struct-bearing
   witnesses of #179's table, at 0.1.19 and at this release:
 
   | witness | 0.1.19 | 0.1.20 |
@@ -1011,372 +989,353 @@ for class.
   | `memory/match_arm_whole_move` | `unsupported@resolve` | `trap(use-after-move)` — E1001's counterpart |
   | `typecheck/match_arm_product_nonexhaustive` | `unsupported@resolve` | `exit(0)` — conservatism |
 
-  The tuple twin (`tuple_pattern_match_arm`) and
-  `match_arm_str_in_product` already agreed and still do. Six of the
-  seven join the agreement class outright; the seventh is honest
-  conservatism, not agreement — exhaustiveness is the type checker's
-  and E0801 has no dynamic half, so `match_arm_product_nonexhaustive`
-  sits beside `match_missing` and `match_str_nonexhaustive` in the
-  same column they have always occupied.
-- **The c06 residue, stated row by row.** The compiler's NATIVE pipe
-  still refuses four shapes by name; this machine runs all four, and
-  the checked lane runs the first two, so the first two are a recorded
-  non-nesting rather than a divergence: an enum or row test inside a
-  product (deep trees), a str literal at product depth, a float
-  literal at product depth. The **or-pattern** rows —
-  `(0, true) | (1, false)` over a product, and `(0 | 1, true)` inside
-  one — are the flagged pair: refused by name natively, run here, and
-  the checked lane's posture on them is not something this repo can
-  measure. Filed on wolf-lang#179 for the residue's own sprint, not
+  The tuple twin (`tuple_pattern_match_arm`) and `match_arm_str_in_product`
+  already agreed and still do. Six of the seven join the agreement class
+  outright; the seventh is honest conservatism, not agreement;
+  exhaustiveness is the type checker's and E0801 has no dynamic half, so
+  `match_arm_product_nonexhaustive` sits beside `match_missing` and
+  `match_str_nonexhaustive` in the same column they have always occupied.
+- The c06 residue, stated row by row. The compiler's NATIVE pipe still
+  refuses four shapes by name; this machine runs all four, and the checked
+  lane runs the first two, so the first two are a recorded non-nesting
+  rather than a divergence: an enum or row test inside a product (deep
+  trees), a str literal at product depth, a float literal at product depth.
+  The or-pattern rows (`(0, true) | (1, false)` over a product, and `(0 | 1,
+  true)` inside one) are the flagged pair: refused by name natively, run
+  here, and the checked lane's posture on them is not something this repo
+  can measure. Filed on wolf-lang#179 for the residue's own sprint, not
   fixed silently in either direction.
 
 ## 0.1.19 — 2026-08-31
 
 THE SHAPE BINDS (is30). Struct patterns land whole-pipe from the
-`[gram.pat.struct]` text alone (s129, wolf-lang#179), the destructure
-tier they generalize learns the element-move discipline it owed since
-s128, and the s106 net byte tier resolves at last (F-0102). Released
-against pin `83f83bb` — wolf-lang's s129 merge, two bumps past
-0.1.18's `addcd7f` — and the pin question 0.1.18 left open is closed
-twice over: the first bump (v0.2.0, `c88ab64`) retired the
-FILED_REGISTRY_HOLES waiver for wolf-lang#177 the day r03's
-spec-extract fix re-gained `gram.lex.ident` (403 anchors, zero export
-notices), and the second bump took the s129 merge itself the moment it
-reached origin, so the full witness set rides the census (404 anchors,
-`+gram.pat.struct`). Census at this release: 455 files / 422 entries /
-33 members; 329 reach run, 306 match, 15 dynamic counterparts, 41
-conservatism, 59 out of scope, and the one standing mismatch is still
-DIV-2026-019, filed. Every pre-existing file is verdict-identical
-across the span except two deliberate movers named below.
+`[gram.pat.struct]` text alone (s129, wolf-lang#179), the destructure tier
+they generalize learns the element-move discipline it owed since s128, and
+the s106 net byte tier resolves at last (F-0102). Released against pin
+`83f83bb` (wolf-lang's s129 merge, two bumps past 0.1.18's `addcd7f`) and
+the pin question 0.1.18 left open is closed twice over: the first bump
+(v0.2.0, `c88ab64`) retired the FILED_REGISTRY_HOLES waiver for
+wolf-lang#177 the day r03's spec-extract fix re-gained `gram.lex.ident` (403
+anchors, zero export notices), and the second bump took the s129 merge
+itself the moment it reached origin, so the full witness set rides the
+census (404 anchors, `+gram.pat.struct`). Census at this release: 455 files
+/ 422 entries / 33 members; 329 reach run, 306 match, 15 dynamic
+counterparts, 41 conservatism, 59 out of scope, and the one standing
+mismatch is still DIV-2026-019, filed. Every pre-existing file is
+verdict-identical across the span except the two movers named below.
 
-- **Destructures move element-wise (`[mem.tier0.move.2]`, the s128
-  discipline).** `let (x, _) = p` moves `p.0` ONLY: each element is
-  its own place, a wildcard touches nothing, copy-shaped leaves still
-  copy, and the untouched elements stay readable — where 0.1.18 moved
-  the whole tuple and trapped the sibling read. The corpus twins pin
-  both halves (`destructure_partial_live` runs to "1 2";
-  `destructure_partial_move` traps use-after-move at the element that
-  DID move, E1001's counterpart), and the differ's standing
-  "element-story gap" asymmetry closes with them.
-- **Struct patterns (`[gram.pat.struct]`, s129/#179).**
-  `Point { x, y: p, .. }` in every binder position — `let`/`var`, D63
-  comma groups, `for` headers — with shorthand binding the field's own
-  name, explicit sub-patterns nesting through structs and tuples both
-  ways, fields in any order, and `..` ignoring the rest on purpose.
-  Named fields consume their own `Proj::Field` sub-place per the tuple
-  precedent: omission, `..` and wildcard fields stay live, and the
-  fault twin traps at the field that moved with the counterparty's
-  span. The refusal classes decline by the code that owns them
-  upstream — unknown field (E0403), missing-without-`..` / duplicate /
-  empty (E0814) — never guessed past. Match ARMS defer symmetric with
-  the compiler's own c06 product-domain refusal: the arm witness
-  answers `unsupported` on both machines, and the two advance together
-  the day the product match domain lands. The ten-file s129 witness
-  set compares clean across the machines: six byte-identical
-  agreements (the binder sweep and partial-live among them), one
-  dynamic counterpart, two refusals-by-name, one
-  unsupported-both-machines — zero divergences.
-- **The #184 twin joins the agreement class.** lupin ran the
+- Destructures move element-wise (`[mem.tier0.move.2]`, the s128
+  discipline). `let (x, _) = p` moves `p.0` ONLY: each element is its own
+  place, a wildcard touches nothing, copy-shaped leaves still copy, and the
+  untouched elements stay readable, where 0.1.18 moved the whole tuple and
+  trapped the sibling read. The corpus twins pin both halves
+  (`destructure_partial_live` runs to "1 2"; `destructure_partial_move`
+  traps use-after-move at the element that DID move, E1001's counterpart),
+  and the differ's standing "element-story gap" asymmetry closes with them.
+- Struct patterns (`[gram.pat.struct]`, s129/#179). `Point { x, y: p, .. }`
+  in every binder position (`let`/`var`, D63 comma groups, `for` headers)
+  with shorthand binding the field's own name, explicit sub-patterns nesting
+  through structs and tuples both ways, fields in any order, and `..`
+  ignoring the rest on purpose. Named fields consume their own `Proj::Field`
+  sub-place per the tuple precedent: omission, `..` and wildcard fields stay
+  live, and the fault twin traps at the field that moved with the
+  counterparty's span. The refusal classes decline by the code that owns
+  them upstream (unknown field (E0403), missing-without-`..` / duplicate /
+  empty (E0814)), never guessed past. Match ARMS defer symmetric with the
+  compiler's own c06 product-domain refusal: the arm witness answers
+  `unsupported` on both machines, and the two advance together the day the
+  product match domain lands. The ten-file s129 witness set compares clean
+  across the machines: six byte-identical agreements (the binder sweep and
+  partial-live among them), one dynamic counterpart, two refusals-by-name,
+  one unsupported-both-machines, zero divergences.
+- The #184 twin joins the agreement class. lupin ran the
   lent-view byte slice all along; with fd42622's compiler fix in the
   pin, `byte_view_slice_lent` answers the same bytes on both machines
   (`4 119 4 108 2 0`) and the whole slice quartet agrees, fault twin
   included.
-- **The net byte tier resolves (wolf-interp#52, wolf-std F-0102).**
-  `net_read_bytes`/`net_write_bytes` land as the str calls' own shape
-  with `List[int]` marshalling: one receive of up to `n` raw bytes
-  with NO utf8 row (a lone `0x80` is data), whole-or-raise writes
-  behind the WHOLE pre-write check (an element outside 0..=255 is the
-  `invalid` row and nothing reaches the wire — §14's fs vocabulary,
-  which wolf-std's facade adopts verbatim), rows declared for #47's
-  arm discrimination. The two byte-tier corpus witnesses
-  (`net/byte_roundtrip`, `net/line_reader_bytes`) leave the
-  conservatism ledger for the match column — the release's two
-  deliberate verdict movers — and wolf-std's compiler-lanes-only rows
-  can go three-lane at its next pin.
+- The net byte tier resolves (wolf-interp#52, wolf-std F-0102).
+  `net_read_bytes`/`net_write_bytes` land as the str calls' own shape with
+  `List[int]` marshalling: one receive of up to `n` raw bytes with NO utf8
+  row (a lone `0x80` is data), whole-or-raise writes behind the WHOLE
+  pre-write check (an element outside 0..=255 is the `invalid` row and
+  nothing reaches the wire, §14's fs vocabulary, which wolf-std's facade
+  adopts verbatim), rows declared for #47's arm discrimination. The two
+  byte-tier corpus witnesses (`net/byte_roundtrip`, `net/line_reader_bytes`)
+  leave the conservatism ledger for the match column (the release's two
+  deliberate verdict movers) and wolf-std's compiler-lanes-only rows can go
+  three-lane at its next pin.
 
 ## 0.1.18 — 2026-08-30
 
-THE FIRST ARM YIELDS (is29). The two thrice-measured lupin-side
-correctness debts behind wolf-std's four `divergent(…)` ledger rows,
-paid from the spec clauses and the F-0079 lineage, never from the
-compiler's source: a multi-arm handler over a BUILTIN-raised row took
-its first arm for every tag (#47, wolf-std F-0097), and take-mode
-reuse — a static E1001 on both compiler rungs — executed here to its
-dynamic outcome (#48, wolf-std F-0098).
+THE FIRST ARM YIELDS (is29). The two thrice-measured lupin-side correctness
+debts behind wolf-std's four `divergent(…)` ledger rows, paid from the spec
+clauses and the F-0079 lineage, never from the compiler's source: a
+multi-arm handler over a BUILTIN-raised row took its first arm for every tag
+(#47, wolf-std F-0097), and take-mode reuse (a static E1001 on both compiler
+rungs), executed here to its dynamic outcome (#48, wolf-std F-0098).
 
-Released against pin `addcd7f`, unchanged from 0.1.17 — wolf-lang has
-no `v0.2.0` tag at this release, so the FILED_REGISTRY_HOLES waiver
-for wolf-lang#177 (`gram.lex.ident`) carries to is30 and the pin
-question re-opens there. Every pre-existing corpus file is
-verdict-identical before and after every commit in this span: the
-judge counts are 310 run / 287 match / 13 counterpart / 41
-conservatism / 55 out of scope / 1 mismatch — byte-for-byte the
-0.1.17 per-file table, three times over.
+Released against pin `addcd7f`, unchanged from 0.1.17; wolf-lang has no
+`v0.2.0` tag at this release, so the FILED_REGISTRY_HOLES waiver for
+wolf-lang#177 (`gram.lex.ident`) carries to is30 and the pin question
+re-opens there. Every pre-existing corpus file is verdict-identical before
+and after every commit in this span: the judge counts are 310 run / 287
+match / 13 counterpart / 41 conservatism / 55 out of scope / 1 mismatch,
+byte-for-byte the 0.1.17 per-file table, three times over.
 
-- **The row rides with the raising builtin (#47).** The #29 mechanism
-  at its third address: entry-file raises discriminated (s70),
-  imported-module raises were fixed by 0.1.13's arm-selection pass
-  (the row travels with the value), and a BUILTIN's raise carried
-  `row: []` — so a handler's every lowercase arm read as a binding
-  and the first arm matched every tag, silently, exit 0. Builtin
-  error values now mint with the raising builtin's WHOLE declared row
-  (`eval::builtin::declared_row` — the net and process prelude
-  signatures the module docs pin, the env/json/cwd/utf8 mint-site
-  closures), so sibling arms resolve as tags and the value's own tag
-  finds its own arm in either order. Witnessed in both arm orders on
-  the issue's reproducer (one dead port, dialed twice: `-1`/`-1`
-  where 0.1.17 answered `-1`/`-9`) and hermetically on `env_get`'s
-  two-tag row. The lint walk's `operand_row` reads the same table, so
-  the static arm rule and the dynamic one keep answering alike. The
-  spec pins none of these signatures — filed as wolf-lang#181 per the
-  is26 pattern rather than absorbed.
-- **Take-mode reuse joins the static rung (#48).** The E1007
-  discipline at the moved place: an explicitly moded argument or
-  receiver over a whole binding an earlier call-site `take` marker
-  consumed is `fail(E1001)` at the reuse argument — the counterparty's
-  code, span and message shape, observed at `addcd7f` — instead of
-  executing to the trap map's answer. Straight-line certainty only:
-  re-initialization and shadowing clear (`[mem.tier0.move.4]`), moves
-  inside branches, loops, closures and `defer` never leak past them,
-  field-granular takes are not tracked, and a bare unmarked READ of a
-  moved-from place stays `[mem.tier0.move.2]`'s dynamic
-  `trap(use-after-move)` — which is what keeps
-  `memory/move_use_after.lu` on its DynamicCounterpart verdict and
-  `faults/use_after_move_field.lu` on its pinned trap, unmoved.
-- **W0317 lands the lupin half of wolf-lang#167's D61 row.** The
-  kindness lint (`[gram.expr.index.origin]`): an int literal fed to a
-  List local's `.get` inside a 1-origin scope warns at the literal —
-  span parity with the compiler on the corpus witness (`[468,469]` on
+- The row rides with the raising builtin (#47). The #29 mechanism at its
+  third address: entry-file raises discriminated (s70), imported-module
+  raises were fixed by 0.1.13's arm-selection pass (the row travels with the
+  value), and a BUILTIN's raise carried `row: []`, so a handler's every
+  lowercase arm read as a binding and the first arm matched every tag,
+  silently, exit 0. Builtin error values now mint with the raising builtin's
+  WHOLE declared row (`eval::builtin::declared_row`, the net and process
+  prelude signatures the module docs pin, the env/json/cwd/utf8 mint-site
+  closures), so sibling arms resolve as tags and the value's own tag finds
+  its own arm in either order. Witnessed in both arm orders on the issue's
+  reproducer (one dead port, dialed twice: `-1`/`-1` where 0.1.17 answered
+  `-1`/`-9`) and hermetically on `env_get`'s two-tag row. The lint walk's
+  `operand_row` reads the same table, so the static arm rule and the dynamic
+  one keep answering alike. The spec pins none of these signatures, filed as
+  wolf-lang#181 per the is26 pattern rather than absorbed.
+- Take-mode reuse joins the static rung (#48). The E1007 discipline at the
+  moved place: an explicitly moded argument or receiver over a whole binding
+  an earlier call-site `take` marker consumed is `fail(E1001)` at the reuse
+  argument (the counterparty's code, span and message shape, observed at
+  `addcd7f`), instead of executing to the trap map's answer. Straight-line
+  certainty only: re-initialization and shadowing clear
+  (`[mem.tier0.move.4]`), moves inside branches, loops, closures and `defer`
+  never leak past them, field-granular takes are not tracked, and a bare
+  unmarked READ of a moved-from place stays `[mem.tier0.move.2]`'s dynamic
+  `trap(use-after-move)`, which is what keeps `memory/move_use_after.lu` on
+  its DynamicCounterpart verdict and `faults/use_after_move_field.lu` on its
+  pinned trap, unmoved.
+- W0317 lands the lupin half of wolf-lang#167's D61 row. The kindness lint
+  (`[gram.expr.index.origin]`): an int literal fed to a List local's `.get`
+  inside a 1-origin scope warns at the literal, span parity with the
+  compiler on the corpus witness (`[468,469]` on
   `lints/index_origin_get.lu`), the statement marker narrows and the
-  innermost wins, a non-literal index and a user type's `get` stay
-  silent (probed: the compiler does not warn there either). The lint
-  replays the parser's own `index_origin_of` reading, one marker
-  grammar for two consumers.
+  innermost wins, a non-literal index and a user type's `get` stay silent
+  (probed: the compiler does not warn there either). The lint replays the
+  parser's own `index_origin_of` reading, one marker grammar for two
+  consumers.
 
-Downstream, pre-recorded in wolf-std's row comments and verified on
-this build directly against wolf-std's tests/ before tagging:
-`net/refused_row` and `net/closed_row` print their directives'
-stdout (`handled: -1` / `peer-gone: handled`, then the propagated
-tag), and `net/use_after_close` + `process/use_after_wait` are
-`fail(E1001)` where 0.1.17 trapped `use-after-move` / diverted at
-`start()` — the four `divergent(…)` words flip to `run` at sc-track's
-next binary bump, which is the red the runner was built to read.
+Downstream, pre-recorded in wolf-std's row comments and verified on this
+build directly against wolf-std's tests/ before tagging: `net/refused_row`
+and `net/closed_row` print their directives' stdout (`handled: -1` /
+`peer-gone: handled`, then the propagated tag), and `net/use_after_close` +
+`process/use_after_wait` are `fail(E1001)` where 0.1.17 trapped
+`use-after-move` / diverted at `start()`, the four `divergent(…)` words flip
+to `run` at sc-track's next binary bump, which is the red the runner was
+built to read.
 
 ## 0.1.17 — 2026-08-29
 
 THE INTERPRETER KEEPS TWO PROMISES (is28). Two user-visible fixes,
 both measured live on 0.1.16: a scratch directory where every file
-says `//! member: false` still collided on `main` (#49 — the run-door
+says `//! member: false` still collided on `main` (#49, the run-door
 half of D59 was never landed), and the origin marker the language
-ruled in D61 either failed at lex (`#![index(1)]` → E0101) or —
-the dangerous class — was a silently ignored statement attribute that
+ruled in D61 either failed at lex (`#![index(1)]` → E0101) or, in the
+dangerous class, was a silently ignored statement attribute that
 ran `grammar/index_origin_scopes.lu` to the WRONG answer
 (wolf-lang#169). Both promises implemented from the ruling texts and
 the spec clauses, never from the compiler's source.
 
 Released against pin `addcd7f` (the s126 wave; one bump, `e561c6f` →
-`addcd7f`). Corpus 422 → 430 files (397 entries + 33 members);
-coverage ratchets 157 → 159; anchors 396 → 397. All six run-reaching
-`index_origin_*` witnesses MATCH at first sight — including the
-byte-exact stdout pins on the file-wide and scopes witnesses — and
-the two fail pins land the spec's own codes (E0211 by position, E0813
-by name). Every pre-existing corpus file is verdict-identical before
-and after: the judge counts moved 304→310 run / 279→287 match /
-13/41/55/1 unchanged — exactly the eight new witnesses, nothing else.
+`addcd7f`). Corpus 422 → 430 files (397 entries + 33 members); coverage
+ratchets 157 → 159; anchors 396 → 397. All six run-reaching `index_origin_*`
+witnesses MATCH at first sight (including the byte-exact stdout pins on the
+file-wide and scopes witnesses) and the two fail pins land the spec's own
+codes (E0211 by position, E0813 by name). Every pre-existing corpus file is
+verdict-identical before and after: the judge counts moved 304→310 run /
+279→287 match / 13/41/55/1 unchanged, exactly the eight new witnesses,
+nothing else.
 
-- **The four standalone spellings, in module formation
-  (`[conf.directive.standalone]`, D59 — #49).** A file opts out of
-  its directory's module by an explicit `member: false`, the
-  `check:`+`phase:` entry pair (0.1.16's only exclusion), a script
-  announcement (`#!` line or `pkg { … }` frontmatter), or a
-  `_test.lu` name; an explicit `member:` key always decides; the
-  named entry always compiles; std/dep trees stay whole-package. The
-  asymmetry is kept: a standalone mark opts the FILE out and never
-  shrinks anyone's build — a plain `main` beside a standalone `main`
-  still collides, and the E0302 note now names the escape.
-- **The three E0301 situations, this machine's voice.** A name that
+- The four standalone spellings, in module formation
+  (`[conf.directive.standalone]`, D59, #49). A file opts out of its
+  directory's module by an explicit `member: false`, the `check:`+`phase:`
+  entry pair (0.1.16's only exclusion), a script announcement (`#!` line or
+  `pkg { … }` frontmatter), or a `_test.lu` name; an explicit `member:` key
+  always decides; the named entry always compiles; std/dep trees stay
+  whole-package. The asymmetry is kept: a standalone mark opts the FILE out
+  and never shrinks anyone's build, a plain `main` beside a standalone
+  `main` still collides, and the E0302 note now names the escape.
+- The three E0301 situations, this machine's voice. A name that
   IS defined next door in a standalone entry answers with the file,
   the marker, and the fix; an import whose files all opted out lists
   them; a directory with no `.lu` files gets a formation note instead
   of a layout assertion.
-- **`#![` and `#[index(…)]` lex, parse, scope (D61 —
-  wolf-lang#169).** `#![` is one token and the shebang narrows around
-  it (`#!` not followed by `[`; the script witness stays green); the
-  file-wide form is legal only as the file's first non-trivia
-  construct (E0211 anywhere else, by position); the statement form
-  scopes the annotated node's full lexical extent, nesting legal,
-  innermost wins, `#[index(0)]` restores the default; bad arguments,
-  duplicates, and unknown INNER attributes are E0813 by name — never
-  ignored, the faulty marker takes no effect.
-- **The shift, exactly per `[gram.expr.index.origin]`.** Subscript
-  reads, writes, and slice PLAIN starts lower by one CHECKED
-  subtraction; plain ends lower unchanged (the inclusivity coupling —
-  `..=` is redundant-but-legal); `^n`, open sides, `.len`, bare
-  ranges, `.get`, map keys, pool handles, tuple members and the
-  unsafe tier do not move. `xs[int.min]` under origin 1 traps
-  `overflow` before the bounds question (X3, D56's kind). The human
-  trap line renders the WRITER's numbers inside a 1-origin scope
-  (`index 0 is outside…`, `2..9 (origin 1)`) — the writer's-mode duty
-  D61 puts on the machine whose report prints numbers.
-- **`char` assignment copies (#50, D58).** `d = c` then `{c}` printed
+- `#![` and `#[index(…)]` lex, parse, scope (D61, wolf-lang#169). `#![` is
+  one token and the shebang narrows around it (`#!` not followed by `[`; the
+  script witness stays green); the file-wide form is legal only as the
+  file's first non-trivia construct (E0211 anywhere else, by position); the
+  statement form scopes the annotated node's full lexical extent, nesting
+  legal, innermost wins, `#[index(0)]` restores the default; bad arguments,
+  duplicates, and unknown INNER attributes are E0813 by name, never ignored,
+  the faulty marker takes no effect.
+- The shift, exactly per `[gram.expr.index.origin]`. Subscript reads,
+  writes, and slice PLAIN starts lower by one CHECKED subtraction; plain
+  ends lower unchanged (the inclusivity coupling; `..=` is
+  redundant-but-legal); `^n`, open sides, `.len`, bare ranges, `.get`, map
+  keys, pool handles, tuple members and the unsafe tier do not move.
+  `xs[int.min]` under origin 1 traps `overflow` before the bounds question
+  (X3, D56's kind). The human trap line renders the WRITER's numbers inside
+  a 1-origin scope (`index 0 is outside…`, `2..9 (origin 1)`), the
+  writer's-mode duty D61 puts on the machine whose report prints numbers.
+- `char` assignment copies (#50, D58). `d = c` then `{c}` printed
   `xx` under wolf and trapped use-after-move here; a `char` is now a
   copy value in the tier-0 move discipline exactly as `int` is.
-- **Comma-grouped binders (D63 rider).** `let`/`var` admit
+- Comma-grouped binders (D63 rider). `let`/`var` admit
   `binder (',' binder)*`, each binder with its own `=`; the group is
   the left-to-right sequence of single bindings. One-initializer-
   many-names and Python's bare tuple are refused by name with both
   correct spellings offered; `const` keeps its single-binder
   production.
-- **D62 witnesses (rider).** Nothing to build — `+`/`+=` on two strs
-  is the language and this machine's behavior IS the ruling. The
-  legal-chain run witness and the three refused mixes (`str + int`,
-  `str + char`, `int + str`, refused by name) land in-repo
-  (`tests/d62/`, upstream-ready) as the differential counterpart
-  waiting for the compiler half (wolf-lang#172); #51 closes from
-  that side.
-- **An upstream finding, filed.** c1f54f2's anchors regen DROPPED
-  `gram.lex.ident` from `anchors.json` while spec/01 §1.3 still
-  defines it — wolf-lang#177, carried as a `FILED_REGISTRY_HOLES`
-  notice on every export until the registry re-gains the anchor.
+- D62 witnesses (rider). Nothing to build, `+`/`+=` on two strs is the
+  language and this machine's behavior IS the ruling. The legal-chain run
+  witness and the three refused mixes (`str + int`, `str + char`, `int +
+  str`, refused by name) land in-repo (`tests/d62/`, upstream-ready) as the
+  differential counterpart waiting for the compiler half (wolf-lang#172);
+  #51 closes from that side.
+- An upstream finding, filed. c1f54f2's anchors regen DROPPED
+  `gram.lex.ident` from `anchors.json` while spec/01 §1.3 still defines it,
+  wolf-lang#177, carried as a `FILED_REGISTRY_HOLES` notice on every export
+  until the registry re-gains the anchor.
 
 ## 0.1.16 — 2026-08-28
 
-THE INTERPRETER NAMES THE LINE (is27, the lupin half of s125's
-trap-site pair — sequenced after 0.1.15 as that contract required). At
-0.1.15 a trap said `at 51..58` — byte offsets no editor jump-to and no
-human counts out (#158, measured in the s125 report). The renderer HAD
-the span; the gap was purely rendering. This release renders it:
-implemented from `[conf.trap.render]`, never from the compiler's
-rendering (the independence doctrine).
+THE INTERPRETER NAMES THE LINE (is27, the lupin half of s125's trap-site
+pair, sequenced after 0.1.15 as that contract required). At 0.1.15 a trap
+said `at 51..58`, byte offsets no editor jump-to and no human counts out
+(#158, measured in the s125 report). The renderer HAD the span; the gap was
+purely rendering. This release renders it: implemented from
+`[conf.trap.render]`, never from the compiler's rendering (the independence
+doctrine).
 
-Released against pin `e561c6f` (the s122–s125 wave; one bump,
-`a900b8c` → `e561c6f`). Corpus 403 → 422 files (389 entries + 33
-members — including the corpus's FIRST four bare members, D59);
-coverage ratchets 153 → 157; anchors 393 → 396; twelve of the
-thirteen new run-reaching entries match at first sight.
+Released against pin `e561c6f` (the s122–s125 wave; one bump, `a900b8c` →
+`e561c6f`). Corpus 403 → 422 files (389 entries + 33 members, including the
+corpus's FIRST four bare members, D59); coverage ratchets 153 → 157; anchors
+393 → 396; twelve of the thirteen new run-reaching entries match at first
+sight.
 
-- **The file doors say `line:col`.** Every human fault line `run`,
-  `check`, `lex`, `parse` and `conform-run`'s human mode print — trap,
-  UB finding, static diagnostic, secondary spans included — spells its
-  location `line:col`: 1-based line, 1-based column counted in
-  **characters**, the spelling the fault snapshots pinned first (one
-  span grammar per tool, `[conf.trap.render]`). `examples/overflow.lu`
-  now says `[arith.checked] at 6:5` where 0.1.15 said `at 107..113`.
-- **Byte spans stay on the structured door, untouched.** `--json`
+- The file doors say `line:col`. Every human fault line `run`, `check`,
+  `lex`, `parse` and `conform-run`'s human mode print (trap, UB finding,
+  static diagnostic, secondary spans included), spells its location
+  `line:col`: 1-based line, 1-based column counted in characters, the
+  spelling the fault snapshots pinned first (one span grammar per tool,
+  `[conf.trap.render]`). `examples/overflow.lu` now says `[arith.checked] at
+  6:5` where 0.1.15 said `at 107..113`.
+- Byte spans stay on the structured door, untouched. `--json`
   records are byte-identical to 0.1.15's (identity fields aside):
   `[proto.record.diag]` spans and `x-trap-span` remain byte offsets.
   wolf-std's runner parses records only, and a filtered `std-test`
   smoke against this build stayed green.
-- **The two machines name the same place.** `tests/faults/trap_site.lu`
-  pins the s125 witness shape: the trap expression sits at 6:5; the
-  compiled tier reports `  at ./trap_site.lu:6:5` (`[conf.trap.report]`,
-  exit 134) and this machine `[mem.ub.defined] at 6:5` (exit 3) — the
-  KIND is the contract, the statuses are per-machine documented facts
-  (`[conf.trap.exit]`, D60; **exit 3 does not move**). The differential
-  runner's trap-map site column stays a named follow-on.
-- **A module sibling's fault names its file.** A diagnostic raised in
-  a `use`d module file renders `line:col` against THAT file's text and
-  says so: `entry.lu: E0201: … at 4:13 (in module file `mangled.lu`)`.
-  The record's reason now names the module file relative to the
-  entry's directory — an absolute path there made byte-identical
-  re-exports impossible the moment the corpus grew a broken-sibling
-  witness (records travel; the export gate diffs them).
-- **The REPL keeps entry-relative byte offsets, deliberately.** A
-  session has no stable line numbering — each entry restarts at offset
-  0 and an ownership fault's second span may point into an earlier
-  entry — so `docs/repl.md` documents the offset spelling as the
-  prompt's own coordinate; `[conf.trap.render]` is a file-door clause
-  (its exit-status sentence cannot even apply to a session that
-  survives the trap, `[repl.trap.alive]`).
-- **D59 membership lands in the walk (`[conf.directive.standalone]`).**
-  An explicit `member:` decides; otherwise the entry pair does — a
-  plain `.lu` file with no directives is a member of its directory's
-  module by default (`resolve/bare_sibling/` is the witness; half an
-  entry pair stays an error either way). The corpus-walk half of #49;
-  script-header and `_test.lu` module formation remain open there.
-- **DIV-2026-019 filed.** The broken-sibling witness pins the
-  counterparty's `fail(E0202)` (it reads the junk to EOF) where this
-  machine stops at the first bad token (`fail(E0201)`@parse) — same
-  rung, span-or-code class, and the spec assigns neither code to junk
-  recovery: filed as a spec gap, waived by the filing, gating resumes
-  when it resolves. E0202 itself is corpus-pinned now and left
-  `diag::UNPINNED_CODES`.
+- The two machines name the same place. `tests/faults/trap_site.lu` pins the
+  s125 witness shape: the trap expression sits at 6:5; the compiled tier
+  reports `  at ./trap_site.lu:6:5` (`[conf.trap.report]`, exit 134) and
+  this machine `[mem.ub.defined] at 6:5` (exit 3); the KIND is the contract,
+  the statuses are per-machine documented facts (`[conf.trap.exit]`, D60;
+  exit 3 does not move). The differential runner's trap-map site column
+  stays a named follow-on.
+- A module sibling's fault names its file. A diagnostic raised in a `use`d
+  module file renders `line:col` against THAT file's text and says so:
+  `entry.lu: E0201: … at 4:13 (in module file `mangled.lu`)`. The record's
+  reason now names the module file relative to the entry's directory, an
+  absolute path there made byte-identical re-exports impossible the moment
+  the corpus grew a broken-sibling witness (records travel; the export gate
+  diffs them).
+- The REPL keeps entry-relative byte offsets. A session has no
+  stable line numbering (each entry restarts at offset 0 and an ownership
+  fault's second span may point into an earlier entry), so `docs/repl.md`
+  documents the offset spelling as the prompt's own coordinate;
+  `[conf.trap.render]` is a file-door clause (its exit-status sentence
+  cannot even apply to a session that survives the trap,
+  `[repl.trap.alive]`).
+- D59 membership lands in the walk (`[conf.directive.standalone]`). An
+  explicit `member:` decides; otherwise the entry pair does, a plain `.lu`
+  file with no directives is a member of its directory's module by default
+  (`resolve/bare_sibling/` is the witness; half an entry pair stays an error
+  either way). The corpus-walk half of #49; script-header and `_test.lu`
+  module formation remain open there.
+- DIV-2026-019 filed. The broken-sibling witness pins the counterparty's
+  `fail(E0202)` (it reads the junk to EOF) where this machine stops at the
+  first bad token (`fail(E0201)`@parse), same rung, span-or-code class, and
+  the spec assigns neither code to junk recovery: filed as a spec gap,
+  waived by the filing, gating resumes when it resolves. E0202 itself is
+  corpus-pinned now and left `diag::UNPINNED_CODES`.
 
 ## 0.1.15 — 2026-08-28
 
-THE SCALAR RELEASE (is26, one sprint behind s121/D58). At 0.1.14 the
-lexer refused `'` outright — `fail(E0101)`, "`'` begins no token" — so
-every char witness the compiler landed was wolfc-lane evidence only:
-wolf accepted programs its oracle could not even lex, the weakest
-position a differential oracle can hold. This release teaches lupin the
-scalar, independently, from `[type.char]`, `[gram.lex.char]` and
-`[mem.str.chars]` — never from the compiler's source.
+THE SCALAR RELEASE (is26, one sprint behind s121/D58). At 0.1.14 the lexer
+refused `'` outright (`fail(E0101)`, "`'` begins no token"), so every char
+witness the compiler landed was wolfc-lane evidence only: wolf accepted
+programs its oracle could not even lex, the weakest position a differential
+oracle can hold. This release teaches lupin the scalar, independently, from
+`[type.char]`, `[gram.lex.char]` and `[mem.str.chars]`, never from the
+compiler's source.
 
-Released against pin `a900b8c` (the s117–s121 wave; one bump,
-`90c90df` → `a900b8c`). Corpus 385 → 403 files (374 entries + 29
-member files), all 14 new run-reaching entries matching at first sight
-because the scalar landed here BEFORE the bump; coverage ratchets
-144 → 153. The seven char witnesses — `char_battery`, `char_order`,
-`char_interp`, `chars_walk`, and the three `faults/char_cast_*` twins —
-compare for the first time: **0 → 7**, and the walk holds 0 mismatches.
+Released against pin `a900b8c` (the s117–s121 wave; one bump, `90c90df` →
+`a900b8c`). Corpus 385 → 403 files (374 entries + 29 member files), all 14
+new run-reaching entries matching at first sight because the scalar landed
+here BEFORE the bump; coverage ratchets 144 → 153. The seven char witnesses
+(`char_battery`, `char_order`, `char_interp`, `chars_walk`, and the three
+`faults/char_cast_*` twins), compare for the first time: 0 → 7, and the walk
+holds 0 mismatches.
 
-- **Char literals lex (`[gram.lex.char]`, D58.5).** `'a'` at every
-  UTF-8 width, with the string escape set plus `\'`
-  (`\n \t \r \\ \' \" \0 \xNN \u{1–6 hex}`). The malformed shapes are
-  **E0110** named refusals, one report per literal: empty,
-  multi-scalar (a base-plus-combining-accent pair is two scalars — a
-  char is a scalar, not a grapheme), unterminated before end of line,
-  and a `\u` naming a non-scalar — the surrogate gap and past-0x10FFFF
-  are refused AT THE LITERAL, the lex-time twin of the cast's trap.
-  E0110 moved to this clause from the unpinned unterminated-interp
-  code, which yielded and became E0112.
+- Char literals lex (`[gram.lex.char]`, D58.5). `'a'` at every UTF-8 width,
+  with the string escape set plus `\'` (`\n \t \r \\ \' \" \0 \xNN \u{1–6
+  hex}`). The malformed shapes are E0110 named refusals, one report per
+  literal: empty, multi-scalar (a base-plus-combining-accent pair is two
+  scalars (a char is a scalar, not a grapheme), unterminated before end of
+  line, and a `\u` naming a non-scalar), the surrogate gap and past-0x10FFFF
+  are refused AT THE LITERAL, the lex-time twin of the cast's trap. E0110
+  moved to this clause from the unpinned unterminated-interp code, which
+  yielded and became E0112.
 
-- **`char` is a value, and not an integer (D58.1/.3).** `Value::Char`
-  carries the scalar; equality and order are total, by scalar value,
-  locale-free (`'z' < 'é'`). Arithmetic, mixed comparisons, and
-  numeric-literal adoption (`let c: char = 65`) are refused by name —
-  the permissive-direction divergence that is hardest to notice is the
-  one this machine refuses loudest. `match` over char rides scalar
-  identity; CHAR_LIT parses in primary, pattern, attr and
-  const-argument positions.
+- `char` is a value, and not an integer (D58.1/.3). `Value::Char` carries
+  the scalar; equality and order are total, by scalar value, locale-free
+  (`'z' < 'é'`). Arithmetic, mixed comparisons, and numeric-literal adoption
+  (`let c: char = 65`) are refused by name, the permissive-direction
+  divergence that is hardest to notice is the one this machine refuses
+  loudest. `match` over char rides scalar identity; CHAR_LIT parses in
+  primary, pattern, attr and const-argument positions.
 
-- **The casts, with the trap (`[type.char.cast]`, D58.4).**
-  `char as int` is total; `int as char` traps `overflow` (D56's closed
-  family) on negative, on the surrogate gap `0xD800..=0xDFFF`, and
-  above `0x10FFFF` — with the gap edges `0xD7FF`/`0xE000` and the last
-  scalar `0x10FFFF` legal and witnessed. Everything else is refused by
-  name: only `int` bridges into `char`.
+- The casts, with the trap (`[type.char.cast]`, D58.4). `char as int` is
+  total; `int as char` traps `overflow` (D56's closed family) on negative,
+  on the surrogate gap `0xD800..=0xDFFF`, and above `0x10FFFF`, with the gap
+  edges `0xD7FF`/`0xE000` and the last scalar `0x10FFFF` legal and
+  witnessed. Everything else is refused by name: only `int` bridges into
+  `char`.
 
-- **`chars()` yields `List[char]` (`[mem.str.chars]`, D58.7).** The
-  scalars in string order; the width identity holds — the byte extent
-  of a scalar is a function of its value, and a cursor advanced that
-  way lands exactly on the boundaries `get` accepts (`chars_walk`
-  witnesses it over 1/2/3/4-byte scalars). `{c}` interpolation prints
-  the CHARACTER, never the number (spelled `{c as int}`); a spec on a
-  char hole takes the str surface, width in bytes.
+- `chars()` yields `List[char]` (`[mem.str.chars]`, D58.7). The scalars in
+  string order; the width identity holds, the byte extent of a scalar is a
+  function of its value, and a cursor advanced that way lands exactly on the
+  boundaries `get` accepts (`chars_walk` witnesses it over 1/2/3/4-byte
+  scalars). `{c}` interpolation prints the CHARACTER, never the number
+  (spelled `{c as int}`); a spec on a char hole takes the str surface, width
+  in bytes.
 
-- **The spec tension is filed, not settled.** `\u{…}`'s one-to-six
+- The spec tension is filed, not settled. `\u{…}`'s one-to-six
   digit cap is prose-only against `CHAR_ESC`'s unbounded
   `HEX_DIGIT+`, and the string tier states no cap at all; this machine
   takes the prose reading and records the choice (`gram.lex.char` in
   the CHOICES register) rather than copying the compiler.
 
-- **Portability honesty (macOS).** The net edge probe asserted the
+- Portability honesty (macOS). The net edge probe asserted the
   write-after-peer-close row on the very next write; the failing write
-  actually waits on the peer's RST, which macOS delivers a few ms
-  late. The probe now retries on a bounded clock — same transcript,
-  no race assertion. First release cut on macOS arm64.
+  actually waits on the peer's RST, which macOS delivers a few ms late. The
+  probe now retries on a bounded clock, same transcript, no race assertion.
+  First release cut on macOS arm64.
 
 ## 0.1.14 — 2026-08-27
 
 THE CATCH-UP RELEASE (r02, sprints is14 → is25). 0.1.13 shipped on
-2026-08-15 — and then twelve sprints landed, 58 commits, with the upstream
-pin re-vendored **eight times**, while the version, this file, and the tag
-never moved. Two materially different interpreters could both answer
-`lupin 0.1.13` while declaring different conformance pins: the version had
-stopped identifying a state. This entry is the correction, and it is
-honest about the gap: one release covering the whole span, grouped by
-theme — not twelve retroactive versions pretending each had shipped.
+2026-08-15, and then twelve sprints landed, 58 commits, with the upstream
+pin re-vendored eight times, while the version, this file, and the tag never
+moved. Two materially different interpreters could both answer `lupin
+0.1.13` while declaring different conformance pins: the version had stopped
+identifying a state. This entry is the correction, and it is honest about
+the gap: one release covering the whole span, grouped by theme, not twelve
+retroactive versions pretending each had shipped.
 
 Released against pin `90c90df` (the s114–s116 wave). The span advanced the
 pin `02c1e88` → `c9da6d9` → `b522b8a` → `1b149ba` → `87405ac` → `21b129e`
