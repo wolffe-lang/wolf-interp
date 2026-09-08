@@ -26,7 +26,20 @@
 //! the clause's, and it was untested until the clause existed to name it.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
+
+/// No child in this file may outlive its budget.
+///
+/// The first cut of these tests used `Command::output()`, which waits
+/// FOREVER. A child that parks — the exact failure `[os.net.accept]` is about
+/// — then hangs the whole `cargo test` step rather than failing it, and it did:
+/// wolf-interp CI, windows job, 1h46m in `cargo test` while the same suite went
+/// green on linux and macOS in minutes. `corpus/net/accept_race.lu` states the
+/// discipline in its own header — "a regression is a wrong line, never a hung
+/// gauntlet" — and the test written to mirror that clause is the one place it
+/// must not be broken.
+const CHILD_BUDGET: Duration = Duration::from_secs(60);
 
 fn scratch(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
@@ -37,14 +50,42 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
+/// Runs `lupin` and KILLS it if it outstays [`CHILD_BUDGET`], so a park is a
+/// failing test with a message and never a hung runner.
+///
+/// The pipes are drained only after the child is gone, which is safe here and
+/// only here: every program in this file prints one short line, far inside a
+/// pipe buffer. A chattier child would need a reader thread per pipe.
+fn run_bounded(mut command: Command, what: &str) -> Output {
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("lupin runs");
+    let started = Instant::now();
+    loop {
+        match child.try_wait().expect("the child is waitable") {
+            Some(_) => break,
+            None => {
+                assert!(
+                    started.elapsed() < CHILD_BUDGET,
+                    "{what}: `lupin` did not finish within {CHILD_BUDGET:?} — killed. \
+                     A parked accept is the failure this file exists to catch, so read \
+                     this as the finding, not as an infrastructure flake."
+                );
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        }
+    }
+    child.wait_with_output().expect("the child's output")
+}
+
 fn run_program(dir: &Path, source: &str) -> Output {
     let entry = dir.join("main.lu");
     std::fs::write(&entry, source).expect("written");
-    Command::new(env!("CARGO_BIN_EXE_lupin"))
-        .arg("run")
-        .arg(&entry)
-        .output()
-        .expect("lupin runs")
+    let mut command = Command::new(env!("CARGO_BIN_EXE_lupin"));
+    command.arg("run").arg(&entry);
+    run_bounded(command, &format!("run {}", entry.display()))
 }
 
 /// One hand of the race: accept under the listener's armed budget, then say
@@ -73,17 +114,19 @@ fn two_hands_on_one_listener_both_come_back_inside_one_budget() {
     // runtime) it parked in the kernel with its budget already spent, alive
     // and answering nothing; here it must come back as `timeout`.
     //
-    // `one_budget` is the half a count alone would miss. The budget is 800ms
-    // and the assertion is that BOTH hands are home inside 1600ms: a runtime
-    // that re-armed a fresh budget on the lost wake would answer at ~1600ms
-    // and later, and the line would read false. The margin is 2x, not a few
-    // milliseconds, so a loaded box moves the number and never the verdict.
+    // `one_budget` is the half a count alone would miss. The budget is 2000ms
+    // and the assertion is that BOTH hands are home inside 3500ms: a runtime
+    // that re-armed a fresh budget on the lost wake would answer at ~4000ms
+    // and later, and the line would read false. 1500ms of slack sits between
+    // the two, because the discriminator has to survive a cold, loaded CI
+    // runner interpreting a debug build — the first cut allowed 800ms of slop
+    // against a 1600ms floor, which is a flake waiting for a slow box.
     let dir = scratch("net-accept-race");
     let source = format!(
         "fn main() -> !int {{\n\
         \x20   let srv = net_listen(\"127.0.0.1:0\")?\n\
         \x20   let port = net_port(srv)?\n\
-        \x20   net_deadline(srv, 800)?\n\
+        \x20   net_deadline(srv, 2000)?\n\
         \x20   let ch = channel[str](4)\n\
         \x20   let started = time_now_ms()\n\
         \x20   scope s {{\n\
@@ -105,7 +148,7 @@ fn two_hands_on_one_listener_both_come_back_inside_one_budget() {
         \x20   if a == \"lost\" {{ lost = lost + 1 }}\n\
         \x20   if b == \"lost\" {{ lost = lost + 1 }}\n\
         \x20   net_close(srv)?\n\
-        \x20   print(\"one_won {{won == 1}} loser_returned {{lost == 1}} one_budget {{elapsed < 1600}}\")\n\
+        \x20   print(\"one_won {{won == 1}} loser_returned {{lost == 1}} one_budget {{elapsed < 3500}}\")\n\
         \x20   0\n\
         }}\n"
     );
@@ -142,7 +185,7 @@ fn a_budgeted_accept_with_no_connection_answers_its_own_row() {
         \x20   }\n\
         \x20   let elapsed = time_now_ms() - started\n\
         \x20   net_close(srv)?\n\
-        \x20   print(\"row {c == -1} inside {elapsed >= 400 && elapsed < 1200}\")\n\
+        \x20   print(\"row {c == -1} inside {elapsed >= 400 && elapsed < 3000}\")\n\
         \x20   0\n\
         }\n";
     let out = run_program(&dir, source);
@@ -162,12 +205,9 @@ fn the_corpus_witness_declines_by_name_and_not_by_absence() {
     let corpus = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(wolf_interp::upstream_root())
         .join("corpus/net/accept_race.lu");
-    let out = Command::new(env!("CARGO_BIN_EXE_lupin"))
-        .arg("conform-run")
-        .arg(&corpus)
-        .arg("--json")
-        .output()
-        .expect("lupin runs");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_lupin"));
+    command.arg("conform-run").arg(&corpus).arg("--json");
+    let out = run_bounded(command, "conform-run net/accept_race.lu");
     let record: serde_json::Value =
         serde_json::from_slice(&out.stdout).expect("the record is JSON");
     assert_eq!(record["verdict"], "unsupported");
