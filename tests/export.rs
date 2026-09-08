@@ -165,7 +165,12 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // the SECTION heading `[os.proc]` and no witness cites it, which is why the
 // registry moves by five and the floor by four. Raised in the bump commit
 // per the test's own instruction.
-const RATCHET_FLOOR: usize = 186;
+// 186 -> 187 at v0.2.6 / 398e5f5 (is39, wolf-lang v0.2.6): `os.net.accept`,
+// cited by the witness s138 shipped with it (`net/accept_race.lu`). The other
+// anchor the registry gained, `conf.anchor.ns.admit`, is a conformance clause
+// no corpus program cites, which is why the registry moves by two and the
+// floor by one. Raised in the bump commit per the test's own instruction.
+const RATCHET_FLOOR: usize = 187;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -254,7 +259,13 @@ const RATCHET_FLOOR: usize = 186;
 // §4 heading `[os.proc]` with its `[os.proc.inherit]`. Key sets diffed BOTH
 // ways — five added, NOTHING dropped (wolf-lang#177's lesson, still
 // standing).
-const ANCHORS_TOTAL: usize = 422;
+// 422 -> 424 at v0.2.6 / 398e5f5 (is39, wolf-lang v0.2.6): `[os.net.accept]`
+// (#242, the fair accept) and `[conf.anchor.ns.admit]` (#239, how the NEXT
+// namespace is admitted). Key sets diffed BOTH ways — two added, NOTHING
+// dropped, no owner changed (wolf-lang#177's lesson, still standing). s139's
+// seven `[sched.*]` are NOT here: they land at `ed8f526`, one merge after
+// this tag — see `tests/anchor_admission.rs`.
+const ANCHORS_TOTAL: usize = 424;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -439,10 +450,14 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // `os/cpus.lu`, all entries, so both counts move by 4; the suite is
     // unmoved (is38's new suite programs are inline fixtures, which the
     // extractor does not harvest).
+    // 545/511 -> 546/512 at 398e5f5 (is39, wolf-lang v0.2.6): 1 corpus file
+    // — s138's `net/accept_race.lu`, an entry, so both counts move by 1; the
+    // suite is unmoved (is39's new suite programs are inline fixtures, which
+    // the extractor does not harvest).
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "6ade878c1f5f48bcb5c9ee804c749fbbc8634a02");
-    assert_eq!(summary.programs, 545);
-    assert_eq!(summary.records, 511);
+    assert_eq!(summary.pin, "398e5f547a65308c6a3e88fee632563e87afd217");
+    assert_eq!(summary.programs, 546);
+    assert_eq!(summary.records, 512);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
