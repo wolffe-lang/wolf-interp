@@ -1954,7 +1954,7 @@ typecheck → mem,
 and two conc files gain `-> !int` rows (E0604/D30). Anchors stay 315,
 ratchet stays 102; bundle 300 programs / 278 records.
 
-- **The conc tier, machine to machine: 10 of 10 agree.** The wave's
+- The conc tier, machine to machine: 10 of 10 agree. The wave's
   first comparison over a corpus tier where BOTH implementations
   execute concurrency. `wolf conform-run --native --seed=N` vs `lupin
   conform-run --seed=N` over all ten run-phase conc-tier files at seeds
@@ -1965,12 +1965,12 @@ ratchet stays 102; bundle 300 programs / 278 records.
   `conform-run` (wolfgang's native rung is opt-in) and ledgers the ten
   as counterparty-unsupported conservatism. The native comparison ran
   direct, documented in the thirteenth differential entry.
-- **Thirteenth corpus differential: 241 entries, 0 divergences.**
+- Thirteenth corpus differential: 241 entries, 0 divergences.
   Counterparty built CLEAN at the pin with `libwolf_rt.a` provisioned;
   395 conservatism-ledger entries (66 rejects-beyond, 130
   run-unmatched, 152 counterparty-unsupported, 47 interp-unsupported).
   `FILED_DIVERGENCES` is empty again.
-- **DIV-2026-016 RESOLVED; wolf-lang#61 closed.** The CLEAN build
+- DIV-2026-016 RESOLVED; wolf-lang#61 closed. The CLEAN build
   answers `fail(E0809)@typecheck`, same span `[518,523]`. The E0806
   answer does not reproduce at the release sha or this pin, agreeing
   with the issue's own reproduction attempt. `[proto.cmp.rung]`
@@ -1978,13 +1978,13 @@ ratchet stays 102; bundle 300 programs / 278 records.
   attributed to a stale/intermediate-pin counterparty build. An
   evidence-hygiene lesson (fresh counterparty target per re-pin), not
   a semantics one.
-- **E1014's trap-map row landed upstream: 0.1.8's filed nit, closed.**
+- E1014's trap-map row landed upstream: 0.1.8's filed nit, closed.
   The pinned `[conf.trap.map]` exclusivity row now names "E1014's
   read-mode write barrier, D39" outright, so this machine's D39 trap
   mapping (`ledger::dynamic_meaning` E1014 → `exclusivity`) is
   document-stated rather than family-inferred. No behavior change;
   the citation argument in the comment retired.
-- **Surfaces:** `--version` prints
+- Surfaces: `--version` prints
   `lupin 0.1.9 (wolf-interp, reference interpreter at pin 0b4e79c)`.
   Corpus walk 263 files / 0 mismatch (154 match, 8 dynamic
   counterparts, 32 conservatism, 47 out-of-scope); bundle 300 programs /
@@ -2016,8 +2016,8 @@ fail-files pair with this machine's traps as dynamic counterparts
 pinned map prose names E1013 but not yet E1014, a noted upstream-worthy
 nit).
 
-- **D39's dynamic mirror: a write through a read-mode binding traps
-  `exclusivity`.** Every call frame now carries its read-mode parameter
+- D39's dynamic mirror: a write through a read-mode binding traps
+  `exclusivity`. Every call frame now carries its read-mode parameter
   list and `write_path` is the barrier: whole-parameter stores,
   projection writes (`p.x = 9`), compound assigns, and a mutating
   method's receiver write-back all trap with the parameter's declaration
@@ -2027,9 +2027,9 @@ nit).
   kind; D39 names no new one). A body local shadowing the parameter's
   name stays an ordinary local. The caller-side overlap half
   (`f(mut a, a.x)`) was verified and kept. approximation-contract §6.12.
-- **D40's dynamic mirror: mutating a container while a `for` loop
+- D40's dynamic mirror: mutating a container while a `for` loop
   iterates it traps `exclusivity` at the mutation (S-11 RESOLVED;
-  closes wolf-interp#9 as fixed).** `for x in xs` holds a read claim on
+  closes wolf-interp#9 as fixed). `for x in xs` holds a read claim on
   the container's place for the loop's whole extent; push/pop/clear, an
   element write, a whole-container assignment, or a `mut` pass inside
   the body conflicts with it and traps, the message naming the loop and
@@ -2039,7 +2039,7 @@ nit).
   beside the claim stay legal; the claim dies with the loop on every
   exit path. approximation-contract §6.8 rewritten to the ruled
   semantics; the S-11 filing closes in docs/divergence-log.md.
-- **The s71 clause backlog.** `[mem.str.empty]`: the searching family is
+- The s71 clause backlog. `[mem.str.empty]`: the searching family is
   defined on an empty needle, so `count("")` is 0, `split("")` yields
   the whole string as one piece, and `replace("", t)` is the identity;
   the three `unsupported` declines die. `[mem.str.repeat]`: a negative
@@ -2051,12 +2051,12 @@ nit).
   to a same-module fn with a declared closed row, the E1007
   discipline); `rows/negative/handler_uncovered.lu` pins it, and the
   payload-binding run half (`rows/else_tag_payload.lu`) already agreed.
-- **comptime posture unchanged, verified at the new pin:** every corpus
-  comptime file that calls a `comptime fn` declines loudly and by name
+- comptime posture unchanged, verified at the new pin: every corpus
+  comptime file that calls a `comptime fn` declines by name
   (`` `expand` is a `comptime fn`; … the compiler's engine (s16) ``),
   including the new `comptime/fold_reaches_lane.lu`. The fold table is
   the compiler's; nothing here half-implements it.
-- **One divergence found, filed: DIV-2026-016 / wolf-lang#61.**
+- One divergence found, filed: DIV-2026-016 / wolf-lang#61.
   wolfgang's own `conform-run` answers `fail(E0806)@typecheck` (the
   generic refutability diagnostic) on `rows/negative/
   handler_uncovered.lu`, the file its own corpus pins `fail(E0809)`
@@ -2065,7 +2065,7 @@ nit).
   the defendant (both records attached to the issue). The lane is
   GREEN with the filing; the entry closes when wolfgang's conform-run
   answers its own pin.
-- **Surfaces:** `--version` prints
+- Surfaces: `--version` prints
   `lupin 0.1.8 (wolf-interp, reference interpreter at pin 26fa98e)`.
   Corpus walk 262 files / 0 mismatch (153 match, 8 dynamic
   counterparts, 32 conservatism, 47 out-of-scope); bundle 299 programs /
@@ -2083,8 +2083,8 @@ grows `[proto.cmp.rung]`, 305 → 306 anchors, ratchet 96 → 97). Two
 issues closed, every open divergence family closed, the differential
 compares CLEAN.
 
-- **#21: container-element literals adopt `int`, and `List[i32]`
-  checks its writes.** Both directions of the s70 reassignment. A
+- #21: container-element literals adopt `int`, and `List[i32]`
+  checks its writes. Both directions of the s70 reassignment. A
   literal pushed into a `List` adopts the locked 64-bit `int` (the
   `Range` precedent) instead of staying literal and defaulting `i32` at
   the pop-binding, so `push(2147483647); pop; +1` prints `2147483648`
@@ -2095,7 +2095,7 @@ compares CLEAN.
   arithmetic at `i32`, and the compound `l[0] *= 2` traps BEFORE the
   write lands. The five `faults/overflow_*` litmuses and
   `memory/list_elem_assign.lu` all pin, both lanes.
-- **#22: the explorer runs the same admission ladder as `run`.** The
+- #22: the explorer runs the same admission ladder as `run`. The
   `--explore` path bypassed the E11xx statics and certified programs
   "observably deterministic" that the same binary refuses to run
   (rp01's finding; the ch13 lost-update shape). `frontend::admit` is
@@ -2105,19 +2105,19 @@ compares CLEAN.
   `store_buffer`/`chan_unsendable`/`when_nested` with the run door's
   own diagnostics (exit 2, no certificate). `--explore` also honors
   `--std-root` now.
-- **`[proto.cmp.rung]` adopted; DIV-2026-011/-012/-014/-015 ALL
-  CLOSE.** The ruling the last four rounds routed upstream landed in
+- `[proto.cmp.rung]` adopted; DIV-2026-011/-012/-014/-015 ALL
+  CLOSE. The ruling the last four rounds routed upstream landed in
   spec/06: fail(code+span) parity at any shared-ladder rung is
   agreement, exactly one verdict wide. `compare_deep` and
   `compare::compare` implement the clause, the eleven rung-placement
   divergences compare clean, and `FILED_DIVERGENCES` is EMPTY for the
   first time since the fourth round. En route the fail comparison
-  learned to read the first **error**-severity diagnostic. A
+  learned to read the first error-severity diagnostic. A
   counterparty may interleave lints ahead of its rejection in
   `diagnostics` (`[proto.record.warn]`), and a lint's span is
   `[proto.cmp.warn]`'s surface, never the rejection's (the
   `resolve/cycle` shape at this pin).
-- **The s69 idiom lints.** Ten of the eleven run here with
+- The s69 idiom lints. Ten of the eleven run here with
   counterparty-identical spans: W0310–W0315 (naming, docs, module
   shape), W0603/W0604 (rows), W1002/W1003 (mode hygiene). E0802's
   literal-precise dead-arm analysis lands with them (duplicated
@@ -2126,7 +2126,7 @@ compares CLEAN.
   honest-absent: its only
   witness shape needs the dotted nested-module loading this machine's
   loader does not perform.
-- **The s40 tier, postured.** env and time are implemented on the
+- The s40 tier, postured. env and time are implemented on the
   checked-lane posture: overlay env (never the host's), empty argv
   (the stdin posture mirrored), cwd as process state, X12 monotonic
   time, and `os_exit`'s defer-skipping termination (`Signal::Exit`).
@@ -2136,11 +2136,11 @@ compares CLEAN.
   counterparty's reference parser, declined instead of guessed. All
   fifteen names resolve, so every refusal is "unsupported feature",
   never "unknown name".
-- **Counts.** 254 corpus files, 232 entries: 149 match, 5 dynamic
+- Counts. 254 corpus files, 232 entries: 149 match, 5 dynamic
   counterparts, 32 conservatism, 46 out of scope, 0 mismatches.
   diff-run at the pin (CLEAN wolfc build at `e94b879`): 232 entries,
-  **0 divergences**. Bundle: 291 programs, 269 records, 97/306 anchors.
-- **Surfaces.** `--version` names the pairing posture per r01 row 7:
+  0 divergences. Bundle: 291 programs, 269 records, 97/306 anchors.
+- Surfaces. `--version` names the pairing posture per r01 row 7:
   `lupin 0.1.7 (wolf-interp, reference interpreter at pin e94b879)`.
 
 ## 0.1.6 — 2026-08-11
@@ -2154,7 +2154,7 @@ the corpus grows `lints/` ×12, `conc/` ×3, `projects/` ×3, `net/` ×2,
 and the `test` namespace joins the reserved forward set). Two issues
 closed, one divergence family filed, one closed.
 
-- **#20: reads through frozen containers are legal.** The spec ruled
+- #20: reads through frozen containers are legal. The spec ruled
   (`[mem.region.freeze.4]`, appended for exactly this defect): every
   read through frozen data is an ordinary read, and a value-semantics
   machine must not count writing back an *unmodified* method receiver
@@ -2163,7 +2163,7 @@ closed, one divergence family filed, one closed.
   (`frozen[0].body.words()`) reads legally where 0.1.5 trapped
   `region-fault`; a genuinely mutating method through a frozen home
   still traps (`region_freeze_write.lu` unchanged).
-- **#19: the s68 lint wave.** This machine now runs warning analyses:
+- #19: the s68 lint wave. This machine now runs warning analyses:
   the eleven shared-analysis lints (W0304–W0309, W0401, W0602, W1101,
   W1102, W1302) plus the `#[allow]` self-lints W0302/W0303, in the new
   `lint` module. Every fixture span is byte-identical to the
@@ -2173,17 +2173,17 @@ closed, one divergence family filed, one closed.
   at warning severity. The compiler-only four (W0402, W0601, W0801,
   W1001) stay honest-absent, written down in `lint::HONEST_ABSENT`; the
   corpus `warns:` ledgers are enforced for the implemented set. The
-  same walk carries the pin's static realignments: **E1101/E1102/E1103**
+  same walk carries the pin's static realignments: E1101/E1102/E1103
   (the #41 capture law: a task's write to a captured name with `when`
   bodies exempt, a spelled `List`/`Map` channel payload, a lexically
-  nested `when`) and **E0004** (`1.e5` stays an *error*, the s68
+  nested `when`) and E0004 (`1.e5` stays an *error*, the s68
   correction) all reject at this machine's resolve rung with the
   counterparty's codes and spans, so `store_buffer`/`chan_unsendable`/
   `when_nested` leave the run ledger for the fail column, and the last
   E000x unsupported(interp) conservatism row closes. §7.8's
   `[ub.assume.noalias]` citation is confirmed `[mem.unsafe.raw.2]`,
   with W1302 as its compile-time face.
-- **Realignments at the pin:** `[conc.chan.default]` adopts this
+- Realignments at the pin: `[conc.chan.default]` adopts this
   machine's rendezvous default as normative (`channel[T]()` was already
   capacity 0 here; the clause cites the behavior, and the ctor now
   cites the clause); E0412/E0413 spans realign to the counterparty's `:spec`
@@ -2191,11 +2191,11 @@ closed, one divergence family filed, one closed.
   walks); the s34 proc pair and two of the three P-project witnesses
   run (`projects/count.lu` needs the fs tier this machine declines by
   design).
-- Tenth differential: 203 entries, **11 divergences, all filed, every
-  one the same finding**: same code, same span, this machine at
+- Tenth differential: 203 entries, 11 divergences, all filed, every
+  one the same finding: same code, same span, this machine at
   resolve vs wolfc at typecheck/mem (DIV-2026-011/-012/-014, plus new
-  **DIV-2026-015** for the four realigned statics; one `[proto.cmp]`
-  ruling closes all four families). **DIV-2026-013 closes** (wolfc's
+  DIV-2026-015 for the four realigned statics; one `[proto.cmp]`
+  ruling closes all four families). DIV-2026-013 closes (wolfc's
   s38 conform-run wiring landed; `unsupported` there now, never a
   divergence). 325 conservatism entries. Bundle: 258 programs, 240
   records (the issue #20 freeze-read twin joins the suite tier);
@@ -2211,7 +2211,7 @@ registry grows the `diag.*` block, `[mem.str.get]` and
 `[proto.record.warn]`/`[proto.cmp.warn]`, 290 → 303 anchors). One
 issue closed (#18, six items), three divergences filed.
 
-- **#18 (1): the unsafe ring is enforced.** Raw-tier operations
+- #18 (1): the unsafe ring is enforced. Raw-tier operations
   outside `unsafe` blocks reject at this machine's resolve rung with
   the counterparty's code and span: C calls (E1301 at the call,
   `[384,395]` on `unsafe_raw_outside.lu`, byte-identical), raw reads
@@ -2220,8 +2220,8 @@ issue closed (#18, six items), three divergences filed.
   the provenance operations. Sema-lite tracks what it can *see*
   (literal-bound locals, allocator calls, the book's laundered
   `unsafe { … }` initializer) and never guesses. Rung placement vs
-  wolfc's mem emission is **DIV-2026-012** (the DIV-2026-011 question).
-- **#18 (2): nothing casts to `bool`.** The cast matrix's bool column
+  wolfc's mem emission is DIV-2026-012 (the DIV-2026-011 question).
+- #18 (2): nothing casts to `bool`. The cast matrix's bool column
   closed: `n as bool` is E0805 at the whole cast expression, inside
   `unsafe` too (observed parity at the pin). §7/T1's one modelled
   production door closes with it: the T1 trigger/twin retired,
@@ -2232,33 +2232,33 @@ issue closed (#18, six items), three divergences filed.
   suite pair retired with its `*u8` signatures; the protector
   acceptance evidence moved inline (machine-direct), and P2's
   trigger/twin rebuilt on `freeze r`, in-language, same row.
-- **#18 (3): `*T` never crosses a signature.** E1302 at the parameter
+- #18 (3): `*T` never crosses a signature. E1302 at the parameter
   name (`[329,330]` on `unsafe_sig.lu`, byte-identical), return types
   at the type span. Also DIV-2026-012.
-- **#18 (4): the C intrinsics check their arguments.** Exact arity
+- #18 (4): the C intrinsics check their arguments. Exact arity
   for the modelled five; size/count arguments must be non-negative
   integers; `c.memset`'s byte argument no longer defaults silently, and
   every refusal names the construct.
-- **#18 (5): the §7.4 format specs, to parity.** New `fmtspec`
+- #18 (5): the §7.4 format specs, to parity. New `fmtspec`
   module: `[[fill]align][+][0][width][.precision][type]`, with zero-pad
   AFTER the sign (`{n:08}` is the flag plus width; the absorb-into-
   width reading was the filed bug), `+` with zero taking it,
   sign-magnitude bases, `e`/`E` signed two-digit exponents, str
   precision on code-point boundaries, shortest-round-trip f64 default
   (the `std.fmt.decimal.to_str` layout; floats render `3`, not `3.0`).
-  Malformed specs are **E0412** and type-mismatched specs **E0413**,
+  Malformed specs are E0412 and type-mismatched specs E0413,
   statically at the literal where sema-lite sees the hole's class;
   E0411 statically refuses `s[i]` char indexing. The three corpus
   fail-files match their pins; wolfc's conform-run at this pin cannot
-  reach its own emissions there, filed as **DIV-2026-014**,
+  reach its own emissions there, filed as DIV-2026-014,
   counterparty suspected.
-- **#18 (6): the fs/io posture.** No filesystem by design: the s38
+- #18 (6): the fs/io posture. No filesystem by design: the s38
   `fs_*` family and `read_line` resolve and decline with the construct
   named. `eprint`/`eprint_raw` are real: one fmt machinery, two fds,
   stderr live-gated like stdout's pass-through and never hashed;
   `io/eprint.lu` runs to its pinned stdout. wolfc's conform-run at the
-  pin E0301-rejects its own s38 files, filed as **DIV-2026-013**.
-- **Realignment:** the s37 str surface lands in full (`get`, the
+  pin E0301-rejects its own s38 files, filed as DIV-2026-013.
+- Realignment: the s37 str surface lands in full (`get`, the
   `[mem.str.get]` boundary primitive, oob = reversed = split-code-point
   = `none`, hits bit-identical to the checked slice; then `find`/`rfind`,
   `bytes`, `split`/`count`/`replace`, `strip_prefix`/`strip_suffix`,
@@ -2271,8 +2271,8 @@ issue closed (#18, six items), three divergences filed.
   anchor namespace. The lints tier runs warning-clean; spec/01 §9's
   bare `[diag]` heading token is exempted from the registry
   cross-check as a namespace, not a clause (routed upstream).
-- Ninth differential: 181 entries, 18 members, **10 divergences, all
-  filed** (011 open; 012 rung placement ×4; 013/014 the counterparty's
+- Ninth differential: 181 entries, 18 members, 10 divergences, all
+  filed (011 open; 012 rung placement ×4; 013/014 the counterparty's
   conform-run surface lagging its own corpus at the pin), 289
   conservatism entries. Bundle: 235 programs, 217 records; coverage
   ratchet raised 86 → 90.
@@ -2286,8 +2286,8 @@ bumped `d147a54` → `ad6cef7` (s29+s30: the corpus grows
 anchors hold at 290; the two E0410 fail-files re-pin `phase:` resolve →
 parse). Four issues closed, one divergence resolved, one filed.
 
-- **#15 (silent-wrong, ba:blocker): the X1 call-site mode law has its
-  missing half.** `f(x)` where the signature demands `f(mut x)` ran to a
+- #15 (silent-wrong, ba:blocker): the X1 call-site mode law has its
+  missing half. `f(x)` where the signature demands `f(mut x)` ran to a
   wrong answer silently (the writeback never happened). The book caught
   it teaching chapter 7. E1007's static rule is now sema-lite's at the
   resolve rung, all four disagreement shapes (missing `mut`/`take`,
@@ -2298,30 +2298,30 @@ parse). Four issues closed, one divergence resolved, one filed.
   function values, is refused at the call, never run wrong.
   `memory/mode_missing_mut.lu` leaves the run ledger; the book's ch07
   repro is a regression test. Rung placement vs wolfc's `mem` emission
-  is **DIV-2026-011** (same code, same span; routed upstream).
-- **#13: `c.calloc(n, size)` allocates `n * size` bytes.** The modelled
+  is DIV-2026-011 (same code, same span; routed upstream).
+- #13: `c.calloc(n, size)` allocates `n * size` bytes. The modelled
   C heap gave it `n`; s29's native differential (real glibc) caught the
   disagreement, the first soundness candidate it produced, and a lupin
   bug. Overflow in the size computation is `unsupported` (real calloc
   says NULL; no null surface is pinned). `malloc`/`memset`/`memcpy`
   audited correct. `unsafe_c_alloc_native.lu` runs `exit(0)`.
-- **#14: integer literals consult their context.** `-9223372036854775808`
+- #14: integer literals consult their context. `-9223372036854775808`
   is writable in every annotated spelling: literals stay unconstrained
   through negation and literal-only arithmetic (i128-checked), a
   declared return type types the value a call returns, and
   `[arith.literal.default]`'s i32 rule (with a range check) applies
   where the literal meets its binding. `var k = 0` remains i32, the
   rule wolfc implements, now documented (approximation-contract §6.11).
-- **#11: closed after the sc04 reopen.** The 0.1.3 cast matrix holds at
+- #11: closed after the sc04 reopen. The 0.1.3 cast matrix holds at
   this pin: the reopening program prints `3.0` / `converts` and exits 0;
   `(3 as f64) == 3` is false. What the reopen's evidence showed the
   matrix still misses is filed separately as #17: cast target types are
   not *resolved* (`s as nonsense` no-ops).
-- **DIV-2026-010 closed.** s29 moved wolfc's E0410 to the resolve rung
+- DIV-2026-010 closed. s29 moved wolfc's E0410 to the resolve rung
   (with the `[conc.when.body]` exemption this machine flagged as
   wolf-lang#21) and re-pinned the corpus directives; the eighth
   differential compares both files clean. Eighth round: 165 entries, 18
-  members, **1 divergence** (DIV-2026-011, filed), 268 conservatism
+  members, 1 divergence (DIV-2026-011, filed), 268 conservatism
   entries.
 - Realignment: `float_nan_cmp.lu` (IEEE `!=` is unordered; this
   machine's f64 model already agreed, and wolf-lang#22 was the
@@ -2339,11 +2339,11 @@ The rows half, and the s27/s28 catch-up. Pin bumped `a0c4564` →
 type grammar: 281 → 290 anchors). Three issues closed, one divergence
 resolved, one filed.
 
-- **#12: postfix rows, all three halves.** `type ::= type '!' error_row`
-  parses in **every** type position (param, `let`/`var` annotation,
+- #12: postfix rows, all three halves. `type ::= type '!' error_row`
+  parses in every type position (param, `let`/`var` annotation,
   nested); a bare lowercase name at a raise site resolves against the
   enclosing function's declared return row (`return none` under
-  `-> int ! {none}` raises the tag); and resolution is **eager**: sema's
+  `-> int ! {none}` raises the tag); and resolution is eager: sema's
   `raise_check` refuses an unresolvable tag at the resolve rung whatever
   path the input takes, so the sc02 false-certification trap
   (`unsupported` only when the raise was *hit*) is structurally closed.
@@ -2353,7 +2353,7 @@ resolved, one filed.
   `expect`, `flatten`, `to_list`, `exists`, `is_none`, the F-0002 family,
   unwritable since sc01) execute under lupin, lowercase `none` included
   (`tests/rows_option.rs`).
-- **#11 (silent-wrong): numeric casts convert.** `n as f64` produced an
+- #11 (silent-wrong): numeric casts convert. `n as f64` produced an
   int that compared equal to ints and unequal to the float it claimed to
   be. `as` between numeric types now converts in every direction:
   int→float exact, float→int truncating toward zero with an X3 range
@@ -2363,26 +2363,26 @@ resolved, one filed.
   approximation-contract §6.9). The non-bridges refuse like wolfc's
   E0805 (no truthiness, no `int as str`). `tests/cast_matrix.rs` pins
   the matrix, both directions of every pair.
-- **#10: slice-of-binding receivers.** `d[0..1].upper()` refused at
+- #10: slice-of-binding receivers. `d[0..1].upper()` refused at
   resolve (`d["0..1"]` does not denote a place) because the range key was
   stringified into a map-key projection. A slice expression is a value,
   not a place: `place_of` refuses it, the method call falls into the
   by-value receiver path, and `binding[range].method()` runs exactly like
   `literal[range].method()` always did.
-- **The s27 spec realignments.** `[mem.iter.for]`: `for` over an
+- The s27 spec realignments. `[mem.iter.for]`: `for` over an
   `impl Iter for T` value desugars to the clause's drive loop
   (`next(mut self) -> T ! {done}` through call-by-value-result; range-for
-  unchanged). Impl-block **method dispatch** lands with it, s17
+  unchanged). Impl-block method dispatch lands with it, s17
   resolution order included (inherent wins; `Speak.speak(d)` reaches the
   shadowed trait method; trait default bodies stay `unsupported`).
   `[conf.trap.assert]`: `assert` is an intrinsic, never shadowed by a
-  module fn, two-arg form's message evaluated **only** on the failing
+  module fn, two-arg form's message evaluated only on the failing
   path, rendered to stdout before the trap (the counterparty's #19
   shape, from this side). `[mem.str.order]`: the executed byte-
   lexicographic ordering is now clause-backed and witness-tested. Twelve
   more corpus entries reach the run rung than at 0.1.2 (114 of 161;
   matches 76 → 84, out-of-scope 46 → 36, 0 mismatch).
-- **DIV-2026-010 re-verified: still open at this pin.** A CLEAN wolfc
+- DIV-2026-010 re-verified: still open at this pin. A CLEAN wolfc
   build at `d147a54` reports `fail(E0410)@typecheck` where the corpus
   pins `phase: resolve`, and the sixth round's two divergences stand
   unchanged, filed and non-gating. The fix is in flight upstream (s29's
@@ -2406,7 +2406,7 @@ The lupin maintenance pass: five filed issues, four fixed, one routed
 upstream. Pin bumped `cbde620` → `a0c4564` (the corpus grows the E0410
 fail-files and the unsafe/checked memory tier: 164 → 175 files).
 
-- **#5 (silent-wrong): bare-ident match patterns dispatch.** An
+- #5 (silent-wrong): bare-ident match patterns dispatch. An
   identifier that names an in-scope enum variant is a *variant pattern*
   (matching the tag spelled bare or enum-qualified, payload half
   included); a capitalized identifier over a tag-shaped scrutinee is a
@@ -2423,8 +2423,8 @@ fail-files and the unsafe/checked memory tier: 164 → 175 files).
   approximation. Same-scope `let` shadowing also reads the *latest*
   binding now (the `rposition` repair), which is `let_shadow_var_ok.lu`'s
   pinned `exit(0)`.
-- **#7 (false UB): both `ub(mem.ub)` shapes of wolf-std F-0013 were one
-  defect in `Provenance::drop_frame`:** it still parsed the pre-task
+- #7 (false UB): both `ub(mem.ub)` shapes of wolf-std F-0013 were one
+  defect in `Provenance::drop_frame`: it still parsed the pre-task
   `<frame>:<path>` place-key shape (keys are `t<task>:<frame>:<path>`
   since is06) and so dropped *nothing*: a callee's parameter binding
   survived its call, and the next call reusing that frame index and
@@ -2435,15 +2435,15 @@ fail-files and the unsafe/checked memory tier: 164 → 175 files).
   exactly. Both filed shapes are staged as regression tests
   (`tests/std_root.rs`), the transition table is untouched, and the ub
   matrix + ok-twins stay green, with no true detection weakened.
-- **#8: `let` reassignment rejects at the resolve rung.** Sema-lite
+- #8: `let` reassignment rejects at the resolve rung. Sema-lite
   tracks binding mutability (params and pattern bindings are the mode
   system's business; `when` bodies assign through the acquired cell;
   shadowing rebinds): plain and compound assignment to a `let`-bound
-  name is **E0410** with a `var` fix-it, span on the assigned place,
+  name is E0410 with a `var` fix-it, span on the assigned place,
   byte-identical code+span to wolfc on the pin's fail-files. The
   interpreter half of wolf-lang#2, closing the last half of the
   divergence.
-- **#6: lupin has a std root.** `--std-root DIR` on `run`/`check`/
+- #6: lupin has a std root. `--std-root DIR` on `run`/`check`/
   `conform-run`, `LUPIN_STD` as the flagless spelling: `use std.X[.Y]`
   resolves `<DIR>/X[/Y]/` through the normal loader (nested paths
   included; `std/x/deque_int` ships at that depth), the path's last
@@ -2451,11 +2451,11 @@ fail-files and the unsafe/checked memory tier: 164 → 175 files).
   `<package root>/<last segment>` fallback keeps mirrors and sibling
   modules working. Mirrors wolfc's s26 `--std-root`/`WOLF_STD`; the
   wolf-std rig's flat-mirror interim can retire.
-- **#9, mutation during `for` iteration: routed upstream, not
-  legislated.** The pinned spec says nothing about `for`'s operand
+- #9, mutation during `for` iteration: routed upstream, not
+  legislated. The pinned spec says nothing about `for`'s operand
   (no move, no extent-hold, no copy), and the implementations picked
   different readings (wolfc: E1001 static move; lupin: loop-entry
-  snapshot, runs). Filed as **S-11** in the divergence log with both
+  snapshot, runs). Filed as S-11 in the divergence log with both
   behaviors and the three candidate rulings; approximation-contract §6.8
   documents the machine's snapshot semantics. Compiler half wolf-lang#15;
   wolf-std keeps the divergence visible in CI.
@@ -2468,7 +2468,7 @@ fail-files and the unsafe/checked memory tier: 164 → 175 files).
 The bs00x maintenance pass: four filed issues, three fixed, one routed
 upstream.
 
-- **#1 (top severity): the DPOR closed-frontier miss is fixed.** Two
+- #1 (top severity): the DPOR closed-frontier miss is fixed. Two
   scheduler defects starved the explorer's backtrack sets: a send that
   committed a `select` arm consumed the selecter's registration on every
   channel of the select but recorded only the sent-on channel (the
@@ -2480,9 +2480,9 @@ upstream.
   outcomes (`balance=50` and `balance=100`) inside a *closed* frontier,
   identical to naive DFS, and is pinned as a regression litmus
   (`tests/explore_machine.rs::the_select_coupled_lost_update_is_inside_the_closed_frontier`).
-  The pinned `conc/` exploration ledger re-ran with **no count movement**
+  The pinned `conc/` exploration ledger re-ran with no count movement
   and every verdict-stability oracle still green.
-- **#2: write-after-freeze now traps on value paths.** Struct values
+- #2: write-after-freeze now traps on value paths. Struct values
   carry the region charged at their allocation site
   (`Value::Struct::home`), and `write_path` refuses a write through a
   container homed in a `Frozen` region: `region-fault
@@ -2492,17 +2492,17 @@ upstream.
   `region_freeze_rebind_ok.lu` twin; approximation-contract §6.1 records
   the remaining list/map gap). `memory/region_freeze_write.lu` moves from
   `exit(7)` to `trap(region-fault)` in the run ledger.
-- **#3: `when`-arity code aligned to wolfc.** The malformed-`when`
-  sentence now carries **E0201** (the established generic expected-token
+- #3: `when`-arity code aligned to wolfc. The malformed-`when`
+  sentence now carries E0201 (the established generic expected-token
   assignment) instead of the invented E0203, which collides with wolfc's
   toplevel-decl family. Message and `[gram.expr.conc]` anchor unchanged;
   `diag::UNPINNED_CODES` (the published choices table) updated.
-- **#4, cross-task capture-by-copy: routed upstream, not patched.**
+- #4, cross-task capture-by-copy: routed upstream, not patched.
   spec/03 makes the mut-capture shape a compile error (E1101) and states
   no runtime meaning; inventing a spawn-time trap would be legislating.
   Capture-by-copy stays the documented interpreter semantics
   (approximation-contract §10.2, corpus exemplar `conc/store_buffer.lu`),
-  and the gap is filed as **S-10** in the divergence log for a spec ruling
+  and the gap is filed as S-10 in the divergence log for a spec ruling
   (the E1004/E1005 precedent).
 - Conformance bundle: 203 programs / 187 records (the two new freeze
   litmuses); manual and export ledger updated in the same breath.
