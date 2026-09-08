@@ -61,7 +61,7 @@ rejected program and print the diagnostic to stderr.
 
 ## The std root
 
-`use std.X[.Y]` resolves against a **std root** when one is configured.
+`use std.X[.Y]` resolves against a std root when one is configured.
 `--std-root DIR` (on `run`, `check` and `conform-run`) reads the module
 directory `<DIR>/X[/Y]/`, and the `LUPIN_STD` environment variable is the
 flagless spelling every door honours. This is the interpreter half of the
@@ -80,10 +80,9 @@ hit a rule the language enforces at runtime. Every trap names its kind, a
 message, the clause it enforces, and where — `line:col`, 1-based, columns
 counted in characters (`[conf.trap.render]`; the raw byte span stays on
 `--json`'s `x-trap-span`). At the front door the diagnostic prints to
-stderr and the process exits `3` — a documented fact of this
-implementation, per-machine by `[conf.trap.exit]` (D60): the native tier
-exits 134 for the same fault, and conforming tools compare the *kind*,
-never the status number:
+stderr and the process exits `3`. That status is per-machine by
+`[conf.trap.exit]` (D60): the native tier exits 134 for the same fault, so
+conforming tools compare the *kind* and leave the status number alone:
 
 ```console
 $ lupin examples/overflow.lu
@@ -135,8 +134,8 @@ member:   true | false
 
 The header matters even outside the corpus, because of the module rule:
 directory = module, so sibling `.lu` files are one module unless a file
-opts OUT as a **standalone entry** (`[conf.directive.standalone]`, D59).
-The standalone set is exactly four spellings: a `//! member: false` line
+opts OUT as a standalone entry (`[conf.directive.standalone]`, D59).
+The standalone set has four spellings: a `//! member: false` line
 (the ordinary opt-out — several programs sharing one scratch directory is
 one header line per program), the `check:` + `phase:` entry pair, a
 script announcement (a `#!` first line or `pkg { … }` frontmatter), or a
@@ -146,7 +145,7 @@ build — plain siblings are shared members of every build, so two programs
 sharing a directory each mark themselves. `member: true` marks a file
 that belongs to a multi-file module case and is only exercised through
 its directory's entry file. `lupin corpus` walks the pinned corpus and
-checks every header against what this implementation actually observes.
+checks every header against what this implementation observes.
 
 ## Determinism and schedules
 
@@ -156,23 +155,22 @@ selects the whole decision stream, the record declares `seeded: true`, and
 the same seed replays byte-identically. `conform-run --explore=N` explores
 up to N inequivalent schedules instead of observing one run, and reports
 whether the program's outcome is schedule-dependent; a dependent program is
-a finding and exits `1`. Exploration admits exactly what `run` admits. A
-program the static ladder rejects (an E11xx capture-law finding, say)
-refuses to explore, with the same diagnostic and exit `2`. A schedule space
-only exists for an admitted program. `conform-run --help` lists the
+a finding and exits `1`. Exploration admits what `run` admits, since a
+schedule space exists only for an admitted program: a program the static
+ladder rejects (an E11xx capture-law finding, say) refuses to explore, with
+the same diagnostic and exit `2`. `conform-run --help` lists the
 exploration budgets.
 
 Everything a replay artifact needs is in the machine-readable forms, so a
-rig never scrapes the human report (wolf-interp#53). Each outcome of
-`--explore --json` carries three replay members: `replay`, the
-copy-pasteable flag; `schedule`, the decision stream as `ev:c0,c1,…` —
-the spelling `--schedule=` takes, and the only one that survives a stream
-too deep for a packed seed; and `seed`, that packed 62-bit value or
-`null`. A record produced under `--seed=N` or `--schedule=ev:…` echoes the
+rig can build one without scraping the human report (wolf-interp#53). Each
+outcome of `--explore --json` carries three replay members: `replay`, the
+copy-pasteable flag; `schedule`, the decision stream as `ev:c0,c1,…` (the
+spelling `--schedule=` takes, and the only one that survives a stream too
+deep for a packed seed); and `seed`, that packed 62-bit value or `null`. A record produced under `--seed=N` or `--schedule=ev:…` echoes the
 request back as the extension key `x-seed` or `x-schedule`, so
 `conform-run --json --seed=S > artifact.json` is self-contained: the file
 names the schedule it replays. Both keys are `x-` extensions
-(`[proto.record.ext]`) — the protocol's own field set is wolf-lang's to
-grow — and an absent extension key is never a divergence
+(`[proto.record.ext]`), since the protocol's own field set is wolf-lang's to
+grow, and an absent extension key is never a divergence
 (`[proto.cmp.defined-divergence]`), so a seeded record still compares
 clean against a counterparty that emits neither.
