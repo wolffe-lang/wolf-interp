@@ -1,5 +1,79 @@
 # Changelog
 
+## Unreleased
+
+THE SCHEDULE IN THE MIRROR (is39). Pin `398e5f5`, wolf-lang **v0.2.6**, the tag
+itself. The delta is one corpus file and two anchors, and the reading that
+matters is what is NOT in it.
+
+**wolf-lang#64 — `sched` — is deferred, deliberately, and the deferral has
+teeth.** s139 ruled `spec/07-schedule-points.md` normative and admitted `sched`
+(anchors 424 -> 431, additive). That landed at `ed8f526`, **one merge after the
+`v0.2.6` tag**: at `398e5f5` the `[conf.anchor.ns]` list registers eleven
+namespaces and `anchors.json` publishes **zero** `sched.*`. So this machine's
+eleven are exactly right at this pin, and a twelfth entry would put this side
+on the *permissive* half of the very silence `[conf.anchor.ns.admit]` was
+written to stop — the #239 shape, which this list wore for four pins with
+`diag`, `ct`, `type` and `os`. The clause says a namespace is admitted **in one
+change or not at all**; the one change is s139's, and it is not at this pin.
+
+What lands instead is the gate that was missing on both sides:
+`tests/anchor_admission.rs` reads `[conf.anchor.ns]` out of the pinned spec and
+diffs it against `anchor::REGISTERED_NAMESPACES` **both ways**, then diffs the
+registered set against the namespaces `anchors.json` actually publishes, **both
+ways** again — every registered namespace publishes, every published namespace
+is registered. Until now that list was a hand-copy kept honest by whoever
+bumped the pin noticing, which is precisely the defect #120, #239 and #246 each
+name. The s139 clause text ships beside it as a planted control, so the
+deferral is checkable *now*, and the moment the pin advances the gate goes red
+until `REGISTERED_NAMESPACES` grows `sched` and its length in the type.
+
+**#242 is taken, and is38's reason for deferring it does not survive contact.**
+`[os.net.accept]` arrives at this pin and names the checked machine directly:
+"its budgeted accept polls a non-blocking listener and retries `would_block`
+against the same budget". **Nothing moved to meet it** — `poll_accept` answers
+`Poll::NotYet` on `WouldBlock` and `net_park` measures one `started` against
+one `armed(fd)`, which has been the posture since is18. The clause's arrival is
+what makes it testable rather than incidental, and it is now tested the hard
+way: **a lost race needs two HANDS, not two PROCESSES.** Two tasks in one
+`scope` accepting one listener, one dial — one takes it, the other's
+`net_accept` finds nothing there and comes back as `timeout` **inside the
+budget the call began with**, not a fresh one (`tests/net_accept_race.rs`,
+which asserts the elapsed bound because a count alone would not separate
+same-budget from re-armed). The corpus witness `net/accept_race.lu` reaches for
+`os_spawn_with` with a non-empty inherit set and is refused BY NAME with s137's
+own construct string — a verdict, never the `unsupported` ROW, which would be a
+claim about the host — so it ledgers **out-of-scope**, which is the row s138's
+own directive anticipated for this machine.
+
+Census at this pin: 507 -> **508** files / 473 -> **474** entries / 34 members;
+363 reach `run` and **353 match**, both unmoved — the one new file is the only
+motion, 61 -> 62 out of scope — 16 dynamic counterparts, 42 conservatism, and
+the one standing walk mismatch is still DIV-2026-019. Anchors **422 -> 424**
+with the key sets diffed both ways (`[os.net.accept]`, `[conf.anchor.ns.admit]`
+added; **nothing dropped, no owner changed**) and the ratchet floor 186 ->
+**187**: one rather than two, because `[conf.anchor.ns.admit]` is a conformance
+clause no corpus program cites. Distinct `conforms:` tags 288 -> 289; bundle
+545 -> 546 programs and 511 -> 512 records; conservatism ledger 122 -> 124.
+**#239 asked nothing of this machine, as 0.1.27 predicted** — both
+standing-waiver lists stay empty and the clause's letter simply caught up to
+what this side already did.
+
+**The sibling-checkout gap gets a named answer, not a build**
+(`docs/conformance-bundle.md`). wolf-lang#253 names it from the other side; on
+this side the differential gate wants a `wolf` binary that CI cannot have —
+private submodule, a vendored snapshot that carries no `crates/` by doctrine,
+and a second toolchain build nobody wants in a three-host matrix — so CI's only
+claim about `diff-run` today is that it correctly refuses to run. The door is
+already open and already walked: `conformance check --replay <RECORDS>` takes
+the counterparty as *data*, and CI feeds it this machine's own records, which
+is a tautology `differ::retired_waivers` explicitly declines to score. Vendor
+the **compiler's** `records.jsonl` beside `PIN` the way `spec/` and `corpus/`
+are already vendored and the same job becomes a real gate for one file read —
+with the pin-equality refusal that keeps it from going stale, the per-host
+record set the os tier requires, and the honest boundary that it closes the
+regression half and not the exploratory one.
+
 ## 0.1.27 — 2026-09-06
 
 THE CORES IN THE MIRROR (is38). r08 shipped a server's other half: several
