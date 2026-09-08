@@ -1,16 +1,16 @@
 # The conformance bundle: schema version 1 (frozen)
 
 The publishable form of the wolf conformance suite (is09). It is a directory
-that maps **spec clause ↔ tests ↔ expected observables**, attested by the
+that maps spec clause ↔ tests ↔ expected observables, attested by the
 reference interpreter. The directory is self-contained and its bytes are
 deterministic; the sections below say what buys each property.
 
-It is a `[proto]` **extension**. Everything on the wire inside it is plain
+It is a `[proto]` extension. Everything on the wire inside it is plain
 spec/06: protocol-1 observation records, `[proto.cmp]` comparison semantics,
 the closed `[conf.trap.set]` vocabulary. The packaging is what lets a third
 machine hold one implementation against another without building either's
-test harness. Schema version 1 is **frozen**: any change to the layout or the
-manifest contract below is version 2, never a quiet edit.
+test harness. Schema version 1 is frozen: any change to the layout or the
+manifest contract below is version 2.
 
 Produced by `lupin conformance export`. Consumed by
 `lupin conformance check <bundle> --impl <cmd>`, or by any tool that
@@ -45,11 +45,11 @@ docs/repl.md             the is08 [repl.*] notes, riding along
 ## The programs
 
 Every `.lu` file is in the corpus directive dialect: `check:` states the
-expected observable in exactly the corpus vocabulary (`pass`,
+expected observable in the corpus vocabulary (`pass`,
 `fail(CODE)`, `run(exit=N|trap|trap(kind) [, stdout="…"])`), `phase:`
 the deepest compiler rung, `conforms:` the clause anchors the file is
 evidence for, `member: true` the files exercised only through their
-module's entry. There is **no second expectation language**: the bundle
+module's entry. There is no second expectation language: the bundle
 adds nothing to the directive grammar.
 
 `corpus/**` is byte-identical to the upstream pin named in the manifest
@@ -61,16 +61,16 @@ conform-run the same way.
 
 `expected/records.jsonl` holds one spec/06 observation record per entry
 program (members are never conform-run directly), sorted by `file`,
-observed **by the reference interpreter, from inside the bundle**. A
-multi-file module resolves its members from the bundled tree, which is
-what proves the bundle self-contained. The `file` field is the
-bundle-relative slash path (`corpus/hello.lu`), never an exporter-local
-one. Records are unseeded (`"seeded": false`, the strict-FIFO default
+observed by the reference interpreter, from inside the bundle. A
+multi-file module resolves its members from the bundled tree, which
+proves the bundle self-contained. The `file` field is the
+bundle-relative slash path (`corpus/hello.lu`), with no exporter-local
+prefix. Records are unseeded (`"seeded": false`, the strict-FIFO default
 schedule). Every schedule question the suite asks is closed separately
 by the is07 exploration record.
 
 A consumer compares an implementation against these records with the
-spec/06 deep comparison exactly as the is05 differ does: rung-by-rung
+spec/06 deep comparison as the is05 differ does: rung-by-rung
 claims, the conservatism ledger for `unsupported` and accept-set
 boundaries, `[proto.cmp.severity]` ordering. The counterparty is invoked
 per `[proto.invoke]`: `<cmd> conform-run <file> --json`.
@@ -96,8 +96,8 @@ Interpreter-only observables (`ub(anchor)`) compare per
 Attestation: the exporter refuses to emit any record its own spec/06
 schema validator rejects, and the exporting commit rides `impl_commit`.
 A suite that is not green under the reference interpreter does not
-publish. (Package identity is deliberately absent: upstream package
-naming is a stub until s51, and the attestation must not lean on it.)
+publish. (Package identity is absent: upstream package naming is a
+stub until s51, and the attestation must not lean on it.)
 
 ## Determinism (the I10 spirit)
 
@@ -105,16 +105,16 @@ Re-export at the same (interpreter, pin) commits is byte-identical,
 across runs *and* across linux/macOS/windows. The rules that buy this,
 all normative for schema 1:
 
-- **Newlines**: every bundled file is CRLF→LF normalized **before**
+- Newlines: every bundled file is CRLF→LF normalized before
   observation, so recorded byte-offset spans index the bytes that ship
   and a `core.autocrlf` checkout cannot move a hash.
-- **Paths**: `/`-separated everywhere, in manifest keys, record `file`
+- Paths: `/`-separated everywhere, in manifest keys, record `file`
   fields, and matrix entries.
-- **Order**: directory walks and JSON maps sort by the relative slash
+- Order: directory walks and JSON maps sort by the relative slash
   path; records and matrix lines sort by their key field.
-- **Integrity**: a consumer verifies every per-file hash and the root
-  hash before comparing anything; a mismatch is a refusal (exit 2),
-  never a verdict.
+- Integrity: a consumer verifies every per-file hash and the root
+  hash before comparing anything; a mismatch is a refusal (exit 2) and
+  produces no verdict.
 
 CI enforces this three ways: re-export twice and byte-compare; check the
 bundle against its own replayed records (the consumption dry-run, which
@@ -129,9 +129,9 @@ three tier-1 OSes.
 "covered"|"debt", "commit"}`, plus `x-doc` (owning document) and
 `x-cited-by` (the citing programs with their `check:` expectations).
 `coverage/coverage.md` renders the same data for humans: per-document
-percentages ranked by chapter weight, the **full** debt list, the
+percentages ranked by chapter weight, the full debt list, the
 forward (reserved-namespace) tags, and a dedicated `[mem.ub]` section in
 which every row is detected-and-paired or carries its named reason
 (D2: an untested UB item is an unlicensed optimization). The covered
 count is ratcheted in the exporter's own CI
-(`tests/export.rs::coverage_is_ratcheted`): it may grow, never shrink.
+(`tests/export.rs::coverage_is_ratcheted`) and can only grow.
