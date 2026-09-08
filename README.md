@@ -12,7 +12,22 @@ a binary named `lupin`.
 
 Licensed under [GPL-3.0-or-later](LICENSE).
 
-## Building
+## Install
+
+```sh
+brew tap wolffe-lang/wolf && brew install lupin     # builds from source
+yay -S lupin-bin                                    # Arch, prebuilt (lupin builds)
+```
+
+Or an archive from [releases](https://github.com/wolffe-lang/wolf-interp/releases).
+Then:
+
+```sh
+printf 'fn main() {\n  print("hello, wolf")\n}\n' > hello.lu
+lupin run hello.lu
+```
+
+## Building from source
 
 ```sh
 git clone https://github.com/wolffe-lang/wolf-interp
