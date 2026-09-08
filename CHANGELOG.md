@@ -6,103 +6,105 @@ THE CORES IN THE MIRROR (is38). r08 shipped a server's other half: several
 processes holding one listening address, a parent handing a listener down to
 its children, one call that waits on a whole SET of sockets instead of
 time-slicing across them, and a program that can ask how many cores it may
-actually be scheduled on. This release is the reference interpreter catching up
-to all five anchors at once — and the half worth reading is that catching up
-does **not** mean serving everything. Two of the five are refused BY NAME here,
-in s137's own words, because the reason the checked machine refuses them is the
-reason this machine does.
+actually be scheduled on. This release is the reference interpreter catching
+up to all five anchors at once, and the half worth reading is that catching
+up does not mean serving everything. Two of the five are refused BY NAME
+here, in s137's own words, because the reason the checked machine refuses
+them is the reason this machine does.
 
-Released against pin `6ade878`, wolf-lang **v0.2.5**, the tag itself — trunk's
+Released against pin `6ade878`, wolf-lang v0.2.5, the tag itself; trunk's
 head `6263ffa` carries a byte-identical `spec/` and `corpus/`, so the
 check-the-tag pattern lands on the tag as it did at v0.2.4. Census at this
-release: 507 files / 473 entries / 34 members; 363 reach run (360 at 0.1.26),
-**353 match** (350), 16 dynamic counterparts, 42 conservatism, 61 out of scope,
-and the one standing walk mismatch is still DIV-2026-019. Anchors 417 -> 422
-with the key sets diffed both ways — five added, nothing dropped — and the
-ratchet floor 182 -> 186. Bundle 545 programs / 511 records; conservatism
-ledger 120 -> 122.
+release: 507 files / 473 entries / 34 members; 363 reach run (360 at
+0.1.26), 353 match (350), 16 dynamic counterparts, 42 conservatism, 61 out
+of scope, and the one standing walk mismatch is still DIV-2026-019. Anchors
+417 -> 422 with the key sets diffed both ways (five added, nothing dropped)
+and the ratchet floor 182 -> 186. Bundle 545 programs / 511 records;
+conservatism ledger 120 -> 122.
 
-**Three corpus files newly reach a verdict that matches, and none stopped.**
+Three corpus files newly reach a verdict that matches, and none stopped.
 
-**wolf-lang v0.2.6 tagged while this sprint was in flight and is deliberately
-NOT taken here.** r09's delta is one corpus file (`net/accept_race.lu`), spec/05's
-`[conf.anchor.ns]` amendment for #239, and a new `[os.net.accept]` in spec/11 for
-#242 — the fair-accept re-wait, which is an implementation surface and not a
-mirror of anything in this release. A pin bump is a deliberate act that lands in
-its own commit (`docs/manual/00-building.md`), and taking one mid-sprint would
-have moved every census, anchor and ratchet number in the two commits already
-gated against `6ade878`. #239 asks nothing of this machine either way:
-`anchor::REGISTERED_NAMESPACES` has carried `os`, `type`, `ct` and `diag` since
-the 90c90df, 77466a3, da8582d and f0da6e6 pins, so the clause's letter is
-catching up to what this side already did, and both standing-waiver lists
+wolf-lang v0.2.6 tagged while this sprint was in flight and is NOT taken
+here. r09's delta is one corpus file (`net/accept_race.lu`),
+spec/05's `[conf.anchor.ns]` amendment for #239, and a new `[os.net.accept]`
+in spec/11 for #242, the fair-accept re-wait, which is an implementation
+surface and not a mirror of anything in this release. A pin bump lands in its own
+commit (`docs/manual/00-building.md`),
+and taking one mid-sprint would have moved every census, anchor and ratchet
+number in the two commits already gated against `6ade878`. #239 asks nothing
+of this machine either way: `anchor::REGISTERED_NAMESPACES` has carried
+`os`, `type`, `ct` and `diag` since the 90c90df, 77466a3, da8582d and
+f0da6e6 pins, so the clause's letter is catching up to what this side
+already did, and both standing-waiver lists
 (`export::FILED_REGISTRY_FINDINGS`, `FILED_REGISTRY_HOLES`) are empty.
 
 ### The count of cores, and this machine's own path (`[os.cpus]`, wolf-lang#233)
 
-**`os_cpus()` answers how many cores this process may actually be SCHEDULED
-on**, which is the whole content of the clause: on linux the number honours a
+`os_cpus()` answers how many cores this process may actually be SCHEDULED
+on, which is the whole content of the clause: on linux the number honours a
 cgroup cpu quota and a cpu affinity mask, so a container given two cpus of
-quota on a sixty-four-core host answers 2, where counting `processor` rows in
-`/proc/cpuinfo` answers 64 and starts sixty-two workers that will never get a
-core between them. `available_parallelism` reads exactly the sources the clause
-names on every host, which is what makes the clause's stronger claim true here:
-every tier answers from the same source, so `wolf run`, `wolf run --checked`
-and `lupin` agree on the NUMBER on one host and not merely on a relation. A
-host that cannot answer is the `io` row and never a silent 1 — the distinction
-#233 was filed about, kept where a program can act on it.
+quota on a sixty-four-core host answers 2, where counting `processor` rows
+in `/proc/cpuinfo` answers 64 and starts sixty-two workers that will never
+get a core between them. `available_parallelism` reads exactly the sources
+the clause names on every host, which is what makes the clause's stronger
+claim true here: every tier answers from the same source, so `wolf run`,
+`wolf run --checked` and `lupin` agree on the NUMBER on one host and not
+merely on a relation. A host that cannot answer is the `io` row and never a
+silent 1; the distinction #233 was filed about, kept where a program can act
+on it.
 
-s90's **`os_exe()`** lands beside it, because the corpus calls it for the first
+s90's `os_exe()` lands beside it, because the corpus calls it for the first
 time at this pin: `net/inherit_listener.lu` re-executes itself. The honest
-answer here is this binary — `lupin` is the process that is running, and a wolf
-program it interprets has no separate image — and the witness asserts a
+answer here is this binary (`lupin` is the process that is running, and a
+wolf program it interprets has no separate image) and the witness asserts a
 predicate over the answer, never a path.
 
 ### Readiness over a set (`[os.net.wait]`, wolf-lang#127)
 
-`net_wait(fds, deadline_ms)` is the one s137 clause that names no host and no
-refusal, so it serves on every lane this machine has. There is no `poll(2)` to
-reach from here — this crate forbids `unsafe` and `std::net` exposes no
-readiness surface — so the question is asked of each socket in turn, on the
-non-blocking handles this machine has held since is18:
+`net_wait(fds, deadline_ms)` is the one s137 clause that names no host and
+no refusal, so it serves on every lane this machine has. There is no
+`poll(2)` to reach from here (this crate forbids `unsafe` and `std::net`
+exposes no readiness surface), so the question is asked of each socket in
+turn, on the non-blocking handles this machine has held since is18:
 
-- a **listener** by accepting and HOLDING the connection: `net_accept` takes it
+- a listener by accepting and HOLDING the connection: `net_accept` takes it
   back before it touches the socket;
-- a **TCP stream** by `peek`, which leaves the bytes where they were;
-- a **unix stream** by reading and holding the bytes, because
+- a TCP stream by `peek`, which leaves the bytes where they were;
+- a unix stream by reading and holding the bytes, because
   `UnixStream::peek` is not stable; `net_read` drains what was held before it
   asks the socket again, so the byte stream a program sees is unchanged.
 
 All three keep the sentences a program can actually check, which is what the
-clause is made of: **an empty answer is the deadline expiring with nothing
-ready — an answer, not a failure**; readiness is level-triggered, so asking
-consumes nothing and two waits answer the same until something is actually read
-or accepted; a stream whose peer has gone is READY and the `net_read` that
-follows is what reports `closed`. `io` is a forged handle anywhere in the set —
-the set is validated WHOLE before a single socket is asked, so a bad member
-never leaves a held connection behind on a good one — or an empty set with an
-unbounded deadline, which nothing could ever end.
+clause is made of: an empty answer is the deadline expiring with nothing
+ready, an answer, not a failure; readiness is level-triggered, so asking
+consumes nothing and two waits answer the same until something is actually
+read or accepted; a stream whose peer has gone is READY and the `net_read`
+that follows is what reports `closed`. `io` is a forged handle anywhere in
+the set (the set is validated WHOLE before a single socket is asked, so a
+bad member never leaves a held connection behind on a good one) or an empty
+set with an unbounded deadline, which nothing could ever end.
 
 ### A listener several hands can hold (`[os.net.listen.opts]`, wolf-lang#234)
 
-`net_listen_with(addr, reuse_port, backlog)` serves, and **the group is a MODEL
-that is written down where it lives** rather than a `SO_REUSEPORT` this machine
+`net_listen_with(addr, reuse_port, backlog)` serves, and the group is a MODEL
+that is written down where it lives rather than a `SO_REUSEPORT` this machine
 cannot reach (the option must be set before the bind, and `setsockopt` needs
 `unsafe`).
 
-What the clause promises a caller is narrower than the option, and that is the
-opening: every dial is accepted by SOME member, and the survivor takes every
-dial after the others close. What the kernel does INSIDE a live group is
-explicitly the host's — linux distributes by 4-tuple hash, macOS hands every
-SYN to the newest bound socket — and a program may not depend on it, which is
-why `corpus/net/reuse_port.lu` asserts the two guarantees and prints nothing
-about delivery. So a group here is ONE listening socket with a duplicated
-handle per member (`TcpListener::try_clone`), which is `[os.proc.inherit]`'s
-own shape — one queue, several accepters — and both guarantees hold by
-construction: every member accepts from the same queue, and the queue outlives
-any member that closes.
+What the clause promises a caller is narrower than the option, and that is
+the opening: every dial is accepted by SOME member, and the survivor takes
+every dial after the others close. What the kernel does INSIDE a live group
+is explicitly the host's (linux distributes by 4-tuple hash, macOS hands
+every SYN to the newest bound socket) and a program may not depend on it,
+which is why `corpus/net/reuse_port.lu` asserts the two guarantees and
+prints nothing about delivery. So a group here is ONE listening socket with
+a duplicated handle per member (`TcpListener::try_clone`), which is
+`[os.proc.inherit]`'s own shape (one queue, several accepters) and both
+guarantees hold by construction: every member accepts from the same queue,
+and the queue outlives any member that closes.
 
 Two smaller things the clause decides and this release takes: `net_listen_with(
-addr, false, 0)` **is** `net_listen(addr)`, call for call, on the ordinary
+addr, false, 0)` is `net_listen(addr)`, call for call, on the ordinary
 listener every other net call already serves; and this call admits a fixed
 LOOPBACK port where `net_listen` refuses one, because `exists` and `denied` are
 rows about a NAMED port and a machine that refuses every fixed port can never
@@ -111,7 +113,7 @@ answer either. Non-loopback stays refused by name, and `backlog` is a hint
 
 ### The two constructs refused BY NAME (`[os.proc.inherit]`, wolf-lang#235)
 
-`net_adopt_listener(fd)` and a **non-empty** `os_spawn_with` inherit set
+`net_adopt_listener(fd)` and a non-empty `os_spawn_with` inherit set
 decline here, with the construct strings s137 published for the checked
 machine, verbatim:
 
@@ -120,17 +122,17 @@ listener adoption in checked execution
 fd inheritance across os_spawn_with in checked execution
 ```
 
-Never the `unsupported` ROW — that would be a claim about the HOST, and both
-hosts this machine runs on serve the handoff. The reason the clause gives the
-checked machine is the reason here: this is a binary INTERPRETING a program, so
-a descriptor handed to "the program's child" would be handed to the
-interpreter's child. The mechanism seals it independently — the handoff is a
-`pre_exec` hook running `dup2` and the adopt is `FromRawFd`, both `unsafe`,
-which this crate forbids. `[proto.cmp.defined-divergence]` never compares an
-`unsupported`, so nothing in the differential would ever notice these two
-strings drifting; `tests/cores_s137.rs` asserts them on the words.
+Never the `unsupported` ROW; that would be a claim about the HOST, and both
+hosts this machine runs on serve the handoff. The reason the clause gives
+the checked machine is the reason here: this is a binary INTERPRETING a
+program, so a descriptor handed to "the program's child" would be handed to
+the interpreter's child. The mechanism seals it independently; the handoff
+is a `pre_exec` hook running `dup2` and the adopt is `FromRawFd`, both
+`unsafe`, which this crate forbids. `[proto.cmp.defined-divergence]` never
+compares an `unsupported`, so nothing in the differential would ever notice
+these two strings drifting; `tests/cores_s137.rs` asserts them on the words.
 
-An **empty** inherit set is served, exactly as the clause requires: it is
+An empty inherit set is served, exactly as the clause requires: it is
 `os_spawn` with the program named apart, so it reaches the spawn and answers
 the spawn's own row.
 
@@ -139,33 +141,34 @@ the spawn's own row.
 is38 offered two branches: implement the span comparison at that rung so the
 row becomes measurable, or rule the divergence and close it.
 
-**The first is already done and has been since is01.** `compare::compare` and
+The first is already done and has been since is01. `compare::compare` and
 `differ::compare_deep` compare the first diagnostic's code AND span at every
 rung through `mem`, and `lupin diff-run` reports the row today. r08's "no
-harness surfaces it" is true of the harness it was written about — wolf-lang's
-pairing ritual compares codes at `parse` — and not of this one. Re-measured at
-the v0.2.5 pin, neither locus moved: lupin `E0201 [364,365)` at the comma, wolf
-0.2.5 `E0201 [374,375)` at the end of the initializer list.
+harness surfaces it" is true of the harness it was written about
+(wolf-lang's pairing ritual compares codes at `parse`) and not of this one.
+Re-measured at the v0.2.5 pin, neither locus moved: lupin `E0201 [364,365)`
+at the comma, wolf 0.2.5 `E0201 [374,375)` at the end of the initializer
+list.
 
-**The second this lane may not take.** CONTRIBUTING's standing
-divergence-filing rule is `[proto.cmp.triage]` in one sentence — neither
-implementation is patched to match the other before the clause is fixed — and
-`[gram.item.let]` still says what a D63 let-group IS and what the bare-tuple
-shape is not, without saying where refusing it reports. Moving this machine's
-locus onto the counterparty's would close the row with the clause having
-decided nothing.
+The second this lane may not take. CONTRIBUTING's standing divergence-filing
+rule is `[proto.cmp.triage]` in one sentence (neither implementation is
+patched to match the other before the clause is fixed) and `[gram.item.let]`
+still says what a D63 let-group IS and what the bare-tuple shape is not,
+without saying where refusing it reports. Moving this machine's locus onto
+the counterparty's would close the row with the clause having decided
+nothing.
 
 So what landed is the two gates the row actually lacked, and neither touches
 the locus:
 
-- **`tests/let_group_locus.rs`** pins this machine's half hermetically —
-  `E0201` at `[364,365)`, with the byte sliced back out of the source and
-  asserted to be the comma. Nothing in `cargo test` had ever checked it: the
-  corpus directive is `check: fail(E0201)` and the walk compares CODES, so a
-  drift to byte 374 would have closed the divergence in silence and left the
+- `tests/let_group_locus.rs` pins this machine's half hermetically, `E0201`
+  at `[364,365)`, with the byte sliced back out of the source and asserted
+  to be the comma. Nothing in `cargo test` had ever checked it: the corpus
+  directive is `check: fail(E0201)` and the walk compares CODES, so a drift
+  to byte 374 would have closed the divergence in silence and left the
   ledger asserting a disagreement that no longer existed. The counterparty's
   half is re-measured beside it when a `wolf` binary is present.
-- **`differ::retired_waivers`** reports and GATES on a filed divergence that a
+- `differ::retired_waivers` reports and GATES on a filed divergence that a
   FOREIGN counterparty compared clean. wolf-lang#177 taught that a waiver
   outliving its divergence is a hole exactly where a gate used to be, and both
   times a human noticed rather than a gate. The self-differential and a
@@ -179,7 +182,7 @@ where the clause left it.
 ### `zext` from `bool`, and why there is nothing to do about it here
 
 v0.2.5's second fix makes `zext` from `bool` legal WIR, so `channel[bool]` stops
-compiling to an internal compiler error. **This machine has no site for it**:
+compiling to an internal compiler error. This machine has no site for it:
 there is no WIR here and no lowering to verify, `channel` is one of the names
 carried in the ambient stub with no pinned semantics (so a program that uses one
 is declined by name rather than guessed at), and neither `zext` nor
@@ -189,372 +192,381 @@ still a fact about the pair.
 
 ## 0.1.26 — 2026-09-04
 
-THE BYTE HAS A DOMAIN (is37). Last release gave this machine the byte TYPE and
-left the DOMAIN to the compilers. sc35 measured what that cost: `push(256)`
-into a `List[byte]` **stored 256**, an un-cast `int` flowed into a byte slot,
-and eight wolf-std rows carried `divergent(…)` — the word for "the compilers
-refuse this at typecheck and the interpreter runs it to an honest end", used
-for the first time outside the take-mode pair. All eight flip to agreement
-here, and two more rows with them.
+THE BYTE HAS A DOMAIN (is37). Last release gave this machine the byte TYPE
+and left the DOMAIN to the compilers. sc35 measured what that cost:
+`push(256)` into a `List[byte]` stored 256, an un-cast `int` flowed into a
+byte slot, and eight wolf-std rows carried `divergent(…)`, the word for "the
+compilers refuse this at typecheck and the interpreter runs it to an honest
+end", used for the first time outside the take-mode pair. All eight flip to
+agreement here, and two more rows with them.
 
-Released against pin `982f857`, wolf-lang **v0.2.4** — unchanged: s137 has not
+Released against pin `982f857`, wolf-lang v0.2.4; unchanged: s137 has not
 merged, and trunk's head (`1323c4e`, the r07 merge) is tree-identical to the
 tag, so there was nothing newer to take. Census at this release: 503 files /
-469 entries / 34 members; 360 reach run, **350 match** (348 at 0.1.25), 16
+469 entries / 34 members; 360 reach run, 350 match (348 at 0.1.25), 16
 dynamic counterparts, 42 conservatism, 60 out of scope, and the one standing
 walk mismatch is still DIV-2026-019, filed. Anchors 417 / 182 covered and
-bundle 541 / 507, both unchanged — no corpus moved, only this machine's
+bundle 541 / 507, both unchanged; no corpus moved, only this machine's
 answers.
 
-- **A `byte` value is `0..=255` BY CONSTRUCTION, and the refusal is what says
-  so (wolf-interp#62).** `Value::Byte` is a `u8`, so 256 was never
+- A `byte` value is `0..=255` BY CONSTRUCTION, and the refusal is what says
+  so (wolf-interp#62). `Value::Byte` is a `u8`, so 256 was never
   representable; what was missing is the refusal at the boundary.
   `[type.byte]` gives a `byte` no numeric-literal adoption "in any position"
-  and makes it not an integer type, so an `int` reaching a byte slot is a type
-  error whatever its value — a domain, not a range check. Two rules at two
-  rungs:
-  - **`sema::byte_check`, at `resolve`**, refuses an `int` in a byte slot and a
-    `byte` in an `int` slot with **E0401 at the counterparty's own span**. The
+  and makes it not an integer type, so an `int` reaching a byte slot is a
+  type error whatever its value, a domain, not a range check. Two rules at
+  two rungs:
+  - `sema::byte_check`, at `resolve`, refuses an `int` in a byte slot and a
+    `byte` in an `int` slot with E0401 at the counterparty's own span. The
     two pinned witnesses now answer wolfc byte for byte:
-    `typecheck/byte_narrow_fail.lu` `[588,590]` (the `65` of `let b: byte = 65`,
-    not the annotation) and `typecheck/byte_elem_arith_fail.lu` `[849,850]`
-    (the `b` of `table[b]`). Six slots are covered — a binding's annotation, an
-    assignment, a `List[byte]` push, a struct field, a call argument and a
-    declared return type — the last two being wolf-interp#61's parameter and
-    return boundaries answered statically, where the compilers answer them. The
-    pass fires only where BOTH sides are known: `Unknown` is the default and no
-    rule fires on one, so the sema boundary is restated for one type rather
-    than abandoned.
-  - **The list knows its element, at `run`.** Until now the element context was
-    `Option<IntTy>` — integer widths and nothing else — so `List[byte]()` and a
-    bare `List()` were the SAME VALUE at runtime, which is #62's mechanism in
-    one sentence. `ElemTy` splits them, `str.bytes()` and `net_read_bytes` hand
-    back lists carrying it, and an `int` reaching a byte element is refused by
-    name. A static property never becomes a trap here, so the answer is
-    `unsupported` naming E0401 — the same posture is36's byte-place rule takes,
-    which stays where it is for the flows the static pass declines to guess
-    about.
-- **`[type.byte.op]`'s widening is the guard rail, and it was measured.** `b + 1`
-  is an `int` by clause, so the pass says nothing about it — verified against
-  wolfc, which accepts it — while `b += 1` is refused, because the compound
-  form stores that `int` back. Comparisons do not widen: `b == 119` is E0401 at
-  the **`119`**, the operand that has to change, which is what wolfc spans.
-- **sc35's eight rows, and the two corpus twins.** Re-measured on both machines
-  with `--std-root std` at wolf-std `d71776e`, every one code-and-span identical
-  to the counterparty's first diagnostic: `hex/encode_non_byte_refused`,
-  `net/write_bytes_invalid_row`, `x/crypto/sha2|chacha20|curve25519/…`,
-  `x/tls/record|handshake|cert/…` — all eight `divergent(…)` words retire — plus
-  `fs/invalid_row.lu` and `x/crypto/p256/non_byte_refused.lu`, ledgered
-  `unsupported` for reasons that had nothing to do with bytes (the fs tier is
-  declined by design; p256's ladder is outside the modelled surface) and now
-  answering their `check: fail(E0401)` because the refusal arrives before the
-  decline. `cargo xtask std-test` over all 376 files on all three lanes reports
-  `divergent rows: 0` and names **exactly these ten** as moved, nothing else on
+    `typecheck/byte_narrow_fail.lu` `[588,590]` (the `65` of `let b: byte =
+    65`, not the annotation) and `typecheck/byte_elem_arith_fail.lu`
+    `[849,850]` (the `b` of `table[b]`). Six slots are covered (a binding's
+    annotation, an assignment, a `List[byte]` push, a struct field, a call
+    argument and a declared return type), the last two being
+    wolf-interp#61's parameter and return boundaries answered statically,
+    where the compilers answer them. The pass fires only where BOTH sides
+    are known: `Unknown` is the default and no rule fires on one, so the
+    sema boundary is restated for one type rather than abandoned.
+  - The list knows its element, at `run`. Until now the element context was
+    `Option<IntTy>` (integer widths and nothing else), so `List[byte]()` and
+    a bare `List()` were the SAME VALUE at runtime, which is #62's mechanism
+    in one sentence. `ElemTy` splits them, `str.bytes()` and
+    `net_read_bytes` hand back lists carrying it, and an `int` reaching a
+    byte element is refused by name. A static property never becomes a trap
+    here, so the answer is `unsupported` naming E0401, the same posture
+    is36's byte-place rule takes, which stays where it is for the flows the
+    static pass declines to guess about.
+- `[type.byte.op]`'s widening is the guard rail, and it was measured. `b +
+  1` is an `int` by clause, so the pass says nothing about it (verified
+  against wolfc, which accepts it), while `b += 1` is refused, because the
+  compound form stores that `int` back. Comparisons do not widen: `b == 119`
+  is E0401 at the `119`, the operand that has to change, which is what wolfc
+  spans.
+- sc35's eight rows, and the two corpus twins. Re-measured on both machines
+  with `--std-root std` at wolf-std `d71776e`, every one code-and-span
+  identical to the counterparty's first diagnostic:
+  `hex/encode_non_byte_refused`, `net/write_bytes_invalid_row`,
+  `x/crypto/sha2|chacha20|curve25519/…`, `x/tls/record|handshake|cert/…`
+  (all eight `divergent(…)` words retire), plus `fs/invalid_row.lu` and
+  `x/crypto/p256/non_byte_refused.lu`, ledgered `unsupported` for reasons
+  that had nothing to do with bytes (the fs tier is declined by design;
+  p256's ladder is outside the modelled surface) and now answering their
+  `check: fail(E0401)` because the refusal arrives before the decline.
+  `cargo xtask std-test` over all 376 files on all three lanes reports
+  `divergent rows: 0` and names exactly these ten as moved, nothing else on
   any lane.
-- **E0301 tells the two mistakes apart (wolf-interp#60).** At the 0.1.24 pin
+- E0301 tells the two mistakes apart (wolf-interp#60). At the 0.1.24 pin
   `200 as itn` (a typo) and `200 as byte` (a scalar the pinned specification
   declares, which that release did not carry) answered byte-identically, and
-  the sentence sent the reader hunting a misspelling that was not there. `byte`
-  arrived at 0.1.25, so that pair is gone — but the pin runs ahead of this
-  implementation BY DESIGN, so the collision recurs at every tag where the
-  compiler lands a type first. The note now names the **closed set** of built-in
-  type names this release carries, rendered from the check's own table so it
-  cannot drift, and states both readings instead of asserting one.
-- **wolf-interp#59 closes by measurement, not by assertion.** D74's three layout
+  the sentence sent the reader hunting a misspelling that was not there.
+  `byte` arrived at 0.1.25, so that pair is gone, but the pin runs ahead of
+  this implementation BY DESIGN, so the collision recurs at every tag where
+  the compiler lands a type first. The note now names the closed set of
+  built-in type names this release carries, rendered from the check's own
+  table so it cannot drift, and states both readings instead of asserting
+  one.
+- wolf-interp#59 closes by measurement, not by assertion. D74's three layout
   rules landed at 0.1.25; this release verified them on both machines rather
   than taking the release note's word, and pinned the result in a test that
-  reads the corpus. All five of s136's witnesses answer wolfc's code at wolfc's
-  span: E0103 `[437,441]` and `[598,601]`, E0104 `[520,526]`, E0105 `[575,583]`,
-  E0101 `[1566,1568]`. The issue's own table — this machine's invented E0109 at
-  `[31,49]` against wolfc's E0103 at `[31,35]` — has no surviving row. The BOM's
-  two positions hold: a leading mark is stripped and never a diagnostic, and
-  mid-file the same three bytes are E0107 at the mark.
+  reads the corpus. All five of s136's witnesses answer wolfc's code at
+  wolfc's span: E0103 `[437,441]` and `[598,601]`, E0104 `[520,526]`, E0105
+  `[575,583]`, E0101 `[1566,1568]`. The issue's own table (this machine's
+  invented E0109 at `[31,49]` against wolfc's E0103 at `[31,35]`) has no
+  surviving row. The BOM's two positions hold: a leading mark is stripped
+  and never a diagnostic, and mid-file the same three bytes are E0107 at the
+  mark.
 
 ## 0.1.25 — 2026-09-03
 
 THE BYTE ARRIVES (is36). Last release deferred `byte` by name: D72 had ruled
-the scalar in and s135 had not merged, so this machine answered **E0301** —
-"nothing with this name is in scope" — to every program that wrote the type.
+the scalar in and s135 had not merged, so this machine answered E0301
+("nothing with this name is in scope") to every program that wrote the type.
 s135 and s136 merged together, and this release is the mirror catching up to
 both halves at once: the type, its two casts, its widening operators and its
-octet compares; the producers that speak it; the 1-byte ledger slot the whole
-ruling exists for; the unix-domain socket family beside them; and D74's
-string-layout codes, which this implementation had exactly one of.
+octet compares; the producers that speak it; the 1-byte ledger slot the
+whole ruling exists for; the unix-domain socket family beside them; and
+D74's string-layout codes, which this implementation had exactly one of.
 
-Released against pin `982f857`, wolf-lang **v0.2.4**, the tag itself — trunk's
+Released against pin `982f857`, wolf-lang v0.2.4, the tag itself, trunk's
 r07 merge (`1323c4e`) carries a byte-identical `spec/` and `corpus/`, so the
 check-the-tag pattern lands on the tag as it did at v0.2.3. Census at this
 release: 503 files / 469 entries / 34 members; 360 reach run, 348 match, 16
 dynamic counterparts, 42 conservatism, 62 out of scope, and the one standing
-walk mismatch is still DIV-2026-019, filed. **Eight files newly reach `run`
-and not one stopped.**
+walk mismatch is still DIV-2026-019, filed. Eight files newly reach `run`
+and not one stopped.
 
-- **`byte` is a type here now (`[type.byte]`, D72/s135).** `Value::Byte(u8)`,
+- `byte` is a type here now (`[type.byte]`, D72/s135). `Value::Byte(u8)`,
   whose Rust domain IS the clause's `0..=255`, so an out-of-range byte is
   unrepresentable rather than checked. The posture is `char`'s, which is the
-  ruling's own point — one rule for width-bearing scalars instead of two: no
+  ruling's own point, one rule for width-bearing scalars instead of two: no
   numeric-literal adoption in either direction, no closed arithmetic, no
   `byte as f64`, and the name resolves in type position without joining
-  `[gram.inv.kw]`'s closed set of 50 keywords. `int as byte` truncates to the
-  low eight bits and is **the only narrowing `as` in the language that never
-  traps** (255/256/300/-1 → 255/0/44/255, and no W0401); `byte as int` widens
-  by zero-extension, so `200 as byte as int` is 200 and never -56. Every
-  arithmetic and bitwise operator widens first and yields `int` — `200 + 200`
-  is 400 because the term is int's — while the comparisons do NOT widen: they
-  are total, closed, and octet order, which is the unsigned one. `{b}` prints
-  the number.
-- **Two programs the compiler rejects used to RUN here.** The permissive
+  `[gram.inv.kw]`'s closed set of 50 keywords. `int as byte` truncates to
+  the low eight bits and is the only narrowing `as` in the language that
+  never traps (255/256/300/-1 → 255/0/44/255, and no W0401); `byte as int`
+  widens by zero-extension, so `200 as byte as int` is 200 and never -56.
+  Every arithmetic and bitwise operator widens first and yields `int` (`200
+  + 200` is 400 because the term is int's), while the comparisons do NOT
+  widen: they are total, closed, and octet order, which is the unsigned one.
+  `{b}` prints the number.
+- Two programs the compiler rejects used to RUN here. The permissive
   divergence is the one that is hard to notice, and the type closed two of
-  them at once. `typecheck/byte_narrow_fail.lu` — `let b: byte = 65` and
-  `let c: byte = n` with `n = 300` — ran to completion at 0.1.24 and printed
-  `65 300`, a "byte" holding three hundred, because an annotation naming no
-  known scalar simply left the value alone. `typecheck/byte_elem_arith_fail.lu`
-  used a `.bytes()` element as an index into an empty list and trapped
-  `bounds`, which is a true statement about a program that should never have
-  been admitted. Both are refused by name now, which is where this machine's
-  type mismatches live (its `char` twins have sat there since s121).
-- **The producers speak `List[byte]` (wolf-lang#231).** `str.bytes()`,
-  `str_from_utf8`, `net_read_bytes` and `net_write_bytes` — the four of the
-  eight this machine serves — are declared over the octet type, so a net echo
-  hands its read straight to its write and converts nothing, because the types
-  agree. The other four are the `fs_*` byte calls, which are not here and
-  never were: this machine declines the whole s38 fs surface by design
+  them at once. `typecheck/byte_narrow_fail.lu` (`let b: byte = 65` and `let
+  c: byte = n` with `n = 300`), ran to completion at 0.1.24 and printed `65
+  300`, a "byte" holding three hundred, because an annotation naming no
+  known scalar simply left the value alone.
+  `typecheck/byte_elem_arith_fail.lu` used a `.bytes()` element as an index
+  into an empty list and trapped `bounds`, which is a true statement about a
+  program that should never have been admitted. Both are refused by name
+  now, which is where this machine's type mismatches live (its `char` twins
+  have sat there since s121).
+- The producers speak `List[byte]` (wolf-lang#231). `str.bytes()`,
+  `str_from_utf8`, `net_read_bytes` and `net_write_bytes` (the four of the
+  eight this machine serves) are declared over the octet type, so a net echo
+  hands its read straight to its write and converts nothing, because the
+  types agree. The other four are the `fs_*` byte calls, which are not here
+  and never were: this machine declines the whole s38 fs surface by design
   (wolf-interp#18 item 6), so `fs/bytes_dirs.lu` and
-  `memory/byte_producers_ledger.lu` stay out of scope for the FS tier and not
-  for the byte one.
-- **A `List[byte]` strides by 1, and that is wolf-lang#203's whole point.**
+  `memory/byte_producers_ledger.lu` stay out of scope for the FS tier and
+  not for the byte one.
+- A `List[byte]` strides by 1, and that is wolf-lang#203's whole point.
   sc32/sc33 measured a 64 KiB buffer held as `List[int]` at 16× its payload,
-  which made a region cap on io-heavy code a fiction. `memory/byte_list_ledger.lu`
-  pins the RELATIONS rather than the units and every one holds here: the
-  ledger is at least the payload, at most twice it plus a header (the width
-  multiplier gone, only the growth history left), and the same 65,536 pushes
-  as `List[int]` charge at least seven times more. A producer that already
-  knows its length mints at EXACT capacity and pays no growth history at all.
-  The relations are what the clause compares and the units are per-tier, so
-  it is a coincidence worth recording rather than a claim: this machine's
-  64 KiB byte push charges **131,120** — the number s135 measured on the
-  NATIVE arena, to the byte — and its exact-capacity read charges 65,568
-  against native's 65,584, the two headers differing by sixteen.
-- **The phantom 16× (wolf-lang#232).** `s.bytes()` CONSUMED on the spot — a
-  `for` head, an index, a `len` — is the receiver's own view and allocates
-  nothing, where a `let` binding materializes. At 0.1.24 this machine passed
-  the witness's three consumed relations for the wrong reason (nothing ever
-  charged) and failed its fourth, `bound_view_charges`, which is the contrast
-  that proves the region is being read at all. Only the parent expression
-  knows which position its child sits in, so the parent records the child's
-  span and the `bytes` arm asks.
-- **D74's string-layout codes, one rule per code (wolf-lang#230).** This
+  which made a region cap on io-heavy code a fiction.
+  `memory/byte_list_ledger.lu` pins the RELATIONS rather than the units and
+  every one holds here: the ledger is at least the payload, at most twice it
+  plus a header (the width multiplier gone, only the growth history left),
+  and the same 65,536 pushes as `List[int]` charge at least seven times
+  more. A producer that already knows its length mints at EXACT capacity and
+  pays no growth history at all. The relations are what the clause compares
+  and the units are per-tier, so it is a coincidence worth recording rather
+  than a claim: this machine's 64 KiB byte push charges 131,120 (the number
+  s135 measured on the NATIVE arena, to the byte) and its exact-capacity
+  read charges 65,568 against native's 65,584, the two headers differing by
+  sixteen.
+- The phantom 16× (wolf-lang#232). `s.bytes()` CONSUMED on the spot (a `for`
+  head, an index, a `len`) is the receiver's own view and allocates nothing,
+  where a `let` binding materializes. At 0.1.24 this machine passed the
+  witness's three consumed relations for the wrong reason (nothing ever
+  charged) and failed its fourth, `bound_view_charges`, which is the
+  contrast that proves the region is being read at all. Only the parent
+  expression knows which position its child sits in, so the parent records
+  the child's span and the `bytes` arm asks.
+- D74's string-layout codes, one rule per code (wolf-lang#230). This
   implementation had one of the three multiline rules and spent an invented
   E0109 on all of it, with the whole text chunk under the span. E0103 is now
-  a `"""` delimiter sharing its line with text, BOTH sides — the fold the
-  ruling performed; E0104 is a content line sitting left of the margin; E0105
-  is a margin with the right number of whitespace bytes and the wrong ones,
-  compared byte for byte so eight tabs against eight spaces is a fault even
-  though the widths agree. **All five of s136's witnesses answer wolfc's code
-  and wolfc's span exactly** — `[437,441]`, `[598,601]`, `[520,526]`,
-  `[575,583]`, `[680,694]` — measured against the counterparty at the pin,
+  a `"""` delimiter sharing its line with text, BOTH sides, the fold the
+  ruling performed; E0104 is a content line sitting left of the margin;
+  E0105 is a margin with the right number of whitespace bytes and the wrong
+  ones, compared byte for byte so eight tabs against eight spaces is a fault
+  even though the widths agree. All five of s136's witnesses answer wolfc's
+  code and wolfc's span exactly (`[437,441]`, `[598,601]`, `[520,526]`,
+  `[575,583]`, `[680,694]`), measured against the counterparty at the pin,
   and `multiline_mixed_margin.lu` is the one that RAN here before, silently
   eating eight tabs.
-- **The bare `{` ran away to the end of the file, and a generalized literal
-  is why.** lupin had E0102 right — the family D74 confirms — and reported it
-  at the wrong span, because `[gram.lex.newline]` says a newline inside an
+- The bare `{` ran away to the end of the file, and a generalized literal is
+  why. lupin had E0102 right (the family D74 confirms) and reported it at
+  the wrong span, because `[gram.lex.newline]` says a newline inside an
   interpolation never terminates and `world"` inside the open interpolation
   spells a *generalized* literal, whose body this lexer let cross lines.
   `GEN_TEXT ::= (SCALAR - ('"' | NL))*` excludes the newline; `RAW_TEXT ::=
-  SCALAR*` does not, so `r"…"` still spans lines and the neighbouring rule is
-  read off the production rather than assumed. The generalized refusal is
+  SCALAR*` does not, so `r"…"` still spans lines and the neighbouring rule
+  is read off the production rather than assumed. The generalized refusal is
   E0109, the meaning D74 leaves that code.
-- **A byte order mark is stripped at byte 0 — and it broke 32 files first.**
+- A byte order mark is stripped at byte 0, and it broke 32 files first.
   `[gram.lex.source]` makes a leading BOM tolerated and never a diagnostic
   (this machine rejected every one under an invented E0105, colliding with
-  the margin code); anywhere else it is E0107, a stray character. The finding
-  the pin produced is bigger than the lexer: the corpus DIRECTIVE reader did
-  not strip it either, so `grammar/bom_at_start.lu` — the first corpus file
-  whose first three bytes are `EF BB BF` — lost its whole `//!` header, was
-  therefore not a standalone entry (D59), joined its directory's module, and
-  collided its `main` with every sibling's. Thirty-two `grammar/` files
-  answered E0302 `[mod.dup]` at the raw pin. `[gram.lex.source]` governs how
-  the FILE is read, and the header is a run of comments in that file.
-- **Unix-domain sockets (`[os.net.unix]`, wolf-lang#227).**
-  `net_listen_unix`/`net_connect_unix`, with the rest of the tier serving the
-  fd call for call. The clause's point is the row vocabulary and it is
+  the margin code); anywhere else it is E0107, a stray character. The
+  finding the pin produced is bigger than the lexer: the corpus DIRECTIVE
+  reader did not strip it either, so `grammar/bom_at_start.lu` (the first
+  corpus file whose first three bytes are `EF BB BF`), lost its whole `//!`
+  header, was therefore not a standalone entry (D59), joined its directory's
+  module, and collided its `main` with every sibling's. Thirty-two
+  `grammar/` files answered E0302 `[mod.dup]` at the raw pin.
+  `[gram.lex.source]` governs how the FILE is read, and the header is a run
+  of comments in that file.
+- Unix-domain sockets (`[os.net.unix]`, wolf-lang#227).
+  `net_listen_unix`/`net_connect_unix`, with the rest of the tier serving
+  the fd call for call. The clause's point is the row vocabulary and it is
   implemented as the distinction it was filed to make: `unsupported` is the
   HOST, refused by name and never a bare `io`; every other row is the path
-  (`exists`, `not_found`, `denied`, `refused`). `net_port` on one is `io` — a
-  path has no port — and `net_close` of a LISTENER unlinks its path while a
+  (`exists`, `not_found`, `denied`, `refused`). `net_port` on one is `io` (a
+  path has no port) and `net_close` of a LISTENER unlinks its path while a
   stream's close never touches it. A socket path that is absolute or climbs
   out of the working directory is refused BY NAME, the path-shaped twin of
-  the TCP family's loopback + port 0 discipline. A plain regular file at dial
-  is neither of the clause's two dial cases, so the kernel decides and the
-  hosts split — `ENOTSOCK`/`io` on macOS, `ECONNREFUSED`/`refused` on linux —
-  and the test pins the four rows the clause rules while reading the fifth.
-  `corpus/net/unix_echo.lu` still does not run here — its first statement is
-  `fs_exists` — so the witness's three lanes are carried by `tests/net_unix.rs`
-  instead, and the tension between serving a family made of filesystem paths
-  and declining the filesystem is named rather than papered over.
-- **A `byte` is Copy-shaped, caught the day the type landed.** `let b = a`
-  trapped `use-after-move` on the next read of `a` — wolf-interp#50's shape
+  the TCP family's loopback + port 0 discipline. A plain regular file at
+  dial is neither of the clause's two dial cases, so the kernel decides and
+  the hosts split (`ENOTSOCK`/`io` on macOS, `ECONNREFUSED`/`refused` on
+  linux) and the test pins the four rows the clause rules while reading the
+  fifth. `corpus/net/unix_echo.lu` still does not run here (its first
+  statement is `fs_exists`), so the witness's three lanes are carried by
+  `tests/net_unix.rs` instead, and the tension between serving a family made
+  of filesystem paths and declining the filesystem is named rather than
+  papered over.
+- A `byte` is Copy-shaped, caught the day the type landed. `let b = a`
+  trapped `use-after-move` on the next read of `a`, wolf-interp#50's shape
   one type over, where `char` assignment moved here through 0.1.16 while the
-  compiler printed the char twice. D72 rules `byte` a SCALAR, "an `i8`-shaped
-  storage cell at every tier", so it joins `[mem.tier0.move.3]`'s POD set.
-  Measured against `wolf 0.2.4 --checked`, which prints the octet twice.
-- **Two wrong answers the clause found and the corpus never would
-  (wolf-interp#61 opened).** `[type.byte]` says a byte adopts no numeric
-  literal "in every position", which is four positions; this machine enforced
-  one. A literal `match` arm against a byte scrutinee took the **wrong
-  branch** — `match b { 65 => "sixtyfive", _ => "other" }` printed `other`
-  for a byte that is 65 — and `b = 66` / `b += 1` silently **retyped the
-  variable**, so every later `{b}` rendered an int. Both are refused now.
+  compiler printed the char twice. D72 rules `byte` a SCALAR, "an
+  `i8`-shaped storage cell at every tier", so it joins
+  `[mem.tier0.move.3]`'s POD set. Measured against `wolf 0.2.4 --checked`,
+  which prints the octet twice.
+- Two wrong answers the clause found and the corpus never would
+  (wolf-interp#61 opened). `[type.byte]` says a byte adopts no numeric
+  literal "in every position", which is four positions; this machine
+  enforced one. A literal `match` arm against a byte scrutinee took the
+  wrong branch (`match b { 65 => "sixtyfive", _ => "other" }` printed
+  `other` for a byte that is 65) and `b = 66` / `b += 1` silently retyped
+  the variable, so every later `{b}` rendered an int. Both are refused now.
   Parameter and return positions still accept what the compiler rejects and
   compute the right answer anyway, which is this machine's ordinary
-  conservatism class; the `char` twin is identical in all four, so the fix is
-  one rule at every typed boundary and it is filed rather than widened into
-  this release. No corpus file measures any of them.
-- **The eighteenth corpus differential, and it did not move.** Counterparty
-  built at v0.2.4, all three run-reaching tiers over 469 entries: **8/5/5**
-  divergences (`checked`/`native`/`release`), 2 filed, 6/3/3 gating —
-  file-for-file the same table as 0.1.24's seventeenth over 452. **Not one of
-  the seventeen corpus files this pin adds diverges on any tier**, and
-  neither the byte flip set, nor the unix family, nor D74's five witnesses
+  conservatism class; the `char` twin is identical in all four, so the fix
+  is one rule at every typed boundary and it is filed rather than widened
+  into this release. No corpus file measures any of them.
+- The eighteenth corpus differential, and it did not move. Counterparty
+  built at v0.2.4, all three run-reaching tiers over 469 entries: 8/5/5
+  divergences (`checked`/`native`/`release`), 2 filed, 6/3/3 gating,
+  file-for-file the same table as 0.1.24's seventeenth over 452. Not one of
+  the seventeen corpus files this pin adds diverges on any tier, and neither
+  the byte flip set, nor the unix family, nor D74's five witnesses
   contributes a row. Conservatism 251/215/215 -> 257/221/221. Everything
   still gating is older than this sprint and older than the last one.
-- **The unix family broke clippy on a host that has no unix family.** Three
+- The unix family broke clippy on a host that has no unix family. Three
   `std::path` imports and one `let Some(sock)` binding are used only inside
   `#[cfg(unix)]` arms, so on windows they are dead and `-D warnings` is a
-  gate rather than a preference. Local green is not green — is35's lesson in
+  gate rather than a preference. Local green is not green, is35's lesson in
   a different shape, and the answer is the same one: the check that finds it
   runs BEFORE the push. `cargo clippy --target x86_64-pc-windows-msvc
   --all-targets -- -D warnings` reproduces the runner's verdict on a laptop
   in a minute, and linux's target does too.
-- **Pin, census, ratchets.** Pin `3befc3e` -> `982f857`, wolf-lang v0.2.4.
+- Pin, census, ratchets. Pin `3befc3e` -> `982f857`, wolf-lang v0.2.4.
   Corpus 486 -> 503 (469 entries / 34 members): D74's five layout
   counter-examples, `grammar/bom_at_start.lu`, four `typecheck/byte_*`, two
   `memory/byte_*_ledger`, `memory/consumed_walk_charges_nothing.lu`,
-  `strings/bytes_roundtrip.lu`, and three under `net/`. Anchors 411 -> 417 —
-  `[type.byte]` with its three children and `[os.net]` with `[os.net.unix]`,
-  the net tier's first clause anchors — key sets diffed BOTH ways, six
-  gained, nothing dropped (the #177 check run rather than assumed). Coverage
-  ratchets 176 -> 182. Bundle 524/490 -> 541/507.
+  `strings/bytes_roundtrip.lu`, and three under `net/`. Anchors 411 -> 417
+  (`[type.byte]` with its three children and `[os.net]` with
+  `[os.net.unix]`, the net tier's first clause anchors), key sets diffed
+  BOTH ways, six gained, nothing dropped (the #177 check run rather than
+  assumed). Coverage ratchets 176 -> 182. Bundle 524/490 -> 541/507.
 
 ## 0.1.24 — 2026-09-02
 
 THE BYTE IN THE MIRROR (is35). A diagnostic code is a name two machines say
 to each other, and this release is about one that meant two things. lupin
-answered **E0103** for an escape wolf does not have — `"a\qb"` — while
-`[gram.lex.str.escape]` had read "any other `\` is **E0101** at the escape"
+answered E0103 for an escape wolf does not have (`"a\qb"`), while
+`[gram.lex.str.escape]` had read "any other `\` is E0101 at the escape"
 since v0.2.2, and while wolfc's catalog spends E0103 on something else
-entirely: text after a multiline's opening `"""`. A program refused for a bad
-escape and a program refused for a badly shaped `"""` were the same record
-here, so the differential could not tell them apart. r06 found it the moment
-a corpus file carried an unknown escape (wolf-lang#225).
+entirely: text after a multiline's opening `"""`. A program refused for a
+bad escape and a program refused for a badly shaped `"""` were the same
+record here, so the differential could not tell them apart. r06 found it the
+moment a corpus file carried an unknown escape (wolf-lang#225).
 
 The span was identical on both machines before the change and after it. Only
-the number moved — which is exactly why 484 files never showed it: #198's two
+the number moved, which is exactly why 484 files never showed it: #198's two
 witnesses pin the `\u{…}` DIGIT bound, where both machines already agreed at
 E0101, and the corpus walk compares the `check:` code rather than the span.
 
-Released against pin `3befc3e`, wolf-lang **v0.2.3**, the tag itself: trunk
-and the r06 merge add nothing to `spec/` or `corpus/` beyond it. Census at
-this release: 486 files / 452 entries / 34 members; 352 reach run, 335 match,
-16 dynamic counterparts, 42 conservatism, 58 out of scope, and the one
-standing walk mismatch is still DIV-2026-019, filed. **Every one of the 482
-files carried over from 0.1.23 is verdict-IDENTICAL, class for class** — the
-single field that moved anywhere is one file's human-only `x-unsupported`
-sentence.
+Released against pin `3befc3e`, wolf-lang v0.2.3, the tag itself: trunk and
+the r06 merge add nothing to `spec/` or `corpus/` beyond it. Census at this
+release: 486 files / 452 entries / 34 members; 352 reach run, 335 match, 16
+dynamic counterparts, 42 conservatism, 58 out of scope, and the one standing
+walk mismatch is still DIV-2026-019, filed. Every one of the 482 files
+carried over from 0.1.23 is verdict-IDENTICAL, class for class, the single
+field that moved anywhere is one file's human-only `x-unsupported` sentence.
 
-- **The escape's code is E0101 (`[gram.lex.str.escape]`, wolf-lang#225).**
-  Not a rule this implementation had to write — a number it had to stop
-  choosing. `\q`, a `\x` short of its two hex digits, and a `\u` with no
-  braces all answer E0101 now, at the escape, in a plain string and inside a
-  `"""` alike (`MULTI_PART` reaches the same `STR_ESC`, which is the point
-  #215's witness exists to make). The `char` literal's own E0110 did not move
-  with them: `'\q'` is still one report over the whole literal. Both codes
-  leave `UNPINNED_CODES` — they are the corpus's now.
+- The escape's code is E0101 (`[gram.lex.str.escape]`, wolf-lang#225). Not a
+  rule this implementation had to write; a number it had to stop choosing.
+  `\q`, a `\x` short of its two hex digits, and a `\u` with no braces all
+  answer E0101 now, at the escape, in a plain string and inside a `"""`
+  alike (`MULTI_PART` reaches the same `STR_ESC`, which is the point #215's
+  witness exists to make). The `char` literal's own E0110 did not move with
+  them: `'\q'` is still one report over the whole literal. Both codes leave
+  `UNPINNED_CODES`; they are the corpus's now.
   `grammar/multiline_bad_escape.lu` arrived with the pin carrying a MEASURED
   divergence and flips to agreement in the commit that takes the clause.
-- **E0103 and E0104 are now unspoken here, and that is asserted rather than
-  documented.** Freeing them showed why they were free: this implementation
+- E0103 and E0104 are now unspoken here, and that is asserted rather than
+  documented. Freeing them showed why they were free: this implementation
   does not implement the layout rules they name. v0.2.3's
   `[gram.lex.str.multi]` gives the multiline three side conditions with three
   codes; lupin has one, `E_DEDENT_UNDERRUN` (E0109), and it disagrees with
-  wolfc on both the code and the span for each. Filed as **wolf-interp#59**
+  wolfc on both the code and the span for each. Filed as wolf-interp#59
   with the measurements, and `tests/str_escape_code.rs` fails if either
   number comes back in the meantime.
-- **What `main` may return is decided before `main` runs (wolf-interp#57).**
+- What `main` may return is decided before `main` runs (wolf-interp#57).
   `typecheck/main_returns_str.lu` used to execute its whole body and write
   `hi` to the process's stdout before declining that `main` returned `str`.
-  The record said `unsupported@resolve`, which was true; the invocation had a
-  side effect the record did not report, which for an observation tool is a
-  hazard rather than a wart. `sema::main_return_check` runs on the admission
-  ladder now, beside the other declaration refusals. Verdict and rung
-  unmoved; the claim is true. §6.18 declares the boundary: the check refuses
-  only spellings it can NAME as non-statuses, through any number of `!`
-  wrappers, and leaves an unresolved path — a user alias, a struct — to the
-  dynamic backstop, because refusing a spelling it has not resolved would be
-  a guess that stops a program running at all.
-- **A trap's output bytes compare when both machines hold them
-  (wolf-lang#216) — and it moved NOTHING.** `[proto.cmp.phase]` rules the run
+  The record said `unsupported@resolve`, which was true; the invocation had
+  a side effect the record did not report, which for an observation tool is
+  a hazard rather than a wart. `sema::main_return_check` runs on the
+  admission ladder now, beside the other declaration refusals. Verdict and
+  rung unmoved; the claim is true. §6.18 declares the boundary: the check
+  refuses only spellings it can NAME as non-statuses, through any number of
+  `!` wrappers, and leaves an unresolved path (a user alias, a struct) to
+  the dynamic backstop, because refusing a spelling it has not resolved
+  would be a guess that stops a program running at all.
+- A trap's output bytes compare when both machines hold them
+  (wolf-lang#216), and it moved NOTHING. `[proto.cmp.phase]` rules the run
   rung "for `trap`, compare kind only", and wolf-lang#209 is the proof of
   what that costs: a divergence made of nothing but trap-path output, which
   survived from D66 to r05 with the two records verdict-identical. The
-  widening is applied to `differ` — the instrument — and not to
+  widening is applied to `differ` (the instrument) and not to
   `src/compare.rs`, which still holds the clause as written and says why. It
-  is safe ahead of the ruling because a widened comparison can only ADD rows,
-  and because it is gated on both sides HOLDING the field (`None` on either
-  is honest-absent, the posture `[proto.cmp.warn]` already takes). The
-  measurement: 63 trap records in the bundle, **61 write nothing before the
-  fault**; the two that do agree byte-for-byte with every wolfc tier that
+  is safe ahead of the ruling because a widened comparison can only ADD
+  rows, and because it is gated on both sides HOLDING the field (`None` on
+  either is honest-absent, the posture `[proto.cmp.warn]` already takes).
+  The measurement: 63 trap records in the bundle, 61 write nothing before
+  the fault; the two that do agree byte-for-byte with every wolfc tier that
   runs them. Zero new rows on any lane. The class is empty because the file
-  it was built for was fixed at 0.1.23 — so the counterfactual is pinned as a
+  it was built for was fixed at 0.1.23, so the counterfactual is pinned as a
   unit test with the real digests, because "it would have caught #209" is a
   claim and not a comment. The clause text is proposed on the issue.
-- **The lex exemption is the corpus ledger, not two lists (wolf-interp#58).**
-  A `phase: none` ledger means no rung completed and the ladder starts at
+- The lex exemption is the corpus ledger, not two lists (wolf-interp#58). A
+  `phase: none` ledger means no rung completed and the ladder starts at
   `lex`, so the file is refused BY the lexer and its `check: fail(CODE)` is
   the code the corpus pins. `tests/lex_corpus.rs` and the workflow's
   `conform-run rungs` step both derive the set from that header now; neither
-  keeps a name. It was load-bearing three commits later, when the pin brought
-  `grammar/multiline_bad_escape.lu` — under the old shape, the third
+  keeps a name. It earned that three commits later, when the pin brought
+  `grammar/multiline_bad_escape.lu`: under the old shape, that was the third
   consecutive CI red on one cause.
-- **A lint that read the checkout path.** `conc/proc_cross_module/main.lu`
-  says `use work`; GitHub checks this repository out under
+- A lint that read the checkout path. `conc/proc_cross_module/main.lu` says
+  `use work`; GitHub checks this repository out under
   `/home/runner/work/wolf-interp/…`; W0316's ancestor walk had no stop
-  condition that fired for a file sitting directly in the entry directory, so
-  it climbed the whole filesystem path, found `work`, and warned — on two
+  condition that fired for a file sitting directly in the entry directory,
+  so it climbed the whole filesystem path, found `work`, and warned, on two
   runners and on no developer's machine. The corpus `warns:` ledger caught
-  it. The walk stops at the package now, `lints/ancestor_import/` still warns
-  at the same ident, and the regression test BUILDS a package under a
+  it. The walk stops at the package now, `lints/ancestor_import/` still
+  warns at the same ident, and the regression test BUILDS a package under a
   directory named `work` rather than trusting a comment. Local green is not
   green.
-- **Two waivers retire; the eighth row gets its own name.** DIV-2026-020
-  closes where wolf-lang#220's own closing comment said it would — D71 ruled
-  the span IS the offending token, s134 aligned wolfc, and seven of its eight
-  files are byte-identical here now. The eighth was never the width question:
-  `grammar/let_group_bare_tuple.lu` is `fail(E0201)@parse` on both machines,
-  ten bytes apart, on every tier — this one at the comma in `let a, b`, the
-  counterparty at the end of the initializer list. It becomes **DIV-2026-021**
-  and is filed as wolf-lang#228. DIV-2026-017 goes too: wolf-lang#76 is
-  closed and `lints/raw_interp_braces.lu` answers `{who}` on every lane. It
-  had stopped diverging by v0.2.2, so that waiver outlived its divergence by
-  a release — wolf-lang#177's lesson in a smaller shape — and `differ`'s test
-  now asserts the retired entries are GONE.
-- **The seventeenth corpus differential.** Counterparty built at v0.2.3, all
-  three run-reaching tiers: **8/5/5** divergences (`checked`/`native`/
+- Two waivers retire; the eighth row gets its own name. DIV-2026-020 closes
+  where wolf-lang#220's own closing comment said it would, D71 ruled the
+  span IS the offending token, s134 aligned wolfc, and seven of its eight
+  files are byte-identical here now. The eighth was never the width
+  question: `grammar/let_group_bare_tuple.lu` is `fail(E0201)@parse` on both
+  machines, ten bytes apart, on every tier, this one at the comma in `let a,
+  b`, the counterparty at the end of the initializer list. It becomes
+  DIV-2026-021 and is filed as wolf-lang#228. DIV-2026-017 goes too:
+  wolf-lang#76 is closed and `lints/raw_interp_braces.lu` answers `{who}` on
+  every lane. It had stopped diverging by v0.2.2, so that waiver outlived
+  its divergence by a release (wolf-lang#177's lesson in a smaller shape)
+  and `differ`'s test now asserts the retired entries are GONE.
+- The seventeenth corpus differential. Counterparty built at v0.2.3, all
+  three run-reaching tiers: 8/5/5 divergences (`checked`/`native`/
   `release`) against 0.1.23's 15/12/12, 2 of them filed, 6/3/3 gating after
-  filing. Minus seven on every tier, and every one is DIV-2026-020 closing —
-  nothing this sprint wrote caused the drop, taking the pin did. Conservatism
-  251/215/215. Everything still gating is older than this sprint.
-- **`byte` is DEFERRED to is36, by name.** D72 rules the byte-width scalar
-  and assigns the landing to wolf-lang s135, with this lane mirroring it.
-  s135 has not merged — checked at the pin step and again at the release
-  commit: `origin/trunk` at `5241ab7`, no `s135` branch, no open PR,
-  wolf-lang#203 still OPEN — so nothing here parses the type name, sizes a
-  1-byte ledger slot, or implements the casts. is36 takes it at whichever pin
-  carries s135.
-- **Pin, census, ratchets.** Pin `8cda3aa` -> `3befc3e`. Corpus 482 -> 486:
+  filing. Minus seven on every tier, and every one is DIV-2026-020 closing,
+  nothing this sprint wrote caused the drop, taking the pin did.
+  Conservatism 251/215/215. Everything still gating is older than this
+  sprint.
+- `byte` is DEFERRED to is36, by name. D72 rules the byte-width scalar and
+  assigns the landing to wolf-lang s135, with this lane mirroring it. s135
+  has not merged, checked at the pin step and again at the release commit:
+  `origin/trunk` at `5241ab7`, no `s135` branch, no open PR, wolf-lang#203
+  still OPEN, so nothing here parses the type name, sizes a 1-byte ledger
+  slot, or implements the casts. is36 takes it at whichever pin carries
+  s135.
+- Pin, census, ratchets. Pin `8cda3aa` -> `3befc3e`. Corpus 482 -> 486:
   #215's multiline pair and s134's two-file `conc/proc_cross_module/`, the
   first MULTI-FILE addition in four pins, so members move too (33 -> 34).
-  Anchors 411, diffed both ways — nothing gained, nothing dropped, which is
+  Anchors 411, diffed both ways, nothing gained, nothing dropped, which is
   the #177 check run rather than assumed. Coverage ratchets 175 -> 176:
   `gram.lex.str.multi`, cited by anything for the first time, because before
   #215 the multiline had no productions to write a counter-example against.
