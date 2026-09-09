@@ -45,6 +45,10 @@ fn the_self_differential_is_empty() {
         &corpus,
         "--compiler",
         env!("CARGO_BIN_EXE_lupin"),
+        // wolf-interp#63: a `cargo test` binary IS the debug build, so the
+        // self-differential goes through the named door rather than around
+        // the refusal. That is the door working, not a workaround.
+        "--allow-debug-self",
     ]);
     let stdout = stdout_of(&output);
     assert_eq!(
@@ -69,11 +73,76 @@ fn the_jsonl_report_of_a_self_differential_is_an_empty_file() {
         env!("CARGO_BIN_EXE_lupin"),
         "--report",
         &report.to_string_lossy(),
+        "--allow-debug-self",
     ]);
     assert_eq!(output.status.code(), Some(0));
     let text = std::fs::read_to_string(&report).expect("the report was written");
     assert!(text.is_empty(), "an agreeing pair wrote lines: {text}");
     let _ = std::fs::remove_file(&report);
+}
+
+#[test]
+fn a_debug_harness_is_refused_by_name_before_it_can_compare() {
+    // wolf-interp#63. `cargo test` builds this binary at `debug`, so the
+    // refusal is exercised on the real thing rather than on a simulation of
+    // it. The counterparty EXISTS here (it is this binary) — the refusal is
+    // about the comparison, not about the absence of one.
+    //
+    // The measurement the refusal cites is the reason it is a refusal and not
+    // a note: `memory/byte_list_ledger.lu` runs in <1s at `--release` and
+    // still had not finished at 60s under `debug`, against a 30s budget, and
+    // the harness scores that as a `timeout` VERDICT — a line nobody reading
+    // the report can tell from a divergence.
+    let corpus = grammar_corpus();
+    let output = wolf_interp(&[
+        "diff-run",
+        "--corpus",
+        &corpus,
+        "--compiler",
+        env!("CARGO_BIN_EXE_lupin"),
+    ]);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "a refusal is a TOOL error, not a comparison result: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("UNOPTIMIZED build"), "{stderr}");
+    assert!(stderr.contains("byte_list_ledger.lu"), "{stderr}");
+    assert!(stderr.contains("--allow-debug-self"), "{stderr}");
+    assert!(
+        stdout_of(&output).is_empty(),
+        "a refused run produces no report at all"
+    );
+}
+
+#[test]
+fn the_door_is_loud_and_stamps_the_profile_on_the_report() {
+    // Taking `--allow-debug-self` does not restore the silence #63 is about:
+    // the warning names the build, and every divergence line carries
+    // `x-self-profile` — on the release side too, so a reader never learns to
+    // treat the field's absence as meaningful.
+    //
+    // The self-differential is divergence-free by construction, so the field
+    // is asserted where it is always present: the human report's own header.
+    let corpus = grammar_corpus();
+    let output = wolf_interp(&[
+        "diff-run",
+        "--corpus",
+        &corpus,
+        "--compiler",
+        env!("CARGO_BIN_EXE_lupin"),
+        "--allow-debug-self",
+    ]);
+    assert_eq!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("UNOPTIMIZED build"), "{stderr}");
+    assert!(
+        stdout_of(&output).contains("harness profile: debug"),
+        "{}",
+        stdout_of(&output)
+    );
 }
 
 #[test]

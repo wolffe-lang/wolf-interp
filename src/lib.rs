@@ -70,6 +70,29 @@ pub const IMPL_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// `unknown` when built outside a checkout.
 pub const COMMIT: &str = env!("WOLF_INTERP_COMMIT");
 
+/// The optimization profile this binary was built with (wolf-interp#63).
+///
+/// `debug_assertions` is cargo's own `debug`/`release` switch, so this is the
+/// profile and not a guess at one. It exists because a differential harness
+/// hands a wall-clock budget to a subprocess, and how long that subprocess
+/// takes is a property of the BUILD, not of the program under test: a debug
+/// lupin cannot run `corpus/memory/byte_list_ledger.lu` inside `diff-run`'s
+/// 30s budget (measured at >60s on an idle machine), where a release lupin
+/// finishes it in under a second. The harness scores a timeout as a verdict,
+/// by design and correctly — so the profile has to be visible, or the verdict
+/// silently encodes which binary produced it.
+pub const BUILD_PROFILE: &str = if cfg!(debug_assertions) {
+    "debug"
+} else {
+    "release"
+};
+
+/// Whether this binary is an unoptimized build.
+#[must_use]
+pub const fn is_debug_build() -> bool {
+    cfg!(debug_assertions)
+}
+
 /// The upstream spec/corpus pin, verbatim from `vendor/upstream/PIN` at
 /// compile time (the tracked snapshot is byte-identical to the submodule, so
 /// there is one answer). `--version` prints its short form.

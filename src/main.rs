@@ -326,6 +326,11 @@ struct DiffRunArgs {
     /// divergence.
     #[arg(long)]
     filing: bool,
+    /// Run anyway when THIS binary is an unoptimized build (wolf-interp#63).
+    /// Every divergence then carries `x-self-profile: debug`, and a timeout
+    /// under it is a statement about the build, not about the program.
+    #[arg(long)]
+    allow_debug_self: bool,
 }
 
 /// The CLI spelling of [`differ::CounterpartyTier`]. Separate because clap's
@@ -1243,17 +1248,14 @@ fn run_conformance_check(args: &ConformanceCheckArgs) -> u8 {
         Err(message) => return tool_error(&message),
     };
     if let Some(path) = &args.report
-        && let Err(code) = write_jsonl(
-            path,
-            outcome.divergences.iter().map(DeepDivergence::to_json),
-        )
+        && let Err(code) = write_jsonl(path, outcome.divergences.iter().map(divergence_json))
     {
         return code;
     }
     let gating = |d: &DeepDivergence| d.class == DeepClass::SoundnessCandidate || d.filed.is_none();
     if args.json {
         for d in &outcome.divergences {
-            println!("{}", d.to_json());
+            println!("{}", divergence_json(d));
         }
         return if outcome.divergences.iter().filter(|d| gating(d)).count() == 0 {
             EXIT_OK
@@ -1757,11 +1759,91 @@ fn write_jsonl(path: &Path, lines: impl Iterator<Item = serde_json::Value>) -> R
         .map_err(|e| tool_error(&format!("cannot write `{}`: {e}", path.display())))
 }
 
+/// wolf-interp#63: `diff-run` refuses an unoptimized build of ITSELF.
+///
+/// The harness's own doc comment says "a timeout is a verdict, not an error",
+/// and that is right: a program the counterparty finishes and this machine
+/// does not is a real observation. What it cannot be is a verdict about the
+/// PROGRAM when the only thing that produced it is the profile the harness
+/// was built with — `corpus/memory/byte_list_ledger.lu` is >60s under
+/// `target/debug/lupin` and <1s under `target/release/lupin`, same source,
+/// same file, idle machine. is38 recorded that row as a load artefact and was
+/// wrong, which is the shape of the cost: the verdict is indistinguishable in
+/// the output from a divergence, so the wrong cause is the cheap one to
+/// reach for.
+///
+/// **Why refusal and not the other two dispositions.** A per-row budget (#63's
+/// option 3) is the weakest and the issue says so: it makes this one row pass
+/// and leaves the cliff unnamed, so the next allocation-heavy witness pays
+/// again with a fresh mystery. Stating the profile in the verdict (option 1)
+/// makes the record honest but still produces the record — the lane still
+/// gets a report it has to know how to read, and #63 exists because somebody
+/// read one and got it wrong. Refusal is the only one of the three that makes
+/// the failure mode unreachable, and it has this repository's own precedent:
+/// the toolchain tools refuse on identity drift rather than reporting a
+/// drifted answer, on exactly the reasoning that a comparison made with the
+/// wrong instrument is not a cheaper comparison but a false one.
+///
+/// The refusal is NAMED and it has a door: `--allow-debug-self` runs anyway,
+/// because a lane debugging the harness itself has a real reason to. Taking
+/// that door does not restore the silence — option 1 rides along, because a
+/// refusal has to know the profile to refuse, and knowing it and then leaving
+/// it out of the report would be the same defect one function over. So every
+/// divergence carries `x-self-profile`, always, and a `timeout` produced by a
+/// debug build says so on its own line.
+fn debug_self_refusal(allow: bool) -> Option<u8> {
+    if !wolf_interp::is_debug_build() {
+        return None;
+    }
+    if allow {
+        eprintln!(
+            "warning: this lupin is an UNOPTIMIZED build ({}), and `--allow-debug-self` was \
+             passed. Wall-clock verdicts from this run describe the build as much as the \
+             program: `memory/byte_list_ledger.lu` takes >60s here and <1s at `--release`. \
+             Every divergence below carries `x-self-profile: debug` (wolf-interp#63).",
+            wolf_interp::BUILD_PROFILE
+        );
+        return None;
+    }
+    eprintln!(
+        "lupin: `diff-run` refuses to compare with an UNOPTIMIZED build of itself \
+         (profile: {}).\n\
+         \x20 A timeout is a verdict in this harness, and a debug build turns the profile \
+         into one: `memory/byte_list_ledger.lu` needs >60s here against a 30s budget and \
+         <1s at `--release`, so the report would carry a `timeout` no reader can tell from \
+         a divergence (wolf-interp#63).\n\
+         \x20 Build the harness at `--release` and re-run, or pass `--allow-debug-self` to \
+         proceed with every divergence stamped `x-self-profile: debug`.",
+        wolf_interp::BUILD_PROFILE
+    );
+    Some(EXIT_TOOL_ERROR)
+}
+
+/// A divergence as JSON, with the profile of the binary that produced it.
+///
+/// Unconditional, and on the release side too: a field that appears only when
+/// something is wrong teaches a reader to skim past its absence. Both report
+/// paths use it — `diff-run`'s and `conformance check`'s — because the claim
+/// is about the binary that held the wall clock, and both of them do.
+fn divergence_json(d: &DeepDivergence) -> serde_json::Value {
+    let mut value = d.to_json();
+    value["x-self-profile"] = serde_json::Value::from(wolf_interp::BUILD_PROFILE);
+    value
+}
+
 fn run_diff_run(args: &DiffRunArgs) -> u8 {
     let compiler = match counterparty_or_skip(args.compiler.as_deref(), args.require_counterparty) {
         Ok(path) => path,
         Err(code) => return code,
     };
+    // AFTER the counterparty is resolved, deliberately: the refusal is about
+    // making a COMPARISON with the wrong instrument, and a run with no
+    // counterparty makes none. A lane with no compiler still SKIPs loudly and
+    // green, whatever profile it was built at (CI's own differential lane is
+    // a `cargo run` — a debug build — and its skip is the assertion).
+    if let Some(code) = debug_self_refusal(args.allow_debug_self) {
+        return code;
+    }
     // The lane is part of the observation: the same corpus against `default`
     // and against `release` are different claims, so a log must say which one
     // it is looking at.
@@ -1777,10 +1859,7 @@ fn run_diff_run(args: &DiffRunArgs) -> u8 {
         Err(code) => return code,
     };
     if let Some(path) = &args.report
-        && let Err(code) = write_jsonl(
-            path,
-            outcome.divergences.iter().map(DeepDivergence::to_json),
-        )
+        && let Err(code) = write_jsonl(path, outcome.divergences.iter().map(divergence_json))
     {
         return code;
     }
@@ -1791,7 +1870,7 @@ fn run_diff_run(args: &DiffRunArgs) -> u8 {
     }
     if args.json {
         for d in &outcome.divergences {
-            println!("{}", d.to_json());
+            println!("{}", divergence_json(d));
         }
         let gating = outcome
             .divergences
@@ -1804,6 +1883,13 @@ fn run_diff_run(args: &DiffRunArgs) -> u8 {
             EXIT_CHECK_FAILED
         };
     }
+    // wolf-interp#63: the wall clock is part of the observation, so the build
+    // that kept it is part of the report. Printed on every run, including the
+    // release one — a line that appears only when something is wrong is a line
+    // readers learn to skim past. `diff-run`'s own, not `report_diff`'s: the
+    // conformance lane compares against a bundle whose records were made
+    // elsewhere, and this claim is about the binary that held the clock here.
+    println!("harness profile: {}", wolf_interp::BUILD_PROFILE);
     report_diff(&outcome, args.filing)
 }
 

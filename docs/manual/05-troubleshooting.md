@@ -35,6 +35,21 @@ compiler is an environment fact, and the run counts no divergence. Pass
 `--require-counterparty` to hard-fail instead, or `--compiler <path>` to
 name a binary explicitly.
 
+## `diff-run` refuses an unoptimized build
+
+The message "diff-run refuses to compare with an UNOPTIMIZED build of
+itself" means this binary was built without optimization and a counterparty
+was found. A debug build cannot finish some corpus programs inside the
+harness's per-invocation budget — `memory/byte_list_ledger.lu` takes more
+than 60 seconds against a 30-second budget, and under a second at
+`--release` — and the harness scores a timeout as a *verdict*, so the
+report would carry a line indistinguishable from a real divergence
+(wolf-interp#63).
+
+`cargo build --release` and run `target/release/lupin diff-run`.
+`--allow-debug-self` proceeds anyway, warns, and stamps `x-self-profile:
+debug` on every divergence it reports.
+
 ## Platform notes
 
 Linux x86-64/aarch64, macOS aarch64 and Windows x86-64 are tier-1, and CI
