@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.29 — 2026-09-09
 
 THE MIRROR SPELLS `parse` (is41). Pin `5c729e8` -> `e9a17cb`, wolf-lang trunk
 past the s143 merge, **dev-stamped**: v0.2.9 is not cut this wave, and the
