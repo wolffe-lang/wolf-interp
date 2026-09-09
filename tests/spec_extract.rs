@@ -417,6 +417,9 @@ fn the_section_nine_code_reservations_are_the_ones_we_emit() {
         diag::E_EMPTY_STATEMENT,
         diag::E_COMPARISON_CHAIN,
         diag::E_FLOAT_DOT_EXPONENT,
+        // E0005 retired at wolf-lang#276 (s144) and nothing emits it now,
+        // but §9 still lists the number — "retired … the number is never
+        // reused" — so the reservation, and this row, outlive the code.
         diag::E_ELSE_NEW_LINE,
         diag::E_STRUCT_LIT_IN_COND,
         diag::E_INTERP_DEPTH,

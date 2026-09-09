@@ -696,6 +696,7 @@ impl<'a> Lexer<'a> {
     /// - `{…}` re-enables insertion inside itself whatever it is nested in.
     /// - top level behaves like a block.
     /// - the `]` closing an attribute is exempt — handled where it is emitted.
+    /// - the next token is `else` — [`Self::else_follows`].
     fn insert_terminator(&mut self, at: usize) {
         match self.innermost_delimiter() {
             None | Some(Ctx::Brace) => {}
@@ -712,7 +713,62 @@ impl<'a> Lexer<'a> {
         if self.attr_close == Some(self.tokens.len() - 1) {
             return;
         }
+        // The `else` exception (wolf-lang#276): a line whose first token is
+        // `else` continues the previous statement, so the terminator that
+        // would orphan it is withheld. `at` is the newline; the lookahead
+        // starts one byte past it.
+        if self.else_follows(at + 1) {
+            return;
+        }
         self.push(Tok::Term { explicit: false }, Span::empty(at));
+    }
+
+    /// `[gram.lex.newline]`'s second lookahead exception, beside the
+    /// attribute one: **no terminator is inserted at a newline when the next
+    /// token is `else`** (ruled 2026-09-09, wolf-lang#276; E0005 retired).
+    ///
+    /// One token of lookahead, and the trivia between the newline and the
+    /// `else` — blank lines, `//` comments — does not count. Which `else` it
+    /// is the binding decides (`[gram.amb.else]`), never the line: `}`
+    /// newline `else {` is the branch, `f()` newline `else 0` is the
+    /// defaulting operator, and both reach the parser exactly as they would
+    /// written trailing.
+    ///
+    /// `elsewhere` is an identifier, not the keyword, so the four bytes must
+    /// not be followed by an identifier-continue scalar. The scan reads raw
+    /// bytes and never enters a string: a newline reached in TOKEN mode has
+    /// already closed or unwound every plain string frame
+    /// (`[gram.lex.str]`), and a multiline literal's body is consumed whole
+    /// by its own scanner.
+    fn else_follows(&self, from: usize) -> bool {
+        let bytes = self.src.as_bytes();
+        let mut i = from.min(bytes.len());
+        loop {
+            match bytes.get(i) {
+                // Inline whitespace and further newlines: blank lines
+                // between the statement and its `else` do not count.
+                Some(b' ' | b'\t' | b'\r' | b'\n' | 0x0b | 0x0c) => i += 1,
+                // `//`, `///` and `//!` all run to end of line
+                // (`[gram.lex.comment]`); there are no block comments.
+                Some(b'/') if bytes.get(i + 1) == Some(&b'/') => {
+                    while let Some(&c) = bytes.get(i) {
+                        if c == b'\n' {
+                            break;
+                        }
+                        i += 1;
+                    }
+                }
+                _ => break,
+            }
+        }
+        if !bytes[i..].starts_with(b"else") {
+            return false;
+        }
+        // `else` is four ASCII bytes, so `i + 4` is a char boundary.
+        self.src[i + 4..]
+            .chars()
+            .next()
+            .is_none_or(|c| !(is_xid_continue(c) || c == '_'))
     }
 
     fn insert_terminator_at_eof(&mut self) {

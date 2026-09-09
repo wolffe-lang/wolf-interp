@@ -240,7 +240,14 @@ pub const E_COMPARISON_CHAIN: &str = "E0003";
 /// Float written `1.e5` (`[gram.lex.number]`). Reserved but unreachable here —
 /// see [`UNPINNED_CODES`]' notes.
 pub const E_FLOAT_DOT_EXPONENT: &str = "E0004";
-/// `else` on a new line (`[gram.amb.else]`).
+/// `else` on a new line (`[gram.amb.else]`). **Retired 2026-09-09** by
+/// wolf-lang#276: `[gram.lex.newline]` looks one token ahead and inserts no
+/// terminator before an `else`, so a line may start with one and nothing
+/// orphans it. Nothing in this implementation emits E0005 any more. The
+/// constant stays because §9 of `spec/01-grammar.md` still *reserves* the
+/// number — "the number is never reused" — and `tests/spec_extract.rs`
+/// diffs our constants against that list; deleting it would claim the spec
+/// dropped a reservation it did not. Reserved and unreachable, as E0004 is.
 pub const E_ELSE_NEW_LINE: &str = "E0005";
 /// Struct literal in condition/scrutinee position (`[gram.amb.structlit]`).
 pub const E_STRUCT_LIT_IN_COND: &str = "E0006";

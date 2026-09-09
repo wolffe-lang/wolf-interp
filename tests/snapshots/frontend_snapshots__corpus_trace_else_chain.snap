@@ -2,39 +2,112 @@
 source: tests/frontend_snapshots.rs
 expression: "trace_of(&corpus(\"grammar/else_chain.lu\"))"
 ---
-  131..261   [gram.item.unit] unit
-  131..261   [gram.item.fn]   fn main
-  149..261   [gram.expr.block]     block
-  155..164   [gram.item.let]       binding
-  163..164   [gram.expr.primary]         int 2
-  169..227   [gram.item.let]       binding
-  177..227   [gram.expr.flow]         if
-  180..186   [gram.expr.prec]           binary Eq
-  180..181   [gram.expr.primary]             path x
-  185..186   [gram.expr.primary]             int 1
-  187..193   [gram.expr.block]           block
-  189..191   [gram.expr.block]             tail value
-  189..191   [gram.expr.primary]               int 10
-  199..227   [gram.expr.flow]           if
-  202..208   [gram.expr.prec]             binary Eq
-  202..203   [gram.expr.primary]               path x
-  207..208   [gram.expr.primary]               int 2
-  209..215   [gram.expr.block]             block
-  211..213   [gram.expr.block]               tail value
-  211..213   [gram.expr.primary]                 int 20
-  221..227   [gram.expr.block]             block expression
-  221..227   [gram.expr.block]               block
-  223..225   [gram.expr.block]                 tail value
-  223..225   [gram.expr.primary]                   int 30
-  232..259   [gram.expr.block]       tail value
-  232..259   [gram.expr.flow]         if
-  235..242   [gram.expr.prec]           binary Eq
-  235..236   [gram.expr.primary]             path r
-  240..242   [gram.expr.primary]             int 20
-  243..248   [gram.expr.block]           block
-  245..246   [gram.expr.block]             tail value
-  245..246   [gram.expr.primary]               int 0
-  254..259   [gram.expr.block]           block expression
-  254..259   [gram.expr.block]             block
-  256..257   [gram.expr.block]               tail value
-  256..257   [gram.expr.primary]                 int 1
+  440..907   [gram.item.unit] unit
+  440..647   [gram.item.fn]   fn classify
+  475..647   [gram.expr.block]     block
+  481..491   [gram.item.let]       binding
+  489..491   [gram.lex.str]         string (0 part(s))
+  496..639   [gram.expr.block]       expr statement
+  496..639   [gram.expr.flow]         if
+  499..518   [gram.expr.primary]           group
+  500..517   [gram.expr.prec]             binary Eq
+  500..509   [gram.amb.brackets]               bracket-apply (1 arg(s))
+  500..501   [gram.expr.primary]                 path s
+  502..508   [gram.expr.primary]                 range ..
+  502..503   [gram.expr.primary]                   path i
+  505..508   [gram.expr.prec]                   binary Add
+  505..506   [gram.expr.primary]                     path i
+  507..508   [gram.expr.primary]                     int 1
+  513..517   [gram.lex.str]               string (1 part(s))
+  524..540   [gram.expr.block]           block
+  526..538   [gram.expr.assign]             assign
+  526..527   [gram.expr.primary]               path t
+  531..538   [gram.lex.str]               string (1 part(s))
+  550..639   [gram.expr.flow]           if
+  553..572   [gram.expr.primary]             group
+  554..571   [gram.expr.prec]               binary Eq
+  554..563   [gram.amb.brackets]                 bracket-apply (1 arg(s))
+  554..555   [gram.expr.primary]                   path s
+  556..562   [gram.expr.primary]                   range ..
+  556..557   [gram.expr.primary]                     path i
+  559..562   [gram.expr.prec]                     binary Add
+  559..560   [gram.expr.primary]                       path i
+  561..562   [gram.expr.primary]                       int 1
+  567..571   [gram.lex.str]                 string (1 part(s))
+  573..588   [gram.expr.block]             block
+  575..586   [gram.expr.assign]               assign
+  575..576   [gram.expr.primary]                 path t
+  580..586   [gram.lex.str]                 string (1 part(s))
+  621..639   [gram.expr.block]             block expression
+  621..639   [gram.expr.block]               block
+  623..637   [gram.expr.assign]                 assign
+  623..624   [gram.expr.primary]                   path t
+  628..637   [gram.amb.brackets]                   bracket-apply (1 arg(s))
+  628..629   [gram.expr.primary]                     path s
+  630..636   [gram.expr.primary]                     range ..
+  630..631   [gram.expr.primary]                       path i
+  633..636   [gram.expr.prec]                       binary Add
+  633..634   [gram.expr.primary]                         path i
+  635..636   [gram.expr.primary]                         int 1
+  644..645   [gram.expr.block]       tail value
+  644..645   [gram.expr.primary]         path t
+  649..907   [gram.item.fn]   fn main
+  667..907   [gram.expr.block]     block
+  673..682   [gram.item.let]       binding
+  681..682   [gram.expr.primary]         int 2
+  687..745   [gram.item.let]       binding
+  695..745   [gram.expr.flow]         if
+  698..704   [gram.expr.prec]           binary Eq
+  698..699   [gram.expr.primary]             path x
+  703..704   [gram.expr.primary]             int 1
+  705..711   [gram.expr.block]           block
+  707..709   [gram.expr.block]             tail value
+  707..709   [gram.expr.primary]               int 10
+  717..745   [gram.expr.flow]           if
+  720..726   [gram.expr.prec]             binary Eq
+  720..721   [gram.expr.primary]               path x
+  725..726   [gram.expr.primary]               int 2
+  727..733   [gram.expr.block]             block
+  729..731   [gram.expr.block]               tail value
+  729..731   [gram.expr.primary]                 int 20
+  739..745   [gram.expr.block]             block expression
+  739..745   [gram.expr.block]               block
+  741..743   [gram.expr.block]                 tail value
+  741..743   [gram.expr.primary]                   int 30
+  750..814   [gram.item.let]       binding
+  758..814   [gram.expr.flow]         if
+  761..767   [gram.expr.prec]           binary Eq
+  761..762   [gram.expr.primary]             path x
+  766..767   [gram.expr.primary]             int 1
+  768..786   [gram.expr.block]           block
+  778..780   [gram.expr.block]             tail value
+  778..780   [gram.expr.primary]               int 10
+  796..814   [gram.expr.block]           block expression
+  796..814   [gram.expr.block]             block
+  806..808   [gram.expr.block]               tail value
+  806..808   [gram.expr.primary]                 int 20
+  819..846   [gram.item.let]       binding
+  827..846   [gram.expr.primary]         call (2 arg(s))
+  827..835   [gram.expr.primary]           path classify
+  836..842   [gram.lex.str]           string (1 part(s))
+  844..845   [gram.expr.primary]           int 1
+  851..905   [gram.expr.block]       tail value
+  851..905   [gram.expr.flow]         if
+  854..888   [gram.expr.prec]           binary And
+  854..872   [gram.expr.prec]             binary And
+  854..861   [gram.expr.prec]               binary Eq
+  854..855   [gram.expr.primary]                 path r
+  859..861   [gram.expr.primary]                 int 20
+  865..872   [gram.expr.prec]               binary Eq
+  865..866   [gram.expr.primary]                 path s
+  870..872   [gram.expr.primary]                 int 20
+  876..888   [gram.expr.prec]             binary Eq
+  876..877   [gram.expr.primary]               path c
+  881..888   [gram.lex.str]               string (1 part(s))
+  889..894   [gram.expr.block]           block
+  891..892   [gram.expr.block]             tail value
+  891..892   [gram.expr.primary]               int 0
+  900..905   [gram.expr.block]           block expression
+  900..905   [gram.expr.block]             block
+  902..903   [gram.expr.block]               tail value
+  902..903   [gram.expr.primary]                 int 1

@@ -89,6 +89,25 @@ fn rules(
 }
 "#;
 
+/// wolf-lang#276's lookahead, in every shape `[gram.lex.newline]` names: the
+/// `}` of an `if` before a leading `else`, a complete expression before the
+/// defaulting `else`, blank lines and a `//` comment in between, and the
+/// `elsewhere` that is an identifier and still ends its statement.
+const LEADING_ELSE: &str = r#"fn shapes(a: int) -> int {
+    let branch = if a == 1 {
+        1
+    }
+    else if a == 2 { 2 }
+
+    // the trivia between does not count
+    else { 3 }
+    let default = f(a)
+        else 0
+    let elsewhere = branch
+    elsewhere + default
+}
+"#;
+
 #[test]
 fn every_string_mode_decomposes() {
     insta::assert_snapshot!(tokens_of(EVERY_STRING_MODE));
@@ -102,6 +121,49 @@ fn the_terminator_rules_insert_exactly_where_the_spec_says() {
 #[test]
 fn the_terminator_fixture_also_parses() {
     insta::assert_snapshot!(trace_of(TERMINATOR_RULES));
+}
+
+#[test]
+fn a_leading_else_takes_no_terminator() {
+    insta::assert_snapshot!(tokens_of(LEADING_ELSE));
+}
+
+#[test]
+fn the_leading_else_fixture_also_parses() {
+    insta::assert_snapshot!(trace_of(LEADING_ELSE));
+}
+
+/// The lookahead is one token wide and keyword-exact, asserted directly on
+/// the stream rather than through a snapshot: an inserted terminator before
+/// `else` is what E0005 was made of, and `elsewhere` must keep its.
+#[test]
+fn the_else_lookahead_is_keyword_exact() {
+    use lex::Tok;
+
+    let inserted = |src: &str| {
+        lex::lex(src)
+            .tokens
+            .iter()
+            .filter(|t| matches!(t.tok, Tok::Term { explicit: false }))
+            .count()
+    };
+
+    // One statement, so one terminator: the block's own, at the end.
+    assert_eq!(inserted("fn f() -> int {\n    g()\n    else 0\n}\n"), 2);
+    // Blank lines and comments between the newline and the `else` do not
+    // count against the one token of lookahead.
+    assert_eq!(
+        inserted("fn f() -> int {\n    g()\n\n    // why\n    else 0\n}\n"),
+        2
+    );
+    // `elsewhere` is an identifier, not the keyword: its statement ends.
+    assert_eq!(inserted("fn f() -> int {\n    g()\n    elsewhere\n}\n"), 3);
+    // The withholding is `[gram.lex.newline]`'s, so the delimiter rule still
+    // decides first: inside `(` no terminator was ever inserted anyway.
+    assert_eq!(
+        inserted("fn f() -> int {\n    g(\n        1\n    )\n}\n"),
+        2
+    );
 }
 
 // ---------------------------------------------------------------------------

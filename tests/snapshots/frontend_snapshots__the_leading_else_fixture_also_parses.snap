@@ -1,0 +1,38 @@
+---
+source: tests/frontend_snapshots.rs
+expression: trace_of(LEADING_ELSE)
+---
+    0..244   [gram.item.unit] unit
+    0..244   [gram.item.fn]   fn shapes
+   25..244   [gram.expr.block]     block
+   31..153   [gram.item.let]       binding
+   44..153   [gram.expr.flow]         if
+   47..53    [gram.expr.prec]           binary Eq
+   47..48    [gram.expr.primary]             path a
+   52..53    [gram.expr.primary]             int 1
+   54..71    [gram.expr.block]           block
+   64..65    [gram.expr.block]             tail value
+   64..65    [gram.expr.primary]               int 1
+   81..153   [gram.expr.flow]           if
+   84..90    [gram.expr.prec]             binary Eq
+   84..85    [gram.expr.primary]               path a
+   89..90    [gram.expr.primary]               int 2
+   91..96    [gram.expr.block]             block
+   93..94    [gram.expr.block]               tail value
+   93..94    [gram.expr.primary]                 int 2
+  148..153   [gram.expr.block]             block expression
+  148..153   [gram.expr.block]               block
+  150..151   [gram.expr.block]                 tail value
+  150..151   [gram.expr.primary]                   int 3
+  158..191   [gram.item.let]       binding
+  172..191   [gram.expr.primary]         else defaulting
+  172..176   [gram.expr.primary]           call (1 arg(s))
+  172..173   [gram.expr.primary]             path f
+  174..175   [gram.expr.primary]             path a
+  190..191   [gram.expr.primary]           int 0
+  196..218   [gram.item.let]       binding
+  212..218   [gram.expr.primary]         path branch
+  223..242   [gram.expr.block]       tail value
+  223..242   [gram.expr.prec]         binary Add
+  223..232   [gram.expr.primary]           path elsewhere
+  235..242   [gram.expr.primary]           path default

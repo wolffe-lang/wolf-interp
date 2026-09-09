@@ -722,17 +722,6 @@ impl<'a> Parser<'a> {
         )
     }
 
-    /// E0005 — `[gram.amb.else]`: `else` must share the line with the preceding
-    /// `}`, or the inserted terminator orphans it.
-    fn orphaned_else(&self) -> Diag {
-        Diag::new(
-            diag::E_ELSE_NEW_LINE,
-            self.span(),
-            "gram.amb.else",
-            "`else` must be on the same line as the preceding `}`",
-        )
-    }
-
     fn parse_attributes(&mut self) -> PResult<Vec<Attribute>> {
         let mut out = Vec::new();
         loop {
@@ -1962,7 +1951,6 @@ impl<'a> Parser<'a> {
                 None => break,
                 Some(Tok::RBrace) => break,
                 Some(Tok::Term { explicit: true }) => return Err(self.empty_statement()),
-                Some(Tok::Kw("else")) => return Err(self.orphaned_else()),
                 Some(tok) if tok.is_binary_only() => return Err(self.leading_operator()),
                 _ => {}
             }
@@ -3919,10 +3907,35 @@ mod tests {
         assert_eq!(d.code, diag::E_KEYWORD_AS_IDENT);
     }
 
+    /// wolf-lang#276: `[gram.lex.newline]` withholds the terminator before a
+    /// leading `else`, so the aligned chain that was E0005 is one statement.
+    /// E0005 is retired — §9 keeps the number reserved, this parser never
+    /// spells it.
     #[test]
-    fn an_orphaned_else_is_e0005() {
-        let d = rejects("fn main() -> int {\n    if a { 1 }\n    else { 2 }\n}\n");
-        assert_eq!(d.code, diag::E_ELSE_NEW_LINE);
+    fn an_else_may_start_a_line() {
+        parses("fn main() -> int {\n    if a { 1 }\n    else { 2 }\n}\n");
+    }
+
+    /// The other binding of the same lookahead: after a complete expression a
+    /// leading `else` is the defaulting operator (`[gram.amb.else]` — the
+    /// binding decides, not the line).
+    #[test]
+    fn a_leading_else_is_the_defaulting_operator() {
+        parses("fn main() -> int {\n    let a = f()\n        else 0\n    a\n}\n");
+    }
+
+    /// The trivia between the newline and the `else` does not count: blank
+    /// lines and `//` comments are skipped by the one-token lookahead.
+    #[test]
+    fn trivia_between_the_newline_and_the_else_does_not_count() {
+        parses("fn main() -> int {\n    if a { 1 }\n\n    // why\n    else { 2 }\n}\n");
+    }
+
+    /// `elsewhere` is an identifier, not the keyword: the lookahead must not
+    /// swallow the terminator before it.
+    #[test]
+    fn elsewhere_is_an_identifier_not_the_keyword() {
+        parses("fn main() -> int {\n    let elsewhere = 1\n    elsewhere\n}\n");
     }
 
     #[test]
