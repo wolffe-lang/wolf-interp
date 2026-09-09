@@ -110,6 +110,43 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The mirror writes vectored — is40, lupin 0.1.28, pin `5c729e8` (wolf-lang v0.2.8)
+
+s141 gave the compiler a gathered write and a stream option; s142 gave it
+`str.to_int` and a stat on an open handle. This sprint is the mirror taking
+both merges at one tag, and **no class opened**: the walk's one mismatch is
+still DIV-2026-019.
+
+| witness | lupin at 0.1.27 (unimplemented) | lupin at 0.1.28 | the clause |
+| --- | --- | --- | --- |
+| `net/writev_gather.lu` | not at the pin | **`exit(0)@run`, match** | `[os.net.writev]` |
+| `net/nodelay.lu` | not at the pin | **`exit(0)@run`, match** | `[os.net.nodelay]` |
+| `net/syscall_first.lu` | not at the pin | **`exit(0)@run`, match** | `[os.net.io]` |
+| `strings/to_int.lu` | not at the pin | **`exit(0)@run`, match** | wolf-lang#263 |
+| `rows/to_int_not_an_int.lu` | not at the pin | **`exit(1)@run`, match** | wolf-lang#263 |
+| `fs/fstat.lu` | not at the pin | **`unsupported@resolve`, by DESIGN** | `[os.fs.fstat]` |
+
+The last row is the one worth reading and it is not new: the s38 fs surface is
+declined here by construction (wolf-interp#18 item 6 — an interpreter
+observing the HOST's filesystem puts the host into a differential comparison),
+so a stat on a handle joins `corpus/fs/`'s other three as out-of-scope.
+`[proto.cmp.defined-divergence]` makes that a scope gap rather than a
+divergence, and the row never reaches the comparison.
+
+`net/syscall_first.lu` is the one that found something. `[os.net.io]` moves a
+COST rather than a row, and the posture it names — poll the syscall first,
+wait only on not-yet — is what this machine has done since is18. But the
+clause also puts a write's whole drain under the call's budget, and the
+witness asserts that a budgeted large `net_write` comes back with
+`net_write`'s own `io`. This machine answered a bare `timeout`: a tag outside
+the row `net_write` declares, so a handler's `match` could not resolve it as a
+tag at all (`[gram.expr.tagident]`; the wolf-interp#47 mechanism). That is a
+pre-existing defect the new clause exposed, not a disagreement with it, and
+`eval::net::budget_row` is the coarsening the clause states in its own words.
+
+**Five files newly reach a verdict that matches, one is newly out of scope,
+none stopped**, and the conservatism ledger moves 124 -> 126 with the sixth.
+
 ### The cores in the mirror — is38, lupin 0.1.27, pin `6ade878` (wolf-lang v0.2.5)
 
 s137 landed a server's other half and r08 shipped it. This sprint is the

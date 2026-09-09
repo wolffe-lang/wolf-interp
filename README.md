@@ -45,7 +45,7 @@ version and the upstream pin it was built against:
 
 ```console
 $ lupin --version
-lupin 0.1.27… (wolf-interp, reference interpreter at pin …)
+lupin 0.1.28… (wolf-interp, reference interpreter at pin …)
 ```
 
 A build made at its release tag prints the bare version. Any other

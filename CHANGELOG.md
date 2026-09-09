@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.28 — 2026-09-09
 
 THE SCHEDULE IN THE MIRROR (is39). Pin `398e5f5`, wolf-lang **v0.2.6**, the tag
 itself. The delta is one corpus file and two anchors, and the reading that
