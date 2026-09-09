@@ -74,6 +74,152 @@ with the pin-equality refusal that keeps it from going stale, the per-host
 record set the os tier requires, and the honest boundary that it closes the
 regression half and not the exploratory one.
 
+THE MIRROR WRITES VECTORED (is40). Pin `398e5f5` -> `5c729e8`, wolf-lang
+**v0.2.8**, the tag itself. The mirror was written against trunk `bd7caff`
+(the s141 merge) because **`v0.2.7` could not carry it**: `b482c52` is an
+ANCESTOR of `b3208b6`, the commit that lands the clauses, so the newest tag at
+the time had nothing to mirror. r11 cut v0.2.8 during the sprint and the pin
+moved to it before anything was committed, so the tag is the only pin this
+repository records — and it brings s142 along, which cost this side nothing it
+had not already paid.
+
+Census at this pin: 508 -> **514** files / 474 -> **480** entries / 34
+members; 363 -> **368** reach `run` and 353 -> **358** match, which is five of
+the six new witnesses and nothing else moving — 16 dynamic counterparts and 42
+conservatism unmoved, 62 -> **63** out of scope (s142's `fs/fstat.lu`, which
+this machine declines by design), and the one standing walk mismatch is still
+DIV-2026-019. Anchors **424 -> 436** with the key sets diffed both ways
+(twelve added, **nothing dropped, no owner changed**) and the ratchet floor
+187 -> **192**: five rather than twelve, because three of s141's anchors are
+cited by the witness that ships with each, the fourth is `sched.stable` whose
+citation arrives with the pin, and the fifth is s142's `os.fs.fstat` —
+coverage counts the CITATION, so a witness this machine declines still covers
+its clause. The six remaining `[sched.*]` and s142's `[os.fs]` section heading
+are published and uncited, which is a document outrunning the corpus that
+names it and not a gap. Distinct `conforms:` tags 289 -> **294**; bundle 546
+-> **552** programs and 512 -> **518** records over 563 -> **569** files;
+conservatism ledger 124 -> **126**.
+
+**s142 arrives with the tag and asks for nothing.** `strings/to_int.lu` and
+`rows/to_int_not_an_int.lu` (wolf-lang#263) are twenty-three readings of
+`str.to_int` row for row, and both run and match here — because
+wolf-interp#69 landed first, below. `fs/fstat.lu` (`[os.fs.fstat]`,
+wolf-lang#261) is a stat on an open HANDLE, and it ledgers out-of-scope with
+the rest of `corpus/fs/`: this machine has no filesystem by design
+(wolf-interp#18 item 6), which is a verdict and not an absence. Zero source
+motion for the s142 delta.
+
+**`net_writev` and `net_nodelay` (`[os.net.writev]`, `[os.net.nodelay]`,
+wolf-lang#254 / wolf-interp#67).** The gathered write sends every part in
+order as ONE `write_vectored`, resumed from the byte the kernel stopped at in
+whichever part it stopped in — a `(part, byte)` cursor, empty parts skipped
+rather than handed over as zero-length slices, and a gather that is all empty
+completing with no syscall at all. Its rows are `net_write`'s exactly, with
+one deliberate difference the clause dictates: `Ok(0)` with bytes still to
+send is `io` here where `poll_write`'s is `closed`, because std calls that
+`WriteZero` and the compiler's tables answer `io`. `invalid` is NOT in the
+row — the clause says a typed `List[List[byte]]` cannot present the shape
+that would raise it — so the untyped shapes machinery can still build are
+refused BY NAME rather than given a tag no handler's arms could resolve.
+`net_nodelay` sets `TCP_NODELAY` either way on a TCP stream and answers `io`
+for everything else the clause lists: a listener, a unix-domain stream (the
+option is TCP's), a forged handle, a closed one. The DEFAULT half lives in
+one function, `adopt_tcp`: every TCP stream this table mints goes through it
+— accepted, dialed, or taken off the queue by a `net_wait` answering a
+readiness question — so a fourth mint site cannot forget the default.
+
+**`[os.net.io]` was supposed to cost nothing, and it cost exactly one thing.**
+The clause names this machine's posture directly ("the reference interpreter
+polls its non-blocking sockets first and waits only on not-yet"), and that
+half needed no source motion, as `[os.net.accept]` needed none at the previous
+pin. But the clause also puts a write's WHOLE DRAIN under the call's budget,
+and `corpus/net/syscall_first.lu` asserts that a budgeted large `net_write`
+comes back with `net_write`'s `io`. This machine answered a bare `timeout` —
+a tag outside the row `net_write` declares, which is wolf-interp#47's defect
+at a new address, because `[gram.expr.tagident]` makes a handler's arms
+exactly as wide as the DECLARED row. `budget_row` is the fix and the whole of
+the cost: a fired `net_deadline` answers `timeout` where the call declares one
+and `io` where it does not, read out of `builtin::declared_row` so a call
+cannot hold two opinions about its own row. The clause states the coarsening
+in those words; the bug was older than the clause that exposed it.
+
+**`sched` is admitted, in the same change as the pin that carries it.** is39
+deferred the namespace because s139 admitted it one merge AFTER the `v0.2.6`
+tag, and mechanized the deferral so it could not go inert. This pin is past
+`ed8f526`: the pinned `[conf.anchor.ns]` registers twelve namespaces,
+`anchors.json` publishes seven `sched.*`, and `corpus/test/conc_schedules_test.lu`
+now carries a real `conforms: … sched.stable` tag instead of the prose comment
+it wore before. Both gates went red on the pin bump alone and green on the
+admission — which is the deferral working, not a lucky catch — and the planted
+s139 control is kept rather than deleted, with its assertion flipped.
+
+**wolf-interp#68 — the D57 suffix can go stale, and in a WORKTREE the
+invalidation set was empty outright.** r10 found `target/release/lupin`
+announcing the bare `lupin 0.1.27`, a release claim, from a tree that had
+moved off the tag. This lane did not reconstruct which build produced r10's
+particular binary; what it did do is find a hole that is total and
+reproducible on demand. The probe was `Path::new(".git/HEAD").exists()`, and
+in a git worktree — which is how every lane in this org builds — `.git` is a
+FILE (`gitdir: …`), so the probe missed, the loop `continue`d, and `build.rs`
+declared nothing but itself. Not a weak set: an empty one, so a branch move, a
+tag landing and a re-vendor were all invisible there. The metadata directory
+is now
+ASKED FOR (`git rev-parse --absolute-git-dir`) and a worktree's split between
+its own `HEAD` and the repository's shared refs is followed through
+`commondir`; `vendor/upstream/PIN` joins the set, because a re-vendor is a
+change of identity. `tests/build_stamp.rs` runs #68's own sequence against the
+real `build.rs` — build at a tag, move HEAD, rebuild, see `+dev` appear —
+once in a plain checkout and once from a worktree, with a negative control
+asserting the script does NOT re-run when nothing changed (a script that
+re-ran always would make the whole file vacuous).
+
+**What cargo cannot be made to re-run on, stated rather than implied.**
+`rerun-if-changed` is an mtime comparison against a path, not a hook on a git
+event, and D57 asks a question no path answers directly: does a tag point at
+HEAD right now? The paths cover how that answer changes in practice, because
+each writes into `.git`. They do not cover a change whose mtime is not NEWER
+than the cached output — a fresh clone, a checkout restoring an older stamp, a
+coarse-granularity filesystem — nor anything outside `.git` and the package.
+So the honest fallback is not a cleverer path list: the release build is made
+fresh, at the tag, in a clean tree (r01's ritual, and CI's release job runs on
+a runner with no `target/`), and `WOLF_INTERP_STAMP_NONCE` is a declared
+`rerun-if-env-changed` escape hatch for a human who knows better than the
+mtimes.
+
+**wolf-interp#63 — `diff-run` refuses an unoptimized build of itself.** The
+harness scores a timeout as a verdict, and that is right for a program the
+counterparty finishes and this machine does not. It is not right when the only
+thing that produced it is the profile: `memory/byte_list_ledger.lu` is under a
+second at `--release` and was still running at 60 against a 30-second budget
+under `debug`, and is38 wrote that row down as a load artefact because nothing
+in the output could tell it apart from a divergence. Of #63's three
+dispositions, a per-row budget is the weakest and the issue says so — it makes
+one row pass and leaves the cliff unnamed for the next allocation-heavy
+witness. Stating the profile in the verdict makes the record honest but still
+produces the record, and #63 exists because somebody read one and got it
+wrong. Refusal is the only one that makes the failure mode unreachable, and it
+is this repository's own precedent: the toolchain tools refuse on identity
+drift rather than reporting a drifted answer. The refusal lands AFTER the
+counterparty is resolved, so a lane with no compiler still SKIPs loudly and
+green whatever it was built at; `--allow-debug-self` is the named door, and
+taking it does not restore the silence — the warning names the build, every
+divergence carries `x-self-profile`, on the release side too, and the
+`harness profile:` line prints on every run.
+
+**wolf-interp#69 (wolf-lang#263, s142) — `str.to_int` minted an `int` that is
+not one.** `int` is 64
+bits, signed and checked; `to_int` parsed into an `i128`, so
+`"9223372036854775808"` answered a value no `int` can hold. Nothing rejected
+it at the mint site, and the program's first arithmetic on it trapped with an
+overflow it never wrote — a range error at the parse displaced into a trap
+somewhere else. Parsed as `i64` now, which is what the type is, and one past
+either extreme is the `NotAnInt` row the compiler already answers (X3 forbids
+a quiet wrap, and there is no `int` the text names); the row already means
+"this string is not an `int`", which is exactly true of a number that does not
+fit in one. wolf-lang held the overflow input in its own crate tests so the
+corpus pinned neither side while the two disagreed; it can move into the
+corpus from here.
+
 ## 0.1.27 — 2026-09-06
 
 THE CORES IN THE MIRROR (is38). r08 shipped a server's other half: several
