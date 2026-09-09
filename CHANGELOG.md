@@ -1,5 +1,84 @@
 # Changelog
 
+## Unreleased
+
+THE MIRROR LETS `else` START A LINE (is42). Pin `e9a17cb` -> `2c03ed9`,
+wolf-lang trunk past the s144 merge, **dev-stamped**: v0.2.9 is r13's and is
+being cut in parallel, and the clauses this sprint mirrors do not exist at
+v0.2.8, so the sha is the only pin this repository can record. Three rulings,
+four witnesses, and **every one of the four is byte-identical from here**. The
+walk goes five mismatches to one, and the one left is DIV-2026-019, which has
+nothing to do with this pin.
+
+**`[gram.lex.newline]` gains its second lookahead exception (wolf-lang#276,
+wolf-interp#75).** A line whose first token is `else` continues the previous
+statement: at a newline the lexer looks one token ahead and, if what it finds
+is `else`, withholds the terminator that would orphan it. The trivia between —
+blank lines, `//` comments — does not count, and `elsewhere` is an identifier,
+so the four bytes must not be followed by an identifier-continue scalar. Which
+`else` it is the *binding* decides (`[gram.amb.else]`), never the line: `}`
+newline `else {` reaches the parser as `} else {` and `f()` newline `else 0` as
+`f() else 0`, so the parser needed no new case — it needed one deleted. E0005
+retires with the rule it enforced, and the aligned `if` / `else if` / `else` a
+reader writes without being taught to is a legal program.
+
+E0005's *number* does not retire, and predicting that it would was this
+sprint's one wrong prediction. §9 of `spec/01-grammar.md` still reserves it —
+"retired … the number is never reused" — and `tests/spec_extract.rs` diffs our
+constants against that list at test time, so deleting `E_ELSE_NEW_LINE` would
+have claimed the spec dropped a reservation it deliberately kept. It stays,
+reserved and unreachable, as E0004 has been since 0.1.7. Retiring a code and
+freeing a number are two different acts; a catalog only ever performs the
+first. (The prediction's other miss was smaller and in the same direction:
+there is no E-table in this repository's manual to move a row out of.)
+
+**`[conc.chan.close]` spells `closed` and `cancelled` (wolf-lang#273,
+wolf-interp#76).** is41 filed the posture with four line numbers attached and
+s144 ruled against this machine's spelling — the same shape as
+`[mem.str.parse]` one wave earlier, and W0603's same pact: a payload-free mark
+is a lowercase bare word, CapCase names a payload's type. `recv`'s row is
+`T ! {closed, cancelled}`, `{err}` renders a caught row by its tag's name
+(`[type.interp.row]`), so the spelling was observable and `Closed` was a
+divergence rather than a detail. Four literals moved. The rename also found
+that this machine had never agreed with itself: the net tier has spelled the
+same condition `closed` since s39, and `err.is_cancelled()` compared against
+`"cancelled"` — a predicate that could not answer true for any value
+`cancelled_error()` ever minted.
+
+**`[mem.list.pop]` — the recoverable `List` reads answer the `none` row
+(wolf-lang#274, wolf-interp#77).** The one ruling with real behavioural cost.
+`pop` on an empty list is `none`, not a `bounds` trap: `[mem.ub.defined]` rules
+indices and slices, `pop` takes no index, and reading it as one was an analogy
+rather than a clause. `get` outside `0..len` answers the same tag, and `first`
+/ `last` are `get(0)` and `get(len - 1)` by the clause's own words — they were
+not implemented here at all, so they arrive as new arms. `OutOfBounds` retires
+with them, the second CapCase payload-free mark on the builtin surface and the
+last. The subscript `xs[i]` stays the faulting twin, and a test now says so,
+because "these reads never fault" is the sentence a later reader over-applies.
+All four cite `Rule::ErrUnion`, which is what `[mem.str.get]`'s identical miss
+has cited since is22; the reason names `[mem.list.pop]` so a `--trace` carries
+the clause.
+
+Two tests lost their provocation and neither lost its claim. Both halves of the
+lent-receiver proof — `a_lend_hands_the_receiver_back_when_the_method_traps` and
+the REPL's `a_lent_receiver_is_back_in_its_slot_after_the_trap` — rode `pop` on
+an empty list because it was the shortest trap reachable through a `mut`
+receiver, and the ruling took the only trap either had. They are re-provoked
+through `push`, which lends at the same `check_home_write` site and traps
+`overflow` on a literal outside the element type, after the lend and before the
+store. `xs.len` answering 0 on the next line is the same proof it always was.
+
+Census at this pin: 520 files / 486 entries / 34 members (517/483/34); 375
+entries reach `run` (372 at the same pin before a line was edited), 365 match
+(360), 16 dynamic counterparts, 42 conservatism, 62 out of scope, one mismatch
+— DIV-2026-019, unmoved. Anchors 445 -> 446, key sets diffed both ways: one
+arrives (`mem.list.pop`), none leaves, none moves file.
+
+wolf-lang#275 (`chan.send`) is left open upstream and this pin does not reach
+it. wolf-interp#73 — a function's tail unchecked against its declared return
+type — is unmoved and stays open; it is the soundness row on the pairing table
+and it is the next lane's.
+
 ## 0.1.29 — 2026-09-09
 
 THE MIRROR SPELLS `parse` (is41). Pin `5c729e8` -> `e9a17cb`, wolf-lang trunk
