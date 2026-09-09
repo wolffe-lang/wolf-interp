@@ -217,7 +217,13 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // is that same witness renamed with the mark `[mem.str.parse]` rules. All
     // entries; `members` holds at 34. Moved with the pin, per the export.rs
     // rule.
-    assert!(stdout.contains("517 file(s)"), "{stdout}");
+    // 517 -> 520 at the 2c03ed9 pin (is42, s144 dev-stamped): THREE arrive
+    // over one merge, none leaves — s144's `grammar/else_default_newline.lu`
+    // (wolf-lang#276's leading-`else` default), `conc/chan_closed_row.lu`
+    // (#273's spelling) and `memory/list_pop_empty.lu` (#274's `none` row).
+    // `grammar/else_chain.lu` is edited, not added. All entries; `members`
+    // holds at 34. Moved with the pin, per the export.rs rule.
+    assert!(stdout.contains("520 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -226,7 +232,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 517);
+    assert_eq!(value["total"], 520);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

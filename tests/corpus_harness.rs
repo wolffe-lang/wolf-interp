@@ -639,14 +639,22 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             none, key sets diffed both ways — `mem.str.parse`,
     //             `mem.str.to_int`, and spec/10 §4c's `type.interp` heading
     //             with its six children.)
+    // (517 -> 520 at 2c03ed9 (is42, s144 dev-stamped): THREE arrive over one
+    //             merge and none leaves — s144's
+    //             `grammar/else_default_newline.lu` (wolf-lang#276),
+    //             `conc/chan_closed_row.lu` (#273) and
+    //             `memory/list_pop_empty.lu` (#274). `grammar/else_chain.lu`
+    //             is edited, not added. All entries, so `members` holds at
+    //             34; the registry gains ONE anchor and drops none, key sets
+    //             diffed both ways — `mem.list.pop`, 445 -> 446.)
     let report = report();
     assert_eq!(
         report.total(),
-        517,
+        520,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 483);
+    assert_eq!(report.entries(), 486);
     assert_eq!(report.members(), 34);
 }
 
