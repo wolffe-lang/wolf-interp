@@ -619,14 +619,24 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             `os.net.accept`) and drops none, key sets diffed both
     //             ways. NOT s139's seven `[sched.*]`: those land at ed8f526,
     //             one merge AFTER this tag — see `anchor::REGISTERED_NAMESPACES`.)
+    // (508 -> 514 at v0.2.8 / 5c729e8 (is40, wolf-lang's own tag): SIX
+    //             witnesses over two merges — s141's `net/writev_gather.lu`,
+    //             `net/nodelay.lu` and `net/syscall_first.lu`, and s142's
+    //             `strings/to_int.lu`, `rows/to_int_not_an_int.lu` and
+    //             `fs/fstat.lu`. All six are entries, so `members` holds at
+    //             34; the registry gains TWELVE anchors and drops none, key
+    //             sets diffed both ways — s141's
+    //             `os.net.io`/`os.net.writev`/`os.net.nodelay`, the seven
+    //             `[sched.*]` is39 deferred (this pin is past ed8f526), and
+    //             s142's `os.fs` heading with `os.fs.fstat` under it.)
     let report = report();
     assert_eq!(
         report.total(),
-        508,
+        514,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 474);
+    assert_eq!(report.entries(), 480);
     assert_eq!(report.members(), 34);
 }
 

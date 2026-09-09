@@ -34,22 +34,19 @@ use std::fmt;
 /// `[os.signal]` family, and every `os.*` anchor is in `anchors.json`, so
 /// the namespace is checkable, not forward).
 ///
-/// **`sched` is NOT here yet, and that is the correct list at this pin.**
-/// wolf-lang s139 ruled `spec/07-schedule-points.md` normative and admitted
-/// `sched` (#246, anchors 424 -> 431) at `ed8f526` — **one merge after the
-/// `v0.2.6` tag this repository pins**. At `398e5f5` the clause registers
-/// these eleven and `anchors.json` publishes zero `sched.*`, so a twelfth
-/// entry here would put this side on the *permissive* half of exactly the
-/// silence `[conf.anchor.ns.admit]` was written to stop: tooling admitting a
-/// namespace its clause has not registered, publishing past the letter and
-/// passing CI — which is #239, and this list carried `diag`, `ct`, `type`
-/// and `os` that way for four pins before v0.2.6's amendment caught up.
-/// The admission lands with the pin that carries it, in one change, as the
-/// clause requires. `tests/anchor_admission.rs` holds both directions and
-/// carries the s139 clause text as a planted control, so the deferral is
-/// checkable now and goes red on its own the moment the pin advances.
-pub const REGISTERED_NAMESPACES: [&str; 11] = [
-    "gram", "mem", "conc", "abi", "conf", "proto", "diag", "ct", "type", "pkg", "os",
+/// `sched` joined at the v0.2.8 pin (`5c729e8`; s139 ruled
+/// `spec/07-schedule-points.md` normative and admitted the namespace at
+/// `ed8f526`, #246, anchors 424 -> 431 — **one merge after the `v0.2.6`
+/// tag this list previously pinned**, which is why is39 deferred it and
+/// said so here). is40 takes the pin that carries it and appends in the
+/// SAME change, which is what `[conf.anchor.ns.admit]` asks: the clause's
+/// registered list and this list move together or one of them is silent.
+/// Deferring it past this pin would have been the *restrictive* half —
+/// this machine rejecting `conforms: … sched.stable`, which
+/// `corpus/test/conc_schedules_test.lu` now carries as a real tag instead
+/// of the prose comment it wore at `398e5f5`.
+pub const REGISTERED_NAMESPACES: [&str; 12] = [
+    "gram", "mem", "conc", "abi", "conf", "proto", "diag", "ct", "type", "pkg", "os", "sched",
 ];
 
 /// Namespaces reserved for spec documents not yet written; tags in them are

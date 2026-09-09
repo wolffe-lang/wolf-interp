@@ -1199,6 +1199,49 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("net/reuse_port.lu", "exit(0)"),
     ("net/wait_readiness.lu", "exit(0)"),
     ("os/cpus.lu", "exit(0)"),
+    // The v0.2.8 pin (5c729e8; is40), s141 half: THREE more reach `run`.
+    //
+    // `net/nodelay.lu` is `[os.net.nodelay]`'s four relations — the toggle
+    // accepted both ways on an accepted and a dialed stream, `io` for a
+    // listener and for a forged handle, and the two-write shape the default
+    // exists for arriving whole. The default itself rides `adopt_tcp`, which
+    // is the one place this machine mints a TCP stream.
+    //
+    // `net/writev_gather.lu` is `[os.net.writev]`'s four — the gather
+    // arriving as the concatenation of its parts with the empty one
+    // contributing nothing, an all-empty gather completing with no syscall,
+    // and the two `io` rows. `poll_writev` drives `write_vectored` with a
+    // `(part, byte)` cursor, so a kernel that stops mid-part resumes there.
+    //
+    // `net/syscall_first.lu` is `[os.net.io]`, and it is the one that cost
+    // this machine source motion. The poll-first posture was already here
+    // (the clause names it), but the witness arms a `net_deadline` on a
+    // stream and asserts the LARGE write comes back at the budget with
+    // `net_write`'s `io` — and this machine answered a bare `timeout`, a tag
+    // outside the row `net_write` declares. `budget_row` is the coarsening
+    // the clause states, and it is the whole of what `[os.net.io]` cost.
+    ("net/nodelay.lu", "exit(0)"),
+    ("net/syscall_first.lu", "exit(0)"),
+    ("net/writev_gather.lu", "exit(0)"),
+    // The v0.2.8 pin (5c729e8; is40, wolf-lang's own tag): TWO more reach
+    // `run`, and the third file the tag adds cannot.
+    //
+    // `strings/to_int.lu` and `rows/to_int_not_an_int.lu` are s142's
+    // (wolf-lang#263) — `str.to_int` joining the compiler's builtin set, and
+    // twenty-two readings of it row for row against this machine. They run
+    // here because wolf-interp#69 landed first: `to_int` parsed into an
+    // `i128`, so `max`/`min` were right and one past either was a value no
+    // `int` holds. Parsed as `i64` now, and one past either extreme is the
+    // `NotAnInt` row both sides answer, which is what the `max`/`min` lines
+    // of the first witness and the whole of the second assert.
+    //
+    // `fs/fstat.lu` is NOT here and cannot be: `[os.fs.fstat]` is a stat on a
+    // handle from the s38 fs surface, which this machine declines by design
+    // (wolf-interp#18 item 6 — an interpreter observing the HOST's filesystem
+    // puts the host into a differential comparison). It ledgers out-of-scope
+    // with the rest of `corpus/fs/`, which is a verdict and not an absence.
+    ("rows/to_int_not_an_int.lu", "exit(1)"),
+    ("strings/to_int.lu", "exit(0)"),
 ];
 
 #[test]

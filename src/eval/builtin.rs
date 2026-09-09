@@ -117,6 +117,11 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "net_write",
     "net_read_bytes",
     "net_write_bytes",
+    // `[os.net.writev]` / `[os.net.nodelay]` (s141, wolf-lang#254): the
+    // gathered write, and the one stream option — with `TCP_NODELAY` ON by
+    // default on every TCP stream this machine hands a program.
+    "net_writev",
+    "net_nodelay",
     "net_close",
     "net_deadline",
     "env_set",
@@ -947,16 +952,16 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         #[cfg(target_family = "wasm")]
         "net_listen" | "net_listen_unix" | "net_listen_with" | "net_adopt_listener"
         | "net_wait" | "net_port" | "net_accept" | "net_connect" | "net_connect_unix"
-        | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes" | "net_close"
-        | "net_deadline" => unsupported(format!(
+        | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes" | "net_writev"
+        | "net_nodelay" | "net_close" | "net_deadline" => unsupported(format!(
             "`{name}` is the s39 net tier; this wasm build has no sockets to open, so the \
                  tier is declined rather than mocked"
         )),
         #[cfg(not(target_family = "wasm"))]
         "net_listen" | "net_listen_unix" | "net_listen_with" | "net_adopt_listener"
         | "net_wait" | "net_port" | "net_accept" | "net_connect" | "net_connect_unix"
-        | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes" | "net_close"
-        | "net_deadline" => machine.net_call(name, &args, span),
+        | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes" | "net_writev"
+        | "net_nodelay" | "net_close" | "net_deadline" => machine.net_call(name, &args, span),
         other => unsupported(format!(
             "`{other}` is in the ambient std stub but has no pinned semantics; the real std \
              surface is not specified yet, and guessing it would put invented behavior into a \
@@ -2008,6 +2013,10 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
     match name {
         // The s39 net tier (`eval::net`'s module doc, probed prelude sigs).
         "net_listen" | "net_port" | "net_close" | "net_deadline" => &["io"],
+        // `[os.net.nodelay]` (s141) — the second s141 clause that pins its
+        // row outright, and it is one tag: a listener, a unix stream, a
+        // forged or a closed handle are all `io`.
+        "net_nodelay" => &["io"],
         // `[os.net.wait]` — the one s137 clause that names no host, so the
         // row is a single tag and no `unsupported` sits beside it.
         "net_wait" => &["io"],
@@ -2027,6 +2036,11 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "net_connect" => &["refused", "timeout", "io"],
         "net_read" => &["closed", "timeout", "utf8", "io"],
         "net_write" => &["closed", "io"],
+        // `[os.net.writev]` (s141): "the rows are `net_write`'s exactly" —
+        // pinned by the clause, and notably NOT carrying `invalid`, which is
+        // `net_write_bytes`'s own pre-write check over a shape a typed
+        // `List[List[byte]]` cannot present.
+        "net_writev" => &["closed", "io"],
         // The s106 byte pair (is30, wolf-interp#52 / wolf-std F-0102):
         // no `utf8` row anywhere — a lone 0x80 is data — and `invalid`
         // is `net_write_bytes`' whole pre-write check (an element outside

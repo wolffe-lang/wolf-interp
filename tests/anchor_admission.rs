@@ -24,30 +24,36 @@
 //! actually publishes anchors in the pinned `anchors.json`; every namespace
 //! `anchors.json` publishes is registered here.
 //!
-//! ## The `sched` deferral, stated so it cannot go inert
+//! ## The `sched` deferral, and how it ended (kept, because it is the record)
 //!
 //! wolf-lang s139 ruled `spec/07-schedule-points.md` NORMATIVE and admitted
 //! `sched` (anchors 424 → 431). That landed at `ed8f526`, **one merge after
-//! the `v0.2.6` tag this repository pins**, so at pin `398e5f5` the clause
-//! registers eleven namespaces, `anchors.json` publishes zero `sched.*`, and
-//! this machine's eleven are exactly right. Registering a twelfth here now
-//! would put this side back on the permissive half of the same silence, which
+//! the `v0.2.6` tag is39 pinned**, so at pin `398e5f5` the clause registered
+//! eleven namespaces, `anchors.json` published zero `sched.*`, and this
+//! machine's eleven were exactly right. Registering a twelfth THERE would
+//! have put this side back on the permissive half of the same silence, which
 //! is the thing the clause was amended to stop.
 //!
-//! There is nothing yet to reject, either, and the proof is in the pinned
-//! corpus: `test/conc_schedules_test.lu` names `[sched.stable]` **in prose**,
+//! There was nothing to reject yet either, and the proof was in the pinned
+//! corpus: `test/conc_schedules_test.lu` named `[sched.stable]` **in prose**,
 //! because a `conforms:` tag citing it was a CI failure while the anchor went
 //! unpublished — F-0099's shape one namespace over. wolf-lang `60e0bd2`
-//! promotes that comment to a real `conforms: … sched.stable` tag, and *that*
-//! is the tag this machine would reject. It arrives with `ed8f526`, not with
-//! `398e5f5`.
+//! promoted that comment to a real `conforms: … sched.stable` tag, and *that*
+//! is the tag this machine would have rejected. It arrived with `ed8f526`,
+//! and `v0.2.8` — the pin this file now reads — is past it: the corpus file
+//! in `vendor/upstream/` carries the tag today.
 //!
-//! So the admission is deferred to the pin that carries it — and
-//! `the_planted_post_s139_clause_shows_the_gap` is the deferral's teeth: it
-//! runs the same parser over the s139 clause text and asserts the gap is
-//! *visible*. When the pin advances,
-//! `the_clause_s_registered_list_is_this_machine_s_list` goes red until
-//! `anchor::REGISTERED_NAMESPACES` grows `sched` and its length in the type.
+//! So the admission was deferred to the pin that carries it. is40 takes that
+//! pin (`v0.2.8`, `5c729e8`): `anchors.json` publishes seven `sched.*`, the clause
+//! registers twelve namespaces, and `anchor::REGISTERED_NAMESPACES` grew
+//! `sched` in the SAME change, which is the whole of what
+//! `[conf.anchor.ns.admit]` asks. The two gates that named the gap —
+//! `the_clause_s_registered_list_is_this_machine_s_list` and
+//! `every_published_anchor_sits_in_a_namespace_this_machine_registers` — went
+//! red on the pin bump alone and are green again on the admission;
+//! `the_planted_post_s139_clause_is_now_covered` keeps the planted clause and
+//! flips its assertion, so the control still exercises the parser against a
+//! body that is not the pinned file's.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -251,12 +257,15 @@ fn every_published_anchor_sits_in_a_namespace_this_machine_registers() {
 }
 
 #[test]
-fn the_planted_post_s139_clause_shows_the_gap() {
-    // The deferral's teeth. `sched` is admitted at wolf-lang `ed8f526`, one
-    // merge after the `v0.2.6` tag pinned here; this proves the gate above
-    // reads that clause and names the gap, so the deferral cannot go inert.
-    // When the pin advances, delete nothing — the assertion below flips to
-    // `is_empty()` on its own, because `sched` will be in both sets.
+fn the_planted_post_s139_clause_is_now_covered() {
+    // The deferral's teeth, now spent — and kept, because a control that is
+    // deleted the moment it goes green proves nothing about the next one.
+    // `sched` was admitted at wolf-lang `ed8f526`, one merge after the
+    // `v0.2.6` tag is39 pinned; is40 takes `v0.2.8`, which carries it, so
+    // the gap this test named is CLOSED and the assertion is the flip the
+    // is39 comment promised: nothing was deleted, the direction reversed.
+    // The planted text stays verbatim so the parser is still exercised
+    // against a clause body that is not the pinned file's.
     let (clause, _) = clause_lists(POST_S139_CLAUSE);
     assert!(
         clause.contains("sched"),
@@ -264,9 +273,9 @@ fn the_planted_post_s139_clause_shows_the_gap() {
     );
     let ours = ours();
     let gap: Vec<&String> = clause.difference(&ours).collect();
-    assert_eq!(
-        gap,
-        vec![&"sched".to_owned()],
-        "the s139 clause and this machine differ by more than `sched`: {gap:?}"
+    assert!(
+        gap.is_empty(),
+        "the s139 clause registers {gap:?} and this machine does not — the pin that \
+         carries the admission is taken, so the gap must be closed, not deferred"
     );
 }

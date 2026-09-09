@@ -170,7 +170,21 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // anchor the registry gained, `conf.anchor.ns.admit`, is a conformance clause
 // no corpus program cites, which is why the registry moves by two and the
 // floor by one. Raised in the bump commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 187;
+// 187 -> 192 at v0.2.8 / 5c729e8 (is40, wolf-lang's own tag): FIVE, against
+// twelve new anchors. Three are s141's, each cited by the witness that ships
+// with it — `os.net.io` (`net/syscall_first.lu`), `os.net.writev`
+// (`net/writev_gather.lu`), `os.net.nodelay` (`net/nodelay.lu`). The fourth is
+// `sched.stable`, which `test/conc_schedules_test.lu` had been naming in PROSE
+// because citing an unpublished anchor was a CI failure; s139 published it and
+// `60e0bd2` promoted the comment to a real `conforms:` tag, so the citation
+// arrives with the pin. The fifth is s142's `os.fs.fstat`, cited by
+// `fs/fstat.lu` — coverage counts the CITATION, not the verdict, so a witness
+// this machine declines by design still covers its clause. The six remaining
+// `[sched.*]` and s142's `[os.fs]` section heading are published and uncited:
+// a document's anchors outrunning the corpus that names them, the ordinary
+// state and not a gap. Raised in the bump commit per the test's own
+// instruction.
+const RATCHET_FLOOR: usize = 192;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -265,7 +279,13 @@ const RATCHET_FLOOR: usize = 187;
 // dropped, no owner changed (wolf-lang#177's lesson, still standing). s139's
 // seven `[sched.*]` are NOT here: they land at `ed8f526`, one merge after
 // this tag — see `tests/anchor_admission.rs`.
-const ANCHORS_TOTAL: usize = 424;
+// 424 -> 436 at v0.2.8 / 5c729e8 (is40, wolf-lang's own tag): TWELVE, in two
+// merges. s141's three — `[os.net.io]`, `[os.net.writev]`, `[os.net.nodelay]`
+// — plus the seven `[sched.*]` is39 deferred, which arrive because this pin is
+// past `ed8f526`; then s142's `[os.fs]` section heading and `[os.fs.fstat]`
+// under it. Key sets diffed BOTH ways — twelve added, NOTHING dropped, no
+// owner changed (wolf-lang#177's lesson, still standing).
+const ANCHORS_TOTAL: usize = 436;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -454,10 +474,16 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // — s138's `net/accept_race.lu`, an entry, so both counts move by 1; the
     // suite is unmoved (is39's new suite programs are inline fixtures, which
     // the extractor does not harvest).
+    // 546/512 -> 552/518 at v0.2.8 / 5c729e8 (is40, wolf-lang's own tag): 6
+    // corpus files — s141's `net/{writev_gather,nodelay,syscall_first}.lu` and
+    // s142's `strings/to_int.lu`, `rows/to_int_not_an_int.lu`, `fs/fstat.lu`,
+    // all entries, so both counts move by 6; the suite is unmoved (is40's new
+    // suite programs are inline fixtures, which the extractor does not
+    // harvest).
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "398e5f547a65308c6a3e88fee632563e87afd217");
-    assert_eq!(summary.programs, 546);
-    assert_eq!(summary.records, 512);
+    assert_eq!(summary.pin, "5c729e8779a83611a66f47a63a5276b158ecdec1");
+    assert_eq!(summary.programs, 552);
+    assert_eq!(summary.records, 518);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

@@ -17,6 +17,7 @@ the source is not. Output from a checkout with the counterparty built:
 ```text
 notice: counterparty compiler: upstream/target/debug/wolf
 notice: counterparty tier: default (conform-run)
+harness profile: release
 differential: 203 entries compared, 18 member(s) exercised through their entries
 divergences: 11
   verdict: 11
@@ -33,6 +34,27 @@ differential: GREEN — every divergence is filed in docs/divergence-log.md and 
 (That block is not byte-checked in CI, because whether a counterparty
 exists depends on the environment. Without one, `diff-run` says so in
 `notice:` lines and SKIPs. `--require-counterparty` hard-fails instead.)
+
+### Build this binary at `--release` before comparing
+
+`diff-run` hands each side a wall-clock budget and scores a timeout as a
+verdict. That is right for a program the counterparty finishes and this
+machine does not, and wrong for a program only the *build* cannot finish:
+`corpus/memory/byte_list_ledger.lu` runs in under a second at `--release`
+and was still going at 60 seconds under `target/debug/lupin`, against a
+30-second budget. The report then carries a `timeout` line no reader can
+tell from a divergence, which is how it was once written down as a load
+artefact (wolf-interp#63).
+
+So `diff-run` refuses to compare when this binary is an unoptimized build,
+once a counterparty has been found. Build at `--release` and re-run. If you
+have a reason to compare with a debug harness — debugging the harness
+itself, most likely — `--allow-debug-self` proceeds, with a warning naming
+the build and `x-self-profile` on every divergence in the JSONL report. The
+`harness profile:` line is printed on every run either way.
+
+A run with no counterparty still SKIPs green whatever the profile: there is
+no comparison to make with the wrong instrument.
 
 ### Which counterparty engine answers
 
@@ -101,15 +123,15 @@ pin as filed, and every export is notice-free again:
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":187,"anchors_total":424,"bundle_sha256":"…","files":563,"forward_tags":109,"out":"target/bundle","pin":"398e5f547a65308c6a3e88fee632563e87afd217","programs":546,"records":512}
+{"anchors_covered":192,"anchors_total":436,"bundle_sha256":"…","files":569,"forward_tags":109,"out":"target/bundle","pin":"5c729e8779a83611a66f47a63a5276b158ecdec1","programs":552,"records":518}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 512 entries compared, 0 member(s) exercised through their entries
+differential: 518 entries compared, 0 member(s) exercised through their entries
 divergences: 0
-conservatism ledger: 124 entries
-  unsupported(counterparty): 62
-  unsupported(interp): 62
+conservatism ledger: 126 entries
+  unsupported(counterparty): 63
+  unsupported(interp): 63
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin 398e5f547a65308c6a3e88fee632563e87afd217 verified (bundle_sha256 …)
+notice: bundle target/bundle at pin 5c729e8779a83611a66f47a63a5276b158ecdec1 verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the

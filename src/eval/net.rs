@@ -13,7 +13,10 @@
 //! WHOLE pre-write check: an element outside 0..=255 rejects before
 //! anything reaches the wire); `net_close(int) -> unit ! {io}`;
 //! `net_deadline(int, int)
-//! -> unit ! {io}`), the four corpus witnesses under `corpus/net/`, and
+//! -> unit ! {io}`; the s141 pair whose clauses the SPEC pins outright —
+//! `net_writev(int, List[List[byte]]) -> unit ! {closed, io}` and
+//! `net_nodelay(int, bool) -> unit ! {io}`, `[os.net.writev]` and
+//! `[os.net.nodelay]`), the corpus witnesses under `corpus/net/`, and
 //! empirical probes of the compiled lanes — never `wolf_rt::net`. The
 //! pinned facts:
 //!
@@ -34,7 +37,20 @@
 //! - `net_deadline(fd, ms)` arms (`ms > 0`) or clears (`ms <= 0`) a
 //!   per-socket budget; every subsequent parking call on that socket
 //!   resolves as its row's `timeout` tag when the budget fires first
-//!   (witnessed: `read_deadline.lu`'s 40ms against a silent peer).
+//!   (witnessed: `read_deadline.lu`'s 40ms against a silent peer) — or, on
+//!   a call whose declared row has no `timeout`, as `io`. `[os.net.io]`
+//!   states that coarsening ("its `timeout` coarsened, as the call
+//!   declares") and `budget_row` is where it happens; the three writes are
+//!   the calls it applies to, because that clause is what put a write's
+//!   whole drain under the budget.
+//! - `[os.net.nodelay]`: every TCP stream this table mints — accepted,
+//!   dialed, or taken off the queue by a `net_wait` — has `TCP_NODELAY`
+//!   set. `adopt_tcp` is the one place that happens, so the default cannot
+//!   be forgotten at a fourth mint site.
+//! - `[os.net.io]`, the posture half: this machine POLLS the syscall first
+//!   and waits only on not-yet, which is what the clause names it doing.
+//!   That half cost no source motion, exactly as `[os.net.accept]` did not
+//!   at the previous pin; the budget coarsening above is the half that did.
 //!
 //! # Scope: loopback + port 0
 //!
@@ -65,7 +81,7 @@
 //!   a hang, and never a wrong answer.
 
 use std::collections::VecDeque;
-use std::io::{Read, Write};
+use std::io::{IoSlice, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 // `[os.net.unix]`'s half only: a socket PATH exists where the family does.
 // Unconditional, these are three unused imports on windows and `-D warnings`
@@ -199,6 +215,26 @@ impl NetSock {
             _ => None,
         }
     }
+}
+
+/// `[os.net.nodelay]`, the DEFAULT half: "every TCP stream the runtime hands
+/// a program — accepted or dialed — has `TCP_NODELAY` set."
+///
+/// Every TCP stream this table mints goes through here, so the default is one
+/// function rather than three call sites that have to remember. The
+/// non-blocking flag rides along because `[os.net.io]` puts it in the same
+/// sentence ("the runtime sets the flag on acquisition rather than trusting a
+/// kernel's inheritance rule"), and this machine has always set it: the pair
+/// is what "acquisition" means here.
+///
+/// A unix-domain stream is NOT minted here on purpose. The option is TCP's,
+/// and a `UnixStream` has no Nagle to turn off.
+fn adopt_tcp(stream: TcpStream) -> NetResult<SockKind> {
+    stream
+        .set_nonblocking(true)
+        .map_err(|_| NetErr::Row("io"))?;
+    stream.set_nodelay(true).map_err(|_| NetErr::Row("io"))?;
+    Ok(SockKind::Stream(stream))
 }
 
 impl NetTable {
@@ -360,12 +396,9 @@ impl NetTable {
             )));
         }
         match TcpStream::connect(parsed) {
-            Ok(stream) => {
-                stream
-                    .set_nonblocking(true)
-                    .map_err(|_| NetErr::Row("io"))?;
-                Ok(self.fd(NetSock::new(SockKind::Stream(stream))))
-            }
+            // `[os.net.nodelay]`: a DIALED stream carries the default too,
+            // which is the half a client-side witness sees.
+            Ok(stream) => Ok(self.fd(NetSock::new(adopt_tcp(stream)?))),
             Err(error) => Err(NetErr::Row(match error.kind() {
                 std::io::ErrorKind::ConnectionRefused => "refused",
                 std::io::ErrorKind::TimedOut => "timeout",
@@ -386,12 +419,7 @@ impl NetTable {
         let sock = self.sock(fd)?;
         let accepted = match &sock.kind {
             SockKind::Listener(listener) => match listener.accept() {
-                Ok((stream, _)) => {
-                    stream
-                        .set_nonblocking(true)
-                        .map_err(|_| NetErr::Row("io"))?;
-                    SockKind::Stream(stream)
-                }
+                Ok((stream, _)) => adopt_tcp(stream)?,
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     return Ok(Poll::NotYet);
                 }
@@ -480,6 +508,57 @@ impl NetTable {
         Ok(Poll::Ready(()))
     }
 
+    /// One vectored write poll from `cursor`: `[os.net.writev]`.
+    ///
+    /// The clause makes this `net_write` "in every other respect", so the
+    /// shape is `poll_write`'s: drive the syscall until it drains or the
+    /// kernel says would-block, and resume from where the kernel stopped.
+    /// The cursor is `(part, byte in that part)` — "the drain resumed from
+    /// the byte the kernel stopped at in whichever part it stopped in" —
+    /// because a gather can stop in the middle of any part and the next poll
+    /// must present the remainder of THAT part first.
+    ///
+    /// Empty parts are permitted and send nothing: they are skipped rather
+    /// than handed to the kernel (a zero-length `IoSlice` would make a
+    /// `write_vectored` that took nothing indistinguishable from a stalled
+    /// one), and a call whose parts are all empty completes without a
+    /// syscall — the loop's first skip walks off the end.
+    ///
+    /// **One row differs from `poll_write` and the clause says which.**
+    /// `write_vectored` answering `Ok(0)` with bytes still to send is std's
+    /// `WriteZero`, and `[os.net.writev]` gives this call `net_write`'s rows
+    /// "exactly — `closed` for a peer that has gone, `io` for the rest".
+    /// The compiler's tables answer `io` there (wolf-interp#67), so `io` is
+    /// the row here; `poll_write`'s `Ok(0)` stays `closed`, which is the
+    /// peer's finish on a single-buffer write.
+    fn poll_writev(
+        &mut self,
+        fd: i128,
+        parts: &[Vec<u8>],
+        cursor: &mut (usize, usize),
+    ) -> NetResult<Poll<()>> {
+        let sock = self.sock(fd)?;
+        // A listener (of either family) has no write: the `io` row, which is
+        // `listener_is_io` in `corpus/net/writev_gather.lu`.
+        let Some(stream) = sock.duplex() else {
+            return Err(NetErr::Row("io"));
+        };
+        drive_writev(stream, parts, cursor)
+    }
+
+    /// `[os.net.nodelay]`'s call: set `TCP_NODELAY` either way on a TCP
+    /// stream.
+    ///
+    /// "a listener, a unix-domain stream (the option is TCP's), a forged or a
+    /// closed handle is `io`" — all four land on the same row here, three of
+    /// them by the match falling through and the fourth by [`NetTable::sock`].
+    fn nodelay(&mut self, fd: i128, on: bool) -> NetResult<()> {
+        match &self.sock(fd)?.kind {
+            SockKind::Stream(stream) => stream.set_nodelay(on).map_err(|_| NetErr::Row("io")),
+            _ => Err(NetErr::Row("io")),
+        }
+    }
+
     /// `[os.net.wait]`, one socket: can this fd be READ without blocking?
     ///
     /// A listener is ready when an accept would not block; a stream when a
@@ -496,13 +575,11 @@ impl NetTable {
             return Ok(true);
         }
         let accepted = match &mut sock.kind {
+            // A connection `net_wait` takes off the queue to answer its
+            // readiness question is a stream the runtime hands the program
+            // one `net_accept` later, so it is minted under the same default.
             SockKind::Listener(listener) => match listener.accept() {
-                Ok((stream, _)) => {
-                    stream
-                        .set_nonblocking(true)
-                        .map_err(|_| NetErr::Row("io"))?;
-                    SockKind::Stream(stream)
-                }
+                Ok((stream, _)) => adopt_tcp(stream)?,
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     return Ok(false);
                 }
@@ -893,7 +970,7 @@ impl Machine {
             // `tests/net_accept_race.rs`.
             "net_accept" => {
                 let fd = int_arg(args, 0, name)?;
-                let answer = self.net_park(fd, span, |table| table.poll_accept(fd))?;
+                let answer = self.net_park(name, fd, span, |table| table.poll_accept(fd))?;
                 self.net_answer(name, answer.map(|fd| Value::Int(fd, IntTy::INT)), span)
             }
             "net_read" => {
@@ -905,7 +982,7 @@ impl Machine {
                     return Ok(Value::Str(String::new()));
                 }
                 let n = usize::try_from(n).unwrap_or(usize::MAX).min(1 << 20);
-                let answer = self.net_park(fd, span, |table| table.poll_read(fd, n))?;
+                let answer = self.net_park(name, fd, span, |table| table.poll_read(fd, n))?;
                 let answer = match answer {
                     Ok(text) => {
                         self.allocate(
@@ -928,8 +1005,9 @@ impl Machine {
                 };
                 let bytes = text.clone().into_bytes();
                 let mut at = 0usize;
-                let answer =
-                    self.net_park(fd, span, move |table| table.poll_write(fd, &bytes, &mut at))?;
+                let answer = self.net_park(name, fd, span, move |table| {
+                    table.poll_write(fd, &bytes, &mut at)
+                })?;
                 self.net_answer(name, answer.map(|()| Value::Unit), span)
             }
             "net_read_bytes" => {
@@ -948,7 +1026,7 @@ impl Machine {
                     return Ok(Value::list(Vec::new(), None, Some(self.current_region())));
                 }
                 let n = usize::try_from(n).unwrap_or(usize::MAX).min(1 << 20);
-                let answer = self.net_park(fd, span, |table| table.poll_read_bytes(fd, n))?;
+                let answer = self.net_park(name, fd, span, |table| table.poll_read_bytes(fd, n))?;
                 let answer = match answer {
                     Ok(bytes) => {
                         // Minted at EXACT capacity: a reader knows its length
@@ -1007,8 +1085,77 @@ impl Machine {
                     }
                 }
                 let mut at = 0usize;
-                let answer =
-                    self.net_park(fd, span, move |table| table.poll_write(fd, &bytes, &mut at))?;
+                let answer = self.net_park(name, fd, span, move |table| {
+                    table.poll_write(fd, &bytes, &mut at)
+                })?;
+                self.net_answer(name, answer.map(|()| Value::Unit), span)
+            }
+            // `[os.net.writev]` (s141, wolf-lang#254): the gathered write.
+            // `net_write_bytes` with the payload one level deeper, and one
+            // syscall where the parts would have been several.
+            "net_writev" => {
+                let fd = int_arg(args, 0, name)?;
+                let Some(outer) = args.get(1).and_then(Value::seq_slots) else {
+                    return Err(Signal::Unsupported(format!(
+                        "`{name}` takes an fd and a `List[List[byte]]` payload"
+                    )));
+                };
+                let mut parts: Vec<Vec<u8>> = Vec::with_capacity(outer.len());
+                for slot in outer {
+                    let Some(inner) = slot.value.seq_slots() else {
+                        return Err(Signal::Unsupported(format!(
+                            "`{name}`'s parts must each be a `List[byte]`, got {}",
+                            slot.value.kind()
+                        )));
+                    };
+                    let mut part = Vec::with_capacity(inner.len());
+                    for element in inner {
+                        match &element.value {
+                            Value::Byte(b) => part.push(*b),
+                            Value::Int(v, _) if (0..=255).contains(v) => {
+                                part.push(u8::try_from(*v).expect("checked 0..=255"));
+                            }
+                            // NOT the `invalid` row, and the clause is
+                            // explicit about why: "`invalid` is
+                            // `net_write_bytes`'s refusal of a list that is
+                            // not a `List[byte]`, which a typed
+                            // `List[List[byte]]` cannot present and this call
+                            // does not declare." A row the call never
+                            // declared would be a tag no handler's arms can
+                            // resolve, so the untyped shapes machinery can
+                            // still build are refused BY NAME instead.
+                            other => {
+                                return Err(Signal::Unsupported(format!(
+                                    "`{name}`'s parts hold {}, and the call declares no \
+                                     `invalid` row to answer with — a typed \
+                                     `List[List[byte]]` cannot present this, so the shape \
+                                     is refused by name rather than given a row \
+                                     `[os.net.writev]` does not carry",
+                                    other.kind()
+                                )));
+                            }
+                        }
+                    }
+                    parts.push(part);
+                }
+                let mut cursor = (0usize, 0usize);
+                let answer = self.net_park(name, fd, span, move |table| {
+                    table.poll_writev(fd, &parts, &mut cursor)
+                })?;
+                self.net_answer(name, answer.map(|()| Value::Unit), span)
+            }
+            // `[os.net.nodelay]` (s141, wolf-lang#254). The DEFAULT half is
+            // in `adopt_tcp`, on every TCP stream this table mints; this is
+            // the call that sets it either way afterwards.
+            "net_nodelay" => {
+                let fd = int_arg(args, 0, name)?;
+                let Some(Value::Bool(on)) = args.get(1) else {
+                    return Err(Signal::Unsupported(format!(
+                        "`{name}`'s second argument is the `on` bool"
+                    )));
+                };
+                let on = *on;
+                let answer = self.net().nodelay(fd, on);
                 self.net_answer(name, answer.map(|()| Value::Unit), span)
             }
             "net_close" => {
@@ -1133,6 +1280,7 @@ impl Machine {
     /// a row, the fd's armed deadline (the `timeout` row), or the rail.
     fn net_park<T>(
         &mut self,
+        name: &str,
         fd: i128,
         span: Span,
         mut poll: impl FnMut(&mut NetTable) -> NetResult<Poll<T>>,
@@ -1149,8 +1297,21 @@ impl Machine {
                 && started.elapsed() >= budget
             {
                 // The armed budget fired first: the parking call resolves
-                // as its row's `timeout` tag.
-                return Ok(Err(NetErr::Row("timeout")));
+                // as its row's `timeout` tag — WHERE THE CALL DECLARES ONE.
+                //
+                // `[os.net.io]` (s141) is the clause that made this
+                // distinction visible, and it is the only source motion the
+                // clause cost this machine. A write's budget now covers the
+                // whole drain, so `net_write`/`net_write_bytes`/`net_writev`
+                // can reach this line — and their declared row is
+                // `{closed, io}`, with no `timeout` in it. The clause says
+                // what comes out: "the row is `net_write`'s `io` (its
+                // `timeout` coarsened, as the call declares)". Raising a
+                // bare `timeout` here would hand a handler a tag its own
+                // `match` cannot resolve as a tag (`[gram.expr.tagident]`
+                // makes the arms exactly as wide as the DECLARED row), which
+                // is wolf-interp#47's defect at a new address.
+                return Ok(Err(NetErr::Row(budget_row(name))));
             }
             if started.elapsed() >= Duration::from_millis(NET_RAIL_MS) {
                 // No deadline and nothing will resolve this: decline the
@@ -1168,6 +1329,78 @@ impl Machine {
                 return Ok(Err(err));
             }
         }
+    }
+}
+
+/// The vectored drain itself, over any connected socket.
+///
+/// Split out from [`NetTable::poll_writev`] so the RESUMPTION can be tested
+/// against a writer that stops where a kernel would. A gather that fits in
+/// the send buffer never resumes, and a gather that does not is 8 MiB of
+/// `List[byte]` in the interpreter's own value representation — so a witness
+/// written in wolf cannot reach this path at a size the harness can afford.
+/// `net::tests::a_trickling_writer_resumes_mid_part` reaches it directly.
+fn drive_writev(
+    stream: &mut dyn Duplex,
+    parts: &[Vec<u8>],
+    cursor: &mut (usize, usize),
+) -> NetResult<Poll<()>> {
+    loop {
+        while cursor.0 < parts.len() && cursor.1 >= parts[cursor.0].len() {
+            cursor.0 += 1;
+            cursor.1 = 0;
+        }
+        if cursor.0 >= parts.len() {
+            return Ok(Poll::Ready(()));
+        }
+        let mut slices: Vec<IoSlice<'_>> = Vec::with_capacity(parts.len() - cursor.0);
+        slices.push(IoSlice::new(&parts[cursor.0][cursor.1..]));
+        for part in &parts[cursor.0 + 1..] {
+            if !part.is_empty() {
+                slices.push(IoSlice::new(part));
+            }
+        }
+        match stream.write_vectored(&slices) {
+            Ok(0) => return Err(NetErr::Row("io")),
+            Ok(wrote) => {
+                let mut left = wrote;
+                while left > 0 && cursor.0 < parts.len() {
+                    let remaining = parts[cursor.0].len() - cursor.1;
+                    if remaining == 0 {
+                        cursor.0 += 1;
+                        cursor.1 = 0;
+                        continue;
+                    }
+                    let take = left.min(remaining);
+                    cursor.1 += take;
+                    left -= take;
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                return Ok(Poll::NotYet);
+            }
+            Err(error) => return Err(NetErr::Row(closed_or_io(&error))),
+        }
+    }
+}
+
+/// The row a fired `net_deadline` budget answers on `name`.
+///
+/// `[os.net.io]`: `timeout` where the call declares one, coarsened to `io`
+/// where it does not. The declared row is read from
+/// [`super::builtin::declared_row`] rather than listed again here, so a call
+/// added to that table cannot acquire a second, divergent opinion about its
+/// own row — the whole reason the table exists (wolf-interp#47).
+fn budget_row(name: &str) -> Row {
+    let row = super::builtin::declared_row(name);
+    if row.contains(&"timeout") {
+        "timeout"
+    } else {
+        debug_assert!(
+            row.contains(&"io"),
+            "`{name}` declares neither `timeout` nor `io`, so a fired budget has no row"
+        );
+        "io"
     }
 }
 
@@ -1290,6 +1523,149 @@ mod tests {
         assert!(outside(table.listen("0.0.0.0:0")).contains("non-loopback"));
         assert!(outside(table.listen("127.0.0.1:8080")).contains("FIXED port"));
         assert!(outside(table.connect("8.8.8.8:53")).contains("non-loopback"));
+    }
+
+    /// A writer that stops where a kernel would: it accepts at most `bite`
+    /// bytes per call and answers `WouldBlock` on every other call, so a
+    /// gather is handed over in fragments that fall wherever they fall —
+    /// including in the middle of a part, which is the case
+    /// `[os.net.writev]` states and no affordable wolf witness can reach.
+    struct Trickle {
+        bite: usize,
+        stall: bool,
+        seen: Vec<u8>,
+    }
+
+    impl std::io::Read for Trickle {
+        fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    impl Write for Trickle {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let take = self.bite.min(buf.len());
+            self.seen.extend_from_slice(&buf[..take]);
+            Ok(take)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+        // `write_vectored`'s DEFAULT forwards only the first non-empty slice
+        // to `write`, which would make this fake test half the code. The real
+        // gather is exercised by taking bytes across the slice boundary.
+        fn write_vectored(&mut self, slices: &[IoSlice<'_>]) -> std::io::Result<usize> {
+            self.stall = !self.stall;
+            if self.stall {
+                return Err(std::io::Error::from(std::io::ErrorKind::WouldBlock));
+            }
+            let mut left = self.bite;
+            let mut wrote = 0;
+            for slice in slices {
+                if left == 0 {
+                    break;
+                }
+                let take = left.min(slice.len());
+                self.seen.extend_from_slice(&slice[..take]);
+                wrote += take;
+                left -= take;
+            }
+            Ok(wrote)
+        }
+    }
+
+    #[test]
+    fn a_trickling_writer_resumes_mid_part_and_the_gather_arrives_in_order() {
+        // `[os.net.writev]`: "the drain resumed from the byte the kernel
+        // stopped at in whichever part it stopped in". A 7-byte bite over
+        // parts of 10, 0, 3 and 11 bytes stops inside every one of them at
+        // some point, and the empty part must contribute nothing without
+        // stalling the cursor.
+        let parts: Vec<Vec<u8>> = vec![
+            b"0123456789".to_vec(),
+            Vec::new(),
+            b"abc".to_vec(),
+            b"WXYZWXYZWXY".to_vec(),
+        ];
+        let mut writer = Trickle {
+            bite: 7,
+            stall: true,
+            seen: Vec::new(),
+        };
+        let mut cursor = (0usize, 0usize);
+        let mut polls = 0;
+        loop {
+            polls += 1;
+            assert!(polls < 100, "the drain did not converge");
+            match drive_writev(&mut writer, &parts, &mut cursor) {
+                Ok(Poll::Ready(())) => break,
+                Ok(Poll::NotYet) => {}
+                Err(err) => panic!("unexpected row: {err:?}"),
+            }
+        }
+        let want: Vec<u8> = parts.concat();
+        assert_eq!(writer.seen, want, "the gather is the parts, in order");
+        assert!(
+            polls > 1,
+            "the fake never stalled, so nothing about resumption was tested"
+        );
+    }
+
+    #[test]
+    fn a_gather_of_nothing_completes_without_a_syscall() {
+        // "Empty parts are permitted and send nothing; a call whose parts are
+        // all empty is a completed write with no syscall." Both degenerate
+        // shapes, and the assertion is that the writer was never asked.
+        for parts in [Vec::new(), vec![Vec::new(), Vec::new()]] {
+            let mut writer = Trickle {
+                bite: 7,
+                seen: Vec::new(),
+                // `write_vectored` FLIPS this on entry, so it is still `true`
+                // afterwards exactly when the writer was never called — which
+                // is what "a completed write with no syscall" means here.
+                stall: true,
+            };
+            let mut cursor = (0usize, 0usize);
+            assert!(matches!(
+                drive_writev(&mut writer, &parts, &mut cursor),
+                Ok(Poll::Ready(()))
+            ));
+            assert!(writer.seen.is_empty());
+            assert!(writer.stall, "the writer was called, so a syscall happened");
+        }
+    }
+
+    #[test]
+    fn a_fired_budget_answers_io_where_the_call_declares_no_timeout() {
+        // `[os.net.io]`'s coarsening, at the function that decides it. The
+        // reads declare `timeout` and keep it; the three writes do not and
+        // are coarsened to `io`; `net_accept` keeps its own.
+        assert_eq!(budget_row("net_read"), "timeout");
+        assert_eq!(budget_row("net_read_bytes"), "timeout");
+        assert_eq!(budget_row("net_accept"), "timeout");
+        assert_eq!(budget_row("net_write"), "io");
+        assert_eq!(budget_row("net_write_bytes"), "io");
+        assert_eq!(budget_row("net_writev"), "io");
+    }
+
+    #[test]
+    fn nodelay_is_the_tcp_stream_s_option_and_every_other_handle_is_io() {
+        // `[os.net.nodelay]`: the option is TCP's, so a listener is `io`, a
+        // forged handle is `io`, and a closed one is `io`. The default half
+        // (`adopt_tcp`) is not observable from `std`, which is why the
+        // corpus witness asserts the toggle rather than the flag.
+        let mut table = NetTable::default();
+        let srv = table.listen("127.0.0.1:0").expect("binds");
+        let port = table.port(srv).expect("has a port");
+        let cli = table
+            .connect(&format!("127.0.0.1:{port}"))
+            .expect("dials loopback");
+        assert!(table.nodelay(cli, false).is_ok());
+        assert!(table.nodelay(cli, true).is_ok());
+        assert_eq!(row(table.nodelay(srv, true)), "io");
+        assert_eq!(row(table.nodelay(99_999, true)), "io");
+        table.close(cli).expect("closes");
+        assert_eq!(row(table.nodelay(cli, true)), "io");
     }
 
     #[test]
