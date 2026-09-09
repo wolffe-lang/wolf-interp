@@ -1427,8 +1427,21 @@ pub fn method(
         )),
         (Value::Str(s), "to_int") => {
             // `-> !int`: a value, tagged. There is no unwinding (`[err.union]`).
-            match s.trim().parse::<i128>() {
-                Ok(v) => Ok(Value::Int(v, IntTy::INT)),
+            //
+            // Parsed as `i64` and NOT as `i128` (wolf-interp#69, wolf-lang#263,
+            // s142). `int` IS `IntTy::INT` — 64 bits, signed, checked — so an
+            // `i128` parse accepts `"9223372036854775808"` and mints a
+            // `Value::Int` holding a number no `int` can hold. Nothing rejects
+            // it at the mint site, and the program's FIRST arithmetic on that
+            // value then traps with an overflow it never wrote: a range error
+            // at the parse displaced into a trap somewhere else, which is the
+            // worst possible place to put it. The compiler answers the
+            // `NotAnInt` row for that input (X3 forbids a quiet wrap), and so
+            // does this now — the row already means "this string is not an
+            // `int`", which is exactly true of a number that does not fit in
+            // one.
+            match s.trim().parse::<i64>() {
+                Ok(v) => Ok(Value::Int(i128::from(v), IntTy::INT)),
                 Err(_) => {
                     machine.note(Rule::ErrUnion, span, "`to_int` yields an error value");
                     Ok(error("NotAnInt"))
