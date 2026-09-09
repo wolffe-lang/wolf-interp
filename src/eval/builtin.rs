@@ -1178,12 +1178,18 @@ pub fn method(
             machine.check_home_write(*home, "this `pop`", span)?;
             match std::sync::Arc::make_mut(items).pop() {
                 Some(slot) => Ok(slot.value),
-                None => machine.fault(
-                    TrapKind::Bounds,
-                    Rule::Bounds,
-                    span,
-                    "`pop` on an empty List".to_owned(),
-                ),
+                // `[mem.list.pop]` (wolf-lang#274, s144): `pop` on an empty
+                // list is the payload-free row `none`, never a `bounds`
+                // trap. `[mem.ub.defined]` rules *indices and slices*, and
+                // `pop` takes no index — reading it as one was an analogy,
+                // not a clause. The subscript `xs[i]` stays the faulting
+                // twin, exactly as `s[a..b]` is `s.get(a..b)`'s
+                // (`[mem.str.get]`), and this arm is `str.get`'s sibling
+                // down to the citation.
+                None => {
+                    machine.note(Rule::ErrUnion, span, LIST_NONE_ROW);
+                    Ok(error("none"))
+                }
             }
         }
         (Value::List(items, _, _), "len" | "count") => {
@@ -1194,9 +1200,35 @@ pub fn method(
             let Some(Value::Int(index, _)) = args.first() else {
                 return unsupported("`get` takes an integer index".to_owned());
             };
+            // `get` is origin-free — the origin marker shifts subscripts only
+            // (W0317) — so the index is 0-based whatever `xs[i]` reads as.
             match usize::try_from(*index).ok().and_then(|i| items.get(i)) {
                 Some(slot) => Ok(slot.value.clone()),
-                None => Ok(error("OutOfBounds")),
+                // `none`, not the `OutOfBounds` this machine minted before
+                // `[mem.list.pop]`: one mark per condition, lowercase for a
+                // payload-free mark (W0603, `[mem.str.parse]`'s pact), and
+                // the CapCase name is reserved for a payload's type.
+                None => {
+                    machine.note(Rule::ErrUnion, span, LIST_NONE_ROW);
+                    Ok(error("none"))
+                }
+            }
+        }
+        // `[mem.list.pop]` admits these two by definition: `xs.first()` is
+        // `get(0)` and `xs.last()` is `get(xs.len - 1)`, so an empty list
+        // answers the same `none` and no fourth outcome exists.
+        (Value::List(items, _, _), name @ ("first" | "last")) => {
+            let hit = if name == "first" {
+                items.first()
+            } else {
+                items.last()
+            };
+            match hit {
+                Some(slot) => Ok(slot.value.clone()),
+                None => {
+                    machine.note(Rule::ErrUnion, span, LIST_NONE_ROW);
+                    Ok(error("none"))
+                }
             }
         }
 
@@ -2103,10 +2135,16 @@ pub(crate) fn error_value(name: &str, tag: &str) -> Value {
     }))
 }
 
-/// The bare-tag error value of the surfaces with no pinned row (`none`,
-/// `OutOfBounds`, … — the option-shaped members): the tag alone, no row
-/// vocabulary, exactly as before #47's fix. Widening these is a separate
-/// ruling; nothing files a bug against them.
+/// The one reason the four recoverable `List` reads cite. `[mem.list.pop]`
+/// states them as one rule, so they say one thing (`OutOfBounds` retired
+/// with the clause — the second CapCase payload-free mark W0603 counted).
+const LIST_NONE_ROW: &str = "`pop`/`get`/`first`/`last` answer the `none` row — the recoverable List reads never fault \
+     (`[mem.list.pop]`); `xs[i]` is the faulting twin";
+
+/// The bare-tag error value of the surfaces with no pinned row (`none`, … —
+/// the option-shaped members): the tag alone, no row vocabulary, exactly as
+/// before #47's fix. Widening these is a separate ruling; nothing files a
+/// bug against them.
 fn error(tag: &str) -> Value {
     Value::Error(Box::new(super::value::ErrorValue {
         tag: tag.to_owned(),

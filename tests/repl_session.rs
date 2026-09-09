@@ -273,16 +273,25 @@ fn a_lent_receiver_is_back_in_its_slot_after_the_trap() {
     // it can look; a REPL session outlives its trap (`[repl.trap.alive]`), so
     // the very next line can. Were the placeholder left behind, `xs.len` would
     // refuse with "`()` has no member `len`" instead of answering 0.
+    //
+    // The provocation is `push`, not `pop`. Until wolf-lang#274 this test rode
+    // `pop` on an empty list, which trapped `bounds`; `[mem.list.pop]` (s144)
+    // rules that answer to be the `none` row instead, so `pop` no longer
+    // faults on any input and cannot provoke anything. `push` lends its
+    // receiver at the same site (`check_home_write`, the same #25 consult) and
+    // still traps — a literal outside the element type is `[arith.checked]`'s
+    // overflow, thrown AFTER the lend and before the store — so the claim
+    // under test is unchanged and the trap kind is the only thing that moved.
+    // `xs.len` answering 0 is the whole proof: the element never landed, and
+    // the placeholder did not stay behind.
     let out = String::from_utf8(pipe_session(
         "var xs = List[int]()\n\
-         (mut xs).push(1)\n\
-         let a = (mut xs).pop()\n\
-         let b = (mut xs).pop()\n\
+         (mut xs).push(9223372036854775808)\n\
          xs.len\n",
     ))
     .expect("utf-8");
     assert!(
-        out.contains("trap(bounds): `pop` on an empty List"),
+        out.contains("trap(overflow): `push` stored 9223372036854775808, outside `i64`"),
         "{out}"
     );
     assert!(out.contains("[repl.trap.alive]"), "{out}");
