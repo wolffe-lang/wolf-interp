@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.30 — 2026-09-09
 
 THE MIRROR LETS `else` START A LINE (is42). Pin `e9a17cb` -> `2c03ed9`,
 wolf-lang trunk past the s144 merge, **dev-stamped**: v0.2.9 is r13's and is
