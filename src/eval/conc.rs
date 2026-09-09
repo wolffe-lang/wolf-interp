@@ -169,7 +169,7 @@ impl Machine {
         // what re-raises at the scope exit, below, after the join.
         let body_result = match body_result {
             Err(Signal::Return(Value::Error(err)))
-                if err.tag == "Cancelled" && !failures.is_empty() =>
+                if err.tag == "cancelled" && !failures.is_empty() =>
             {
                 self.fire(
                     Rule::TaskFailOwner,
@@ -671,7 +671,7 @@ impl Machine {
             self.step()?;
             let value = self.chan_recv(chan, span)?;
             if let Value::Error(err) = &value {
-                if err.tag == "Closed" {
+                if err.tag == "closed" {
                     self.fire(Rule::ChanClose, span, "`for v in ch` ends at drained-close");
                     return Ok(Value::Unit);
                 }

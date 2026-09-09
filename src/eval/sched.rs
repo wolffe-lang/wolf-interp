@@ -1335,9 +1335,15 @@ pub fn fnv128(bytes: &[u8]) -> u128 {
     hash
 }
 
+/// The drained-closed error value. `[conc.chan.close]` spells the tag
+/// **`closed`** (wolf-lang#273, s144): a payload-free mark is a lowercase
+/// word and CapCase names a payload's type — `[mem.str.parse]`'s house pact,
+/// W0603. `recv`'s row is `T ! {closed, cancelled}`, and `{err}` renders a
+/// caught row by its tag's name (`[type.interp.row]`), so the spelling is
+/// observable and this machine's `Closed` was a divergence, not a detail.
 fn closed_error() -> Value {
     Value::Error(Box::new(ErrorValue {
-        tag: "Closed".to_owned(),
+        tag: "closed".to_owned(),
         payload: Vec::new(),
         enum_variant: false,
         row: Vec::new(),
@@ -1346,10 +1352,11 @@ fn closed_error() -> Value {
 
 /// The cancellation-at-a-blocking-point error value — pub(crate) because
 /// the net tier's parking loop (is18) resolves a raced-in cancellation to
-/// exactly the value a channel op would.
+/// exactly the value a channel op would. `[conc.chan.close]` spells the tag
+/// **`cancelled`**, named in the same clause as `closed` (wolf-lang#273).
 pub(crate) fn cancelled_error() -> Value {
     Value::Error(Box::new(ErrorValue {
-        tag: "Cancelled".to_owned(),
+        tag: "cancelled".to_owned(),
         payload: Vec::new(),
         enum_variant: false,
         row: Vec::new(),
