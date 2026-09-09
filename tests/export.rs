@@ -198,7 +198,14 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // `type.interp.none` — uncitable BY CONSTRUCTION, because the clause it names
 // says a conformance witness may not interpolate a value with no promised
 // rendering. Raised in the bump commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 199;
+// 199 -> 200 at 2c03ed9 (is42, s144 dev-stamped): ONE, against one new
+// anchor. `mem.list.pop` arrives cited by `memory/list_pop_empty.lu`, the
+// witness s144 shipped with the clause. s144's other two rulings amend
+// clauses this corpus already cited — `gram.lex.newline` and `gram.amb.else`
+// (both else witnesses), `conc.chan.close` (`conc/chan_closed_row.lu`) — so
+// they raise nothing. Raised in the bump commit per the test's own
+// instruction.
+const RATCHET_FLOOR: usize = 200;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -307,7 +314,14 @@ const RATCHET_FLOOR: usize = 199;
 // `.value`/`.agg`/`.row`/`.union`/`.reason`/`.none`. Key sets diffed BOTH ways
 // — nine added, NOTHING dropped, no owner changed (wolf-lang#177's lesson,
 // still standing).
-const ANCHORS_TOTAL: usize = 445;
+// 445 -> 446 at 2c03ed9 (is42, s144 dev-stamped): ONE, in one merge —
+// `[mem.list.pop]` under spec/02, the clause that rules the recoverable
+// `List` reads to the `none` row (wolf-lang#274). s144's other two rulings
+// amend clauses that already had anchors: `[gram.lex.newline]` and
+// `[gram.amb.else]` take #276's lookahead, `[conc.chan.close]` takes #273's
+// spelling. Key sets diffed BOTH ways — one added, NOTHING dropped, no owner
+// changed (wolf-lang#177's lesson, still standing).
+const ANCHORS_TOTAL: usize = 446;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -511,10 +525,16 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // the mark it pins now has. All entries, so both counts move by 3; the
     // suite is unmoved (is41's new test is an inline fixture, which the
     // extractor does not harvest).
+    // 555/521 -> 558/524 at 2c03ed9 (is42, s144 dev-stamped): 3 corpus files,
+    // none leaving — `grammar/else_default_newline.lu`,
+    // `conc/chan_closed_row.lu` and `memory/list_pop_empty.lu`, all entries,
+    // so both counts move by 3. `grammar/else_chain.lu` is EDITED, not added,
+    // and moves neither count; the suite is unmoved (is42's new tests are
+    // inline fixtures, which the extractor does not harvest).
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "e9a17cb3c80896c725c6fbdcbe032e7de0c5c548");
-    assert_eq!(summary.programs, 555);
-    assert_eq!(summary.records, 521);
+    assert_eq!(summary.pin, "2c03ed9360e90e260528411075daded674ceab18");
+    assert_eq!(summary.programs, 558);
+    assert_eq!(summary.records, 524);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
