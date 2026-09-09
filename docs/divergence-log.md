@@ -120,6 +120,18 @@ machine parted on are byte-identical from this release**. The walk goes 5
 mismatches to 1, and the one left is DIV-2026-019, which has nothing to do
 with this pin.
 
+| witness | 0.1.29's binary at the NEW pin | lupin at 0.1.30 | the clause |
+| --- | --- | --- | --- |
+| `grammar/else_chain.lu` | `fail(E0005)@parse`, MISMATCH | **`exit(0)@run`, match** | `[gram.lex.newline]` |
+| `grammar/else_default_newline.lu` | `fail(E0005)@parse`, MISMATCH | **`exit(0)@run`, match** | `[gram.amb.else]` |
+| `conc/chan_closed_row.lu` | `exit(0)` but `Closed`, MISMATCH | **`exit(0)@run`, match** | `[conc.chan.close]` |
+| `memory/list_pop_empty.lu` | `trap(bounds)@run`, MISMATCH | **`exit(0)@run`, match** | `[mem.list.pop]` |
+
+The left column is deliberately not the 0.1.29 *release's* measurement: it is
+the 0.1.29 binary run against the NEW pin before a line was edited, which is
+the only column that isolates what this sprint's source motion bought. Five
+mismatches before, one after, and the fifth was DIV-2026-019 both times.
+
 **`[gram.lex.newline]`'s `else` lookahead — wolf-lang#276, wolf-interp#75.**
 Predicted motion, written before the pin moved: one lexer arm, one parser
 deletion, one diag constant, the manual's E-table row. Measured: the lexer arm
