@@ -110,6 +110,75 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The mirror spells `parse` — is41, lupin 0.1.29, pin `e9a17cb` (wolf-lang s143, dev-stamped)
+
+s143 ruled two families this machine had been serving without a clause:
+`str.to_int`'s parse row, and the rendering of every non-primitive
+interpolation hole. **One class closed and none opened**: the walk's one
+mismatch is still DIV-2026-019, and `rows/to_int_parse.lu` — the single
+witness the two machines parted on at 0.1.28 — matches from this release.
+
+| witness | lupin at 0.1.28 | lupin at 0.1.29 | the clause |
+| --- | --- | --- | --- |
+| `rows/to_int_parse.lu` | **`error: NotAnInt`, MISMATCH** | **`exit(1)@run`, match** | `[mem.str.parse]` |
+| `grammar/else_default.lu` | `fell back: NotAnInt`, mismatch | **`exit(0)@run`, match** | `[mem.str.parse]`, `[type.interp.row]` |
+| `strings/interp_values.lu` | not at the pin | **`exit(0)@run`, match** | `[type.interp.value]`/`.agg`/`.row`/`.union` |
+| `conc/reason_interp.lu` | not at the pin | **`exit(0)@run`, match** | `[type.interp.reason]` |
+| `conc/chan_param_for.lu` | not at the pin | **`exit(0)@run`, match** | `[conc.chan.close]`, `[conc.chan.type]` |
+
+**`[mem.str.parse]` cost one string and the rename is the whole of it.**
+`NotAnInt` was this implementation's spelling first — served since before
+0.1.13, copied by wolf-std's corpus and by the compiler at s142 — and it was
+the one CapCase payload-free tag on the builtin surface, which is precisely
+the shape W0603 warns a program about. The clause is an amendment against
+*this* machine's guess, arrived at by the pipeline working as designed: the
+divergence was filed (wolf-lang#265), the spec was the defendant first
+(`[proto.cmp.triage]`), the clause ruled against the incumbent spelling, and
+the compiler moved at s143 with the mirror one wave behind.
+
+**`[type.interp.*]` cost NOTHING, and that was the prediction.** spec/10 §4c
+says in its own words that it "adopts the interpreter's rendering, byte for
+byte, as the language's — it was the only rendering anyone had written down,
+in code". The four witnesses were run against 0.1.28's binary before a line
+was edited: `strings/interp_values.lu`, `conc/reason_interp.lu` and
+`conc/chan_param_for.lu` printed their pinned `stdout` exactly, and
+`grammar/else_default.lu` printed it but for the mark. Zero source motion on
+`Value`'s `Display`; the only edits under §4c are citations —
+`Rule::StrInterp` retires the forward `str.interp` for the registered
+`[type.interp.value]` (the is26 move at a second address), and E0412/E0413
+cite the clause that now rules a format spec on a hole.
+
+This is the *inverse* of the usual entry, and worth naming as such: a
+divergence class normally closes when this machine changes to meet a clause.
+Here six clauses were written to meet this machine, and one clause was written
+against it. Both are the pipeline; only the second costs a rename.
+
+#### Two spellings this pin does NOT rule (wolf-lang#273, #274)
+
+Filed by s143 against the same measurement and open at this pin. Neither is a
+walk mismatch — no corpus witness reaches either — so neither is a DIV entry;
+they are recorded here so the next lane finds this machine's posture with the
+line number attached rather than re-deriving it.
+
+- **The closed-channel row (wolf-lang#273).** `[conc.chan.close]` says
+  "further sends return an error value" without spelling the tag. This machine
+  mints `Closed` (`src/eval/sched.rs:1340`, `closed_error`) and discriminates
+  on it in exactly one other place (`src/eval/conc.rs:674`, the `for v in ch`
+  drained-close test); the compiler's `recv` row is `{closed, cancelled}`. The
+  same question rides `Cancelled` (`src/eval/sched.rs:1352`,
+  `src/eval/conc.rs:172`), which the compiler also spells lowercase — a ruling
+  on one is a ruling on both.
+- **`List.pop()` on an empty list (wolf-lang#274).** No clause rules it.
+  This machine traps `bounds` (`src/eval/builtin.rs:1181`, citing
+  `[mem.ub.defined]` through `Rule::Bounds`); the compiler types `pop` as
+  `T ! {none}` and answers the row. `[type.interp.union]` renders `{popped}`
+  as `3` or `none`, which is the compiler's shape written into a clause — but
+  §4c rules the RENDERING of a `!T`, not whether `pop` returns one, so the
+  question stands. The same clause should rule `List.get`, which answers
+  `OutOfBounds` here (`src/eval/builtin.rs:1199`) — the second CapCase
+  payload-free mark left on this surface after `[mem.str.parse]` retired the
+  first.
+
 ### The mirror writes vectored — is40, lupin 0.1.28, pin `5c729e8` (wolf-lang v0.2.8)
 
 s141 gave the compiler a gathered write and a stream option; s142 gave it
