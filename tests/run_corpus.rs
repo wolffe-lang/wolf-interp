@@ -1276,6 +1276,23 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("conc/chan_param_for.lu", "exit(0)"),
     ("conc/reason_interp.lu", "exit(0)"),
     ("strings/interp_values.lu", "exit(0)"),
+    // The 2c03ed9 pin (s144, dev-stamped; is42). FOUR files join, none
+    // leaves. Three are the witnesses s144 shipped with its clauses:
+    // `grammar/else_default_newline.lu` reaches `run` for the first time
+    // because `[gram.lex.newline]`'s `else` lookahead stopped rejecting it at
+    // parse (wolf-lang#276); `conc/chan_closed_row.lu` and
+    // `memory/list_pop_empty.lu` are new corpus files (#273, #274).
+    //
+    // The fourth is the one worth reading: `strings/byte_view_lend.lu` has
+    // been in the corpus all along and was DECLINED here, because it calls
+    // `bs.first()` and `bs.last()` and this machine had no arm for either.
+    // `[mem.list.pop]` defines them (`get(0)` and `get(len - 1)`), so
+    // implementing the clause unlocked a file the clause never mentions. A
+    // ruling's blast radius is not the witness list.
+    ("grammar/else_default_newline.lu", "exit(0)"),
+    ("conc/chan_closed_row.lu", "exit(0)"),
+    ("memory/list_pop_empty.lu", "exit(0)"),
+    ("strings/byte_view_lend.lu", "exit(0)"),
 ];
 
 #[test]
