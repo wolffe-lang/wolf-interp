@@ -1943,6 +1943,66 @@ fn the_marked_spellings_of_a_mut_receiver_still_run() {
 }
 
 #[test]
+fn the_recoverable_list_reads_answer_the_none_row() {
+    // `[mem.list.pop]` (wolf-lang#274, s144): `pop` on an empty list, `get`
+    // outside `0..len`, and `first`/`last` on an empty list are the
+    // payload-free tag `none`. No third outcome: none of the four faults on
+    // any input, and the tag is `none` in every case — never `OutOfBounds`,
+    // the CapCase mark that retired with the clause (W0603).
+    assert_eq!(
+        stdout(
+            "fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   let e = (mut xs).pop()\n\
+             \x20   print(\"{e}\")\n\
+             \x20   let d = (mut xs).pop() else 7\n\
+             \x20   let g = xs.get(0) else 8\n\
+             \x20   let f = xs.first() else 9\n\
+             \x20   let l = xs.last() else 10\n\
+             \x20   print(\"{d} {g} {f} {l}\")\n\
+             \x20   0\n\
+             }\n",
+        ),
+        "none\n7 8 9 10\n"
+    );
+    // The four reads answer the value when there is one, so the `none` row is
+    // absence and not a blanket refusal.
+    assert_eq!(
+        stdout(
+            "fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   (mut xs).push(3)\n\
+             \x20   (mut xs).push(2)\n\
+             \x20   let g = xs.get(0) else 0\n\
+             \x20   let f = xs.first() else 0\n\
+             \x20   let l = xs.last() else 0\n\
+             \x20   let p = (mut xs).pop() else 0\n\
+             \x20   print(\"{g} {f} {l} {p}\")\n\
+             \x20   0\n\
+             }\n",
+        ),
+        "3 3 2 2\n"
+    );
+}
+
+#[test]
+fn the_subscript_stays_the_faulting_twin_of_get() {
+    // `[mem.list.pop]`: "The subscript `xs[i]` stays the faulting twin: an
+    // index outside the list traps `bounds` (`[mem.ub.defined]`), which is
+    // exactly the relation `s.get(a..b)` has to `s[a..b]`." Ruling the reads
+    // recoverable did not make the subscript recoverable.
+    let trap = trap_of(
+        "fn main() -> int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   (mut xs).push(1)\n\
+         \x20   xs[3]\n\
+         }\n",
+    );
+    assert_eq!(trap.kind, TrapKind::Bounds);
+    assert_eq!(trap.rule.anchor(), "mem.ub.defined");
+}
+
+#[test]
 fn a_bare_builtin_mutating_call_traps_and_a_reading_one_does_not() {
     // `List.push` is the builtin surface's mut-receiver arm; a bare `len`
     // or `xs[i]` read keeps running exactly as before — the demand is only
@@ -2040,10 +2100,17 @@ fn a_lent_receiver_is_the_same_machine_only_cheaper() {
 
 #[test]
 fn a_lend_hands_the_receiver_back_when_the_method_traps() {
-    // `pop` on an empty `List` faults `bounds`. The receiver was lent, so the
-    // slot held `Value::Unit` while the builtin ran, and it has to be back in
-    // the slot whatever the call did — were the placeholder left behind, a
-    // later `xs.len` would refuse ("`()` has no member `len`").
+    // `push` of a literal outside the element type faults `overflow`
+    // (`[arith.checked]`). The receiver was lent, so the slot held
+    // `Value::Unit` while the builtin ran, and it has to be back in the slot
+    // whatever the call did — were the placeholder left behind, a later
+    // `xs.len` would refuse ("`()` has no member `len`").
+    //
+    // The provocation was `pop` on an empty list until wolf-lang#274:
+    // `[mem.list.pop]` rules that answer to be the `none` row, so `pop` no
+    // longer faults on any input. `push` lends its receiver at the same
+    // `check_home_write` site and traps AFTER the lend and before the store,
+    // so the claim under test is unchanged and only the trap kind moved.
     //
     // Until r05 this test read the slot from a `defer` that ran on the way
     // out. `[conf.trap.exit]` now rules that a trap runs NO defer anywhere
@@ -2058,13 +2125,12 @@ fn a_lend_hands_the_receiver_back_when_the_method_traps() {
          \x20   var xs = List[int]()\n\
          \x20   (mut xs).push(1)\n\
          \x20   defer print(\"after={xs.len}\")\n\
-         \x20   let a = (mut xs).pop()\n\
-         \x20   let b = (mut xs).pop()\n\
-         \x20   a + b\n\
+         \x20   (mut xs).push(9223372036854775808)\n\
+         \x20   xs.len\n\
          }\n");
     match &run.outcome {
-        Outcome::Trap(trap) => assert_eq!(trap.kind, TrapKind::Bounds),
-        other => panic!("expected the bounds trap, got {other:?}"),
+        Outcome::Trap(trap) => assert_eq!(trap.kind, TrapKind::Overflow),
+        other => panic!("expected the overflow trap, got {other:?}"),
     }
     assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "");
 }
