@@ -1431,7 +1431,26 @@ pub fn method(
             Some(machine.current_region()),
         )),
         (Value::Str(s), "to_int") => {
-            // `-> !int`: a value, tagged. There is no unwinding (`[err.union]`).
+            // `[mem.str.to_int]`: `s.to_int() -> int ! {parse}`. `-> !int` is a
+            // value, tagged; there is no unwinding (`[err.union]`).
+            //
+            // The row is the lowercase payload-free mark `parse`, not the
+            // `NotAnInt` this implementation served from before 0.1.13 and the
+            // compiler copied at s142. `[mem.str.parse]` (s143, wolf-lang#265)
+            // rules the rename: the language's own pact is that payload-free
+            // marks are lowercase bare words and CapCase names a payload's type
+            // (W0603 warns a program that breaks it, and lists `parse` among its
+            // examples), the OS families spell their conditions that way, and
+            // the json builtins already answer `parse` for exactly this
+            // condition. One mark per condition, never per method, so a second
+            // parser would share it. The row carries no payload: the text is the
+            // caller's, and a payload would copy it.
+            //
+            // The whitespace run the clause ignores is "exactly the set `trim`
+            // removes", which is what `s.trim()` here means — the same call the
+            // `trim` builtin two hundred lines up makes, so `s.to_int()` and
+            // `s.trim().to_int()` are one value on every input by construction
+            // rather than by coincidence.
             //
             // Parsed as `i64` and NOT as `i128` (wolf-interp#69, wolf-lang#263,
             // s142). `int` IS `IntTy::INT` — 64 bits, signed, checked — so an
@@ -1440,16 +1459,14 @@ pub fn method(
             // it at the mint site, and the program's FIRST arithmetic on that
             // value then traps with an overflow it never wrote: a range error
             // at the parse displaced into a trap somewhere else, which is the
-            // worst possible place to put it. The compiler answers the
-            // `NotAnInt` row for that input (X3 forbids a quiet wrap), and so
-            // does this now — the row already means "this string is not an
-            // `int`", which is exactly true of a number that does not fit in
-            // one.
+            // worst possible place to put it. `[mem.str.to_int]` now states it
+            // outright — a magnitude outside `int`'s range is the row, because
+            // there is no `int` the text names and X3 forbids a quiet wrap.
             match s.trim().parse::<i64>() {
                 Ok(v) => Ok(Value::Int(i128::from(v), IntTy::INT)),
                 Err(_) => {
                     machine.note(Rule::ErrUnion, span, "`to_int` yields an error value");
-                    Ok(error("NotAnInt"))
+                    Ok(error("parse"))
                 }
             }
         }

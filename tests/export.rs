@@ -184,7 +184,21 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // a document's anchors outrunning the corpus that names them, the ordinary
 // state and not a gap. Raised in the bump commit per the test's own
 // instruction.
-const RATCHET_FLOOR: usize = 192;
+// 192 -> 199 at e9a17cb (is41, s143 dev-stamped): SEVEN, against nine new
+// anchors. `mem.str.parse` and `mem.str.to_int` arrive cited by
+// `strings/to_int.lu` (the battery, which stopped spelling the mark in its
+// own `check:` and started citing the clauses that rule it) and the second by
+// `rows/to_int_parse.lu` as well. Five of the six `[type.interp.*]` are cited
+// by the witnesses s143 shipped with them — `type.interp.value`/`.agg`/`.row`/
+// `.union` by `strings/interp_values.lu` (`.row` again by
+// `grammar/else_default.lu`, which reaches `run` on the compiler for the first
+// time now that `{err}` renders) and `type.interp.reason` by
+// `conc/reason_interp.lu`. The two that do not move the floor are the §4c
+// section heading `type.interp`, which no witness cites, and
+// `type.interp.none` — uncitable BY CONSTRUCTION, because the clause it names
+// says a conformance witness may not interpolate a value with no promised
+// rendering. Raised in the bump commit per the test's own instruction.
+const RATCHET_FLOOR: usize = 199;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -285,7 +299,15 @@ const RATCHET_FLOOR: usize = 192;
 // past `ed8f526`; then s142's `[os.fs]` section heading and `[os.fs.fstat]`
 // under it. Key sets diffed BOTH ways — twelve added, NOTHING dropped, no
 // owner changed (wolf-lang#177's lesson, still standing).
-const ANCHORS_TOTAL: usize = 436;
+// 436 -> 445 at e9a17cb (is41, s143 dev-stamped): NINE, in one merge. s143's
+// two `[mem.str.*]` — `[mem.str.parse]` (the parse family is one method, and
+// its row is the lowercase mark `parse`) and `[mem.str.to_int]` (the grammar,
+// the `[mem.str.ws]` trim, the row incl. a magnitude outside `int`) — and
+// spec/10's new §4c heading `[type.interp]` with its six children
+// `.value`/`.agg`/`.row`/`.union`/`.reason`/`.none`. Key sets diffed BOTH ways
+// — nine added, NOTHING dropped, no owner changed (wolf-lang#177's lesson,
+// still standing).
+const ANCHORS_TOTAL: usize = 445;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -480,10 +502,19 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // all entries, so both counts move by 6; the suite is unmoved (is40's new
     // suite programs are inline fixtures, which the extractor does not
     // harvest).
+    // 552/518 -> 555/521 at e9a17cb (is41, s143 dev-stamped — `3103577` plus one
+    // bench-only commit, whose `spec/`+`corpus/` trees are byte-identical to the
+    // merge's): a NET 3 corpus
+    // files. Four arrive — `strings/interp_values.lu`, `conc/reason_interp.lu`,
+    // `conc/chan_param_for.lu` and `rows/to_int_parse.lu` — and one leaves,
+    // `rows/to_int_not_an_int.lu`, which is the same witness under the name
+    // the mark it pins now has. All entries, so both counts move by 3; the
+    // suite is unmoved (is41's new test is an inline fixture, which the
+    // extractor does not harvest).
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "5c729e8779a83611a66f47a63a5276b158ecdec1");
-    assert_eq!(summary.programs, 552);
-    assert_eq!(summary.records, 518);
+    assert_eq!(summary.pin, "e9a17cb3c80896c725c6fbdcbe032e7de0c5c548");
+    assert_eq!(summary.programs, 555);
+    assert_eq!(summary.records, 521);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

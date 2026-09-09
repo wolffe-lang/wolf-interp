@@ -629,14 +629,24 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             `os.net.io`/`os.net.writev`/`os.net.nodelay`, the seven
     //             `[sched.*]` is39 deferred (this pin is past ed8f526), and
     //             s142's `os.fs` heading with `os.fs.fstat` under it.)
+    // (514 -> 517 at e9a17cb (is41, s143 dev-stamped): a NET THREE over one
+    //             merge. FOUR arrive — s143's `strings/interp_values.lu`,
+    //             `conc/reason_interp.lu`, `conc/chan_param_for.lu` and
+    //             `rows/to_int_parse.lu`; ONE leaves,
+    //             `rows/to_int_not_an_int.lu`, the same witness under the
+    //             name the mark it pins now has. All entries, so `members`
+    //             holds at 34; the registry gains NINE anchors and drops
+    //             none, key sets diffed both ways — `mem.str.parse`,
+    //             `mem.str.to_int`, and spec/10 §4c's `type.interp` heading
+    //             with its six children.)
     let report = report();
     assert_eq!(
         report.total(),
-        514,
+        517,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 480);
+    assert_eq!(report.entries(), 483);
     assert_eq!(report.members(), 34);
 }
 

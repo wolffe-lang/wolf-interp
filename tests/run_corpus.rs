@@ -1232,16 +1232,50 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // here because wolf-interp#69 landed first: `to_int` parsed into an
     // `i128`, so `max`/`min` were right and one past either was a value no
     // `int` holds. Parsed as `i64` now, and one past either extreme is the
-    // `NotAnInt` row both sides answer, which is what the `max`/`min` lines
-    // of the first witness and the whole of the second assert.
+    // row both sides answer, which is what the `max`/`min` lines of the first
+    // witness and the whole of the second assert. (s143 renamed the second
+    // file to `rows/to_int_parse.lu` with the mark; see the e9a17cb block.)
     //
     // `fs/fstat.lu` is NOT here and cannot be: `[os.fs.fstat]` is a stat on a
     // handle from the s38 fs surface, which this machine declines by design
     // (wolf-interp#18 item 6 — an interpreter observing the HOST's filesystem
     // puts the host into a differential comparison). It ledgers out-of-scope
     // with the rest of `corpus/fs/`, which is a verdict and not an absence.
-    ("rows/to_int_not_an_int.lu", "exit(1)"),
     ("strings/to_int.lu", "exit(0)"),
+    // The e9a17cb pin (s143, dev-stamped; is41). `rows/to_int_not_an_int.lu`
+    // is GONE from the corpus — not lost from this ledger. s143 renamed the
+    // file with the mark it pins: `[mem.str.parse]` rules `to_int`'s row the
+    // lowercase payload-free `parse`, and `rows/to_int_parse.lu` is the same
+    // witness spelling the new tag. It is the one file the two machines parted
+    // on at 0.1.28, and the rename here is what closes the gap.
+    ("rows/to_int_parse.lu", "exit(1)"),
+    // The `[type.interp.*]` witnesses (s143, wolf-lang#268). All THREE reach
+    // `run` and match on arrival, with zero source motion: §4c adopts this
+    // machine's own `Display` byte for byte, so the clause describes code that
+    // was already here rather than asking for any.
+    //
+    // `strings/interp_values.lu` is the whole rendering surface in one file —
+    // a struct, a nested struct, a tuple, an empty and a populated and a
+    // struct-holding `List`, a `!T` in both states, a caught row with and
+    // without a payload, an enum variant qualified by its enum, and every one
+    // of those again in VALUE position building a `str`. It is
+    // `[type.interp.value]`'s "the same bytes whether the hole is printed or
+    // built into a `str`", asserted by construction.
+    //
+    // `conc/reason_interp.lu` is `[type.interp.reason]`'s four classes —
+    // `normal(1540)`, `error(Corrupt)`, `killed`, `fault(bounds)`. The
+    // COMPILER moved for this one (the native entry shim had to stash a proc's
+    // result so `normal(v)` could carry it); this machine already had the
+    // reason as a value and rendered it.
+    //
+    // `conc/chan_param_for.lu` is s143's `channel[T]`-in-a-signature fix —
+    // `for v in ch` where `ch` is a parameter or a struct field. Nothing to
+    // mirror: this machine never had a signature-position `channel[T]` that
+    // stayed opaque, so the loop drove the parameter and the field the same
+    // way it drove a local.
+    ("conc/chan_param_for.lu", "exit(0)"),
+    ("conc/reason_interp.lu", "exit(0)"),
+    ("strings/interp_values.lu", "exit(0)"),
 ];
 
 #[test]

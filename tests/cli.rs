@@ -210,7 +210,14 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // `strings/to_int.lu`, `rows/to_int_not_an_int.lu`, `fs/fstat.lu`. All
     // six are ENTRIES; `members` holds at 34. Moved with the pin, per the
     // export.rs rule.
-    assert!(stdout.contains("514 file(s)"), "{stdout}");
+    // 514 -> 517 at the e9a17cb pin (is41, s143 dev-stamped): a NET THREE over
+    // one merge. FOUR arrive — s143's `strings/interp_values.lu`,
+    // `conc/reason_interp.lu` and `conc/chan_param_for.lu`, plus
+    // `rows/to_int_parse.lu`; ONE leaves, `rows/to_int_not_an_int.lu`, which
+    // is that same witness renamed with the mark `[mem.str.parse]` rules. All
+    // entries; `members` holds at 34. Moved with the pin, per the export.rs
+    // rule.
+    assert!(stdout.contains("517 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -219,7 +226,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 514);
+    assert_eq!(value["total"], 517);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

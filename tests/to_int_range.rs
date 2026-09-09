@@ -7,12 +7,18 @@
 //! trapped with an overflow the program never wrote, one statement or one
 //! function away from the string that caused it.
 //!
-//! The compiler (s142, wolf-lang#263) answers the `NotAnInt` row for that
-//! input: there is no `int` the text names, and X3 forbids a quiet wrap. The
-//! row already means "this string is not an `int`", which is true of a number
-//! that does not fit in one, so both sides answer it now. wolf-lang kept the
-//! overflow input in its own crate tests until this landed, so the corpus
-//! pinned neither side; it can move into the corpus from here.
+//! The compiler (s142, wolf-lang#263) answers the row for that input: there is
+//! no `int` the text names, and X3 forbids a quiet wrap. The row already means
+//! "this string is not an `int`", which is true of a number that does not fit
+//! in one, so both sides answer it now. wolf-lang kept the overflow input in
+//! its own crate tests until this landed, so the corpus pinned neither side;
+//! it came home at the e9a17cb pin.
+//!
+//! The row's SPELLING is `[mem.str.parse]`'s as of s143 (wolf-lang#265): the
+//! lowercase payload-free mark `parse`, not the `NotAnInt` both sides copied
+//! from this implementation. `the_row_is_the_mark_parse` below is the test
+//! that pins it by name — the range tests deliberately take the row through a
+//! plain `else`, so without one the rename would be asserted by prose only.
 //!
 //! The cases that matter are the boundary and one past it, in both
 //! directions: a fix that narrowed too far would take `i64::MAX` and
@@ -62,11 +68,11 @@ fn one_past_each_extreme_raises_and_the_program_runs_on() {
     // detonated elsewhere. "The program reaches its own exit, having done
     // arithmetic" is half of what is being tested.
     //
-    // The row is taken through the plain `else` rather than a tag arm. Both
-    // implementations spell it `NotAnInt` (#69 records the compiler's answer),
-    // but the spelling is prelude surface the spec does not pin, and what #69
-    // is about is the RANGE: `else` sees the raise whatever the tag is called,
-    // so the assertion does not acquire a second thing to be wrong about.
+    // The row is taken through the plain `else` rather than a tag arm, and
+    // deliberately: what #69 is about is the RANGE, and `else` sees the raise
+    // whatever the tag is called, so this assertion does not acquire a second
+    // thing to be wrong about. The tag's own spelling is
+    // `the_row_is_the_mark_parse`'s.
     let source = "\
 fn main() -> !int {
     let over = \"9223372036854775808\".to_int() else -1
@@ -98,4 +104,35 @@ fn main() -> !int {
 }
 ";
     assert_eq!(stdout_of(source), "42 -7 0 -1 -1\n");
+}
+
+#[test]
+fn the_row_is_the_mark_parse() {
+    // `[mem.str.parse]` (s143, wolf-lang#265): `to_int`'s row is the lowercase
+    // payload-free mark `parse`. Every implementation spelled it `NotAnInt` —
+    // this one since before 0.1.13, the compiler from s142 by copying it — and
+    // it was the one CapCase payload-free tag on the builtin surface, the exact
+    // shape W0603 warns a program about (CapCase names a payload's type;
+    // payload-free marks are lowercase bare words). The json builtins already
+    // answer `parse` for the same condition, text that is not the shape asked
+    // for, and one mark per condition is the wolf-std taxonomy.
+    //
+    // The tag is read two ways, because they fail differently: a NAMED arm
+    // resolves the mark as a tag pattern (a rename that missed would take the
+    // `else 0` fallback instead), and `{err}` renders it as its name
+    // (`[type.interp.row]`), which is the byte `corpus/rows/to_int_parse.lu`
+    // and `corpus/grammar/else_default.lu` pin from the other side.
+    let source = "\
+fn main() -> !int {
+    let a = \"twelve\".to_int() else |err| { print(\"rendered {err}\"); 0 }
+    let b = match \"twelve\".to_int() {
+        parse => \"arm parse\",
+        _ => \"arm other\",
+    }
+    print(b)
+    let c = \"9223372036854775808\".to_int() else |err| { print(\"over {err}\"); 0 }
+    if a == 0 && c == 0 { 0 } else { 1 }
+}
+";
+    assert_eq!(stdout_of(source), "rendered parse\narm parse\nover parse\n");
 }
