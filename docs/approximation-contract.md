@@ -1077,8 +1077,10 @@ current region; a proc's is its own fresh region (`[conc.proc.1]`).
 Cancellation and kill are delivered only at the closed set of
 runtime-owned blocking points (`[conc.cancel.points]`): channel send/recv,
 `select`, `when` acquisition, scope join, timer wait. Cancellation
-surfaces as an error value (`Cancelled`) that ordinary returns carry, and
-defers run (`[conc.cancel.defer]`). A `--checked` build's function-entry/
+surfaces as an error value tagged `cancelled` that ordinary returns carry,
+and defers run (`[conc.cancel.defer]`). The tag is `[conc.chan.close]`'s
+spelling since s144 (wolf-lang#273): lowercase, beside `closed`, W0603's
+pact — this machine minted `Cancelled` until 0.1.30. A `--checked` build's function-entry/
 back-edge polls are not implemented (no `--checked` profile exists here).
 `checkpoint()` is not implemented (no pinned std surface). C intrinsics
 complete synchronously, so `[conc.cancel.c]`'s "next safe point after

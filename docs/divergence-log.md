@@ -110,6 +110,99 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The mirror lets `else` start a line — is42, lupin 0.1.30, pin `2c03ed9` (wolf-lang s144, dev-stamped)
+
+Pin `e9a17cb` -> `2c03ed9`, wolf-lang trunk past the s144 merge, **dev-stamped
+again**: v0.2.9 is r13's and is being cut in parallel, and the clauses this
+sprint mirrors do not exist at v0.2.8, so the sha is the only pin this
+repository can record. Three rulings land, and **all four witnesses this
+machine parted on are byte-identical from this release**. The walk goes 5
+mismatches to 1, and the one left is DIV-2026-019, which has nothing to do
+with this pin.
+
+**`[gram.lex.newline]`'s `else` lookahead — wolf-lang#276, wolf-interp#75.**
+Predicted motion, written before the pin moved: one lexer arm, one parser
+deletion, one diag constant, the manual's E-table row. Measured: the lexer arm
+is real and is the whole feature (`else_follows` in `src/lex.rs`, one guard in
+`insert_terminator`); the parser deletion is real and is exactly one match arm
+plus its `orphaned_else` constructor. **The other two predictions were wrong,
+and both were wrong in the direction of over-deleting.**
+
+- The diag constant does NOT retire. §9 of `spec/01-grammar.md` still lists
+  E0005 — "retired 2026-09-09 by wolf-lang#276 … the number is never reused" —
+  and `tests/spec_extract.rs` re-reads that list at test time and diffs it
+  against `diag`'s constants. Deleting `E_ELSE_NEW_LINE` would have made this
+  implementation claim the spec dropped a reservation it explicitly kept. The
+  constant stays, reserved and unreachable, exactly as E0004 is. What retires
+  is the *emission*, not the number. Retiring a code and freeing a number are
+  two different acts and the catalog only ever performs the first.
+- There is no E-table in this repository's manual. The prediction was the
+  compiler's shape read across the seam; `docs/manual/` documents how to drive
+  this machine and defines no catalog, and the only E-code prose here is in the
+  engineering documents. Nothing to move.
+
+Two ledgers the prediction did not name moved instead, both mechanical: the
+corpus census in `tests/cli.rs` and `tests/corpus_harness.rs` (517 -> 520, the
+pin-bump ritual) and the `grammar/else_chain.lu` trace snapshot, which churns
+because the corpus file itself was rewritten to the maintainer's aligned
+layout. Reviewed the way the snapshot ritual asks: the aligned chain nests as
+one `if`/`if`/`block expression`, identical in shape to the trailing form it
+replaced, which is the claim the clause makes.
+
+**`[conc.chan.close]` spells `closed` and `cancelled` — wolf-lang#273,
+wolf-interp#76.** is41 recorded the posture with four line numbers attached
+and s144 ruled it against this machine's spelling; the mirror is those four
+literals and nothing else. Worth recording is what the rename *found*: this
+machine was already inconsistent with itself. The net tier has spelled the
+same condition `closed` since s39 (`NetErr::Row("closed")`, five sites), and
+`err.is_cancelled()` compared its receiver's tag against `"cancelled"` —
+a predicate that could not answer true for any value `cancelled_error()` ever
+minted. A CapCase mark that nothing else in the codebase agreed with was not
+a style question, and the clause found the bug the audit did not.
+
+**`[mem.list.pop]` — wolf-lang#274, wolf-interp#77.** The one ruling with real
+behavioural cost, and the one is41 called the asymmetry that decides: the
+compiler *accepted and ran* a program this machine faulted on, so the machine
+that traps is the one out of step with a language whose recoverable reads are
+rows. `pop` on an empty list is `none`; `get` outside `0..len` is `none`;
+`first` and `last` are `get(0)` and `get(len - 1)` by the clause's own words
+and were not implemented here at all, so they arrive as new arms rather than
+as a rename. `OutOfBounds` retires with them — the second CapCase payload-free
+mark on the builtin surface, the one is41 counted after `[mem.str.parse]`
+retired the first. The subscript `xs[i]` stays the faulting twin, and there is
+now a test that says so, because "these reads never fault" is exactly the
+sentence a later reader could over-apply.
+
+All four cite `Rule::ErrUnion`, not a rule minted for `[mem.list.pop]`. That is
+deliberate and it is `str.get`'s precedent: `[mem.str.get]`'s identical miss
+has cited `ErrUnion` since is22, and the clause states the relation between
+the two surfaces as an identity rather than an analogy. Minting a rule for one
+half of a pair whose other half already has none would put the seam in the
+registry instead of taking it out. The reason string names `[mem.list.pop]`, so
+a `--trace` still carries the clause.
+
+**One test lost its provocation, and that is the interesting cost.** Two tests
+proved that a lent receiver returns to its slot — `src/eval/tests.rs`'s
+`a_lend_hands_the_receiver_back_when_the_method_traps` and
+`tests/repl_session.rs`'s `a_lent_receiver_is_back_in_its_slot_after_the_trap`
+— and both rode `pop` on an empty list, because it was the shortest trap
+reachable through a `mut` receiver. Ruling `pop` recoverable removed the only
+trap either test had. The claim under test is untouched by the ruling, so the
+answer is a different provocation and not a weaker assertion: `push` lends its
+receiver at the same `check_home_write` site and traps `overflow` on a literal
+outside the element type (`[arith.checked]`), after the lend and before the
+store. `xs.len` answering 0 on the next REPL line is the same proof it was.
+Recording it because it is the shape a lane hits when a clause makes a trap
+unreachable: the test is not stale, its *provocation* is, and only one of those
+two is safe to delete.
+
+#### Neither #275 nor the compiler's own gap moved
+
+`[conc.chan.send]` (wolf-lang#275) is left open upstream and this pin does not
+reach it; nothing here changed for it. wolf-interp#73 — a function's tail
+unchecked against its declared return type, this machine's soundness row on
+the pairing table — is unmoved at this release and stays open.
+
 ### The mirror spells `parse` — is41, lupin 0.1.29, pin `e9a17cb` (wolf-lang s143, dev-stamped)
 
 s143 ruled two families this machine had been serving without a clause:
@@ -154,6 +247,13 @@ Here six clauses were written to meet this machine, and one clause was written
 against it. Both are the pipeline; only the second costs a rename.
 
 #### Two spellings this pin does NOT rule (wolf-lang#273, #274)
+
+> **Both ruled at s144 and mirrored at 0.1.30 (is42).** `[conc.chan.close]`
+> spells `closed`/`cancelled`; `[mem.list.pop]` answers the `none` row. Each
+> ruling landed a corpus witness — `conc/chan_closed_row.lu`,
+> `memory/list_pop_empty.lu` — so the next lane reads the postures below as
+> the record of a filing that worked, not as an open question. The line
+> numbers are the ones the mirror moved.
 
 Filed by s143 against the same measurement and open at this pin. Neither is a
 walk mismatch — no corpus witness reaches either — so neither is a DIV entry;
