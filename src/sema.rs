@@ -2133,7 +2133,7 @@ impl TierWalk<'_> {
                     return Some(Diag::new(
                         "E0412",
                         spec_span,
-                        "str.interp",
+                        "type.interp.value",
                         format!("malformed format spec `{text}`: {}", error.message()),
                     ));
                 }
@@ -2151,7 +2151,7 @@ impl TierWalk<'_> {
                 return Some(Diag::new(
                     "E0413",
                     spec_span,
-                    "str.interp",
+                    "type.interp.value",
                     format!(
                         "format spec `{text}` does not fit this hole: {}",
                         mismatch.message()

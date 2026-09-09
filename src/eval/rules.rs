@@ -637,8 +637,15 @@ impl Rule {
                 "scope-exit effects run in reverse registration order",
             ),
             Rule::StrInterp => (
-                "str.interp",
-                "every string literal is an f-string; each interpolation evaluates in place",
+                // `str.interp` was a forward-namespace citation until the
+                // e9a17cb pin: no document owned it. `[type.interp.value]`
+                // (spec/10 §4c, s143) does now, and it rules exactly what this
+                // rule does — a hole renders its value by the value's type,
+                // recursively, and the same bytes whether the hole is printed
+                // or built into a `str`. The is26 move, at a second address.
+                "type.interp.value",
+                "every string literal is an f-string; each hole evaluates in place and renders \
+                 its value by the value's type, printed or built into a `str` alike",
             ),
             Rule::Assert => (
                 "conf.trap.map",

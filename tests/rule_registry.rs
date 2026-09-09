@@ -105,10 +105,15 @@ fn forward_namespace_citations_are_named_so_the_debt_is_visible() {
             "err.propagate",
             "err.rows",
             "err.union",
-            "str.interp",
             // is26: `Rule::CharCast` cited `ty.cast.closed-set` (forward)
             // for exactly one commit, until the pin bump vendored the s121
             // spec; the registered `[type.char.cast]` owns the rule now.
+            // is41: `Rule::StrInterp` cited `str.interp` from is02 until the
+            // e9a17cb pin vendored s143's spec/10 §4c; `[type.interp.value]`
+            // owns the rendering and the rule cites the registered namespace.
+            // The `str` namespace itself stays reserved — the corpus still
+            // spells `conforms: str.interp` — but no rule of this machine's
+            // owes it a document any more.
             // is08: is06's `sync.when.*` forward citations are retired —
             // the s20 S-batch wrote `[conc.when.*]` into spec/03 and the
             // rules cite the registered namespace now (findings S-1..S-8

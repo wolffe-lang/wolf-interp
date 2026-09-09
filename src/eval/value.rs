@@ -674,7 +674,31 @@ impl Value {
     }
 }
 
-/// Rendering, which is what f-string interpolation needs (`[str.interp]`).
+/// Rendering, which is what f-string interpolation needs.
+///
+/// From the e9a17cb pin this is the LANGUAGE's rendering and not only this
+/// machine's: spec/10 §4c (`[type.interp.value]`, `.agg`, `.row`, `.union`,
+/// `.reason`, `.none`, s143/wolf-lang#268) adopts these bytes, and the clause
+/// says so in as many words — "these clauses adopt the interpreter's
+/// rendering, byte for byte, as the language's — it was the only rendering
+/// anyone had written down, in code". Nothing below moved for it; the four
+/// witnesses (`strings/interp_values.lu`, `conc/reason_interp.lu`,
+/// `grammar/else_default.lu`, `conc/chan_param_for.lu`) matched on arrival.
+///
+/// The map from arm to clause: `[type.interp.agg]` owns `Unit`, `Tuple`,
+/// `Struct` and `List`, and its enum half rides the `Error` arm — an enum
+/// value is an [`ErrorValue`] whose `enum_variant` flag is set and whose tag
+/// is already the qualified `Enum.Variant` the program constructs it by, so
+/// `Shape.Line(4)` falls out of the row rule with no case of its own;
+/// `[type.interp.row]` owns the same arm unflagged — the tag's name, then
+/// `(p1, p2)` when it carries a payload; `[type.interp.union]`
+/// is not an arm at all, because a `!T` here IS its ok value or its `Error`,
+/// so "the hole prints whichever is there" is the representation rather than a
+/// case; `[type.interp.reason]` is [`super::conc`]'s exit reason. Everything
+/// from `Region` down is `[type.interp.none]`: values the language promises NO
+/// rendering for, where `region#1@2` and `channel#3` are this machine's
+/// bookkeeping, explicitly named in the clause as such, and a conformance
+/// witness may not interpolate one.
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
