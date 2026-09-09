@@ -1,5 +1,85 @@
 # Changelog
 
+## Unreleased
+
+THE MIRROR SPELLS `parse` (is41). Pin `5c729e8` -> `e9a17cb`, wolf-lang trunk
+past the s143 merge, **dev-stamped**: v0.2.9 is not cut this wave, and the
+clauses this sprint mirrors do not exist at v0.2.8 — `5c729e8` is an ANCESTOR
+of the merge that lands them, so the newest tag has nothing to mirror and the
+sha is the only pin this repository can record. `e9a17cb` is `3103577` (the
+s143 merge) plus one bench-only commit that folds the five new witnesses into
+the per-file IR-volume record; the `spec/` and `corpus/` trees are
+byte-identical at the two shas, which is why the pin moved to the later one
+for free. Two families ruled, and the two halves priced in opposite
+directions.
+
+**`[mem.str.parse]` — `to_int`'s row is the mark `parse` (wolf-lang#265,
+wolf-interp#71).** `str.to_int()` was served by every implementation and ruled
+by none: this one since before 0.1.13, wolf-std's corpus, the book's first
+chapter, and both compiler tiers from s142 — which copied the spelling from
+here. The clause writes the family down and renames the row on the way past.
+`NotAnInt` was the ONE CapCase payload-free tag on the builtin surface, and the
+language's own pact says payload-free marks are lowercase bare words while
+CapCase names a payload's type — W0603 warns a program that breaks it and
+lists `parse` among its examples; the OS families spell `not_found`, `denied`,
+`closed`; the json builtins already answer `parse` for exactly this condition,
+text that is not the shape asked for. One string moved
+(`src/eval/builtin.rs`), and `rows/to_int_parse.lu` — the single witness the
+two machines parted on at 0.1.28 — matches from here. `tests/to_int_range.rs`
+gains `the_row_is_the_mark_parse`, which reads the tag TWO ways because they
+fail differently: through a named `match` arm (a missed rename takes the
+fallback instead) and through `{err}`, which renders it by name.
+
+**`[type.interp.value]`, `.agg`, `.row`, `.union`, `.reason`, `.none` — six
+clauses, ZERO source motion (wolf-lang#268).** spec/10 §4c adopts this
+machine's `Display` byte for byte and says so in as many words: "these clauses
+adopt the interpreter's rendering ... it was the only rendering anyone had
+written down, in code". The prediction was zero and the measurement is zero.
+The four witnesses were run against the 0.1.28 binary at the new pin BEFORE a
+line was edited: `strings/interp_values.lu` (the whole surface in one file — a
+struct, a nested struct, a tuple, three `List` shapes, a `!T` in both states, a
+caught row with and without a payload, a qualified enum variant, and every one
+again in value position building a `str`), `conc/reason_interp.lu`
+(`normal(1540)`, `error(Corrupt)`, `killed`, `fault(bounds)`) and
+`conc/chan_param_for.lu` printed their pinned `stdout` exactly;
+`grammar/else_default.lu` printed it but for the mark. The only edits under §4c
+are CITATIONS: `Rule::StrInterp` retires the forward-namespace `str.interp`
+for the registered `[type.interp.value]` — the is26 move at a second address,
+and the forward-debt list falls from nine rows to eight — and E0412/E0413 cite
+the clause that now rules a format spec on a hole. `[type.interp.none]` is
+uncitable by construction: it says a conformance witness may not interpolate a
+value with no promised rendering, and it names `channel#3` and `region#1@2`,
+this machine's bookkeeping, as exactly that.
+
+This entry is the INVERSE of the usual one. A divergence class normally closes
+when this machine changes to meet a clause; here six clauses were written to
+meet this machine and one was written against it, and only the second cost a
+rename.
+
+**Two spellings this pin does not rule (wolf-lang#273, #274).** Neither is a
+walk mismatch — no corpus witness reaches either — and this sprint does not
+choose for the spec. The closed-channel row is `Closed` here
+(`src/eval/sched.rs:1340`, read back in exactly one place at
+`src/eval/conc.rs:674`) and `closed` on the compiler, with `Cancelled` riding
+the same question; `List.pop()` on an empty list traps `bounds` here
+(`src/eval/builtin.rs:1181`) where the compiler answers the `none` row.
+`docs/divergence-log.md` carries both postures with the line numbers, and the
+cost of each ruling, so s144 can rule with the numbers in front of it.
+
+Census at this pin: 514 -> **517** files / 480 -> **483** entries / 34 members;
+368 -> **371** reach `run` and 358 -> **361** match — the three new witnesses
+and nothing else moving, with 16 dynamic counterparts, 42 conservatism and 63
+out of scope all unmoved, and the one standing walk mismatch still
+DIV-2026-019. The file count moves by three rather than four because
+`rows/to_int_not_an_int.lu` LEFT: it is `rows/to_int_parse.lu` now, the same
+witness under the name the mark it pins has. Anchors **436 -> 445** with the
+key sets diffed both ways (nine added, **nothing dropped, no owner changed**)
+and the ratchet floor 192 -> **199**: seven rather than nine, because the §4c
+section heading `[type.interp]` is cited by no witness and `[type.interp.none]`
+cannot be. Distinct `conforms:` tags 294 -> **301**; bundle 552 -> **555**
+programs and 518 -> **521** records over 569 -> **572** files; conservatism
+ledger unmoved at 126.
+
 ## 0.1.28 — 2026-09-09
 
 THE SCHEDULE IN THE MIRROR (is39). Pin `398e5f5`, wolf-lang **v0.2.6**, the tag
