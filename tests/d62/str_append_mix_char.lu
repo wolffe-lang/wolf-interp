@@ -1,12 +1,18 @@
-//! check: fail(E0409)
-//! phase: resolve
+//! check: run(exit=0, stdout="ab ba")
+//! phase: run
 //! conforms: type.str
 //!
-//! D62: mixed operands stay E0409 — `str + char` is the second refused
-//! mix (a char is a scalar, not a one-char str; spell it `"{s}{c}"`).
+//! wolf-lang#278 (s145) flips this witness: `[type.str.concat]` now says
+//! `+` on a `str` and a `char`, EITHER ORDER, is interpolation-append —
+//! a char is text (D58) with exactly one rendering, so `s + c` means
+//! `"{s}{c}"` and closes under UTF-8. It was `fail(E0409)` here through
+//! pin 2c03ed9, beside the two `int` mixes it used to share a rule with;
+//! `[type.str.concat.mix]` dropped the two char rows and kept the ints.
+//! The shared-corpus twin is `strings/concat_mix_char.lu`.
 
 fn main() -> !int {
     let s = "a" + 'b'
-    print("{s}")
+    let t = 'b' + "a"
+    print("{s} {t}")
     0
 }

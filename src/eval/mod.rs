@@ -5046,6 +5046,29 @@ impl Machine {
             };
         }
 
+        // `[type.str.concat]` (wolf-lang#278, s145): **a `char` joins a `str`
+        // by `+` in either order** — `s + c` is `"{s}{c}"` and `c + s` is
+        // `"{c}{s}"`, the char contributing its scalar's UTF-8 bytes. A char
+        // is text (D58) with exactly one rendering, so the conversion is not
+        // a formatter's choice the way an `int`'s is (sign, radix, width),
+        // which is why `[type.str.concat.mix]` keeps `str + int` /
+        // `int + str` at E0409 and drops only the two char rows. `{c}` here
+        // is the same rendering `[type.char.interp]` gives a char hole — the
+        // character, never the code point. `+=` needs nothing of its own:
+        // `assign_binop` maps `AssignOp::Add` onto `BinOp::Add`, so `s += c`
+        // arrives here. Add only: no order, no equality, no `<=>` — a `str`
+        // and a `char` are different types and the clause rules one operator.
+        if let (Value::Str(a), Value::Char(c)) = (&left, &right)
+            && op == Add
+        {
+            return Ok(Value::Str(format!("{a}{c}")));
+        }
+        if let (Value::Char(c), Value::Str(b)) = (&left, &right)
+            && op == Add
+        {
+            return Ok(Value::Str(format!("{c}{b}")));
+        }
+
         // Strings compare and concatenate.
         if let (Value::Str(a), Value::Str(b)) = (&left, &right) {
             return match op {
