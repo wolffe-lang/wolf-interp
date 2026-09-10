@@ -1,5 +1,66 @@
 # Changelog
 
+## 0.1.32 — 2026-09-10
+
+THE MIRROR TAKES THE RANGE ARM (is44). Pin `4c60946` -> `e0ce018` — a dev
+stamp, s147, because `[gram.pat.range]` landed after the v0.2.9 tag and its
+four witnesses cannot be mirrored without the pin that carries them. The delta
+spans two sprints: s147's range arm and s146's `[type.unit]` family. Eight
+corpus files join (495 entries), five anchors (453; key sets diffed BOTH ways,
+nothing dropped).
+
+**Range patterns in match arms (wolf-interp#83, wolf-lang#287).** `0..10` and
+`10..=19` on every integer primitive a literal pattern may already be written
+against, and `'a'..='z'` on `char`, ordered by scalar value
+(`[type.char.order]`). Both endpoints are literals; the arm lowers to two
+comparisons on the scrutinee, with the exclusive high end excluded. Ranges
+compose with or-patterns, guards and `@`-bindings, and bind nothing — a range
+is a test, not a binding.
+
+**No open ends, and the refusal says so.** `10..` and `..10` are the slice
+spellings of `[gram.expr.primary]`, refused in pattern position with E0201 and
+a note that names the range form. That note is the whole deliverable for one
+of the four witnesses: `grammar/match_range_open.lu` was a `match` before this
+release *and* after it, because the corpus compares codes and a parser with no
+range production says E0201 too. The clause is explicit that the diagnostic
+must say the word "range" — the papercut the book carried — so the ledger for
+it is a test that reads the string, not a corpus directive.
+
+**Empty ranges are E0815.** `5..5` stops before its own low end and `9..=3`
+runs backwards; the endpoints are literals, so the emptiness is decided at
+compile time and refused at the pattern rather than left as a dead arm no
+program ever takes. A one-value range (`5..=5`, `5..6`) is legal.
+
+**Exhaustiveness as the compiler does it: no union is computed.** Integer and
+`char` columns stay "infinite" for every domain, bounded or not, so a `_` or
+binder arm is still required after range arms. Overlapping ranges are legal
+and the first arm wins. An arm whose every alternative lies inside ONE earlier
+range or literal is E0802; a range covered only by the union of several is
+deliberately silent. The rule is gated on a range having been spelled, so the
+495-entry walk is byte-identical across it. This posture is mirrored from
+`spec/01` — the clause states it in full — and not from the counterparty's
+checker, which the independence doctrine forbids opening.
+
+**wolf-interp#79's method half (`sema::MethodDef`).** is43 closed #79 over
+signature positions and named the half it left: `MethodDef` recorded the decl
+and the trait, not the impl block's generic parameters, so `impl[T] Stack`'s
+`fn push(self, v: T)` had no scope the annotation check could read `T` from.
+The collector records them now and every impl-block method's annotations are
+inside the check. Trait DEFAULT bodies stay out — a trait's own parameters are
+still not collected, and guessing is the failure the sema boundary exists to
+prevent. Corpus motion: zero.
+
+**s146 cost zero source motion.** `typecheck/unit_context_discard.lu`,
+`conc/chan_send_closed_row.lu` and `conc/spawn_tail_send_raised_row.lu` all
+matched at first sight with the 0.1.31 binary at the new pin, as did
+`grammar/match_switch.lu` (#286). `[type.unit.discard]`'s reading was chosen
+partly for being non-breaking, and a mirror that already ran every witness is
+the cheapest evidence for that.
+
+Census 487 -> 495 entries, 377 -> 383 reach run, 367 -> 375 match; 61 out of
+scope, 42 conservatism and 16 dynamic counterparts unmoved. Mismatches 4 -> 1
+— DIV-2026-019, which has nothing to do with this pin.
+
 ## 0.1.31 — 2026-09-10
 
 THE TAIL IS CHECKED (is43). Pin `2c03ed9` -> `4c60946` — **the v0.2.9 tag**,
