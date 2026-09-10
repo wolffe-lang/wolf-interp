@@ -1015,6 +1015,8 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| unsafe_sig_check(program))
         .or_else(|| tier_check(program))
         .or_else(|| byte_check(program))
+        .or_else(|| tail_check(program))
+        .or_else(|| row_operand_check(program))
 }
 
 /// `[mod.cycle]` (D32): imports form a DAG. E0303 at the `use` that closes
@@ -4243,6 +4245,656 @@ fn byte_check(program: &Program) -> Option<Diag> {
     None
 }
 
+// ---------------------------------------------------------------------------
+// The declared type, read at last: the body's tail (wolf-interp#73) and the
+// bare row in operator position (wolf-interp#81).
+// ---------------------------------------------------------------------------
+
+/// The two soundness rows this machine owed the pairing table, and they are
+/// one leniency wearing two hats: an annotation the frontend parsed and no
+/// rung ever read.
+///
+/// #73 is a body whose tail is `()` under a declared `-> str` / `-> !int`;
+/// #81 is a `!T` value used bare as an operand. wolf 0.2.9 refuses both
+/// before running — E0401 at the tail, E0409 at an arithmetic operator and
+/// E0401 at a comparison — and lupin 0.1.30 ran both to completion, which
+/// made a `-> !int` `main` ending in `print(…)` exit 0 by a path the program
+/// never wrote and made 56 of wollf's 2,153 verified programs pass here and
+/// fail there.
+///
+/// # Why these are refusals and not `unsupported`
+///
+/// The README's sema boundary declines to guess at properties the static tier
+/// owns, and that posture is unchanged: what moves here is not a type
+/// checker. Both rows are decided from **declarations alone** — a signature's
+/// return type against the shape of its body's tail slot, an annotation's `!`
+/// against the syntactic operand — with no inference, no unification and no
+/// literal tier. The walk names only what it can spell, and every shape it
+/// cannot spell is left running, exactly as [`main_return_check`] leaves an
+/// unresolved return spelling to the dynamic backstop.
+///
+/// # `[proto.cmp.triage]`: why the compiler's numbers
+///
+/// The spec document is the defendant first, so both rows were read against
+/// it before a code was chosen.
+///
+/// - **The tail.** `[gram.expr.block]` makes a block's value its optional
+///   trailing expression (`block ::= '{' stmt* expr? '}'`), so a block with
+///   none is `()`; `[gram.expr.tagident]` then names "the operand of `return`
+///   (and a fallible function's tail) against the declared return row" a
+///   **checked position**. The clause is not silent and not ambiguous: the
+///   tail is checked against the declaration. That makes the implementation
+///   the defendant, and the number is not this machine's to invent —
+///   `spec/10-types.md` spends E0401 on a type mismatch in five places
+///   (`[type.numlit.adopt]`, `[type.numlit.ambig]`, `[type.byte]`,
+///   `[type.byte.op]`) and the pinned corpus pins `fail(E0401)` at phase
+///   `resolve` on six files. E0401 it is, and it stays out of
+///   [`crate::diag::UNPINNED_CODES`] for the same reason
+///   [`byte_clash_diag`]'s does.
+/// - **The operand.** `[type.interp.union]` rules that a `!T` renders as its
+///   ok payload in an interpolation hole and says so as a carve-out — "this
+///   is a reading rule, not a handling rule: `?` and `else` still decide what
+///   the program does with the row". A hole is therefore the one place a
+///   `!T` is read without being handled, which leaves an operator no reading
+///   at all. `[type.str.concat.mix]` fixes the number for the shape "this
+///   operator is not defined on these operand types" — "Mixed operands stay
+///   **E0409**" — so arithmetic and the bitwise/shift family answer E0409,
+///   and a comparison answers E0401 because the other operand's type is what
+///   the refusal names (wolf 0.2.9, measured: `` this is `!int`, but the
+///   other side of `<=` makes it `{integer}` ``).
+fn tail_check(program: &Program) -> Option<Diag> {
+    for module in program.modules.values() {
+        let unit_fns = unit_returning(module);
+        for decl in each_fn(module) {
+            let Some(body) = &decl.body else { continue };
+            let Some(ret) = &decl.ret else { continue };
+            let Some(want) = declared_scalar_result(ret) else {
+                continue;
+            };
+            let Some(span) = unit_tail(body, &unit_fns) else {
+                continue;
+            };
+            let name = &decl.name.name;
+            return Some(Diag::new(
+                "E0401",
+                span,
+                "gram.expr.block",
+                format!(
+                    "this is `()`, but `{name}` must return `{want}` — a block's value is \
+                     its trailing expression (`[gram.expr.block]`: `block ::= '{{' stmt* \
+                     expr? '}}'`) and a body's tail is a checked position against the \
+                     declared return type (`[gram.expr.tagident]`); end the body with a \
+                     value of that type, or `return` one"
+                ),
+            ));
+        }
+    }
+    None
+}
+
+/// The functions of `module` whose value is `()` by declaration — no return
+/// type at all, or `-> ()` — plus the ambient writers, which are the only
+/// prelude names with a pinned unit result. A module item of the same name
+/// shadows the ambient (`eval::builtin::ambient` is consulted last
+/// everywhere else too), so the ambients are added only where nothing
+/// declared claims the spelling.
+fn unit_returning(module: &Module) -> BTreeSet<String> {
+    /// The ambient names whose result `[proto.record.stdout]` fixes as `()`.
+    /// `assert` is deliberately absent: it is a refusal surface, not a
+    /// writer, and no clause spells its value.
+    const UNIT_AMBIENTS: &[&str] = &["print", "print_raw", "eprint", "eprint_raw"];
+    let mut unit: BTreeSet<String> = BTreeSet::new();
+    for (name, (def, _)) in &module.items {
+        if let Def::Fn(decl) = def
+            && decl.ret.as_ref().is_none_or(|ret| {
+                ret.row.is_none()
+                    && matches!(&*ret.ty.kind, TypeKind::Tuple(parts) if parts.is_empty())
+            })
+        {
+            unit.insert(name.clone());
+        }
+    }
+    for ambient in UNIT_AMBIENTS {
+        if !module.items.contains_key(*ambient) {
+            unit.insert((*ambient).to_owned());
+        }
+    }
+    unit
+}
+
+/// The scalar or `str` a signature promises, once the error union around it
+/// is peeled — `-> !int` promises `int`, `-> str` promises `str`.
+///
+/// Bare names from [`BUILTIN_SCALAR_TYPES`] only, and never `()`: a struct, an
+/// alias, an enum, a generic parameter and a container all resolve somewhere
+/// this pass does not walk, and refusing a spelling this machine has not
+/// resolved would stop a program from running on a guess.
+fn declared_scalar_result(ret: &crate::ast::RetType) -> Option<&str> {
+    let mut ty = &ret.ty;
+    while let TypeKind::ErrorUnion(inner) | TypeKind::Fallible { ty: inner, .. } = &*ty.kind {
+        ty = inner;
+    }
+    let TypeKind::Path { path, args } = &*ty.kind else {
+        return None;
+    };
+    if !args.is_empty() || !path.is_single() {
+        return None;
+    }
+    let name = path.segments[0].name.as_str();
+    BUILTIN_SCALAR_TYPES.contains(&name).then_some(name)
+}
+
+/// The span of a block's tail slot when that slot is `()` **by shape**, and
+/// `None` for every shape this pass will not swear to.
+///
+/// The closed set of unit shapes: an empty body; a body whose last statement
+/// is a binding or an assignment with no trailing expression; a `while` or
+/// `for` (a loop's value is `()`); a call to a function declared to return
+/// `()`; and a nested block, recursively. Everything else — a `return`, a
+/// `break`, a `loop` (which may diverge), a `match`, an `if`, a bare path, a
+/// literal, a `defer`, a nested item — is left alone. A `while true` is
+/// excluded by name: an unconditional loop is the shape that diverges, and
+/// diverging is not `()`.
+fn unit_tail(block: &Block, unit_fns: &BTreeSet<String>) -> Option<Span> {
+    match &block.tail {
+        Some(tail) => unit_expr(tail, unit_fns),
+        None => match block.stmts.last() {
+            None => Some(block.span),
+            Some(stmt) => match &stmt.kind {
+                StmtKind::Binding(_) | StmtKind::Assign { .. } => Some(stmt.span),
+                StmtKind::Expr(expr) => unit_expr(expr, unit_fns),
+                _ => None,
+            },
+        },
+    }
+}
+
+fn unit_expr(expr: &Expr, unit_fns: &BTreeSet<String>) -> Option<Span> {
+    match &*expr.kind {
+        ExprKind::While { cond, .. } => {
+            (!matches!(&*cond.kind, ExprKind::Bool(true))).then_some(expr.span)
+        }
+        ExprKind::For { .. } => Some(expr.span),
+        ExprKind::Block(inner) => unit_tail(inner, unit_fns),
+        ExprKind::Group(inner) => unit_expr(inner, unit_fns),
+        ExprKind::Call { callee, .. } => match &*callee.kind {
+            ExprKind::Path(path) if path.is_single() => unit_fns
+                .contains(&path.segments[0].name)
+                .then_some(expr.span),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// wolf-interp#81: a `!T` value used bare where an operator wants its ok
+/// side. See [`tail_check`] for the triage that picked the two codes.
+fn row_operand_check(program: &Program) -> Option<Diag> {
+    for module in program.modules.values() {
+        let mut fallible: BTreeMap<String, String> = BTreeMap::new();
+        for (name, (def, _)) in &module.items {
+            if let Def::Fn(decl) = def
+                && let Some(ret) = &decl.ret
+                && let Some(render) = render_row_type(ret)
+            {
+                fallible.insert(name.clone(), render);
+            }
+        }
+        for decl in each_fn(module) {
+            let mut walk = RowWalk {
+                scopes: vec![Vec::new()],
+                fallible: &fallible,
+            };
+            for param in &decl.params {
+                if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
+                    let row = render_row_type_of(ty);
+                    walk.declare(&name.name, row);
+                }
+            }
+            if let Some(body) = &decl.body
+                && let Some(diag) = walk.block(body)
+            {
+                return Some(diag);
+            }
+        }
+        for (def, _) in module.items.values() {
+            if let Def::Binding(binding) = def {
+                let mut walk = RowWalk {
+                    scopes: vec![Vec::new()],
+                    fallible: &fallible,
+                };
+                if let Some(diag) = walk.expr(&binding.value) {
+                    return Some(diag);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// How a `!T` spells itself in a diagnostic. `-> !int` renders `!int`; the
+/// postfix row renders `int ! {none}`, the tags as the program wrote them.
+fn render_row_type(ret: &crate::ast::RetType) -> Option<String> {
+    if let Some(row) = &ret.row {
+        return Some(format!(
+            "{} ! {{{}}}",
+            render_ok_type(&ret.ty),
+            render_row_tags(row)
+        ));
+    }
+    render_row_type_of(&ret.ty)
+}
+
+fn render_row_type_of(ty: &Type) -> Option<String> {
+    match &*ty.kind {
+        TypeKind::ErrorUnion(inner) => Some(format!("!{}", render_ok_type(inner))),
+        TypeKind::Fallible { ty, row } => Some(format!(
+            "{} ! {{{}}}",
+            render_ok_type(ty),
+            render_row_tags(row)
+        )),
+        _ => None,
+    }
+}
+
+fn render_ok_type(ty: &Type) -> String {
+    match &*ty.kind {
+        TypeKind::Path { path, args } if path.is_single() && args.is_empty() => {
+            path.segments[0].name.clone()
+        }
+        TypeKind::Tuple(parts) if parts.is_empty() => "()".to_owned(),
+        _ => "…".to_owned(),
+    }
+}
+
+fn render_row_tags(row: &crate::ast::ErrorRow) -> String {
+    let mut parts: Vec<String> = row
+        .entries
+        .iter()
+        .map(|entry| {
+            entry
+                .path
+                .segments
+                .iter()
+                .map(|segment| segment.name.clone())
+                .collect::<Vec<_>>()
+                .join(".")
+        })
+        .collect();
+    if row.open {
+        parts.push("..".to_owned());
+    }
+    parts.join(", ")
+}
+
+/// The lexical environment of the row walk: name → the `!T` it was declared
+/// with, when it was declared with one.
+struct RowWalk<'a> {
+    scopes: Vec<Vec<(String, Option<String>)>>,
+    fallible: &'a BTreeMap<String, String>,
+}
+
+impl RowWalk<'_> {
+    fn declare(&mut self, name: &str, row: Option<String>) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.push((name.to_owned(), row));
+        }
+    }
+
+    fn lookup(&self, name: &str) -> Option<&str> {
+        self.scopes
+            .iter()
+            .rev()
+            .flat_map(|scope| scope.iter().rev())
+            .find(|(bound, _)| bound == name)
+            .and_then(|(_, row)| row.as_deref())
+    }
+
+    /// The `!T` an operand *is*, spelled, or `None` for every expression this
+    /// pass will not swear to. Only two shapes qualify, and both are
+    /// declarations read back: a bare name annotated `!T`, and a direct call
+    /// to a function declared `-> !T`. A `?`, an `else`, a `match` arm and a
+    /// method call all wrap the value in something this walk does not follow,
+    /// so they are never operands here.
+    fn row_of(&self, expr: &Expr) -> Option<String> {
+        match &*expr.kind {
+            ExprKind::Path(path) if path.is_single() => {
+                self.lookup(&path.segments[0].name).map(ToOwned::to_owned)
+            }
+            ExprKind::Group(inner) => self.row_of(inner),
+            ExprKind::Call { callee, .. } => match &*callee.kind {
+                ExprKind::Path(path) if path.is_single() => {
+                    // A local binding of the same name shadows the item, and
+                    // a shadowed name is not a call to the item.
+                    if self.shadows(&path.segments[0].name) {
+                        return None;
+                    }
+                    self.fallible.get(&path.segments[0].name).cloned()
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn shadows(&self, name: &str) -> bool {
+        self.scopes
+            .iter()
+            .any(|scope| scope.iter().any(|(bound, _)| bound == name))
+    }
+
+    fn block(&mut self, block: &Block) -> Option<Diag> {
+        self.scopes.push(Vec::new());
+        let diag = self.block_inner(block);
+        self.scopes.pop();
+        diag
+    }
+
+    fn block_inner(&mut self, block: &Block) -> Option<Diag> {
+        for stmt in &block.stmts {
+            match &stmt.kind {
+                StmtKind::Binding(binding) => {
+                    if let Some(diag) = self.expr(&binding.value) {
+                        return Some(diag);
+                    }
+                    let declared = binding.ty.as_ref().and_then(render_row_type_of);
+                    let row = declared.or_else(|| self.row_of(&binding.value));
+                    if let PatKind::Binding(name) = &*binding.pattern.kind {
+                        self.declare(&name.name, row);
+                    } else {
+                        declare_pattern_names(&binding.pattern, self);
+                    }
+                }
+                StmtKind::Assign { place, value, .. } => {
+                    if let Some(diag) = self.expr(place).or_else(|| self.expr(value)) {
+                        return Some(diag);
+                    }
+                    // A name assigned something this walk cannot type is no
+                    // longer known to hold a row.
+                    if let ExprKind::Path(path) = &*place.kind
+                        && path.is_single()
+                        && self.row_of(value).is_none()
+                    {
+                        self.declare(&path.segments[0].name, None);
+                    }
+                }
+                StmtKind::Defer { expr, .. } | StmtKind::Expr(expr) => {
+                    if let Some(diag) = self.expr(expr) {
+                        return Some(diag);
+                    }
+                }
+                StmtKind::AssumeNoalias(exprs) => {
+                    for expr in exprs {
+                        if let Some(diag) = self.expr(expr) {
+                            return Some(diag);
+                        }
+                    }
+                }
+                StmtKind::Item(_) => {}
+            }
+        }
+        block.tail.as_ref().and_then(|tail| self.expr(tail))
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn expr(&mut self, expr: &Expr) -> Option<Diag> {
+        match &*expr.kind {
+            ExprKind::Binary { op, lhs, rhs } => {
+                if let Some(diag) = self.binary_operands(*op, lhs, rhs) {
+                    return Some(diag);
+                }
+                self.expr(lhs).or_else(|| self.expr(rhs))
+            }
+            ExprKind::Str(literal) => self.strlit(literal),
+            ExprKind::Unary { operand, .. }
+            | ExprKind::Cast { expr: operand, .. }
+            | ExprKind::Group(operand)
+            | ExprKind::Try(operand)
+            | ExprKind::FromEnd(operand)
+            | ExprKind::Freeze(operand)
+            | ExprKind::Member { base: operand, .. }
+            | ExprKind::ModedReceiver { place: operand, .. } => self.expr(operand),
+            ExprKind::Block(block) | ExprKind::Scope { body: block, .. } => self.block(block),
+            ExprKind::Unsafe { body } | ExprKind::When { body, .. } => self.block(body),
+            ExprKind::Tuple(parts) => parts.iter().find_map(|part| self.expr(part)),
+            ExprKind::Call { callee, args } => self
+                .expr(callee)
+                .or_else(|| args.iter().find_map(|arg| self.expr(&arg.expr))),
+            ExprKind::SpawnProc { args, .. } => args.iter().find_map(|arg| self.expr(&arg.expr)),
+            ExprKind::BracketApply { base, args, .. } => self.expr(base).or_else(|| {
+                args.iter().find_map(|arg| match arg {
+                    crate::ast::IndexArg::Value(arg) => self.expr(&arg.expr),
+                    crate::ast::IndexArg::Type(_) => None,
+                })
+            }),
+            ExprKind::StructLit { fields, .. } => fields
+                .iter()
+                .find_map(|field| field.value.as_ref().and_then(|expr| self.expr(expr))),
+            ExprKind::Range { start, end, .. } => start
+                .as_ref()
+                .and_then(|expr| self.expr(expr))
+                .or_else(|| end.as_ref().and_then(|expr| self.expr(expr))),
+            ExprKind::ElseDefault { expr, handler } => {
+                self.expr(expr).or_else(|| self.else_handler(handler))
+            }
+            ExprKind::If {
+                cond,
+                then,
+                otherwise,
+            } => self
+                .expr(cond)
+                .or_else(|| self.block(then))
+                .or_else(|| otherwise.as_ref().and_then(|expr| self.expr(expr))),
+            ExprKind::Match { scrutinee, arms } => self.expr(scrutinee).or_else(|| {
+                arms.iter().find_map(|arm| {
+                    self.scopes.push(Vec::new());
+                    declare_pattern_names(&arm.pattern, self);
+                    let diag = arm
+                        .guard
+                        .as_ref()
+                        .and_then(|guard| self.expr(guard))
+                        .or_else(|| self.expr(&arm.body));
+                    self.scopes.pop();
+                    diag
+                })
+            }),
+            ExprKind::For {
+                pattern,
+                iter,
+                body,
+            } => {
+                if let Some(diag) = self.expr(iter) {
+                    return Some(diag);
+                }
+                self.scopes.push(Vec::new());
+                declare_pattern_names(pattern, self);
+                let diag = self.block_inner(body);
+                self.scopes.pop();
+                diag
+            }
+            ExprKind::While { cond, body } => self.expr(cond).or_else(|| self.block(body)),
+            ExprKind::Loop { body } => self.block(body),
+            ExprKind::Return(inner) | ExprKind::Break(inner) => {
+                inner.as_ref().and_then(|expr| self.expr(expr))
+            }
+            ExprKind::Closure { params, body, .. } => {
+                self.scopes.push(Vec::new());
+                for param in params {
+                    let row = param.ty.as_ref().and_then(render_row_type_of);
+                    self.declare(&param.name.name, row);
+                }
+                let diag = self.expr(body);
+                self.scopes.pop();
+                diag
+            }
+            ExprKind::RegionSugar { body, cap, .. } => cap
+                .as_ref()
+                .and_then(|expr| self.expr(expr))
+                .or_else(|| self.block(body)),
+            ExprKind::In { region, body } => self.expr(region).or_else(|| self.block(body)),
+            ExprKind::Borrow { place, from } => self.expr(place).or_else(|| self.expr(from)),
+            _ => None,
+        }
+    }
+
+    fn else_handler(&mut self, handler: &crate::ast::ElseHandler) -> Option<Diag> {
+        use crate::ast::ElseHandler;
+        match handler {
+            ElseHandler::Block(block) => self.block(block),
+            ElseHandler::Expr(expr) => self.expr(expr),
+            ElseHandler::Handler { pattern, body } => {
+                self.scopes.push(Vec::new());
+                declare_pattern_names(pattern, self);
+                let diag = self.expr(body);
+                self.scopes.pop();
+                diag
+            }
+        }
+    }
+
+    fn strlit(&mut self, literal: &StrLit) -> Option<Diag> {
+        for part in &literal.parts {
+            if let StrPart::Interp(interp) = part {
+                if let Some(diag) = self.expr(&interp.expr) {
+                    return Some(diag);
+                }
+                if let Some(parts) = &interp.format {
+                    for fmt in parts {
+                        if let crate::ast::FmtPart::Interp(expr) = fmt
+                            && let Some(diag) = self.expr(expr)
+                        {
+                            return Some(diag);
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// The refusal itself. Arithmetic, the bitwise family and the shifts
+    /// answer E0409 ("`+` cannot be applied to `!int`"); the comparisons
+    /// answer E0401 and name what the other side makes of the term, which is
+    /// wolf 0.2.9's own sentence. `&&` and `||` are deliberately absent: no
+    /// clause and no measurement fixes their number here.
+    fn binary_operands(&self, op: crate::ast::BinOp, lhs: &Expr, rhs: &Expr) -> Option<Diag> {
+        use crate::ast::BinOp;
+        let (span, row, other) = match (self.row_of(lhs), self.row_of(rhs)) {
+            (Some(row), _) => (lhs.span, row, rhs),
+            (None, Some(row)) => (rhs.span, row, lhs),
+            (None, None) => return None,
+        };
+        let spelling = binop_spelling(op)?;
+        match op {
+            BinOp::Add
+            | BinOp::Sub
+            | BinOp::Mul
+            | BinOp::Div
+            | BinOp::Rem
+            | BinOp::Shl
+            | BinOp::Shr
+            | BinOp::BitAnd
+            | BinOp::BitXor
+            | BinOp::BitOr => Some(Diag::new(
+                "E0409",
+                span,
+                "gram.type.row",
+                format!(
+                    "`{spelling}` cannot be applied to `{row}` — an error union is two \
+                     values, not one (`[gram.type.row]`), and no operator reads it: \
+                     `[type.interp.union]` gives the ok half a rendering inside a hole and \
+                     says so as a reading rule, never a handling one. Handle the row first \
+                     — `?`, `else`, or a `match` — and operate on what it yields"
+                ),
+            )),
+            BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge | BinOp::Cmp => {
+                Some(Diag::new(
+                    "E0401",
+                    span,
+                    "gram.type.row",
+                    format!(
+                        "this is `{row}`, but the other side of `{spelling}` makes it \
+                         `{}` — an error union is two values, not one \
+                         (`[gram.type.row]`); handle the row first — `?`, `else`, or a \
+                         `match` — and compare what it yields",
+                        other_side(other)
+                    ),
+                ))
+            }
+            BinOp::And | BinOp::Or => None,
+        }
+    }
+}
+
+/// What the counterparty calls the other operand of a comparison. Only the
+/// two spellings that need no inference: a bare numeric literal is
+/// `{integer}` / `{float}` in wolf's own diagnostics, and everything else is
+/// named by nothing this pass may claim, so it says so.
+fn other_side(expr: &Expr) -> &'static str {
+    match &*expr.kind {
+        ExprKind::Int(_) => "{integer}",
+        ExprKind::Float(_) => "{float}",
+        ExprKind::Str(_) => "str",
+        ExprKind::Bool(_) => "bool",
+        ExprKind::Char(_) => "char",
+        _ => "the ok side",
+    }
+}
+
+fn binop_spelling(op: crate::ast::BinOp) -> Option<&'static str> {
+    use crate::ast::BinOp;
+    Some(match op {
+        BinOp::Mul => "*",
+        BinOp::Div => "/",
+        BinOp::Rem => "%",
+        BinOp::Add => "+",
+        BinOp::Sub => "-",
+        BinOp::Shl => "<<",
+        BinOp::Shr => ">>",
+        BinOp::BitAnd => "&",
+        BinOp::BitXor => "^",
+        BinOp::BitOr => "|",
+        BinOp::Eq => "==",
+        BinOp::Ne => "!=",
+        BinOp::Lt => "<",
+        BinOp::Gt => ">",
+        BinOp::Le => "<=",
+        BinOp::Ge => ">=",
+        BinOp::Cmp => "<=>",
+        BinOp::And | BinOp::Or => return None,
+    })
+}
+
+/// Every name a pattern binds, declared as holding no row this pass knows.
+fn declare_pattern_names(pattern: &Pattern, walk: &mut RowWalk<'_>) {
+    match &*pattern.kind {
+        PatKind::Binding(name) => walk.declare(&name.name, None),
+        PatKind::At { name, pattern } => {
+            walk.declare(&name.name, None);
+            declare_pattern_names(pattern, walk);
+        }
+        PatKind::Variant { fields, .. } => {
+            for field in fields {
+                declare_pattern_names(field, walk);
+            }
+        }
+        PatKind::Tuple(parts) | PatKind::Or(parts) => {
+            for part in parts {
+                declare_pattern_names(part, walk);
+            }
+        }
+        PatKind::Struct { fields, .. } => {
+            for field in fields {
+                match &field.pattern {
+                    Some(pattern) => declare_pattern_names(pattern, walk),
+                    None => walk.declare(&field.name.name, None),
+                }
+            }
+        }
+        PatKind::Wildcard | PatKind::Literal(_) => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4817,6 +5469,121 @@ mod tests {
             "fn f(x: List[int]) -> str { \"{x:.2}\" }\nfn main() -> !int {\n    0\n}\n",
             "fn main() -> !int {\n    let n = 42\n    let w = 8\n    \
              print(\"[{n:>{w}}]\")\n    0\n}\n",
+        ] {
+            assert_eq!(resolve(clean), None, "{clean}");
+        }
+    }
+
+    // --- wolf-interp#73: the tail against the declared return type ---------
+
+    #[test]
+    fn a_unit_tail_under_a_declared_return_is_e0401() {
+        // The reduced shape on the issue: the tail is a `while`, the
+        // declaration says `str`.
+        let source = "fn detab(s: str) -> str {\n    var t = \"\"\n    var i = 0\n    \
+                      while i < s.len { t += s[i..i+1]; i += 1 }\n}\n\
+                      fn main() -> !int {\n    print(detab(\"a b\"))\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0401");
+        assert_eq!(diag.anchor, "gram.expr.block");
+        assert!(diag.message.contains("must return `str`"), "{diag:?}");
+        // The tail slot alone is spanned, never the whole body.
+        assert!(source[diag.span.start..diag.span.end].starts_with("while"));
+    }
+
+    #[test]
+    fn a_unit_tail_under_a_declared_error_union_is_e0401() {
+        // The `main` half: a `-> !int` body ending in `print(…)` exited 0 by
+        // a path the program never wrote (wolf-interp#73, #69's shape).
+        let source = "fn main() -> !int {\n    let s = \"hi\"\n    print(s)\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0401");
+        assert!(diag.message.contains("must return `int`"), "{diag:?}");
+        assert_eq!(&source[diag.span.start..diag.span.end], "print(s)");
+    }
+
+    #[test]
+    fn the_tail_check_declines_every_shape_it_cannot_spell() {
+        for clean in [
+            // A value tail.
+            "fn main() -> !int {\n    0\n}\n",
+            // No declared return type at all (`corpus/entry_no_return.lu`).
+            "fn main() {\n    print(\"hi\")\n}\n",
+            // A declared `()` return.
+            "fn f() -> () {\n    print(\"hi\")\n}\nfn main() -> !int {\n    f()\n    0\n}\n",
+            // A `return` in the tail slot.
+            "fn f() -> int {\n    return 1\n}\nfn main() -> !int {\n    f()\n    0\n}\n",
+            // A tail this pass does not type: an `if`, a `match`, a call to a
+            // function whose result is not `()`.
+            "fn f(n: int) -> int {\n    if n > 0 { 1 } else { 2 }\n}\n\
+             fn main() -> !int {\n    f(1)\n    0\n}\n",
+            // A declared return type this machine has not resolved — a
+            // struct, an alias, a container. Refusing one would be a guess.
+            "struct P { x: int }\nfn f() -> P {\n    let p = P { x: 1 }\n}\n\
+             fn main() -> !int {\n    0\n}\n",
+            // `while true` diverges; diverging is not `()`.
+            "fn f() -> int {\n    while true { print(\"x\") }\n}\n\
+             fn main() -> !int {\n    0\n}\n",
+        ] {
+            assert_eq!(resolve(clean), None, "{clean}");
+        }
+    }
+
+    // --- wolf-interp#81: a row-typed value bare in operator position -------
+
+    #[test]
+    fn a_bare_row_in_arithmetic_is_e0409() {
+        // The one-liner on the issue, inside the interpolation hole it was
+        // reported in — the walk reads `StrLit` parts.
+        let source = "fn main() -> !int {\n    let n: !int = 3\n    print(\"{n + 1}\")\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0409");
+        assert_eq!(diag.anchor, "gram.type.row");
+        assert!(
+            diag.message.contains("`+` cannot be applied to `!int`"),
+            "{diag:?}"
+        );
+        assert_eq!(&source[diag.span.start..diag.span.end], "n");
+    }
+
+    #[test]
+    fn a_bare_row_in_a_comparison_is_e0401_naming_the_other_side() {
+        let source =
+            "fn main() -> !int {\n    let n: !int = 3\n    if n <= 5 { print(\"y\") }\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0401");
+        assert!(
+            diag.message
+                .contains("this is `!int`, but the other side of `<=` makes it `{integer}`"),
+            "{diag:?}"
+        );
+    }
+
+    #[test]
+    fn a_fallible_call_is_a_row_operand_and_the_postfix_row_spells_itself() {
+        let source = "fn get() -> int ! {none} {\n    return 1\n}\n\
+                      fn main() -> !int {\n    print(\"{get() * 2}\")\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0409");
+        assert!(diag.message.contains("`int ! {none}`"), "{diag:?}");
+    }
+
+    #[test]
+    fn the_row_check_declines_a_handled_row() {
+        for clean in [
+            // `?` propagates the row; the term is the ok side.
+            "fn get() -> int ! {none} {\n    return 1\n}\n\
+             fn main() -> !int {\n    let v = get()?\n    print(\"{v + 1}\")\n    0\n}\n",
+            // `else` defaults it.
+            "fn get() -> int ! {none} {\n    return 1\n}\n\
+             fn main() -> !int {\n    let v = get() else 0\n    print(\"{v + 1}\")\n    0\n}\n",
+            // A plain binding is not a row.
+            "fn main() -> !int {\n    let n = 3\n    print(\"{n + 1}\")\n    0\n}\n",
+            // A local name shadowing a fallible item is not a call to it.
+            "fn get() -> int ! {none} {\n    return 1\n}\n\
+             fn main() -> !int {\n    let get = 2\n    print(\"{get + 1}\")\n    0\n}\n",
+            // `&&`/`||` carry no measured number here, so they are left alone.
+            "fn main() -> !int {\n    let b: !bool = true\n    let c = b && true\n    0\n}\n",
         ] {
             assert_eq!(resolve(clean), None, "{clean}");
         }
