@@ -249,6 +249,7 @@ impl Session {
 
     fn help() -> Vec<String> {
         [
+            "directives start with `:` — a bare `type e` is a program line",
             ":type e            evaluate e, report its type",
             ":mem               the memory model, live: regions, loans, shared, pools, tasks",
             ":regions           the region tree alone",
@@ -400,7 +401,12 @@ impl Session {
     fn eval_input(&mut self, input: &str) -> Vec<String> {
         let mut out = Vec::new();
         match self.parse_input(input) {
-            Err(lines) => return lines,
+            Err(mut lines) => {
+                if let Some(note) = directive_note(input) {
+                    lines.push(note);
+                }
+                return lines;
+            }
             Ok(stmts) => {
                 let last_expr =
                     matches!(stmts.last().map(|stmt| &stmt.kind), Some(StmtKind::Expr(_)));
@@ -1044,6 +1050,37 @@ fn collect_bound_names(pattern: &Pattern, out: &mut Vec<String>) {
         }
         PatKind::Wildcard | PatKind::Literal(_) => {}
     }
+}
+
+/// wolf-interp#72: the note beside a parse error that a bare directive name
+/// earns at the prompt.
+///
+/// `type` is the alias item's keyword, so `type "length"` and `type t` are
+/// both *correct* parse errors (`[gram.item.type]` wanted `type Name = …`)
+/// and both are useless to the person who meant `:type`. The REPL is the one
+/// place a directive name can be typed as a whole line, and it knows its own
+/// surface, so it says so — **after** the diagnostic, never instead of it:
+/// `type Name = int` is a legal REPL line and rewriting it would be worse
+/// than the confusion. The note fires only where the line failed to parse.
+///
+/// Not a spec matter: `[repl.*]` rules the surface and the wording is this
+/// implementation's.
+fn directive_note(input: &str) -> Option<String> {
+    /// Every directive [`Session::directive`] answers, colon stripped. `q`
+    /// is deliberately absent: a bare `q` is an ordinary identifier and a
+    /// person typing it did not mean `:quit`.
+    const DIRECTIVE_NAMES: &[&str] = &[
+        "help", "keys", "load", "mem", "quit", "regions", "reset", "rules", "schedule", "trace",
+        "type",
+    ];
+    let line = input.lines().next()?.trim();
+    let head = line.split(char::is_whitespace).next()?;
+    if !DIRECTIVE_NAMES.contains(&head) {
+        return None;
+    }
+    Some(format!(
+        "note: REPL directives start with a colon — did you mean `:{line}`?"
+    ))
 }
 
 #[cfg(test)]

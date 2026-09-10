@@ -1,4 +1,5 @@
 wolf> :help
+directives start with `:` — a bare `type e` is a program line
 :type e            evaluate e, report its type
 :mem               the memory model, live: regions, loans, shared, pools, tasks
 :regions           the region tree alone

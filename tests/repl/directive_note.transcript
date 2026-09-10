@@ -1,0 +1,14 @@
+wolf> type "length"
+error[E0201]: expected an identifier, found the start of a string literal [gram.item.type] at 5..6
+note: REPL directives start with a colon — did you mean `:type "length"`?
+wolf> let t = "length"
+wolf> type t
+error[E0201]: expected `=`, found an end of line [gram.item.type] at 6..6
+note: REPL directives start with a colon — did you mean `:type t`?
+wolf> :type t
+str
+wolf> type Name = int
+recorded type alias `Name` (no dynamic semantics here)
+wolf> mem
+unsupported: `mem` does not resolve
+wolf> :quit
