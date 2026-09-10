@@ -527,7 +527,7 @@ impl Walk<'_> {
                 }
                 self.declare_pattern(pattern, is_var);
             }
-            PatKind::Wildcard | PatKind::Literal(_) => {}
+            PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } => {}
         }
     }
 
@@ -2139,7 +2139,7 @@ fn collect_pattern_names(pattern: &Pattern, into: &mut BTreeSet<String>) {
             into.insert(name.name.clone());
             collect_pattern_names(pattern, into);
         }
-        PatKind::Wildcard | PatKind::Literal(_) => {}
+        PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } => {}
     }
 }
 

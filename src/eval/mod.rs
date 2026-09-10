@@ -5718,6 +5718,40 @@ impl Machine {
                     _ => literal == *value,
                 })
             }
+            // `[gram.pat.range]` (s147/#287): "a range arm lowers to two
+            // comparisons on the scrutinee ... `char` by scalar". Both
+            // endpoints are literals of one type by the grammar, so the only
+            // question left at this rung is whether the scrutinee is a value
+            // those comparisons are defined over.
+            //
+            // Everything else is a STATIC refusal on the counterparty — mixed
+            // endpoints are E0401, a `str`/float/`bool` endpoint is E0808, a
+            // `byte` scrutinee takes no literal arm at all (`[type.byte]`) —
+            // and this machine owns none of those codes. The sema boundary's
+            // rule applies exactly as it does one arm up, for the same
+            // reason: a range that merely FAILS to match runs the program
+            // down the wrong arm and prints a wrong answer, which is the
+            // worst shape a permissive divergence takes. So: decline by name.
+            PatKind::Range { lo, hi, inclusive } => {
+                let low = self.eval(lo)?;
+                let high = self.eval(hi)?;
+                match (&low, &high, value) {
+                    (Value::Int(a, _), Value::Int(b, _), Value::Int(n, _)) => {
+                        Ok(n >= a && if *inclusive { n <= b } else { n < b })
+                    }
+                    (Value::Char(a), Value::Char(b), Value::Char(c)) => {
+                        Ok(c >= a && if *inclusive { c <= b } else { c < b })
+                    }
+                    _ => unsupported(format!(
+                        "a range arm is two comparisons over one ordered type \
+                         ([gram.pat.range]): the endpoints are `{low}` and `{high}` and the \
+                         scrutinee is `{value}`. Integer and `char` ranges are the whole of \
+                         the clause — a mixed pair is E0401, a `str`, float or `bool` \
+                         endpoint is E0808, and a `byte` adopts no literal in any position \
+                         ([type.byte]); match over `b as int`"
+                    )),
+                }
+            }
             PatKind::Variant { path, fields } => {
                 let tag = path
                     .segments

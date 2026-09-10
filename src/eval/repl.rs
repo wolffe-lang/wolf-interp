@@ -1048,7 +1048,9 @@ fn collect_bound_names(pattern: &Pattern, out: &mut Vec<String>) {
                 collect_bound_names(alternative, out);
             }
         }
-        PatKind::Wildcard | PatKind::Literal(_) => {}
+        // A range binds nothing — it is a test, exactly as a literal is
+        // (`[gram.pat.range]`).
+        PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } => {}
     }
 }
 

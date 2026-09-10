@@ -1775,6 +1775,94 @@ fn a_match_no_arm_of_which_applies_is_unsupported_not_a_wrong_answer() {
 }
 
 #[test]
+fn a_range_arm_is_two_comparisons_and_the_high_end_is_exclusive() {
+    // `[gram.pat.range]` (s147/#287): "`lo..hi` matches every value from
+    // `lo` up to but not including `hi`; `lo..=hi` includes `hi`" — and "a
+    // range arm lowers to two comparisons on the scrutinee".
+    let out = stdout(
+        "fn edge(n: int) -> str {\n\
+         \x20   match n {\n\
+         \x20       0..10 => \"ex\",\n\
+         \x20       10..=19 => \"inc\",\n\
+         \x20       _ => \"out\",\n\
+         \x20   }\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   print(\"{edge(-1)} {edge(0)} {edge(9)} {edge(10)} {edge(19)} {edge(20)}\")\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(out, "out ex ex inc inc out\n");
+}
+
+#[test]
+fn a_char_range_orders_by_scalar_value() {
+    // `[type.char.order]`: `'a'..='z'` is the 26 ASCII lowercase letters and
+    // nothing else — `'{'` is 123, one past `'z'`, and must fall through.
+    let out = stdout(
+        "fn kind(c: char) -> str {\n\
+         \x20   match c { 'a'..='z' => \"lower\", 'A'..='Z' => \"upper\", _ => \"other\" }\n\
+         }\n\
+         fn main() -> int {\n\
+         \x20   print(\"{kind('a')} {kind('z')} {kind('{')} {kind('Q')} {kind('7')}\")\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(out, "lower lower other upper other\n");
+}
+
+#[test]
+fn the_first_matching_range_arm_wins() {
+    // "Overlapping ranges are legal — the first arm wins, as with literals."
+    let out = stdout(
+        "fn main() -> int {\n\
+         \x20   let n = 10\n\
+         \x20   match n {\n\
+         \x20       10..=19 => print(\"teens\"),\n\
+         \x20       10 | 20 | 30 => print(\"round\"),\n\
+         \x20       _ => print(\"other\"),\n\
+         \x20   }\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(out, "teens\n");
+}
+
+#[test]
+fn a_range_arm_binds_nothing_and_an_at_binding_names_the_value() {
+    // "A range is a test, never a binding" — `n @ 1..=9` is how the matched
+    // value gets a name.
+    let out = stdout(
+        "fn tenfold(n: int) -> int { match n { d @ 1..=9 => d * 10, _ => 0 } }\n\
+         fn main() -> int {\n\
+         \x20   print(\"{tenfold(3)} {tenfold(12)}\")\n\
+         \x20   0\n\
+         }\n",
+    );
+    assert_eq!(out, "30 0\n");
+}
+
+#[test]
+fn a_range_arm_over_a_domain_it_cannot_order_is_unsupported() {
+    // The sema boundary: a mixed pair is the counterparty's E0401 and a
+    // `byte` scrutinee takes no literal arm at all (`[type.byte]`). This
+    // machine owns neither code, and a range that merely fails to match
+    // would run the program down the wrong arm — so it declines by name
+    // rather than answering silently.
+    for source in [
+        "fn main() -> int { let b = 65 as byte
+    match b { 0..10 => 1, _ => 0 } }\n",
+        "fn main() -> int { let c = 'q'
+    match c { 0..10 => 1, _ => 0 } }\n",
+    ] {
+        let Outcome::Unsupported(reason) = outcome(source) else {
+            panic!("expected a declension for {source}");
+        };
+        assert!(reason.contains("gram.pat.range"), "{reason}");
+    }
+}
+
+#[test]
 fn same_scope_let_shadowing_reads_the_latest_binding() {
     // `corpus/typecheck/let_shadow_var_ok.lu`'s core, unit-sized: the
     // rposition repair — a second `let b` shadows the first in the same

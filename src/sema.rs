@@ -2239,7 +2239,10 @@ fn handler_cover(pattern: &Pattern, row: &[String]) -> Cover {
             }
             Cover::Tags(tags)
         }
-        PatKind::Literal(_) | PatKind::Tuple(_) | PatKind::Struct { .. } => Cover::Opaque,
+        PatKind::Literal(_)
+        | PatKind::Range { .. }
+        | PatKind::Tuple(_)
+        | PatKind::Struct { .. } => Cover::Opaque,
     }
 }
 
@@ -2563,7 +2566,9 @@ impl Env {
 /// bindings, so they are all assignable as far as this rule cares.
 fn declare_pattern(pattern: &Pattern, assignable: bool, env: &mut Env) {
     match &*pattern.kind {
-        PatKind::Wildcard | PatKind::Literal(_) => {}
+        // A range binds nothing — it is a test, exactly as a literal is
+        // (`[gram.pat.range]`).
+        PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } => {}
         PatKind::Binding(ident) => env.declare(&ident.name, assignable),
         PatKind::Variant { fields, .. } => {
             for field in fields {
@@ -3389,6 +3394,12 @@ fn collect_pattern_refs(pattern: &Pattern, scope: &mut FileScope) {
     match &*pattern.kind {
         PatKind::Wildcard | PatKind::Binding(_) => {}
         PatKind::Literal(expr) => collect_expr_refs(expr, scope),
+        // Both endpoints are literals (`[gram.pat.range]`), so this is
+        // the literal arm twice over.
+        PatKind::Range { lo, hi, .. } => {
+            collect_expr_refs(lo, scope);
+            collect_expr_refs(hi, scope);
+        }
         // Pattern paths mark their head *used* (E0305) but are not E0304
         // candidates: a dotted error tag (`io.Error`) is structural (D30) and
         // never a module member access.
@@ -3686,7 +3697,7 @@ impl ByteWalk<'_> {
                     }
                 }
             }
-            PatKind::Wildcard | PatKind::Literal(_) => {}
+            PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } => {}
         }
     }
 
@@ -4892,7 +4903,7 @@ fn declare_pattern_names(pattern: &Pattern, walk: &mut RowWalk<'_>) {
                 }
             }
         }
-        PatKind::Wildcard | PatKind::Literal(_) => {}
+        PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } => {}
     }
 }
 

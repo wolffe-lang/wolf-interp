@@ -452,6 +452,23 @@ pub enum PatKind {
     /// `closed_pattern ('|' closed_pattern)*` — never nested inside an
     /// or-pattern, which is what "closed" buys (`[gram.pat]`).
     Or(Vec<Pattern>),
+    /// `literal ('..' | '..=') literal` — a range pattern
+    /// (`[gram.pat.range]`, s147/#287). `lo..hi` matches every value from
+    /// `lo` up to but not including `hi`; `lo..=hi` includes `hi`.
+    ///
+    /// Both endpoints are literals of one type: an integer literal, on every
+    /// integer primitive a literal pattern may already be written against, or
+    /// a `char` literal ordered by scalar value (`[type.char.order]`). There
+    /// are **no open ends** — `..hi` and `lo..` are the slice spellings of
+    /// `[gram.expr.primary]`, not patterns, and the parser refuses them here
+    /// by name. A range is a test, never a binding: it binds nothing, which
+    /// is why every binding walk treats it exactly as it treats a literal.
+    Range {
+        lo: Box<Expr>,
+        hi: Box<Expr>,
+        /// `..=` — the high end is included.
+        inclusive: bool,
+    },
 }
 
 /// `field_pat ::= IDENT (':' pattern)?` (`[gram.pat.struct]`).

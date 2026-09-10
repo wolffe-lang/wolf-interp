@@ -202,6 +202,17 @@ pub struct Parsed {
     pub deferred: Vec<Diag>,
 }
 
+/// The half of every `[gram.pat.range]` refusal that names the range form.
+///
+/// `[gram.pat.range]` is explicit that "the diagnostic must say the word
+/// `range`, which is the papercut the book carried": a reader who writes
+/// `10..` in an arm gets told what a range pattern IS and where the open
+/// spellings live, not merely that a token was unexpected. Both refusal sites
+/// — the leading `..`/`..=` in pattern position and a missing high end —
+/// close with this sentence, so the two can never drift apart.
+const RANGE_IS_A_SLICE: &str = "the open ranges `..hi` and `lo..` are the slice spellings of \
+                                `[gram.expr.primary]`, not patterns";
+
 /// Stack reserved for the recursive descent, in bytes.
 ///
 /// `[gram.lex.rails]` makes depth **256** normative and differential-tested, so
@@ -1777,8 +1788,30 @@ impl<'a> Parser<'a> {
                 | Tok::Char(_)
                 | Tok::StrStart(_)
                 | Tok::Kw("true" | "false"),
-            ) => PatKind::Literal(Box::new(self.parse_primary()?)),
-            Some(Tok::Minus) => PatKind::Literal(Box::new(self.parse_literal_only()?)),
+            ) => {
+                let lo = self.parse_primary()?;
+                self.literal_or_range(lo)?
+            }
+            Some(Tok::Minus) => {
+                let lo = self.parse_literal_only()?;
+                self.literal_or_range(lo)?
+            }
+            // `..hi` and `lo..` are the slice spellings of
+            // `[gram.expr.primary]`, not patterns — the leading form reaches
+            // pattern position only as a mistake, and the refusal must say
+            // the word "range", which is the papercut `[gram.pat.range]`
+            // was written to close. (The missing-high-end half is in
+            // `literal_or_range`.)
+            Some(Tok::DotDot | Tok::DotDotEq) => {
+                return Err(self.error(
+                    diag::E_UNEXPECTED_TOKEN,
+                    "gram.pat.range",
+                    format!(
+                        "an open range is not a pattern — a range pattern has a literal at \
+                         both ends, `lo..hi` or `lo..=hi`; {RANGE_IS_A_SLICE}"
+                    ),
+                ));
+            }
             Some(Tok::LParen) => {
                 self.advance();
                 let mut items = Vec::new();
@@ -1874,6 +1907,51 @@ impl<'a> Parser<'a> {
             kind: Box::new(kind),
             span: Span::new(start, self.prev_span().end),
             anchor,
+        })
+    }
+
+    /// `closed_pattern ::= … | literal ('..' | '..=') literal`
+    /// (`[gram.pat.range]`, s147/#287).
+    ///
+    /// Called with the literal already parsed: a `..` or `..=` next makes the
+    /// pattern a range and takes a second literal; anything else leaves the
+    /// literal pattern exactly as it was. `parse_primary` stops at the
+    /// literal, so the cursor sits on the operator and no lookahead is needed.
+    ///
+    /// A non-literal after the operator is E0201 at the token that should
+    /// have closed the range — which is how `10.. =>` is refused, the open
+    /// form the book's chapter 3 tripped over.
+    fn literal_or_range(&mut self, lo: Expr) -> PResult<PatKind> {
+        if !(self.at(&Tok::DotDot) || self.at(&Tok::DotDotEq)) {
+            return Ok(PatKind::Literal(Box::new(lo)));
+        }
+        let inclusive = self.at(&Tok::DotDotEq);
+        self.advance();
+        let hi = match self.tok() {
+            Some(
+                Tok::Int(_)
+                | Tok::Float(_)
+                | Tok::Char(_)
+                | Tok::StrStart(_)
+                | Tok::Kw("true" | "false"),
+            ) => self.parse_primary()?,
+            Some(Tok::Minus) => self.parse_literal_only()?,
+            _ => {
+                return Err(self.error(
+                    diag::E_UNEXPECTED_TOKEN,
+                    "gram.pat.range",
+                    format!(
+                        "expected a literal to close the range pattern — a range pattern is \
+                         `lo..hi` or `lo..=hi` with a literal at both ends (an integer or a \
+                         `char`); {RANGE_IS_A_SLICE}"
+                    ),
+                ));
+            }
+        };
+        Ok(PatKind::Range {
+            lo: Box::new(lo),
+            hi: Box::new(hi),
+            inclusive,
         })
     }
 
@@ -3834,6 +3912,82 @@ mod tests {
             d.span.start, d.span.end,
             "zero-width, at the token after the path"
         );
+    }
+
+    #[test]
+    fn a_range_pattern_parses_over_both_domains_and_every_composition() {
+        // `[gram.pat.range]` (s147/#287): `lo..hi` and `lo..=hi` with a
+        // literal at both ends, integer or `char`, composing with
+        // or-patterns, a guard, and an `@`-binding.
+        let unit = parses(
+            "fn bucket(n: int) -> str {\n\
+             \x20   match n {\n\
+             \x20       0..10 => \"low\",\n\
+             \x20       10..=19 | 90..=99 => \"teens\",\n\
+             \x20       d @ 20..=29 => \"twenties\",\n\
+             \x20       b if b % 2 == 0 => \"big even\",\n\
+             \x20       _ => \"big odd\",\n\
+             \x20   }\n\
+             }\n\
+             fn kind(c: char) -> str {\n\
+             \x20   match c { 'a'..='z' => \"lower\", '0'..='9' => \"digit\", _ => \"other\" }\n\
+             }\n",
+        );
+        assert_eq!(unit.items.len(), 2);
+    }
+
+    #[test]
+    fn a_range_pattern_records_its_endpoints_and_its_inclusivity() {
+        let unit = parses("fn f(n: int) -> int { match n { 1..=9 => 1, _ => 0 } }\n");
+        let ItemKind::Fn(decl) = &unit.items[0].kind else {
+            panic!("a fn item");
+        };
+        let body = decl.body.as_ref().expect("a body");
+        let ExprKind::Match { arms, .. } = &*body.tail.as_ref().expect("a tail").kind else {
+            panic!("a match tail");
+        };
+        let PatKind::Range { lo, hi, inclusive } = &*arms[0].pattern.kind else {
+            panic!("a range pattern, got {:?}", arms[0].pattern.kind);
+        };
+        assert!(*inclusive, "`..=` includes its high end");
+        assert!(matches!(&*lo.kind, ExprKind::Int(text) if text == "1"));
+        assert!(matches!(&*hi.kind, ExprKind::Int(text) if text == "9"));
+    }
+
+    #[test]
+    fn an_open_range_in_pattern_position_is_refused_by_name() {
+        // The papercut `[gram.pat.range]` names: "the diagnostic must say the
+        // word `range`". Both spellings — the missing high end and the
+        // leading operator — say it, and both cite the clause.
+        for (source, opening) in [
+            (
+                "fn f(n: int) -> int { match n { 10.. => 1, _ => 0 } }\n",
+                "expected a literal to close the range pattern",
+            ),
+            (
+                "fn f(n: int) -> int { match n { ..10 => 1, _ => 0 } }\n",
+                "an open range is not a pattern",
+            ),
+        ] {
+            let d = rejects(source);
+            assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN, "{source}");
+            assert_eq!(d.anchor, "gram.pat.range", "{source}");
+            assert!(d.message.starts_with(opening), "{}", d.message);
+            assert!(
+                d.message.contains("slice spellings"),
+                "the note names where the open forms live: {}",
+                d.message
+            );
+        }
+    }
+
+    #[test]
+    fn a_range_endpoint_must_be_a_literal() {
+        // "No identifiers, no expressions" — an identifier after the
+        // operator is the missing-high-end refusal, not a binding.
+        let d = rejects("fn f(n: int, k: int) -> int { match n { 1..k => 1, _ => 0 } }\n");
+        assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
+        assert_eq!(d.anchor, "gram.pat.range");
     }
 
     #[test]
