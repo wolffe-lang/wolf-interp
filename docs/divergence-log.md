@@ -110,6 +110,111 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The mirror takes the range arm — is44, lupin 0.1.32, pin `e0ce018` (wolf-lang s147, dev-stamped)
+
+Pin `4c60946` -> `e0ce018`, a dev stamp again: s147 landed
+`[gram.pat.range]` after v0.2.9 and the four witnesses cannot be mirrored
+without the pin that carries them. The delta is two sprints wide, not one —
+s146's `[type.unit]` family rides along — and that is the first thing worth
+writing down, because only one of the two cost this machine a line.
+
+`spec/01-grammar.md` (§5's `closed_pattern` gains
+`literal ('..' | '..=') literal`, plus the clause), `spec/03-concurrency.md`,
+`spec/10-types.md` (§7 `[type.unit]`), `spec/grammar.ebnf`, and
+`spec/anchors.json` **448 -> 453; key sets diffed BOTH ways** —
+`gram.pat.range`, `type.unit`, `type.unit.consume`, `type.unit.context`,
+`type.unit.discard` arrive, **nothing drops**, no owner changes
+(wolf-lang#177's lesson, still standing). Eight corpus files join, none
+leaves, all entries: `grammar/match_range.lu`, `grammar/match_range_char.lu`,
+`grammar/match_range_open.lu`, `rows/match_range_empty.lu`,
+`grammar/match_switch.lu` (s147), and `conc/chan_send_closed_row.lu`,
+`conc/spawn_tail_send_raised_row.lu`, `typecheck/unit_context_discard.lu`
+(s146).
+
+**The prediction, written before the binary ran.** Item 1 ADMITS programs this
+machine used to refuse, which is the opposite shape from is43's and asks the
+opposite question: not "which running file starts to be declined" but "which
+of the eight new files is already answered, and by accident?" The prediction
+was: the four range witnesses move (three mismatching, and
+`match_range_open.lu` matching for the WRONG reason — E0201 is the right code
+from a parser that has no range production at all, so its verdict was correct
+and its diagnostic said nothing about ranges); `match_switch.lu` and all three
+s146 files match untouched, because #286 is a guard-arm coverage question this
+machine never had wrong and `[type.unit]`'s discard is a *typing* rule with no
+dynamic half — a machine with no unit context to violate cannot violate one.
+
+**Measured, with the 0.1.31 binary at the new pin, before a line was edited:**
+495 entries, 34 members, **4 mismatches**. Three are the range witnesses. The
+fourth is DIV-2026-019, which has nothing to do with this pin. Every other new
+file — `match_switch.lu`, `chan_send_closed_row.lu`,
+`spawn_tail_send_raised_row.lu`, `unit_context_discard.lu` — matched at first
+sight. **s146 cost this implementation zero source motion**, and that is a
+finding, not a shrug: `[type.unit.discard]`'s (ii) reading was chosen partly
+because it is non-breaking, and a mirror that already ran all thirteen
+witnesses is the cheapest possible evidence for the claim.
+
+| witness | lupin 0.1.31 at the NEW pin | lupin 0.1.32 | the clause |
+| --- | --- | --- | --- |
+| `grammar/match_range.lu` | `fail(E0201)@parse`, **MISMATCH** | `exit(0)@run`, match | `[gram.pat.range]` |
+| `grammar/match_range_char.lu` | `fail(E0201)@parse`, **MISMATCH** | `exit(0)@run`, match | `[gram.pat.range]`, `[type.char.order]` |
+| `rows/match_range_empty.lu` | `fail(E0201)@parse`, **MISMATCH** | `fail(E0815)@resolve`, match | `[gram.pat.range]` |
+| `grammar/match_range_open.lu` | `fail(E0201)@parse`, match *by accident* | `fail(E0201)@parse`, match *by the clause* | `[gram.pat.range]` |
+| `grammar/match_switch.lu` | `exit(0)@run`, match | unmoved | `[gram.expr.flow]` |
+| `typecheck/unit_context_discard.lu` | `exit(0)@run`, match | unmoved | `[type.unit]` |
+
+Census 487 -> 495 entries, 377 -> 383 reach run, 367 -> 375 match, 61 out of
+scope unmoved; 42 conservatism and 16 dynamic counterparts unmoved; 4
+mismatches -> **1**, DIV-2026-019.
+
+**`match_range_open.lu` is the entry worth the ink.** It was a `match` at the
+old pin and at the new one, on both sides of the work, and the walk could not
+tell the difference — because the walk compares CODES. A parser with no range
+production reaches `10..` and says `expected `=>`, found `..``: right code,
+right rung, and a reader who writes an open range learns nothing. The clause
+is unusually explicit about this — "the parser refuses them in pattern
+position (E0201) **with a note that names the range form** — the diagnostic
+must say the word 'range', which is the papercut the book carried" — so the
+deliverable here is a *message*, which is precisely the axis
+`[proto.record.diag]` keeps off the wire (D22). A corpus directive cannot pin
+it and the differ cannot see it; the only thing that can is a test that reads
+the string, and `parse::tests::an_open_range_in_pattern_position_is_refused_by_name`
+is it. Same lesson as DIV-2026-021 one tier over: when the pinned surface is
+coarser than the fix, the local test IS the ledger.
+
+**`[proto.cmp.triage]`: the spec is not the defendant, and it is unusually
+hard to make it one.** `[gram.pat.range]` decides every question this mirror
+had to ask — which domains (integer primitives and `char`, `byte` excluded by
+name), which spellings are refused and with which codes (E0201 open, E0815
+empty, E0401 mixed, E0808 unordered), what overlap means (legal, first arm
+wins), what subsumption reports (single-constructor, silent on unions), and
+what exhaustiveness does **not** do (no union computed for any domain,
+bounded or not, `_` still required). The one thing it leaves to the
+implementation is a residue this parser already carried: a negative literal
+endpoint. `[gram.pat]`'s `literal` admits no leading `-`, so `-5..0` is
+wolf-lang's residue and not a range question — this parser has taken a
+negative literal PATTERN since long before s147 (`parse_literal_only` under
+`Tok::Minus`), and the range arm reads endpoints through the same door rather
+than growing a second rule about signs. Nothing new is chosen; an old choice
+is inherited. No filing.
+
+**The exhaustiveness posture, mirrored from the clause and not from the
+checker.** `[gram.pat.range]` states it in full — "integer and `char` columns
+stay 'infinite' — the checker computes **no** union of ranges and literals for
+any domain this sprint, bounded (`u8`, `char`) or not"; "overlapping ranges
+are legal — the first arm wins, as with literals"; "an arm whose every value
+an earlier literal or range already covers is E0802 ... a range covered only
+by the union of several is not" — so it is mirrored from `spec/01` and the
+counterparty's `exhaust.rs` was not opened. That is the independence doctrine
+working the way CONTRIBUTING says it should: "Read `upstream/spec` and
+reimplement. If the spec is silent or ambiguous, that ambiguity is the
+finding." It is not silent here, and reading the checker to confirm a clause
+this precise would have bought nothing and cost the thing the comparison is
+for. In this machine E0801 has no half at all (the sema boundary: "a property
+the static tier owns never becomes a trap"), so "no union computed" costs
+nothing to hold; the half that is real is E0802, and it is gated on a range
+having been spelled, which is why the 495-entry walk is byte-identical across
+it.
+
 ### The tail is checked — is43, lupin 0.1.31, pin `4c60946` (wolf-lang **v0.2.9**)
 
 Pin `2c03ed9` -> `4c60946`, and this one is a **tag**, not a dev stamp — the
