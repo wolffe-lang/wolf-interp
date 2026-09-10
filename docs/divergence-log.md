@@ -110,6 +110,101 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The tail is checked — is43, lupin 0.1.31, pin `4c60946` (wolf-lang **v0.2.9**)
+
+Pin `2c03ed9` -> `4c60946`, and this one is a **tag**, not a dev stamp — the
+first non-dev pin since `5c729e8`. The sprint said the pin need not move, and
+for three of the four items it did not: the clauses items 1 and 3 mirror are
+already at `2c03ed9`. #78's are not. wolf-lang#278 is spec commit `8d1e003`,
+s145 merged after is42 pinned, and `git merge-base --is-ancestor 8d1e003
+2c03ed9` is false — so the char rows could not be mirrored without the pin
+that carries them, and the vendored corpus would have kept pinning
+`fail(E0409)` on a program both compiler tiers run. The `2c03ed9 -> v0.2.9`
+delta is four files and nothing else, which is why the bump was cheap:
+`spec/10-types.md`, `spec/anchors.json` (446 -> 448; key sets diffed BOTH ways
+— `type.closure` and `type.closure.return` arrive, nothing drops, no owner
+changes), `corpus/strings/concat_mix_char.lu`, and the new
+`corpus/typecheck/closure_return.lu`.
+
+**The prediction, written before the walk moved.** Items 1 and 2 refuse
+programs this machine used to run, so the question the sprint asked first was
+which corpus files that ran here start to be declined, and whether any was
+correct by accident. The prediction was **none, and none** — the corpus is
+compiler-accepted programs plus `fail`-pinned negatives; a compiler-accepted
+program can carry neither an unchecked unit tail nor a bare row operand nor an
+unresolvable annotation, and the negatives whose pinned code is E0401 are
+`typecheck/if_branch.lu` (branches disagree), `typecheck/coerce_no_widening.lu`
+(no implicit widening) and `typecheck/numlit_ambiguity_named.lu` (literal
+ambiguity): a branch, a widening and a literal, not a tail and not a row. Any
+mover would therefore be a false positive of the new walk, not a finding.
+
+**Measured: zero motion, three times.** The walk after #73/#81 is
+byte-identical to the walk before it, entry for entry, all 486. The walk after
+#79 is byte-identical to the walk after the pin bump, all 487. The only two
+entries that move in the whole sprint are the two files the pin itself
+changed:
+
+| witness | lupin 0.1.30 at the OLD pin | lupin 0.1.31 | the clause |
+| --- | --- | --- | --- |
+| `strings/concat_mix_char.lu` | `unsupported@resolve`, out-of-scope vs `fail(E0409)` | **`exit(0)@run`, match, byte-identical stdout** | `[type.str.concat]` |
+| `typecheck/closure_return.lu` | (not in the corpus) | **`exit(0)@run`, match at first sight** | `[type.closure.return]` |
+
+Census 486 -> 487 entries, 375 -> 377 reach run, 365 -> 367 match, 62 -> 61 out
+of scope; 42 conservatism and 16 dynamic counterparts unmoved; 1 mismatch,
+still DIV-2026-019, which has nothing to do with this pin.
+
+**The triage that mattered, and it did not go the usual way.**
+`[proto.cmp.triage]` makes the spec document the defendant first, and the
+habit of this log is to find it guilty. For #73 and #81 it is not.
+
+- `[gram.expr.block]` makes a block's value its optional trailing expression
+  (`block ::= '{' stmt* expr? '}'`), so a block without one is `()`; and
+  `[gram.expr.tagident]`, in its list of *checked positions*, names "the
+  operand of `return` (**and a fallible function's tail**) against the
+  declared return row". The clause already said the tail is checked against
+  the declaration. The implementation was simply not reading it, so the
+  implementation is the defendant and the number is not this machine's to
+  invent: six corpus files pin `fail(E0401)` at phase `resolve` and spec/10
+  spends E0401 on a mismatch in five places.
+- `[type.interp.union]` gives a `!T` a rendering inside an interpolation hole
+  and marks it as a carve-out in the same breath — "this is a reading rule,
+  not a handling rule: `?` and `else` still decide what the program does with
+  the row". A hole is the one place a `!T` is read without being handled,
+  which leaves an operator no reading at all; `[type.str.concat.mix]` fixes
+  the number for "this operator is not defined on these operand types"
+  ("Mixed operands stay **E0409**"). So arithmetic, the bitwise family and the
+  shifts answer E0409 and the comparisons answer E0401 naming what the other
+  side makes of the term — wolf 0.2.9's own measured sentence. `&&` and `||`
+  are left alone: no clause and no measurement fixes a number for them here.
+
+**What the spec could say and does not, filed as wolf-lang#284.** There is no
+`[type.fn.ret]` and no `[type.row]`. Both rows are decided today by reading two
+GRAMMAR clauses together and by inverting a RENDERING rule's carve-out. That
+works, and both implementations land on the same answer — but the rule that a
+`!T` is not a `T` in operator position is stated nowhere directly, only implied
+by a clause about string holes. The issue carries all four witnesses (declared
+`str` tail, declared `!int` tail, `!int + 1`, `!int <= n`) with both readings
+and a candidate `[type.row.operand]` amendment, so r14/r15 can pin them rather
+than re-derive the shapes each wave. Until the clause exists, witnesses 3 and 4
+cite `[type.interp.union]` sideways, which is the honest thing to record.
+
+**wollf's 56.** wl10 re-verified its training corpus under wolf 0.2.9 / lupin
+0.1.29 and found 2,097 of 2,153 programs passing both machines and 56 refused
+by wolf and running to completion here — E0409 x21, E0401 x17, and 8 that build
+with a warning and exit 101 natively. The 38 typed ones are exactly #81's shape
+and are closed from this release. The 8 are not this row and stay open.
+
+**What is deliberately still lenient.** The tail check swears to a closed set
+of unit shapes and leaves every other tail running, including a declared return
+type this machine has not resolved — a struct, an alias, an enum, a container.
+The row check swears to two operand shapes. The annotation check is
+signature-width and excludes methods, because `sema::MethodDef` records the
+decl and the trait but not the impl block's generic parameters, so `impl
+Stack[T]`'s `fn push(self, v: T)` has no scope to read `T` from. Each of those
+is a place a later sprint can widen with a measurement in hand; none of them is
+a place to guess, because a wrong refusal stops a program from running at all,
+which is the one failure mode the sema boundary exists to prevent.
+
 ### The mirror lets `else` start a line — is42, lupin 0.1.30, pin `2c03ed9` (wolf-lang s144, dev-stamped)
 
 Pin `e9a17cb` -> `2c03ed9`, wolf-lang trunk past the s144 merge, **dev-stamped

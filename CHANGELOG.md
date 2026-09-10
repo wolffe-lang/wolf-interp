@@ -1,5 +1,114 @@
 # Changelog
 
+## Unreleased
+
+THE TAIL IS CHECKED (is43). Pin `2c03ed9` -> `4c60946` — **the v0.2.9 tag**,
+not a dev stamp. The sprint said the pin need not move, and for three of the
+four items it did not need to: the clauses items 1 and 3 mirror are already at
+`2c03ed9`. #78's are not. wolf-lang#278 is spec commit `8d1e003`, s145 merged
+after is42 pinned, and it is not an ancestor of `2c03ed9`, so the char rows
+could not be mirrored without the pin that carries them — and the vendored
+corpus would have kept pinning `fail(E0409)` on a program the compiler runs.
+The delta is four files: `spec/10-types.md`, `spec/anchors.json` (446 -> 448,
+key sets diffed both ways — `type.closure`, `type.closure.return` arrive,
+nothing drops, nothing moves), `corpus/strings/concat_mix_char.lu` (flipped to
+`run`), and the new `corpus/typecheck/closure_return.lu`.
+
+**Two soundness rows leave the pairing table (wolf-interp#73, #81).** They are
+one leniency wearing two hats: an annotation the frontend parsed and no rung
+ever read.
+
+A body whose tail slot is `()` under a declared `-> str` / `-> !int` ran here
+and exited 0 — a `-> !int` `main` ending in `print(…)` handed the process a
+status by a path the program never wrote, which is #69's shape one level up.
+And a `!T` value used bare as an operand ran here too, which is 56 of wollf
+wl10's 2,153 verified programs passing this machine and refused by wolf 0.2.9
+(E0409 x21 on `+`, E0401 x17 on `<=`). Both refuse before running now, at the
+resolve rung, so the record and the process agree: nothing ran, nothing
+printed.
+
+Neither is a type checker arriving. Both are decided from **declarations
+alone** — a signature's return type against the SHAPE of its body's tail slot,
+an annotation's `!` against the syntactic operand — with no inference, no
+unification and no literal tier, and every shape the walk cannot spell is left
+running. The tail's closed unit set: an empty body, a last statement that is a
+binding or an assignment, a `while`/`for`, a call to a function declared to
+return `()`, and a nested block. A `return`, a `break`, a `loop`, a `match`, an
+`if`, a bare path, a literal, `while true` (an unconditional loop diverges, and
+diverging is not `()`), and any declared return type this machine has not
+resolved are all left alone. The row operand's two shapes: a name DECLARED
+`!T`, and a direct call to an item declared `-> !T`. `f()?`, `f() else 0` and a
+`match` binding are never operands, and a local shadowing a fallible item is
+not a call to it.
+
+`[proto.cmp.triage]` was run before a code was chosen, and in both rows **the
+spec is not the defendant** — which is the less common outcome and worth
+recording. `[gram.expr.block]` makes a block's value its optional trailing
+expression, and `[gram.expr.tagident]` names "the operand of `return` (and a
+fallible function's tail) against the declared return row" a CHECKED POSITION:
+the clause already said the tail is checked, and the implementation was not
+reading it. `[type.interp.union]` gives a `!T` a rendering inside a hole and
+marks it a carve-out in the same breath — "a reading rule, not a handling rule:
+`?` and `else` still decide what the program does with the row" — which leaves
+an operator no reading at all. So the numbers are the corpus's own: E0401 for
+the tail and for a comparison (six corpus files pin `fail(E0401)` at phase
+`resolve`), E0409 for arithmetic and the bitwise/shift family, which is the
+number `[type.str.concat.mix]` fixes for "this operator is not defined on these
+operand types". Neither joins `diag::UNPINNED_CODES`; neither was invented.
+`&&`/`||` are left alone: no clause and no measurement fixes a number for them.
+
+**Predicted walk motion: zero. Measured: zero.** The prediction was that no
+corpus file that ran would start to be declined, because the corpus is
+compiler-accepted programs plus `fail`-pinned negatives, and a compiler-accepted
+program carries neither shape; the three conservatism-class `fail(E0401)`
+negatives (`typecheck/if_branch.lu`, `typecheck/coerce_no_widening.lu`,
+`typecheck/numlit_ambiguity_named.lu`) are a branch mismatch, a widening
+refusal and a literal ambiguity — none of them a tail or a row. The walk after
+the two checks is **byte-identical, entry for entry**: 486 entries, 375 reach
+run, 365 match, 16 counterparts, 42 conservatism, 62 out of scope, 1 mismatch.
+Nothing was correct by accident. The four witnesses are filed upstream as
+wolf-lang#284 so r14/r15 can pin them, with the one thing the spec could say
+and does not: there is no `[type.fn.ret]` and no `[type.row]`, and the rule
+that a `!T` is not a `T` in operator position is stated nowhere directly — only
+implied by a clause about string holes.
+
+**`[type.str.concat]` — a char joins a str by `+` in either order
+(wolf-lang#278, wolf-interp#78).** `s + c` is `"{s}{c}"` and `c + s` is
+`"{c}{s}"`, the char contributing its scalar's UTF-8 bytes, and `s += c` is
+`s = s + c` in every place shape an assignment admits. A char is text (D58)
+with exactly one rendering, which is the deciding difference from an `int`:
+`[type.str.concat.mix]` drops the two char rows and keeps `str + int` /
+`int + str` at E0409, because `+` is not a formatter and an int has a sign, a
+radix and a width to choose. The mirror is two arms beside the `(Str, Str)`
+block in `eval::Interp::binary`, `Add` only; `+=` needed nothing, because
+`assign_binop` already maps `AssignOp::Add` onto `BinOp::Add`.
+`strings/concat_mix_char.lu` leaves the out-of-scope class for MATCH with
+byte-identical stdout, and `typecheck/closure_return.lu` matches at first
+sight — `[type.closure.return]` cost this machine nothing.
+
+**A type annotation's name is resolved at last (wolf-interp#79).**
+`fn f(x: Bogus) -> int { 1 }` ran here and answered `1`; the compiler answers
+`E0301: nothing named `Bogus` is in scope` at the name. Seven book samples
+rested on the hole — `saturating[i32]`, `Scope`, `Proc` — each carrying a
+`lupin-run(…)` fence that could never graduate by a compiler move, because the
+programs are not wolf. The pass is deliberately signature-width: a top-level
+`fn` item's parameter and return types, single-segment path heads only,
+recursing through prefixed types, raw pointers, tuples, error unions, fn types
+and every generic ARGUMENT (which is where `saturating[i32]`'s head sits).
+Methods are excluded on purpose — `sema::MethodDef` records the decl and the
+trait, not the impl block's generics, so `impl Stack[T]`'s `fn push(self, v: T)`
+has no scope this pass could read `T` from, and refusing it would be the
+wrong-guess failure the sema boundary exists to prevent. Qualified paths,
+`extern` signatures, `dyn T`, `region` and `type` are all left alone.
+
+**The prompt says `did you mean :type` (wolf-interp#72).** `type` is the alias
+item's keyword, so `type "length"` and `type t` are both correct parse errors
+and both useless to the person who meant the directive. The note is appended
+after the diagnostic, never instead of it — `type Name = int` is a legal REPL
+line — and it fires only where the line failed to parse, which is why a bare
+`mem` still answers `unsupported: `mem` does not resolve` with no note. `:help`
+gains a first line saying directives start with `:`.
+
 ## 0.1.30 — 2026-09-09
 
 THE MIRROR LETS `else` START A LINE (is42). Pin `e9a17cb` -> `2c03ed9`,
