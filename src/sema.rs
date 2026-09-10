@@ -1017,6 +1017,7 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| byte_check(program))
         .or_else(|| tail_check(program))
         .or_else(|| row_operand_check(program))
+        .or_else(|| annotation_check(program))
 }
 
 /// `[mod.cycle]` (D32): imports form a DAG. E0303 at the `use` that closes
@@ -4895,6 +4896,156 @@ fn declare_pattern_names(pattern: &Pattern, walk: &mut RowWalk<'_>) {
     }
 }
 
+/// wolf-interp#79: a type annotation's name is resolved at last.
+///
+/// `fn f(x: Bogus) -> int { 1 }` ran here and answered `1`; the compiler
+/// answers `E0301: nothing named `Bogus` is in scope` at the name. Seven book
+/// samples rested on the hole — `saturating[i32]` (chapter 3), `Scope`
+/// (chapter 11, four), `Proc` (chapter 14, two) — each carrying a
+/// `lupin-run(…)` fence that could never graduate by a compiler move, because
+/// the programs are not wolf. E0301 is shared vocabulary everywhere else
+/// (`[mod]`; chapter 10 prints ``nothing named `readers` is in scope`` from
+/// lupin at a VALUE position); the annotation was the one position where a
+/// bare unknown name was silently accepted, and it was accepted because the
+/// annotations are parsed and then not read.
+///
+/// # The width of the pass, and why it is this width
+///
+/// Signatures only — a top-level `fn` item's parameter types and its return
+/// type — and inside those, only a **single-segment** path's head name. That
+/// is exactly the shape #79 reduces to, and every step wider costs more than
+/// it is worth at this rung:
+///
+/// - **Methods are excluded.** `sema::MethodDef` records the decl and the
+///   trait, not the impl block's generic parameters, so `impl Stack[T]`'s
+///   `fn push(self, v: T)` has no scope this pass could read `T` from.
+///   Refusing it would be the wrong-guess failure the README's sema boundary
+///   exists to prevent, and reconstructing impl generics is a collector
+///   change, not an annotation check.
+/// - **A qualified path is skipped.** `io.Error`, `media.Song`, a std name
+///   behind `use std.x` — the segments resolve through machinery this pass
+///   does not walk.
+/// - **`extern` signatures are skipped**: their types are c10's, not wolf's.
+/// - **`dyn T`, `region`, `type`, tuples and fn types** name no path head.
+///
+/// What it does cover, recursively: the prefixed types (`shared`, `handle`,
+/// `weak`, `distinct`), raw pointers, tuples, error unions and postfix rows,
+/// fn-type parameter and return positions, and every generic ARGUMENT — which
+/// is where `saturating[i32]`'s head sits and where `List[Bogus]` hides.
+///
+/// # `[proto.cmp.triage]`
+///
+/// The spec is not the defendant: `[gram.item.fn]`'s parameter list carries a
+/// type per parameter, and resolution is the rung that answers whether a name
+/// exists. E0301 is the corpus's own number for it — `resolve/*` pins it and
+/// `unknown_cast_target` already spends it on a cast target that resolves
+/// nowhere, which is the same question one syntactic position over.
+fn annotation_check(program: &Program) -> Option<Diag> {
+    for module in program.modules.values() {
+        let mut known: BTreeSet<String> = BTreeSet::new();
+        known.extend(BUILTIN_SCALAR_TYPES.iter().map(|s| (*s).to_owned()));
+        known.extend(PRELUDE_TYPE_NAMES.iter().map(|s| (*s).to_owned()));
+        known.extend(
+            crate::eval::builtin::AMBIENT_NAMES
+                .iter()
+                .map(|s| (*s).to_owned()),
+        );
+        known.extend(module.items.keys().cloned());
+        known.extend(module.variants.keys().cloned());
+        known.extend(module.uses.iter().cloned());
+        known.extend(module.distincts.keys().cloned());
+        known.extend(module.trait_impls.keys().cloned());
+        known.extend(module.trait_defaults.keys().cloned());
+        known.extend(module.methods.keys().cloned());
+        known.extend(program.modules.keys().cloned());
+        for sibling in &module.standalone {
+            known.extend(sibling.names.iter().cloned());
+        }
+        if !module.c_headers.is_empty() {
+            known.insert("c".to_owned());
+        }
+        for (def, _) in module.items.values() {
+            let Def::Fn(decl) = def else { continue };
+            if decl
+                .quals
+                .iter()
+                .any(|qual| matches!(qual, crate::ast::FnQual::Extern { .. }))
+            {
+                continue;
+            }
+            let mut scope = known.clone();
+            scope.extend(decl.generics.iter().map(|g| g.name.name.clone()));
+            let annotated = decl
+                .params
+                .iter()
+                .filter_map(|param| match &param.kind {
+                    crate::ast::ParamKind::Named { ty, .. } => Some(ty),
+                    crate::ast::ParamKind::SelfParam { .. } => None,
+                })
+                .chain(decl.ret.as_ref().map(|ret| &ret.ty));
+            for ty in annotated {
+                if let Some((name, span)) = unresolved_type_name(ty, &scope) {
+                    return Some(Diag::new(
+                        "E0301",
+                        span,
+                        "gram.item.fn",
+                        format!(
+                            "nothing named `{name}` is in scope — a type annotation names a \
+                             type, and resolution is the rung that answers whether a name \
+                             exists ([mod]); it is neither a built-in scalar, an item this \
+                             module declares, nor a generic parameter of `{}`",
+                            decl.name.name
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// The type names the ambient prelude spells that are not functions, so
+/// `eval::builtin::AMBIENT_NAMES` does not carry them: the containers `main`'s
+/// own refusal already names as spellable types, `wrapping[T]`'s constructor
+/// (`[type.numlit.cast.wrap]` — and note that `saturating[T]` is deliberately
+/// NOT here: no clause rules it, which is wolf-interp#79's chapter-3 case),
+/// and `Self` inside an item that has one.
+const PRELUDE_TYPE_NAMES: &[&str] = &["List", "Map", "Option", "Self", "Set", "wrapping"];
+
+/// The first head name in `ty` that `scope` does not contain, with the span of
+/// the name token — the counterparty's span for E0301 at a type position.
+fn unresolved_type_name<'a>(ty: &'a Type, scope: &BTreeSet<String>) -> Option<(&'a str, Span)> {
+    match &*ty.kind {
+        TypeKind::Path { path, args } => {
+            if path.is_single() {
+                let segment = &path.segments[0];
+                if !scope.contains(&segment.name) {
+                    return Some((segment.name.as_str(), segment.span));
+                }
+            }
+            args.iter().find_map(|arg| match arg {
+                TypeArg::Type(ty) => unresolved_type_name(ty, scope),
+                TypeArg::Expr(_) => None,
+            })
+        }
+        TypeKind::ErrorUnion(inner)
+        | TypeKind::Fallible { ty: inner, .. }
+        | TypeKind::Prefixed { ty: inner, .. }
+        | TypeKind::RawPointer(inner) => unresolved_type_name(inner, scope),
+        TypeKind::Tuple(parts) => parts
+            .iter()
+            .find_map(|part| unresolved_type_name(part, scope)),
+        TypeKind::Fn { params, ret } => params
+            .iter()
+            .find_map(|param| unresolved_type_name(param, scope))
+            .or_else(|| {
+                ret.as_ref()
+                    .and_then(|ret| unresolved_type_name(&ret.ty, scope))
+            }),
+        TypeKind::Dyn(_) | TypeKind::TypeOfTypes | TypeKind::Region => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5584,6 +5735,65 @@ mod tests {
              fn main() -> !int {\n    let get = 2\n    print(\"{get + 1}\")\n    0\n}\n",
             // `&&`/`||` carry no measured number here, so they are left alone.
             "fn main() -> !int {\n    let b: !bool = true\n    let c = b && true\n    0\n}\n",
+        ] {
+            assert_eq!(resolve(clean), None, "{clean}");
+        }
+    }
+
+    // --- wolf-interp#79: a type annotation's name is resolved --------------
+
+    #[test]
+    fn an_unknown_annotation_name_is_e0301_at_the_name() {
+        let source = "fn f(x: Bogus) -> int {\n    1\n}\nfn main() -> !int {\n    \
+                      print(\"{f(3)}\")\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0301");
+        assert_eq!(diag.anchor, "gram.item.fn");
+        assert!(diag.message.contains("nothing named `Bogus`"), "{diag:?}");
+        // The counterparty spans the NAME token, not the annotation.
+        assert_eq!(&source[diag.span.start..diag.span.end], "Bogus");
+    }
+
+    #[test]
+    fn a_return_type_and_a_generic_argument_are_read_too() {
+        // The book's chapter-3 shape: `saturating[T]` is a name no clause
+        // declares, and it hides in a generic-argument head.
+        for (source, name) in [
+            (
+                "fn f() -> Nowhere {\n    0\n}\nfn main() -> !int {\n    0\n}\n",
+                "Nowhere",
+            ),
+            (
+                "fn f(x: List[Bogus]) -> int {\n    1\n}\nfn main() -> !int {\n    0\n}\n",
+                "Bogus",
+            ),
+            (
+                "fn f(n: saturating[i32]) -> int {\n    1\n}\nfn main() -> !int {\n    0\n}\n",
+                "saturating",
+            ),
+        ] {
+            let diag = resolve(source).unwrap_or_else(|| panic!("rejected: {source}"));
+            assert_eq!(diag.code, "E0301", "{source}");
+            assert!(diag.message.contains(name), "{source}: {diag:?}");
+        }
+    }
+
+    #[test]
+    fn the_annotation_check_declines_every_name_it_cannot_answer_for() {
+        for clean in [
+            // A generic parameter of the signature itself.
+            "fn id[T](x: T) -> T {\n    x\n}\nfn main() -> !int {\n    0\n}\n",
+            // An item this module declares — forward references included.
+            "fn f(p: P) -> int {\n    p.x\n}\nstruct P { x: int }\n\
+             fn main() -> !int {\n    0\n}\n",
+            // The scalars, the containers, `wrapping[T]`, an error union, a
+            // tuple, a fn type, `region`, `dyn`.
+            "fn a(x: byte, y: List[int], z: Map[str, int]) -> !int {\n    0\n}\n\
+             fn b(w: wrapping[u32], t: (int, str), g: fn(int) -> int) -> int {\n    1\n}\n\
+             fn main() -> !int {\n    0\n}\n",
+            // A qualified path resolves through machinery this pass does not
+            // walk, so it is never refused here.
+            "fn f(e: io.Error) -> int {\n    1\n}\nfn main() -> !int {\n    0\n}\n",
         ] {
             assert_eq!(resolve(clean), None, "{clean}");
         }
