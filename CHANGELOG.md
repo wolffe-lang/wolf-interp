@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.31 — 2026-09-10
 
 THE TAIL IS CHECKED (is43). Pin `2c03ed9` -> `4c60946` — **the v0.2.9 tag**,
 not a dev stamp. The sprint said the pin need not move, and for three of the
