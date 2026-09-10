@@ -5859,7 +5859,10 @@ mod tests {
         .expect("loads");
         let methods = &program.root().methods["Pair"]["first"];
         assert_eq!(methods.len(), 1);
-        assert_eq!(methods[0].impl_generics, vec!["K".to_owned(), "V".to_owned()]);
+        assert_eq!(
+            methods[0].impl_generics,
+            vec!["K".to_owned(), "V".to_owned()]
+        );
     }
 
     #[test]

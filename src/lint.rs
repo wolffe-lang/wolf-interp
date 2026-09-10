@@ -2488,7 +2488,11 @@ fn arm_extents(pattern: &Pattern) -> Option<Vec<(u8, i128, i128)>> {
     match &*pattern.kind {
         PatKind::Range { lo, hi, inclusive } => {
             let (kind, low, high) = range_bounds(lo, hi)?;
-            let high = if *inclusive { high } else { high.checked_sub(1)? };
+            let high = if *inclusive {
+                high
+            } else {
+                high.checked_sub(1)?
+            };
             (low <= high).then(|| vec![(kind, low, high)])
         }
         PatKind::Literal(expr) => literal_scalar(expr).map(|(kind, at)| vec![(kind, at, at)]),
