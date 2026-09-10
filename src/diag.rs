@@ -399,6 +399,15 @@ pub const E_INNER_ATTR_MISPLACED: &str = "E0211";
 /// never ignored; the faulty marker takes no effect. Reported at this
 /// machine's resolve rung (wolfc's sema owns the same validation).
 pub const E_BAD_INNER_ATTR: &str = "E0813";
+/// An empty range pattern — `5..5` stops before its own low end, `9..=3` runs
+/// backwards, and neither matches anything. **Spec-pinned**:
+/// `[gram.pat.range]` (s147, wolf-lang#287) — "an empty range ... matches
+/// nothing and is a compile error, **E0815**, at the pattern; a one-value
+/// range (`5..=5`, `5..6`) is legal and reads as the literal". The endpoints
+/// are literals by the grammar, so the emptiness is decided at compile time;
+/// `corpus/rows/match_range_empty.lu` pins the code, which is why this
+/// number is the corpus's and not one of [`UNPINNED_CODES`]' picks.
+pub const E_EMPTY_RANGE_PATTERN: &str = "E0815";
 
 /// Every code this implementation invented, with the clause it serves.
 ///

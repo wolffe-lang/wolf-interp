@@ -1381,6 +1381,7 @@ impl Walk<'_> {
             }
             ExprKind::Match { scrutinee, arms } => {
                 self.expr(scrutinee);
+                self.empty_range_arms(arms);
                 self.match_reachability(scrutinee, arms);
                 // Tag-shaped scrutinee? A single-segment path resolving to
                 // an `else`-handler's error binder carries its row here.
@@ -1500,6 +1501,54 @@ impl Walk<'_> {
         }
     }
 
+    /// E0815 — an empty range arm (`[gram.pat.range]`, s147/#287).
+    ///
+    /// `5..5` stops before its own low end and `9..=3` runs backwards; both
+    /// match nothing, and because the ends are literals the checker decides
+    /// it at compile time rather than leaving a dead arm to be discovered by
+    /// a program that never takes it. A one-value range (`5..=5`, `5..6`) is
+    /// legal and reads as the literal.
+    ///
+    /// A static, not a warning: the corpus pins `fail(E0815)`
+    /// (`rows/match_range_empty.lu`), so this is an admission refusal at the
+    /// resolve rung, which is where `admit_with` spends this vector. Or- and
+    /// `@`-nested ranges are walked, because `n @ 1..=9` and `0..10 | 5..5`
+    /// are the compositions the clause licenses.
+    fn empty_range_arms(&mut self, arms: &[crate::ast::MatchArm]) {
+        fn walk(pattern: &Pattern, into: &mut Vec<Span>) {
+            match &*pattern.kind {
+                PatKind::Range { lo, hi, inclusive } => {
+                    if range_bounds(lo, hi).is_some_and(|(_, low, high)| {
+                        if *inclusive { low > high } else { low >= high }
+                    }) {
+                        into.push(pattern.span);
+                    }
+                }
+                PatKind::Or(alternatives) => {
+                    for alternative in alternatives {
+                        walk(alternative, into);
+                    }
+                }
+                PatKind::At { pattern, .. } => walk(pattern, into),
+                _ => {}
+            }
+        }
+        let mut empty = Vec::new();
+        for arm in arms {
+            walk(&arm.pattern, &mut empty);
+        }
+        for span in empty {
+            self.statics.push(Diag::new(
+                crate::diag::E_EMPTY_RANGE_PATTERN,
+                span,
+                "gram.pat.range",
+                "this range matches nothing — `lo..hi` stops before `hi`, so an empty range \
+                 arm is dead by construction and refused at the pattern ([gram.pat.range]); a \
+                 one-value range is spelled `5` or `5..=5`",
+            ));
+        }
+    }
+
     /// E0802 — a dead `match` arm, literal-precise (#54: arms past the
     /// first are NOT blanket-dead): a literal arm duplicating an earlier
     /// unguarded literal, any arm after an unguarded `_`, and a `_` after
@@ -1554,15 +1603,36 @@ impl Walk<'_> {
         let mut seen: Vec<String> = Vec::new();
         let mut products: Vec<ProductKey> = Vec::new();
         let mut wildcard_seen = false;
+        // `[gram.pat.range]`'s subsumption half: the inclusive extents every
+        // earlier unguarded scalar arm covers, and whether any of them was a
+        // range. Overlapping ranges are legal and the FIRST arm wins, so a
+        // later arm is dead only when each of its alternatives lies inside
+        // ONE earlier extent — "a range covered only by the union of several
+        // is not reported", which is the clause's own conservatism. The
+        // `range_seen` gate keeps this rule off every program that spells no
+        // range, so nothing the walk said before s147 changes.
+        let mut extents: Vec<(u8, i128, i128)> = Vec::new();
+        let mut range_seen = false;
         for arm in arms {
             let key = match &*arm.pattern.kind {
                 PatKind::Literal(expr) => literal_key(expr),
                 _ => None,
             };
             let product = product_key(&arm.pattern, &literal_key);
+            let arm_extents = arm_extents(&arm.pattern);
             let bool_complete =
                 seen.iter().any(|k| k == "b:true") && seen.iter().any(|k| k == "b:false");
+            let subsumed = (range_seen || tests_a_range(&arm.pattern))
+                && arm_extents.as_ref().is_some_and(|arm_extents| {
+                    !arm_extents.is_empty()
+                        && arm_extents.iter().all(|(kind, low, high)| {
+                            extents.iter().any(|(seen_kind, seen_low, seen_high)| {
+                                seen_kind == kind && seen_low <= low && high <= seen_high
+                            })
+                        })
+                });
             let dead = wildcard_seen
+                || subsumed
                 || key.as_ref().is_some_and(|k| seen.contains(k))
                 || (matches!(&*arm.pattern.kind, PatKind::Wildcard) && bool_complete)
                 || product.as_ref().is_some_and(|p| {
@@ -1574,6 +1644,10 @@ impl Walk<'_> {
                 continue;
             }
             if arm.guard.is_none() {
+                range_seen |= tests_a_range(&arm.pattern);
+                if let Some(arm_extents) = arm_extents {
+                    extents.extend(arm_extents);
+                }
                 if let Some(key) = key {
                     seen.push(key);
                 } else if let Some(product) = product {
@@ -2365,6 +2439,84 @@ fn render_int<'a>(base: &Expr, source: &'a str) -> &'a str {
     source.get(base.span.start..base.span.end).unwrap_or("1")
 }
 
+/// The two endpoints of a range pattern as one ordered domain's scalars, or
+/// `None` when they are not comparable at this rung (`[gram.pat.range]`).
+///
+/// The clause admits exactly two domains — integer literals, and `char`
+/// literals "ordered by scalar value" (`[type.char.order]`) — so a `char` is
+/// keyed by its scalar and an integer by its value, and the two are never
+/// mixed: `0..'z'` is the counterparty's E0401 at the second endpoint, a
+/// static code this machine does not own, so it answers `None` and says
+/// nothing. Same for a `str`, float or `bool` endpoint (E0808). A negative
+/// endpoint is carried because this parser's literal patterns take one even
+/// though the counterparty's do not — wolf-lang's own residue, and reading it
+/// here costs nothing.
+fn range_bounds(lo: &Expr, hi: &Expr) -> Option<(u8, i128, i128)> {
+    let (lo_kind, low) = literal_scalar(lo)?;
+    let (hi_kind, high) = literal_scalar(hi)?;
+    (lo_kind == hi_kind).then_some((lo_kind, low, high))
+}
+
+/// One literal's place in an ordered domain: `b'i'` for an integer literal's
+/// value, `b'c'` for a `char`'s scalar. Every other literal — `str`, float,
+/// `bool` — belongs to no ordered domain `[gram.pat.range]` admits.
+fn literal_scalar(expr: &Expr) -> Option<(u8, i128)> {
+    match &*expr.kind {
+        ExprKind::Int(text) => parse_int_literal(text).map(|n| (b'i', n)),
+        ExprKind::Char(c) => Some((b'c', i128::from(u32::from(*c)))),
+        ExprKind::Unary {
+            op: UnOp::Neg,
+            operand,
+        } => match literal_scalar(operand)? {
+            (b'i', n) => Some((b'i', -n)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The inclusive extents an arm tests, or `None` for any arm this walk cannot
+/// reduce to scalars — a binder, a tag, a product, a `str` literal.
+///
+/// `@` is transparent (`n @ 1..=9` tests what `1..=9` tests) and a top-level
+/// or-pattern is the concatenation of its alternatives' extents, which is
+/// what lets `[gram.pat.range]`'s "an arm whose every value an earlier
+/// literal or range covers" be asked of `0..10 | 20..30`. An empty range
+/// contributes no extent: it covers nothing, so it can neither kill a later
+/// arm nor be killed by an earlier one — it is E0815 on its own.
+fn arm_extents(pattern: &Pattern) -> Option<Vec<(u8, i128, i128)>> {
+    match &*pattern.kind {
+        PatKind::Range { lo, hi, inclusive } => {
+            let (kind, low, high) = range_bounds(lo, hi)?;
+            let high = if *inclusive { high } else { high.checked_sub(1)? };
+            (low <= high).then(|| vec![(kind, low, high)])
+        }
+        PatKind::Literal(expr) => literal_scalar(expr).map(|(kind, at)| vec![(kind, at, at)]),
+        PatKind::At { pattern, .. } => arm_extents(pattern),
+        PatKind::Or(alternatives) => {
+            let mut all = Vec::new();
+            for alternative in alternatives {
+                all.extend(arm_extents(alternative)?);
+            }
+            Some(all)
+        }
+        _ => None,
+    }
+}
+
+/// Does the arm test a range anywhere a top-level or-pattern or `@` can carry
+/// one? The subsumption rule below fires only for programs that spell a
+/// range, so a corpus with none answers byte-identically to the walk before
+/// `[gram.pat.range]` landed.
+fn tests_a_range(pattern: &Pattern) -> bool {
+    match &*pattern.kind {
+        PatKind::Range { .. } => true,
+        PatKind::At { pattern, .. } => tests_a_range(pattern),
+        PatKind::Or(alternatives) => alternatives.iter().any(tests_a_range),
+        _ => false,
+    }
+}
+
 /// Parses an integer literal's spelling: underscores, `0x`/`0o`/`0b` bases.
 fn parse_int_literal(text: &str) -> Option<i128> {
     let clean: String = text.chars().filter(|c| *c != '_').collect();
@@ -2403,6 +2555,138 @@ mod tests {
             .into_iter()
             .map(|w| w.code)
             .collect()
+    }
+
+    // ---- E0815 / E0802 over range arms (s147, [gram.pat.range]) ----------
+
+    /// Every E0815 the walk raised over one program, with its span.
+    fn empty_range_codes(source: &str) -> Vec<(String, Span)> {
+        let program = crate::sema::load_source("t.lu", source).expect("loads");
+        analyze(&program)
+            .statics
+            .into_iter()
+            .filter(|d| d.code == "E0815")
+            .map(|d| (d.code.to_owned(), d.span))
+            .collect()
+    }
+
+    #[test]
+    fn an_empty_range_arm_is_e0815_at_the_pattern() {
+        // `rows/match_range_empty.lu`'s shape: `5..5` stops before its own
+        // low end, `9..=3` runs backwards, and both are refused at the
+        // pattern — the ends are literals, so the checker decides it.
+        let found = empty_range_codes(
+            "fn main() -> !int {\n\
+             \x20   let n = 5\n\
+             \x20   match n {\n\
+             \x20       5..5 => print(\"never\"),\n\
+             \x20       9..=3 => print(\"never either\"),\n\
+             \x20       _ => print(\"five\"),\n\
+             \x20   }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert_eq!(found.len(), 2, "both spellings, {found:?}");
+        assert!(found.iter().all(|(code, _)| code == "E0815"));
+        assert!(
+            found[0].1.start < found[1].1.start,
+            "source order: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_one_value_range_is_legal() {
+        // "a one-value range (`5..=5`, `5..6`) is legal and reads as the
+        // literal" — the boundary the emptiness test must not swallow.
+        for arm in ["5..=5", "5..6", "'a'..='a'", "0..1"] {
+            let source = format!(
+                "fn main() -> !int {{\n\
+                 \x20   let n = 5\n\
+                 \x20   match n {{ {arm} => print(\"one\"), _ => print(\"other\") }}\n\
+                 \x20   0\n\
+                 }}\n"
+            );
+            assert!(
+                empty_range_codes(&source).is_empty(),
+                "`{arm}` covers one value"
+            );
+        }
+    }
+
+    #[test]
+    fn a_range_an_earlier_range_covers_is_e0802() {
+        // "an arm whose every value an earlier literal or range already
+        // covers is E0802" — single-constructor subsumption.
+        let warns = warn_codes(
+            "fn main() -> !int {\n\
+             \x20   let n = 5\n\
+             \x20   match n {\n\
+             \x20       0..100 => print(\"wide\"),\n\
+             \x20       10..=19 => print(\"dead\"),\n\
+             \x20       _ => print(\"rest\"),\n\
+             \x20   }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert_eq!(warns, vec!["E0802".to_owned()]);
+    }
+
+    #[test]
+    fn overlapping_ranges_are_legal_and_a_union_is_never_computed() {
+        // `grammar/match_range.lu`'s own shape: `10` IS `10..=19` before it
+        // is `10 | 20 | 30`, and the third arm is live because only one of
+        // its three alternatives is covered. "A range covered only by the
+        // union of several is not reported" is the same conservatism, and
+        // the `_` after `0..10 | 10..20` stays required — no union of
+        // ranges is computed for any domain.
+        let warns = warn_codes(
+            "fn main() -> !int {\n\
+             \x20   let n = 5\n\
+             \x20   match n {\n\
+             \x20       0..10 => print(\"low\"),\n\
+             \x20       10..=19 | 90..=99 => print(\"teens\"),\n\
+             \x20       10 | 20 | 30 => print(\"round\"),\n\
+             \x20       5..15 => print(\"spans two, covered by neither\"),\n\
+             \x20       _ => print(\"rest\"),\n\
+             \x20   }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert!(warns.is_empty(), "{warns:?}");
+    }
+
+    #[test]
+    fn a_char_range_never_subsumes_an_integer_one() {
+        // Two ordered domains, never mixed: `[type.char.order]` orders
+        // `char` by scalar and `'0'` is 48, which must not swallow `48`.
+        let warns = warn_codes(
+            "fn main() -> !int {\n\
+             \x20   let c = 'q'\n\
+             \x20   match c { '0'..='9' => print(\"digit\"), _ => print(\"other\") }\n\
+             \x20   let n = 5\n\
+             \x20   match n { 48..=57 => print(\"forties\"), _ => print(\"other\") }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert!(warns.is_empty(), "{warns:?}");
+    }
+
+    #[test]
+    fn a_guarded_range_arm_kills_nothing() {
+        // A guard may fail, so the arm covers nothing for reachability —
+        // the same rule every other arm shape lives under here.
+        let warns = warn_codes(
+            "fn main() -> !int {\n\
+             \x20   let n = 5\n\
+             \x20   match n {\n\
+             \x20       0..100 if n % 2 == 0 => print(\"even\"),\n\
+             \x20       10..=19 => print(\"live\"),\n\
+             \x20       _ => print(\"rest\"),\n\
+             \x20   }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert!(warns.is_empty(), "{warns:?}");
     }
 
     // ---- E0812: explicit generic application arity (wolf-lang#111) --------
