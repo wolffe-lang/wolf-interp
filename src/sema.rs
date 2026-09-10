@@ -204,6 +204,19 @@ pub struct StandaloneSibling {
 pub struct MethodDef {
     pub decl: Box<FnDecl>,
     pub trait_name: Option<String>,
+    /// The impl block's own generic parameters, by name —
+    /// `impl[K, V] Pair[K, V] { … }` records `["K", "V"]`.
+    ///
+    /// wolf-interp#79's method half. A method's annotations are checked
+    /// against the names in scope AT the method, and an impl block's
+    /// parameters are in scope throughout its members: without them
+    /// `impl[T] Stack[T]`'s `fn push(self, v: T)` has no scope the
+    /// annotation check could read `T` from, so is43 left every method out
+    /// rather than guess — "refusing it would be the wrong-guess failure the
+    /// sema boundary exists to prevent, and reconstructing impl generics is
+    /// a collector change, not an annotation check". This is that collector
+    /// change; the decl's own generics stack on top of these.
+    pub impl_generics: Vec<String>,
 }
 
 /// A whole program: the root module plus every module reachable through `use`.
@@ -883,6 +896,11 @@ fn collect(unit: &Unit, module: &mut Module, file: &str, source: &str) {
                                 .push(MethodDef {
                                     decl: decl.clone(),
                                     trait_name: trait_name.clone(),
+                                    impl_generics: def
+                                        .generics
+                                        .iter()
+                                        .map(|generic| generic.name.name.clone())
+                                        .collect(),
                                 });
                         }
                     }
@@ -4975,8 +4993,23 @@ fn annotation_check(program: &Program) -> Option<Diag> {
         if !module.c_headers.is_empty() {
             known.insert("c".to_owned());
         }
-        for (def, _) in module.items.values() {
-            let Def::Fn(decl) = def else { continue };
+        // Top-level `fn` items, then impl-block methods. A method's extra
+        // scope is its impl block's generic parameters, which `MethodDef`
+        // carries since #79's method half: `impl[T] Stack[T]`'s
+        // `fn push(self, v: T)` reads `T` from the block, and `Self` is
+        // already a prelude name. (Trait DEFAULT bodies stay out: a trait's
+        // own parameters are not collected, so the same wrong-guess hazard
+        // that kept methods out until now still applies there.)
+        let methods = module
+            .methods
+            .values()
+            .flat_map(|by_name| by_name.values().flatten())
+            .map(|method| (&*method.decl, method.impl_generics.as_slice()));
+        let items = module.items.values().filter_map(|(def, _)| match def {
+            Def::Fn(decl) => Some((&**decl, [].as_slice())),
+            _ => None,
+        });
+        for (decl, impl_generics) in items.chain(methods) {
             if decl
                 .quals
                 .iter()
@@ -4985,6 +5018,7 @@ fn annotation_check(program: &Program) -> Option<Diag> {
                 continue;
             }
             let mut scope = known.clone();
+            scope.extend(impl_generics.iter().cloned());
             scope.extend(decl.generics.iter().map(|g| g.name.name.clone()));
             let annotated = decl
                 .params
@@ -5808,5 +5842,64 @@ mod tests {
         ] {
             assert_eq!(resolve(clean), None, "{clean}");
         }
+    }
+
+    // ---- wolf-interp#79's method half ------------------------------------
+
+    #[test]
+    fn an_impl_block_records_its_own_generic_parameters() {
+        let program = load_source(
+            "t.lu",
+            "struct Pair { a: int, b: int }\n\
+             impl[K, V] Pair {\n\
+             \x20   fn first(self) -> int { self.a }\n\
+             }\n\
+             fn main() -> !int {\n    0\n}\n",
+        )
+        .expect("loads");
+        let methods = &program.root().methods["Pair"]["first"];
+        assert_eq!(methods.len(), 1);
+        assert_eq!(methods[0].impl_generics, vec!["K".to_owned(), "V".to_owned()]);
+    }
+
+    #[test]
+    fn a_method_annotation_is_inside_the_check_and_reads_the_impl_generics() {
+        // The half is43 left open: `sema::MethodDef` recorded the decl and
+        // the trait but not the impl block's parameters, so no method's
+        // annotations could be judged at all. They can now — and `T` is in
+        // scope for exactly the reason the collector change was needed.
+        let clean = "struct Stack { n: int }\n\
+                     impl[T] Stack {\n\
+                     \x20   fn push(self, v: T) -> int { self.n }\n\
+                     \x20   fn peek[U](self, u: U) -> Self { self }\n\
+                     }\n\
+                     fn main() -> !int {\n    0\n}\n";
+        assert_eq!(resolve(clean), None, "{clean}");
+
+        let bogus = "struct Stack { n: int }\n\
+                     impl[T] Stack {\n\
+                     \x20   fn push(self, v: Bogus) -> int { self.n }\n\
+                     }\n\
+                     fn main() -> !int {\n    0\n}\n";
+        let diag = resolve(bogus).expect("a method annotation is judged now");
+        assert_eq!(diag.code, "E0301");
+        assert!(diag.message.contains("Bogus"), "{diag:?}");
+        assert!(
+            diag.message.contains("push"),
+            "the method owns the refusal: {diag:?}"
+        );
+    }
+
+    #[test]
+    fn a_trait_impl_methods_annotations_are_judged_too() {
+        // `impl[T] Show for T` — the subject IS the parameter, and a method
+        // returning `T` must stay clean.
+        let clean = "trait Show { fn show(self) -> str }\n\
+                     impl[T] Show for T {\n\
+                     \x20   fn show(self) -> str { \"t\" }\n\
+                     \x20   fn echo(self, other: T) -> T { other }\n\
+                     }\n\
+                     fn main() -> !int {\n    0\n}\n";
+        assert_eq!(resolve(clean), None, "{clean}");
     }
 }

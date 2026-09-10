@@ -5536,6 +5536,10 @@ impl Machine {
                     vec![crate::sema::MethodDef {
                         decl,
                         trait_name: Some(trait_name),
+                        // A trait DEFAULT body, borrowed for a type that
+                        // implements the trait: it came from no impl block,
+                        // so there are no impl generics to carry.
+                        impl_generics: Vec::new(),
                     }],
                 ));
             }
