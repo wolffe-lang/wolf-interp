@@ -1293,6 +1293,17 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("conc/chan_closed_row.lu", "exit(0)"),
     ("memory/list_pop_empty.lu", "exit(0)"),
     ("strings/byte_view_lend.lu", "exit(0)"),
+    // The 4c60946 pin (wolf-lang v0.2.9 — the TAG; is43). TWO files join,
+    // none leaves, and they are the two the pin itself moved.
+    // `typecheck/closure_return.lu` is s145's new witness for
+    // `[type.closure.return]` and matches at first sight — a `return` inside
+    // a closure returning from the CLOSURE is what this machine already did.
+    // `strings/concat_mix_char.lu` reaches `run` for the first time because
+    // `[type.str.concat]` stopped refusing `str + char` (wolf-lang#278):
+    // the file has been in the corpus since v0.2.0 and was DECLINED here at
+    // its first `+` on every pin before this one.
+    ("typecheck/closure_return.lu", "exit(0)"),
+    ("strings/concat_mix_char.lu", "exit(0)"),
 ];
 
 #[test]

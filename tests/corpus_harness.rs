@@ -647,14 +647,22 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             is edited, not added. All entries, so `members` holds at
     //             34; the registry gains ONE anchor and drops none, key sets
     //             diffed both ways — `mem.list.pop`, 445 -> 446.)
+    // (520 -> 521 at 4c60946 (is43, wolf-lang v0.2.9 — the TAG, not a dev
+    //             stamp): ONE arrives and none leaves,
+    //             `typecheck/closure_return.lu` (wolf-lang#268).
+    //             `strings/concat_mix_char.lu` is edited, not added: #278
+    //             flips its check from `fail(E0409)` to `run`. An entry, so
+    //             `members` holds at 34; the registry gains TWO anchors and
+    //             drops none, key sets diffed both ways — `type.closure`
+    //             and `type.closure.return`, 446 -> 448.)
     let report = report();
     assert_eq!(
         report.total(),
-        520,
+        521,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 486);
+    assert_eq!(report.entries(), 487);
     assert_eq!(report.members(), 34);
 }
 

@@ -205,7 +205,15 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // (both else witnesses), `conc.chan.close` (`conc/chan_closed_row.lu`) — so
 // they raise nothing. Raised in the bump commit per the test's own
 // instruction.
-const RATCHET_FLOOR: usize = 200;
+// 200 -> 201 at 4c60946 (is43, wolf-lang v0.2.9): ONE, against two new
+// anchors. `type.closure.return` arrives cited by
+// `typecheck/closure_return.lu`, the witness s145 shipped with the clause.
+// The other, `type.closure`, is the §-heading anchor no witness cites, the
+// same shape `type.interp` had one pin earlier. s145's other ruling amends
+// clauses this corpus already cited — `type.str.concat` and
+// `type.str.concat.mix`, both on the concat witnesses — so it raises
+// nothing. Raised in the bump commit per the test's own instruction.
+const RATCHET_FLOOR: usize = 201;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -321,7 +329,15 @@ const RATCHET_FLOOR: usize = 200;
 // `[gram.amb.else]` take #276's lookahead, `[conc.chan.close]` takes #273's
 // spelling. Key sets diffed BOTH ways — one added, NOTHING dropped, no owner
 // changed (wolf-lang#177's lesson, still standing).
-const ANCHORS_TOTAL: usize = 446;
+// 446 -> 448 at 4c60946 (is43, wolf-lang v0.2.9 — the TAG): TWO, in one
+// merge — spec/10's `[type.closure]` heading and its child
+// `[type.closure.return]`, the clause that rules a `return` inside a closure
+// to return from the CLOSURE (wolf-lang#268). s145's other ruling amends a
+// clause that already had an anchor: `[type.str.concat]` and
+// `[type.str.concat.mix]` take #278's char rows. Key sets diffed BOTH ways —
+// two added, NOTHING dropped, no owner changed (wolf-lang#177's lesson,
+// still standing).
+const ANCHORS_TOTAL: usize = 448;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -531,10 +547,16 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // so both counts move by 3. `grammar/else_chain.lu` is EDITED, not added,
     // and moves neither count; the suite is unmoved (is42's new tests are
     // inline fixtures, which the extractor does not harvest).
+    // 558/524 -> 559/525 at 4c60946 (is43, wolf-lang v0.2.9): 1 corpus file,
+    // none leaving — `typecheck/closure_return.lu`, an entry, so both counts
+    // move by 1. `strings/concat_mix_char.lu` is EDITED, not added, and moves
+    // neither count; the suite is unmoved (is43's new tests are inline
+    // fixtures and one REPL transcript, neither of which the extractor
+    // harvests).
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "2c03ed9360e90e260528411075daded674ceab18");
-    assert_eq!(summary.programs, 558);
-    assert_eq!(summary.records, 524);
+    assert_eq!(summary.pin, "4c60946081e1d1e65dd4b3d98cd69ac86bdf1d38");
+    assert_eq!(summary.programs, 559);
+    assert_eq!(summary.records, 525);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
