@@ -212,6 +212,7 @@
     "gram.lex.str.multi": "01-grammar.md",
     "gram.lex.str.raw": "01-grammar.md",
     "gram.pat": "01-grammar.md",
+    "gram.pat.range": "01-grammar.md",
     "gram.pat.struct": "01-grammar.md",
     "gram.type": "01-grammar.md",
     "gram.type.row": "01-grammar.md",
@@ -447,7 +448,11 @@
     "type.str": "10-types.md",
     "type.str.concat": "10-types.md",
     "type.str.concat.cost": "10-types.md",
-    "type.str.concat.mix": "10-types.md"
+    "type.str.concat.mix": "10-types.md",
+    "type.unit": "10-types.md",
+    "type.unit.consume": "10-types.md",
+    "type.unit.context": "10-types.md",
+    "type.unit.discard": "10-types.md"
   },
   "version": 1
 }
