@@ -213,7 +213,16 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // clauses this corpus already cited — `type.str.concat` and
 // `type.str.concat.mix`, both on the concat witnesses — so it raises
 // nothing. Raised in the bump commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 201;
+// 201 -> 205 at e0ce018 (is44, wolf-lang s147, dev-stamped): FOUR, against
+// five new anchors. `gram.pat.range` arrives cited by s147's four range
+// witnesses; `type.unit.context`, `type.unit.discard` and
+// `type.unit.consume` arrive cited by s146's three
+// (`typecheck/unit_context_discard.lu`, `conc/chan_send_closed_row.lu`,
+// `conc/spawn_tail_send_raised_row.lu`). The fifth, `type.unit`, is the
+// §-heading anchor no witness cites — the same shape `type.closure` had one
+// pin earlier and `type.interp` two before that. Raised in the bump commit
+// per the test's own instruction.
+const RATCHET_FLOOR: usize = 205;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -337,7 +346,15 @@ const RATCHET_FLOOR: usize = 201;
 // `[type.str.concat.mix]` take #278's char rows. Key sets diffed BOTH ways —
 // two added, NOTHING dropped, no owner changed (wolf-lang#177's lesson,
 // still standing).
-const ANCHORS_TOTAL: usize = 448;
+// 448 -> 453 at e0ce018 (is44, wolf-lang s147, dev-stamped): FIVE, over two
+// sprints — spec/01 §5's `[gram.pat.range]` (the range arm, wolf-lang#287)
+// and spec/10 §7's `[type.unit]` heading with its three children
+// `[type.unit.context]`, `[type.unit.discard]` and `[type.unit.consume]`
+// (wolf-lang#275). s147's other ruling (#286) and s146's `send` row amend
+// clauses that already had anchors: `[gram.expr.flow]` and
+// `[conc.chan.close]`. Key sets diffed BOTH ways — five added, NOTHING
+// dropped, no owner changed (wolf-lang#177's lesson, still standing).
+const ANCHORS_TOTAL: usize = 453;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -553,10 +570,19 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // neither count; the suite is unmoved (is43's new tests are inline
     // fixtures and one REPL transcript, neither of which the extractor
     // harvests).
+    // 559/525 -> 567/533 at e0ce018 (is44, wolf-lang s147, dev-stamped): 8
+    // corpus files, none leaving — s147's `grammar/match_range.lu`,
+    // `grammar/match_range_char.lu`, `grammar/match_range_open.lu`,
+    // `rows/match_range_empty.lu`, `grammar/match_switch.lu` and s146's
+    // `conc/chan_send_closed_row.lu`,
+    // `conc/spawn_tail_send_raised_row.lu`,
+    // `typecheck/unit_context_discard.lu`, all entries, so both counts move
+    // by 8; the suite is unmoved (is44's new tests are inline fixtures,
+    // which the extractor does not harvest).
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "4c60946081e1d1e65dd4b3d98cd69ac86bdf1d38");
-    assert_eq!(summary.programs, 559);
-    assert_eq!(summary.records, 525);
+    assert_eq!(summary.pin, "e0ce01891577d64d6b9a3497f752a32acac3fefc");
+    assert_eq!(summary.programs, 567);
+    assert_eq!(summary.records, 533);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

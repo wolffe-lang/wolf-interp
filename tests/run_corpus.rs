@@ -1304,6 +1304,34 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // its first `+` on every pin before this one.
     ("typecheck/closure_return.lu", "exit(0)"),
     ("strings/concat_mix_char.lu", "exit(0)"),
+    // The e0ce018 pin (s147, dev-stamped; is44). SIX files join, none
+    // leaves, and they split cleanly by what they cost.
+    //
+    // FOUR cost nothing. `grammar/match_switch.lu` (#286) is the
+    // maintainer's switch-shaped program, and the arm it turns on — a
+    // guarded binder before the `_` — is what this machine always did: sema
+    // never counted a guarded arm toward coverage, so the `_` closes the
+    // chain and the guard's failure falls through to it. It was NATIVE
+    // lowering that refused it. The three s146 files
+    // (`typecheck/unit_context_discard.lu`, `conc/chan_send_closed_row.lu`,
+    // `conc/spawn_tail_send_raised_row.lu`) are `[type.unit]`'s, and
+    // `[type.unit.discard]` is a TYPING rule — a `!()` tail in a unit
+    // context is a warned discard rather than a mismatch — with no dynamic
+    // half at all. A machine with no unit context to violate cannot violate
+    // one, so all three matched at first sight with the 0.1.31 binary.
+    //
+    // TWO are the sprint's work: `grammar/match_range.lu` and
+    // `grammar/match_range_char.lu` reach `run` because the parser grew
+    // `[gram.pat.range]`'s production and the arm evaluator grew the two
+    // comparisons. `rows/match_range_empty.lu` and
+    // `grammar/match_range_open.lu` are `fail` pins and are NOT here — they
+    // stop at the static rungs by design, at E0815 and E0201.
+    ("grammar/match_switch.lu", "exit(0)"),
+    ("typecheck/unit_context_discard.lu", "exit(0)"),
+    ("conc/chan_send_closed_row.lu", "exit(0)"),
+    ("conc/spawn_tail_send_raised_row.lu", "exit(0)"),
+    ("grammar/match_range.lu", "exit(0)"),
+    ("grammar/match_range_char.lu", "exit(0)"),
 ];
 
 #[test]

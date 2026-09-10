@@ -249,11 +249,20 @@ fn files_whose_ledger_stops_at_lex_fail_at_parse_with_their_pinned_code() {
     // reports at `y` (18:26) and `fn(a b)` at `b` (14:18), the token the
     // missing comma should precede, which is byte-for-byte where s132
     // measured wolfc pointing.
+    // `grammar/match_range_open.lu` joined at e0ce018 (is44): s147's
+    // `[gram.pat.range]` refuses the open spellings in pattern position —
+    // `10..` and `..hi` are the slice forms of `[gram.expr.primary]`, not
+    // patterns — and E0201 is the code both machines answer. This one is
+    // worth reading twice: the parser answered E0201 here BEFORE the range
+    // production existed, because a parser with no range arm hits `..` where
+    // it wanted `=>`. The code was right by accident and the message said
+    // nothing about ranges, which is the papercut the clause names. A code
+    // ledger cannot see that difference; `parse::tests` reads the string.
     assert_eq!(
         seen.values().cloned().collect::<Vec<_>>(),
         vec![
-            "E0201", "E0211", "E0201", "E0201", "E0001", "E0201", "E0210", "E0002", "E0201",
-            "E0201", "E0201", "E0006", "E0201", "E0008"
+            "E0201", "E0211", "E0201", "E0201", "E0201", "E0001", "E0201", "E0210", "E0002",
+            "E0201", "E0201", "E0201", "E0006", "E0201", "E0008"
         ],
         "the pinned grammar-tier codes changed: {seen:?}"
     );
@@ -327,9 +336,12 @@ fn every_parseable_file_resolves_under_sema_lite() {
             assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
             continue;
         }
+        // E0815 (s147, `[gram.pat.range]`) joins the set at e0ce018: an
+        // empty range arm is decided from its two literals, so it is a
+        // resolve-rung refusal like the rest of this list.
         if let Some(
             code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E0809"
-            | "E0812" | "E0813" | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
+            | "E0812" | "E0813" | "E0815" | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
         ) = pinned_code(case.check.as_ref())
         {
             assert_eq!(
@@ -389,8 +401,8 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
             }
             if let Some(
                 code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
-                | "E0809" | "E0812" | "E0813" | "E1101" | "E1102" | "E1103" | "E1301"
-                | "E1302"),
+                | "E0809" | "E0812" | "E0813" | "E0815" | "E1101" | "E1102" | "E1103"
+                | "E1301" | "E1302"),
             ) = pinned_code(case.check.as_ref())
             {
                 assert_eq!(
