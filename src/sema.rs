@@ -3151,11 +3151,13 @@ fn collect_item_refs(item: &Item, scope: &mut FileScope) {
             }
         }
         ItemKind::Trait(def) => {
+            collect_generic_refs(&def.generics, scope);
             for member in &def.members {
                 collect_item_refs(member, scope);
             }
         }
         ItemKind::Impl(def) => {
+            collect_generic_refs(&def.generics, scope);
             collect_type_refs(&def.trait_or_subject, scope);
             if let Some(subject) = &def.subject {
                 collect_type_refs(subject, scope);
@@ -3168,7 +3170,30 @@ fn collect_item_refs(item: &Item, scope: &mut FileScope) {
     }
 }
 
+/// A generic parameter's bound names its traits by path, and a qualified
+/// trait there (`fn f[T: ops.Add]`) is a USE of the import `ops` exactly as
+/// a qualified call is (wolf-interp#97): the walk used to skip the bound
+/// list, so a file whose only mention of an import sat in a bound was E0305
+/// "never used" — with a machine-applicable fix-it that would have made the
+/// bound unresolvable. The head is marked used and is not an E0304
+/// candidate: trait visibility is the checker's half, as a type's is.
+fn collect_generic_refs(generics: &[crate::ast::GenericParam], scope: &mut FileScope) {
+    for generic in generics {
+        if let Some(crate::ast::Bound::Paths(paths)) = &generic.bound {
+            for path in paths {
+                if let Some(head) = path.segments.first() {
+                    scope.refs.push(PathRef {
+                        head: head.name.clone(),
+                        tail: None,
+                    });
+                }
+            }
+        }
+    }
+}
+
 fn collect_fn_refs(decl: &FnDecl, scope: &mut FileScope) {
+    collect_generic_refs(&decl.generics, scope);
     for param in &decl.params {
         if let crate::ast::ParamKind::Named { ty, .. } = &param.kind {
             collect_type_refs(ty, scope);
