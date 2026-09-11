@@ -22,7 +22,66 @@
 
 use std::fmt;
 
+use super::value::{IntTy, Value};
 use crate::diag::Span;
+
+/// A `Map` key as a place step — one of the four `[type.map.key]` admits
+/// (`str`, `int`, `char`, `bool`), compared by value: two `str` keys are one
+/// key when their bytes are, two `int`/`char`/`bool` keys when their values
+/// are. Until is46 a key was its RENDERING (`Key(String)`), which was
+/// faithful for `str` alone: an `int` key never reached here (the place
+/// walk projected it as an ordinal `Index`, so `squares[i] = …` "did not
+/// denote a place"), and a `char` or `bool` key rendered on the way in and
+/// compared against the stored `Value` on the way out — every read missed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MapKey {
+    Str(String),
+    Int(i128),
+    Char(char),
+    Bool(bool),
+}
+
+impl MapKey {
+    /// The key a value is, when it is one of the four.
+    #[must_use]
+    pub fn of(value: &Value) -> Option<MapKey> {
+        match value {
+            Value::Str(s) => Some(MapKey::Str(s.clone())),
+            Value::Int(i, _) => Some(MapKey::Int(*i)),
+            Value::Char(c) => Some(MapKey::Char(*c)),
+            Value::Bool(b) => Some(MapKey::Bool(*b)),
+            _ => None,
+        }
+    }
+
+    /// The value an entry stores for this key — what `pairs()` hands back.
+    #[must_use]
+    pub fn to_value(&self) -> Value {
+        match self {
+            MapKey::Str(s) => Value::Str(s.clone()),
+            MapKey::Int(i) => Value::Int(*i, IntTy::INT),
+            MapKey::Char(c) => Value::Char(*c),
+            MapKey::Bool(b) => Value::Bool(*b),
+        }
+    }
+
+    /// Does this key name the entry stored under `key`?
+    #[must_use]
+    pub fn names(&self, key: &Value) -> bool {
+        MapKey::of(key).as_ref() == Some(self)
+    }
+}
+
+impl fmt::Display for MapKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MapKey::Str(s) => write!(f, "{s:?}"),
+            MapKey::Int(i) => write!(f, "{i}"),
+            MapKey::Char(c) => write!(f, "{c:?}"),
+            MapKey::Bool(b) => write!(f, "{b}"),
+        }
+    }
+}
 
 /// One projection step of a path.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,12 +90,9 @@ pub enum Proj {
     /// A constant index. A *dynamic* index whose value the machine knows is
     /// recorded here too — at run time every index is constant.
     Index(i128),
-    /// A map key, rendered. Wolf map keys are `str`/int-shaped in the pinned
-    /// corpus, and rendering them is faithful for exactly those: two keys are
-    /// the same place iff they render the same. A structured key would need a
-    /// real value comparison here, and that is where this representation would
-    /// have to grow.
-    Key(String),
+    /// A map key, by value ([`MapKey`]): two keys are the same place iff
+    /// they are the same key.
+    Key(MapKey),
     /// An index the machine could not reduce to a constant (a key expression
     /// with no evaluated value). Conservatively conflicts with every sibling
     /// index, which keeps the check sound in the only direction that matters.
@@ -48,7 +104,7 @@ impl fmt::Display for Proj {
         match self {
             Proj::Field(name) => write!(f, ".{name}"),
             Proj::Index(i) => write!(f, "[{i}]"),
-            Proj::Key(key) => write!(f, "[{key:?}]"),
+            Proj::Key(key) => write!(f, "[{key}]"),
             Proj::UnknownIndex => f.write_str("[?]"),
         }
     }

@@ -1845,12 +1845,19 @@ pub fn index(
             }
             machine.read_slot(*handle, span)
         }
-        (Value::Map(pairs), key) => match pairs.iter().find(|(k, _)| k == key) {
+        // `[mem.map.absent]` (s152): `m[k]` is `V ! {none}` — a bound key
+        // answers its value, an absent key the payload-free tag `none`,
+        // never `()` (this machine's answer through 0.1.33, the one
+        // unchecked, untyped read the language had), never a zero, never a
+        // trap. Keys compare by value (`[type.map.key]`: bytes for a `str`,
+        // the value for `int`/`char`/`bool`; an `int` key's width is not
+        // part of the key).
+        (Value::Map(pairs), key) => match pairs.iter().find(|(k, _)| super::value_eq(k, key)) {
             Some((_, slot)) => Ok(slot.value.clone()),
-            // "absent key defaults to zero value" — the idiom `tally[w] += 1`
-            // relies on it, and `Unit` is what the compound-assignment path
-            // reads as "zero of whatever type this is".
-            None => Ok(Value::Unit),
+            None => {
+                machine.note(Rule::ErrUnion, span, MAP_NONE_ROW);
+                Ok(error("none"))
+            }
         },
         (Value::Str(_), Value::Int(_, _)) => unsupported(
             "there is no `s[i]` character indexing in wolf (D25); slice with a range".to_owned(),
@@ -2138,6 +2145,9 @@ pub(crate) fn error_value(name: &str, tag: &str) -> Value {
 /// The one reason the four recoverable `List` reads cite. `[mem.list.pop]`
 /// states them as one rule, so they say one thing (`OutOfBounds` retired
 /// with the clause — the second CapCase payload-free mark W0603 counted).
+const MAP_NONE_ROW: &str = "`m[k]` is `V ! {none}` — an absent key answers the `none` row, never `()`, a zero or a \
+     trap (`[mem.map.absent]`); `m[k] = v` is the one place an absent key is a place";
+
 const LIST_NONE_ROW: &str = "`pop`/`get`/`first`/`last` answer the `none` row — the recoverable List reads never fault \
      (`[mem.list.pop]`); `xs[i]` is the faulting twin";
 

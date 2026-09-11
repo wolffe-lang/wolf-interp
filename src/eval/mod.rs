@@ -55,7 +55,7 @@ use crate::diag::Span;
 use crate::sema::{Def, Program};
 use crate::trap::TrapKind;
 
-use place::{Access, AccessSet, Held, HeldWhy, Path, Proj};
+use place::{Access, AccessSet, Held, HeldWhy, MapKey, Path, Proj};
 use prov::{AccessKind, Prov, Provenance, RawPtr, RetagKind, UbFinding, UbRow};
 use region::{Edge, Ref, RegionId, RegionState, Store, Strategy};
 use rules::Rule;
@@ -1387,7 +1387,7 @@ impl Machine {
                     std::sync::Arc::make_mut(items).get_mut(index)?
                 }
                 (Value::Map(pairs), Proj::Key(key)) => {
-                    let index = pairs.iter().position(|(k, _)| k.to_string() == *key)?;
+                    let index = pairs.iter().position(|(k, _)| key.names(k))?;
                     &mut pairs[index].1
                 }
                 _ => return None,
@@ -1650,7 +1650,7 @@ impl Machine {
                 }
                 (Value::Map(pairs), Proj::Key(key)) => pairs
                     .iter()
-                    .find(|(k, _)| k.to_string() == *key)
+                    .find(|(k, _)| key.names(k))
                     .map(|(_, slot)| slot),
                 _ => None,
             };
@@ -1911,7 +1911,7 @@ impl Machine {
         let Value::Map(pairs) = &mut slot.value else {
             return Ok(false);
         };
-        pairs.push((Value::Str(key), Slot::live(Value::Unit)));
+        pairs.push((key.to_value(), Slot::live(Value::Unit)));
         Ok(true)
     }
 
@@ -3851,17 +3851,34 @@ impl Machine {
             return self.write_path(&path, value, span);
         }
 
+        // `[mem.map.absent]` (s152): `m[k] op= v` is E0417 — `m[k]` is
+        // `V ! {none}`, the entry may not exist, and a compound assignment
+        // has nothing to read-modify-write. Sema refuses it at resolve where
+        // the base is a binding it can name (`row_operand_check`); a `Map`
+        // reached any other way is refused here in the checker's voice.
+        // Until is46 an absent key read `()` here and was defaulted to an
+        // `int` zero, which is the idiom the clause retires.
+        if matches!(path.projections.last(), Some(Proj::Key(_))) {
+            let mut parent = path.clone();
+            parent.projections.pop();
+            if matches!(
+                self.resolve(&parent),
+                Some((slot, _)) if matches!(slot.value, Value::Map(_))
+            ) {
+                return unsupported(format!(
+                    "cannot update `{}` in place: the key may be absent — `m[k]` is `V ! \
+                     {{none}}` ([mem.map.absent]), so a compound assignment has nothing to \
+                     read-modify-write (the compiler's E0417); spell `m[k] = (m[k] else 0) \
+                     + v`, or std's `map.tally(mut m, k)`",
+                    path
+                ))
+                .map(|_: Value| ());
+            }
+        }
         let current = self.read_path(&path, place.span)?;
         let byte_place = Some(matches!(current, Value::Byte(_)));
         let rhs = self.eval(value)?;
         let binop = assign_binop(op);
-        // A map's absent key defaults to its value type's zero, which is what
-        // makes `tally[w] += 1` the idiom the corpus writes.
-        let current = if current == Value::Unit {
-            Value::Int(0, IntTy::INT)
-        } else {
-            current
-        };
         // `[type.byte.op]`'s named consequence, the compound half: `b += 1` is
         // refused because `b + 1` is an `int` and the place is a `byte`. The
         // test is on the place's CURRENT value rather than the result,
@@ -3929,15 +3946,21 @@ impl Machine {
                     return unsupported("only a single-argument index denotes a place".to_owned());
                 };
                 let key = self.eval(&arg.expr)?;
+                // A map indexed by an int is a KEY, not a position, and
+                // never shifts under origin 1 — the base's current value
+                // tells the two apart, which is the same "after the brackets
+                // resolve as ordinal indexing" moment the read path uses.
+                // (`squares[i] = i * i` used to project an ordinal `Index`
+                // here and "did not denote a place" — wolf-interp#91.)
+                let map_base = matches!(
+                    self.resolve(&path),
+                    Some((slot, _)) if matches!(slot.value, Value::Map(_))
+                );
                 Ok(match key {
-                    Value::Int(i, _) => {
+                    Value::Int(i, _) if !map_base => {
                         // An ordinal WRITE place shifts under origin 1
                         // exactly as the read does (`xs[1] = v` stores the
-                        // first element); a map indexed by an int is a KEY,
-                        // not a position, and never shifts — the base's
-                        // current value tells the two apart, which is the
-                        // same "after the brackets resolve as ordinal
-                        // indexing" moment the read path uses.
+                        // first element).
                         let ordinal = matches!(
                             self.resolve(&path),
                             Some((slot, _)) if matches!(slot.value, Value::List(..) | Value::Tuple(_))
@@ -3949,7 +3972,6 @@ impl Machine {
                         };
                         path.project(Proj::Index(effective))
                     }
-                    Value::Str(s) => path.project(Proj::Key(s)),
                     // A slice expression is a *value*, not a place (issue
                     // #10, wolf-std F-0021): refusing here sends
                     // `d[0..1].upper()` down the by-value receiver path,
@@ -3959,7 +3981,21 @@ impl Machine {
                             "a slice expression denotes a value, not a place".to_owned(),
                         );
                     }
-                    other => path.project(Proj::Key(other.to_string())),
+                    // `[type.map.key]`: the four keys, by value. Anything
+                    // else is the checker's E0418 where the key type is
+                    // spelled; a value of another kind reaching a key
+                    // position here is refused, never rendered into one.
+                    other => match MapKey::of(&other) {
+                        Some(key) => path.project(Proj::Key(key)),
+                        None => {
+                            return unsupported(format!(
+                                "{} is not a `Map` key — a key is `str`, `int`, `char` or \
+                                 `bool` ([type.map.key]; the compiler's E0418 where the key \
+                                 type is spelled)",
+                                other.kind()
+                            ));
+                        }
+                    },
                 })
             }
             _ => unsupported("this expression denotes no place".to_owned()),
