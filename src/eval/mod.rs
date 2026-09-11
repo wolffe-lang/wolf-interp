@@ -5958,7 +5958,7 @@ impl Machine {
         // method shadows it (`[ty.trait.qualified-call]`, the s17 resolution
         // order's explicit escape).
         if let ExprKind::Path(path) = &*callee.kind
-            && path.segments.len() == 2
+            && (path.segments.len() == 2 || path.segments.len() == 3)
             && !self.local_exists(&path.segments[0].name)
             && !self.globals.contains_key(&path.segments[0].name)
         {
@@ -5974,30 +5974,51 @@ impl Machine {
             // binds a path, not a Def, so the import is followed here: the
             // recorded segments' tail looked up in their module, visibility
             // honoured.
-            let is_trait = matches!(
-                self.shared.program.lookup(&module, &head, false),
-                Some(Def::Opaque("trait"))
-            ) || self
-                .shared
-                .program
-                .modules
-                .get(&module)
-                .into_iter()
-                .flat_map(|m| m.use_paths.iter())
-                .filter(|(bound, _)| *bound == head)
-                .any(|(_, segments)| {
-                    let (Some(name), init) = (segments.last(), &segments[..segments.len() - 1])
-                    else {
-                        return false;
-                    };
-                    let target = init.join(".");
-                    matches!(
-                        self.shared.program.lookup(&target, name, true),
+            //
+            // Three segments — `tiny.Eq.eq(a, b)` after `use std.tiny` — is
+            // the trait reached THROUGH its module (wolf-interp#96): the
+            // head names an imported module, the middle a `pub` trait in
+            // it, the tail the method. That shape used to fall to the path
+            // evaluator, which answered "`Eq` is a trait; … no dynamic
+            // semantics here" at resolve while the byte-identical trait
+            // declared in the entry file dispatched — one trait, two
+            // verdicts, decided by which FILE declared it. Dispatch is by
+            // the trait's name either way; only the road to the name
+            // differs.
+            let (head, method, is_trait) = if path.segments.len() == 3 {
+                let trait_name = path.segments[1].name.clone();
+                let via_module = self.shared.program.modules.contains_key(&head)
+                    && matches!(
+                        self.shared.program.lookup(&head, &trait_name, true),
                         Some(Def::Opaque("trait"))
-                    )
-                });
+                    );
+                (trait_name, path.segments[2].name.clone(), via_module)
+            } else {
+                let is_trait = matches!(
+                    self.shared.program.lookup(&module, &head, false),
+                    Some(Def::Opaque("trait"))
+                ) || self
+                    .shared
+                    .program
+                    .modules
+                    .get(&module)
+                    .into_iter()
+                    .flat_map(|m| m.use_paths.iter())
+                    .filter(|(bound, _)| *bound == head)
+                    .any(|(_, segments)| {
+                        let (Some(name), init) = (segments.last(), &segments[..segments.len() - 1])
+                        else {
+                            return false;
+                        };
+                        let target = init.join(".");
+                        matches!(
+                            self.shared.program.lookup(&target, name, true),
+                            Some(Def::Opaque("trait"))
+                        )
+                    });
+                (head, path.segments[1].name.clone(), is_trait)
+            };
             if is_trait {
-                let method = path.segments[1].name.clone();
                 let evaluated = self.eval_args(args)?;
                 let Some(first) = evaluated.values.first() else {
                     return unsupported(format!(
