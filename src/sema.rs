@@ -36,7 +36,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use crate::ast::{
-    Arg, Block, Expr, ExprKind, FnDecl, Item, ItemKind, ParamMode, PatKind, Pattern, Stmt,
+    Arg, BinOp, Block, Expr, ExprKind, FnDecl, Item, ItemKind, ParamMode, PatKind, Pattern, Stmt,
     StmtKind, StrLit, StrPart, StructDef, Type, TypeArg, TypeKind, Unit,
 };
 use crate::diag::{Diag, Span};
@@ -158,6 +158,15 @@ pub struct Module {
     /// dispatch and the impl's override wins: dispatch-back-through-Self
     /// without a Self machinery this face-value tier never had.
     pub trait_defaults: BTreeMap<String, BTreeMap<String, Box<FnDecl>>>,
+    /// Every method a `trait` item declares, body or not: trait name →
+    /// method name → the decl as written. What `[type.trait.op]`'s shape
+    /// rule reads (`Add.add` must be `fn add(self, other: Self) -> Self`,
+    /// E0514 otherwise) — `trait_defaults` above carries bodies alone.
+    pub trait_members: BTreeMap<String, BTreeMap<String, Box<FnDecl>>>,
+    /// The alias bounds (`trait Num = Add + Sub + …`, `[type.trait.op.alias]`):
+    /// alias name → the trait names in its list, as written. A bound naming
+    /// an alias means every trait in its list; an alias may name an alias.
+    pub trait_aliases: BTreeMap<String, Vec<String>>,
     /// `type Cover = distinct media.Song`: alias name → the target's head
     /// name (`Song`). What lets an adapter cast MOVE the nominal identity
     /// (`s as Cover` renames the value, both directions), which is the D28
@@ -853,16 +862,30 @@ fn collect(unit: &Unit, module: &mut Module, file: &str, source: &str) {
                     Some(def.name.span),
                     file,
                 );
+                if let Some(crate::ast::Bound::Paths(paths)) = &def.alias {
+                    module.trait_aliases.insert(
+                        def.name.name.clone(),
+                        paths
+                            .iter()
+                            .filter_map(|path| path.segments.last().map(|s| s.name.clone()))
+                            .collect(),
+                    );
+                }
                 for member in &def.members {
-                    if let ItemKind::Fn(decl) = &member.kind
-                        && decl.body.is_some()
-                    {
-                        collect_signature_tags(decl, &mut module.row_tags);
+                    if let ItemKind::Fn(decl) = &member.kind {
                         module
-                            .trait_defaults
+                            .trait_members
                             .entry(def.name.name.clone())
                             .or_default()
                             .insert(decl.name.name.clone(), decl.clone());
+                        if decl.body.is_some() {
+                            collect_signature_tags(decl, &mut module.row_tags);
+                            module
+                                .trait_defaults
+                                .entry(def.name.name.clone())
+                                .or_default()
+                                .insert(decl.name.name.clone(), decl.clone());
+                        }
                     }
                 }
             }
@@ -3152,6 +3175,16 @@ fn collect_item_refs(item: &Item, scope: &mut FileScope) {
         }
         ItemKind::Trait(def) => {
             collect_generic_refs(&def.generics, scope);
+            if let Some(crate::ast::Bound::Paths(paths)) = &def.alias {
+                for path in paths {
+                    if let Some(head) = path.segments.first() {
+                        scope.refs.push(PathRef {
+                            head: head.name.clone(),
+                            tail: None,
+                        });
+                    }
+                }
+            }
             for member in &def.members {
                 collect_item_refs(member, scope);
             }
@@ -4557,6 +4590,19 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
             generics.extend(decl.generics.iter().map(|g| g.name.name.clone()));
             let mut types = known.clone();
             types.extend(generics.iter().cloned());
+            let bounds: BTreeMap<String, Vec<String>> = decl
+                .generics
+                .iter()
+                .map(|g| {
+                    let list = match &g.bound {
+                        Some(crate::ast::Bound::Paths(paths)) => {
+                            expand_bound(paths, &module.trait_aliases)
+                        }
+                        _ => Vec::new(),
+                    };
+                    (g.name.name.clone(), list)
+                })
+                .collect();
             let mut walk = RowWalk {
                 scopes: vec![Vec::new()],
                 fallible: &fallible,
@@ -4564,11 +4610,20 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
                 structs: &structs,
                 types: &types,
                 generics: &generics,
+                bounds: &bounds,
+                traits: &module.trait_members,
+                trait_impls: &module.trait_impls,
+                uses: &module.uses,
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
                     let row = render_row_type_of(ty);
-                    let nominal = nominal_of_type(ty, &structs);
+                    // A parameter typed as a bare generic name carries that
+                    // name as its nominal: `[type.trait.op]` reads the
+                    // bound off it (a rigid `T` is never a struct, so the
+                    // struct-only readers stay unaffected).
+                    let nominal = nominal_of_type(ty, &structs)
+                        .or_else(|| generic_name_of(ty).filter(|g| generics.contains(g)));
                     walk.declare_typed(&name.name, row, nominal);
                 }
             }
@@ -4584,6 +4639,7 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
         for (def, _) in module.items.values() {
             if let Def::Binding(binding) = def {
                 let no_generics = BTreeSet::new();
+                let no_bounds = BTreeMap::new();
                 let mut walk = RowWalk {
                     scopes: vec![Vec::new()],
                     fallible: &fallible,
@@ -4591,6 +4647,10 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
                     structs: &structs,
                     types: &known,
                     generics: &no_generics,
+                    bounds: &no_bounds,
+                    traits: &module.trait_members,
+                    trait_impls: &module.trait_impls,
+                    uses: &module.uses,
                 };
                 if let Some(diag) = walk.expr(&binding.value) {
                     return Some(diag);
@@ -4726,6 +4786,16 @@ fn map_key_diag(name: &str, span: Span, generics: &BTreeSet<String>) -> Option<D
     ))
 }
 
+/// The bare name a type spells, when it is one (`T`, never `List[T]`).
+fn generic_name_of(ty: &Type) -> Option<String> {
+    match &*ty.kind {
+        TypeKind::Path { path, args } if path.is_single() && args.is_empty() => {
+            Some(path.segments[0].name.clone())
+        }
+        _ => None,
+    }
+}
+
 /// `1st`, `2nd`, `3rd`, `4th`, … `11th`, `12th`, `13th`, `21st`.
 fn ordinal(n: usize) -> String {
     let suffix = match (n % 10, n % 100) {
@@ -4828,6 +4898,110 @@ struct RowWalk<'a> {
     /// `K` is a legal `Map` key (`[type.map.key]`'s golden rule) where a
     /// struct name is not, and `types` cannot tell the two apart.
     generics: &'a BTreeSet<String>,
+    /// `[type.trait.op]`'s inputs (wolf-lang s155; wolf-interp#92): each
+    /// generic parameter's bound, alias-expanded to trait names; the
+    /// module's trait members by trait; which traits each subject
+    /// implements; and the names `use` binds in the module (a trait reached
+    /// by a bare `use` counts as in scope by name).
+    bounds: &'a BTreeMap<String, Vec<String>>,
+    traits: &'a BTreeMap<String, BTreeMap<String, Box<FnDecl>>>,
+    trait_impls: &'a BTreeMap<String, Vec<String>>,
+    uses: &'a [String],
+}
+
+/// The operator table of `[type.trait.op]`: the trait and the method an
+/// operator dispatches through, and the shape the method must have —
+/// `(other: Self)` or none, and the result: `Self`, `bool` or the `Ordering`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OpResult {
+    SelfTy,
+    Bool,
+    Ordering,
+}
+
+fn operator_trait(op: BinOp) -> Option<(&'static str, &'static str, &'static str, OpResult)> {
+    Some(match op {
+        BinOp::Add => ("+", "Add", "add", OpResult::SelfTy),
+        BinOp::Sub => ("-", "Sub", "sub", OpResult::SelfTy),
+        BinOp::Mul => ("*", "Mul", "mul", OpResult::SelfTy),
+        BinOp::Div => ("/", "Div", "div", OpResult::SelfTy),
+        BinOp::Rem => ("%", "Rem", "rem", OpResult::SelfTy),
+        BinOp::Eq => ("==", "Eq", "eq", OpResult::Bool),
+        BinOp::Ne => ("!=", "Eq", "eq", OpResult::Bool),
+        BinOp::Lt => ("<", "Ord", "cmp", OpResult::Ordering),
+        BinOp::Le => ("<=", "Ord", "cmp", OpResult::Ordering),
+        BinOp::Gt => (">", "Ord", "cmp", OpResult::Ordering),
+        BinOp::Ge => (">=", "Ord", "cmp", OpResult::Ordering),
+        BinOp::Cmp => ("<=>", "Ord", "cmp", OpResult::Ordering),
+        _ => return None,
+    })
+}
+
+/// Is `decl` the shape the table gives the operator's method — `fn
+/// add(self, other: Self) -> Self`, `fn neg(self) -> Self`, `fn eq(self,
+/// other: Self) -> bool`, `fn cmp(self, other: Self) -> Ordering`?
+/// Homogeneous this edition: the receiver, the other operand and (for the
+/// arithmetic family) the result are all `Self`.
+fn operator_shape(decl: &FnDecl, unary: bool, result: OpResult) -> bool {
+    let self_ty = |ty: &Type| {
+        matches!(&*ty.kind, TypeKind::Path { path, args }
+            if args.is_empty() && path.is_single() && path.segments[0].name == "Self")
+    };
+    let named = |ty: &Type, name: &str| {
+        matches!(&*ty.kind, TypeKind::Path { path, args }
+            if args.is_empty() && path.is_single() && path.segments[0].name == name)
+    };
+    let mut params = decl.params.iter();
+    if !matches!(
+        params.next().map(|p| &p.kind),
+        Some(crate::ast::ParamKind::SelfParam { .. })
+    ) {
+        return false;
+    }
+    if !unary {
+        match params.next().map(|p| &p.kind) {
+            Some(crate::ast::ParamKind::Named { ty, .. }) if self_ty(ty) => {}
+            _ => return false,
+        }
+    }
+    if params.next().is_some() {
+        return false;
+    }
+    let Some(ret) = &decl.ret else {
+        return false;
+    };
+    if ret.row.is_some() {
+        return false;
+    }
+    match result {
+        OpResult::SelfTy => self_ty(&ret.ty),
+        OpResult::Bool => named(&ret.ty, "bool"),
+        OpResult::Ordering => named(&ret.ty, "Ordering"),
+    }
+}
+
+/// A generic parameter's bound, expanded through alias bounds
+/// (`[type.trait.op.alias]`: a bound naming `Num` means every trait in its
+/// list, an alias may name an alias; a cycle is cut, not chased).
+fn expand_bound(
+    paths: &[crate::ast::Path],
+    aliases: &BTreeMap<String, Vec<String>>,
+) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut queue: Vec<String> = paths
+        .iter()
+        .filter_map(|path| path.segments.last().map(|s| s.name.clone()))
+        .collect();
+    while let Some(name) = queue.pop() {
+        if out.contains(&name) {
+            continue;
+        }
+        if let Some(list) = aliases.get(&name) {
+            queue.extend(list.iter().cloned());
+        }
+        out.push(name);
+    }
+    out
 }
 
 impl RowWalk<'_> {
@@ -4896,6 +5070,135 @@ impl RowWalk<'_> {
             },
             _ => None,
         }
+    }
+
+    /// `[type.trait.op]` (wolf-lang s155, #5; wolf-interp#92), the static
+    /// half: an operator whose LEFT operand this walk can name as a struct
+    /// or a type parameter dispatches through the table's trait, and the
+    /// three refusals are decided from declarations. On a type parameter
+    /// the bound must name the trait (alias-expanded) — **E0501** at the
+    /// operand, "the bounds on `T` say nothing about `+`". On a struct:
+    /// nothing named `Add` in scope (an item, or a name a `use` binds) is
+    /// **E0301**; the trait in scope and no `impl Add for Money` is
+    /// **E0502**; the trait's method not `fn add(self, other: Self) -> Self`
+    /// is **E0514**. Every span is the left operand's (measured at pin
+    /// c9237c1 on the four s155 refusals). Never two primitives: a `str`
+    /// or an operand this walk cannot name stays on the builtin path.
+    fn operator_dispatch(&self, op: BinOp, lhs: &Expr) -> Option<Diag> {
+        let (spelling, trait_name, method, result) = operator_trait(op)?;
+        let nominal = self.nominal_of_expr(lhs)?;
+        self.operator_refusal(
+            &nominal, spelling, trait_name, method, false, result, lhs.span,
+        )
+    }
+
+    /// Prefix `-` is `Neg.neg` (`[type.trait.op]`), the unary row of the
+    /// same table.
+    fn operator_neg(&self, operand: &Expr) -> Option<Diag> {
+        let nominal = self.nominal_of_expr(operand)?;
+        self.operator_refusal(
+            &nominal,
+            "-",
+            "Neg",
+            "neg",
+            true,
+            OpResult::SelfTy,
+            operand.span,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn operator_refusal(
+        &self,
+        nominal: &str,
+        spelling: &str,
+        trait_name: &str,
+        method: &str,
+        unary: bool,
+        result: OpResult,
+        span: Span,
+    ) -> Option<Diag> {
+        if let Some(bound) = self.bounds.get(nominal) {
+            // A type parameter: the bound decides.
+            if bound.iter().any(|t| t == trait_name) {
+                return None;
+            }
+            return Some(Diag::new(
+                "E0501",
+                span,
+                "type.trait.op",
+                format!(
+                    "the bounds on `{nominal}` say nothing about `{spelling}` — `{nominal}` \
+                     could be any type here; add `{nominal}: {trait_name}` to the bound: \
+                     `{spelling}` on a type parameter dispatches through `{trait_name}.{method}` \
+                     ([type.trait.op])"
+                ),
+            ));
+        }
+        if !self.structs.contains(nominal) {
+            return None;
+        }
+        let Some(members) = self.traits.get(trait_name) else {
+            if self.uses.iter().any(|u| u == trait_name) {
+                // Bound by a `use`: in scope by name, declared elsewhere —
+                // its shape and impls are not this module's to read.
+                return None;
+            }
+            return Some(Diag::new(
+                "E0301",
+                span,
+                "type.trait.op",
+                format!(
+                    "`{spelling}` on `{nominal}` needs the trait `{trait_name}`, and nothing \
+                     named `{trait_name}` is in scope — this is `{nominal}`, not a primitive: \
+                     an operator on a user type dispatches through its trait \
+                     ([type.trait.op]): `{spelling}` is `{trait_name}.{method}`. Bring \
+                     `{trait_name}` into scope (std.ops and std.cmp declare the operator \
+                     traits) and write `impl {trait_name} for {nominal}`"
+                ),
+            ));
+        };
+        let implemented = self
+            .trait_impls
+            .get(nominal)
+            .is_some_and(|traits| traits.iter().any(|t| t == trait_name));
+        if !implemented {
+            return Some(Diag::new(
+                "E0502",
+                span,
+                "type.trait.op",
+                format!(
+                    "`{nominal}` does not implement `{trait_name}`, so `{spelling}` cannot \
+                     take it — an operator on a user type dispatches through its trait \
+                     ([type.trait.op]): write `impl {trait_name} for {nominal}` and \
+                     `{spelling}` runs it"
+                ),
+            ));
+        }
+        if let Some(decl) = members.get(method)
+            && !operator_shape(decl, unary, result)
+        {
+            let shape = match (unary, result) {
+                (true, _) => format!("fn {method}(self) -> Self"),
+                (false, OpResult::SelfTy) => format!("fn {method}(self, other: Self) -> Self"),
+                (false, OpResult::Bool) => format!("fn {method}(self, other: Self) -> bool"),
+                (false, OpResult::Ordering) => {
+                    format!("fn {method}(self, other: Self) -> Ordering")
+                }
+            };
+            return Some(Diag::new(
+                "E0514",
+                span,
+                "type.trait.op",
+                format!(
+                    "`{trait_name}.{method}` is not `{shape}`, so `{spelling}` cannot dispatch \
+                     through it — the operator traits are homogeneous this edition \
+                     ([type.trait.op]): the receiver, the other operand and the result are \
+                     `Self`"
+                ),
+            ));
+        }
+        None
     }
 
     /// `[mem.map.absent]` (wolf-lang s152; wolf-interp#91): `m[k] op= v` is
@@ -5206,12 +5509,19 @@ impl RowWalk<'_> {
     fn expr(&mut self, expr: &Expr) -> Option<Diag> {
         match &*expr.kind {
             ExprKind::Binary { op, lhs, rhs } => {
-                if let Some(diag) = self.binary_operands(*op, lhs, rhs) {
+                if let Some(diag) = self
+                    .binary_operands(*op, lhs, rhs)
+                    .or_else(|| self.operator_dispatch(*op, lhs))
+                {
                     return Some(diag);
                 }
                 self.expr(lhs).or_else(|| self.expr(rhs))
             }
             ExprKind::Str(literal) => self.strlit(literal),
+            ExprKind::Unary {
+                op: crate::ast::UnOp::Neg,
+                operand,
+            } => self.operator_neg(operand).or_else(|| self.expr(operand)),
             ExprKind::Unary { operand, .. }
             | ExprKind::Cast { expr: operand, .. }
             | ExprKind::Group(operand)
@@ -5848,6 +6158,78 @@ mod tests {
     fn resolve(source: &str) -> Option<Diag> {
         let program = load_source("t.lu", source).expect("loads");
         resolve_check(&program)
+    }
+
+    // -- [type.trait.op]: the operator bridge (wolf-lang s155, wolf-interp#92) --
+
+    #[test]
+    fn an_operator_on_a_bare_type_parameter_is_e0501_at_the_operand() {
+        // `corpus/traits/golden_arith.lu` / `golden_eq.lu`: the bound says
+        // nothing about the operator; the span is the left operand's.
+        let source = "fn sum[T](a: T, b: T) -> T {\n    a + b\n}\nfn main() -> !int { 0 }\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0501");
+        assert_eq!(&source[diag.span.start..diag.span.end], "a");
+        let eq = "fn same[T](a: T, b: T) -> bool {\n    a == b\n}\nfn main() -> !int { 0 }\n";
+        assert_eq!(resolve(eq).map(|d| d.code), Some("E0501"));
+        // A bound naming the trait, directly or through an alias, is clean.
+        assert!(
+            resolve(
+                "trait Add { fn add(self, other: Self) -> Self }\n\
+                 trait Num = Add\n\
+                 fn sum[T: Num](a: T, b: T) -> T {\n    a + b\n}\n\
+                 fn sum2[T: Add](a: T, b: T) -> T {\n    a + b\n}\n\
+                 fn main() -> !int { 0 }\n"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn an_operator_on_a_struct_is_e0301_e0502_or_e0514_from_the_declarations() {
+        // `op_eq_no_trait.lu`: nothing named `Eq` in scope.
+        let source = "struct P { x: int }\nfn main() -> !int {\n    let a = P { x: 1 }\n    \
+                      let b = P { x: 1 }\n    if a == b { 0 } else { 1 }\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0301");
+        assert_eq!(&source[diag.span.start..diag.span.end], "a");
+        // `op_missing_impl.lu`: the trait in scope, no impl for `Money`.
+        let source = "struct Money { cents: int }\ntrait Add { fn add(self, other: Self) -> Self }\n\
+                      fn main() -> !int {\n    let a = Money { cents: 1 }\n    \
+                      let b = Money { cents: 2 }\n    let c = a + b\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0502");
+        assert_eq!(&source[diag.span.start..diag.span.end], "a");
+        // `op_hetero_add.lu`: the method has another shape.
+        let source = "struct Money { cents: int }\ntrait Add { fn add(self, other: int) -> Self }\n\
+                      impl Add for Money { fn add(self, other: int) -> Self { \
+                      Money { cents: self.cents + other } } }\n\
+                      fn main() -> !int {\n    let a = Money { cents: 1 }\n    \
+                      let b = Money { cents: 2 }\n    let c = a + b\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0514");
+        assert_eq!(&source[diag.span.start..diag.span.end], "a");
+        // Prefix `-` is `Neg.neg`: E0502 without the impl.
+        let neg = "struct Money { cents: int }\ntrait Neg { fn neg(self) -> Self }\n\
+                   fn main() -> !int {\n    let a = Money { cents: 1 }\n    let d = -a\n    0\n}\n";
+        assert_eq!(resolve(neg).map(|d| d.code), Some("E0502"));
+    }
+
+    #[test]
+    fn an_implemented_operator_and_the_primitives_stay_clean() {
+        assert!(
+            resolve(
+                "struct Money { cents: int }\n\
+                 trait Add { fn add(self, other: Self) -> Self }\n\
+                 trait Eq { fn eq(self, other: Self) -> bool }\n\
+                 impl Add for Money { fn add(self, other: Self) -> Self { \
+                 Money { cents: self.cents + other.cents } } }\n\
+                 impl Eq for Money { fn eq(self, other: Self) -> bool { self.cents == other.cents } }\n\
+                 fn main() -> !int {\n    let a = Money { cents: 1 }\n    let b = Money { cents: 2 }\n    \
+                 let c = a + b\n    let same = a == b\n    let n = 1 + 2\n    let s = \"a\" + \"b\"\n    0\n}\n"
+            )
+            .is_none()
+        );
     }
 
     // -- E0417 / E0418: the key protocol (wolf-lang s152, wolf-interp#91) --
