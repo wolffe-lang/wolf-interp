@@ -4121,6 +4121,9 @@ impl Machine {
                 }
                 let left = self.eval(lhs)?;
                 let right = self.eval(rhs)?;
+                if let Some(value) = self.dispatch_operator(*op, &left, &right, expr.span)? {
+                    return Ok(value);
+                }
                 self.binary(*op, left, right, expr.span)
             }
             ExprKind::Cast { expr: inner, ty } => {
@@ -4837,6 +4840,13 @@ impl Machine {
                 other => unsupported(format!("`!` needs a bool, got {}", other.kind())),
             },
             UnOp::Neg => match self.eval(operand)? {
+                // `[type.trait.op]`: prefix `-` on a user type is `Neg.neg`.
+                value @ Value::Struct { .. } => {
+                    match self.dispatch_through("Neg", "neg", "-", vec![value], span)? {
+                        Some(negated) => Ok(negated),
+                        None => unsupported("`-` needs a number".to_owned()),
+                    }
+                }
                 // Negating a still-unconstrained literal keeps it one
                 // (issue #14): `-9223372036854775808` is a value of `int`,
                 // and checking the negation at the i32 default before the
@@ -4953,6 +4963,123 @@ impl Machine {
     }
 
     #[allow(clippy::too_many_lines)]
+    /// `[type.trait.op]` (wolf-lang s155, #5; wolf-interp#92): **an operator
+    /// dispatches through a trait when its left operand is a user type.**
+    /// `a + b` IS `Add.add(a, b)`, the operands read arguments; `==`/`!=`
+    /// are `Eq.eq` and its negation; the ordering family reads `Ord.cmp`
+    /// against `Less`/`Greater` and `<=>` is the `Ordering` itself. Never
+    /// two primitives: an `int`, a `str`, a `f64` on the left stays the
+    /// builtin operation — which is also what a type parameter instantiated
+    /// at a primitive runs, the clause's "the instance calls the impl, and
+    /// the impl is the builtin". A struct with no impl of the trait is
+    /// refused in the checker's voice (E0301/E0502 — sema answers them
+    /// first where it can name the operand); nothing is synthesized (D49),
+    /// so a struct's `==` no longer compares structurally. An enum value
+    /// with an impl dispatches; one without keeps this machine's structural
+    /// tag comparison — the conservative side of the clause's "refused by
+    /// name like a struct", left where the corpus still leans on it.
+    fn dispatch_operator(
+        &mut self,
+        op: BinOp,
+        left: &Value,
+        right: &Value,
+        span: Span,
+    ) -> EResult<Option<Value>> {
+        use BinOp::{Add, Cmp, Div, Eq, Ge, Gt, Le, Lt, Mul, Ne, Rem, Sub};
+        let is_struct = matches!(left, Value::Struct { .. });
+        let is_enum = matches!(left, Value::Error(e) if e.enum_variant);
+        if !is_struct && !is_enum {
+            return Ok(None);
+        }
+        // `[repl.type.gen]`: two generations of one REPL-redefined type are
+        // distinct nominal types, and comparing them is `binary`'s refusal
+        // with the rebuild hint — a better answer than "no `impl Eq`" for
+        // the shape, and the one `tests/repl/redefinition.transcript` pins.
+        if let (Value::Struct { name: a, .. }, Value::Struct { name: b, .. }) = (left, right)
+            && a != b
+            && let (Some((base_a, _)), Some((base_b, _))) = (a.split_once('#'), b.split_once('#'))
+            && base_a == base_b
+        {
+            return Ok(None);
+        }
+        let (trait_name, method, spelling) = match op {
+            Add => ("Add", "add", "+"),
+            Sub => ("Sub", "sub", "-"),
+            Mul => ("Mul", "mul", "*"),
+            Div => ("Div", "div", "/"),
+            Rem => ("Rem", "rem", "%"),
+            Eq | Ne => ("Eq", "eq", if op == Eq { "==" } else { "!=" }),
+            Lt | Le | Gt | Ge | Cmp => ("Ord", "cmp", spelling(op)),
+            _ => return Ok(None),
+        };
+        let args = vec![left.clone(), right.clone()];
+        let Some(answer) = self.dispatch_through(trait_name, method, spelling, args, span)? else {
+            if is_enum {
+                // No impl: the structural tag comparison this machine has
+                // always made (see above), or the builtin refusal.
+                return Ok(None);
+            }
+            return unsupported(format!(
+                "`{spelling}` on {} is `{trait_name}.{method}` ([type.trait.op]) and {} has \
+                 no `impl {trait_name}` in scope — nothing is synthesized (D49); the \
+                 compiler's E0301 when nothing named `{trait_name}` is in scope, E0502 when \
+                 the type does not implement it",
+                left.kind(),
+                left.kind()
+            ));
+        };
+        let value = match op {
+            Ne => match answer {
+                Value::Bool(b) => Value::Bool(!b),
+                other => other,
+            },
+            Lt | Le | Gt | Ge => {
+                let Value::Error(ordering) = &answer else {
+                    return unsupported(format!(
+                        "`{trait_name}.{method}` answered {}, not an `Ordering`",
+                        answer.kind()
+                    ));
+                };
+                let tag = ordering.tag.rsplit('.').next().unwrap_or(&ordering.tag);
+                Value::Bool(match op {
+                    Lt => tag == "Less",
+                    Le => tag != "Greater",
+                    Gt => tag == "Greater",
+                    _ => tag != "Less",
+                })
+            }
+            _ => answer,
+        };
+        Ok(Some(value))
+    }
+
+    /// Runs `impl <trait> for <the first argument's type>`'s `method` on
+    /// `args` when such an impl is in scope, the way the trait-qualified
+    /// call does (`[ty.trait.qualified-call]`); `None` when there is none.
+    fn dispatch_through(
+        &mut self,
+        trait_name: &str,
+        method: &str,
+        spelling: &str,
+        args: Vec<Value>,
+        span: Span,
+    ) -> EResult<Option<Value>> {
+        let Some(first) = args.first() else {
+            return Ok(None);
+        };
+        let Some((impl_module, decl)) = self.trait_method_of(trait_name, method, first) else {
+            return Ok(None);
+        };
+        self.fire(
+            Rule::Flow,
+            span,
+            &format!("`{spelling}` dispatches through `{trait_name}.{method}`"),
+        );
+        self.pending_retags = Vec::new();
+        let applied = self.call_fn(&decl, &impl_module, args, span)?;
+        Ok(Some(applied.value))
+    }
+
     fn binary(&mut self, op: BinOp, left: Value, right: Value, span: Span) -> EResult<Value> {
         use BinOp::{
             Add, BitAnd, BitOr, BitXor, Cmp, Div, Eq, Ge, Gt, Le, Lt, Mul, Ne, Rem, Shl, Shr, Sub,
