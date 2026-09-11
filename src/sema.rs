@@ -4566,11 +4566,14 @@ fn generic_sig_of(decl: &FnDecl) -> GenericSig {
 }
 
 /// The struct a type annotation names, when it is exactly one this module
-/// declares: `Rect`, and nothing applied, prefixed or qualified.
+/// declares — `Rect`, and nothing applied, prefixed or qualified — or the
+/// built-in `str`.
 fn nominal_of_type(ty: &Type, structs: &BTreeSet<String>) -> Option<String> {
     match &*ty.kind {
         TypeKind::Path { path, args }
-            if path.is_single() && args.is_empty() && structs.contains(&path.segments[0].name) =>
+            if path.is_single()
+                && args.is_empty()
+                && (path.segments[0].name == "str" || structs.contains(&path.segments[0].name)) =>
         {
             Some(path.segments[0].name.clone())
         }
@@ -4705,9 +4708,10 @@ impl RowWalk<'_> {
 
     /// The struct an argument *is*, spelled, or `None` for everything this
     /// walk will not swear to: a struct literal of a struct this module
-    /// declares, a name bound to one (by literal, by annotation, or as a
-    /// parameter), and parentheses around either. A call's result, a field,
-    /// an enum, a value from another module: none of these is named here.
+    /// declares, a string literal (`str`), a name bound to either (by
+    /// literal, by annotation, or as a parameter), and parentheses around
+    /// any of those. A call's result, a field, an enum, a value from another
+    /// module: none of these is named here.
     fn nominal_of_expr(&self, expr: &Expr) -> Option<String> {
         match &*expr.kind {
             ExprKind::StructLit { path, .. }
@@ -4715,6 +4719,9 @@ impl RowWalk<'_> {
             {
                 Some(path.segments[0].name.clone())
             }
+            // A string literal is a `str`, interpolated or not
+            // (`[mem.str.imm]`'s witness binds `var s = "00000000"`).
+            ExprKind::Str(_) => Some("str".to_owned()),
             ExprKind::Path(path) if path.is_single() => {
                 self.nominal_of(&path.segments[0].name).map(ToOwned::to_owned)
             }
@@ -4782,6 +4789,42 @@ impl RowWalk<'_> {
             }
         }
         None
+    }
+
+    /// `[mem.str.imm]` (wolf-lang s148, #293; wolf-interp#85's second half):
+    /// a `str` never changes after it is built and `s[a..b]` / `s[i]` is a
+    /// view of its bytes, not a place — `s[l - 1..l] = "{t}"` is E0416 at
+    /// the place, the compiler's span (measured at pin 662b14c: the whole
+    /// `s[l - 1..l]`). This machine answered `unsupported: a slice
+    /// expression denotes a value, not a place` at run time, which the
+    /// ledger filed as out of scope; the clause makes it a refusal, decided
+    /// from the declaration that made `s` a `str` (a literal, an annotation,
+    /// a parameter). A `str` this walk cannot name stays on the dynamic path,
+    /// and `s[i] = v` never reaches here: a single index on a `str` is E0411
+    /// first (D25, `strings/char_index_fail.lu`), read or written.
+    fn str_place(&self, place: &Expr) -> Option<Diag> {
+        let ExprKind::BracketApply { base, .. } = &*place.kind else {
+            return None;
+        };
+        let ExprKind::Path(path) = &*base.kind else {
+            return None;
+        };
+        if !path.is_single() || self.nominal_of(&path.segments[0].name) != Some("str") {
+            return None;
+        }
+        let name = &path.segments[0].name;
+        Some(Diag::new(
+            "E0416",
+            place.span,
+            "mem.str.imm",
+            format!(
+                "cannot assign through a `str` slice: `{name}` is immutable — a `str` never \
+                 changes after it is built (`[mem.str.imm]`), and an index or slice of one is \
+                 a view of its bytes, not a place (`[mem.str.view]`); build the new text and \
+                 assign it to `{name}`: `{name} = \"{{head}}{{bit}}{{tail}}\"`, \
+                 `{name} = head + bit + tail`, or `std.strbuf` for a hot loop"
+            ),
+        ))
     }
 
     /// wolf-interp#89: a type ARGUMENT in expression position resolves.
@@ -4885,7 +4928,11 @@ impl RowWalk<'_> {
                     }
                 }
                 StmtKind::Assign { place, value, .. } => {
-                    if let Some(diag) = self.expr(place).or_else(|| self.expr(value)) {
+                    if let Some(diag) = self
+                        .str_place(place)
+                        .or_else(|| self.expr(place))
+                        .or_else(|| self.expr(value))
+                    {
                         return Some(diag);
                     }
                     // A name assigned something this walk cannot type is no
@@ -6299,6 +6346,49 @@ mod tests {
             "struct S[T] {\n    v: T,\n}\nimpl[T] S[T] {\n    fn mk(self) -> int {\n        var xs = List[T]()\n        0\n    }\n}\nfn main() -> !int {\n    0\n}\n",
             // A local shadowing the container name makes the bracket an index.
             "fn main() -> !int {\n    var List = List[int]()\n    (mut List).push(7)\n    let Nonesuch = 0\n    let v = List[Nonesuch]\n    v\n}\n",
+        ] {
+            assert_eq!(resolve(source), None, "{source}");
+        }
+    }
+
+    // --- wolf-interp#85's second half: [mem.str.imm], E0416 -----------------
+
+    #[test]
+    fn assigning_through_a_str_slice_or_index_is_e0416_at_the_place() {
+        for (body, at) in [
+            // The witness's shape: a literal-bound `var`.
+            (
+                "    var s = \"00000000\"\n    let l = s.len\n    let t = 1\n    s[l - 1..l] = \"{t}\"\n    print(s)\n    0\n",
+                "s[l - 1..l]",
+            ),
+            ("    var s: str = \"ab\"\n    s[0..1] = \"x\"\n    0\n", "s[0..1]"),
+            ("    var s = \"ab\"\n    s[0..1] += \"x\"\n    0\n", "s[0..1]"),
+        ] {
+            let source = format!("fn main() -> !int {{\n{body}}}\n");
+            let diag = resolve(&source).expect("rejected");
+            assert_eq!(diag.code, "E0416", "{body}");
+            assert_eq!(diag.anchor, "mem.str.imm");
+            assert!(diag.message.contains("is immutable"), "{diag:?}");
+            assert_eq!(&source[diag.span.start..diag.span.end], at, "{body}");
+        }
+        // A `str` parameter.
+        let source = "fn f(s: str) -> int {\n    s[0..1] = \"x\"\n    0\n}\nfn main() -> !int {\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0416");
+        assert_eq!(&source[diag.span.start..diag.span.end], "s[0..1]");
+    }
+
+    #[test]
+    fn the_str_place_check_declines_what_it_cannot_name() {
+        for source in [
+            // A list, not a str.
+            "fn main() -> !int {\n    var xs = List[int]()\n    (mut xs).push(1)\n    xs[0] = 2\n    0\n}\n",
+            // A name this walk never typed: a call's result.
+            "fn mk() -> str {\n    \"ab\"\n}\nfn main() -> !int {\n    var s = mk()\n    s[0..1] = \"x\"\n    0\n}\n",
+            // Reassigned to something unnamed before the write.
+            "fn mk() -> str {\n    \"ab\"\n}\nfn main() -> !int {\n    var s = \"ab\"\n    s = mk()\n    s[0..1] = \"x\"\n    0\n}\n",
+            // Assigning the whole `str` is the fix the clause names.
+            "fn main() -> !int {\n    var s = \"ab\"\n    s = \"{s}c\"\n    print(s)\n    0\n}\n",
         ] {
             assert_eq!(resolve(source), None, "{source}");
         }
