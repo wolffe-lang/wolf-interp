@@ -94,11 +94,25 @@ fn pinned_code(check: Option<&Check>) -> Option<&str> {
 /// name a `!T`). E0409 is NOT a resolve-rung code in general: the
 /// `strings/concat_*` mixes pin it too and this machine decides those
 /// dynamically, so the conforms tag is what tells the two apart.
+///
+/// Widened at c9237c1 (is46): the key protocol's E0417/E0418 by
+/// `[mem.map.absent]`/`[type.map.key]` (the binding a `Map[K, V]()`
+/// initializer, an annotation or a parameter made a map; the key type where
+/// it is spelled), and the operator bridge's four — E0501 by
+/// `[generics.golden.def-site]` (the bound read off the generic parameter),
+/// E0301/E0502/E0514 by `[type.trait.op]` (the trait in scope by name, the
+/// impl for the struct, the method's shape). E0301 is NOT a resolve-rung code
+/// in general either: the `resolve/*` module-law files pin it for other
+/// reasons, and the conforms tag tells them apart.
 fn declaration_read_code(case: &Case) -> Option<&str> {
     let code = pinned_code(case.check.as_ref())?;
     let owned = match code {
         "E0401" => ["type.byte", "type.fn.ret"].as_slice(),
         "E0409" => ["type.row.operand"].as_slice(),
+        "E0417" => ["mem.map.absent"].as_slice(),
+        "E0418" => ["type.map.key"].as_slice(),
+        "E0501" => ["generics.golden.def-site"].as_slice(),
+        "E0301" | "E0502" | "E0514" => ["type.trait.op"].as_slice(),
         _ => return None,
     };
     case.conforms
@@ -275,11 +289,18 @@ fn files_whose_ledger_stops_at_lex_fail_at_parse_with_their_pinned_code() {
     // it wanted `=>`. The code was right by accident and the message said
     // nothing about ranges, which is the papercut the clause names. A code
     // ledger cannot see that difference; `parse::tests` reads the string.
+    // s151's three bare-`if` refusals joined at c9237c1 (is46): `let` in a
+    // bare branch, a condition followed by neither `{` nor `then`, and a
+    // bare `then` branch before a braced `else` — E0201 at the compiler's
+    // own bytes, mirrored at 0.1.33 from the trunk clause and measured
+    // in-repo (`tests/s151/`, retired here) before the pin carried them.
+    // They sort between `closure_params_no_separator` and
+    // `index_origin_misplaced`.
     assert_eq!(
         seen.values().cloned().collect::<Vec<_>>(),
         vec![
-            "E0201", "E0211", "E0201", "E0201", "E0201", "E0001", "E0201", "E0210", "E0002",
-            "E0201", "E0201", "E0201", "E0006", "E0201", "E0008"
+            "E0201", "E0201", "E0201", "E0201", "E0211", "E0201", "E0201", "E0201", "E0001",
+            "E0201", "E0210", "E0002", "E0201", "E0201", "E0201", "E0006", "E0201", "E0008"
         ],
         "the pinned grammar-tier codes changed: {seen:?}"
     );
@@ -363,8 +384,8 @@ fn every_parseable_file_resolves_under_sema_lite() {
         // `declaration_read_code` for the half of it this rung owns.
         if let Some(
             code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E0809"
-            | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102" | "E1103" | "E1301"
-            | "E1302"),
+            | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102" | "E1103"
+            | "E1301" | "E1302"),
         ) = pinned_code(case.check.as_ref())
         {
             assert_eq!(
@@ -424,8 +445,8 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
             }
             if let Some(
                 code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
-                | "E0809" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102"
-                | "E1103" | "E1301" | "E1302"),
+                | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101"
+                | "E1102" | "E1103" | "E1301" | "E1302"),
             ) = pinned_code(case.check.as_ref())
             {
                 assert_eq!(
@@ -479,6 +500,10 @@ fn the_ambiguity_annex_pairs_read_the_way_section_eight_says() {
             &[],
         ),
         ("gram.amb.closure", &["grammar/closure_extent.lu"], &[]),
+        // `structlit_paren.lu` still PARSES, which is the annex's point:
+        // its `p == (Point { x: 0 })` is E0301 one rung later under s155's
+        // `[type.trait.op]` (DIV-2026-023, wolf-lang#341), as wolf 0.2.11
+        // refuses it at typecheck.
         (
             "gram.amb.structlit",
             &["grammar/structlit_paren.lu"],

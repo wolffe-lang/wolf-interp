@@ -676,14 +676,30 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             The registry gains FIVE anchors and drops none, key sets
     //             diffed both ways — `type.fn`, `type.fn.ret`, `type.row`,
     //             `type.row.operand`, `mem.str.imm`, 453 -> 458.)
+    // (534 -> 570 at c9237c1 (is46, wolf-lang v0.2.11, the TAG):
+    //             THIRTY-SIX, all entries — s149's `fs/open_nonblock.lu`
+    //             and `net/accept_posture.lu`; s150's `conc/chan_*payload*`
+    //             pair and `typecheck/fn_value_*` three; s151's twelve
+    //             `grammar/if_then_*.lu`; s152's five `memory/map_*.lu` and
+    //             two `typecheck/map_*.lu`; s153's `strings/bytes_view_walk.lu`
+    //             and `memory/region_str_concat_{return,send}.lu`; s155's
+    //             seven `traits/op_*.lu`. `members` holds at 34. The
+    //             registry gains THIRTEEN anchors and drops none, key sets
+    //             diffed both ways — `os.fs.open`, `type.fn.value`,
+    //             `conc.chan.payload`, `gram.expr.if`, `gram.fmt.if`,
+    //             `type.map`, `type.map.key`, `mem.map.absent`, `exec`,
+    //             `exec.checked`, `exec.checked.budget`, `mem.region.escape`,
+    //             `type.trait.op`, `type.trait.op.alias` — 458 -> 471 in
+    //             this count (`exec` is a namespace heading, admitted to
+    //             `anchor::REGISTERED_NAMESPACES` in the same change).)
     let report = report();
     assert_eq!(
         report.total(),
-        534,
+        570,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 500);
+    assert_eq!(report.entries(), 536);
     assert_eq!(report.members(), 34);
 }
 

@@ -232,7 +232,10 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // other two, `type.fn` and `type.row`, are §-heading anchors no witness
 // cites — the shape `type.unit` had one pin earlier. Raised in the bump
 // commit per the test's own instruction.
-const RATCHET_FLOOR: usize = 209;
+// 209 -> 221 at c9237c1 (is46): the thirteen new anchors minus the two
+// the pin cites only from prose (`exec`, `exec.checked`) — every clause
+// this sprint mirrored is covered by its own witnesses.
+const RATCHET_FLOOR: usize = 221;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -371,7 +374,17 @@ const RATCHET_FLOOR: usize = 209;
 // five added, NOTHING dropped, no owner changed (wolf-lang#177's lesson,
 // still standing). s149's `[os.fs.open]` widening and s150's `[type.fn.value]`
 // / `[conc.chan.payload]` are past the tag: not in this registry.
-const ANCHORS_TOTAL: usize = 458;
+// 458 -> 471 at c9237c1 (is46, wolf-lang v0.2.11 — the TAG): THIRTEEN over
+// five sprints — s149's `[os.fs.open]` (#289); s150's `[type.fn.value]` and
+// `[conc.chan.payload]` (#300, #268); s151's `[gram.expr.if]` and
+// `[gram.fmt.if]` (#307); s152's `[type.map]`, `[type.map.key]` and
+// `[mem.map.absent]` (#11, #154); s153's `[exec]` heading with
+// `[exec.checked]` and `[exec.checked.budget]`, and `[mem.region.escape]`
+// (#308, #310); s155's `[type.trait.op]` and `[type.trait.op.alias]` (#5).
+// Key sets diffed BOTH ways — thirteen added, NOTHING dropped, no owner
+// changed. `exec` is a new NAMESPACE, registered in spec/05's list and in
+// `anchor::REGISTERED_NAMESPACES` in one change (`[conf.anchor.ns.admit]`).
+const ANCHORS_TOTAL: usize = 471;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -605,9 +618,11 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // directory the extractor does not harvest, and its other tests are
     // inline).
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "662b14c6e10e4ee4628d788eb166f3f66b3e63f3");
-    assert_eq!(summary.programs, 572);
-    assert_eq!(summary.records, 538);
+    // 572/538 -> 608/574 at c9237c1 (is46, wolf-lang v0.2.11 — the TAG):
+    // thirty-six entries, `members` holds at 34.
+    assert_eq!(summary.pin, "c9237c11d081d5649825b5293bcff6d2814a5ad2");
+    assert_eq!(summary.programs, 608);
+    assert_eq!(summary.records, 574);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

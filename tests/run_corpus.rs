@@ -84,7 +84,14 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // The seed corpus.
     ("hello.lu", "exit(0)"),
     ("overflow.lu", "trap(overflow)"),
-    ("wordcount.lu", "exit(2)"),
+    // `wordcount.lu` stood here from is02 to is45 as `exit(2)`. It leaves
+    // at the c9237c1 pin (is46) without the corpus dropping it: its
+    // `tally[w] += 1` is E0417 under s152's `[mem.map.absent]` and the
+    // file's header still pins the pre-clause verdict — DIV-2026-022,
+    // wolf-lang#341. It returns the day the seed program is respelled.
+    // `grammar/structlit_paren.lu` (`exit(0)` since is02) leaves for the
+    // same reason one clause over: its struct `==` is E0301 under s155's
+    // `[type.trait.op]` — DIV-2026-023, the same filing.
     // Tier-0 memory litmuses.
     ("memory/defer_order.lu", "exit(0)"),
     ("memory/div_zero.lu", "trap(div-zero)"),
@@ -152,7 +159,6 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("grammar/interp_fmtcolon.lu", "exit(0)"),
     ("grammar/interp_nested.lu", "exit(0)"),
     ("grammar/newline_trailing.lu", "exit(0)"),
-    ("grammar/structlit_paren.lu", "exit(0)"),
     // is31 (#179): the struct ARM runs. s130 retired the counterparty's c06
     // product-match refusal and this machine's symmetric deferral died in the
     // same motion — the arm is a conjunction of field tests.
@@ -202,9 +208,6 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("traits/dyn_generic_method.lu", "exit(0)"),
     ("traits/dyn_ok.lu", "exit(0)"),
     ("traits/dyn_self_position.lu", "exit(0)"),
-    ("traits/golden_arith.lu", "exit(0)"),
-    ("traits/golden_eq.lu", "exit(0)"),
-    ("traits/golden_missing_bound.lu", "exit(0)"),
     // -- is04 -------------------------------------------------------------
     // The unsafe litmuses. `unsafe_noalias.lu` runs *defined*: the assertion is
     // true, so `[mem.unsafe.raw.2]` is discharged and O5's `noalias` treatment
@@ -562,7 +565,6 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("generics/pair_of.lu", "exit(0)"),
     ("generics/two_instances.lu", "exit(0)"),
     ("generics/two_level_raise.lu", "exit(0)"),
-    ("traits/dyn_temp_refused.lu", "exit(0)"),
     // is14's own two movers (#32): the dispatch floor under an impl is
     // the trait's default, and an adapter cast moves the nominal
     // identity. Both print what the checker's lanes print.
@@ -1332,6 +1334,66 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("conc/spawn_tail_send_raised_row.lu", "exit(0)"),
     ("grammar/match_range.lu", "exit(0)"),
     ("grammar/match_range_char.lu", "exit(0)"),
+    // FOUR `fail` pins leave at c9237c1 (is46) the way the corpus asked: they
+    // ran here as static conservatism and refuse at resolve now, matching
+    // their codes at the compiler's bytes — `traits/golden_arith.lu`,
+    // `traits/golden_eq.lu` (E0501, the operator bridge's bound rule),
+    // `traits/golden_missing_bound.lu` (E0501, the golden rule's call
+    // shape) and `traits/dyn_temp_refused.lu` (E0810, a temporary cast to
+    // `dyn`, wolf-interp#98). A file leaves this list when the corpus drops
+    // it OR when it stops reaching `run` by answering its own pin.
+    // The c9237c1 pin (is46, wolf-lang v0.2.11): TWENTY-SEVEN of the
+    // thirty-six new entries reach `run`. Predicted before the bump and
+    // measured with the 0.1.33 binary: s151's nine bare-`if` witnesses
+    // (mirrored at 0.1.33, byte-identical on arrival), s149's
+    // `net/accept_posture.lu`, s150's two fn-value runs and the E1002
+    // twin (`trap(exclusivity)`, the dynamic counterpart), the channel
+    // payload pair (`chan_struct_payload` runs; `chan_payload_escape` is
+    // E1010's `region-fault` at the read), s152's `map_std_keys` and
+    // s153's `bytes_view_walk` — nineteen at first sight.
+    //
+    // EIGHT are the sprint's work. #91: `map_absent_else`,
+    // `map_char_bool_keys` (both ran and printed `()` for every miss),
+    // `map_count` and `map_int_keys` (refused at the index write). #92:
+    // `op_eq_inverting` (ran, structurally), `op_money`, `op_ord_struct`
+    // (`+`/`<` "not defined on" a struct), `op_total_num` (E0201 at
+    // `trait Num =`). #88: `region_str_concat_return` and `_send` ran to
+    // `regions` from freed bytes and are `trap(region-fault)` now — E1010's
+    // counterpart, at the `}` and at the read. The refusals stay out by
+    // design: `map_compound_absent` (E0417), `map_struct_key` (E0418),
+    // `op_eq_no_trait` (E0301), `op_missing_impl` (E0502), `op_hetero_add`
+    // (E0514), the three E0201 bare-`if` refusals; `fs/open_nonblock.lu`
+    // is the declined fs tier (#86).
+    ("conc/chan_payload_escape.lu", "trap(region-fault)"),
+    ("conc/chan_struct_payload.lu", "exit(0)"),
+    ("grammar/if_then_arm.lu", "exit(0)"),
+    ("grammar/if_then_block.lu", "exit(0)"),
+    ("grammar/if_then_chain.lu", "exit(0)"),
+    ("grammar/if_then_ident.lu", "exit(0)"),
+    ("grammar/if_then_let.lu", "exit(0)"),
+    ("grammar/if_then_member.lu", "exit(0)"),
+    ("grammar/if_then_paren_default.lu", "exit(0)"),
+    ("grammar/if_then_stmt.lu", "exit(0)"),
+    ("grammar/if_then_width.lu", "exit(0)"),
+    ("memory/map_absent_else.lu", "exit(0)"),
+    ("memory/map_char_bool_keys.lu", "exit(0)"),
+    ("memory/map_count.lu", "exit(0)"),
+    ("memory/map_int_keys.lu", "exit(0)"),
+    ("memory/map_std_keys.lu", "exit(0)"),
+    ("memory/region_str_concat_return.lu", "trap(region-fault)"),
+    ("memory/region_str_concat_send.lu", "trap(region-fault)"),
+    ("net/accept_posture.lu", "exit(0)"),
+    ("strings/bytes_view_walk.lu", "exit(0)"),
+    ("traits/op_eq_inverting.lu", "exit(0)"),
+    ("traits/op_money.lu", "exit(0)"),
+    ("traits/op_ord_struct.lu", "exit(0)"),
+    ("traits/op_total_num.lu", "exit(0)"),
+    ("typecheck/fn_value_captured_int.lu", "exit(0)"),
+    (
+        "typecheck/fn_value_captured_var_write.lu",
+        "trap(exclusivity)",
+    ),
+    ("typecheck/fn_value_capturing.lu", "exit(0)"),
 ];
 
 #[test]

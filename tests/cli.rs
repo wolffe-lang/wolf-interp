@@ -245,7 +245,12 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // ([type.fn.ret], #284) and `typecheck/str_slice_assign.lu`
     // ([mem.str.imm], #293). All entries; `members` holds at 34. s149, s150
     // and s151 are past the tag and wait for the next pin.
-    assert!(stdout.contains("534 file(s)"), "{stdout}");
+    // 534 -> 570 at c9237c1 (is46, wolf-lang v0.2.11 — the TAG): THIRTY-SIX
+    // over five sprints, none leaves, all entries; `members` holds at 34.
+    // The registry gains thirteen anchors and a namespace (`exec`), and
+    // without the namespace the walk counted ONE failure here — the
+    // pre-bump prediction's one miss, `strings/bytes_view_walk.lu`.
+    assert!(stdout.contains("570 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 

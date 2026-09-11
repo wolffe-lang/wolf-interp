@@ -159,11 +159,13 @@ fn the_flagged_multiopen_litmuses_hold_their_invariant_over_their_whole_space() 
 
 #[test]
 fn the_wide_seed_corpus_stays_deterministic_under_exploration() {
-    // The two flagship programs outside the conc tier that exercise the
-    // scheduler (wordcount's task tier is sequentialized; hello is the
-    // control): exploring them is cheap and pins "sequential programs have
-    // exactly one schedule".
-    for (relative, verdict) in [("hello.lu", "exit(0)"), ("wordcount.lu", "exit(2)")] {
+    // Two flagship programs outside the conc tier (hello is the control;
+    // the count exercise on a map alone is s152's chapter-5 program):
+    // exploring them is cheap and pins "sequential programs have exactly
+    // one schedule". `wordcount.lu` stood here until the c9237c1 pin — its
+    // `tally[w] += 1` is E0417 now (DIV-2026-022, wolf-lang#341), so it no
+    // longer reaches the scheduler at all.
+    for (relative, verdict) in [("hello.lu", "exit(0)"), ("memory/map_count.lu", "exit(0)")] {
         let report = explore_file(relative, &dpor());
         assert!(report.green(), "{relative}: {report:?}");
         assert_eq!(report.schedules, 1, "{relative}");
