@@ -86,8 +86,29 @@ fn pinned_code(check: Option<&Check>) -> Option<&str> {
 /// checker's. The corpus says which is which: a byte-domain witness tags
 /// `type.byte`.
 fn is_byte_domain_case(case: &Case) -> bool {
-    pinned_code(case.check.as_ref()) == Some("E0401")
-        && case.conforms.iter().any(|tag| tag == "type.byte")
+    declaration_read_code(case).is_some()
+}
+
+/// The code a file pins that this machine decides at resolve FROM A
+/// DECLARATION — the is37 rule (derive the set from the directive, never
+/// hand-write it), widened at 662b14c (is45): E0401 by `[type.byte]`'s files
+/// and by `[type.fn.ret]`'s two tail witnesses (`sema::tail_check` reads the
+/// signature alone), and E0409 by `[type.row.operand]`'s two row-operand
+/// witnesses (`sema::row_operand_check` reads the annotation that made the
+/// name a `!T`). E0409 is NOT a resolve-rung code in general: the
+/// `strings/concat_*` mixes pin it too and this machine decides those
+/// dynamically, so the conforms tag is what tells the two apart.
+fn declaration_read_code(case: &Case) -> Option<&str> {
+    let code = pinned_code(case.check.as_ref())?;
+    let owned = match code {
+        "E0401" => ["type.byte", "type.fn.ret"].as_slice(),
+        "E0409" => ["type.row.operand"].as_slice(),
+        _ => return None,
+    };
+    case.conforms
+        .iter()
+        .any(|tag| owned.contains(&tag.as_str()))
+        .then_some(code)
 }
 
 /// A corpus file whose disagreement with this implementation is already
@@ -326,10 +347,10 @@ fn every_parseable_file_resolves_under_sema_lite() {
             continue;
         }
         let observation = frontend::observe(&case.source, Some(Phase::Resolve));
-        if is_byte_domain_case(&case) {
+        if let Some(code) = declaration_read_code(&case) {
             assert_eq!(
                 observation.verdict,
-                Verdict::Fail("E0401".to_owned()),
+                Verdict::Fail(code.to_owned()),
                 "{}",
                 case.path
             );
@@ -339,9 +360,15 @@ fn every_parseable_file_resolves_under_sema_lite() {
         // E0815 (s147, `[gram.pat.range]`) joins the set at e0ce018: an
         // empty range arm is decided from its two literals, so it is a
         // resolve-rung refusal like the rest of this list.
+        // E0416 (s148, `[mem.str.imm]`) joins the set at 662b14c: a `str`
+        // slice on the left of `=` is decided from the declaration that typed
+        // the name (`sema::row_operand_check`, the RowWalk), a resolve-rung
+        // refusal like the rest. E0409 is NOT here — see
+        // `declaration_read_code` for the half of it this rung owns.
         if let Some(
             code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E0809"
-            | "E0812" | "E0813" | "E0815" | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
+            | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102" | "E1103" | "E1301"
+            | "E1302"),
         ) = pinned_code(case.check.as_ref())
         {
             assert_eq!(
@@ -389,10 +416,10 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
         }
         for rung in [Phase::Typecheck, Phase::Mem, Phase::Wir] {
             let observation = frontend::observe(&case.source, Some(rung));
-            if is_byte_domain_case(&case) {
+            if let Some(code) = declaration_read_code(&case) {
                 assert_eq!(
                     observation.verdict,
-                    Verdict::Fail("E0401".to_owned()),
+                    Verdict::Fail(code.to_owned()),
                     "{}",
                     case.path
                 );
@@ -401,8 +428,8 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
             }
             if let Some(
                 code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
-                | "E0809" | "E0812" | "E0813" | "E0815" | "E1101" | "E1102" | "E1103"
-                | "E1301" | "E1302"),
+                | "E0809" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102"
+                | "E1103" | "E1301" | "E1302"),
             ) = pinned_code(case.check.as_ref())
             {
                 assert_eq!(

@@ -667,14 +667,23 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             FIVE anchors and drops none, key sets diffed both ways —
     //             `gram.pat.range` and the `type.unit` family of four,
     //             448 -> 453.)
+    // (529 -> 534 at 662b14c (is45, wolf-lang v0.2.10, the TAG): FIVE, all
+    //             s148's and all entries — `rows/negative/row_operand_add.lu`,
+    //             `rows/negative/row_operand_compare.lu`,
+    //             `typecheck/tail_declared_str.lu`,
+    //             `typecheck/tail_declared_union.lu`,
+    //             `typecheck/str_slice_assign.lu`; `members` holds at 34.
+    //             The registry gains FIVE anchors and drops none, key sets
+    //             diffed both ways — `type.fn`, `type.fn.ret`, `type.row`,
+    //             `type.row.operand`, `mem.str.imm`, 453 -> 458.)
     let report = report();
     assert_eq!(
         report.total(),
-        529,
+        534,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 495);
+    assert_eq!(report.entries(), 500);
     assert_eq!(report.members(), 34);
 }
 

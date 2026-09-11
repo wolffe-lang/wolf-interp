@@ -222,7 +222,17 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // §-heading anchor no witness cites — the same shape `type.closure` had one
 // pin earlier and `type.interp` two before that. Raised in the bump commit
 // per the test's own instruction.
-const RATCHET_FLOOR: usize = 205;
+// 205 -> 209 at 662b14c (is45, wolf-lang v0.2.10 — the TAG): FOUR, against
+// five new anchors. `type.row.operand` arrives cited by the two
+// `rows/negative/row_operand_*.lu` witnesses, `type.fn.ret` by the two
+// `typecheck/tail_declared_*.lu`, `mem.str.imm` by
+// `typecheck/str_slice_assign.lu` — which also cites `mem.str.view`, an
+// anchor registered since s38 that no corpus file had cited until now (the
+// prediction said three; the measurement said four, and this is why). The
+// other two, `type.fn` and `type.row`, are §-heading anchors no witness
+// cites — the shape `type.unit` had one pin earlier. Raised in the bump
+// commit per the test's own instruction.
+const RATCHET_FLOOR: usize = 209;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -354,7 +364,14 @@ const RATCHET_FLOOR: usize = 205;
 // clauses that already had anchors: `[gram.expr.flow]` and
 // `[conc.chan.close]`. Key sets diffed BOTH ways — five added, NOTHING
 // dropped, no owner changed (wolf-lang#177's lesson, still standing).
-const ANCHORS_TOTAL: usize = 453;
+// 453 -> 458 at 662b14c (is45, wolf-lang v0.2.10 — the TAG): FIVE, all
+// s148's — spec/10 §8's `[type.fn]` heading with `[type.fn.ret]`
+// (wolf-lang#284), §9's `[type.row]` heading with `[type.row.operand]`
+// (#284), and spec/02's `[mem.str.imm]` (#293). Key sets diffed BOTH ways —
+// five added, NOTHING dropped, no owner changed (wolf-lang#177's lesson,
+// still standing). s149's `[os.fs.open]` widening and s150's `[type.fn.value]`
+// / `[conc.chan.payload]` are past the tag: not in this registry.
+const ANCHORS_TOTAL: usize = 458;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -579,10 +596,18 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // `typecheck/unit_context_discard.lu`, all entries, so both counts move
     // by 8; the suite is unmoved (is44's new tests are inline fixtures,
     // which the extractor does not harvest).
+    // 567/533 -> 572/538 at 662b14c (is45, wolf-lang v0.2.10, the TAG): 5
+    // corpus files, none leaving — s148's `rows/negative/row_operand_add.lu`,
+    // `rows/negative/row_operand_compare.lu`, `typecheck/tail_declared_str.lu`,
+    // `typecheck/tail_declared_union.lu`, `typecheck/str_slice_assign.lu`,
+    // all entries, so both counts move by 5; the suite is unmoved (is45's
+    // twelve `tests/s151/*.lu` witnesses are test-owned fixtures under a
+    // directory the extractor does not harvest, and its other tests are
+    // inline).
     let (_, summary) = bundle();
-    assert_eq!(summary.pin, "e0ce01891577d64d6b9a3497f752a32acac3fefc");
-    assert_eq!(summary.programs, 567);
-    assert_eq!(summary.records, 533);
+    assert_eq!(summary.pin, "662b14c6e10e4ee4628d788eb166f3f66b3e63f3");
+    assert_eq!(summary.programs, 572);
+    assert_eq!(summary.records, 538);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

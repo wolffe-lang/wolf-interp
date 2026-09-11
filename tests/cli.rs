@@ -238,7 +238,14 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // `conc/spawn_tail_send_raised_row.lu`,
     // `typecheck/unit_context_discard.lu` ([type.unit], #275). All entries;
     // `members` holds at 34. Moved with the pin, per the export.rs rule.
-    assert!(stdout.contains("529 file(s)"), "{stdout}");
+    // 529 -> 534 at 662b14c (is45, wolf-lang v0.2.10 — the TAG): FIVE, all
+    // s148's — `rows/negative/row_operand_add.lu`,
+    // `rows/negative/row_operand_compare.lu` ([type.row.operand], #284),
+    // `typecheck/tail_declared_str.lu`, `typecheck/tail_declared_union.lu`
+    // ([type.fn.ret], #284) and `typecheck/str_slice_assign.lu`
+    // ([mem.str.imm], #293). All entries; `members` holds at 34. s149, s150
+    // and s151 are past the tag and wait for the next pin.
+    assert!(stdout.contains("534 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -247,7 +254,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 529);
+    assert_eq!(value["total"], 534);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
