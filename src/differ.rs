@@ -179,6 +179,26 @@ pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
          spec assigns neither code to junk recovery",
     ),
     (
+        "wordcount.lu",
+        "DIV-2026-022",
+        "the seed program's `tally[w] += 1` is E0417 under s152's \
+         `[mem.map.absent]` (`m[k] op= v` refuses in every profile — \
+         `typecheck/map_compound_absent.lu` is that sentence) while its \
+         header still pins run(exit=2); the compiler's ledger stops at \
+         resolve on the std surface and never reaches the refusal. Filed \
+         upstream as wolf-lang#341",
+    ),
+    (
+        "grammar/structlit_paren.lu",
+        "DIV-2026-023",
+        "`p == (Point { x: 0 })` is E0301 under s155's `[type.trait.op]` \
+         (`==` on a user type is `Eq.eq`, nothing synthesized — \
+         `traits/op_eq_no_trait.lu` is the same program) while the header \
+         still pins check: pass at resolve; wolf 0.2.11 answers \
+         fail(E0301)@typecheck at the same operand. Filed upstream as \
+         wolf-lang#341",
+    ),
+    (
         "grammar/let_group_bare_tuple.lu",
         "DIV-2026-021",
         "where a D63 let-group refusal POINTS: both machines answer E0201 at \
@@ -1533,7 +1553,16 @@ mod tests {
         // assigns that retirement to this lane's pin bump). Seven of those
         // eight are byte-identical now; the eighth is DIV-2026-021, a
         // different finding wearing the same file.
-        assert_eq!(FILED_DIVERGENCES.len(), 2);
+        // DIV-2026-022 and DIV-2026-023 filed at the c9237c1 pin (is46):
+        // two seed files whose headers predate s152 and s155 — wordcount's
+        // `tally[w] += 1` (E0417) and structlit_paren's struct `==`
+        // (E0301) — both wolf-lang#341.
+        assert_eq!(FILED_DIVERGENCES.len(), 4);
+        let (id, _) = filed("upstream/corpus/wordcount.lu").expect("DIV-2026-022 is filed");
+        assert_eq!(id, "DIV-2026-022");
+        let (id, _) =
+            filed("upstream/corpus/grammar/structlit_paren.lu").expect("DIV-2026-023 is filed");
+        assert_eq!(id, "DIV-2026-023");
         let (id, _) = filed("upstream/corpus/resolve/broken_sibling/entry.lu")
             .expect("DIV-2026-019 is filed against the D59 broken-sibling witness");
         assert_eq!(id, "DIV-2026-019");

@@ -254,7 +254,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 534);
+    assert_eq!(value["total"], 570);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
@@ -564,11 +564,21 @@ fn the_front_door_runs_a_file_and_the_exit_code_is_the_programs() {
     assert_eq!(stdout_of(&output), "sum of squares: 30\n");
     assert!(stderr_of(&output).is_empty(), "{}", stderr_of(&output));
 
-    // A program's own exit(N) is the process exit code — wordcount's usage
-    // path exits 2 by its own choice, not as a diagnostic.
-    let wordcount = format!("{}/corpus/wordcount.lu", wolf_interp::upstream_root());
-    let output = lupin(&["run", &wordcount]);
-    assert_eq!(output.status.code(), Some(2));
+    // A program's own exit(N) is the process exit code — a usage path that
+    // exits 2 by its own choice, not as a diagnostic. (This was
+    // `corpus/wordcount.lu`'s usage path until the c9237c1 pin: its
+    // `tally[w] += 1` is E0417 under `[mem.map.absent]` now, DIV-2026-022.)
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("cli-usage-exit");
+    std::fs::create_dir_all(&dir).expect("scratch");
+    let usage = dir.join("main.lu");
+    std::fs::write(
+        &usage,
+        "fn main(args: List[str]) -> !int {\n    if args.is_empty() { print(\"usage: wc FILE\"); \
+         return 2 }\n    0\n}\n",
+    )
+    .expect("written");
+    let output = lupin(&["run", usage.to_str().expect("utf-8 path")]);
+    assert_eq!(output.status.code(), Some(2), "{}", stderr_of(&output));
     assert!(
         stdout_of(&output).contains("usage: wc"),
         "{}",
