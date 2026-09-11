@@ -378,7 +378,20 @@ pub const E_FN_NEEDS_BODY: &str = "E0204";
 /// **Unpinned.**
 pub const E_RANGE_CHAIN: &str = "E0205";
 /// `assume noalias` needs ≥2 operands (`[gram.expr.unsafe]`). **Unpinned.**
-pub const E_ASSUME_ARITY: &str = "E0206";
+/// Sat at E0206 until is45: wolfc spends E0206 on "expected a type"
+/// (wolf-interp#89), and this implementation follows the established
+/// assignment rather than competing with it, the way [`E_WHEN_ARITY`] left
+/// E0203 to the toplevel-decl family. E0212 is the first number past the
+/// counterparty's E02xx catalog at pin `662b14c`.
+pub const E_ASSUME_ARITY: &str = "E0212";
+/// Type position needs a type — after `:`, after `->`, inside `[…]` — and
+/// the token found cannot begin one (`[gram.type]`): `fn f(p: proc)`. The
+/// spec's §9 reserves E02xx to the parser and names no number; **E0206 is
+/// wolfc's** (wolf-interp#89, measured at pin `662b14c`: identical span,
+/// identical phase, `fail(E0206)` against this side's former `fail(E0201)`),
+/// followed for the same reason E0203 was. Listed in [`UNPINNED_CODES`]
+/// because no corpus file pins it yet.
+pub const E_EXPECTED_TYPE: &str = "E0206";
 /// Syntactic nesting past the recursion rail. The **code** is unpinned; the
 /// **depth** is not: `[gram.lex.rails]` makes expression/statement recursion
 /// depth 256 normative and differential-tested, an amendment this
@@ -479,6 +492,11 @@ pub const UNPINNED_CODES: &[(&str, &str, &str)] = &[
         E_ASSUME_ARITY,
         "gram.expr.unsafe",
         "`assume noalias` needs ≥2 operands",
+    ),
+    (
+        E_EXPECTED_TYPE,
+        "gram.type",
+        "type position holds a token that cannot begin a type — wolfc's E0206, followed",
     ),
     (
         E_NESTING_RAIL,

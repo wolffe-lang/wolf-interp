@@ -488,6 +488,22 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Type position holds a token that cannot begin a type (`[gram.type]`):
+    /// `fn f(p: proc)`, `fn f(s: scope)`. E0206 — the counterparty's number
+    /// for this shape, followed (wolf-interp#89; see
+    /// [`diag::E_EXPECTED_TYPE`]). The file ending here stays E0003.
+    fn expected_type(&self, anchor: &'static str) -> Diag {
+        match self.tok() {
+            None => self.unexpected(anchor, "a type"),
+            Some(tok) => Diag::new(
+                diag::E_EXPECTED_TYPE,
+                self.span(),
+                anchor,
+                format!("expected a type, found {}", tok.describe()),
+            ),
+        }
+    }
+
     fn expect(&mut self, tok: &Tok, anchor: &'static str) -> PResult<Span> {
         if self.at(tok) {
             Ok(self.advance())
@@ -1631,7 +1647,7 @@ impl<'a> Parser<'a> {
                 };
                 TypeKind::Path { path, args }
             }
-            _ => return Err(self.unexpected(anchor, "a type")),
+            _ => return Err(self.expected_type(anchor)),
         };
 
         let mut ty = Type {
@@ -4703,5 +4719,26 @@ mod tests {
             panic!("the defaulting operator, got {:?}", binding.value.kind);
         };
         assert!(matches!(&*expr.kind, ExprKind::If { otherwise: None, .. }));
+    }
+
+    /// wolf-interp#89's second half: a keyword in type position is E0206,
+    /// the counterparty's number, at the keyword — `fn f(p: proc)` measured
+    /// `[12,16]` on both sides at pin 662b14c.
+    #[test]
+    fn a_keyword_in_type_position_is_e0206_at_the_keyword() {
+        for (source, at) in [
+            ("fn f(p: proc) { }\nfn main() -> !int { 0 }\n", "proc"),
+            ("fn f(s: scope) { }\nfn main() -> !int { 0 }\n", "scope"),
+            ("fn f() -> proc { }\nfn main() -> !int { 0 }\n", "proc"),
+            ("fn f(xs: List[proc]) { }\nfn main() -> !int { 0 }\n", "proc"),
+        ] {
+            let d = rejects(source);
+            assert_eq!(d.code, diag::E_EXPECTED_TYPE, "{source}");
+            assert_eq!(d.anchor, "gram.type");
+            assert_eq!(&source[d.span.start..d.span.end], at, "{source}");
+            assert!(d.message.starts_with("expected a type, found keyword"), "{}", d.message);
+        }
+        assert_eq!(rejects("fn f(p: proc").code, diag::E_EXPECTED_TYPE);
+        assert_eq!(rejects("fn f(p: ").code, diag::E_UNEXPECTED_EOF);
     }
 }
