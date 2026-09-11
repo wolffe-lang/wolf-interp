@@ -49,6 +49,14 @@ pub const KEYWORDS: [&str; 50] = [
 /// an asm constraint is read with the ordinary identifier rule. They are
 /// therefore absent from this list, which holds only the words a production
 /// tests for.
+///
+/// `then` (`[gram.expr.if]`, wolf-lang s151) is contextual by the clause's
+/// own word — "contextual, not reserved" — and the parser matches it by
+/// spelling in the one position after a complete `if` condition
+/// (`parse::Parser::parse_if`). It is NOT in this list because §6.2
+/// (`[gram.inv.ctx]`) does not name it, and `tests/spec_extract.rs` holds
+/// this list to §6.2's prose both ways; the omission is filed upstream
+/// (is45). When §6.2 names it, it joins here and the test says so.
 pub const CONTEXTUAL: [&str; 11] = [
     "c", "rc", "pool", "from", "timeout", "noalias", "pkg", "self", "out", "inout", "lateout",
 ];
