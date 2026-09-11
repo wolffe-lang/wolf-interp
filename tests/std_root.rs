@@ -351,3 +351,84 @@ fn the_flat_fallback_and_repeated_same_path_imports_stay_legal() {
     let record = record(&output);
     assert_eq!(record["verdict"], "exit(0)", "{record}");
 }
+
+// -- wolf-interp#96 / #97: a trait reached through its module ---------------
+
+/// wolf-std sc44's twelve-line reduction: `std/tiny/tiny.lu` declares
+/// `Eq` and `impl Eq for str`; the entry dispatches `tiny.Eq.eq(a, b)`
+/// under `[K: tiny.Eq]`. lupin 0.1.33 answered `unsupported` at resolve
+/// ("`Eq` is a trait; … no dynamic semantics here") for the imported
+/// trait while the byte-identical trait in the entry file ran — one trait,
+/// two verdicts, decided by which FILE declared it (#96). Both wolf tiers
+/// print `true false`.
+#[test]
+fn a_trait_reached_through_its_module_dispatches_like_a_local_one() {
+    let dir = scratch("std-root-imported-trait");
+    let root = dir.join("std");
+    write(
+        &root,
+        "tiny/tiny.lu",
+        "//! member: true\npub trait Eq {\n    fn eq(self, other: Self) -> bool\n}\n\n\
+         impl Eq for str {\n    fn eq(self, other: Self) -> bool {\n        self == other\n    }\n}\n",
+    );
+    write(
+        &dir,
+        "pkg/m.lu",
+        "use std.tiny\n\nfn same[K: tiny.Eq](a: K, b: K) -> bool {\n    tiny.Eq.eq(a, b)\n}\n\n\
+         fn main() -> !int {\n    print(\"{same(\"x\", \"x\")} {same(\"x\", \"y\")}\")\n    0\n}\n",
+    );
+    let entry = dir.join("pkg/m.lu");
+    let value = record(&lupin(
+        &[
+            "conform-run",
+            entry.to_str().expect("utf-8 path"),
+            "--std-root",
+            root.to_str().expect("utf-8 path"),
+            "--json",
+        ],
+        &[],
+    ));
+    assert_eq!(value["phase_reached"], "run", "{value}");
+    assert_eq!(value["verdict"], "exit(0)", "{value}");
+    assert_eq!(value["stdout_inline"], "true false\n", "{value}");
+}
+
+/// wolf-std sc44's `std.ops` shape: the file's ONLY mention of the import
+/// is the qualified trait in a generic bound, `fn total[T: ops.Add]`. lupin
+/// 0.1.33 answered `fail(E0305)` "the import `ops` is never used" with a
+/// machine-applicable fix-it that would have made the bound unresolvable;
+/// both wolf tiers resolve the file and print `3` (#97). The bound is a
+/// use of the import; `acc + x` under `[T: Add]` dispatches through
+/// `Add.add` (`[type.trait.op]`), which at `int` is the machine add.
+#[test]
+fn a_qualified_trait_in_a_generic_bound_counts_as_a_use_of_its_import() {
+    let dir = scratch("std-root-bound-use");
+    let root = dir.join("std");
+    write(
+        &root,
+        "ops/ops.lu",
+        "//! member: true\npub trait Add {\n    fn add(self, other: Self) -> Self\n}\n\n\
+         impl Add for int {\n    fn add(self, other: Self) -> Self {\n        self + other\n    }\n}\n",
+    );
+    write(
+        &dir,
+        "pkg/o.lu",
+        "use std.ops\n\nfn total[T: ops.Add](xs: List[T], zero: T) -> T {\n    var acc = zero\n    \
+         for x in xs { acc = acc + x }\n    acc\n}\n\nfn main() -> !int {\n    var a = List[int]()\n    \
+         (mut a).push(1)\n    (mut a).push(2)\n    print(\"{total(a, 0)}\")\n    0\n}\n",
+    );
+    let entry = dir.join("pkg/o.lu");
+    let value = record(&lupin(
+        &[
+            "conform-run",
+            entry.to_str().expect("utf-8 path"),
+            "--std-root",
+            root.to_str().expect("utf-8 path"),
+            "--json",
+        ],
+        &[],
+    ));
+    assert_eq!(value["phase_reached"], "run", "{value}");
+    assert_eq!(value["verdict"], "exit(0)", "{value}");
+    assert_eq!(value["stdout_inline"], "3\n", "{value}");
+}
