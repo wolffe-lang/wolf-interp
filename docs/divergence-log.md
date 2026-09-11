@@ -110,6 +110,133 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The mirror takes `then` — is45, lupin 0.1.33, pin `662b14c` (wolf-lang **v0.2.10**)
+
+Pin `e0ce018` -> `662b14c`, **the v0.2.10 tag**: 0.1.32 pinned a dev stamp
+22 commits short of the release, and this is the release closing that gap.
+The delta is s148 alone — `spec/10-types.md` gains `[type.fn]`/`[type.fn.ret]`
+(§8) and `[type.row]`/`[type.row.operand]` (§9), `spec/02-memory-model.md`
+gains `[mem.str.imm]`, and `spec/anchors.json` **453 -> 458; key sets diffed
+BOTH ways** — five arrive, **nothing drops**, no owner changes. Five corpus
+files join, none leaves, all entries: `rows/negative/row_operand_add.lu`,
+`rows/negative/row_operand_compare.lu`, `typecheck/tail_declared_str.lu`,
+`typecheck/tail_declared_union.lu`, `typecheck/str_slice_assign.lu`.
+
+Three corrections to the launch brief, measured with `git merge-base
+--is-ancestor` and worth writing down because the brief's census expected
+them: **s149 is not in this pin** (`b342ad7`, `fs_open_mode` 5, is past the
+tag — so wolf-interp#86's `corpus/fs/open_nonblock.lu` is not in the vendored
+corpus either, and the fs tier's decline-by-name has nothing to answer yet);
+**s150 is not in this pin** (`119d9e0`); and s151 — the sprint's own clause —
+is not in it either, which is why the twelve `if_then_*` witnesses live under
+`tests/s151/` and not in `run_corpus.rs`. The clause text was read from
+wolf-lang trunk `f608487`; the pin is the release's; the next pin takes
+v0.2.11 and the witnesses move into the shared corpus with it.
+
+**The prediction, written before the binary ran** (the scratch file is
+`is45-predictions.md`, dated before the pin bump commit): 534 files / 500
+entries, 383 reaching run (none of the five runs), 378 matching, **2
+mismatches** — DIV-2026-019 and `row_operand_compare.lu`, because lupin
+0.1.32 answered E0401 for a comparison on a bare row and the clause rules
+E0409 on either side (wolf-interp#85); `str_slice_assign.lu` out of scope
+(lupin declined the slice as a place at run time); the two tail witnesses and
+`row_operand_add.lu` matching at first sight, because is43's `tail_check` and
+the arithmetic arm of `binary_operands` already answer what s148 wrote down.
+Anchors 453 -> 458, ratchet 205 -> 208 (`type.fn` and `type.row` are the
+§-heading anchors no witness cites), distinct conforms 307 -> 310.
+
+**Measured, with the 0.1.32 release binary at the new pin, before a line was
+edited:** 534/500, 383 reach run, **378 match, 2 mismatch, 62 out of scope**,
+16 counterparts and 42 conservatism unmoved, **311** distinct conforms. Every
+prediction held but the last: `mem.str.view` was also uncited before
+`str_slice_assign.lu` arrived, so the distinct-conforms count moved by four,
+not three. The measurement is in `is45-predictions.md` under MEASURED.
+
+| witness | lupin 0.1.32 at the NEW pin | lupin 0.1.33 | the clause |
+| --- | --- | --- | --- |
+| `rows/negative/row_operand_add.lu` | `fail(E0409)@resolve`, match | unmoved | `[type.row.operand]` |
+| `rows/negative/row_operand_compare.lu` | `fail(E0401)@resolve`, **MISMATCH** | `fail(E0409)@resolve`, match | `[type.row.operand]` |
+| `typecheck/tail_declared_str.lu` | `fail(E0401)@resolve`, match | unmoved | `[type.fn.ret]` |
+| `typecheck/tail_declared_union.lu` | `fail(E0401)@resolve`, match | unmoved | `[type.fn.ret]` |
+| `typecheck/str_slice_assign.lu` | `unsupported@resolve`, out of scope | `fail(E0416)@resolve`, match | `[mem.str.imm]` |
+
+Census 495 -> 500 entries, 383 reach run unmoved, 375 -> 380 match, 61 out of
+scope unmoved; 42 conservatism and 16 dynamic counterparts unmoved; mismatches
+1 -> 2 -> **1**, DIV-2026-019.
+
+**s151's twelve, the sprint's item 2 (wolf-interp#90).** Not in the pin, so
+the ledger for them is `tests/s151_if_then.rs`, judged against their own
+headers the way `tests/d62/` was. Under 0.1.32 all nine positive witnesses
+stopped at `E0201: expected `{`, found identifier `then``; the three refusals
+answered E0201 too, at `then`'s column. Under 0.1.33:
+
+| witness | lupin 0.1.32 | lupin 0.1.33 | wolf at `f608487` (trunk, dev build) |
+| --- | --- | --- | --- |
+| `grammar/if_then_let.lu` | `fail(E0201)@parse` | `exit(0)@run`, `29\n28\n` | pinned |
+| `grammar/if_then_arm.lu` | `fail(E0201)@parse` | `exit(0)@run`, `31\n29\n28\n30\n` | pinned |
+| `grammar/if_then_stmt.lu` | `fail(E0201)@parse` | `exit(0)@run`, five lines | pinned |
+| `grammar/if_then_chain.lu` | `fail(E0201)@parse` | `exit(0)@run`, five lines | pinned |
+| `grammar/if_then_paren_default.lu` | `fail(E0201)@parse` | `exit(0)@run`, `7\n0\n1\n` | pinned |
+| `grammar/if_then_block.lu` | `fail(E0201)@parse` | `exit(0)@run`, `29\n` | pinned |
+| `grammar/if_then_ident.lu` | `fail(E0201)@parse` | `exit(0)@run`, `then is a name\n1\n` | pinned |
+| `grammar/if_then_member.lu` | `fail(E0201)@parse` | `exit(0)@run`, `less\nequal\n` | pinned |
+| `grammar/if_then_width.lu` | `fail(E0201)@parse` | `exit(0)@run`, one line | pinned |
+| `grammar/if_then_let_body.lu` | `fail(E0201)@parse` `[241,245]` | `fail(E0201)@parse` `[246,249]` | `fail(E0201)@parse` `[246,249]` |
+| `grammar/if_then_missing.lu` | `fail(E0201)@parse` `[294,296]` | `fail(E0201)@parse` `[294,296]` | `fail(E0201)@parse` `[294,296]` |
+| `grammar/if_then_mixed.lu` | `fail(E0201)@parse` `[269,273]` | `fail(E0201)@parse` `[282,283]` | `fail(E0201)@parse` `[282,283]` |
+
+"pinned" means the stdout in the file's `check:` — the compiler's measured
+answer, which is what the corpus pins. The fourth column's spans were
+measured with a debug build of `wolf_driver` at `f608487` (the installed wolf
+0.2.10 predates the clause and stops at `then` like 0.1.32 did); that build
+answers `unsupported@wir` for the nine running ones, which is a stamp
+question of an unreleased dev build and not a finding — the parse-rung spans
+are the comparison this rung can make, and all three agree byte for byte.
+`if_then_missing.lu` is the DIV-2026-021 shape again: 0.1.32's E0201 was at
+the same span for the wrong reason (a parser with no bare form hits `29`
+where it wanted `{`), and the message — "expected `{` or `then` … an `if` is
+spelled braced … or bare …" — is what the clause asks for, so
+`parse::tests::a_condition_followed_by_neither_brace_nor_then_is_e0201_naming_both`
+reads the string.
+
+**`[proto.cmp.triage]`: the spec is the defendant twice, and silent once.**
+
+- `[gram.expr.if]` calls `then` "contextual, not reserved" and
+  `[gram.inv.ctx]` (§6.2), the clause that enumerates the contextual
+  keywords, does not name it — s151 never touched §6.2. `lex::CONTEXTUAL` is
+  held to §6.2's prose both ways by `tests/spec_extract.rs`, so `then` cannot
+  join the table without failing the test; the parser matches it by spelling
+  in `parse_if` and the table stays at eleven. Filed as **wolf-lang#318**.
+- wolf-interp#84 (`[T: Area](a: T, b: T)` with a `Rect` and a `Square`):
+  `[gram.item.fn]` gives `generic_param ::= IDENT (':' bound)?` and stops.
+  No clause says a type parameter binds once per call. wolf 0.2.10 answers
+  E0401 at `[464,465]` and lupin 0.1.33 answers the same code at the same
+  span, from declarations alone (a bare-`T` parameter; an argument whose
+  struct a literal, an annotation or a parameter spelled) — two
+  implementations agreeing on an unwritten rule, which is the shape the
+  filing rule exists for. Filed as **wolf-lang#319** with the program and
+  all three records, asking for the sentence and a shared witness.
+- wolf-interp#89's second half (`fn f(p: proc)`): E0206 on the compiler,
+  E0201 here, same span, same phase. §9 reserves the family and names no
+  number; no corpus file pins E0206. This side follows the counterparty's
+  number the way E0203 was ceded at wolf-interp#3 (`E_ASSUME_ARITY`, which had
+  invented E0206, moves to E0212). Filed as **wolf-lang#320** for the corpus
+  witness that would pin it on both sides.
+
+**`then` is a parser fact and costs the later rungs nothing.** A bare branch
+is a brace-less `Block` — no statements, its one expression as the tail, the
+expression's span — so sema, lint and the evaluator see the shape they already
+handle. The branch is parsed one tier below the defaulting `else` (tier 14),
+which is what makes `if c then f() else 0` the two-way `if` per
+`[gram.amb.else]`; a jump's operand stops at the same tier (`parse::CHOICES`
+gains the row: `expr ::= else_expr | jump_expr` with `jump_expr ::= 'return'
+expr?` would let `if c then return x else y` read `x else y` as the operand,
+and the clause's own-`else` sentence does not mention jumps). The independence
+doctrine held the way is44 held it: the clause states everything the parser
+needed — the contextual position, the own-`else` binding, the shared-form rule,
+the E0201 that names both spellings — and the counterparty's parser was not
+opened.
+
 ### The mirror takes the range arm — is44, lupin 0.1.32, pin `e0ce018` (wolf-lang s147, dev-stamped)
 
 Pin `4c60946` -> `e0ce018`, a dev stamp again: s147 landed
