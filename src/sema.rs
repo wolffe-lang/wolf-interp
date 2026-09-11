@@ -4466,23 +4466,54 @@ fn unit_expr(expr: &Expr, unit_fns: &BTreeSet<String>) -> Option<Span> {
 fn row_operand_check(program: &Program) -> Option<Diag> {
     for module in program.modules.values() {
         let mut fallible: BTreeMap<String, String> = BTreeMap::new();
+        let mut generic_sigs: BTreeMap<String, GenericSig> = BTreeMap::new();
+        let mut structs: BTreeSet<String> = BTreeSet::new();
         for (name, (def, _)) in &module.items {
-            if let Def::Fn(decl) = def
-                && let Some(ret) = &decl.ret
-                && let Some(render) = render_row_type(ret)
-            {
-                fallible.insert(name.clone(), render);
+            match def {
+                Def::Fn(decl) => {
+                    if let Some(ret) = &decl.ret
+                        && let Some(render) = render_row_type(ret)
+                    {
+                        fallible.insert(name.clone(), render);
+                    }
+                    if !decl.generics.is_empty() {
+                        generic_sigs.insert(name.clone(), generic_sig_of(decl));
+                    }
+                }
+                Def::Struct(_) => {
+                    structs.insert(name.clone());
+                }
+                _ => {}
             }
         }
-        for decl in each_fn(module) {
+        let known = known_type_names(program, module);
+        // Top-level `fn` items, then impl-block methods with their block's
+        // generics — the scope the annotation check reads (#79's method half).
+        let methods = module
+            .methods
+            .values()
+            .flat_map(|by_name| by_name.values().flatten())
+            .map(|method| (&*method.decl, method.impl_generics.as_slice()));
+        let items = module.items.values().filter_map(|(def, _)| match def {
+            Def::Fn(decl) => Some((&**decl, [].as_slice())),
+            _ => None,
+        });
+        for (decl, impl_generics) in items.chain(methods) {
+            let mut types = known.clone();
+            types.extend(impl_generics.iter().cloned());
+            types.extend(decl.generics.iter().map(|g| g.name.name.clone()));
             let mut walk = RowWalk {
                 scopes: vec![Vec::new()],
                 fallible: &fallible,
+                generic_sigs: &generic_sigs,
+                structs: &structs,
+                types: &types,
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
                     let row = render_row_type_of(ty);
-                    walk.declare(&name.name, row);
+                    let nominal = nominal_of_type(ty, &structs);
+                    walk.declare_typed(&name.name, row, nominal);
                 }
             }
             if let Some(body) = &decl.body
@@ -4496,6 +4527,9 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
                 let mut walk = RowWalk {
                     scopes: vec![Vec::new()],
                     fallible: &fallible,
+                    generic_sigs: &generic_sigs,
+                    structs: &structs,
+                    types: &known,
                 };
                 if let Some(diag) = walk.expr(&binding.value) {
                     return Some(diag);
@@ -4504,6 +4538,56 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
         }
     }
     None
+}
+
+/// `fn f[T: Area, U](a: T, b: T, n: int)` → generics `["T", "U"]`, params
+/// `[Some("T"), Some("T"), None]`: a parameter counts only when its type is
+/// exactly a bare generic name, so `List[T]` and `*T` leave the slot `None`.
+fn generic_sig_of(decl: &FnDecl) -> GenericSig {
+    let generics: Vec<String> = decl.generics.iter().map(|g| g.name.name.clone()).collect();
+    let params = decl
+        .params
+        .iter()
+        .map(|param| match &param.kind {
+            crate::ast::ParamKind::Named { ty, .. } => match &*ty.kind {
+                TypeKind::Path { path, args }
+                    if path.is_single()
+                        && args.is_empty()
+                        && generics.contains(&path.segments[0].name) =>
+                {
+                    Some(path.segments[0].name.clone())
+                }
+                _ => None,
+            },
+            crate::ast::ParamKind::SelfParam { .. } => None,
+        })
+        .collect();
+    GenericSig { generics, params }
+}
+
+/// The struct a type annotation names, when it is exactly one this module
+/// declares: `Rect`, and nothing applied, prefixed or qualified.
+fn nominal_of_type(ty: &Type, structs: &BTreeSet<String>) -> Option<String> {
+    match &*ty.kind {
+        TypeKind::Path { path, args }
+            if path.is_single() && args.is_empty() && structs.contains(&path.segments[0].name) =>
+        {
+            Some(path.segments[0].name.clone())
+        }
+        _ => None,
+    }
+}
+
+/// `1st`, `2nd`, `3rd`, `4th`, … `11th`, `12th`, `13th`, `21st`.
+fn ordinal(n: usize) -> String {
+    let suffix = match (n % 10, n % 100) {
+        (1, 11) | (2, 12) | (3, 13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
 }
 
 /// How a `!T` spells itself in a diagnostic. `-> !int` renders `!int`; the
@@ -4561,17 +4645,43 @@ fn render_row_tags(row: &crate::ast::ErrorRow) -> String {
     parts.join(", ")
 }
 
-/// The lexical environment of the row walk: name → the `!T` it was declared
-/// with, when it was declared with one.
+/// A top-level `fn`'s generic parameters, and which of its parameters are
+/// typed as a bare one: `fn sum_areas[T: Area](a: T, b: T)` records
+/// `generics = ["T"]`, `params = [Some("T"), Some("T")]`.
+struct GenericSig {
+    generics: Vec<String>,
+    params: Vec<Option<String>>,
+}
+
+/// The prelude containers whose bracket arguments are types
+/// (`[gram.amb.brackets]`: `e[…]` is one postfix form, and on these it is
+/// generic application — wolf-interp#89).
+const PRELUDE_CONTAINERS: &[&str] = &["List", "Map", "Option", "Set"];
+
+/// The lexical environment of the declarations-read-back walk: name → the
+/// `!T` it was declared with, when it was declared with one, and the struct
+/// it was declared as, when a literal, an annotation or a parameter said so.
 struct RowWalk<'a> {
-    scopes: Vec<Vec<(String, Option<String>)>>,
+    scopes: Vec<Vec<(String, Option<String>, Option<String>)>>,
     fallible: &'a BTreeMap<String, String>,
+    /// wolf-interp#84: the generic signatures of this module's `fn` items.
+    generic_sigs: &'a BTreeMap<String, GenericSig>,
+    /// The structs this module declares — the only nominal types this walk
+    /// will name an argument as.
+    structs: &'a BTreeSet<String>,
+    /// wolf-interp#89: every name a type position may resolve to at this
+    /// declaration — [`known_type_names`] plus the generics in scope.
+    types: &'a BTreeSet<String>,
 }
 
 impl RowWalk<'_> {
     fn declare(&mut self, name: &str, row: Option<String>) {
+        self.declare_typed(name, row, None);
+    }
+
+    fn declare_typed(&mut self, name: &str, row: Option<String>, nominal: Option<String>) {
         if let Some(scope) = self.scopes.last_mut() {
-            scope.push((name.to_owned(), row));
+            scope.push((name.to_owned(), row, nominal));
         }
     }
 
@@ -4580,8 +4690,138 @@ impl RowWalk<'_> {
             .iter()
             .rev()
             .flat_map(|scope| scope.iter().rev())
-            .find(|(bound, _)| bound == name)
-            .and_then(|(_, row)| row.as_deref())
+            .find(|(bound, _, _)| bound == name)
+            .and_then(|(_, row, _)| row.as_deref())
+    }
+
+    fn nominal_of(&self, name: &str) -> Option<&str> {
+        self.scopes
+            .iter()
+            .rev()
+            .flat_map(|scope| scope.iter().rev())
+            .find(|(bound, _, _)| bound == name)
+            .and_then(|(_, _, nominal)| nominal.as_deref())
+    }
+
+    /// The struct an argument *is*, spelled, or `None` for everything this
+    /// walk will not swear to: a struct literal of a struct this module
+    /// declares, a name bound to one (by literal, by annotation, or as a
+    /// parameter), and parentheses around either. A call's result, a field,
+    /// an enum, a value from another module: none of these is named here.
+    fn nominal_of_expr(&self, expr: &Expr) -> Option<String> {
+        match &*expr.kind {
+            ExprKind::StructLit { path, .. }
+                if path.is_single() && self.structs.contains(&path.segments[0].name) =>
+            {
+                Some(path.segments[0].name.clone())
+            }
+            ExprKind::Path(path) if path.is_single() => {
+                self.nominal_of(&path.segments[0].name).map(ToOwned::to_owned)
+            }
+            ExprKind::Group(inner) => self.nominal_of_expr(inner),
+            _ => None,
+        }
+    }
+
+    /// wolf-interp#84: one type parameter is instantiated once per call.
+    /// `fn sum_areas[T: Area](a: T, b: T)` called with a `Rect` and a
+    /// `Square` ran here and answered the sum; wolf 0.2.9 refuses it at the
+    /// second argument, because the first bound `T`. Decided from
+    /// declarations alone — a parameter typed as a bare generic name, and an
+    /// argument whose struct [`RowWalk::nominal_of_expr`] can spell; an
+    /// argument it cannot name leaves the parameter unbound, a wrong arity is
+    /// E0402's, and a method call is not walked. The number is E0401, the
+    /// mismatch the counterparty answers (measured on wollf's wh-001 at pin
+    /// 4c60946: `` this is `Square`, but `sum_areas` needs its 2nd argument
+    /// to be `Rect` ``); `[gram.item.fn]` declares one `T` per
+    /// `generic_param` and no clause says more — the gap is filed upstream
+    /// with this walk's witness.
+    fn generic_bind(&self, callee: &Expr, args: &[crate::ast::Arg]) -> Option<Diag> {
+        let ExprKind::Path(path) = &*callee.kind else {
+            return None;
+        };
+        if !path.is_single() || self.shadows(&path.segments[0].name) {
+            return None;
+        }
+        let name = &path.segments[0].name;
+        let sig = self.generic_sigs.get(name)?;
+        if sig.params.len() != args.len() {
+            return None;
+        }
+        for generic in &sig.generics {
+            let mut bound: Option<(usize, String)> = None;
+            for (index, (slot, arg)) in sig.params.iter().zip(args).enumerate() {
+                if slot.as_deref() != Some(generic.as_str()) {
+                    continue;
+                }
+                let Some(found) = self.nominal_of_expr(&arg.expr) else {
+                    continue;
+                };
+                match &bound {
+                    None => bound = Some((index, found)),
+                    Some((first, expected)) if *expected != found => {
+                        return Some(Diag::new(
+                            "E0401",
+                            arg.expr.span,
+                            "gram.item.fn",
+                            format!(
+                                "this is `{found}`, but `{name}` needs its {} argument to be \
+                                 `{expected}` — a type parameter is instantiated once per \
+                                 call (`[gram.item.fn]`: `generic_param ::= IDENT (':' \
+                                 bound)?` declares ONE `{generic}`), and the {} argument \
+                                 bound `{generic}` to `{expected}`; declare a second \
+                                 parameter, `[{generic}: …, U: …](a: {generic}, b: U)`, or \
+                                 pass two values of one type",
+                                ordinal(index + 1),
+                                ordinal(first + 1)
+                            ),
+                        ));
+                    }
+                    Some(_) => {}
+                }
+            }
+        }
+        None
+    }
+
+    /// wolf-interp#89: a type ARGUMENT in expression position resolves.
+    /// `List[Nonesuch]()` constructed a list here, because bracket arguments
+    /// are erased at evaluation and #79's annotation check stopped at
+    /// signatures. On a prelude container the brackets are generic
+    /// application (`[gram.amb.brackets]`), so each argument is a type name
+    /// checked against the same scope an annotation is — E0301 at the name,
+    /// as `fn f(xs: List[Nonesuch])` already answers. A name a local binding
+    /// shadows is left alone: that bracket may be an index.
+    fn container_args(&self, base: &Expr, args: &[crate::ast::IndexArg]) -> Option<Diag> {
+        let ExprKind::Path(path) = &*base.kind else {
+            return None;
+        };
+        if !path.is_single() {
+            return None;
+        }
+        let container = path.segments[0].name.as_str();
+        if !PRELUDE_CONTAINERS.contains(&container) || self.shadows(container) {
+            return None;
+        }
+        let (name, span) = args.iter().find_map(|arg| match arg {
+            crate::ast::IndexArg::Type(ty) => unresolved_type_name(ty, self.types),
+            crate::ast::IndexArg::Value(arg) => unresolved_expr_type_name(&arg.expr, self.types),
+        })?;
+        if self.shadows(name) {
+            return None;
+        }
+        Some(Diag::new(
+            "E0301",
+            span,
+            "gram.amb.brackets",
+            format!(
+                "nothing named `{name}` is in scope — `{container}[…]` is generic application \
+                 (`[gram.amb.brackets]`: `e[…]` is one postfix form, resolved in sema), so \
+                 its arguments name types, and resolution is the rung that answers whether \
+                 a name exists ([mod]); it is neither a built-in scalar, an item this module \
+                 declares, nor a generic parameter in scope"
+            ),
+        ))
     }
 
     /// The `!T` an operand *is*, spelled, or `None` for every expression this
@@ -4614,7 +4854,7 @@ impl RowWalk<'_> {
     fn shadows(&self, name: &str) -> bool {
         self.scopes
             .iter()
-            .any(|scope| scope.iter().any(|(bound, _)| bound == name))
+            .any(|scope| scope.iter().any(|(bound, _, _)| bound == name))
     }
 
     fn block(&mut self, block: &Block) -> Option<Diag> {
@@ -4633,8 +4873,13 @@ impl RowWalk<'_> {
                     }
                     let declared = binding.ty.as_ref().and_then(render_row_type_of);
                     let row = declared.or_else(|| self.row_of(&binding.value));
+                    let nominal = binding
+                        .ty
+                        .as_ref()
+                        .and_then(|ty| nominal_of_type(ty, self.structs))
+                        .or_else(|| self.nominal_of_expr(&binding.value));
                     if let PatKind::Binding(name) = &*binding.pattern.kind {
-                        self.declare(&name.name, row);
+                        self.declare_typed(&name.name, row, nominal);
                     } else {
                         declare_pattern_names(&binding.pattern, self);
                     }
@@ -4644,12 +4889,15 @@ impl RowWalk<'_> {
                         return Some(diag);
                     }
                     // A name assigned something this walk cannot type is no
-                    // longer known to hold a row.
+                    // longer known to hold a row, or a struct.
                     if let ExprKind::Path(path) = &*place.kind
                         && path.is_single()
-                        && self.row_of(value).is_none()
                     {
-                        self.declare(&path.segments[0].name, None);
+                        let row = self.row_of(value);
+                        let nominal = self.nominal_of_expr(value);
+                        if row.is_none() || nominal.is_none() {
+                            self.declare_typed(&path.segments[0].name, row, nominal);
+                        }
                     }
                 }
                 StmtKind::Defer { expr, .. } | StmtKind::Expr(expr) => {
@@ -4692,15 +4940,19 @@ impl RowWalk<'_> {
             ExprKind::Unsafe { body } | ExprKind::When { body, .. } => self.block(body),
             ExprKind::Tuple(parts) => parts.iter().find_map(|part| self.expr(part)),
             ExprKind::Call { callee, args } => self
-                .expr(callee)
+                .generic_bind(callee, args)
+                .or_else(|| self.expr(callee))
                 .or_else(|| args.iter().find_map(|arg| self.expr(&arg.expr))),
             ExprKind::SpawnProc { args, .. } => args.iter().find_map(|arg| self.expr(&arg.expr)),
-            ExprKind::BracketApply { base, args, .. } => self.expr(base).or_else(|| {
-                args.iter().find_map(|arg| match arg {
-                    crate::ast::IndexArg::Value(arg) => self.expr(&arg.expr),
-                    crate::ast::IndexArg::Type(_) => None,
-                })
-            }),
+            ExprKind::BracketApply { base, args, .. } => self
+                .container_args(base, args)
+                .or_else(|| self.expr(base))
+                .or_else(|| {
+                    args.iter().find_map(|arg| match arg {
+                        crate::ast::IndexArg::Value(arg) => self.expr(&arg.expr),
+                        crate::ast::IndexArg::Type(_) => None,
+                    })
+                }),
             ExprKind::StructLit { fields, .. } => fields
                 .iter()
                 .find_map(|field| field.value.as_ref().and_then(|expr| self.expr(expr))),
@@ -4963,28 +5215,7 @@ fn declare_pattern_names(pattern: &Pattern, walk: &mut RowWalk<'_>) {
 /// nowhere, which is the same question one syntactic position over.
 fn annotation_check(program: &Program) -> Option<Diag> {
     for module in program.modules.values() {
-        let mut known: BTreeSet<String> = BTreeSet::new();
-        known.extend(BUILTIN_SCALAR_TYPES.iter().map(|s| (*s).to_owned()));
-        known.extend(PRELUDE_TYPE_NAMES.iter().map(|s| (*s).to_owned()));
-        known.extend(
-            crate::eval::builtin::AMBIENT_NAMES
-                .iter()
-                .map(|s| (*s).to_owned()),
-        );
-        known.extend(module.items.keys().cloned());
-        known.extend(module.variants.keys().cloned());
-        known.extend(module.uses.iter().cloned());
-        known.extend(module.distincts.keys().cloned());
-        known.extend(module.trait_impls.keys().cloned());
-        known.extend(module.trait_defaults.keys().cloned());
-        known.extend(module.methods.keys().cloned());
-        known.extend(program.modules.keys().cloned());
-        for sibling in &module.standalone {
-            known.extend(sibling.names.iter().cloned());
-        }
-        if !module.c_headers.is_empty() {
-            known.insert("c".to_owned());
-        }
+        let known = known_type_names(program, module);
         // Top-level `fn` items, then impl-block methods. A method's extra
         // scope is its impl block's generic parameters, which `MethodDef`
         // carries since #79's method half: `impl[T] Stack[T]`'s
@@ -5039,6 +5270,64 @@ fn annotation_check(program: &Program) -> Option<Diag> {
         }
     }
     None
+}
+
+/// Every name a type position may resolve to at module level: the built-in
+/// scalars, the prelude's type names, the ambient prelude, every item the
+/// module declares (forward references included — D32 makes the directory
+/// the module), its variants, its `use`d names, its distincts, traits, the
+/// subjects of its impls, the program's modules, its standalone siblings'
+/// names, and `c` when a header was imported. A declaration adds its own
+/// generics (and its impl block's) on top.
+fn known_type_names(program: &Program, module: &Module) -> BTreeSet<String> {
+    let mut known: BTreeSet<String> = BTreeSet::new();
+    known.extend(BUILTIN_SCALAR_TYPES.iter().map(|s| (*s).to_owned()));
+    known.extend(PRELUDE_TYPE_NAMES.iter().map(|s| (*s).to_owned()));
+    known.extend(
+        crate::eval::builtin::AMBIENT_NAMES
+            .iter()
+            .map(|s| (*s).to_owned()),
+    );
+    known.extend(module.items.keys().cloned());
+    known.extend(module.variants.keys().cloned());
+    known.extend(module.uses.iter().cloned());
+    known.extend(module.distincts.keys().cloned());
+    known.extend(module.trait_impls.keys().cloned());
+    known.extend(module.trait_defaults.keys().cloned());
+    known.extend(module.methods.keys().cloned());
+    known.extend(program.modules.keys().cloned());
+    for sibling in &module.standalone {
+        known.extend(sibling.names.iter().cloned());
+    }
+    if !module.c_headers.is_empty() {
+        known.insert("c".to_owned());
+    }
+    known
+}
+
+/// The first head name an expression in TYPE-ARGUMENT position spells that
+/// `scope` does not contain — `List[Nonesuch]` parses its argument as the
+/// path expression `Nonesuch`, and `List[List[Nonesuch]]` nests the same
+/// shape (wolf-interp#89).
+fn unresolved_expr_type_name<'a>(
+    expr: &'a Expr,
+    scope: &BTreeSet<String>,
+) -> Option<(&'a str, Span)> {
+    match &*expr.kind {
+        ExprKind::Path(path) if path.is_single() => {
+            let segment = &path.segments[0];
+            (!scope.contains(&segment.name)).then(|| (segment.name.as_str(), segment.span))
+        }
+        ExprKind::BracketApply { base, args, .. } => {
+            unresolved_expr_type_name(base, scope).or_else(|| {
+                args.iter().find_map(|arg| match arg {
+                    crate::ast::IndexArg::Type(ty) => unresolved_type_name(ty, scope),
+                    crate::ast::IndexArg::Value(arg) => unresolved_expr_type_name(&arg.expr, scope),
+                })
+            })
+        }
+        _ => None,
+    }
 }
 
 /// The type names the ambient prelude spells that are not functions, so
@@ -5903,5 +6192,115 @@ mod tests {
                      }\n\
                      fn main() -> !int {\n    0\n}\n";
         assert_eq!(resolve(clean), None, "{clean}");
+    }
+
+    // --- wolf-interp#84: one type parameter, one type per call --------------
+
+    const AREA_PRELUDE: &str = "trait Area {\n    fn area(self) -> int\n}\n\
+        struct Rect {\n    w: int,\n    h: int,\n}\n\
+        struct Square {\n    side: int,\n}\n\
+        impl Area for Rect {\n    fn area(self) -> int {\n        self.w * self.h\n    }\n}\n\
+        impl Area for Square {\n    fn area(self) -> int {\n        self.side * self.side\n    }\n}\n";
+
+    #[test]
+    fn a_generic_bound_once_is_instantiated_once_per_call() {
+        // wollf's wh-001, verbatim: `[T: Area](a: T, b: T)` with a `Rect`
+        // and a `Square`. E0401 at the second argument, wolf 0.2.9's sentence.
+        let source = format!(
+            "{AREA_PRELUDE}fn sum_areas[T: Area](a: T, b: T) -> int {{\n    Area.area(a) + Area.area(b)\n}}\n\
+             fn main() -> !int {{\n    let r = Rect {{ w: 6, h: 7 }}\n    let s = Square {{ side: 4 }}\n    sum_areas(r, s)\n}}\n"
+        );
+        let diag = resolve(&source).expect("rejected");
+        assert_eq!(diag.code, "E0401");
+        assert_eq!(diag.anchor, "gram.item.fn");
+        assert!(
+            diag.message
+                .contains("this is `Square`, but `sum_areas` needs its 2nd argument to be `Rect`"),
+            "{diag:?}"
+        );
+        assert_eq!(&source[diag.span.start..diag.span.end], "s");
+    }
+
+    #[test]
+    fn the_binding_reads_literals_annotations_and_parameters() {
+        // A literal argument, an annotated binding, a parameter: each names
+        // its struct, and the refusal lands on whichever disagrees.
+        for (call, at) in [
+            ("sum_areas(Rect { w: 1, h: 1 }, Square { side: 1 })", "Square { side: 1 }"),
+            ("sum_areas(sq, Rect { w: 1, h: 1 })", "Rect { w: 1, h: 1 }"),
+            ("sum_areas(r2, sq)", "sq"),
+        ] {
+            let source = format!(
+                "{AREA_PRELUDE}fn sum_areas[T: Area](a: T, b: T) -> int {{\n    Area.area(a) + Area.area(b)\n}}\n\
+                 fn go(sq: Square) -> int {{\n    let r2: Rect = Rect {{ w: 2, h: 2 }}\n    {call}\n}}\n\
+                 fn main() -> !int {{\n    0\n}}\n"
+            );
+            let diag = resolve(&source).expect("rejected");
+            assert_eq!(diag.code, "E0401", "{call}");
+            assert_eq!(&source[diag.span.start..diag.span.end], at, "{call}");
+        }
+    }
+
+    #[test]
+    fn the_generic_check_declines_every_shape_it_cannot_spell() {
+        for body in [
+            // Two parameters: the heldout reference, and what v2 writes.
+            "fn total[T: Area, U: Area](a: T, b: U) -> int {\n    Area.area(a) + Area.area(b)\n}\n\
+             fn main() -> !int {\n    let r = Rect { w: 6, h: 7 }\n    let s = Square { side: 4 }\n    total(r, s)\n}\n",
+            // One type twice.
+            "fn sum_areas[T: Area](a: T, b: T) -> int {\n    Area.area(a) + Area.area(b)\n}\n\
+             fn main() -> !int {\n    let r = Rect { w: 6, h: 7 }\n    let s = Rect { w: 1, h: 1 }\n    sum_areas(r, s)\n}\n",
+            // An argument this walk cannot name (a call's result) binds nothing.
+            "fn mk() -> Square {\n    Square { side: 1 }\n}\n\
+             fn sum_areas[T: Area](a: T, b: T) -> int {\n    Area.area(a) + Area.area(b)\n}\n\
+             fn main() -> !int {\n    let r = Rect { w: 6, h: 7 }\n    sum_areas(r, mk())\n}\n",
+            // A reassigned name is no longer known to hold its struct.
+            "fn sum_areas[T: Area](a: T, b: T) -> int {\n    Area.area(a) + Area.area(b)\n}\n\
+             fn pick(sq: Square) -> int {\n    var r = Rect { w: 6, h: 7 }\n    r = sq\n    sum_areas(r, sq)\n}\n\
+             fn main() -> !int {\n    0\n}\n",
+            // The parameter is not a bare `T`.
+            "fn firsts[T: Area](a: List[T], b: T) -> int {\n    Area.area(b)\n}\n\
+             fn main() -> !int {\n    let s = Square { side: 4 }\n    firsts(List[Rect](), s)\n}\n",
+            // A local shadows the item's name.
+            "fn sum_areas[T: Area](a: T, b: T) -> int {\n    Area.area(a) + Area.area(b)\n}\n\
+             fn main() -> !int {\n    let sum_areas = fn(a, b) 0\n    let r = Rect { w: 6, h: 7 }\n    let s = Square { side: 4 }\n    sum_areas(r, s)\n}\n",
+        ] {
+            let source = format!("{AREA_PRELUDE}{body}");
+            assert_eq!(resolve(&source), None, "{body}");
+        }
+    }
+
+    // --- wolf-interp#89: a type argument in expression position resolves ---
+
+    #[test]
+    fn a_container_type_argument_that_names_nothing_is_e0301() {
+        for (body, at) in [
+            ("    var xs = List[Nonesuch]()\n    print(\"{xs.len}\")\n    0\n", "Nonesuch"),
+            ("    var m = Map[str, Nonesuch]()\n    0\n", "Nonesuch"),
+            ("    var xs = List[List[Nonesuch]]()\n    0\n", "Nonesuch"),
+            ("    var xs = List[Proc]()\n    0\n", "Proc"),
+        ] {
+            let source = format!("fn main() -> !int {{\n{body}}}\n");
+            let diag = resolve(&source).expect("rejected");
+            assert_eq!(diag.code, "E0301", "{body}");
+            assert_eq!(diag.anchor, "gram.amb.brackets");
+            assert!(diag.message.contains("generic application"), "{diag:?}");
+            assert_eq!(&source[diag.span.start..diag.span.end], at, "{body}");
+        }
+    }
+
+    #[test]
+    fn a_container_type_argument_in_scope_resolves() {
+        for source in [
+            "fn main() -> !int {\n    var xs = List[int]()\n    0\n}\n",
+            "fn main() -> !int {\n    var m = Map[str, List[byte]]()\n    0\n}\n",
+            "struct P {\n    x: int,\n}\nfn main() -> !int {\n    var ps = List[P]()\n    0\n}\n",
+            "fn f[T]() -> int {\n    var xs = List[T]()\n    0\n}\nfn main() -> !int {\n    f[int]()\n}\n",
+            "struct S[T] {\n    v: T,\n}\nimpl[T] S[T] {\n    fn mk(self) -> int {\n        var xs = List[T]()\n        0\n    }\n}\nfn main() -> !int {\n    0\n}\n",
+            // A local shadowing the container name makes the bracket an index.
+            "fn main() -> !int {\n    var List = List[int]()\n    (mut List).push(7)\n    let Nonesuch = 0\n    let v = List[Nonesuch]\n    v\n}\n",
+        ] {
+            assert_eq!(resolve(source), None, "{source}");
+        }
     }
 }
