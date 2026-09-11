@@ -4722,9 +4722,9 @@ impl RowWalk<'_> {
             // A string literal is a `str`, interpolated or not
             // (`[mem.str.imm]`'s witness binds `var s = "00000000"`).
             ExprKind::Str(_) => Some("str".to_owned()),
-            ExprKind::Path(path) if path.is_single() => {
-                self.nominal_of(&path.segments[0].name).map(ToOwned::to_owned)
-            }
+            ExprKind::Path(path) if path.is_single() => self
+                .nominal_of(&path.segments[0].name)
+                .map(ToOwned::to_owned),
             ExprKind::Group(inner) => self.nominal_of_expr(inner),
             _ => None,
         }
@@ -5161,7 +5161,6 @@ impl RowWalk<'_> {
     }
 }
 
-
 fn binop_spelling(op: crate::ast::BinOp) -> Option<&'static str> {
     use crate::ast::BinOp;
     Some(match op {
@@ -5365,14 +5364,13 @@ fn unresolved_expr_type_name<'a>(
             let segment = &path.segments[0];
             (!scope.contains(&segment.name)).then(|| (segment.name.as_str(), segment.span))
         }
-        ExprKind::BracketApply { base, args, .. } => {
-            unresolved_expr_type_name(base, scope).or_else(|| {
+        ExprKind::BracketApply { base, args, .. } => unresolved_expr_type_name(base, scope)
+            .or_else(|| {
                 args.iter().find_map(|arg| match arg {
                     crate::ast::IndexArg::Type(ty) => unresolved_type_name(ty, scope),
                     crate::ast::IndexArg::Value(arg) => unresolved_expr_type_name(&arg.expr, scope),
                 })
-            })
-        }
+            }),
         _ => None,
     }
 }
@@ -6273,7 +6271,10 @@ mod tests {
         // A literal argument, an annotated binding, a parameter: each names
         // its struct, and the refusal lands on whichever disagrees.
         for (call, at) in [
-            ("sum_areas(Rect { w: 1, h: 1 }, Square { side: 1 })", "Square { side: 1 }"),
+            (
+                "sum_areas(Rect { w: 1, h: 1 }, Square { side: 1 })",
+                "Square { side: 1 }",
+            ),
             ("sum_areas(sq, Rect { w: 1, h: 1 })", "Rect { w: 1, h: 1 }"),
             ("sum_areas(r2, sq)", "sq"),
         ] {
@@ -6322,7 +6323,10 @@ mod tests {
     #[test]
     fn a_container_type_argument_that_names_nothing_is_e0301() {
         for (body, at) in [
-            ("    var xs = List[Nonesuch]()\n    print(\"{xs.len}\")\n    0\n", "Nonesuch"),
+            (
+                "    var xs = List[Nonesuch]()\n    print(\"{xs.len}\")\n    0\n",
+                "Nonesuch",
+            ),
             ("    var m = Map[str, Nonesuch]()\n    0\n", "Nonesuch"),
             ("    var xs = List[List[Nonesuch]]()\n    0\n", "Nonesuch"),
             ("    var xs = List[Proc]()\n    0\n", "Proc"),
@@ -6361,8 +6365,14 @@ mod tests {
                 "    var s = \"00000000\"\n    let l = s.len\n    let t = 1\n    s[l - 1..l] = \"{t}\"\n    print(s)\n    0\n",
                 "s[l - 1..l]",
             ),
-            ("    var s: str = \"ab\"\n    s[0..1] = \"x\"\n    0\n", "s[0..1]"),
-            ("    var s = \"ab\"\n    s[0..1] += \"x\"\n    0\n", "s[0..1]"),
+            (
+                "    var s: str = \"ab\"\n    s[0..1] = \"x\"\n    0\n",
+                "s[0..1]",
+            ),
+            (
+                "    var s = \"ab\"\n    s[0..1] += \"x\"\n    0\n",
+                "s[0..1]",
+            ),
         ] {
             let source = format!("fn main() -> !int {{\n{body}}}\n");
             let diag = resolve(&source).expect("rejected");
@@ -6372,7 +6382,8 @@ mod tests {
             assert_eq!(&source[diag.span.start..diag.span.end], at, "{body}");
         }
         // A `str` parameter.
-        let source = "fn f(s: str) -> int {\n    s[0..1] = \"x\"\n    0\n}\nfn main() -> !int {\n    0\n}\n";
+        let source =
+            "fn f(s: str) -> int {\n    s[0..1] = \"x\"\n    0\n}\nfn main() -> !int {\n    0\n}\n";
         let diag = resolve(source).expect("rejected");
         assert_eq!(diag.code, "E0416");
         assert_eq!(&source[diag.span.start..diag.span.end], "s[0..1]");

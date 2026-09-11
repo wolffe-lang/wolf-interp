@@ -3086,10 +3086,7 @@ impl<'a> Parser<'a> {
     /// tail folds into it.
     fn if_body_missing(&self) -> Diag {
         let Some(tok) = self.tok() else {
-            return self.unexpected(
-                "gram.expr.flow",
-                "`{` or `then` after the `if` condition",
-            );
+            return self.unexpected("gram.expr.flow", "`{` or `then` after the `if` condition");
         };
         self.error(
             diag::E_UNEXPECTED_TOKEN,
@@ -4578,7 +4575,8 @@ mod tests {
 
     #[test]
     fn the_bare_if_is_a_brace_less_block_per_branch() {
-        let source = "fn f(leap: bool) -> int {\n    let days = if leap then 29 else 28\n    days\n}\n";
+        let source =
+            "fn f(leap: bool) -> int {\n    let days = if leap then 29 else 28\n    days\n}\n";
         let (then, otherwise) = bare_if_shape(source);
         assert!(then.stmts.is_empty());
         assert_eq!(&source[then.span.start..then.span.end], "29");
@@ -4594,9 +4592,12 @@ mod tests {
 
     #[test]
     fn then_before_a_block_is_optional_and_the_shape_is_the_braced_one() {
-        let braced = bare_if_shape("fn f(c: bool) -> int {\n    let d = if c { 29 } else { 28 }\n    d\n}\n");
-        let with_then =
-            bare_if_shape("fn f(c: bool) -> int {\n    let d = if c then { 29 } else { 28 }\n    d\n}\n");
+        let braced = bare_if_shape(
+            "fn f(c: bool) -> int {\n    let d = if c { 29 } else { 28 }\n    d\n}\n",
+        );
+        let with_then = bare_if_shape(
+            "fn f(c: bool) -> int {\n    let d = if c then { 29 } else { 28 }\n    d\n}\n",
+        );
         assert_eq!(braced.0.stmts.len(), with_then.0.stmts.len());
         assert_eq!(
             braced.0.tail.map(|t| t.kind),
@@ -4609,8 +4610,12 @@ mod tests {
     fn the_ifs_own_else_binds_first_inside_a_bare_branch() {
         // `[gram.amb.else]`: `if c then f() else 0` is the two-way `if` — the
         // `then` branch is the call, and the `else` is the `if`'s.
-        let (then, otherwise) = bare_if_shape("fn f(c: bool) -> int {\n    let v = if c then g() else 0\n    v\n}\n");
-        assert!(matches!(&*then.tail.expect("tail").kind, ExprKind::Call { .. }));
+        let (then, otherwise) =
+            bare_if_shape("fn f(c: bool) -> int {\n    let v = if c then g() else 0\n    v\n}\n");
+        assert!(matches!(
+            &*then.tail.expect("tail").kind,
+            ExprKind::Call { .. }
+        ));
         assert!(otherwise.is_some());
     }
 
@@ -4626,14 +4631,23 @@ mod tests {
         let ExprKind::Block(block) = &*otherwise.expect("two-way").kind else {
             panic!("a block");
         };
-        assert!(matches!(&*block.tail.as_ref().expect("tail").kind, ExprKind::Group(_)));
+        assert!(matches!(
+            &*block.tail.as_ref().expect("tail").kind,
+            ExprKind::Group(_)
+        ));
     }
 
     #[test]
     fn a_bare_chain_picks_its_form_per_link() {
-        parses("fn s(n: int) -> str {\n    if n < 0 then \"neg\" else if n == 0 then \"zero\" else \"pos\"\n}\n");
-        parses("fn s(n: int) -> str {\n    if n < 0 then \"neg\" else if n == 0 {\n        \"zero\"\n    } else {\n        \"pos\"\n    }\n}\n");
-        parses("fn s(n: int) -> str {\n    if n < 0 {\n        \"neg\"\n    } else if n == 0 then \"zero\" else \"pos\"\n}\n");
+        parses(
+            "fn s(n: int) -> str {\n    if n < 0 then \"neg\" else if n == 0 then \"zero\" else \"pos\"\n}\n",
+        );
+        parses(
+            "fn s(n: int) -> str {\n    if n < 0 then \"neg\" else if n == 0 {\n        \"zero\"\n    } else {\n        \"pos\"\n    }\n}\n",
+        );
+        parses(
+            "fn s(n: int) -> str {\n    if n < 0 {\n        \"neg\"\n    } else if n == 0 then \"zero\" else \"pos\"\n}\n",
+        );
     }
 
     #[test]
@@ -4641,24 +4655,35 @@ mod tests {
         parses(
             "fn main() -> !int {\n    var i = 0\n    while i < 4 {\n        if i % 2 == 0 then print(\"even\") else print(\"odd\")\n        if i == 3 then print(\"last\")\n        i += 1\n    }\n    0\n}\n",
         );
-        parses("fn f(m: int) -> int {\n    match m {\n        2 => if true then 29 else 28,\n        _ => 31,\n    }\n}\n");
+        parses(
+            "fn f(m: int) -> int {\n    match m {\n        2 => if true then 29 else 28,\n        _ => 31,\n    }\n}\n",
+        );
     }
 
     #[test]
     fn a_bare_else_may_start_the_next_line() {
         // `[gram.lex.newline]` withholds the terminator before a leading
         // `else`, in the bare form too.
-        let (_, otherwise) = bare_if_shape("fn f(c: bool) -> int {\n    let v = if c then 1\n        else 2\n    v\n}\n");
+        let (_, otherwise) = bare_if_shape(
+            "fn f(c: bool) -> int {\n    let v = if c then 1\n        else 2\n    v\n}\n",
+        );
         assert!(otherwise.is_some());
     }
 
     #[test]
     fn a_jump_in_a_bare_branch_stops_at_the_ifs_else() {
-        let (then, otherwise) = bare_if_shape("fn f(c: bool) -> int {\n    let v = if c then return 0 else 1\n    v\n}\n");
-        assert!(matches!(&*then.tail.expect("tail").kind, ExprKind::Return(Some(_))));
+        let (then, otherwise) = bare_if_shape(
+            "fn f(c: bool) -> int {\n    let v = if c then return 0 else 1\n    v\n}\n",
+        );
+        assert!(matches!(
+            &*then.tail.expect("tail").kind,
+            ExprKind::Return(Some(_))
+        ));
         assert!(otherwise.is_some());
         parses("fn f(c: bool) -> int {\n    if c then return\n    1\n}\n");
-        parses("fn f() -> int {\n    var i = 0\n    while true {\n        if i > 3 then break else i += 1\n    }\n    i\n}\n");
+        parses(
+            "fn f() -> int {\n    var i = 0\n    while true {\n        if i > 3 then break else i += 1\n    }\n    i\n}\n",
+        );
     }
 
     #[test]
@@ -4666,7 +4691,9 @@ mod tests {
         // A bool named `then` is the condition of `if then { … }`, and
         // `if then then 1 else 0` reads the identifier first, the keyword
         // second; after a `.` it is a member name.
-        parses("fn main() -> !int {\n    let then = true\n    if then { print(\"x\") }\n    let n = if then then 1 else 0\n    n\n}\n");
+        parses(
+            "fn main() -> !int {\n    let then = true\n    if then { print(\"x\") }\n    let n = if then then 1 else 0\n    n\n}\n",
+        );
         parses("fn f(a: int, b: int) -> int {\n    if a.then(b).v < 0 then 1 else 2\n}\n");
         assert!(!lex::is_keyword("then"));
     }
@@ -4676,7 +4703,11 @@ mod tests {
         let source = "fn main() -> !int {\n    let leap = true\n    let days = if leap 29 else 28\n    days\n}\n";
         let d = rejects(source);
         assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
-        assert!(d.message.contains("expected `{` or `then`"), "{}", d.message);
+        assert!(
+            d.message.contains("expected `{` or `then`"),
+            "{}",
+            d.message
+        );
         assert!(d.message.contains("if c then a else b"), "{}", d.message);
         assert_eq!(&source[d.span.start..d.span.end], "29");
     }
@@ -4692,7 +4723,8 @@ mod tests {
 
     #[test]
     fn a_binding_in_a_bare_branch_is_refused_by_name() {
-        let source = "fn main() -> !int {\n    let leap = true\n    if leap then let days = 29\n    0\n}\n";
+        let source =
+            "fn main() -> !int {\n    let leap = true\n    if leap then let days = 29\n    0\n}\n";
         let d = rejects(source);
         assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
         assert!(d.message.contains("brace the branch"), "{}", d.message);
@@ -4718,7 +4750,13 @@ mod tests {
         let ExprKind::ElseDefault { expr, .. } = &*binding.value.kind else {
             panic!("the defaulting operator, got {:?}", binding.value.kind);
         };
-        assert!(matches!(&*expr.kind, ExprKind::If { otherwise: None, .. }));
+        assert!(matches!(
+            &*expr.kind,
+            ExprKind::If {
+                otherwise: None,
+                ..
+            }
+        ));
     }
 
     /// wolf-interp#89's second half: a keyword in type position is E0206,
@@ -4730,13 +4768,20 @@ mod tests {
             ("fn f(p: proc) { }\nfn main() -> !int { 0 }\n", "proc"),
             ("fn f(s: scope) { }\nfn main() -> !int { 0 }\n", "scope"),
             ("fn f() -> proc { }\nfn main() -> !int { 0 }\n", "proc"),
-            ("fn f(xs: List[proc]) { }\nfn main() -> !int { 0 }\n", "proc"),
+            (
+                "fn f(xs: List[proc]) { }\nfn main() -> !int { 0 }\n",
+                "proc",
+            ),
         ] {
             let d = rejects(source);
             assert_eq!(d.code, diag::E_EXPECTED_TYPE, "{source}");
             assert_eq!(d.anchor, "gram.type");
             assert_eq!(&source[d.span.start..d.span.end], at, "{source}");
-            assert!(d.message.starts_with("expected a type, found keyword"), "{}", d.message);
+            assert!(
+                d.message.starts_with("expected a type, found keyword"),
+                "{}",
+                d.message
+            );
         }
         assert_eq!(rejects("fn f(p: proc").code, diag::E_EXPECTED_TYPE);
         assert_eq!(rejects("fn f(p: ").code, diag::E_UNEXPECTED_EOF);

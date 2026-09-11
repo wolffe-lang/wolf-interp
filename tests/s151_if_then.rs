@@ -97,7 +97,11 @@ fn the_nine_positive_witnesses_run_to_the_pinned_stdout() {
 fn the_three_refusals_are_e0201_at_the_compilers_span() {
     for (name, (start, end), at) in REFUSED {
         let observed = observe(name);
-        assert_eq!(observed.record.verdict, Verdict::Fail("E0201".to_owned()), "{name}");
+        assert_eq!(
+            observed.record.verdict,
+            Verdict::Fail("E0201".to_owned()),
+            "{name}"
+        );
         assert_eq!(observed.record.phase_reached, Phase::Parse, "{name}");
         let diag = observed.record.diagnostics.first().expect("one diagnostic");
         assert_eq!(diag.span, [start as u64, end as u64], "{name}");
@@ -116,7 +120,13 @@ fn the_three_refusals_are_e0201_at_the_compilers_span() {
 fn the_twelve_are_the_clauses_own_and_nothing_else_lives_here() {
     let mut names: Vec<String> = std::fs::read_dir(witness(""))
         .expect("tests/s151")
-        .map(|entry| entry.expect("entry").file_name().to_string_lossy().into_owned())
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect();
     names.sort();
     let mut expected: Vec<String> = RUNNING
