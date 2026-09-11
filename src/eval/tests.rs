@@ -3353,11 +3353,15 @@ fn a_negative_cap_traps_at_the_creating_site() {
 fn a_capped_region_that_never_charges_lives_happily_under_cap_zero() {
     // `[mem.region.cap.2]`: "`cap: 0` is legal and every charge breaches it"
     // — legal, so a region that charges nothing runs clean, and the account
-    // query answers on it exactly as on an uncapped region.
+    // query answers on it exactly as on an uncapped region. The query's
+    // answer leaves the block as its value and is printed OUTSIDE it: since
+    // s153 a holed interpolation is itself a charge (`[mem.region.escape]`,
+    // the test below), so `print("{…}")` inside `idle` would be the breach.
     let source = "fn main() -> !int {\n\
-                  \x20   region idle(cap: 0) {\n\
-                  \x20       print(\"{region_bytes(idle)}\")\n\
+                  \x20   let n = region idle(cap: 0) {\n\
+                  \x20       region_bytes(idle)\n\
                   \x20   }\n\
+                  \x20   print(\"{n}\")\n\
                   \x20   0\n\
                   }\n";
     assert_eq!(stdout(source), "0\n");
@@ -3372,13 +3376,82 @@ fn the_cap_is_the_birth_regions_even_when_the_growth_happens_elsewhere() {
     // per-forest.
     let source = "fn main() -> !int {\n\
                   \x20   var xs = List[int]()\n\
-                  \x20   region idle(cap: 0) {\n\
+                  \x20   let n = region idle(cap: 0) {\n\
                   \x20       for i in 0..40 { (mut xs).push(i) }\n\
-                  \x20       print(\"{region_bytes(idle)}\")\n\
+                  \x20       region_bytes(idle)\n\
                   \x20   }\n\
+                  \x20   print(\"{n}\")\n\
                   \x20   0\n\
                   }\n";
     assert_eq!(stdout(source), "0\n");
+}
+
+// -- `[mem.region.escape]`: a built str is an allocation (s153, #88) --------
+
+#[test]
+fn a_built_str_charges_the_ambient_region_and_a_literal_does_not() {
+    // `[mem.region.escape]` / `[exec.checked.budget]` (s153): `s + u` and an
+    // interpolation with a hole are allocations in the ambient region; a
+    // literal's bytes are static. Measured on wolf 0.2.11 (pin c9237c1)
+    // `--checked`: both charging forms trap `alloc-contract` under `cap: 0`,
+    // the literal runs; `--native` charges nothing, which is the checked
+    // machine's to mirror, not the native tier's.
+    let concat = "fn main() -> !int {\n\
+                  \x20   region idle(cap: 0) {\n\
+                  \x20       let s = \"a\" + \"b\"\n\
+                  \x20       print(s)\n\
+                  \x20   }\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(trap_kind(concat), TrapKind::AllocContract);
+    let holed = "fn main() -> !int {\n\
+                 \x20   let n = 7\n\
+                 \x20   region idle(cap: 0) {\n\
+                 \x20       print(\"{n}\")\n\
+                 \x20   }\n\
+                 \x20   0\n\
+                 }\n";
+    assert_eq!(trap_kind(holed), TrapKind::AllocContract);
+    let literal = "fn main() -> !int {\n\
+                   \x20   region idle(cap: 0) {\n\
+                   \x20       let s = \"ab\"\n\
+                   \x20       print(s)\n\
+                   \x20   }\n\
+                   \x20   0\n\
+                   }\n";
+    assert_eq!(stdout(literal), "ab\n");
+}
+
+#[test]
+fn a_str_built_in_a_region_dies_with_it() {
+    // wolf-interp#88 (wolf-lang#310, s153): the block's own value built by
+    // `+` in the region it frees is the `[mem.region.intra.2]` fault at the
+    // `}`; a `str` sent out of the region and read after is the same fault
+    // at the read — `corpus/memory/region_str_concat_return.lu` and
+    // `region_str_concat_send.lu`, E1010 on the compiler.
+    let returned = "fn build() -> str {\n\
+                    \x20   region scratch {\n\
+                    \x20       let s = \"re\" + \"gions\"\n\
+                    \x20       s\n\
+                    \x20   }\n\
+                    }\n\
+                    fn main() -> !int {\n\
+                    \x20   print(\"{build()}\")\n\
+                    \x20   0\n\
+                    }\n";
+    assert_eq!(trap_kind(returned), TrapKind::RegionFault);
+    // A literal's bytes are static: the same block over a literal is clean.
+    let literal = "fn build() -> str {\n\
+                   \x20   region scratch {\n\
+                   \x20       let s = \"regions\"\n\
+                   \x20       s\n\
+                   \x20   }\n\
+                   }\n\
+                   fn main() -> !int {\n\
+                   \x20   print(\"{build()}\")\n\
+                   \x20   0\n\
+                   }\n";
+    assert_eq!(stdout(literal), "regions\n");
 }
 
 #[test]
