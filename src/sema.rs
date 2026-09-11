@@ -5194,6 +5194,45 @@ impl RowWalk<'_> {
         ))
     }
 
+    /// The golden rule's call shape (`[generics.golden.def-site]`,
+    /// `corpus/traits/golden_missing_bound.lu`): `Show.show(v)` with `v: T`
+    /// and no bound naming `Show` is E0501 at the argument — the same
+    /// question `operator_dispatch` asks of `a + b`, one syntactic form
+    /// over, and the compiler's span (pin c9237c1: `v`, [371,372]). Only a
+    /// trait this module declares or a `use` binds is a trait-qualified
+    /// head here; a local shadowing the name is a method call on a value.
+    fn qualified_call_bound(&self, callee: &Expr, args: &[crate::ast::Arg]) -> Option<Diag> {
+        let ExprKind::Path(path) = &*callee.kind else {
+            return None;
+        };
+        if path.segments.len() != 2 {
+            return None;
+        }
+        let trait_name = path.segments[0].name.as_str();
+        if self.shadows(trait_name)
+            || !(self.traits.contains_key(trait_name) || self.uses.iter().any(|u| u == trait_name))
+        {
+            return None;
+        }
+        let first = args.first()?;
+        let nominal = self.nominal_of_expr(&first.expr)?;
+        let bound = self.bounds.get(&nominal)?;
+        if bound.iter().any(|t| t == trait_name) {
+            return None;
+        }
+        Some(Diag::new(
+            "E0501",
+            first.expr.span,
+            "generics.golden.def-site",
+            format!(
+                "the bounds on `{nominal}` do not provide `{trait_name}` (needed to call \
+                 `{trait_name}.{}`) — `{nominal}` could be any type here; add `{nominal}: \
+                 {trait_name}` to the bound",
+                path.segments[1].name
+            ),
+        ))
+    }
+
     /// `[type.trait.op]` (wolf-lang s155, #5; wolf-interp#92), the static
     /// half: an operator whose LEFT operand this walk can name as a struct
     /// or a type parameter dispatches through the table's trait, and the
@@ -5658,7 +5697,8 @@ impl RowWalk<'_> {
             ExprKind::Unsafe { body } | ExprKind::When { body, .. } => self.block(body),
             ExprKind::Tuple(parts) => parts.iter().find_map(|part| self.expr(part)),
             ExprKind::Call { callee, args } => self
-                .generic_bind(callee, args)
+                .qualified_call_bound(callee, args)
+                .or_else(|| self.generic_bind(callee, args))
                 .or_else(|| self.expr(callee))
                 .or_else(|| args.iter().find_map(|arg| self.expr(&arg.expr))),
             ExprKind::SpawnProc { args, .. } => args.iter().find_map(|arg| self.expr(&arg.expr)),
@@ -6462,6 +6502,24 @@ mod tests {
                  fn sum[T: Num](a: T, b: T) -> T {\n    a + b\n}\n\
                  fn sum2[T: Add](a: T, b: T) -> T {\n    a + b\n}\n\
                  fn main() -> !int { 0 }\n"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn a_trait_qualified_call_on_a_bare_type_parameter_is_e0501_at_the_argument() {
+        // `corpus/traits/golden_missing_bound.lu`: the golden rule's call
+        // shape, the compiler's span the argument (pin c9237c1: `v`).
+        let source = "trait Show {\n    fn show(x: Self) -> str\n}\nfn describe[T](v: T) -> str {\n    \
+                      Show.show(v)\n}\nfn main() -> !int { 0 }\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0501");
+        assert_eq!(&source[diag.span.start..diag.span.end], "v");
+        assert!(
+            resolve(
+                "trait Show {\n    fn show(x: Self) -> str\n}\nfn describe[T: Show](v: T) -> str {\n    \
+                 Show.show(v)\n}\nfn main() -> !int { 0 }\n"
             )
             .is_none()
         );
