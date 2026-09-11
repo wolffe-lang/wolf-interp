@@ -1675,8 +1675,9 @@ fn an_index_read_lends_the_container_and_leaves_it_where_it_was() {
              \x20   0\n\
              }\n"
         ),
-        // An absent key is the zero value (`Unit` here), which renders `()`.
-        "1 2 3 3\n7 () 1\n"
+        // An absent key is the `none` row (`[mem.map.absent]`, s152) and a
+        // hole renders the miss as its row — `none`, never `()`.
+        "1 2 3 3\n7 none 1\n"
     );
 }
 
