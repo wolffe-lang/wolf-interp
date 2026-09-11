@@ -85,10 +85,6 @@ fn pinned_code(check: Option<&Check>) -> Option<&str> {
 /// the same code stay the conservatism class, because their rule is the
 /// checker's. The corpus says which is which: a byte-domain witness tags
 /// `type.byte`.
-fn is_byte_domain_case(case: &Case) -> bool {
-    declaration_read_code(case).is_some()
-}
-
 /// The code a file pins that this machine decides at resolve FROM A
 /// DECLARATION — the is37 rule (derive the set from the directive, never
 /// hand-write it), widened at 662b14c (is45): E0401 by `[type.byte]`'s files

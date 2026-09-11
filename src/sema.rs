@@ -4661,11 +4661,15 @@ struct GenericSig {
 /// generic application — wolf-interp#89).
 const PRELUDE_CONTAINERS: &[&str] = &["List", "Map", "Option", "Set"];
 
-/// The lexical environment of the declarations-read-back walk: name → the
-/// `!T` it was declared with, when it was declared with one, and the struct
-/// it was declared as, when a literal, an annotation or a parameter said so.
+/// One scope entry of the declarations-read-back walk: the name, the `!T`
+/// it was declared with (when it was declared with one), and the struct it
+/// was declared as (when a literal, an annotation or a parameter said so).
+type Local = (String, Option<String>, Option<String>);
+
+/// The lexical environment of the declarations-read-back walk, a stack of
+/// [`Local`] scopes.
 struct RowWalk<'a> {
-    scopes: Vec<Vec<(String, Option<String>, Option<String>)>>,
+    scopes: Vec<Vec<Local>>,
     fallible: &'a BTreeMap<String, String>,
     /// wolf-interp#84: the generic signatures of this module's `fn` items.
     generic_sigs: &'a BTreeMap<String, GenericSig>,
@@ -5362,7 +5366,7 @@ fn unresolved_expr_type_name<'a>(
     match &*expr.kind {
         ExprKind::Path(path) if path.is_single() => {
             let segment = &path.segments[0];
-            (!scope.contains(&segment.name)).then(|| (segment.name.as_str(), segment.span))
+            (!scope.contains(&segment.name)).then_some((segment.name.as_str(), segment.span))
         }
         ExprKind::BracketApply { base, args, .. } => unresolved_expr_type_name(base, scope)
             .or_else(|| {
