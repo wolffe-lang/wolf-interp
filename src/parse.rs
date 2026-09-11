@@ -1365,6 +1365,28 @@ impl<'a> Parser<'a> {
         let start = self.expect_kw("trait", anchor)?.start;
         let name = self.expect_ident(anchor)?;
         let generics = self.parse_generics()?;
+        // `trait_item ::= 'trait' IDENT generics? ('{' trait_member* '}' |
+        // '=' bound TERM?)` — the `=` form is the alias bound (s155,
+        // `[type.trait.op.alias]`): `trait Num = Add + Sub + … + Ord`
+        // declares no members. Its TERM is optional exactly as a type
+        // alias's is (`type_item ::= … TERM?`).
+        if self.eat(&Tok::Assign) {
+            let mut paths = vec![self.parse_path(anchor)?];
+            while self.eat(&Tok::Plus) {
+                paths.push(self.parse_path(anchor)?);
+            }
+            let end = self.prev_span().end;
+            if matches!(self.tok(), Some(Tok::Term { .. })) {
+                self.pos += 1;
+            }
+            return Ok(TraitDef {
+                name,
+                generics,
+                members: Vec::new(),
+                alias: Some(Bound::Paths(paths)),
+                span: Span::new(start, end),
+            });
+        }
         self.expect(&Tok::LBrace, anchor)?;
         // Trait members may be bodyless — see [`CHOICES`] under `gram.item.fn`.
         let members = self.with_trait_body(true, Parser::parse_members)?;
@@ -1373,6 +1395,7 @@ impl<'a> Parser<'a> {
             name,
             generics,
             members,
+            alias: None,
             span: Span::new(start, end),
         })
     }
@@ -4054,6 +4077,44 @@ mod tests {
         assert_eq!(tiers, sorted, "tiers must be listed once, tightest first");
         assert_eq!(tiers.first(), Some(&2));
         assert_eq!(tiers.last(), Some(&15));
+    }
+
+    // -- `[gram.item.trait]`'s `=` form: the alias bound (s155, #92) --------
+
+    #[test]
+    fn a_trait_alias_parses_as_a_memberless_trait_carrying_its_bound() {
+        let unit =
+            parses("trait Num = Add + Sub + Mul + Div + Rem + Eq + Ord\nfn main() -> !int { 0 }\n");
+        let ItemKind::Trait(def) = &unit.items[0].kind else {
+            panic!("a trait item");
+        };
+        assert_eq!(def.name.name, "Num");
+        assert!(def.members.is_empty());
+        let Some(Bound::Paths(paths)) = &def.alias else {
+            panic!("the alias bound");
+        };
+        let names: Vec<&str> = paths.iter().map(|p| p.segments[0].name.as_str()).collect();
+        assert_eq!(names, ["Add", "Sub", "Mul", "Div", "Rem", "Eq", "Ord"]);
+        // The item after the alias is the next item: the TERM closed it.
+        assert!(matches!(unit.items[1].kind, ItemKind::Fn(_)));
+        // The braced form is unchanged, and carries no alias.
+        let unit = parses("trait Add {\n    fn add(self, other: Self) -> Self\n}\n");
+        let ItemKind::Trait(def) = &unit.items[0].kind else {
+            panic!("a trait item");
+        };
+        assert!(def.alias.is_none());
+        assert_eq!(def.members.len(), 1);
+        // A qualified trait in the list, and the explicit `;` terminator.
+        let unit = parses("trait Num = ops.Add + cmp.Eq; fn f() -> int { 1 }\n");
+        assert_eq!(unit.items.len(), 2);
+    }
+
+    #[test]
+    fn a_trait_alias_with_no_bound_is_e0201() {
+        // The bound is a path: a TERM where its first segment should be is
+        // the identifier expectation's own code.
+        let diag = rejects("trait Num =\nfn main() -> !int { 0 }\n");
+        assert!(matches!(diag.code, "E0201" | "E0008"), "{}", diag.code);
     }
 
     #[test]

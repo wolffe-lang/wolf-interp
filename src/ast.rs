@@ -325,6 +325,11 @@ pub struct TraitDef {
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub members: Vec<Item>,
+    /// The `=` form — `trait Num = Add + Sub + Mul + Div + Rem + Eq + Ord`
+    /// (`[gram.item.trait]`, `[type.trait.op.alias]`, s155): an alias bound
+    /// declaring no members; a bound naming it means every trait in its
+    /// list. `members` is empty when this is `Some`.
+    pub alias: Option<Bound>,
     pub span: Span,
 }
 
