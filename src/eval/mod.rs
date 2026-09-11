@@ -2264,6 +2264,21 @@ impl Machine {
                         &format!("`}}` frees {labels} wholesale"),
                     );
                 }
+                // `[mem.region.escape]` (s153): a value whose allocation site
+                // lies in the region must not be the block's OWN value — the
+                // `}` frees its bytes and the value is what the block hands
+                // out. E1010 statically; here the `[mem.region.intra.2]`
+                // fault at the `}`, the read of freed bytes the block's value
+                // is. A struct, a list, and since wolf-interp#88 a built
+                // `str` (`region scratch { let s = "re" + "gions"; s }`
+                // printed `regions` from freed bytes through 0.1.33).
+                if let Ok(value) = &result
+                    && let Some(home) = value.home()
+                    && freed.contains(&home)
+                {
+                    self.pop_scope();
+                    return self.region_freed_fault("the block's own value", home, span);
+                }
             }
             SugarExit::Freeze => match self.store_freeze(id) {
                 Ok(frozen) => {
@@ -4016,14 +4031,24 @@ impl Machine {
             ExprKind::Char(c) => Ok(Value::Char(*c)),
             ExprKind::Str(literal) => {
                 let mut out = String::new();
+                let mut holed = false;
                 for part in &literal.parts {
                     match part {
                         StrPart::Text(text) => out.push_str(text),
-                        StrPart::Interp(interp) => out.push_str(&self.eval_interp(interp)?),
+                        StrPart::Interp(interp) => {
+                            holed = true;
+                            out.push_str(&self.eval_interp(interp)?);
+                        }
                     }
                 }
                 self.fire(Rule::StrInterp, expr.span, "f-string");
-                Ok(Value::Str(out))
+                // `[mem.region.escape]`: an interpolation with at least one
+                // hole builds a fresh `str` — an allocation in the ambient
+                // region; a literal's bytes are static and it is no site.
+                if holed {
+                    return Ok(Value::Str(self.built_str(out, expr.span)?));
+                }
+                Ok(Value::Str(value::Str::new(out)))
             }
             ExprKind::Wildcard => {
                 unsupported("`_` is never a value you can read (`[gram.lex.ident]`)".to_owned())
@@ -5080,6 +5105,21 @@ impl Machine {
         Ok(Some(applied.value))
     }
 
+    /// A built `str` (`[mem.region.escape]`, s153; wolf-interp#88): the
+    /// fresh bytes are charged to the ambient region at the building
+    /// expression — `[mem.region.create.3]`, the same site rule a struct
+    /// literal or a container constructor follows — and the value carries
+    /// that region as its home, so reading it after the region's wholesale
+    /// free is the `[mem.region.intra.2]` fault (E1010's dynamic half).
+    fn built_str(&mut self, text: String, span: Span) -> EResult<value::Str> {
+        let home = self.allocate(
+            span,
+            "built str",
+            region::ledger::container_bytes(text.len() as u64),
+        )?;
+        Ok(value::Str::built(text, Some(home)))
+    }
+
     fn binary(&mut self, op: BinOp, left: Value, right: Value, span: Span) -> EResult<Value> {
         use BinOp::{
             Add, BitAnd, BitOr, BitXor, Cmp, Div, Eq, Ge, Gt, Le, Lt, Mul, Ne, Rem, Shl, Shr, Sub,
@@ -5224,18 +5264,26 @@ impl Machine {
         if let (Value::Str(a), Value::Char(c)) = (&left, &right)
             && op == Add
         {
-            return Ok(Value::Str(format!("{a}{c}")));
+            let text = format!("{a}{c}");
+            return Ok(Value::Str(self.built_str(text, span)?));
         }
         if let (Value::Char(c), Value::Str(b)) = (&left, &right)
             && op == Add
         {
-            return Ok(Value::Str(format!("{c}{b}")));
+            let text = format!("{c}{b}");
+            return Ok(Value::Str(self.built_str(text, span)?));
         }
 
         // Strings compare and concatenate.
         if let (Value::Str(a), Value::Str(b)) = (&left, &right) {
             return match op {
-                Add => Ok(Value::Str(format!("{a}{b}"))),
+                // `[type.str.concat]` builds a fresh `str`, and
+                // `[mem.region.escape]` makes it an allocation site in the
+                // ambient region — never in an operand's.
+                Add => {
+                    let text = format!("{a}{b}");
+                    Ok(Value::Str(self.built_str(text, span)?))
+                }
                 Lt => Ok(Value::Bool(a < b)),
                 Le => Ok(Value::Bool(a <= b)),
                 Gt => Ok(Value::Bool(a > b)),

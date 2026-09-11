@@ -979,7 +979,7 @@ impl Machine {
                 if n <= 0 {
                     // Zero bytes wanted: the empty string, and the socket is
                     // never asked (a 0-length receive would forge `closed`).
-                    return Ok(Value::Str(String::new()));
+                    return Ok(Value::Str(super::value::Str::default()));
                 }
                 let n = usize::try_from(n).unwrap_or(usize::MAX).min(1 << 20);
                 let answer = self.net_park(name, fd, span, |table| table.poll_read(fd, n))?;
@@ -990,7 +990,7 @@ impl Machine {
                             "net_read",
                             super::region::ledger::str_bytes(text.len() as u64),
                         )?;
-                        Ok(Value::Str(text))
+                        Ok(Value::Str(text.into()))
                     }
                     Err(err) => Err(err),
                 };
@@ -1003,7 +1003,7 @@ impl Machine {
                         "`{name}` takes an fd and a `str` payload"
                     )));
                 };
-                let bytes = text.clone().into_bytes();
+                let bytes = text.text.clone().into_bytes();
                 let mut at = 0usize;
                 let answer = self.net_park(name, fd, span, move |table| {
                     table.poll_write(fd, &bytes, &mut at)

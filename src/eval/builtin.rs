@@ -305,7 +305,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 return Ok(error_value("env_get", "invalid"));
             }
             match machine.env_read(name) {
-                Some(value) => Ok(Value::Str(value)),
+                Some(value) => Ok(Value::Str(value.into())),
                 None => {
                     machine.note(Rule::ErrUnion, span, "`env_get` yields the `missing` row");
                     Ok(error_value("env_get", "missing"))
@@ -328,7 +328,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // no file is opened or observed. The corpus asserts predicates over
         // it, never paths (host independence).
         "os_cwd" => match std::env::current_dir() {
-            Ok(dir) => Ok(Value::Str(dir.to_string_lossy().into_owned())),
+            Ok(dir) => Ok(Value::Str(dir.to_string_lossy().into_owned().into())),
             Err(_) => {
                 machine.note(Rule::ErrUnion, span, "`os_cwd` yields the `io` row");
                 Ok(error_value("os_cwd", "io"))
@@ -356,7 +356,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // running, and a wolf program interpreted by it has no separate
         // image. Witnesses assert predicates over the answer, never a path.
         "os_exe" => match std::env::current_exe() {
-            Ok(path) => Ok(Value::Str(path.to_string_lossy().into_owned())),
+            Ok(path) => Ok(Value::Str(path.to_string_lossy().into_owned().into())),
             Err(_) => {
                 machine.note(Rule::ErrUnion, span, "`os_exe` yields the `io` row");
                 Ok(error_value("os_exe", "io"))
@@ -425,7 +425,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 );
             }
             let mut argv = Vec::with_capacity(args_list.len() + 1);
-            argv.push(exe.clone());
+            argv.push(exe.text.clone());
             for slot in args_list.iter() {
                 let Value::Str(part) = &slot.value else {
                     return unsupported(format!(
@@ -433,7 +433,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                         slot.value.kind()
                     ));
                 };
-                argv.push(part.clone());
+                argv.push(part.text.clone());
             }
             let spawned = machine.children().spawn(&argv);
             match spawned {
@@ -465,7 +465,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                         slot.value.kind()
                     ));
                 };
-                argv.push(part.clone());
+                argv.push(part.text.clone());
             }
             let spawned = machine.children().spawn(&argv);
             match spawned {
@@ -576,10 +576,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 ));
             };
             let answer = match name {
-                "json_get" => crate::json::get(text, path).map(Value::Str),
-                "json_type" => {
-                    crate::json::kind(text, path).map(|kind| Value::Str(kind.to_owned()))
-                }
+                "json_get" => crate::json::get(text, path).map(|text| Value::Str(text.into())),
+                "json_type" => crate::json::kind(text, path).map(|kind| Value::Str(kind.into())),
                 _ => crate::json::len(text, path).map(|n| Value::Int(n as i128, IntTy::INT)),
             };
             match answer {
@@ -684,7 +682,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                         "str_from_utf8",
                         ledger::str_bytes(text.len() as u64),
                     )?;
-                    Ok(Value::Str(text))
+                    Ok(Value::Str(text.into()))
                 }
                 Err(_) => {
                     machine.note(
@@ -1258,14 +1256,14 @@ pub fn method(
         // materialize `List`s at v0.
         (Value::Str(s), "len") => Ok(Value::Int(s.len() as i128, IntTy::INT)),
         (Value::Str(s), "is_empty") => Ok(Value::Bool(s.is_empty())),
-        (Value::Str(s), "upper") => Ok(Value::Str(s.to_uppercase())),
-        (Value::Str(s), "lower") => Ok(Value::Str(s.to_lowercase())),
+        (Value::Str(s), "upper") => Ok(Value::Str(s.to_uppercase().into())),
+        (Value::Str(s), "lower") => Ok(Value::Str(s.to_lowercase().into())),
         (Value::Str(s), "trim") => Ok(Value::Str(match args.first() {
-            Some(Value::Str(cut)) => s.trim_matches(|c| cut.contains(c)).to_owned(),
-            _ => s.trim().to_owned(),
+            Some(Value::Str(cut)) => s.trim_matches(|c| cut.contains(c)).into(),
+            _ => s.trim().into(),
         })),
-        (Value::Str(s), "trim_start") => Ok(Value::Str(s.trim_start().to_owned())),
-        (Value::Str(s), "trim_end") => Ok(Value::Str(s.trim_end().to_owned())),
+        (Value::Str(s), "trim_start") => Ok(Value::Str(s.trim_start().into())),
+        (Value::Str(s), "trim_end") => Ok(Value::Str(s.trim_end().into())),
         (Value::Str(s), "get") => {
             // `[mem.str.get]` — the boundary primitive, when the range
             // arrived as an evaluated value (`s.get(a..b)`, `s.get(r)`).
@@ -1348,7 +1346,7 @@ pub fn method(
                 );
             }
             Ok(Value::Str(
-                s.repeat(usize::try_from(*n).unwrap_or_default()),
+                s.repeat(usize::try_from(*n).unwrap_or_default()).into(),
             ))
         }
         (Value::Str(s), "contains") => Ok(Value::Bool(match args.first() {
@@ -1414,7 +1412,7 @@ pub fn method(
             }
             Ok(Value::list(
                 s.split(sep.as_str())
-                    .map(|part| Slot::live(Value::Str(part.to_owned())))
+                    .map(|part| Slot::live(Value::Str(part.into())))
                     .collect(),
                 None,
                 Some(machine.current_region()),
@@ -1430,7 +1428,7 @@ pub fn method(
                 s.strip_suffix(needle.as_str())
             };
             match stripped {
-                Some(rest) => Ok(Value::Str(rest.to_owned())),
+                Some(rest) => Ok(Value::Str(rest.into())),
                 None => {
                     machine.note(Rule::ErrUnion, span, "`strip` yields the `none` row");
                     Ok(error("none"))
@@ -1446,18 +1444,18 @@ pub fn method(
                 // replacement is the identity.
                 return Ok(Value::Str(s.clone()));
             }
-            Ok(Value::Str(s.replace(from.as_str(), to.as_str())))
+            Ok(Value::Str(s.replace(from.as_str(), to.as_str()).into()))
         }
         (Value::Str(s), "words") => Ok(Value::list(
             s.split_whitespace()
-                .map(|word| Slot::live(Value::Str(word.to_owned())))
+                .map(|word| Slot::live(Value::Str(word.into())))
                 .collect(),
             None,
             Some(machine.current_region()),
         )),
         (Value::Str(s), "lines") => Ok(Value::list(
             s.lines()
-                .map(|line| Slot::live(Value::Str(line.to_owned())))
+                .map(|line| Slot::live(Value::Str(line.into())))
                 .collect(),
             None,
             Some(machine.current_region()),
@@ -1921,7 +1919,7 @@ pub fn slice(
                     format!("byte range {range} splits a UTF-8 code point"),
                 );
             }
-            Ok(Value::Str(s[from..to].to_owned()))
+            Ok(Value::Str(s[from..to].into()))
         }
         Value::List(items, elem, _) => {
             let len = items.len() as i128;
@@ -1990,7 +1988,7 @@ pub fn str_get(
     if !s.is_char_boundary(from) || !s.is_char_boundary(to) {
         return miss(machine);
     }
-    Ok(Value::Str(s[from..to].to_owned()))
+    Ok(Value::Str(s[from..to].into()))
 }
 
 /// Exact arity for a modelled C intrinsic (wolf-interp#18 item 4): C

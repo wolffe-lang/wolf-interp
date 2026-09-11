@@ -425,6 +425,116 @@ impl ElemTy {
     }
 }
 
+/// A `str` value: the text, and where its bytes live.
+///
+/// `[mem.region.escape]` (wolf-lang s153, #310; wolf-interp#88): **every
+/// built `str`** — `s + u`, `s += u` (`[type.str.concat]`), an interpolation
+/// with at least one hole — is an allocation in the ambient region of the
+/// building expression, never in an operand's; a `str` is `Copy` (its
+/// two-word view copies freely) but the bytes it views live where they were
+/// built, so a `str` read from a binding carries that binding's sites out
+/// with it. A literal's bytes are static and a literal is no site; a slice
+/// and every `[mem.str.view]` product allocate nothing — `home` is `None`
+/// for all of those. Until is46 this machine's `str` was a bare `String`
+/// with no home, which is why `region scratch { let s = "re" + "gions"; s }`
+/// returned from a function printed `regions` from freed bytes.
+///
+/// Equality, ordering and hashing are over the TEXT alone: two `str`s are
+/// one value when their bytes are (`[mem.str.order]`), wherever they live.
+#[derive(Debug, Clone, Default)]
+pub struct Str {
+    pub text: String,
+    pub home: Option<RegionId>,
+}
+
+impl Str {
+    /// A `str` whose bytes are nobody's allocation: a literal, a slice, a
+    /// view product, a value minted by the machine.
+    #[must_use]
+    pub fn new(text: impl Into<String>) -> Str {
+        Str {
+            text: text.into(),
+            home: None,
+        }
+    }
+
+    /// A built `str`, charged to `home` at its building expression.
+    #[must_use]
+    pub fn built(text: String, home: Option<RegionId>) -> Str {
+        Str { text, home }
+    }
+}
+
+impl PartialEq for Str {
+    fn eq(&self, other: &Str) -> bool {
+        self.text == other.text
+    }
+}
+
+impl Eq for Str {}
+
+impl PartialOrd for Str {
+    fn partial_cmp(&self, other: &Str) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Str {
+    fn cmp(&self, other: &Str) -> std::cmp::Ordering {
+        self.text.cmp(&other.text)
+    }
+}
+
+impl std::hash::Hash for Str {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.text.hash(state);
+    }
+}
+
+impl std::ops::Deref for Str {
+    type Target = String;
+
+    fn deref(&self) -> &String {
+        &self.text
+    }
+}
+
+impl fmt::Display for Str {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.text)
+    }
+}
+
+impl From<String> for Str {
+    fn from(text: String) -> Str {
+        Str::new(text)
+    }
+}
+
+impl From<&str> for Str {
+    fn from(text: &str) -> Str {
+        Str::new(text)
+    }
+}
+
+impl PartialEq<str> for Str {
+    fn eq(&self, other: &str) -> bool {
+        self.text == other
+    }
+}
+
+impl PartialEq<&str> for Str {
+    fn eq(&self, other: &&str) -> bool {
+        self.text == *other
+    }
+}
+
+impl PartialEq<String> for Str {
+    fn eq(&self, other: &String) -> bool {
+        self.text == *other
+    }
+}
+
 /// A wolf runtime value.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -462,7 +572,9 @@ pub enum Value {
     /// `List[byte]` by 1, which is the property wolf-lang#203 measured the
     /// absence of.
     Byte(u8),
-    Str(String),
+    /// A `str` view: its text, and the region its bytes were BUILT in when
+    /// they were built at all ([`Str`]).
+    Str(Str),
     Tuple(Vec<Slot>),
     Struct {
         name: String,
@@ -591,6 +703,10 @@ impl Value {
         match self {
             Value::Struct { home, .. } => *home,
             Value::List(_, _, home) => *home,
+            // `[mem.region.escape]` (s153): a built `str` is an allocation
+            // in the ambient region of the building expression, and the
+            // view carries that site out with it.
+            Value::Str(s) => s.home,
             _ => None,
         }
     }

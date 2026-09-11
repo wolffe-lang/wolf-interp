@@ -46,7 +46,7 @@ impl MapKey {
     #[must_use]
     pub fn of(value: &Value) -> Option<MapKey> {
         match value {
-            Value::Str(s) => Some(MapKey::Str(s.clone())),
+            Value::Str(s) => Some(MapKey::Str(s.text.clone())),
             Value::Int(i, _) => Some(MapKey::Int(*i)),
             Value::Char(c) => Some(MapKey::Char(*c)),
             Value::Bool(b) => Some(MapKey::Bool(*b)),
@@ -58,7 +58,7 @@ impl MapKey {
     #[must_use]
     pub fn to_value(&self) -> Value {
         match self {
-            MapKey::Str(s) => Value::Str(s.clone()),
+            MapKey::Str(s) => Value::Str(super::value::Str::new(s.clone())),
             MapKey::Int(i) => Value::Int(*i, IntTy::INT),
             MapKey::Char(c) => Value::Char(*c),
             MapKey::Bool(b) => Value::Bool(*b),

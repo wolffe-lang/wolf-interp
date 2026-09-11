@@ -339,7 +339,7 @@ impl ExitReason {
             ExitReason::Error(err) => ("error", vec![Value::Error(err.clone())]),
             ExitReason::Killed => ("killed", Vec::new()),
             ExitReason::Cancelled => ("cancelled", Vec::new()),
-            ExitReason::Fault(kind) => ("fault", vec![Value::Str(kind.as_str().to_owned())]),
+            ExitReason::Fault(kind) => ("fault", vec![Value::Str(kind.as_str().into())]),
         };
         Value::Error(Box::new(ErrorValue {
             tag: tag.to_owned(),
@@ -1973,13 +1973,13 @@ impl Sched {
                     TaskEnd::Trapped(trap) => ExitReason::Fault(trap.kind),
                     TaskEnd::Ub(finding) => ExitReason::Error(Box::new(ErrorValue {
                         tag: "ub".to_owned(),
-                        payload: vec![Value::Str(finding.anchor().to_owned())],
+                        payload: vec![Value::Str(finding.anchor().into())],
                         enum_variant: false,
                         row: Vec::new(),
                     })),
                     TaskEnd::Unsupported(reason) => ExitReason::Error(Box::new(ErrorValue {
                         tag: "unsupported".to_owned(),
-                        payload: vec![Value::Str(reason.clone())],
+                        payload: vec![Value::Str(reason.clone().into())],
                         enum_variant: false,
                         row: Vec::new(),
                     })),
