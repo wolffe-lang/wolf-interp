@@ -45,8 +45,16 @@ use std::fmt;
 /// this machine rejecting `conforms: … sched.stable`, which
 /// `corpus/test/conc_schedules_test.lu` now carries as a real tag instead
 /// of the prose comment it wore at `398e5f5`.
-pub const REGISTERED_NAMESPACES: [&str; 12] = [
+///
+/// `exec` appended 2026-09-11 by is46 at the pin that carries s153
+/// (c9237c1, wolf-lang v0.2.11): `[exec.checked.budget]` went normative in
+/// 05-conformance.md §5 and the clause's registered list took `exec` in
+/// the same change (`[conf.anchor.ns.admit]`); without it this walker
+/// refused `corpus/strings/bytes_view_walk.lu` as an unknown namespace,
+/// which is the restrictive half again.
+pub const REGISTERED_NAMESPACES: [&str; 13] = [
     "gram", "mem", "conc", "abi", "conf", "proto", "diag", "ct", "type", "pkg", "os", "sched",
+    "exec",
 ];
 
 /// Namespaces reserved for spec documents not yet written; tags in them are
