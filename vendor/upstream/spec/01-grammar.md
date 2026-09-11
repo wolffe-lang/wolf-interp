@@ -244,8 +244,10 @@ Exceptions (grammar-level):
   (one token of lookahead; trivia between the newline and the `else` —
   blank lines, comments — does not count). A line whose first token is
   `else` continues the previous statement: `}` newline `else {` is
-  `} else {`, and `f()` newline `else 0` is `f() else 0`. Which `else`
-  it is, the binding decides (`[gram.amb.else]`); the line never does.
+  `} else {`, `f()` newline `else 0` is `f() else 0`, and `if c then a`
+  newline `else b` is the bare two-way `if` (`[gram.expr.if]`). Which
+  `else` it is, the binding decides (`[gram.amb.else]`); the line never
+  does.
   (Ruled 2026-09-09, wolf-lang#276. The rule this replaces was Go's —
   `else` had to share the `}`'s line — and a reader met it as E0005 on
   an aligned `if` / `else if` / `else`. Readers do not learn a layout
@@ -385,11 +387,17 @@ enum_item   ::= 'enum' IDENT generics? '{' variant (',' variant)* ','? '}'
 ### 2.6 Traits & impls `[gram.item.trait]`
 
 ```ebnf
-trait_item ::= 'trait' IDENT generics? '{' trait_member* '}'
+trait_item ::= 'trait' IDENT generics? ('{' trait_member* '}' | '=' bound TERM?)
 trait_member ::= fn_item | type_item | const_item
 impl_item  ::= 'impl' generics? type ('for' type)? '{' impl_member* '}'
 impl_member ::= fn_item | type_item | const_item
 ```
+
+The `=` form is an **alias bound** (s155, `[type.trait.op.alias]`):
+`trait Num = Add + Sub + Mul + Div + Rem + Eq + Ord` declares no
+members; a bound naming it means every trait in its list, and it is
+never itself implemented (`impl Num for T` is E0507) or satisfied on
+its own.
 
 Nominal traits, checked generics (D28). Adapter types are `distinct`
 types (`type Cover = distinct Song`): same layout as the base, free
@@ -501,16 +509,20 @@ function boundaries; 02-memory-model). Prefix `*` is raw-pointer deref
 non-`Copy` value; `shared` creates a Tier-2 RC cell from a value
 (`let a = shared (Cfg { limit: 7 })`).
 
-**Operator↔trait bridge** (posture recorded 2026-08-10; wolf-std F-0004
-/ issue #5, contract F3). For user types the comparison operators
-desugar to in-scope trait impls by name — `==`/`!=` to `Eq.eq` (negated
-for `!=`), the `< <= > >= <=>` family to `Ord.cmp` — with `Ord requires
-Eq` as a supertrait clause once the trait engine grows supertraits;
-`<=>` yields `std.cmp.Ordering` when std lands (`int` is the v0 stopgap
-read). Enum structural `==` is language-side. The bare-literal `i32`
-defaulting vs `impl … for int` mismatch (F-0004 gap 3) is acknowledged
-and must be resolved by the bridge's clause set when the typing document
-lands; this paragraph records the decision, not the mechanism.
+**Operator↔trait bridge** (posture recorded 2026-08-10, wolf-std
+F-0004 / issue #5, contract F3; the mechanism landed 2026-09-11 as
+`[type.trait.op]` in 10-types, s155). When an operand is a type
+parameter or a user type the operators dispatch through traits by
+name — `+ - * / %` to `Add.add` `Sub.sub` `Mul.mul` `Div.div`
+`Rem.rem`, prefix `-` to `Neg.neg`, `==`/`!=` to `Eq.eq` (negated for
+`!=`), the `< <= > >= <=>` family to `Ord.cmp` — homogeneous this
+edition; `<=>` on a user type yields the `cmp`'s `Ordering` (`int`
+stays the reading on primitives, where the operators are builtin).
+Nothing is synthesized: an enum without `impl Eq` is refused by name
+like a struct. `Ord requires Eq` stays documentary until supertraits;
+the alias bound (`trait Num = …`, §2.6) is the composition this
+edition ships. The bare-literal `i32` defaulting vs `impl … for int`
+mismatch (F-0004 gap 3) is closed by `[type.numlit]`'s adoption.
 
 ### 3.3 Primary expressions `[gram.expr.primary]`
 
@@ -639,7 +651,8 @@ spelling for spans inside a 1-origin scope. Files:
 ### 3.4 Control flow as expressions `[gram.expr.flow]`
 
 ```ebnf
-if_expr    ::= 'if' expr block ('else' (if_expr | block))?
+if_expr    ::= 'if' expr 'then'? block ('else' (if_expr | block))?
+             | 'if' expr 'then' expr  ('else' (if_expr | expr))?
 match_expr ::= 'match' expr '{' arm* '}'
 match_arm  ::= pattern ('if' expr)? '=>' (expr | block)
 arm        ::= match_arm arm_sep?
@@ -665,6 +678,32 @@ either way (`[gram.fmt.commas]`).
 The condition of `if`/`while` and the scrutinee of `match`/`for` use
 no-struct-literal expression mode (a `{` there begins the block —
 `[gram.amb.structlit]`).
+
+**The two spellings of `if` `[gram.expr.if]`** (ruled 2026-09-11,
+wolf-lang#307). The braced form is `if c { a } else { b }`; a `then`
+before a block is *optional* (`if c then { a } else { b }` parses) and
+never required. The bare form is `if c then a else b`: each branch is
+one expression, and the `if`'s own `else` closes the first. `then` is
+required in the bare form because it is the token that closes the
+condition — the condition parser is greedy (`if x -1 else 0`,
+`if f (y) else z`, `if v [0] else w` would each swallow the next token),
+which is the work the braced form's `{` does. The two branches of one
+`if` share a form, both blocks or both bare expressions
+(`if c then a else { b }` is E0201); an `else if` in a chain picks its
+own form. `then` is **contextual, not reserved** — `[gram.inv.kw]`'s
+fifty are unchanged: after a `.` it is a member name (`less.then(greater)`,
+std's `Ordering.then`), as a binding name it is an identifier, and it is
+the keyword only in the one position after a complete `if` condition, so
+`if then { … }` with a bool named `then` still parses, the identifier
+being the condition. Every program that parsed before this clause parses
+to the same shape and meaning after it. A condition followed by neither
+`{` nor `then` (`if c 29 else 28`) is E0201, and the message names both
+spellings. Files: `grammar/if_then_let.lu`, `grammar/if_then_arm.lu`,
+`grammar/if_then_stmt.lu`, `grammar/if_then_chain.lu`,
+`grammar/if_then_paren_default.lu`, `grammar/if_then_block.lu`,
+`grammar/if_then_ident.lu`, `grammar/if_then_member.lu`,
+`grammar/if_then_width.lu`; refused: `grammar/if_then_missing.lu`,
+`grammar/if_then_mixed.lu`, `grammar/if_then_let_body.lu`.
 
 ### 3.5 Closures `[gram.expr.closure]`
 
@@ -978,9 +1017,24 @@ no `goto`, no *required* semicolons (terminators are inserted;
   One exception, declared per file: a witness whose header carries
   `//! fmt: relaid` pins a source layout the parser admits and the
   formatter re-lays (the leading-`else` witnesses of `[gram.amb.else]`,
-  wolf-lang#276), so `wolf fmt` is not the identity on it and the
+  wolf-lang#276; the `then {` and width-fallback witnesses of
+  `[gram.fmt.if]`), so `wolf fmt` is not the identity on it and the
   canon gate reads past it; idempotence and round-trip still hold on
   it, and the formatter's own tests pin what it re-lays to.
+- `[gram.fmt.if]` The formatter **never converts between the braced and
+  the bare form** of an `if` (`[gram.expr.if]`): the author's choice
+  stands. This is the one place the one-shape rule of this appendix
+  yields, and it yields to the ruling's first rule — no program that
+  parses changes shape. (The alternative, a canonical bare form in value
+  position, would have rewritten 68 lines across four repos: corpus 9,
+  wolf-std 9, lobo 39, wolf-book 11, measured 2026-09-11.) Inside a form
+  it normalizes: a `then` before `{` is dropped, the braced form having
+  one spelling; a bare `if` whose one-line rendering no longer fits the
+  width is broken to the braced form — the only conversion, one
+  direction, and a fixed point (the braced result is braced on every
+  later pass). A bare chain breaks as one: its bare `else if`s go braced
+  together; a braced `else if` inside a bare chain keeps its braces and
+  does not make the bare head break.
 
 ---
 
@@ -1010,7 +1064,16 @@ Each entry: the rule, and its paired files in `corpus/grammar/`.
   leading its line is one chain, and `let v = f()` newline `else 0` is
   the defaulting operator across lines. Both are admitted; the formatter
   re-lays them trailing (`} else`, `f() else 0` — `[gram.fmt.brace]`).
-  Files: `else_default.lu`, `else_chain.lu`, `else_default_newline.lu`.
+  Inside a bare `then` branch (`[gram.expr.if]`) the `if`'s own `else`
+  binds first, so `if c then f() else 0` is the two-way `if`; a
+  defaulting `else` inside a bare branch is written in parentheses,
+  `if c then (f() else 0) else 1`, and so is one inside a bare `else`
+  branch. After a braced `if`'s `}` nothing changes: `else b` with
+  neither `if` nor `{` following is the defaulting operator on the
+  `if`, as it always was. The newline rule holds for the bare form too:
+  `if c then a` newline `else b` is the two-way `if`.
+  Files: `else_default.lu`, `else_chain.lu`, `else_default_newline.lu`,
+  `if_then_paren_default.lu`.
 - `[gram.amb.bang]` `!` prefix in expression position = not; `!` in type
   position (after `->`, after `:`, inside `[…]` type args) = error union.
   Disjoint by position. Files: `bang_not.lu`, `bang_errunion.lu`.

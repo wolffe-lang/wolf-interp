@@ -351,7 +351,9 @@ values that have none.)
   fresh `str` per application — the compiler lowers `+` onto the same
   strbuf path an interpolated string materializes through, so `+=` in
   a loop is quadratic, never an amortized push. `std.strbuf` is the
-  builder. The diagnostics say so beside the refusal note.
+  builder. The diagnostics say so beside the refusal note. The fresh
+  `str` is an allocation site in the ambient region for the escape
+  rule — `[mem.region.escape]` (s153, wolf-lang#310).
 
 ## §6 Closures `[type.closure]`
 
@@ -464,6 +466,34 @@ is about it.)
   where `()` is expected is a warned discard, `[type.unit.discard]`.
   Witnesses: `typecheck/tail_declared_str.lu`,
   `typecheck/tail_declared_union.lu`.
+- `[type.fn.value]` **A closure is a `fn` value whatever it captures,
+  and a capturing closure's value copies its captures when it is
+  created.** A named function, a capture-free closure and a capturing
+  closure are all values of their fn type — passed as an argument,
+  returned, bound and called through the binding — the same
+  `fn(int) -> int` to every callee, and nothing marks which stood
+  behind it. What a capturing closure holds is a COPY of each captured
+  binding's value, taken once, where the closure is written: the value
+  never sees a later write to a captured place (W1102 says so at the
+  write), and while the value is still needed a write to a captured
+  `var` is E1002 — the shared loan of `[mem.tier0.borrow.2]`, which is
+  what makes copy and reference indistinguishable to a conforming
+  program. A `var` is therefore captured by its value at creation,
+  never by its place; a captured region value is refused by name (open
+  it in the enclosing frame); a captured value must outlive every
+  frame the closure value leaves — returning a closure that captured a
+  frame-local list is the list's escape, E1010, as if the list itself
+  were returned. Positions: a capturing closure may be bound, passed,
+  returned, or be a closure body's tail; inside a container or a
+  struct literal it is refused by name until that borrow story is
+  written. Cost: one record allocation per capturing closure value, in
+  the ambient region (`[abi.native.closure]`), its captures copied in.
+  Witnesses: `typecheck/fn_value_capturing.lu` (chapter 4's program,
+  verbatim), `typecheck/fn_value_captured_int.lu`,
+  `typecheck/fn_value_captured_var_write.lu` (`fail(E1002)`). (Ruled
+  2026-09-10, s150 — wolf-lang#300: c25 had ruled the pair stays in
+  its frame and c05/#117 deferred closures as values; the chapter that
+  teaches functions as values was the one the maintainer met it in.)
 
 ## §9 The error row as a value `[type.row]`
 
@@ -513,3 +543,151 @@ primitive (D58), not this chapter's; so is `byte`'s (the `bytes`
 library over `List[byte]` — D72, wolf-std sc35; the language's own
 byte producers and consumers — `str.bytes()`, `str_from_utf8`, the
 `fs_*`/`net_*` byte calls — speak `List[byte]` since s136, #231).
+
+## §10 The `Map` `[type.map]`
+
+(Appended 2026-09-11, s152 — wolf-lang#11, #154, ruled by the
+maintainer. The count exercise in the book's chapter 5 carried a
+parallel `List` for one reason: no program could ask a `Map` whether
+a key was bound. std's `has`/`get`/`get_or`/`remove`/`tally` existed
+and executed on neither machine — their `[K: Eq]` bound dispatched
+nowhere — and an absent-key read answered `()`, the one unchecked,
+untyped read in the language. The maintainer's question, verbatim:
+"is the sole purpose of the list to check and see if we've seen it
+already, because we have no apparent way of checking the existence of
+a key since `map[key] = blah` will create it? My gut instinct is I
+can pull the count exercise off with a map alone." They were right;
+this section and `[mem.map.absent]` are the answer. `Map` stays
+prelude-ambient and builtin-typed like `List` (D50: std-DEFINED once
+generic data can carry it; this clause rules the KEY PROTOCOL that
+filing left open, not the home).)
+
+- `[type.map.key]` **`Map[K, V]` admits `str`, `int`, `char` and
+  `bool` keys this edition.** These are the four whose equality the
+  language itself defines, so `m[k]` can ask "is this key bound?"
+  without any user code deciding what "the same key" means: two `str`
+  keys are one key when their bytes are (`[mem.str.order]`'s `==`),
+  two `int`/`char`/`bool` keys when their values are. Every other
+  type is **E0418 where the key is spelled** — in `Map[K, V]()` and
+  in a signature position (`fn f(m: Map[Point, int])`) alike, with
+  the same words. A **struct key waits on derived equality**, by
+  name: `[K: Eq]` on a user type is the ruling this clause does not
+  make, and until it is made a struct is keyed by one of the four
+  (an `id: int`, a `name: str`, a `str` built from its fields). A
+  float has no key equality at all (`nan != nan` would make a key
+  that can never be found again); a container has none the language
+  will spell. Inside a generic body `Map[K, V]` with a rigid `K`
+  elaborates unchecked — the golden rule — and each instantiation is
+  checked where it spells its key. **`[K: Eq]` is satisfied by the
+  four**: std.cmp's `impl Eq for int`, `bool` and `str` are ordinary
+  impls of an ordinary trait (`char`'s is wolf-std sc44's, filed with
+  this clause), the bound dispatches through them, and so std.map's
+  five key functions — `has`, `get`, `get_or`, `remove`, `tally` —
+  execute on a `Map` keyed by any of the four, on both tiers
+  (`corpus/memory/map_std_keys.lu` is their bodies word for word over
+  a local `Eq`). **The surface** the language types, beside the index
+  of `[mem.map.absent]`: `Map[K, V]()` constructs; `m.len` counts
+  entries (`count()` is the same number); `m.is_empty()` probes;
+  `m.clear()` drains (a `mut` receiver); `m.pairs()` answers a fresh
+  `List[(K, V)]` of every entry, which `for (k, v) in m.pairs()`
+  destructures. **Iteration order is unspecified and consistent**:
+  `pairs()` reports one order for an unmodified map and promises
+  nothing else — both machines answer insertion order at this pin,
+  and a program that depends on it depends on an implementation.
+  Iterating the map value itself (`for x in m`) is not ruled and
+  refuses by name. Witnesses: `corpus/memory/map_count.lu` (the count
+  exercise on a map alone), `map_std_keys.lu`, `map_int_keys.lu`,
+  `map_char_bool_keys.lu` (both tiers); `corpus/typecheck/map_struct_key.lu`
+  (E0418). Cost stated: the interpreter's key set and its `Map` read
+  (wolf-interp, filed with the clause); std.map's header and F-0011's
+  filed question (wolf-std sc44); the book's §5.2 and its tally
+  samples (wolf-book bs40).
+
+## §11 Operators through traits `[type.trait.op]`
+
+(Appended 2026-09-11, s155 — wolf-lang#5, the bridge, ruled by the
+maintainer on reading chapter 5's `total[T]`. The compiler answered
+`xs[0] + 1` under a bare `T` with "no trait covers this operator yet
+(operator traits are a later sprint)", and the maintainer, hitting it
+as a learner, asked whether the sprint should be bumped up "now that
+we've encountered it in the wild — we want to attract people to the
+language with friendliness". This section is that sprint. Positions
+surveyed: Rust (operator traits with an output type — the checking,
+minus the wordiness), Go (type sets — the ergonomics, without a second
+kind of bound), Java (no path at all — the cautionary case). D49's
+riders stand: nothing is synthesized, and the primitive impls are the
+substrate.)
+
+- `[type.trait.op]` **An operator dispatches through a trait when its
+  left operand is a type parameter or a user type.** The table:
+
+  | operator | trait member | shape |
+  |---|---|---|
+  | `a + b` `a - b` `a * b` `a / b` `a % b` | `Add.add` `Sub.sub` `Mul.mul` `Div.div` `Rem.rem` | `fn add(self, other: Self) -> Self` |
+  | `-a` | `Neg.neg` | `fn neg(self) -> Self` |
+  | `a == b`, `a != b` | `Eq.eq` (`!=` is its negation) | `fn eq(self, other: Self) -> bool` |
+  | `a < b` `a <= b` `a > b` `a >= b` | `Ord.cmp` read against `Less`/`Greater` | `fn cmp(self, other: Self) -> Ordering` |
+  | `a <=> b` | `Ord.cmp` — the `Ordering` itself | |
+
+  `a + b` IS `Add.add(a, b)`: the same checking, the same dispatch
+  record, the same lowering as the qualified call, with the operands
+  as `read` arguments (a place is lent for the call, never moved, so
+  `a` serves two operators without a `copy`). **When it applies**: the
+  left operand's type is a type parameter (`T`) or a user nominal
+  type (a struct, an enum, a `distinct`); **never two primitives** —
+  `int + int`, `str == str`, `f64 < f64`, `str + char` stay the
+  builtin operations they were (`[type.numlit]`, `[mem.str.order]`,
+  `[type.str.concat]`), whatever impls are in scope. **Which trait**:
+  on a type parameter, the bound must name a trait called `Add` (etc.)
+  — a bare `T` is **E0501** at the definition with the note "add `T:
+  Add` to the bound" and a machine edit that inserts it; on a user
+  type, the trait called `Add` in scope at the operator — nothing by
+  that name in scope is **E0301** naming the trait and where it comes
+  from (std.ops and std.cmp declare the eight), and a type without an
+  impl is **E0502** naming the trait and the operator, discharged with
+  the body's other obligations. `!`, `&&`, `||` and the bitwise
+  family have no trait this edition: on a type parameter they stay
+  E0501 saying so. **Homogeneous this edition**: the method's
+  receiver and other operand are `Self` and the result is `Self`
+  (`bool` for `eq`, a nominal `Ordering` for `cmp`) — no output type
+  parameter; a trait of the table's name whose method has another
+  shape is **E0514** at the operator ("`Add.add` is not `fn add(self,
+  other: Self) -> Self`"), and heterogeneous operands (`Money * int`)
+  wait on a stated need. The right operand is checked against the
+  left's type; a literal adopts it (`m + 1` on a `Money` is the
+  ordinary mismatch, since `1` is not a `Money`). **Nothing is
+  synthesized** (D49): a struct or enum without `impl Eq` does not
+  compare, structurally or otherwise. Compound assignment (`a += b`)
+  on a user type is not ruled here and refuses as it did (E0409).
+  **On primitives the traits' impls are the same operations**: std's
+  `impl Add for int { fn add(self, other: Self) -> Self { self + other
+  } }` and its siblings for `f64`, `char`, `bool`, `str` (where the
+  builtin operator exists) are what `[T: Add]` instantiated at `int`
+  runs, so the machine add is what the generic body does — the
+  instance calls the impl, and the impl is the builtin. Witnesses:
+  `corpus/traits/op_total_num.lu` (the chapter's `total` at `int` and
+  `f64`), `op_money.lu` (`Add`, `Sub`, `Neg` on a struct),
+  `op_eq_inverting.lu` (an inverting `impl Eq` IS consulted —
+  wolf-lang#176's row), `op_ord_struct.lu` (the ordering family and
+  `<=>`), all four on both tiers; `golden_arith.lu` and
+  `golden_eq.lu` (the bare `T`), `op_missing_impl.lu` (E0502),
+  `op_hetero_add.lu` (E0514), `op_eq_no_trait.lu` (E0301). Cost
+  stated: the interpreter's operator dispatch on a struct and its
+  alias-form parse (wolf-interp, filed with the clause); std.ops's
+  five traits, `Neg`, and the primitive impls (wolf-std sc44); the
+  book's §5.3 transcript and §5.5 boundary sentence (wolf-book bs41).
+
+- `[type.trait.op.alias]` **`trait Num = Add + Sub + Mul + Div + Rem +
+  Eq + Ord` is an alias bound.** The `=` form of `trait_item`
+  (`[gram.item.trait]`) declares no members: a bound naming it means
+  every trait in its list, in every position a bound is read — the
+  body's capabilities (`[T: Num]` grants `+` through `Add`), the
+  instantiation's obligations (each trait is checked, and an unmet
+  one is E0502 naming that trait, never `Num`), and the impl search
+  (`satisfies` never asks about the alias). An alias may name an
+  alias; a cycle is E0503 at the alias, once. An alias is not
+  implemented (`impl Num for T` is E0507 — implement its traits) and
+  is not a `dyn` object. std's `Num` is the one the chapter's `fn
+  total[T: Num](xs: List[T], zero: T) -> T` reads; a program that
+  spells its own `Num` gets the same reading. The witness is
+  `op_total_num.lu`'s `Num`, word for word std's.
