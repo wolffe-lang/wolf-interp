@@ -110,6 +110,173 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The map mirror — is46, lupin 0.1.34, pin `c9237c1` (wolf-lang **v0.2.11**)
+
+Pin `662b14c` -> `c9237c1`, **the v0.2.11 tag**. The delta is five sprints
+the previous pin left past its tag: s149 (`[os.fs.open]` mode 5, the accept
+posture), s150 (`[type.fn.value]`, `[abi.native.closure]` rewritten,
+`[conc.chan.payload]`), s151 (`[gram.expr.if]`, `[gram.fmt.if]` — mirrored
+at 0.1.33 from the trunk text, arriving in the corpus now), s152
+(`[type.map]`, `[type.map.key]`, `[mem.map.absent]`), s153 (`[exec]`,
+`[exec.checked]`, `[exec.checked.budget]`, `[mem.region.escape]`) and s155
+(`[type.trait.op]`, `[type.trait.op.alias]`). `spec/anchors.json` **458 ->
+471; key sets diffed BOTH ways** — thirteen arrive, **nothing drops**, no
+owner changes; `exec` is a new NAMESPACE, registered in spec/05's list and
+in `anchor::REGISTERED_NAMESPACES` in the same change
+(`[conf.anchor.ns.admit]`). Thirty-six corpus files join, none leaves, all
+entries: 534 -> 570 files, 500 -> 536 entries, members 34.
+
+s154 (the papercuts: `[gram.item.let]`'s field rule, `then` in §6.2, the
+one-line body-less trait member) is **past the tag** — measured with `git
+merge-base --is-ancestor`, fourteen commits — so wolf-interp#99 is mirrored
+from the trunk clause text the way is45 mirrored s151, and #100's `then`
+waits: §6.2 at this pin does not name it, `tests/spec_extract.rs` holds
+`lex::CONTEXTUAL` to §6.2 both ways, and adding it would fail that test at
+a pin whose prose does not carry it.
+
+#### Predicted, then measured, with the 0.1.33 binary at the new pin
+
+Written before the bump, against the 662b14c baseline (534 files, 500
+entries, 383 reach run, 380 match, 16 dynamic counterparts, 42
+conservatism, 61 out of scope, 1 mismatch, 458 anchors):
+
+| class | predicted | measured (0.1.33 at c9237c1) |
+| --- | --- | --- |
+| files / entries / members | 570 / 536 / 34 | 570 / **535 + 1 walk failure** / 34 |
+| anchors | 471 | 471 |
+| match | 398 | 397 |
+| mismatch | 5 | 5 |
+| conservatism | 46 | 46 |
+| out of scope | 69 | 69 |
+| dynamic counterpart | 18 | 18 |
+| reach `run` | 407 | 406 |
+
+Every class as predicted, every witness in the class predicted for it — the
+one miss is the file the prediction never reached: the walk refused
+`strings/bytes_view_walk.lu` outright, `exec.checked.budget` being in a
+namespace this machine had not registered. That is the restrictive half of
+`[conf.anchor.ns.admit]`, and the fix is one line in `anchor.rs`; with it
+the file is the entry it always was and the census is 536 / 398 / 407, the
+prediction to the digit.
+
+The four mismatches the pin brought, each predicted by name:
+`memory/map_absent_else.lu` (0.1.33 printed `7 () 1 true` / `[()]`),
+`memory/map_char_bool_keys.lu` (`() () ()`), `traits/op_eq_inverting.lu`
+(structural `==`: `true`/`false`/`false`), `traits/op_total_num.lu` (E0201
+at `trait Num =`). All four match at 0.1.34.
+
+#### The sprint's work, in census terms
+
+| step | run | match | dyn | cons. | oos | mismatch |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0.1.33 at c9237c1 (+ `exec`) | 407 | 398 | 18 | 46 | 69 | 5 |
+| #96/#97 imported trait, qualified bound | 407 | 398 | 18 | 46 | 69 | 5 |
+| #91 the key protocol | 407 | 403 | 18 | 45 | 66 | 4 (+wordcount) |
+| #92 the operator bridge, the alias form | 406 | 411 | 18 | 42 | 62 | 3 (+structlit_paren, −the two above, −op_eq/op_total) |
+| #88 a built str has a region | 406 | 411 | 20 | 40 | 62 | 3 |
+| #94/#95/#98/#99 | 405 | 412 | 20 | 39 | 62 | 3 |
+| the golden rule's call shape (`Show.show(v)` on a bare `T`, E0501) | 404 | **413** | 20 | 38 | 62 | 3 |
+
+Match 380 -> 413 across the pin and the sprint; the three mismatches
+standing are DIV-2026-019 and the two filed below. The #96/#97 row moves
+nothing in the corpus by construction — both witnesses need an imported
+module, which the flat corpus does not stage; they are `tests/std_root.rs`'s
+— and it is the row that unblocks wolf-std's whole trait surface (the
+`[K: Eq]` five, every `ops` impl).
+
+Witness table, by issue (the compiler's spans measured with the v0.2.11
+release archive, darwin `a91b77c0…`):
+
+| issue | witness | 0.1.33 | 0.1.34 | wolf 0.2.11 |
+| --- | --- | --- | --- | --- |
+| #96 | sc44's `tiny.Eq.eq(a, b)` under `--std-root` | unsupported@resolve | `true false` | `true false` |
+| #97 | `fn total[T: ops.Add]`, the bound the only use | fail(E0305) | `3` | `3` |
+| #91 | `memory/map_absent_else.lu` | `7 () 1 true` | `7 0 1 true` / `[none]` | same |
+| #91 | `memory/map_char_bool_keys.lu` | `() () ()` | `1 2 yes` | same |
+| #91 | `memory/map_count.lu` | unsupported (`+` on `()`) | the three totals | same |
+| #91 | `memory/map_int_keys.lu` | unsupported (not a place) | `3 2 12 -1` | same |
+| #91 | `typecheck/map_compound_absent.lu` | unsupported | E0417 @ [786,801] | E0417 @ [786,801] |
+| #91 | `typecheck/map_struct_key.lu` | exit(1) | E0418 @ [648,653] | E0418 @ [648,653] |
+| #92 | `traits/op_eq_inverting.lu` | `true/false/false` | `false/true/true` | same |
+| #92 | `traits/op_money.lu`, `op_ord_struct.lu` | unsupported | `150/-150/50`, `true/false/true/less` | same |
+| #92 | `traits/op_total_num.lu` | E0201 at `=` | `6` / `7.5` | same |
+| #92 | `op_eq_no_trait`, `op_missing_impl`, `op_hetero_add` | ran / unsupported | E0301 @ [457,458], E0502 @ [597,598], E0514 @ [732,733] | same bytes |
+| #92 | `golden_arith.lu`, `golden_eq.lu` | ran (conservatism) | E0501 @ [385,386], [347,348] | same bytes |
+| #92 | `golden_missing_bound.lu` (`Show.show(v)`, bare `T`) | ran (conservatism) | E0501 @ [371,372] | E0501 @ [371,372] |
+| #88 | `memory/region_str_concat_return.lu` | `regions`, exit 0 | trap(region-fault) at the `}` | E1010 |
+| #88 | `memory/region_str_concat_send.lu` | `regions`, exit 0 | trap(region-fault) at `got` | E1010 |
+| #94 | `Row { kind: "drink" }` for a two-field `Row` | ran, `drink` | E0408 @ [69,90] | E0408 @ [69,90] |
+| #95 | `fn total[T: Num]`, no `Num` | ran, `7` | E0301 @ [12,15] | E0301 @ [12,15] |
+| #98 | wh-002, `Dot { x: 3 } as dyn Draw` | ran | E0810 @ [152,176] | E0810 @ [152,176] |
+| #98 | `traits/dyn_temp_refused.lu` | exit(0), conservatism | E0810, match | E0810 |
+| #99 | `let r = Row {…}; r.cents = 5` | ran, `5` | E0410 at `r.cents` | unsupported@wir at v0.2.11 (s154 is past the tag; trunk: E0410) |
+| #100 | body-less member followed by a member on one line | E0201 | E0201 @ [28,30] | E0201 |
+| #86 | `fs/open_nonblock.lu` | unsupported@resolve | unsupported@resolve (the fs tier declines by name) | runs |
+
+Two cost rulings measured against the compiler's checked tier rather than
+assumed: a `str` built by `+`, `+=` or a holed interpolation **charges the
+ambient region's ledger** (`region idle(cap: 0) { print("{n}") }` is
+`trap(alloc-contract)` on `wolf --checked` at c9237c1 and runs on
+`--native`; this machine mirrors the checked machine), which retired two
+unit-test probes that printed a hole inside a cap-zero region; and an enum
+value with no `impl Eq` keeps this machine's structural tag comparison —
+the clause says "refused by name like a struct", and the conservative side
+is kept until a witness asks for the other.
+
+#### The seam #96 named
+
+The same trait dispatched or did not depending on which FILE declared it:
+`tiny.Eq.eq(a, b)` after `use std.tiny` is a three-segment path, and the
+trait-qualified call took two segments only, so the path evaluator answered
+"`Eq` is a trait; … no dynamic semantics here" while the byte-identical
+trait in the entry file dispatched. wolf-std carried "neither implementation
+EXECUTES trait dispatch" in six module headers since sc01; half of that was
+false on every machine and the other half was this one branch.
+
+### DIV-2026-022 — `wordcount.lu` — **OPEN, filed upstream as wolf-lang#341**
+
+The seed program's line 23, `if !w.is_empty() { tally[w] += 1 } // absent
+key defaults to zero value`, is the sentence s152 retired: `m[k]` is
+`V ! {none}` and **`m[k] op= v` is E0417** in every profile
+(`[mem.map.absent]`; `typecheck/map_compound_absent.lu` is that statement).
+The header still pins `check: run(exit=2)`, `phase: resolve`.
+
+| | verdict |
+| --- | --- |
+| lupin 0.1.33 | `exit(2)` (the compound path defaulted an absent key to an `int` zero) |
+| **lupin 0.1.34** | `fail(E0417)` at resolve, at `tally[w]` |
+| wolf 0.2.11 | `unsupported` at resolve — `text.words()` is the std surface, one rung before the checker |
+| wolf 0.2.11 on the reduction (`map_compound_absent.lu`) | `fail(E0417)` at typecheck, `[786,801]` |
+
+Triage: spec bug, case 1 — the clause is unambiguous and the corpus file is
+stale against it; the compiler's own ledger cannot see it because the phase
+its header names stops before the refusal. The two spellings the clause
+names — `tally[w] = (tally[w] else 0) + 1`, or std's `map.tally(mut tally,
+w)` — keep the seed program's meaning and its `exit(2)`. Waived in
+`differ::FILED_DIVERGENCES`; `wordcount.lu` leaves `RUN_LEDGER` and the
+explorer's seed pair, the CLI's exit(2) probe stands on its own program,
+and the row returns the day the file is respelled.
+
+### DIV-2026-023 — `grammar/structlit_paren.lu` — **OPEN, filed upstream as wolf-lang#341**
+
+`if p == (Point { x: 0 }) { 0 } else { 1 }` under `check: pass`, `phase:
+resolve`. s155: `==` on a user type IS `Eq.eq`, nothing is synthesized
+(D49), and nothing named `Eq` in scope is E0301 — `traits/op_eq_no_trait.lu`
+is the same program with a `let b` for the parenthesized literal.
+
+| | verdict |
+| --- | --- |
+| lupin 0.1.33 | `exit(0)` (structural `==`) |
+| **lupin 0.1.34** | `fail(E0301)` at resolve, at `p` |
+| wolf 0.2.11 | `fail(E0301)` at typecheck, `[202,203]` — the same operand |
+
+Triage: spec bug, case 1, the same shape as DIV-2026-022 one clause over.
+The witness is about `[gram.amb.structlit]` (the parenthesized form E0006
+suggests) and needs no equality: `let q = (Point { x: 0 })` then `q.x`
+keeps its point under both clauses. Waived; the file moves to the annex
+pair's REFUSED half in `tests/conformance.rs` (it still parses, which is
+the annex's point) and leaves `RUN_LEDGER`.
+
 ### The mirror takes `then` — is45, lupin 0.1.33, pin `662b14c` (wolf-lang **v0.2.10**)
 
 Pin `e0ce018` -> `662b14c`, **the v0.2.10 tag**: 0.1.32 pinned a dev stamp

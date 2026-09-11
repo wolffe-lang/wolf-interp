@@ -57,18 +57,19 @@ The corpus walk at the end checks every pinned conformance file against
 this implementation and prints the ledger. Its last line counts
 mismatches; on a healthy checkout every mismatch it counts is one that
 is already triaged and filed in `docs/divergence-log.md` (the count is
-`1` at the current pin, DIV-2026-019, the broken-sibling parse-code
-disagreement; the gate in `tests/run_corpus.rs` waives only the filed
-set):
+`3` at the current pin: DIV-2026-019, the broken-sibling parse-code
+disagreement, and DIV-2026-022/-023, two seed files whose headers predate
+the clauses that now refuse them; the gate in `tests/run_corpus.rs` waives
+only the filed set):
 
 ```console
 $ lupin corpus
 …
 
-534 file(s) under upstream/corpus: 500 entries, 34 member(s), 0 failure(s)
-311 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
+570 file(s) under upstream/corpus: 536 entries, 34 member(s), 0 failure(s)
+323 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 383 entries reach the `run` rung; 380 match their `check:` expectation, 16 are the dynamic counterpart of the static code the corpus pins, 42 are static-conservatism entries (the compiler rejects statically what this machine never checks), 61 are out of scope, 1 mismatch
+lupin: 404 entries reach the `run` rung; 413 match their `check:` expectation, 20 are the dynamic counterpart of the static code the corpus pins, 38 are static-conservatism entries (the compiler rejects statically what this machine never checks), 62 are out of scope, 3 mismatch
 ```
 
 ## Bumping the pin
