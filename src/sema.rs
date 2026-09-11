@@ -4286,8 +4286,10 @@ fn byte_check(program: &Program) -> Option<Diag> {
 ///
 /// #73 is a body whose tail is `()` under a declared `-> str` / `-> !int`;
 /// #81 is a `!T` value used bare as an operand. wolf 0.2.9 refuses both
-/// before running — E0401 at the tail, E0409 at an arithmetic operator and
-/// E0401 at a comparison — and lupin 0.1.30 ran both to completion, which
+/// before running — E0401 at the tail, E0409 at an arithmetic operator and,
+/// at is43, E0401 at a comparison (since ruled E0409 on either side by
+/// `[type.row.operand]`, see `RowWalk::binary_operands`) — and lupin 0.1.30
+/// ran both to completion, which
 /// made a `-> !int` `main` ending in `print(…)` exit 0 by a path the program
 /// never wrote and made 56 of wollf's 2,153 verified programs pass here and
 /// fail there.
@@ -4328,10 +4330,12 @@ fn byte_check(program: &Program) -> Option<Diag> {
 ///   `!T` is read without being handled, which leaves an operator no reading
 ///   at all. `[type.str.concat.mix]` fixes the number for the shape "this
 ///   operator is not defined on these operand types" — "Mixed operands stay
-///   **E0409**" — so arithmetic and the bitwise/shift family answer E0409,
-///   and a comparison answers E0401 because the other operand's type is what
-///   the refusal names (wolf 0.2.9, measured: `` this is `!int`, but the
-///   other side of `<=` makes it `{integer}` ``).
+///   **E0409**" — so arithmetic and the bitwise/shift family answer E0409.
+///   A comparison answered E0401 at is43, naming what the other operand
+///   made of the term (wolf 0.2.9, measured: `` this is `!int`, but the
+///   other side of `<=` makes it `{integer}` ``); s148 wrote the rule down
+///   as `[type.row.operand]` and ruled ONE code on either side, E0409, so
+///   the comparison moved at pin `662b14c` (wolf-interp#85).
 fn tail_check(program: &Program) -> Option<Diag> {
     for module in program.modules.values() {
         let unit_fns = unit_returning(module);
@@ -4802,16 +4806,24 @@ impl RowWalk<'_> {
         None
     }
 
-    /// The refusal itself. Arithmetic, the bitwise family and the shifts
-    /// answer E0409 ("`+` cannot be applied to `!int`"); the comparisons
-    /// answer E0401 and name what the other side makes of the term, which is
-    /// wolf 0.2.9's own sentence. `&&` and `||` are deliberately absent: no
-    /// clause and no measurement fixes their number here.
+    /// The refusal itself: E0409 on either side, for arithmetic, the
+    /// comparisons, the bitwise family and the shifts alike
+    /// (`[type.row.operand]`, wolf-lang s148 — "no operator has a `!T` in its
+    /// family", and the code is the one `[type.str.concat.mix]` spends on
+    /// "this operator is not defined on these operands"). Until pin
+    /// `662b14c` a comparison answered E0401 naming what the other side made
+    /// of the term — wolf 0.2.9's sentence for the row on the RIGHT; the
+    /// clause weighed that reading and rejected it as a rule about position,
+    /// and `rows/negative/row_operand_compare.lu` pins E0409 with the row on
+    /// the left (wolf-interp#85). `&&` and `||` are deliberately absent: the
+    /// clause lists "logic" but no witness and no measurement fixes the
+    /// shape here, and a wrong guess is the failure the sema boundary exists
+    /// to prevent.
     fn binary_operands(&self, op: crate::ast::BinOp, lhs: &Expr, rhs: &Expr) -> Option<Diag> {
         use crate::ast::BinOp;
-        let (span, row, other) = match (self.row_of(lhs), self.row_of(rhs)) {
-            (Some(row), _) => (lhs.span, row, rhs),
-            (None, Some(row)) => (rhs.span, row, lhs),
+        let (span, row) = match (self.row_of(lhs), self.row_of(rhs)) {
+            (Some(row), _) => (lhs.span, row),
+            (None, Some(row)) => (rhs.span, row),
             (None, None) => return None,
         };
         let spelling = binop_spelling(op)?;
@@ -4825,51 +4837,31 @@ impl RowWalk<'_> {
             | BinOp::Shr
             | BinOp::BitAnd
             | BinOp::BitXor
-            | BinOp::BitOr => Some(Diag::new(
+            | BinOp::BitOr
+            | BinOp::Eq
+            | BinOp::Ne
+            | BinOp::Lt
+            | BinOp::Gt
+            | BinOp::Le
+            | BinOp::Ge
+            | BinOp::Cmp => Some(Diag::new(
                 "E0409",
                 span,
-                "gram.type.row",
+                "type.row.operand",
                 format!(
                     "`{spelling}` cannot be applied to `{row}` — an error union is two \
-                     values, not one (`[gram.type.row]`), and no operator reads it: \
-                     `[type.interp.union]` gives the ok half a rendering inside a hole and \
-                     says so as a reading rule, never a handling one. Handle the row first \
-                     — `?`, `else`, or a `match` — and operate on what it yields"
+                     values, never one (`[type.row.operand]`, `[gram.type.row]`), and no \
+                     operator reads it: `?`, `else` and a `match` are the whole of how a \
+                     row is handled, and `[type.interp.union]`'s hole rendering is a \
+                     reading, not a handling. Handle the row first — `n? {spelling} …`, \
+                     `(n else 0) {spelling} …` — and operate on what it yields"
                 ),
             )),
-            BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge | BinOp::Cmp => {
-                Some(Diag::new(
-                    "E0401",
-                    span,
-                    "gram.type.row",
-                    format!(
-                        "this is `{row}`, but the other side of `{spelling}` makes it \
-                         `{}` — an error union is two values, not one \
-                         (`[gram.type.row]`); handle the row first — `?`, `else`, or a \
-                         `match` — and compare what it yields",
-                        other_side(other)
-                    ),
-                ))
-            }
             BinOp::And | BinOp::Or => None,
         }
     }
 }
 
-/// What the counterparty calls the other operand of a comparison. Only the
-/// two spellings that need no inference: a bare numeric literal is
-/// `{integer}` / `{float}` in wolf's own diagnostics, and everything else is
-/// named by nothing this pass may claim, so it says so.
-fn other_side(expr: &Expr) -> &'static str {
-    match &*expr.kind {
-        ExprKind::Int(_) => "{integer}",
-        ExprKind::Float(_) => "{float}",
-        ExprKind::Str(_) => "str",
-        ExprKind::Bool(_) => "bool",
-        ExprKind::Char(_) => "char",
-        _ => "the ok side",
-    }
-}
 
 fn binop_spelling(op: crate::ast::BinOp) -> Option<&'static str> {
     use crate::ast::BinOp;
@@ -5734,7 +5726,7 @@ mod tests {
         let source = "fn main() -> !int {\n    let n: !int = 3\n    print(\"{n + 1}\")\n    0\n}\n";
         let diag = resolve(source).expect("rejected");
         assert_eq!(diag.code, "E0409");
-        assert_eq!(diag.anchor, "gram.type.row");
+        assert_eq!(diag.anchor, "type.row.operand");
         assert!(
             diag.message.contains("`+` cannot be applied to `!int`"),
             "{diag:?}"
@@ -5743,16 +5735,23 @@ mod tests {
     }
 
     #[test]
-    fn a_bare_row_in_a_comparison_is_e0401_naming_the_other_side() {
-        let source =
-            "fn main() -> !int {\n    let n: !int = 3\n    if n <= 5 { print(\"y\") }\n    0\n}\n";
-        let diag = resolve(source).expect("rejected");
-        assert_eq!(diag.code, "E0401");
-        assert!(
-            diag.message
-                .contains("this is `!int`, but the other side of `<=` makes it `{integer}`"),
-            "{diag:?}"
-        );
+    fn a_bare_row_in_a_comparison_is_e0409_on_either_side() {
+        // `[type.row.operand]` (pin 662b14c, wolf-interp#85): `n <= 5` and
+        // `5 <= n` are one refusal, and it is the arithmetic one's code.
+        for source in [
+            "fn main() -> !int {\n    let n: !int = 3\n    if n <= 5 { print(\"y\") }\n    0\n}\n",
+            "fn main() -> !int {\n    let n: !int = 3\n    if 5 <= n { print(\"y\") }\n    0\n}\n",
+            "fn main() -> !int {\n    let n: !int = 3\n    if n == 3 { print(\"y\") }\n    0\n}\n",
+        ] {
+            let diag = resolve(source).expect("rejected");
+            assert_eq!(diag.code, "E0409", "{source}");
+            assert_eq!(diag.anchor, "type.row.operand");
+            assert!(
+                diag.message.contains("cannot be applied to `!int`"),
+                "{diag:?}"
+            );
+            assert_eq!(&source[diag.span.start..diag.span.end], "n");
+        }
     }
 
     #[test]
