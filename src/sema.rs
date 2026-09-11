@@ -1057,6 +1057,7 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| tier_check(program))
         .or_else(|| byte_check(program))
         .or_else(|| tail_check(program))
+        .or_else(|| bound_check(program))
         .or_else(|| row_operand_check(program))
         .or_else(|| annotation_check(program))
 }
@@ -2714,6 +2715,36 @@ fn walk_stmt_assigns(stmt: &Stmt, env: &mut Env) -> Option<Diag> {
                         "`{}` is bound with `let`, so it cannot be assigned again; declare the \
                          binding with `var` to update it in place (machine-applicable), or shadow \
                          it with a second `let` if the next value is really a new thing",
+                        head.name
+                    ),
+                ));
+            }
+            // `[gram.item.let]` (wolf-lang s154, #331; wolf-interp#99): **a
+            // `let` binding's FIELDS are as immutable as the binding** —
+            // `let r = Row { … }` then `r.cents = 5` is E0410 at the field
+            // write exactly as `r = …` is; `let` names a value once, and
+            // the value includes its fields. The path production swallows
+            // the dots, so `r.cents` and `r.inner.n` are one dotted path
+            // peeled to its base binding. An INDEX is not part of this
+            // (`xs[0] = 1` on a `let` stays in exclusivity/freeze
+            // territory), and a bracket is not a `Path`, so the peel stops
+            // there by construction. Clause text read from wolf-lang trunk
+            // past the v0.2.11 pin, which predates s154.
+            if let ExprKind::Path(path) = &*place.kind
+                && !path.is_single()
+                && let Some(head) = path.segments.first()
+                && env.assignable(&head.name) == Some(false)
+            {
+                return Some(Diag::new(
+                    "E0410",
+                    place.span,
+                    "gram.item.let",
+                    format!(
+                        "`{}` is bound with `let`, so its fields cannot be assigned either — \
+                         `let` names a value once, and the value includes its fields \
+                         ([gram.item.let]); declare the binding with `var` to update a field \
+                         in place (machine-applicable), or build the value complete in the \
+                         `let`",
                         head.name
                     ),
                 ));
@@ -4526,6 +4557,7 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
         let mut fallible: BTreeMap<String, String> = BTreeMap::new();
         let mut generic_sigs: BTreeMap<String, GenericSig> = BTreeMap::new();
         let mut structs: BTreeSet<String> = BTreeSet::new();
+        let mut struct_fields: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for (name, (def, _)) in &module.items {
             match def {
                 Def::Fn(decl) => {
@@ -4538,8 +4570,12 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
                         generic_sigs.insert(name.clone(), generic_sig_of(decl));
                     }
                 }
-                Def::Struct(_) => {
+                Def::Struct(def) => {
                     structs.insert(name.clone());
+                    struct_fields.insert(
+                        name.clone(),
+                        def.fields.iter().map(|f| f.name.name.clone()).collect(),
+                    );
                 }
                 _ => {}
             }
@@ -4614,6 +4650,7 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
                 traits: &module.trait_members,
                 trait_impls: &module.trait_impls,
                 uses: &module.uses,
+                struct_fields: &struct_fields,
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
@@ -4651,6 +4688,7 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
                     traits: &module.trait_members,
                     trait_impls: &module.trait_impls,
                     uses: &module.uses,
+                    struct_fields: &struct_fields,
                 };
                 if let Some(diag) = walk.expr(&binding.value) {
                     return Some(diag);
@@ -4907,6 +4945,9 @@ struct RowWalk<'a> {
     traits: &'a BTreeMap<String, BTreeMap<String, Box<FnDecl>>>,
     trait_impls: &'a BTreeMap<String, Vec<String>>,
     uses: &'a [String],
+    /// wolf-interp#94: the declared fields of each struct this module
+    /// declares, in declaration order — what a literal is checked against.
+    struct_fields: &'a BTreeMap<String, Vec<String>>,
 }
 
 /// The operator table of `[type.trait.op]`: the trait and the method an
@@ -5070,6 +5111,87 @@ impl RowWalk<'_> {
             },
             _ => None,
         }
+    }
+
+    /// wolf-interp#94: a struct literal names every field
+    /// (`[type.struct.literal]`'s shape — "every field is written explicitly,
+    /// wolf has no defaults yet"). `Row { kind: "drink" }` for a two-field
+    /// `Row` ran here and printed, with a `cents` that was never written;
+    /// the compiler is E0408 over the whole literal (measured at pin
+    /// c9237c1: `this Row literal is missing the field cents`). Decided for
+    /// structs this module declares, by name; a literal of an imported or
+    /// shadowed name is left to the dynamic tier.
+    fn struct_literal(
+        &self,
+        path: &crate::ast::Path,
+        fields: &[crate::ast::FieldInit],
+        span: Span,
+    ) -> Option<Diag> {
+        if !path.is_single() {
+            return None;
+        }
+        let name = &path.segments[0].name;
+        if self.shadows(name) {
+            return None;
+        }
+        let declared = self.struct_fields.get(name)?;
+        let missing: Vec<&str> = declared
+            .iter()
+            .filter(|field| !fields.iter().any(|init| init.name.name == **field))
+            .map(String::as_str)
+            .collect();
+        if missing.is_empty() {
+            return None;
+        }
+        let listed = missing
+            .iter()
+            .map(|field| format!("`{field}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Some(Diag::new(
+            "E0408",
+            span,
+            "type.struct.literal",
+            format!(
+                "this `{name}` literal is missing the field{} {listed} — every field is \
+                 written explicitly; wolf has no defaults yet",
+                if missing.len() == 1 { "" } else { "s" }
+            ),
+        ))
+    }
+
+    /// wolf-interp#98 (wollf's wh-002): `[mem.tier0]`'s cast-a-binding rule
+    /// — **a temporary has no home, bind it first**. The `dyn` pair's data
+    /// half points AT the operand, so the operand of `as dyn T` must be a
+    /// place: a binding, a field, an index. `Dot { x: 3 } as dyn Draw` is
+    /// E0810 over the whole cast (measured at pin c9237c1); `let home = Dot
+    /// { x: 3 }` then `home as dyn Draw` is the spelling.
+    fn dyn_cast(&self, inner: &Expr, ty: &Type, span: Span) -> Option<Diag> {
+        if !matches!(&*ty.kind, TypeKind::Dyn(_)) {
+            return None;
+        }
+        let mut operand = inner;
+        while let ExprKind::Group(within) = &*operand.kind {
+            operand = within;
+        }
+        if matches!(
+            &*operand.kind,
+            ExprKind::Path(_)
+                | ExprKind::BracketApply { .. }
+                | ExprKind::Member { .. }
+                | ExprKind::ModedReceiver { .. }
+        ) {
+            return None;
+        }
+        Some(Diag::new(
+            "E0810",
+            span,
+            "mem.tier0",
+            "a temporary has no home — bind it first: the `dyn` pair's data half points AT the \
+             operand, so the operand must be a place (a binding, a field, or an index); write \
+             `let home = …` and cast the binding, `home as dyn Trait`"
+                .to_owned(),
+        ))
     }
 
     /// `[type.trait.op]` (wolf-lang s155, #5; wolf-interp#92), the static
@@ -5522,8 +5644,10 @@ impl RowWalk<'_> {
                 op: crate::ast::UnOp::Neg,
                 operand,
             } => self.operator_neg(operand).or_else(|| self.expr(operand)),
+            ExprKind::Cast { expr: inner, ty } => self
+                .dyn_cast(inner, ty, expr.span)
+                .or_else(|| self.expr(inner)),
             ExprKind::Unary { operand, .. }
-            | ExprKind::Cast { expr: operand, .. }
             | ExprKind::Group(operand)
             | ExprKind::Try(operand)
             | ExprKind::FromEnd(operand)
@@ -5547,9 +5671,13 @@ impl RowWalk<'_> {
                         crate::ast::IndexArg::Type(_) => None,
                     })
                 }),
-            ExprKind::StructLit { fields, .. } => fields
-                .iter()
-                .find_map(|field| field.value.as_ref().and_then(|expr| self.expr(expr))),
+            ExprKind::StructLit { path, fields } => {
+                self.struct_literal(path, fields, expr.span).or_else(|| {
+                    fields
+                        .iter()
+                        .find_map(|field| field.value.as_ref().and_then(|expr| self.expr(expr)))
+                })
+            }
             ExprKind::Range { start, end, .. } => start
                 .as_ref()
                 .and_then(|expr| self.expr(expr))
@@ -5866,6 +5994,66 @@ fn annotation_check(program: &Program) -> Option<Diag> {
     None
 }
 
+/// wolf-interp#95: a bound NAME resolves. `fn total[T: Num]` with nothing
+/// named `Num` in scope ran here and printed; the compiler is E0301 at the
+/// bound (measured at pin c9237c1: `nothing named Num is in scope`, the
+/// name's own span). A bound names a trait: an item this module declares
+/// as one (an alias bound included), or a name a `use` binds. A qualified
+/// bound (`ops.Add`) resolves through the import and is not read here;
+/// `type` (a comptime type parameter) is not a name. Runs before the
+/// operator bridge reads bounds, so an unresolvable bound is E0301 and not
+/// a later E0501 about what it fails to say.
+fn bound_check(program: &Program) -> Option<Diag> {
+    for module in program.modules.values() {
+        let methods = module
+            .methods
+            .values()
+            .flat_map(|by_name| by_name.values().flatten())
+            .map(|method| &*method.decl);
+        let items = module.items.values().filter_map(|(def, _)| match def {
+            Def::Fn(decl) => Some(&**decl),
+            _ => None,
+        });
+        for decl in items.chain(methods) {
+            for generic in impl_generics_bounds(decl) {
+                if let crate::ast::Bound::Paths(paths) = generic {
+                    for path in paths {
+                        if !path.is_single() {
+                            continue;
+                        }
+                        let segment = &path.segments[0];
+                        let is_trait = matches!(
+                            module.items.get(&segment.name),
+                            Some((Def::Opaque("trait"), _))
+                        ) || module.uses.contains(&segment.name);
+                        if !is_trait {
+                            return Some(Diag::new(
+                                "E0301",
+                                segment.span,
+                                "gram.item.fn",
+                                format!(
+                                    "nothing named `{}` is in scope — a bound names a trait \
+                                     (`generic_param ::= IDENT (':' bound)?`, \
+                                     `bound ::= path ('+' path)*`), and resolution is the rung \
+                                     that answers whether a name exists ([mod]); declare the \
+                                     trait, or bring it into scope with `use`",
+                                    segment.name
+                                ),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// The bounds a declaration's own generic parameters carry.
+fn impl_generics_bounds(decl: &FnDecl) -> impl Iterator<Item = &crate::ast::Bound> {
+    decl.generics.iter().filter_map(|g| g.bound.as_ref())
+}
+
 /// Every name a type position may resolve to at module level: the built-in
 /// scalars, the prelude's type names, the ambient prelude, every item the
 /// module declares (forward references included — D32 makes the directory
@@ -6158,6 +6346,100 @@ mod tests {
     fn resolve(source: &str) -> Option<Diag> {
         let program = load_source("t.lu", source).expect("loads");
         resolve_check(&program)
+    }
+
+    // -- the five small mirrors: #94, #95, #98, #99 ---------------------------
+
+    #[test]
+    fn a_struct_literal_missing_a_field_is_e0408_over_the_literal() {
+        // wolf-interp#94 (wolf-book bs42): the compiler's span is the whole
+        // literal (pin c9237c1: [69,90] on the reduction).
+        let source = "struct Row { kind: str, cents: int }\nfn main() -> !int {\n    \
+                      let r = Row { kind: \"drink\" }\n    print(\"{r.kind}\")\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0408");
+        assert_eq!(
+            &source[diag.span.start..diag.span.end],
+            "Row { kind: \"drink\" }"
+        );
+        // Complete literals, the shorthand, and a shadowed name stay clean.
+        assert!(
+            resolve(
+                "struct Row { kind: str, cents: int }\nfn main() -> !int {\n    \
+                 let cents = 1\n    let r = Row { kind: \"drink\", cents }\n    \
+                 let s = Row { cents: 2, kind: \"food\" }\n    0\n}\n"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn an_unresolved_bound_name_is_e0301_at_the_name() {
+        // wolf-interp#95: `[T: Num]` with no `Num` anywhere (pin c9237c1:
+        // `nothing named Num is in scope`, [12,15]).
+        let source = "fn total[T: Num](xs: List[T], zero: T) -> T { zero }\n\
+                      fn main() -> !int { 0 }\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0301");
+        assert_eq!(&source[diag.span.start..diag.span.end], "Num");
+        // A declared trait, an alias, a use-bound name and a qualified bound
+        // resolve.
+        assert!(
+            resolve(
+                "trait Add { fn add(self, other: Self) -> Self }\ntrait Num = Add\n\
+                 fn f[T: Add](a: T) -> T { a }\nfn g[T: Num](a: T) -> T { a }\n\
+                 fn main() -> !int { 0 }\n"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn a_temporary_cast_to_dyn_is_e0810_over_the_cast() {
+        // wolf-interp#98 (wollf wh-002): the pair points at its operand, so
+        // the operand must be a place (pin c9237c1: [152,176]).
+        let source = "trait Draw {\n    fn area(self) -> int\n}\nstruct Dot { x: int }\n\
+                      impl Draw for Dot {\n    fn area(self) -> int { self.x }\n}\n\
+                      fn main() -> !int {\n    let d = Dot { x: 3 } as dyn Draw\n    \
+                      print(\"{d.area()}\")\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0810");
+        assert_eq!(
+            &source[diag.span.start..diag.span.end],
+            "Dot { x: 3 } as dyn Draw"
+        );
+        // The binding form is the spelling.
+        assert!(
+            resolve(
+                "trait Draw {\n    fn area(self) -> int\n}\nstruct Dot { x: int }\n\
+                 impl Draw for Dot {\n    fn area(self) -> int { self.x }\n}\n\
+                 fn main() -> !int {\n    let home = Dot { x: 3 }\n    \
+                 let d = home as dyn Draw\n    print(\"{d.area()}\")\n    0\n}\n"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn a_field_write_through_a_let_binding_is_e0410_at_the_place() {
+        // wolf-interp#99 (wolf-lang s154, #331): `let r = Row { … }` then
+        // `r.cents = 5`; one level down too; an index is left alone.
+        let source = "struct Row { kind: str, cents: int }\nfn main() -> !int {\n    \
+                      let r = Row { kind: \"drink\", cents: 340 }\n    r.cents = 5\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0410");
+        assert_eq!(&source[diag.span.start..diag.span.end], "r.cents");
+        let nested = "struct In { n: int }\nstruct Out { inner: In }\nfn main() -> !int {\n    \
+                      let r = Out { inner: In { n: 1 } }\n    r.inner.n += 1\n    0\n}\n";
+        assert_eq!(resolve(nested).map(|d| d.code), Some("E0410"));
+        assert!(
+            resolve(
+                "struct Row { kind: str, cents: int }\nfn main() -> !int {\n    \
+                 var r = Row { kind: \"drink\", cents: 340 }\n    r.cents = 5\n    \
+                 let xs = List[int]()\n    0\n}\n"
+            )
+            .is_none()
+        );
     }
 
     // -- [type.trait.op]: the operator bridge (wolf-lang s155, wolf-interp#92) --
