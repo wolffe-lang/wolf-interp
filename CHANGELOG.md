@@ -1,5 +1,110 @@
 # Changelog
 
+## 0.1.34 — 2026-09-11
+
+THE MAP MIRROR (is46). Pin `662b14c` -> `c9237c1` — **the v0.2.11 tag**. The
+delta is the five sprints 0.1.33's pin left past its tag: s149 (`[os.fs.open]`
+mode 5, the accept posture), s150 (`[type.fn.value]`, `[abi.native.closure]`,
+`[conc.chan.payload]`), s151 (`[gram.expr.if]` — mirrored at 0.1.33, its
+twelve witnesses arrive now and match at first sight), s152 (`[type.map]`,
+`[type.map.key]`, `[mem.map.absent]`), s153 (`[exec.checked.budget]`,
+`[mem.region.escape]`) and s155 (`[type.trait.op]`, `[type.trait.op.alias]`).
+Thirty-six corpus files (536 entries), thirteen anchors (471; key sets diffed
+BOTH ways, nothing dropped), and a new namespace: `exec` joins
+`anchor::REGISTERED_NAMESPACES` in the same change as the clause's list
+(`[conf.anchor.ns.admit]`) — without it the walk refused
+`strings/bytes_view_walk.lu`, the one thing the pre-bump prediction missed.
+s154 is past the tag: #99 is mirrored from the trunk clause the way is45
+mirrored s151, and `then` stays out of `lex::CONTEXTUAL` until §6.2 names
+it at a pin. **Pairing:** this release declares v0.2.11; the compiler's
+PAIRING still names lupin 0.1.32 — the next release lane closes that from
+the other side.
+
+**A trait reached through its module dispatches (wolf-interp#96), and a
+qualified trait in a bound is a use of its import (#97).** `tiny.Eq.eq(a,
+b)` after `use std.tiny` — three segments, the head a module and the middle
+a `pub` trait in it — fell to the path evaluator and was `unsupported` at
+resolve while the byte-identical trait in the entry file dispatched: one
+trait, two verdicts, decided by which FILE declared it. The trait-qualified
+call takes the module road too. And `fn total[T: ops.Add]` with the bound
+the file's only mention of `ops` was E0305 "never used", with a fix-it that
+deleted the line the bound resolves through; the ref walk visits fn, trait
+and impl generics now. Both witnesses need a staged module and live in
+`tests/std_root.rs`; together they unblock wolf-std's `[K: Eq]` five and
+every `ops` impl.
+
+**The key protocol (wolf-interp#91, s152).** A `Map` key was its RENDERING:
+an `int` key projected as an ordinal index and "did not denote a place" on
+`squares[i] = …`; a `char` or `bool` key rendered on the way in and compared
+against the stored value on the way out, so every read missed. `MapKey`
+carries the four `[type.map.key]` admits, compared by value. `m[k]` on an
+absent key answers the **`none` row** — never `()`, the one unchecked,
+untyped read the language had — and the compound path's absent-to-zero
+default goes with it: **`m[k] op= v` is E0417** at the whole indexed place,
+decided from the declaration that made `m` a `Map` (an initializer, an
+annotation, a parameter), and refused in the same voice at run time where
+sema could not name the binding; **a key outside `str`/`int`/`char`/`bool`
+is E0418** at the key type, in a signature and in `Map[K, V]()` alike, a
+rigid `K` clean. Five witnesses print the pinned bytes; the two refusals are
+the compiler's spans, `[786,801]` and `[648,653]`.
+
+**The operator bridge (wolf-interp#92, s155).** `a + b` IS `Add.add(a, b)`
+when `a` is a struct; `==` is `Eq.eq` and `!=` its negation — an inverting
+impl is consulted, nothing synthesized (D49), so a struct's `==` no longer
+compares structurally; the ordering family reads `Ord.cmp` against
+`Less`/`Greater` and `<=>` is the `Ordering` itself; prefix `-` is
+`Neg.neg`. Never two primitives, which is also what `[T: Num]` at `int`
+runs. The static half is decided from declarations as the other
+read-back refusals are: a parameter typed as a bare generic carries its
+name, and the bound (alias-expanded, a cycle cut) must name the table's
+trait — **E0501** at the operand, "the bounds on `T` say nothing about `+`";
+a struct's operator needs the trait in scope by name (**E0301**), an impl
+for the struct (**E0502**) and the homogeneous shape (**E0514**), every span
+the left operand's — `golden_arith`, `golden_eq`, `op_eq_no_trait`,
+`op_missing_impl` and `op_hetero_add` answer the compiler's codes at its
+bytes, and so does the golden rule's call shape, `Show.show(v)` under a
+bare `T` (`golden_missing_bound`, E0501 at the argument). **The alias form parses**: `trait Num = Add + Sub + … + Ord` is a
+memberless `TraitDef` carrying its bound (`[gram.item.trait]`); its trait
+heads count as uses. An enum value with an impl dispatches; one without
+keeps the structural tag comparison, the conservative side.
+
+**A built `str` has a region (wolf-interp#88, s153 / wolf-lang#310).**
+`Value::Str` is a newtype: the text and an optional home, equal and ordered
+by the text alone. `s + u`, `s += u` and a holed interpolation are charged
+to the ambient region at the building expression — the site rule a struct
+literal follows — and carry it out as their home; a literal, a slice and
+every view product carry none. A region block whose OWN value lives in the
+region it frees faults at the `}` (`region_str_concat_return.lu` printed
+`regions` from freed bytes through 0.1.33); a binding whose `str` died with
+its region faults at the read (`region_str_concat_send.lu`, at `got`) —
+E1010's dynamic counterpart, both. The charge is the checked machine's,
+measured: `print("{n}")` under `cap: 0` is `trap(alloc-contract)` on `wolf
+--checked` at c9237c1 and runs on `--native`.
+
+**Four small mirrors.** A struct literal missing a field is **E0408** over
+the literal (#94); an unresolved bound name is **E0301** at the name (#95),
+checked before the bridge reads bounds so it is never a later E0501; a
+temporary cast to `dyn` is **E0810** over the cast (#98 — wollf's wh-002,
+and `traits/dyn_temp_refused.lu` leaves the conservatism ledger for a
+match); a field write through a `let` binding is **E0410** at the place,
+one level down too, an index left alone (#99, s154's clause from trunk).
+Every span the compiler's on its reduction. #100: the body-less member
+followed by another on one line is still E0201, checked; `then` waits for
+the pin that carries §6.2.
+
+**Two seed files filed upstream (wolf-lang#341).** `wordcount.lu`'s
+`tally[w] += 1` is E0417 under s152 and `grammar/structlit_paren.lu`'s
+struct `==` is E0301 under s155; both headers still pin the pre-clause
+verdicts, and the compiler's ledger stops one rung short of seeing it.
+DIV-2026-022 and DIV-2026-023, waived; both leave `RUN_LEDGER`, the CLI's
+exit(2) probe stands on its own program, `tests/s151/` retires into the
+corpus.
+
+Census 500 -> 536 entries, 383 -> 404 reach run, 380 -> **413** match; 16
+-> 20 dynamic counterparts, 42 -> 38 conservatism, 61 -> 62 out of scope.
+Mismatches 1 -> 5 (the pin, measured before a line was edited, every class
+and every witness as predicted) -> **3**: DIV-2026-019, -022, -023.
+
 ## 0.1.33 — 2026-09-11
 
 THE MIRROR TAKES `then` (is45). Pin `e0ce018` -> `662b14c` — **the v0.2.10
