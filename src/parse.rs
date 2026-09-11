@@ -68,6 +68,16 @@ pub const PREFIX_OPERATORS: &[&str] = &["!", "-", "&", "&mut", "*", "move", "cop
 /// are published rather than absorbed.
 pub const CHOICES: &[(&str, &str)] = &[
     (
+        "gram.expr.if",
+        "a jump inside a bare branch takes its operand at tier 14. `[gram.expr.if]` \
+         makes each bare branch one `expr`, and `expr ::= else_expr | jump_expr` \
+         with `jump_expr ::= 'return' expr?` would let `if c then return x else y` \
+         read `x else y` as the operand; `[gram.amb.else]` says the `if`'s own \
+         `else` binds first inside a bare branch and does not mention jumps. This \
+         parser stops the operand where a bare branch stops — `else y` is the \
+         `if`'s — so `return` is spelled the same bare or braced.",
+    ),
+    (
         "gram.amb.structlit",
         "E0006 fires only when the brace body cannot be a block — `IDENT :` or \
          `IDENT ,`. The shorthand `{ x }` is genuinely ambiguous with a block, and \
@@ -2917,14 +2927,69 @@ impl<'a> Parser<'a> {
         Ok(self.expr(kind, start, anchor))
     }
 
+    /// `if_expr ::= 'if' expr 'then'? block ('else' (if_expr | block))?`
+    ///          `| 'if' expr 'then' expr  ('else' (if_expr | expr))?`
+    ///
+    /// The two spellings of `if` (`[gram.expr.if]`, wolf-lang#307, s151;
+    /// wolf-interp#90). The braced form is `if c { a } else { b }`; a `then`
+    /// before the block is optional and dropped. The bare form is
+    /// `if c then a else b`: `then` is required there because it is the token
+    /// that closes the condition — the condition parser is greedy, so
+    /// `if x -1 else 0` would swallow the `-1` — which is the work the braced
+    /// form's `{` does. Each bare branch is ONE expression, parsed one tier
+    /// below the defaulting `else` so the `if`'s own `else` binds first
+    /// (`[gram.amb.else]`: `if c then f() else 0` is the two-way `if`; a
+    /// defaulting `else` inside a bare branch is written in parentheses,
+    /// `if c then (f() else 0) else 1`). The two branches of one `if` share a
+    /// form — a bare `then` branch followed by a braced `else` is E0201 — and
+    /// an `else if` in a chain picks its own. After a braced `if`'s `}`,
+    /// `else b` with neither `if` nor `{` following is the defaulting operator
+    /// on the `if`, as it always was: the `else` is left for tier 15.
+    ///
+    /// `then` is **contextual, not reserved**: it is matched by spelling in
+    /// this one position after a complete condition, so `if then { … }` with
+    /// a bool named `then` reads the identifier as the condition, and
+    /// `less.then(greater)` is a member the postfix parser consumed before
+    /// this position was reached.
+    ///
+    /// A bare branch is a brace-less [`Block`] holding its one expression as
+    /// the tail (`Block::stmts` empty, the span the expression's), so every
+    /// later rung — sema, lint, the evaluator — sees the shape it already
+    /// handles, and the bare `if` costs them nothing.
     fn parse_if(&mut self) -> PResult<Expr> {
         let anchor = "gram.expr.flow";
         let start = self.expect_kw("if", anchor)?.start;
         // "The condition of `if`/`while` and the scrutinee of `match`/`for` use
         // no-struct-literal expression mode."
         let cond = self.with_struct_lit(false, Parser::parse_expr)?;
-        let then = self.with_struct_lit(true, Parser::parse_block)?;
-        let otherwise = if self.at_kw("else") {
+        // `then` is the keyword only here, after a complete condition.
+        let then_kw = self.eat_ctx("then");
+        let bare = !self.at(&Tok::LBrace);
+        let then = if !bare {
+            self.with_struct_lit(true, Parser::parse_block)?
+        } else if then_kw {
+            self.parse_bare_branch("then")?
+        } else {
+            return Err(self.if_body_missing());
+        };
+        let otherwise = if !self.at_kw("else") {
+            None
+        } else if bare {
+            self.advance();
+            if self.at_kw("if") {
+                Some(self.parse_if()?)
+            } else if self.at(&Tok::LBrace) {
+                return Err(self.if_forms_mixed());
+            } else {
+                let block = self.parse_bare_branch("else")?;
+                let span = block.span;
+                Some(Expr {
+                    kind: Box::new(ExprKind::Block(block)),
+                    span,
+                    anchor: "gram.expr.block",
+                })
+            }
+        } else if matches!(self.tok_at(1), Some(Tok::Kw("if") | Tok::LBrace)) {
             self.advance();
             if self.at_kw("if") {
                 Some(self.parse_if()?)
@@ -2934,6 +2999,8 @@ impl<'a> Parser<'a> {
                 Some(self.expr(ExprKind::Block(block), block_start, "gram.expr.block"))
             }
         } else {
+            // `} else b`: the defaulting operator on the braced `if`
+            // (`[gram.amb.else]`), bound by `parse_else_expr`.
             None
         };
         Ok(self.expr(
@@ -2945,6 +3012,91 @@ impl<'a> Parser<'a> {
             start,
             anchor,
         ))
+    }
+
+    /// One bare branch of an `if` (`[gram.expr.if]`): a single expression at
+    /// tier 14, so the tier-15 `else` that follows is the `if`'s own. The
+    /// jump forms are admitted the way [`Parser::parse_expr_inner`] admits
+    /// them, their operand at the same tier (`if done then return 0 else n`
+    /// is the two-way `if` — see [`CHOICES`]); a binding is refused by name,
+    /// the braced form offered.
+    fn parse_bare_branch(&mut self, which: &str) -> PResult<Block> {
+        let anchor = "gram.expr.flow";
+        if let Some(Tok::Kw(kw @ ("let" | "var" | "const"))) = self.tok() {
+            return Err(self.error(
+                diag::E_UNEXPECTED_TOKEN,
+                anchor,
+                format!(
+                    "a bare `{which}` branch holds one expression, and `{kw}` begins a \
+                     statement (`[gram.expr.if]`); brace the branch — `if c {{ {kw} … }}` \
+                     — to give it a body"
+                ),
+            ));
+        }
+        let start = self.span().start;
+        let expr = self.with_struct_lit(true, |p| -> PResult<Expr> {
+            match p.tok() {
+                Some(Tok::Kw(jump @ ("return" | "break"))) => {
+                    p.advance();
+                    let value = if p.at_expr_end() || p.at_kw("else") {
+                        None
+                    } else {
+                        Some(p.parse_range_expr()?)
+                    };
+                    let kind = if *jump == "return" {
+                        ExprKind::Return(value)
+                    } else {
+                        ExprKind::Break(value)
+                    };
+                    Ok(p.expr(kind, start, anchor))
+                }
+                Some(Tok::Kw("continue")) => {
+                    p.advance();
+                    Ok(p.expr(ExprKind::Continue, start, anchor))
+                }
+                _ => p.parse_range_expr(),
+            }
+        })?;
+        let span = expr.span;
+        Ok(Block {
+            stmts: Vec::new(),
+            tail: Some(Box::new(expr)),
+            span,
+        })
+    }
+
+    /// `[gram.expr.if]`: a condition followed by neither `{` nor `then`
+    /// (`if c 29 else 28`). One E0201 whose message names both spellings; the
+    /// tail folds into it.
+    fn if_body_missing(&self) -> Diag {
+        let Some(tok) = self.tok() else {
+            return self.unexpected(
+                "gram.expr.flow",
+                "`{` or `then` after the `if` condition",
+            );
+        };
+        self.error(
+            diag::E_UNEXPECTED_TOKEN,
+            "gram.expr.flow",
+            format!(
+                "expected `{{` or `then` after the `if` condition, found {} — an `if` is \
+                 spelled braced, `if c {{ a }} else {{ b }}`, or bare, `if c then a else b` \
+                 (`[gram.expr.if]`)",
+                tok.describe()
+            ),
+        )
+    }
+
+    /// `[gram.expr.if]`: the two branches of one `if` share a form. A bare
+    /// `then` branch followed by `else {` is refused at the `{`.
+    fn if_forms_mixed(&self) -> Diag {
+        self.error(
+            diag::E_UNEXPECTED_TOKEN,
+            "gram.expr.flow",
+            "the two branches of one `if` share a form (`[gram.expr.if]`): this `then` \
+             branch is bare and its `else` branch is braced — write both bare, \
+             `if c then a else b`, or both braced, `if c { a } else { b }`",
+        )
     }
 
     fn parse_while(&mut self) -> PResult<Expr> {
@@ -4381,5 +4533,175 @@ mod tests {
         // clause, and the strategy arm refuses it by name.
         let d = rejects("fn main() -> int {\n    let r = region(cap)\n    0\n}\n");
         assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
+    }
+
+    // --- `[gram.expr.if]`: the two spellings of `if` (s151, wolf-interp#90) --
+
+    /// The bare `if` in value position: a brace-less block per branch.
+    fn bare_if_shape(source: &str) -> (Block, Option<Expr>) {
+        let unit = parses(source);
+        let Item {
+            kind: ItemKind::Fn(decl),
+            ..
+        } = &unit.items[0]
+        else {
+            panic!("a fn item");
+        };
+        let body = decl.body.as_ref().expect("a body");
+        let StmtKind::Binding(binding) = &body.stmts[0].kind else {
+            panic!("a binding");
+        };
+        let ExprKind::If {
+            then, otherwise, ..
+        } = &*binding.value.kind
+        else {
+            panic!("an if");
+        };
+        (then.clone(), otherwise.clone())
+    }
+
+    #[test]
+    fn the_bare_if_is_a_brace_less_block_per_branch() {
+        let source = "fn f(leap: bool) -> int {\n    let days = if leap then 29 else 28\n    days\n}\n";
+        let (then, otherwise) = bare_if_shape(source);
+        assert!(then.stmts.is_empty());
+        assert_eq!(&source[then.span.start..then.span.end], "29");
+        let tail = then.tail.expect("the branch's one expression");
+        assert!(matches!(&*tail.kind, ExprKind::Int(_)));
+        let otherwise = otherwise.expect("two-way");
+        let ExprKind::Block(block) = &*otherwise.kind else {
+            panic!("the else branch is a block too");
+        };
+        assert!(block.stmts.is_empty());
+        assert_eq!(&source[block.span.start..block.span.end], "28");
+    }
+
+    #[test]
+    fn then_before_a_block_is_optional_and_the_shape_is_the_braced_one() {
+        let braced = bare_if_shape("fn f(c: bool) -> int {\n    let d = if c { 29 } else { 28 }\n    d\n}\n");
+        let with_then =
+            bare_if_shape("fn f(c: bool) -> int {\n    let d = if c then { 29 } else { 28 }\n    d\n}\n");
+        assert_eq!(braced.0.stmts.len(), with_then.0.stmts.len());
+        assert_eq!(
+            braced.0.tail.map(|t| t.kind),
+            with_then.0.tail.map(|t| t.kind)
+        );
+        assert!(braced.1.is_some() && with_then.1.is_some());
+    }
+
+    #[test]
+    fn the_ifs_own_else_binds_first_inside_a_bare_branch() {
+        // `[gram.amb.else]`: `if c then f() else 0` is the two-way `if` — the
+        // `then` branch is the call, and the `else` is the `if`'s.
+        let (then, otherwise) = bare_if_shape("fn f(c: bool) -> int {\n    let v = if c then g() else 0\n    v\n}\n");
+        assert!(matches!(&*then.tail.expect("tail").kind, ExprKind::Call { .. }));
+        assert!(otherwise.is_some());
+    }
+
+    #[test]
+    fn a_defaulting_else_inside_a_bare_branch_is_written_in_parentheses() {
+        let (then, otherwise) = bare_if_shape(
+            "fn f(c: bool) -> int {\n    let v = if c then (g() else 0) else (h() else 1)\n    v\n}\n",
+        );
+        let ExprKind::Group(inner) = &*then.tail.expect("tail").kind else {
+            panic!("a parenthesized branch");
+        };
+        assert!(matches!(&*inner.kind, ExprKind::ElseDefault { .. }));
+        let ExprKind::Block(block) = &*otherwise.expect("two-way").kind else {
+            panic!("a block");
+        };
+        assert!(matches!(&*block.tail.as_ref().expect("tail").kind, ExprKind::Group(_)));
+    }
+
+    #[test]
+    fn a_bare_chain_picks_its_form_per_link() {
+        parses("fn s(n: int) -> str {\n    if n < 0 then \"neg\" else if n == 0 then \"zero\" else \"pos\"\n}\n");
+        parses("fn s(n: int) -> str {\n    if n < 0 then \"neg\" else if n == 0 {\n        \"zero\"\n    } else {\n        \"pos\"\n    }\n}\n");
+        parses("fn s(n: int) -> str {\n    if n < 0 {\n        \"neg\"\n    } else if n == 0 then \"zero\" else \"pos\"\n}\n");
+    }
+
+    #[test]
+    fn the_bare_if_in_statement_position_one_armed_and_two_way() {
+        parses(
+            "fn main() -> !int {\n    var i = 0\n    while i < 4 {\n        if i % 2 == 0 then print(\"even\") else print(\"odd\")\n        if i == 3 then print(\"last\")\n        i += 1\n    }\n    0\n}\n",
+        );
+        parses("fn f(m: int) -> int {\n    match m {\n        2 => if true then 29 else 28,\n        _ => 31,\n    }\n}\n");
+    }
+
+    #[test]
+    fn a_bare_else_may_start_the_next_line() {
+        // `[gram.lex.newline]` withholds the terminator before a leading
+        // `else`, in the bare form too.
+        let (_, otherwise) = bare_if_shape("fn f(c: bool) -> int {\n    let v = if c then 1\n        else 2\n    v\n}\n");
+        assert!(otherwise.is_some());
+    }
+
+    #[test]
+    fn a_jump_in_a_bare_branch_stops_at_the_ifs_else() {
+        let (then, otherwise) = bare_if_shape("fn f(c: bool) -> int {\n    let v = if c then return 0 else 1\n    v\n}\n");
+        assert!(matches!(&*then.tail.expect("tail").kind, ExprKind::Return(Some(_))));
+        assert!(otherwise.is_some());
+        parses("fn f(c: bool) -> int {\n    if c then return\n    1\n}\n");
+        parses("fn f() -> int {\n    var i = 0\n    while true {\n        if i > 3 then break else i += 1\n    }\n    i\n}\n");
+    }
+
+    #[test]
+    fn then_is_contextual_not_reserved() {
+        // A bool named `then` is the condition of `if then { … }`, and
+        // `if then then 1 else 0` reads the identifier first, the keyword
+        // second; after a `.` it is a member name.
+        parses("fn main() -> !int {\n    let then = true\n    if then { print(\"x\") }\n    let n = if then then 1 else 0\n    n\n}\n");
+        parses("fn f(a: int, b: int) -> int {\n    if a.then(b).v < 0 then 1 else 2\n}\n");
+        assert!(!lex::is_keyword("then"));
+    }
+
+    #[test]
+    fn a_condition_followed_by_neither_brace_nor_then_is_e0201_naming_both() {
+        let source = "fn main() -> !int {\n    let leap = true\n    let days = if leap 29 else 28\n    days\n}\n";
+        let d = rejects(source);
+        assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
+        assert!(d.message.contains("expected `{` or `then`"), "{}", d.message);
+        assert!(d.message.contains("if c then a else b"), "{}", d.message);
+        assert_eq!(&source[d.span.start..d.span.end], "29");
+    }
+
+    #[test]
+    fn the_two_branches_of_one_if_share_a_form() {
+        let source = "fn main() -> !int {\n    let leap = true\n    let days = if leap then 29 else { 28 }\n    days\n}\n";
+        let d = rejects(source);
+        assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
+        assert!(d.message.contains("share a form"), "{}", d.message);
+        assert_eq!(&source[d.span.start..d.span.end], "{");
+    }
+
+    #[test]
+    fn a_binding_in_a_bare_branch_is_refused_by_name() {
+        let source = "fn main() -> !int {\n    let leap = true\n    if leap then let days = 29\n    0\n}\n";
+        let d = rejects(source);
+        assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
+        assert!(d.message.contains("brace the branch"), "{}", d.message);
+        assert_eq!(&source[d.span.start..d.span.end], "let");
+    }
+
+    #[test]
+    fn after_a_braced_if_a_bare_else_is_the_defaulting_operator() {
+        // `[gram.amb.else]`: "after a braced `if`'s `}` nothing changes" —
+        // `else b` with neither `if` nor `{` following is the defaulting
+        // operator on the `if`.
+        let unit = parses("fn f(c: bool) -> int {\n    let v = if c { g() } else 0\n    v\n}\n");
+        let Item {
+            kind: ItemKind::Fn(decl),
+            ..
+        } = &unit.items[0]
+        else {
+            panic!("a fn item");
+        };
+        let StmtKind::Binding(binding) = &decl.body.as_ref().expect("body").stmts[0].kind else {
+            panic!("a binding");
+        };
+        let ExprKind::ElseDefault { expr, .. } = &*binding.value.kind else {
+            panic!("the defaulting operator, got {:?}", binding.value.kind);
+        };
+        assert!(matches!(&*expr.kind, ExprKind::If { otherwise: None, .. }));
     }
 }
