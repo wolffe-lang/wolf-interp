@@ -4523,16 +4523,47 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
             Def::Fn(decl) => Some((&**decl, [].as_slice())),
             _ => None,
         });
+        // `[type.map.key]` in a signature position: `fn f(m: Map[Point,
+        // int])` is E0418 at `Point`, the same words as the constructor's
+        // (wolf-interp#91). The counterparty reports the FIRST spelling in
+        // the file, signature or constructor, so the signatures are read
+        // before any body is walked and the earliest refusal wins below.
+        let signature_key: Option<Diag> = items
+            .clone()
+            .chain(methods.clone())
+            .flat_map(|(decl, impl_generics)| {
+                let mut generics: BTreeSet<String> = impl_generics.iter().cloned().collect();
+                generics.extend(decl.generics.iter().map(|g| g.name.name.clone()));
+                let mut scope = known.clone();
+                scope.extend(generics.iter().cloned());
+                decl.params
+                    .iter()
+                    .filter_map(|param| match &param.kind {
+                        crate::ast::ParamKind::Named { ty, .. } => Some(ty),
+                        crate::ast::ParamKind::SelfParam { .. } => None,
+                    })
+                    .chain(decl.ret.as_ref().map(|ret| &ret.ty))
+                    .filter(|ty| unresolved_type_name(ty, &scope).is_none())
+                    .filter_map(|ty| map_key_refusal(ty, &generics))
+                    .collect::<Vec<_>>()
+            })
+            .min_by_key(|diag| diag.span.start);
+        let earliest = |diag: Diag, signature_key: &Option<Diag>| match signature_key {
+            Some(sig) if diag.code == "E0418" && sig.span.start < diag.span.start => sig.clone(),
+            _ => diag,
+        };
         for (decl, impl_generics) in items.chain(methods) {
+            let mut generics: BTreeSet<String> = impl_generics.iter().cloned().collect();
+            generics.extend(decl.generics.iter().map(|g| g.name.name.clone()));
             let mut types = known.clone();
-            types.extend(impl_generics.iter().cloned());
-            types.extend(decl.generics.iter().map(|g| g.name.name.clone()));
+            types.extend(generics.iter().cloned());
             let mut walk = RowWalk {
                 scopes: vec![Vec::new()],
                 fallible: &fallible,
                 generic_sigs: &generic_sigs,
                 structs: &structs,
                 types: &types,
+                generics: &generics,
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
@@ -4544,17 +4575,22 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
             if let Some(body) = &decl.body
                 && let Some(diag) = walk.block(body)
             {
-                return Some(diag);
+                return Some(earliest(diag, &signature_key));
             }
+        }
+        if let Some(diag) = signature_key {
+            return Some(diag);
         }
         for (def, _) in module.items.values() {
             if let Def::Binding(binding) = def {
+                let no_generics = BTreeSet::new();
                 let mut walk = RowWalk {
                     scopes: vec![Vec::new()],
                     fallible: &fallible,
                     generic_sigs: &generic_sigs,
                     structs: &structs,
                     types: &known,
+                    generics: &no_generics,
                 };
                 if let Some(diag) = walk.expr(&binding.value) {
                     return Some(diag);
@@ -4602,8 +4638,92 @@ fn nominal_of_type(ty: &Type, structs: &BTreeSet<String>) -> Option<String> {
         {
             Some(path.segments[0].name.clone())
         }
+        // `Map[K, V]` names the prelude `Map` whatever its arguments: what
+        // `[mem.map.absent]`'s E0417 asks of a binding is only that it IS a
+        // map (wolf-interp#91).
+        TypeKind::Path { path, args }
+            if path.is_single() && !args.is_empty() && path.segments[0].name == "Map" =>
+        {
+            Some("Map".to_owned())
+        }
         _ => None,
     }
+}
+
+/// `[type.map.key]` (s152): `Map[K, V]` admits `str`, `int`, `char` and
+/// `bool` keys — the four whose equality the language itself defines — and
+/// every other key type is **E0418 where the key is spelled**, in
+/// `Map[K, V]()` and in a signature position alike, with the same words. A
+/// rigid `K` (a generic parameter in scope) elaborates unchecked, the golden
+/// rule; each instantiation is checked where it spells its key. Walks the
+/// type recursively, so `List[Map[Point, int]]` is refused at `Point`.
+fn map_key_refusal(ty: &Type, generics: &BTreeSet<String>) -> Option<Diag> {
+    match &*ty.kind {
+        TypeKind::Path { path, args } => {
+            if path.is_single()
+                && path.segments[0].name == "Map"
+                && let Some(TypeArg::Type(key)) = args.first()
+            {
+                let (name, span) = match &*key.kind {
+                    TypeKind::Path { path, args } if path.is_single() && args.is_empty() => {
+                        (path.segments[0].name.as_str(), path.segments[0].span)
+                    }
+                    _ => ("this type", key.span),
+                };
+                if let Some(diag) = map_key_diag(name, span, generics) {
+                    return Some(diag);
+                }
+            }
+            args.iter().find_map(|arg| match arg {
+                TypeArg::Type(inner) => map_key_refusal(inner, generics),
+                TypeArg::Expr(_) => None,
+            })
+        }
+        TypeKind::ErrorUnion(inner)
+        | TypeKind::Fallible { ty: inner, .. }
+        | TypeKind::Prefixed { ty: inner, .. }
+        | TypeKind::RawPointer(inner) => map_key_refusal(inner, generics),
+        TypeKind::Tuple(parts) => parts
+            .iter()
+            .find_map(|part| map_key_refusal(part, generics)),
+        TypeKind::Fn { params, ret } => params
+            .iter()
+            .find_map(|param| map_key_refusal(param, generics))
+            .or_else(|| {
+                ret.as_ref()
+                    .and_then(|ret| map_key_refusal(&ret.ty, generics))
+            }),
+        TypeKind::Dyn(_) | TypeKind::TypeOfTypes | TypeKind::Region => None,
+    }
+}
+
+/// The four admitted `Map` key types, by spelling (`[type.map.key]`).
+const MAP_KEY_TYPES: [&str; 4] = ["str", "int", "char", "bool"];
+
+/// E0418 at a spelled `Map` key that is not one of the four and not a rigid
+/// generic parameter — the counterparty's span is the key type alone
+/// (measured at pin c9237c1: `Point` in `Map[Point, bool]`, both positions).
+fn map_key_diag(name: &str, span: Span, generics: &BTreeSet<String>) -> Option<Diag> {
+    if MAP_KEY_TYPES.contains(&name) || generics.contains(name) {
+        return None;
+    }
+    let spelled = if name == "this type" {
+        name.to_owned()
+    } else {
+        format!("`{name}`")
+    };
+    Some(Diag::new(
+        "E0418",
+        span,
+        "type.map.key",
+        format!(
+            "{spelled} cannot be a `Map` key — a `Map` key is `str`, `int`, `char` or `bool` \
+             ([type.map.key]): the four whose equality the language itself defines; a struct \
+             key waits on derived equality, and a float or a container has no key equality at \
+             all. Key the map by one of the four — an `int` id, a `str` name — or build a `str` \
+             from the value's fields"
+        ),
+    ))
 }
 
 /// `1st`, `2nd`, `3rd`, `4th`, … `11th`, `12th`, `13th`, `21st`.
@@ -4704,6 +4824,10 @@ struct RowWalk<'a> {
     /// wolf-interp#89: every name a type position may resolve to at this
     /// declaration — [`known_type_names`] plus the generics in scope.
     types: &'a BTreeSet<String>,
+    /// The generic parameters in scope at this declaration alone — a rigid
+    /// `K` is a legal `Map` key (`[type.map.key]`'s golden rule) where a
+    /// struct name is not, and `types` cannot tell the two apart.
+    generics: &'a BTreeSet<String>,
 }
 
 impl RowWalk<'_> {
@@ -4755,8 +4879,60 @@ impl RowWalk<'_> {
                 .nominal_of(&path.segments[0].name)
                 .map(ToOwned::to_owned),
             ExprKind::Group(inner) => self.nominal_of_expr(inner),
+            // `Map[K, V]()` constructs a map (`[type.map.key]`'s surface);
+            // the binding it lands in is a `Map` for E0417's purposes.
+            ExprKind::Call { callee, .. } => match &*callee.kind {
+                ExprKind::BracketApply { base, .. } => match &*base.kind {
+                    ExprKind::Path(path)
+                        if path.is_single()
+                            && path.segments[0].name == "Map"
+                            && !self.shadows("Map") =>
+                    {
+                        Some("Map".to_owned())
+                    }
+                    _ => None,
+                },
+                _ => None,
+            },
             _ => None,
         }
+    }
+
+    /// `[mem.map.absent]` (wolf-lang s152; wolf-interp#91): `m[k] op= v` is
+    /// E0417 — `m[k]` is `V ! {none}`, the entry may not exist, and a
+    /// compound assignment has nothing to read-modify-write. E0416's
+    /// sibling, decided the same way: from the declaration that made `m` a
+    /// `Map` (a `Map[K, V]()` initializer, an annotation, a parameter). The
+    /// counterparty's span is the whole indexed place (measured at pin
+    /// c9237c1: `totals["drink"]`). A map this walk cannot name stays on
+    /// the dynamic path, which refuses it in the same voice.
+    fn map_compound(&self, place: &Expr, op: crate::ast::AssignOp) -> Option<Diag> {
+        if matches!(op, crate::ast::AssignOp::Assign) {
+            return None;
+        }
+        let ExprKind::BracketApply { base, .. } = &*place.kind else {
+            return None;
+        };
+        let ExprKind::Path(path) = &*base.kind else {
+            return None;
+        };
+        if !path.is_single() || self.nominal_of(&path.segments[0].name) != Some("Map") {
+            return None;
+        }
+        let name = &path.segments[0].name;
+        Some(Diag::new(
+            "E0417",
+            place.span,
+            "mem.map.absent",
+            format!(
+                "cannot update `{name}[…]` in place: the key may be absent — `m[k]` is `V ! \
+                 {{none}}` (`[mem.map.absent]`): reading it asks whether the key is bound, and \
+                 an absent key has no value to update; `m[k] = v` alone inserts or replaces. \
+                 Spell the two halves — `{name}[k] = ({name}[k] else 0) + …` — or count with \
+                 std's named operation, `map.tally(mut {name}, k)` (`use std.map`), which is \
+                 that statement for an `int`-valued map"
+            ),
+        ))
     }
 
     /// wolf-interp#84: one type parameter is instantiated once per call.
@@ -4875,6 +5051,37 @@ impl RowWalk<'_> {
         if !PRELUDE_CONTAINERS.contains(&container) || self.shadows(container) {
             return None;
         }
+        // `[type.map.key]`: `Map[Point, bool]()` is E0418 at `Point`, the
+        // constructor being one of the two positions the key is spelled.
+        // (The parser reads a bare `Point` there as the path EXPRESSION
+        // `Point`, `[gram.amb.brackets]`; a `Map[List[int], V]` arrives as
+        // a type.)
+        if container == "Map" {
+            let key = match args.first() {
+                Some(crate::ast::IndexArg::Type(ty)) => match &*ty.kind {
+                    TypeKind::Path { path, args } if path.is_single() && args.is_empty() => {
+                        Some((path.segments[0].name.as_str(), path.segments[0].span))
+                    }
+                    _ if unresolved_type_name(ty, self.types).is_none() => {
+                        Some(("this type", ty.span))
+                    }
+                    _ => None,
+                },
+                Some(crate::ast::IndexArg::Value(arg)) => match &*arg.expr.kind {
+                    ExprKind::Path(path) if path.is_single() => {
+                        Some((path.segments[0].name.as_str(), path.segments[0].span))
+                    }
+                    _ => None,
+                },
+                None => None,
+            };
+            if let Some((name, span)) = key
+                && self.types.contains(name)
+                && let Some(diag) = map_key_diag(name, span, self.generics)
+            {
+                return Some(diag);
+            }
+        }
         let (name, span) = args.iter().find_map(|arg| match arg {
             crate::ast::IndexArg::Type(ty) => unresolved_type_name(ty, self.types),
             crate::ast::IndexArg::Value(arg) => unresolved_expr_type_name(&arg.expr, self.types),
@@ -4956,9 +5163,10 @@ impl RowWalk<'_> {
                         declare_pattern_names(&binding.pattern, self);
                     }
                 }
-                StmtKind::Assign { place, value, .. } => {
+                StmtKind::Assign { place, op, value } => {
                     if let Some(diag) = self
                         .str_place(place)
+                        .or_else(|| self.map_compound(place, *op))
                         .or_else(|| self.expr(place))
                         .or_else(|| self.expr(value))
                     {
@@ -5315,9 +5523,10 @@ fn annotation_check(program: &Program) -> Option<Diag> {
             {
                 continue;
             }
+            let mut generics: BTreeSet<String> = impl_generics.iter().cloned().collect();
+            generics.extend(decl.generics.iter().map(|g| g.name.name.clone()));
             let mut scope = known.clone();
-            scope.extend(impl_generics.iter().cloned());
-            scope.extend(decl.generics.iter().map(|g| g.name.name.clone()));
+            scope.extend(generics.iter().cloned());
             let annotated = decl
                 .params
                 .iter()
@@ -5639,6 +5848,82 @@ mod tests {
     fn resolve(source: &str) -> Option<Diag> {
         let program = load_source("t.lu", source).expect("loads");
         resolve_check(&program)
+    }
+
+    // -- E0417 / E0418: the key protocol (wolf-lang s152, wolf-interp#91) --
+
+    #[test]
+    fn a_compound_assignment_through_a_map_index_is_e0417_at_the_place() {
+        // `corpus/typecheck/map_compound_absent.lu`'s shape: the counterparty
+        // spans the whole indexed place (pin c9237c1: `totals["drink"]`).
+        let source = "fn main() -> !int {\n    var totals = Map[str, int]()\n    \
+                      totals[\"drink\"] += 340\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0417");
+        assert_eq!(&source[diag.span.start..diag.span.end], "totals[\"drink\"]");
+        // The same through an annotation and through a parameter.
+        let annotated = "fn main() -> !int {\n    var m: Map[int, int] = Map[int, int]()\n    \
+                         m[1] *= 2\n    0\n}\n";
+        assert_eq!(resolve(annotated).map(|d| d.code), Some("E0417"));
+        let param = "fn bump(mut m: Map[str, int]) {\n    m[\"k\"] += 1\n}\n\
+                     fn main() -> !int { 0 }\n";
+        assert_eq!(resolve(param).map(|d| d.code), Some("E0417"));
+    }
+
+    #[test]
+    fn a_plain_map_index_assignment_and_a_list_compound_stay_clean() {
+        // `m[k] = v` inserts or replaces (`[mem.map.absent]`); `xs[0] += 1`
+        // on a List is the element write it always was.
+        assert!(
+            resolve(
+                "fn main() -> !int {\n    var m = Map[str, int]()\n    \
+                 m[\"k\"] = (m[\"k\"] else 0) + 1\n    var xs = List[int]()\n    \
+                 (mut xs).push(1)\n    xs[0] += 1\n    0\n}\n"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn a_struct_map_key_is_e0418_where_it_is_spelled() {
+        // `corpus/typecheck/map_struct_key.lu`: the signature first, then the
+        // constructor — both at the key type alone (pin c9237c1).
+        let source = "struct Point { x: int }\nfn count(seen: Map[Point, bool]) -> int { \
+                      seen.len }\nfn main() -> !int {\n    var seen = Map[Point, bool]()\n    \
+                      count(seen)\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E0418");
+        assert_eq!(&source[diag.span.start..diag.span.end], "Point");
+        assert_eq!(
+            diag.span.start,
+            source.find("Map[Point").expect("present") + 4
+        );
+        let ctor_only = "struct Point { x: int }\nfn main() -> !int {\n    \
+                         var seen = Map[Point, bool]()\n    seen.len\n}\n";
+        let diag = resolve(ctor_only).expect("rejected");
+        assert_eq!(diag.code, "E0418");
+        assert_eq!(&ctor_only[diag.span.start..diag.span.end], "Point");
+        // A float key has no key equality at all.
+        assert_eq!(
+            resolve("fn main() -> !int {\n    var m = Map[f64, int]()\n    m.len\n}\n")
+                .map(|d| d.code),
+            Some("E0418")
+        );
+    }
+
+    #[test]
+    fn the_four_keys_and_a_rigid_k_stay_clean() {
+        assert!(
+            resolve(
+                "fn has[K: Eq, V](m: Map[K, V], k: K) -> bool {\n    \
+                 for (key, _) in m.pairs() { if Eq.eq(key, k) { return true } }\n    false\n}\n\
+                 trait Eq { fn eq(self, other: Self) -> bool }\n\
+                 fn main() -> !int {\n    var a = Map[str, int]()\n    var b = Map[int, str]()\n    \
+                 var c = Map[char, int]()\n    var d = Map[bool, str]()\n    \
+                 a[\"k\"] = 1\n    b[1] = \"v\"\n    c['x'] = 2\n    d[true] = \"t\"\n    0\n}\n"
+            )
+            .is_none()
+        );
     }
 
     #[test]
