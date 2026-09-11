@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.1.33 — 2026-09-11
+
+THE MIRROR TAKES `then` (is45). Pin `e0ce018` -> `662b14c` — **the v0.2.10
+tag**, closing the gap 0.1.32 left at a dev stamp 22 commits short of it. The
+delta is s148: `[type.fn.ret]`, `[type.row.operand]` and `[mem.str.imm]`, five
+corpus files (500 entries), five anchors (458; key sets diffed BOTH ways,
+nothing dropped). s149, s150 and s151 are all past the tag and wait for the
+next pin; the clause this release mirrors was read from wolf-lang trunk
+`f608487`.
+
+**The one-line `if` (wolf-interp#90, wolf-lang#307/s151, `[gram.expr.if]`).**
+`if c then a else b`: `then` closes the condition and each branch is one
+expression; the `if`'s own `else` binds first inside a bare branch, so a
+defaulting `else` there is written in parentheses (`[gram.amb.else]`); the
+two branches of one `if` share a form and an `else if` picks its own; `then`
+before a block is optional and dropped; a condition followed by neither `{`
+nor `then` is E0201 naming both spellings; a `let` in a bare branch is E0201
+offering the brace. `then` is contextual — matched by spelling in the one
+position after a complete condition, so a bool named `then` is a condition
+and `less.then(greater)` is a member — and it is NOT in `lex::CONTEXTUAL`,
+because §6.2 does not name it (wolf-lang#318). A bare branch is a brace-less
+block holding its one expression, so sema, lint and the evaluator are
+untouched. s151's twelve witnesses live under `tests/s151/` byte-identical
+to trunk until the pin that carries them: nine run to the pinned stdout,
+three refuse E0201 at the compiler's own spans.
+
+**A comparison on a bare row is E0409 on either side (wolf-interp#85,
+`[type.row.operand]`).** is43 read the rule off `[type.interp.union]`'s
+carve-out and answered E0401 for a comparison; s148 wrote the rule down and
+ruled one code for every operator with a `!T` operand. The pin's one new
+mismatch, `rows/negative/row_operand_compare.lu`, matches. The second half:
+`s[a..b] = v` on a `str` is **E0416** at the place (`[mem.str.imm]`), decided
+from the declaration that made `s` a `str`; `typecheck/str_slice_assign.lu`
+leaves the out-of-scope ledger for a match. `s[i] = v` stays E0411 first
+(D25).
+
+**One type parameter, one type per call (wolf-interp#84).** `fn
+sum_areas[T: Area](a: T, b: T)` called with a `Rect` and a `Square` ran here
+to exit 58 and is refused by wolf 0.2.9 — the compiler was right. The
+declarations-read-back walk now names an argument's struct (a literal, an
+annotation, a parameter, nothing else) and refuses the second binding of one
+bare `T` with E0401 at that argument, wolf's sentence and span (`[464,465]`
+on wollf's wh-001). No clause states the rule: filed as wolf-lang#319 with
+the witness.
+
+**A type argument in expression position resolves (wolf-interp#89).**
+`List[Nonesuch]()` constructed a list; on `List`, `Map`, `Set` and `Option`
+the brackets are generic application (`[gram.amb.brackets]`) and each
+argument is a type name checked against the annotation check's scope plus
+the declaration's generics and its impl block's — E0301 at the name. A name
+a local shadows is left alone. And `fn f(p: proc)` is **E0206**, the
+counterparty's number for a keyword in type position, followed the way
+E0203 was; `E_ASSUME_ARITY` moves off E0206 to E0212 (wolf-lang#320 asks for
+the corpus witness).
+
+**wolf-interp#86 (`fs_open_mode` 5)** has nothing to answer at this pin: s149
+is past v0.2.10, so `corpus/fs/open_nonblock.lu` is not in the vendored
+corpus, and the fs tier still declines by name.
+
+Census 495 -> 500 entries, 383 reach run unmoved, 375 -> 380 match; 61 out of
+scope, 42 conservatism and 16 dynamic counterparts unmoved. Mismatches 1 -> 2
+(the pin, measured before a line was edited) -> **1** — DIV-2026-019.
+
 ## 0.1.32 — 2026-09-10
 
 THE MIRROR TAKES THE RANGE ARM (is44). Pin `4c60946` -> `e0ce018` — a dev
