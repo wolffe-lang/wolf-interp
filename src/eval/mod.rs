@@ -736,6 +736,10 @@ impl Machine {
     /// a live run writes in the user's own working directory, and an observed
     /// one gets a private project root so that the many programs this crate
     /// runs at once cannot interfere (`eval::fs::FsTable::observation_root`).
+    ///
+    /// Carries the fs tier's own `cfg`: nothing else reads it, so on wasm —
+    /// where the tier declines — it would be dead code and `-D warnings` red.
+    #[cfg(not(target_family = "wasm"))]
     pub(crate) fn is_live(&self) -> bool {
         self.shared.live_stdout
     }
