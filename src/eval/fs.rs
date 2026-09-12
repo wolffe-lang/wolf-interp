@@ -167,26 +167,56 @@ impl FsTable {
     /// user's own directory, exactly as `wolf run` does.
     fn observation_root(&mut self) -> Result<&Path, Row> {
         if self.root.is_none() {
+            let parent = std::env::temp_dir().join("wolf-obs");
+            // The parent is shared and lives in a world-writable place, so
+            // nothing here may assume anything about it beyond "a directory".
+            std::fs::create_dir_all(&parent).map_err(|_| "io")?;
+            // The LEAF is this observation's alone, and it is claimed with
+            // `create_dir` rather than `create_dir_all`: the non-recursive
+            // call fails if anything already occupies the name, which is what
+            // makes a planted SYMLINK an error instead of a redirection. A
+            // predictable name under a world-writable directory is otherwise
+            // a way to aim every write an observed program makes at a
+            // directory of somebody else's choosing, so the name also carries
+            // a clock reading — the pid and the serial alone are guessable.
+            //
+            // The name stays SHORT on purpose. A unix socket path is capped
+            // near 104 bytes by `sockaddr_un`, and `corpus/net/unix_echo.lu`
+            // binds one under this root through `target/`; macOS's temp
+            // directory alone is about fifty characters, so a chattier name
+            // would push a witness over a limit that reports only as an
+            // opaque bind failure.
             static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-            let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            // The name is kept SHORT on purpose. A unix socket path is
-            // capped near 104 bytes by `sockaddr_un`, and
-            // `corpus/net/unix_echo.lu` binds one under this root through
-            // `target/`; macOS's temp directory alone is about fifty
-            // characters, so a chattier name here would push a witness over
-            // a limit that reports as an opaque bind failure.
-            let root = std::env::temp_dir()
-                .join("wolf-obs")
-                .join(format!("{:x}-{serial:x}", std::process::id()));
-            // A serial never repeats within a process and the pid separates
-            // processes, so this directory is this observation's alone. It is
-            // removed rather than reused if a previous run of this pid died
-            // before its `Drop`.
-            let _ = std::fs::remove_dir_all(&root);
-            std::fs::create_dir_all(root.join("target")).map_err(|_| "io")?;
-            self.root = Some(root);
+            let mut last = std::io::ErrorKind::Other;
+            for _ in 0..32 {
+                let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let spice = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.subsec_nanos());
+                let root = parent.join(format!("{:x}-{serial:x}-{spice:x}", std::process::id()));
+                match std::fs::create_dir(&root) {
+                    Ok(()) => {
+                        // Recorded BEFORE `target/` is made, so a failure
+                        // there still leaves `Drop` something to remove
+                        // rather than leaking a half-built directory.
+                        self.root = Some(root.clone());
+                        std::fs::create_dir(root.join("target")).map_err(|_| "io")?;
+                        return Ok(self.root.as_deref().expect("just set"));
+                    }
+                    Err(error) => last = error.kind(),
+                }
+            }
+            // Every candidate name was taken: the host, not this machine.
+            let _ = last;
+            return Err("io");
         }
-        Ok(self.root.as_deref().expect("just set"))
+        Ok(self.root.as_deref().expect("set on a previous call"))
+    }
+
+    /// The observation root itself, made if it does not exist yet — the
+    /// directory, with no trailing separator.
+    pub(crate) fn observation_root_path(&mut self) -> Result<PathBuf, Row> {
+        self.observation_root().map(Path::to_path_buf)
     }
 
     /// Resolve one contained relative path against the observation root, or
@@ -449,11 +479,18 @@ fn io_row(_error: std::io::Error) -> FsErr {
 /// The path calls' rows. Shared by every `fs_*` spelling that takes a path,
 /// because `[os.fs.fstat]` says "the row set is the path stat's, so one
 /// handler serves both spellings".
+/// **No `exists` here.** `exists` is `[os.fs.open]`'s row for mode 4, and no
+/// path call declares it (`builtin::declared_row`), so producing one would
+/// hand a program a tag its own handler cannot match — the arm stops reading
+/// as a tag and the whole `match` falls through. `fs_create_dir_all` over an
+/// existing FILE is the reachable case: std's `create_dir_all` forwards
+/// `AlreadyExists` verbatim there. The compiled lane answers `io` for it
+/// (probed at this pin), so `io` is the compatible row as well as the only
+/// declared one.
 pub(crate) fn path_row(error: &std::io::Error) -> FsErr {
     FsErr::Row(match error.kind() {
         std::io::ErrorKind::NotFound => "not_found",
         std::io::ErrorKind::PermissionDenied => "denied",
-        std::io::ErrorKind::AlreadyExists => "exists",
         _ => "io",
     })
 }
@@ -473,6 +510,45 @@ pub(crate) fn contained(path: &str, name: &str) -> FsResult<PathBuf> {
                 Component::ParentDir | Component::RootDir | Component::Prefix(_)
             )
         });
+    // Windows resolves a handful of names to DEVICES wherever they appear,
+    // whatever the directory: `NUL`, `CON`, `AUX`, `PRN`, and the numbered
+    // `COM`/`LPT` ports. They are ordinary `Component::Normal` to a path
+    // parser, so the containment check above admits them, and the open then
+    // lands on a device outside the working directory — `fs_write_text("NUL",
+    // …)` writing nowhere, `fs_read_text("CON")` reading (and parking on) the
+    // console. The check is lexical and so is the hazard, so it is refused on
+    // every host rather than only on windows: a corpus that admitted the name
+    // on unix would be pinning a program that cannot run on the matrix.
+    let device = candidate.components().any(|component| {
+        let Component::Normal(segment) = component else {
+            return false;
+        };
+        let Some(text) = segment.to_str() else {
+            return false;
+        };
+        // A device name keeps its meaning before an extension (`NUL.txt`) and
+        // ignores case and trailing spaces.
+        let stem = text
+            .split('.')
+            .next()
+            .unwrap_or(text)
+            .trim_end_matches([' ', '\t']);
+        let stem = stem.to_ascii_uppercase();
+        const RESERVED: [&str; 4] = ["NUL", "CON", "AUX", "PRN"];
+        RESERVED.contains(&stem.as_str())
+            || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+                && stem.len() == 4
+                && stem.as_bytes()[3].is_ascii_digit()
+                && stem.as_bytes()[3] != b'0')
+    });
+    if device {
+        return Err(FsErr::Outside(format!(
+            "`{name}(\"{path}\")` names a windows device (`NUL`, `CON`, `AUX`, `PRN`, \
+             `COM1`-`COM9`, `LPT1`-`LPT9`), which resolves outside the working directory on \
+             one host of the matrix whatever the directory says, so the shape is refused by \
+             name on every host rather than served on some"
+        )));
+    }
     if escapes {
         return Err(FsErr::Outside(format!(
             "`{name}(\"{path}\")` names a path outside the working directory; this machine \
@@ -796,7 +872,22 @@ impl Machine {
                 let path = match self.fs_contained(&path, name) {
                     Ok(path) => path,
                     Err(FsErr::Outside(reason)) => return Err(Signal::Unsupported(reason)),
-                    Err(FsErr::Row(_)) => unreachable!("containment answers no row"),
+                    // NOT unreachable, and asserting it away was a panic this
+                    // machine could be made to take: `fs_contained` is
+                    // containment AND resolution, and resolution fails when
+                    // the observation root cannot be made (a file planted at
+                    // the parent's name, a read-only `TMPDIR`, a full disk).
+                    // A predicate answers a bool and has no row to carry the
+                    // failure in, and `false` would be a claim about the
+                    // filesystem that this machine cannot make — so the
+                    // honest answer is the by-name refusal.
+                    Err(FsErr::Row(tag)) => {
+                        return Err(Signal::Unsupported(format!(
+                            "`{name}` cannot be served: this machine could not make the \
+                             working directory an observed program's paths resolve against \
+                             (`{tag}`)"
+                        )));
+                    }
                 };
                 Ok(Value::Bool(match name {
                     "fs_exists" => exists(&path),
@@ -832,11 +923,16 @@ impl Machine {
     /// reader, and `[os.net.unix]` is served on unix alone, so on windows
     /// this would be dead code and `-D warnings` red.
     #[cfg(unix)]
-    pub(crate) fn fs_observation_base(&self) -> Option<PathBuf> {
+    pub(crate) fn fs_observation_base(&self) -> Result<Option<PathBuf>, Row> {
         if self.is_live() {
-            return None;
+            return Ok(None);
         }
-        self.files().resolve(Path::new(""), false).ok()
+        // `Ok(None)` is the LIVE sentinel and means "the user's own cwd", so
+        // a failure here must never be collapsed into it: doing that bound a
+        // socket in the user's real directory precisely when the sandbox
+        // could not be built, which is the opposite of what the failure
+        // should cause.
+        self.files().resolve(Path::new(""), false).map(Some)
     }
 
     /// The directory this machine's relative paths resolve against — the
@@ -850,7 +946,10 @@ impl Machine {
         if self.is_live() {
             return std::env::current_dir().map_err(|_| ());
         }
-        self.files().resolve(Path::new(""), false).map_err(|_| ())
+        // `resolve` joins, and joining an EMPTY relative path appends a
+        // separator — `os_cwd` would answer ".../wolf-obs/1f4-0/" where no
+        // host's cwd ever carries a trailing one. Ask for the root itself.
+        self.files().observation_root_path().map_err(|_| ())
     }
 
     /// Containment AND resolution, as one method so every arm reads the same:
@@ -1300,6 +1399,92 @@ mod tests {
         for good in ["target/x", "target/sub/x.txt", "x.txt", "./x.txt"] {
             assert!(contained(good, "fs_open").is_ok(), "{good}");
         }
+    }
+
+    #[test]
+    fn containment_refuses_the_windows_device_names_on_every_host() {
+        // They are `Component::Normal` to a path parser but resolve to
+        // DEVICES on windows wherever they appear, so the lexical check has
+        // to name them. Refused on every host, not only windows: a corpus
+        // that admitted one on unix would pin a program the matrix cannot
+        // run.
+        for bad in [
+            "NUL", "nul", "CON", "con.txt", "AUX", "PRN", "COM1", "com9", "LPT1", "LPT9",
+            "sub/NUL", "NUL.txt", "CON .txt",
+        ] {
+            let answer = contained(bad, "fs_write_text");
+            assert!(
+                matches!(answer, Err(FsErr::Outside(_))),
+                "{bad}: {answer:?}"
+            );
+        }
+        // And the near misses stay admitted — the guard is a device list,
+        // not a prefix ban.
+        for good in [
+            "console.txt",
+            "communication.log",
+            "com.txt",
+            "COM0",
+            "COM10",
+            "nullable.rs",
+            "prnt.txt",
+            "auxiliary",
+        ] {
+            assert!(contained(good, "fs_open").is_ok(), "{good}");
+        }
+    }
+
+    #[test]
+    fn a_path_call_never_answers_a_row_it_does_not_declare() {
+        // `exists` is `[os.fs.open]`'s mode-4 row and no PATH call declares
+        // it, so a path call producing one would hand a program a tag its own
+        // handler cannot match. `fs_create_dir_all` over an existing FILE is
+        // the reachable case (std forwards `AlreadyExists` verbatim), and the
+        // compiled lane answers `io` for it.
+        let dir = scratch("fs-declared-rows");
+        let file = dir.join("a.txt");
+        write_text(&file, "x").expect("written");
+        let answer = create_dir_all(&file);
+        assert!(matches!(answer, Err(FsErr::Row("io"))), "{answer:?}");
+
+        // The mapper itself, so the guarantee does not rest on one call.
+        let already = std::io::Error::from(std::io::ErrorKind::AlreadyExists);
+        assert!(matches!(path_row(&already), FsErr::Row("io")));
+        // The kinds a path call DOES own are still forwarded.
+        let missing = std::io::Error::from(std::io::ErrorKind::NotFound);
+        assert!(matches!(path_row(&missing), FsErr::Row("not_found")));
+        let refused = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        assert!(matches!(path_row(&refused), FsErr::Row("denied")));
+    }
+
+    #[test]
+    fn a_root_that_cannot_be_made_is_a_row_and_never_a_panic() {
+        // The observation root is built lazily, and everything that resolves
+        // a path has to survive its failure: a file planted at the parent's
+        // name, a read-only `TMPDIR`, a full disk. Asserting the failure away
+        // was a panic this machine could be made to take.
+        let mut table = FsTable::default();
+        // A live run never builds a root at all, so it cannot fail.
+        assert_eq!(
+            table
+                .resolve(Path::new("a.txt"), true)
+                .expect("live resolves"),
+            PathBuf::from("a.txt")
+        );
+        // And an observed one resolves under a root it really made.
+        let resolved = table
+            .resolve(Path::new("a.txt"), false)
+            .expect("an observed run builds its root");
+        assert!(resolved.is_absolute(), "{resolved:?}");
+        assert!(resolved.ends_with("a.txt"));
+        // The root itself carries no trailing separator, which is what
+        // `os_cwd` answers.
+        let root = table.observation_root_path().expect("a root");
+        assert!(
+            !root.to_string_lossy().ends_with(std::path::MAIN_SEPARATOR),
+            "os_cwd would gain a trailing separator: {root:?}"
+        );
+        assert!(root.join("target").is_dir(), "the root is a project root");
     }
 
     #[test]
