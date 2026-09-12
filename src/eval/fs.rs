@@ -112,6 +112,11 @@ pub(crate) struct FsTable {
 /// failed run.
 impl Drop for FsTable {
     fn drop(&mut self) {
+        // The handles FIRST: a `Drop` body runs before the struct's fields
+        // are dropped, so the open `File`s would still be open here — and
+        // windows refuses to delete a file anything holds open, which would
+        // leak the whole directory on one host and not the others.
+        self.slots.clear();
         if let Some(root) = self.root.take() {
             let _ = std::fs::remove_dir_all(root);
         }
@@ -160,9 +165,15 @@ impl FsTable {
         if self.root.is_none() {
             static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            // The name is kept SHORT on purpose. A unix socket path is
+            // capped near 104 bytes by `sockaddr_un`, and
+            // `corpus/net/unix_echo.lu` binds one under this root through
+            // `target/`; macOS's temp directory alone is about fifty
+            // characters, so a chattier name here would push a witness over
+            // a limit that reports as an opaque bind failure.
             let root = std::env::temp_dir()
-                .join("wolf-interp-obs")
-                .join(format!("{}-{serial}", std::process::id()));
+                .join("wolf-obs")
+                .join(format!("{:x}-{serial:x}", std::process::id()));
             // A serial never repeats within a process and the pid separates
             // processes, so this directory is this observation's alone. It is
             // removed rather than reused if a previous run of this pid died
@@ -412,13 +423,23 @@ fn open_row(error: std::io::Error) -> FsErr {
     })
 }
 
-/// The rows of a call on a handle whose entry is already resolved: "on a
-/// handle the hosts answer `io` for nearly everything" (`[os.fs.fstat]`).
-fn io_row(error: std::io::Error) -> FsErr {
-    FsErr::Row(match error.kind() {
-        std::io::ErrorKind::PermissionDenied => "denied",
-        _ => "io",
-    })
+/// The rows of a call on a handle: **`io`, whatever the host said**.
+///
+/// `[os.fs.fstat]` states the posture — "on a handle the hosts answer `io`
+/// for nearly everything, the entry being already resolved" — and this arm
+/// takes it literally rather than forwarding the host's error kind, for a
+/// reason CI measured. Reading an APPEND handle is `EBADF` on macOS and
+/// `ERROR_ACCESS_DENIED` on windows; forwarding the kind made one program
+/// answer `io` on one host and `denied` on another, which is a portability
+/// hole in a row set programs branch on. The compiled lane answers `io` here
+/// too (probed at this pin: a write to a read handle, a read from a write
+/// handle and a closed handle are all `io`), so the uniform row is the
+/// compatible reading as well as the clause's.
+///
+/// The path calls keep their kinds — see [`path_row`]. There the entry is
+/// what is being resolved, so `not_found` and `denied` are the ANSWER.
+fn io_row(_error: std::io::Error) -> FsErr {
+    FsErr::Row("io")
 }
 
 /// The path calls' rows. Shared by every `fs_*` spelling that takes a path,
@@ -790,6 +811,30 @@ impl Machine {
         self.files()
     }
 
+    /// The private root an OBSERVED program's paths resolve against, or
+    /// `None` for a live `lupin run`.
+    ///
+    /// The net tier reads it so a UNIX SOCKET path lands in the same
+    /// directory as everything else the program writes.
+    /// `corpus/net/unix_echo.lu` is why it has to: the witness removes a
+    /// stale socket with `fs_remove`, binds it with `net_listen_unix`, and
+    /// ends with `cleaned = !fs_exists(path)`. If the two families disagreed
+    /// about the directory, the pre-clean would sweep a path nothing binds
+    /// and `cleaned` would be vacuously true — the witness would pass while
+    /// checking nothing, and a stale socket in the real cwd would fail the
+    /// bind at random.
+    ///
+    /// Carries the unix-socket family's `cfg`: the net tier is its only
+    /// reader, and `[os.net.unix]` is served on unix alone, so on windows
+    /// this would be dead code and `-D warnings` red.
+    #[cfg(unix)]
+    pub(crate) fn fs_observation_base(&self) -> Option<PathBuf> {
+        if self.is_live() {
+            return None;
+        }
+        self.files().resolve(Path::new(""), false).ok()
+    }
+
     /// The directory this machine's relative paths resolve against — the
     /// answer `os_cwd` gives, so the two never disagree.
     ///
@@ -1122,6 +1167,13 @@ mod tests {
     fn an_append_handle_does_not_read_and_a_create_new_handle_does() {
         // Probed on the compiled lane at this pin; written down because it
         // is the one place the mode table is not symmetric.
+        //
+        // The ROW here was a host split until CI found it: the read fails
+        // with `EBADF` on macOS and `ERROR_ACCESS_DENIED` on windows, and
+        // forwarding the host's kind made this same program answer `io` on
+        // one and `denied` on the other. [`io_row`] now answers `io` for
+        // every handle-level failure, which is `[os.fs.fstat]`'s stated
+        // posture and what the compiled lane answers.
         let dir = scratch("fs-mode-reads");
         let mut table = FsTable::default();
         let path = dir.join("a.txt");
