@@ -451,7 +451,8 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // and a linked exit delivers through the mailbox channel.
     //
     // Two of the three P-project witnesses run natively (`rpn`, `wordtree`);
-    // `count` needs the fs tier this machine declines by design.
+    // `count` needed the fs tier this machine declined by design, and runs
+    // since is48 — its row is at the end of this ledger.
     ("conc/proc_cancel_defers.lu", "exit(0)"),
     ("conc/proc_link.lu", "exit(0)"),
     ("lints/assume_reassigned.lu", "exit(0)"),

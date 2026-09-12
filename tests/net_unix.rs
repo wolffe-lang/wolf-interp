@@ -11,12 +11,13 @@
 //! removes it).
 //!
 //! `corpus/net/unix_echo.lu` is the corpus's witness for the same rules, and
-//! this machine cannot run it: its first statement is `fs_exists(path)`, and
-//! the s38 fs surface is declined here by design (wolf-interp#18 item 6 —
-//! an interpreter observing the HOST's filesystem puts the host into a
-//! differential comparison). So the family is exercised here instead, on the
-//! same shapes, and the corpus row stays out-of-scope for the fs tier rather
-//! than for the sockets.
+//! this machine could not run it until is48: its first statement is
+//! `fs_exists(path)`, and the s38 fs surface was declined here by design
+//! (wolf-interp#18 item 6 — an interpreter observing the HOST's filesystem
+//! puts the host into a differential comparison). The maintainer's ruling
+//! retired that posture and `corpus/net/unix_echo.lu` runs, but these tests
+//! stay: they exercise the family on shapes the single witness does not
+//! reach, and a corpus row is one program where these are fourteen.
 //!
 //! Every program below runs with its scratch directory as the working
 //! directory, because this machine admits only a RELATIVE socket path that

@@ -741,15 +741,22 @@ impl NetTable {
 /// The socket path a unix-domain call may bind or dial.
 ///
 /// The v0 discipline the TCP family states as "loopback + port 0" has a
-/// path-shaped twin: a socket path is a host filesystem object, and this
-/// machine declines the host's filesystem by design (wolf-interp#18 item 6,
-/// `[proto.cmp.defined-divergence]` — an interpreter observing the HOST's
-/// filesystem puts the host into a differential comparison). Binding an
-/// arbitrary absolute path would walk straight through that posture, so the
+/// path-shaped twin: a socket path is a host filesystem object, so the
 /// admitted shape is a RELATIVE path that does not climb out of the working
 /// directory — `target/x.sock`, which is what the corpus witness writes.
 /// Anything else is refused BY NAME (`unsupported`, the by-name refusal and
 /// never the `unsupported` ROW, which would be a lie about the host).
+///
+/// This rule was written when the machine declined the host's filesystem
+/// outright (wolf-interp#18 item 6, `[proto.cmp.defined-divergence]`). is48
+/// built the fs tier on the maintainer's ruling, and the rule OUTLIVED its
+/// original premise rather than retiring with it: [`super::fs::contained`] is
+/// the same check, for the reason that survives — the corpus walk, the
+/// differ, the explorer and the fuzzer all run corpus programs in-process, so
+/// a path that climbs out is the one bug here that could damage the machine
+/// it runs on. The two checks are spelled separately on purpose: they answer
+/// to different clauses (`[os.net.unix]` and `[os.fs]`), and either could
+/// narrow without the other.
 #[cfg(unix)]
 fn socket_path(path: &str, name: &str) -> NetResult<PathBuf> {
     let candidate = Path::new(path);
@@ -763,9 +770,9 @@ fn socket_path(path: &str, name: &str) -> NetResult<PathBuf> {
     if escapes {
         return Err(NetErr::Outside(format!(
             "`{name}(\"{path}\")` names a path outside the working directory; a unix socket \
-             path is a host filesystem object, and this machine's declined fs surface \
-             (wolf-interp#18 item 6) admits only a relative path that does not climb out — \
-             the shape is refused by name rather than observed"
+             path is a host filesystem object, and this machine's fs surface (`eval::fs`, \
+             is48) admits only a relative path that does not climb out — the shape is \
+             refused by name rather than observed"
         )));
     }
     Ok(candidate.to_path_buf())
