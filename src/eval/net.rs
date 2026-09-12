@@ -958,12 +958,19 @@ impl Machine {
                     // is48: an observed program's socket lands under its own
                     // private root, beside the files it writes, so the fs and
                     // net families never disagree about where the path is.
-                    let base = self.fs_observation_base();
                     let path = path.clone();
-                    if name == "net_listen_unix" {
-                        self.net().listen_unix(&path, base.as_deref())
-                    } else {
-                        self.net().connect_unix(&path, base.as_deref())
+                    match self.fs_observation_base() {
+                        // A root this machine could not build is the `io`
+                        // row, never a silent fall back to the user's own
+                        // directory — see `Machine::fs_observation_base`.
+                        Err(tag) => Err(NetErr::Row(tag)),
+                        Ok(base) => {
+                            if name == "net_listen_unix" {
+                                self.net().listen_unix(&path, base.as_deref())
+                            } else {
+                                self.net().connect_unix(&path, base.as_deref())
+                            }
+                        }
                     }
                 };
                 #[cfg(not(unix))]
