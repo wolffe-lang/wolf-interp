@@ -5577,6 +5577,18 @@ impl Machine {
                     iterable.kind()
                 ));
             }
+            // wolf-lang#158's ch05 row: "`for` cannot iterate str" named no way
+            // forward, and a `str` has three — the views this machine already
+            // implements. A refusal that names the surface is the difference
+            // between a dead end and a next step.
+            if matches!(iterable, Value::Str(_)) {
+                return unsupported(
+                    "`for` cannot iterate str: a `str` is bytes, not a sequence of one \
+                     thing — iterate `s.chars()` for Unicode scalar values, `s.words()` \
+                     or `s.lines()` for the views ([mem.str.view])"
+                        .to_owned(),
+                );
+            }
             return unsupported(format!("`for` cannot iterate {}", iterable.kind()));
         };
         self.fire(

@@ -580,8 +580,28 @@ fn char_assignment_copies_exactly_as_int_does() {
 }
 
 #[test]
-fn for_over_a_str_stays_a_named_refusal() {
+fn for_over_a_str_stays_a_named_refusal_that_names_the_way_forward() {
     // Named-not-built on both sides (the s17 iteration-protocol question);
-    // a refusal beats an approximation.
-    refuses("for c in \"str\" {\n    print(\"{c}\")\n}\n0");
+    // a refusal beats an approximation. wolf 0.2.12 answers `unsupported —
+    // the iteration protocol (for-trait wiring)` on the same program, so the
+    // verdict is not the finding.
+    //
+    // The MESSAGE was (wolf-lang#158's ch05 row, wolf-book): "`for` cannot
+    // iterate str" named no way forward, and a `str` has three — `chars()`,
+    // `words()` and `lines()`, every one of them implemented right here. A
+    // refusal that names the surface is the difference between a dead end and
+    // a next step; the reader with only lupin is the one who cannot look it
+    // up elsewhere.
+    let observation = observe("for c in \"str\" {\n    print(\"{c}\")\n}\n0");
+    assert_eq!(observation.verdict, Verdict::Unsupported);
+    let reason = observation.reason.expect("a named refusal carries its reason");
+    for named in ["chars()", "words()", "lines()", "mem.str.view"] {
+        assert!(reason.contains(named), "the reason must name {named}: {reason}");
+    }
+
+    // And the three it names all work, which is what makes naming them a fix
+    // rather than a nicer wording.
+    exits_zero("var n = 0\nfor c in \"ab\".chars() {\n    n = n + 1\n}\nif n == 2 { 0 } else { 1 }");
+    exits_zero("var n = 0\nfor w in \"a b\".words() {\n    n = n + 1\n}\nif n == 2 { 0 } else { 1 }");
+    exits_zero("var n = 0\nfor l in \"a\\nb\".lines() {\n    n = n + 1\n}\nif n == 2 { 0 } else { 1 }");
 }

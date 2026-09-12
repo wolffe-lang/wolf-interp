@@ -3460,7 +3460,9 @@ impl<'a> Parser<'a> {
     }
 
     /// `when_expr ::= 'when' '(' expr (',' expr)+ ','? ')' block` — the `+` is
-    /// the point: one operand is just a method on the sync type.
+    /// the point: `when` acquires its whole set at once, which is what makes
+    /// the order it imposes a deadlock-freedom property rather than a
+    /// convention, and a one-element set has nothing to order.
     fn parse_when(&mut self) -> PResult<Expr> {
         let anchor = "gram.expr.conc";
         let start = self.expect_kw("when", anchor)?.start;
@@ -3485,8 +3487,16 @@ impl<'a> Parser<'a> {
                 diag::E_WHEN_ARITY,
                 Span::new(start, paren_end),
                 anchor,
-                "`when` acquires a set, so it needs at least two operands; for one, call the \
-                 method on the sync type",
+                // wolf-lang#158's ch12/ch13 row: the hint used to read "for one,
+                // call the method on the sync type" and `Mutex` has no such
+                // method — the message sent a reader looking for a surface
+                // that does not exist. wolfc states the RULE instead
+                // ("it acquires its whole set at once, so name every sync
+                // object the body touches in one `when` list", measured at
+                // v0.2.12), and the divergence was wording-only, so this side
+                // says the same thing in its own voice.
+                "`when` requires at least two operands — it acquires its whole set at once, \
+                 so name every sync object the body touches in one `when` list",
             ));
         }
         let body = self.with_struct_lit(true, Parser::parse_block)?;
@@ -4336,6 +4346,15 @@ mod tests {
     fn when_needs_two_operands() {
         let d = rejects("fn main() -> int {\n    when (a) { b }\n    0\n}\n");
         assert_eq!(d.code, diag::E_WHEN_ARITY);
+        // wolf-lang#158's ch12/ch13 row: the hint must not send a reader after
+        // a method the sync types do not have. It states the rule instead,
+        // which is what wolfc's own message does at v0.2.12.
+        assert!(
+            !d.message.contains("call the method on the sync type"),
+            "{}",
+            d.message
+        );
+        assert!(d.message.contains("one `when` list"), "{}", d.message);
     }
 
     #[test]
