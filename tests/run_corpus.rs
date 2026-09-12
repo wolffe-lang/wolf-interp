@@ -38,54 +38,6 @@ struct Entry {
     warnings: Option<Vec<wolf_interp::protocol::Warning>>,
 }
 
-/// One advisory lock per corpus FILE, so concurrent observations of the same
-/// program serialize.
-///
-/// The fs tier landed at is48, and with it corpus programs that write REAL
-/// files at paths of their own choosing (`target/s38-fs-roundtrip.tmp`). Those
-/// witnesses are idempotent BY CONSTRUCTION, which makes a *sequential*
-/// re-run safe — and sequential is exactly what the compiler's conform pass
-/// does, one lane after the other, "twice per conform pass against one real
-/// directory" in `corpus/fs/bytes_dirs.lu`'s own words.
-///
-/// `cargo test` is not sequential. Several tests in this file walk the whole
-/// corpus at once, and cargo runs test binaries in parallel on top of that, so
-/// one program can be running three times over one directory — which showed up
-/// as `fs/fstat.lu` reading `size=0` off a file another thread had just
-/// truncated. That is a harness artifact and not a language fact, so it is
-/// answered here rather than by weakening the tier or the witness: the lock is
-/// per file, so unrelated corpus programs still run in parallel, and it is a
-/// FILE lock rather than a mutex because the contention crosses processes.
-fn observe_corpus(
-    full: &Path,
-    source: &[u8],
-) -> (
-    wolf_interp::protocol::ObservationRecord,
-    wolf_interp::Observed,
-) {
-    let _guard = corpus_file_lock(full);
-    wolf_interp::observe_record(full, source, None)
-}
-
-/// The lock file for one corpus entry, held until the returned handle drops.
-fn corpus_file_lock(full: &Path) -> Option<std::fs::File> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join("is48-corpus-locks");
-    std::fs::create_dir_all(&dir).ok()?;
-    // The corpus path, flattened: one lock file per entry, named so a human
-    // reading `target/` can tell what is being serialized.
-    let slug = wolf_interp::slash_path(full).replace(['/', '\\', ':'], "_");
-    let handle = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(dir.join(format!("{slug}.lock")))
-        .ok()?;
-    handle.lock().ok()?;
-    Some(handle)
-}
-
 fn entries() -> Vec<Entry> {
     let root = corpus_root();
     let report = corpus::walk(&root, None).expect("the pinned corpus is walkable");
@@ -98,7 +50,7 @@ fn entries() -> Vec<Entry> {
             };
             let full = root.join(&file.path);
             let source = std::fs::read(&full).expect("readable");
-            let (record, observed) = observe_corpus(&full, &source);
+            let (record, observed) = wolf_interp::observe_record(&full, &source, None);
             // The directive matcher compares "the program's stdout"
             // (`[conf.directive.check]`) — the observation's, whatever the
             // verdict. A trap pin with `stdout="…"` judges the bytes printed
@@ -1592,7 +1544,7 @@ fn main() -> !int { work.n() - 7 }
     let root = corpus_root();
     let full = root.join("lints/ancestor_import/main.lu");
     let source = std::fs::read(&full).expect("readable");
-    let (record, _) = observe_corpus(&full, &source);
+    let (record, _) = wolf_interp::observe_record(&full, &source, None);
     let warnings = record.warnings.expect("the analyses ran");
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert_eq!(warnings[0].code, "W0316");
@@ -1816,7 +1768,7 @@ fn unsafe_free_corpus_programs_never_produce_a_ub_verdict() {
             continue;
         }
         safe += 1;
-        let (record, observed) = observe_corpus(&full, &source);
+        let (record, observed) = wolf_interp::observe_record(&full, &source, None);
         assert!(
             !matches!(record.verdict, Verdict::Ub(_)),
             "{}: a safe-tier program reached §7/{} — either the machine is wrong or `[mem.ub]`'s \
@@ -1848,7 +1800,7 @@ fn every_unsupported_file_says_why() {
         }
         let full = root.join(&file.path);
         let source = std::fs::read(&full).expect("readable");
-        let (record, _) = observe_corpus(&full, &source);
+        let (record, _) = wolf_interp::observe_record(&full, &source, None);
         if record.verdict != Verdict::Unsupported {
             continue;
         }
@@ -1878,7 +1830,7 @@ fn every_record_is_schema_valid_including_the_running_ones() {
         }
         let full = root.join(&file.path);
         let source = std::fs::read(&full).expect("readable");
-        let (record, _) = observe_corpus(&full, &source);
+        let (record, _) = wolf_interp::observe_record(&full, &source, None);
         let value = serde_json::to_value(&record).expect("serializes");
         assert_eq!(
             wolf_interp::schema::validate(&value),
@@ -1913,7 +1865,7 @@ fn a_trapping_program_reports_the_stdout_it_produced_before_the_trap() {
     ] {
         let full = root.join(path);
         let source = std::fs::read(&full).expect("readable");
-        let (record, _) = observe_corpus(&full, &source);
+        let (record, _) = wolf_interp::observe_record(&full, &source, None);
         assert!(
             matches!(record.verdict, Verdict::Trap(_)),
             "{path}: {}",
@@ -1977,7 +1929,7 @@ fn a_declared_main_return_is_refused_before_the_program_runs() {
     let root = corpus_root();
     let full = root.join("typecheck/main_returns_str.lu");
     let source = std::fs::read(&full).expect("readable");
-    let (record, observed) = observe_corpus(&full, &source);
+    let (record, observed) = wolf_interp::observe_record(&full, &source, None);
     assert_eq!(record.verdict, Verdict::Unsupported);
     assert_eq!(record.phase_reached, Phase::Resolve);
     assert_eq!(observed.stdout, "", "nothing ran, so nothing printed");
@@ -2020,8 +1972,8 @@ fn evaluation_is_deterministic_over_the_corpus() {
         }
         let full = root.join(&file.path);
         let source = std::fs::read(&full).expect("readable");
-        let (first, _) = observe_corpus(&full, &source);
-        let (second, _) = observe_corpus(&full, &source);
+        let (first, _) = wolf_interp::observe_record(&full, &source, None);
+        let (second, _) = wolf_interp::observe_record(&full, &source, None);
         assert_eq!(first, second, "{} observed differently twice", file.path);
     }
 }
