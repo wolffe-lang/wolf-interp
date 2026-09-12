@@ -135,6 +135,17 @@ not equivalent. It is not a divergence in the census sense (no corpus file
 names such a path) and it is recorded here so a later lane meets it as a
 decision rather than as a surprise.
 
+**Filed: wolf-lang#365.** `[proto.cmp.triage]` puts the clause in the dock
+first, and the clause is silent: §6 never says whether an `fs_*` path may be
+absolute or climb out of the working directory, and no witness decides it
+either. The issue carries both readings measured — `wolf 0.2.12` admits
+`/tmp/x` and `../x`; this machine refuses both by name — and asks the clause
+to state the domain rather than leaving two implementations to guess. It also
+carries the second gap this tier met: §6 gives `fs_remove` the row set
+`{not_found, denied, io}` without saying which a DIRECTORY takes, and the two
+lanes only agree today because both delegate to the same standard library
+(`denied` on macOS, `io` on linux).
+
 #### Predicted, then measured
 
 Written before the first edit, from `spec/11-os.md` §6, the five witness

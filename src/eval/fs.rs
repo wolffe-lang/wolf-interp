@@ -59,6 +59,10 @@
 //! deliberate: the corpus walk, the differ, the explorer and the fuzzer all
 //! run corpus programs in-process, and a fuzzed absolute path is the one bug
 //! in this repository that could damage the machine it runs on.
+//!
+//! The clause is silent on the path domain, so the narrowing is FILED rather
+//! than merely commented: wolf-lang#365 asks `[os.fs]` to say whether a path
+//! may be absolute or climb, with both readings measured.
 
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::{Read, Write};

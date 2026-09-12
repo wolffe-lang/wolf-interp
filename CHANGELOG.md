@@ -48,6 +48,15 @@ narrowing and not an accident: the corpus walk, the differ, the explorer and
 the fuzzer all run corpus programs in-process, and a path that climbs out is
 the one bug in this tree that could damage the machine it runs on.
 
+**Two spec gaps filed, not guessed at (wolf-lang#365).** `[proto.cmp.triage]`
+makes the clause the defendant first, and §6 is silent twice over: it never
+says whether an `fs_*` path may be absolute or climb out of the working
+directory (this machine refuses both by name; `wolf 0.2.12` admits both,
+probed), and it gives `fs_remove` a row set without saying which row a
+DIRECTORY takes (the lanes agree today only because both delegate to the same
+standard library — `denied` on macOS, `io` on linux). Both readings are on
+the issue.
+
 **`read_line` does NOT land.** Stdin is not a file, no pinned clause names an
 injectable one, and nothing in the whole corpus calls it. The name still
 resolves, so the refusal reads "unsupported feature" and never "unknown
