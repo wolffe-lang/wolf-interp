@@ -454,6 +454,18 @@ struct Shared {
     /// FILE.lu` streams a long-running program's output instead of holding
     /// it to the end. Never set on the record-emitting surfaces.
     live_stdout: bool,
+    /// Whether a program's file paths resolve against the USER's working
+    /// directory (a front door a person is standing in front of) rather than
+    /// a private observation root (`eval::fs`).
+    ///
+    /// Deliberately NOT `live_stdout`. The two were one flag for an hour and
+    /// it was wrong in a way a REPL user would have paid for: stdout
+    /// pass-through and "this is somebody's real directory" are different
+    /// properties, and the REPL wants the second without necessarily wanting
+    /// the first. `lupin run` and the REPL both set this; every embedded
+    /// observation leaves it false.
+    #[cfg(not(target_family = "wasm"))]
+    fs_user_cwd: bool,
     /// is08: the REPL session's type-generation map (`[repl.type.gen]`,
     /// `docs/repl.md`). Empty outside a session, in which case struct
     /// literals keep their written names and nothing here changes behavior.
@@ -642,6 +654,8 @@ impl Machine {
             sched: Arc::new(sched),
             tracing: Trace::Off,
             live_stdout: false,
+            #[cfg(not(target_family = "wasm"))]
+            fs_user_cwd: false,
             repl_types: Arc::new(Mutex::new(BTreeMap::new())),
             env: Arc::new(Mutex::new(BTreeMap::new())),
             #[cfg(not(target_family = "wasm"))]
@@ -697,6 +711,16 @@ impl Machine {
         self
     }
 
+    /// Mark this machine a front door a PERSON is using, so file paths land
+    /// in their own working directory rather than a private observation root
+    /// ([`Machine::is_live`]). `lupin run` and the REPL both take it.
+    #[must_use]
+    #[cfg(not(target_family = "wasm"))]
+    pub fn user_cwd(mut self) -> Machine {
+        self.shared.fs_user_cwd = true;
+        self
+    }
+
     // -- the shared world's doors ------------------------------------------
 
     /// The region store, for this module and `builtin`'s Tier-2 surface.
@@ -741,7 +765,7 @@ impl Machine {
     /// where the tier declines — it would be dead code and `-D warnings` red.
     #[cfg(not(target_family = "wasm"))]
     pub(crate) fn is_live(&self) -> bool {
-        self.shared.live_stdout
+        self.shared.fs_user_cwd
     }
 
     /// Stack the tree-walk runs on.

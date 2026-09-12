@@ -109,6 +109,14 @@ impl Session {
     pub fn new(seed: Option<u64>) -> Session {
         let program = crate::sema::load_source("repl", "").expect("the empty program always loads");
         let mut machine = Machine::with_seed(&program, seed);
+        // A REPL is a person at a prompt in a directory of their own, so
+        // `fs_write_text("notes.txt", …)` writes THERE (is48). Without this
+        // the session would write into a private observation root and delete
+        // the file when it ended, which is data loss dressed as isolation.
+        #[cfg(not(target_family = "wasm"))]
+        {
+            machine = machine.user_cwd();
+        }
         let serial = machine.mint_frame_serial();
         machine.frames.push(Frame {
             module: String::new(),

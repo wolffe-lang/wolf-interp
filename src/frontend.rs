@@ -382,6 +382,13 @@ fn observe_with(
     let mut machine = Machine::with_request(&program, request).tracing(trace);
     if live {
         machine = machine.live_stdout();
+        // The same front door also means the program is standing in the
+        // user's own directory (is48): its files land there, not in a
+        // private observation root.
+        #[cfg(not(target_family = "wasm"))]
+        {
+            machine = machine.user_cwd();
+        }
     }
     let run = machine.run();
     let mut observation = match run.outcome {
