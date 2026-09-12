@@ -110,6 +110,174 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The remainder — is47, lupin 0.1.35, pin `a7f517e` (wolf-lang **v0.2.12**)
+
+Pin `c9237c1` -> `a7f517e`, **the v0.2.12 tag**. The delta is s154, s156 and
+r17. `spec/anchors.json` **471 -> 475; key sets diffed BOTH ways** — four
+arrive (`[gram.fmt.break]`, `[gram.fmt.paren]`, `[mem.region.edge.elem]`,
+`[type.float.rem]`), **nothing drops**, no owner changes. No new NAMESPACE:
+all four sit under `gram`/`mem`/`type`, and `spec/05-conformance.md` is
+untouched in the range, which is the independent check —
+`anchor::REGISTERED_NAMESPACES` holds at thirteen. Ten corpus files join and
+none leaves: nine entries and one member (`traits/op_eq_imported/cmp/c.lu`),
+570 -> 580 files, 536 -> 545 entries, 34 -> 35 members. Five are EDITED
+rather than added: `grammar/interp_fmtcolon.lu`, `grammar/structlit_paren.lu`,
+`traits/op_total_num.lu`, `typecheck/fn_value_captured_int.lu` and
+`wordcount.lu`.
+
+#### Predicted, then measured, with the 0.1.34 binary at the new pin
+
+Written before the bump, from the corpus headers and the spec clauses read as
+DATA, against the c9237c1 baseline (570 files, 536 entries, 404 reach run,
+413 match, 20 dynamic counterparts, 38 conservatism, 62 out of scope, 3
+mismatches, 471 anchors):
+
+| class | predicted | measured (0.1.34 at a7f517e) |
+| --- | --- | --- |
+| files / entries / members | 580 / 545 / 35 | 580 / 545 / 35 |
+| anchors | 475 | 475 |
+| match | 422 | 422 |
+| mismatch | 1 | 1 |
+| conservatism | 39 | **38** |
+| out of scope | 63 | 63 |
+| dynamic counterpart | 20 | **21** |
+| reach `run` | 411 | **412** |
+
+**Two misses, and they are one miss.**
+`typecheck/receiver_bare_mut_param.lu` was predicted **conservatism** and is a
+**dynamic counterpart**: E0804 has a row in `ledger::dynamic_meaning`, which
+its pre-existing twin `typecheck/receiver_bare_mut.lu` already showed and the
+prediction did not read. The file therefore reaches `run` (it traps
+`exclusivity`), which is the 411-vs-412 row. Every other class, and every
+witness inside it, as predicted.
+
+**DIV-2026-022 and DIV-2026-023 RETIRE on the pin.** wolf-lang#341 re-pinned
+both headers, s156 `0bb7024` and `2600f34`:
+
+| witness | at c9237c1 | at a7f517e |
+| --- | --- | --- |
+| `wordcount.lu` | `check: run(exit=2)` with `tally[w] += 1` — E0417 since s152, MISMATCH | the same check with `tally[w] = (tally[w] else 0) + 1`, `exit(2)`, **match** |
+| `grammar/structlit_paren.lu` | `check: pass`/`phase: resolve` with `p == (Point { x: 0 })` — E0301 since s155, MISMATCH | `check: run(exit=0)`/`phase: run`, the literal bound and read, **match** |
+
+Both leave `differ::FILED_DIVERGENCES` and return to `RUN_LEDGER`. The one
+mismatch standing at this pin is **DIV-2026-019** alone.
+
+**The one behavioural mirror the pin asked for, and what it is not.**
+`typecheck/interp_spec_on_union.lu` pins `fail(E0413)` — s156's #323, a format
+spec on a `!T` hole — and lupin answers `unsupported` at resolve, so the file
+lands in the **out-of-scope** class rather than as a mismatch. The reason on
+`x-unsupported` is honest ("a format spec on a non-primitive value"), which is
+precisely the shape wolf-lang#158's ch03 row complains about one clause over:
+the "not implemented yet" channel carrying a defect in the reader's program.
+**Taken**, and it is the one behavioural mirror this pin asked for. The clause
+puts the rule on the row walk itself — "`[type.row.operand]`'s posture, applied
+to specs" — and that is the walk here that can already name a `!T`: a declared
+row-typed name or a call to a fallible item (`RowWalk::row_of`), plus a `Map`
+subscript, which `[mem.map.absent]` makes `V ! {none}` and which is the
+clause's own example. E0413 at the spec, the colon through the spec's last
+byte with `}` excluded — `[782,785]` here against wolfc's `[782,785]` and
+`[795,798]`, this machine reporting the first hole where the compiler reports
+both, which is `[proto.cmp.phase]`'s posture and not a difference. The bare
+hole is untouched, and so is every handled one: `{m[k] else 0:>5}` and
+`{x?:>5}` are an `ElseDefault` and a `Try`, neither of which the judgement
+names.
+
+#### The sprint's work, in census terms
+
+| step | run | match | dyn | cons. | oos | mismatch |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0.1.34 at c9237c1 | 404 | 413 | 20 | 38 | 62 | 3 |
+| the pin alone (0.1.34 at a7f517e) | 412 | 422 | 21 | 38 | 63 | **1** |
+| #100 `then` joins the contextual table | 412 | 422 | 21 | 38 | 63 | 1 |
+| #45 `free_names` collects its binders | 412 | 422 | 21 | 38 | 63 | 1 |
+| #61 the declared-scalar check learns `char` | 412 | 422 | 21 | 38 | 63 | 1 |
+| wolf-lang#158's two refusal messages | 412 | 422 | 21 | 38 | 63 | 1 |
+| `[type.interp.union]`'s spec half, E0413 | 412 | **423** | 21 | 38 | **62** | 1 |
+
+Match 413 -> 423 across the pin and the sprint, mismatches 3 -> 1.
+
+The flat column above the last row is the finding, not a null result. Three of
+this lane's four issues were filed BY READING — #45 by is24's honesty pass,
+#61 by walking `[type.byte]` sentence by sentence, #100 by a clause that did
+not name a word — and each one says so in its own text: "no corpus file and no
+witness set exercises the shape" (#45), "no corpus file measures any of the
+four positions" (#61). A corpus-neutral fix is what a defect found by reading
+looks like when it lands, and the number that matters for #61 is the one that
+did NOT move: the false-positive surface is37 declined to take on, measured
+over 545 entries, is **zero**. The one row that does move is the one the PIN
+brought a witness for, which is the ordinary shape and the contrast worth
+keeping in view.
+
+Witness table, by issue (the compiler's spans measured with the v0.2.12
+release archive, darwin `6be493a9…`):
+
+| issue | witness | 0.1.34 | 0.1.35 | wolf 0.2.12 |
+| --- | --- | --- | --- | --- |
+| #100 | `lex::CONTEXTUAL` against §6.2 | 11 entries, §6.2 names 12 | 12, held BOTH ways | §6.2 names `then` |
+| #100 | body-less member + another declaration, one line | E0201 (unpinned) | E0201 @ the `fn`, pinned | E0201 |
+| #45 | a closure whose `match` arm rebinds an outer `var` | W1102 (a capture that never happened) | clean | clean |
+| #45 | the same with a `for` element / an `else` binder | W1102 | clean | clean |
+| #45 | a TAG arm over a tag-shaped scrutinee (the control) | W1102 | W1102 | W1102 |
+| #61 | `fn widen(c: char)` handed `65` | `exit(0)`, stdout `65` | E0401 @ [77,79] | E0401 @ [77,79] |
+| #61 | `fn givec() -> char { 65 }` | `exit(0)`, stdout `65` | E0401 @ [21,23] | E0401 @ [21,23] |
+| #61 | `var c = 'a'; c = 65` | `exit(0)`, stdout `65` (retyped) | E0401 @ [44,46] | E0401 @ [44,46] |
+| #61 | `fn f(n: int)` handed `'a'` | `exit(0)` | E0401 @ [49,52] | E0401 @ [49,52] |
+| #61 | `fn f(b: byte)` handed `'a'` | `exit(0)` | E0401 @ [57,60] | E0401 @ [57,60] |
+| #61 | `fn f(c: char)` handed `65 as byte` | `exit(0)` | E0401 @ [57,67] | E0401 @ [57,67] |
+| #61 | `List[char].push(65)` | `exit(0)` | E0401 @ [64,66] | E0401 @ [64,66] |
+| #61 | `c == 97` | `exit(0)` | E0401 @ [48,50] | E0401 @ [48,50] |
+| #103 | `let mark = if c { "*" }` as a value | `exit(0)`, stdout `*` | unchanged, filed | E0401 @ [72,75] |
+| #103 | `pick(1, "two")` on `fn pick[T](a: T, b: T)` | `exit(0)`, stdout `1` | unchanged, filed | E0401 @ [75,80] |
+| #103 | `let s = shards[i]` in a loop | `exit(0)`, stdout `a\nb\n` | unchanged, filed | E1001 @ [198,208], [227,236] |
+| #103 | a body whose value the signature omits | `exit(0)` | unchanged, filed | E0401 @ [30,36] |
+| #103 | a captured `var` written after the closure (HEALED) | E1101/W1101/W1102 @ [83,84],[83,84],[114,122] | same | **the same three, the same bytes** |
+| #103 | `let s = shards[i]` OUTSIDE a loop (HEALED) | `exit(0)` | `exit(0)` | `exit(0)` |
+| #104 | a static rejection's rendering (HEALED) | `at 2:14` | `at 2:14` | the source line with a caret |
+| #104 | `"héllo"[1..2]` and `xs[5]` | both `trap(bounds) … [mem.ub.defined]` | unchanged, filed | — |
+| #104 | a non-exhaustive `match` | `unsupported`, exit 4 | unchanged, filed | E0801 @ [38,107] |
+| #104 | one-operand `when` | "call the method on the sync type" | states the rule | E0201, states the rule |
+| #104 | `for c in "abc"` | "`for` cannot iterate str" | names `chars()`/`words()`/`lines()` | `unsupported` (for-trait wiring) |
+| #325 | `typecheck/receiver_bare_mut_param.lu` | W1002 beside the trap | no warning, trap(exclusivity) | E0804, no warning |
+| #325 | `fn size(mut xs: List[int]) -> int { xs.len }` (the control) | W1002 @ [8,11] | W1002 @ [8,11] | W1002 @ [8,11] |
+| #105 | `--chaos` | `unexpected argument` | unchanged, filed | — |
+| #323 | `typecheck/interp_spec_on_union.lu` | unsupported@resolve | E0413 @ [782,785] | E0413 @ [782,785], [795,798] |
+| #323 | `let v = maybe(3)` then `{v:>5}` | ran | E0413 @ [126,129] | E0413 @ [126,129] |
+
+Three corrections to the launch brief and the triage that fed it, each
+measured:
+
+1. **`tests/spec_extract.rs` did NOT hold `lex::CONTEXTUAL` to §6.2 "in BOTH
+   directions".** t02's triage comment on #100 says it twice and the sprint
+   file repeats it. The test looped over `lex::CONTEXTUAL` only, so it would
+   have caught this machine listing a word §6.2 does not name and was silent
+   on the reverse — which is the direction `then` was in for two pins. The
+   reverse loop is added in the same commit as the word.
+2. **E0804 is a dynamic counterpart, not conservatism** (above), which is the
+   whole of the census prediction's error.
+3. **#158's ch01 row has healed.** lupin renders `line:col`, not a byte
+   offset; the excerpt is what remains of that row.
+
+#### One thing the pin brought that the prediction listed as a risk, and it fired
+
+The prediction's first named risk: `typecheck/receiver_bare_mut_param.lu`
+carries **no `warns:` directive at all**, so the warns ledger expects this
+machine warning-clean, and this machine implements W1002 while the body's only
+write is the misspelled bare `xs.pop()`. It fired, and it is s154's #325 seen
+from this side rather than a ledger to edit.
+
+wolfc's half of #325 is a stand-down: a mode error on a use of a parameter
+retires the W1002 that contradicts it, because the lint offered to drop the
+`mut` — the opposite of the fix E0804 names, and a reader who took it landed
+on E1014. This machine has **no static mode error to stand the lint down
+against** (E0804 is `trap(exclusivity)` here, the dynamic counterpart), so the
+mirror is not available and the honest move is the other one: the lint was
+wrong *on its own terms*. The body writes `xs`; it misspelled the write, and
+the flat scan counted only the `ModedReceiver` spelling as evidence. A bare
+receiver call to `push` or `pop` — `eval::builtin::mutates_receiver`'s exact
+pair, read statically — is evidence now, and the control
+(`fn size(mut xs: List[int]) -> int { xs.len }`) still warns at `[8,11]` on
+both machines.
+
 ### The map mirror — is46, lupin 0.1.34, pin `c9237c1` (wolf-lang **v0.2.11**)
 
 Pin `662b14c` -> `c9237c1`, **the v0.2.11 tag**. The delta is five sprints
@@ -233,7 +401,7 @@ trait in the entry file dispatched. wolf-std carried "neither implementation
 EXECUTES trait dispatch" in six module headers since sc01; half of that was
 false on every machine and the other half was this one branch.
 
-### DIV-2026-022 — `wordcount.lu` — **OPEN, filed upstream as wolf-lang#341**
+### DIV-2026-022 — `wordcount.lu` — **RESOLVED upstream at pin `a7f517e` (0.1.35): wolf-lang#341 re-pinned the header at s156 `0bb7024`; the file matches at first sight**
 
 The seed program's line 23, `if !w.is_empty() { tally[w] += 1 } // absent
 key defaults to zero value`, is the sentence s152 retired: `m[k]` is
@@ -257,7 +425,18 @@ w)` — keep the seed program's meaning and its `exit(2)`. Waived in
 explorer's seed pair, the CLI's exit(2) probe stands on its own program,
 and the row returns the day the file is respelled.
 
-### DIV-2026-023 — `grammar/structlit_paren.lu` — **OPEN, filed upstream as wolf-lang#341**
+**Resolved at `a7f517e` (is47).** s156's `0bb7024` took the first of the
+two spellings: the seed program reads `if !w.is_empty() { tally[w] =
+(tally[w] else 0) + 1 } // absent key is the `none` row` and its header
+names `[mem.map.absent]` in `conforms:`. Measured with the **0.1.34**
+binary at the new pin, before a line of is47 was edited: `exit(2)`, a
+match. The waiver leaves `differ::FILED_DIVERGENCES` and the row returns
+to `RUN_LEDGER` and to the explorer's seed set — three files there now,
+not two. The CLI's exit(2) probe keeps the two-line program is46 gave it:
+a contract about process exit codes should not be re-measured every time
+the corpus moves.
+
+### DIV-2026-023 — `grammar/structlit_paren.lu` — **RESOLVED upstream at pin `a7f517e` (0.1.35): wolf-lang#341 re-pinned the header at s156 `2600f34`; the file matches at first sight**
 
 `if p == (Point { x: 0 }) { 0 } else { 1 }` under `check: pass`, `phase:
 resolve`. s155: `==` on a user type IS `Eq.eq`, nothing is synthesized
@@ -276,6 +455,16 @@ suggests) and needs no equality: `let q = (Point { x: 0 })` then `q.x`
 keeps its point under both clauses. Waived; the file moves to the annex
 pair's REFUSED half in `tests/conformance.rs` (it still parses, which is
 the annex's point) and leaves `RUN_LEDGER`.
+
+**Resolved at `a7f517e` (is47).** s156's `2600f34` took exactly that
+reading — `let q = (Point { x: 0 })` then `p.x + q.x` — and moved the
+header with it, `check: pass`/`phase: resolve` to `check: run(exit=0)`/
+`phase: run`, because judging at `resolve` is what let the staleness stay
+invisible on the compiler's side while this machine's walk reported it.
+Measured with the **0.1.34** binary at the new pin, before any edit:
+`exit(0)`, a match. The waiver leaves `differ::FILED_DIVERGENCES` and the
+row returns to `RUN_LEDGER`; the annex pair is unchanged either way, which
+is the point of judging it at `parse`.
 
 ### The mirror takes `then` — is45, lupin 0.1.33, pin `662b14c` (wolf-lang **v0.2.10**)
 
