@@ -5875,10 +5875,80 @@ impl RowWalk<'_> {
                             return Some(diag);
                         }
                     }
+                    if let Some(diag) = self.spec_on_a_union(interp) {
+                        return Some(diag);
+                    }
                 }
             }
         }
         None
+    }
+
+    /// `[type.interp.union]`, the half s156 added (wolf-lang#323): **a format
+    /// spec does not apply to a `!T` hole** — `{m[k]:>5}` is E0413 at the
+    /// spec, because the value is two values and a spec describes one. Fill
+    /// and width would pad a number on one path and a tag's name on the
+    /// other, and the type-directed fields (`x`, `.3`, `+`) have no payload
+    /// to be checked against until the row is handled.
+    ///
+    /// The BARE hole is untouched — it prints whichever half is there, which
+    /// is this clause's own rule and the only unhandled read the language
+    /// has. So is every HANDLED hole: `{m[k] else 0:>5}` and `{x?:>5}` are
+    /// an `ElseDefault` and a `Try`, neither of which this judgement names.
+    ///
+    /// It lives on the row walk because the clause puts it there —
+    /// "`[type.row.operand]`'s posture, applied to specs" — and because this
+    /// is the walk that knows what a `!T` is: a declared row-typed name or a
+    /// call to a fallible item ([`RowWalk::row_of`]), plus a `Map` subscript,
+    /// which `[mem.map.absent]` makes `V ! {none}` and which is the clause's
+    /// own example. Anything this walk cannot name a row for is left alone,
+    /// which is the sema boundary and not a concession: s156's note says both
+    /// compiler tiers refused this shape at RUN time before sema learned it,
+    /// so the permissive direction here is the one that was already lived in.
+    ///
+    /// The span is the compiler's — the colon through the spec's last byte,
+    /// `}` excluded, `[782,785]` and `[795,798]` on
+    /// `typecheck/interp_spec_on_union.lu` measured with the v0.2.12 release
+    /// archive, which is the same convention E0412 and the class-mismatch
+    /// E0413 already use one walk over.
+    fn spec_on_a_union(&self, interp: &crate::ast::Interpolation) -> Option<Diag> {
+        let row = self.hole_row(&interp.expr)?;
+        let span = Span::new(
+            interp.expr.span.end,
+            interp.span.end.saturating_sub(1).max(interp.expr.span.end),
+        );
+        Some(Diag::new(
+            "E0413",
+            span,
+            "type.interp.union",
+            format!(
+                "a format spec does not apply to a `!T` hole: this one is `{row}`, which is \
+                 two values, and a spec describes one (`[type.interp.union]`) — the bare \
+                 `{{…}}` prints whichever half is there, and a spec needs the row handled \
+                 first (`… else 0`, `…?`, or a `match`)"
+            ),
+        ))
+    }
+
+    /// The row an interpolation hole carries, spelled, when this walk can
+    /// name one.
+    fn hole_row(&self, expr: &Expr) -> Option<String> {
+        if let Some(row) = self.row_of(expr) {
+            return Some(row);
+        }
+        // `m[k]` on a name this walk knows is a `Map` — `[mem.map.absent]`'s
+        // own shape, and the clause's own example.
+        let ExprKind::BracketApply { base, args, .. } = &*expr.kind else {
+            return None;
+        };
+        if args.len() != 1 {
+            return None;
+        }
+        let ExprKind::Path(path) = &*base.kind else {
+            return None;
+        };
+        (path.is_single() && self.nominal_of(&path.segments[0].name) == Some("Map"))
+            .then(|| "V ! {none}".to_owned())
     }
 
     /// The refusal itself: E0409 on either side, for arithmetic, the
@@ -7163,6 +7233,53 @@ mod tests {
             "{diag:?}"
         );
         assert_eq!(&source[diag.span.start..diag.span.end], "n");
+    }
+
+    /// `[type.interp.union]`'s spec half (s156, wolf-lang#323): the value is
+    /// two values and a spec describes one. The bare hole is untouched — it
+    /// prints whichever half is there, which is this clause's own rule.
+    #[test]
+    fn a_format_spec_on_a_row_hole_is_e0413_at_the_spec() {
+        for (source, spec) in [
+            (
+                "fn main() -> !int {\n    let n: !int = 3\n    print(\"[{n:>5}]\")\n    0\n}\n",
+                ":>5",
+            ),
+            (
+                "fn main() -> !int {\n    var m = Map[str, int]()\n    m[\"a\"] = 7\n    print(\"[{m[\"a\"]:>5}]\")\n    0\n}\n",
+                ":>5",
+            ),
+            (
+                "fn maybe(n: int) -> int ! {none} {\n    if n > 0 { n } else { none }\n}\n\
+                 fn main() -> !int {\n    print(\"[{maybe(3):.3}]\")\n    0\n}\n",
+                ":.3",
+            ),
+        ] {
+            let diag = resolve(source).unwrap_or_else(|| panic!("rejected: {source}"));
+            assert_eq!(diag.code, "E0413", "{source}");
+            assert_eq!(diag.anchor, "type.interp.union", "{source}");
+            assert_eq!(&source[diag.span.start..diag.span.end], spec, "{source}");
+        }
+    }
+
+    #[test]
+    fn a_bare_row_hole_and_a_handled_one_take_their_spec_cleanly() {
+        // Three controls, one per sentence of the clause. The BARE hole is
+        // the one unhandled read the language has and this rule must not
+        // touch it; `else` and `?` HANDLE the row, so what is left is one
+        // value and a spec describes it. `grammar/interp_fmtcolon.lu` is the
+        // corpus's own statement of the middle one at this pin.
+        for clean in [
+            "fn main() -> !int {\n    let n: !int = 3\n    print(\"[{n}]\")\n    0\n}\n",
+            "fn main() -> !int {\n    var m = Map[str, int]()\n    m[\"a\"] = 7\n    print(\"[{m[\"a\"] else 0:>5}]\")\n    0\n}\n",
+            "fn f() -> !int {\n    let n: !int = 3\n    print(\"[{n?:>5}]\")\n    0\n}\n\
+             fn main() -> !int {\n    0\n}\n",
+            // A plain `int` still takes its spec, which is what keeps this
+            // from being "no spec anywhere".
+            "fn main() -> !int {\n    let n = 3\n    print(\"[{n:>5}]\")\n    0\n}\n",
+        ] {
+            assert_eq!(resolve(clean), None, "{clean}");
+        }
     }
 
     #[test]
