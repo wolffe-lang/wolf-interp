@@ -132,6 +132,26 @@ conversion, and its numeric arms are closed and total:
   explicit unsafe-tier operation, never this `as` cast's silent default —
   the same posture as saturation on the float row.
 
+## §3b The float remainder `[type.float.rem]`
+
+- `[type.float.rem]` **`%` on a float is C's `fmod`** — the remainder
+  of the truncated division: `7.5 % 3.0` is `1.5`, `-7.5 % 3.0` is
+  `-1.5` (the sign is the **dividend's**, not the divisor's), `x % 0.0`
+  and `inf % y` are NaN, and nothing traps — floats are IEEE and X3's
+  trap law is integer law (`[type.numlit.cast.trunc]`'s trap is a
+  cast's, not an operator's). Not the IEEE `remainder` function, which
+  rounds the quotient to nearest-even and would make `7.5 % 3.0` be
+  `-1.5`; `fmod` is what every neighbour language's `%` means at a
+  float, what LLVM's `frem` is defined as, and what this compiler's own
+  comptime folder has answered since it could fold a float at all.
+  Ruled at s156 (wolf-lang#327), where `%` was the one arithmetic
+  operator the checker admitted, the constant folder folded and the
+  checked machine evaluated while the native rung refused the program —
+  so `[type.trait.op]`'s `impl Rem for f64 { fn rem(self, other: Self)
+  -> Self { self % other } }` could not be written, and `Num` at `f64`
+  had a hole in it. Witness: `corpus/typecheck/float_rem.lu`, both
+  tiers.
+
 ## §4 The `char` type `[type.char]`
 
 - `[type.char]` **`char` is a Unicode scalar value** (D58, s121): its
@@ -301,7 +321,21 @@ values that have none.)
   not** — the value's two halves are two values, and the hole prints
   whichever is there. `{popped}` after `let popped = xs.pop()` reads
   `3` or `none`. This is a reading rule, not a handling rule: `?` and
-  `else` still decide what the program does with the row.
+  `else` still decide what the program does with the row. **A format
+  spec does not apply to a `!T` hole**: `{m[k]:>5}` is **E0413** at the
+  spec (s156, wolf-lang#323), because the value is two values and a
+  spec describes one — fill and width would be padding a number on one
+  path and a tag's name on the other, and the type-directed fields
+  (`x`, `.3`, `+`) have no payload to be checked against until the row
+  is handled. `[type.row.operand]`'s posture, applied to specs: handle
+  the row, then format what is left (`{m[k] else 0:>5}`, `{x?:>5}`, a
+  `match`). Both machines refused this shape already — the checked
+  tier at its `fmt_hole`, the WIR emitter at its `emit_value` — while
+  sema let it through, so what is a typing question arrived as
+  `unsupported — a format spec on a non-primitive value` at run time on
+  both tiers, reading as a missing feature. The bare hole is
+  unaffected; it is this clause's own rule. Witness:
+  `corpus/grammar/interp_fmtcolon.lu`.
 - `[type.interp.reason]` An exit reason (`[conc.proc.exit]`) renders
   as its class name with its payload in parentheses: **`normal(v)`**
   with the proc's `int` result (the value the body returned — a body
@@ -399,12 +433,22 @@ expected. This section is that clause; `send`'s row follows it in
   context is consumed by no one: the block's value is `()` whatever the
   tail's type.
 
-- `[type.unit.discard]` **A `!()` tail in a unit context is a discard,
-  warned (W0601), never a mismatch.** The value's row is lost, and the
-  compiler says so at the tail with the diagnostic a non-trailing `!T`
-  statement has drawn since s67. Only `!()` qualifies: a `!int` tail
-  where `()` is expected is a mismatch on the `int`, exactly as a plain
-  `int` tail is. The two readings, costed before choosing:
+- `[type.unit.discard]` **A `!T` tail in a unit context is a discard,
+  warned (W0601), never a mismatch.** The value's row is lost — and,
+  when `T` is not `()`, the value with it — and the compiler says so at
+  the tail with the diagnostic a non-trailing `!T` statement has drawn
+  since s67. s146 admitted `!()` only, on the reading that a `!int`
+  tail where `()` is expected is a mismatch on the `int` exactly as a
+  plain `int` tail is; s154 retired that half (wolf-lang#326). It was
+  the same rule about position the clause had just refused, one level
+  in: `(mut xs).pop()` as a STATEMENT in a unit body is W0601, and the
+  identical line at the body's tail was E0401 "must return `()`" —
+  a return-type diagnosis of a discard, whose fix-it sent the reader
+  to manufacture a value nobody uses. The plain `int` tail keeps
+  E0401; what moves is the row, which is the thing being discarded.
+  W0601 names `let _ = …` at a value-carrying tail — the spelling that
+  makes the discard visible — beside `?` and `else`. The two readings,
+  costed before choosing:
 
   | | (i) handled — a `!()` tail is a mismatch | (ii) discarded — W0601 |
   |---|---|---|
@@ -462,7 +506,7 @@ is about it.)
   tail**, naming the declaration as the origin — never a `()` printed
   and never an exit status a runtime invents (wolf-interp#69's shape
   one level up). The omitted return type is `()`, and the one place a
-  fallible tail is not a mismatch is the unit context: a `!()` tail
+  fallible tail is not a mismatch is the unit context: a `!T` tail
   where `()` is expected is a warned discard, `[type.unit.discard]`.
   Witnesses: `typecheck/tail_declared_str.lu`,
   `typecheck/tail_declared_union.lu`.
@@ -641,11 +685,21 @@ substrate.)
   on a type parameter, the bound must name a trait called `Add` (etc.)
   — a bare `T` is **E0501** at the definition with the note "add `T:
   Add` to the bound" and a machine edit that inserts it; on a user
-  type, the trait called `Add` in scope at the operator — nothing by
-  that name in scope is **E0301** naming the trait and where it comes
-  from (std.ops and std.cmp declare the eight), and a type without an
-  impl is **E0502** naming the trait and the operator, discharged with
-  the body's other obligations. `!`, `&&`, `||` and the bitwise
+  type, the trait called `Add` **reachable** at the operator — the name
+  in scope if one is bound, else the `Add` declared by the operand
+  type's own module (coherence already implies it: `Ordering`'s
+  operators are `std.cmp`'s), else the `Add` declared by a module this
+  file imports, which is what "bring `Add` into scope" means to a
+  reader who wrote `use std.ops` (s156, wolf-lang#336 — the lookup was
+  bare-name only, and since `use std.cmp` binds `cmp` and nothing else,
+  importing a library's type was the very thing that made its operators
+  undispatchable: every user type any library publishes had operators
+  that worked inside its own module and nowhere else). Two imported
+  modules declaring one operator trait is no answer and keeps the
+  E0301. Nothing by that name reachable is **E0301** naming the trait
+  and the three places looked in, and a type without an impl is
+  **E0502** naming the trait and the operator, discharged with the
+  body's other obligations. `!`, `&&`, `||` and the bitwise
   family have no trait this edition: on a type parameter they stay
   E0501 saying so. **Homogeneous this edition**: the method's
   receiver and other operand are `Self` and the result is `Self`
@@ -671,7 +725,8 @@ substrate.)
   wolf-lang#176's row), `op_ord_struct.lu` (the ordering family and
   `<=>`), all four on both tiers; `golden_arith.lu` and
   `golden_eq.lu` (the bare `T`), `op_missing_impl.lu` (E0502),
-  `op_hetero_add.lu` (E0514), `op_eq_no_trait.lu` (E0301). Cost
+  `op_hetero_add.lu` (E0514), `op_eq_no_trait.lu` (E0301),
+  `op_eq_imported.lu`'s pair (the reachable trait, s156). Cost
   stated: the interpreter's operator dispatch on a struct and its
   alias-form parse (wolf-interp, filed with the clause); std.ops's
   five traits, `Neg`, and the primitive impls (wolf-std sc44); the

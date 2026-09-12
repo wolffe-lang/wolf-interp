@@ -304,7 +304,8 @@ string is a header name, not wolf syntax. A prelude (spec 02-…, D31) makes
 ### 2.3 Functions `[gram.item.fn]`
 
 ```ebnf
-fn_item   ::= fn_qual* 'fn' IDENT generics? '(' params? ')' fn_ret? (block | TERM)
+fn_item   ::= fn_qual* 'fn' IDENT generics? '(' params? ')' fn_ret? fn_body?
+fn_body   ::= block | TERM   /* absent only before the enclosing '}' */
 fn_qual   ::= 'comptime' | 'extern' STRING | 'export'
 generics  ::= '[' generic_param (',' generic_param)* ','? ']'
 generic_param ::= IDENT (':' bound)? | IDENT ':' 'type'
@@ -323,8 +324,13 @@ ret_type  ::= type ('!' error_row)?   /* `-> !T` parses via type's '!' type */
 - Returns: `-> T` plain; `-> !T` error union with inferred private row;
   `-> T ! {Tag(Payload), io.Error}` explicit row (`[gram.type.row]`).
 - Generic params use `[]` — there is no `<>` anywhere in the language.
-- Bodyless form (TERM) under `extern`, or as a trait member
-  (a required method the impl must provide).
+- Bodyless form under `extern`, or as a trait member (a required
+  method the impl must provide). Its terminator is the TERM — the
+  newline of the multi-line spelling, or an explicit `;` — and it may
+  be omitted when the enclosing `}` follows immediately, so
+  `trait Add { fn add(self, other: Self) -> Self }` parses (s154,
+  wolf-lang#332). Nothing else may omit it: a body-less signature
+  followed by another declaration is still E0201.
 
 Examples: see `corpus/wordcount.lu` (`fn top[T](m: Map[T, int], n: int)`).
 
@@ -342,6 +348,18 @@ const_item ::= 'const' IDENT (':' type)? '=' expr TERM
 
 `let` immutable, `var` mutable, `const` comptime-evaluated. Item-level and
 statement-level share the grammar. `let (a, b) = pair` destructures.
+
+**A `let` binding's FIELDS are as immutable as the binding** (s154,
+wolf-lang#331): `let r = Row{…}` then `r.cents = 5` is E0410 at the
+field write, exactly as `r = …` is. `let` is a rule about the value,
+not about rebinding — E0410's note has always said "`let` names a
+value once", and the value includes its fields. Both machines ran the
+field write to completion until s154 (they agreed, so the differential
+could not see it), and a reader told the rule by chapter 3 could not
+predict it. Elements reached through an index are a different
+question, left where they were (`[mem.tier0]`'s exclusivity and
+freeze); write a field through a `var`, or build the value complete in
+the `let`.
 
 **Comma groups** (D63): one keyword may carry several *complete* binders
 — `var i = 0, c = 1`, `let a: int = 1, (x, y) = pair()` — each with its
@@ -977,7 +995,8 @@ are spec commits with corpus updates.
 Identifier everywhere except the noted position: `c` (`import c`,
 `unsafe c`), `rc` / `pool` (region strategies), `from` / `timeout`
 (select arms), `noalias` (after `assume`), `pkg` (in `pub(pkg)`), the v1 asm register class `reg` (target-specific classes arrive with c10),
-`self` (receiver), `in`/`out`/`inout`/`lateout`/register classes (asm
+`self` (receiver), `then` (after a complete `if` condition,
+`[gram.expr.if]`), `in`/`out`/`inout`/`lateout`/register classes (asm
 operands). Rationale: each appears only after a reserved keyword or inside
 a closed construct, so reserving them would steal good identifiers
 (`from`, `timeout`, `c`) for no parsing benefit.
@@ -1001,6 +1020,43 @@ no `goto`, no *required* semicolons (terminators are inserted;
   operators and after `.` (trailing style — required by
   `[gram.lex.newline]`); continuations indent one level.
 - `[gram.fmt.commas]` Trailing comma in every multiline list; none inline.
+- `[gram.fmt.break]` **A break is taken where it achieves the width,
+  and the outermost break that achieves it is the one taken.** Every
+  break decision is measured against the whole line the construct lands
+  on, not the construct alone (s156, wolf-lang#339): a parameter list
+  ending at column 93 does not "fit" when the ` -> List[byte] {` after
+  it runs the line to 103, and measuring it in isolation left the
+  return type as the only group still able to break. Three rules follow,
+  all normative. (1) A **type application is not a break point**:
+  `List[byte]` is two tokens and a reader reads it as one name, `] {`
+  at the head of a line reads as a block close, and every break that
+  can really fix such a line is above it — only a comment inside one
+  breaks it. (2) The **receiver-dot break is a last resort**: a member
+  chain breaks at its dots only when breaking the calls' argument lists
+  cannot bring the line inside the width, and then it breaks at every
+  dot at once, as `[gram.fmt.if]`'s chains do. (3) An **argument list
+  broken open indents one level past the line its callee name is on and
+  closes at that name's own column** — the statement's own column when
+  the dot did not break, one level in when it did. A break that cannot
+  achieve the width is not taken at all: a line pushed past 100 by a
+  token nothing may split keeps `[gram.fmt.indent]`'s licence and stays
+  one line rather than becoming two that are no narrower. The prior
+  first-fit measure is what let a 105-column signature and a
+  101-column call argument be fixed points `wolf fmt --check` accepted
+  (#339's three, #303's second half outside an `if` chain). Pinned in
+  `crates/wolf_fmt/tests/style.rs` under this anchor.
+- `[gram.fmt.paren]` **The parentheses around a defaulting `else`'s
+  fallback are kept when the fallback is a binary expression** — `x
+  else (0 - 1)` stays, where every other redundant paren drops by the
+  precedence table (s156, wolf-lang#340). `[gram.amb.else]` extends the
+  default over the whole term either way, so these parens change no
+  meaning, and that is exactly why they are the reader's and not the
+  parser's: W0307 stands down when the author has "parenthesized either
+  reading", and the formatter erased one of the two readings that
+  sentence names — the value-side grouping `(x else 0) - 1` survived
+  (its `-` is the outer node, so the parens never reach the fallback
+  position) and the fallback-side grouping did not. Pinned in
+  `crates/wolf_fmt/tests/style.rs` under this anchor.
 - `[gram.fmt.inline]` A block stays on one line (with `;` separators) only
   when it is a guard-clause-shaped body (≤2 statements, fits the width);
   otherwise the formatter breaks it multiline and strips the semicolons.
@@ -1034,7 +1090,18 @@ no `goto`, no *required* semicolons (terminators are inserted;
   direction, and a fixed point (the braced result is braced on every
   later pass). A bare chain breaks as one: its bare `else if`s go braced
   together; a braced `else if` inside a bare chain keeps its braces and
-  does not make the bare head break.
+  does not make the bare head break. **A braced chain breaks as one
+  too** (s154, wolf-lang#303): the inline decision belongs to the
+  chain, not to each arm, so one arm that cannot stay inline breaks
+  them all. Per-arm, the decision was taken against the remaining width
+  with no knowledge of the chain tail that follows on the same line,
+  which laid an inline first arm, an exploded second and an inline
+  third — one chain, two shapes — with a first line of 101 columns that
+  `wolf fmt --check` then accepted, since a second pass reproduced it:
+  an over-width fixed point nothing in the toolchain would ever object
+  to. A closure's expression body is separated from its parameter list
+  by one space whatever token it starts with (#314): `fn(c) (c + 1)`,
+  never `fn(c)(c + 1)`, which parses the same and reads as a call.
 
 ---
 
@@ -1072,6 +1139,13 @@ Each entry: the rule, and its paired files in `corpus/grammar/`.
   neither `if` nor `{` following is the defaulting operator on the
   `if`, as it always was. The newline rule holds for the bare form too:
   `if c then a` newline `else b` is the two-way `if`.
+  The defaulting `else` takes a COMPLETE expression on its right, so
+  `x else 0 + y` is `x else (0 + y)` — the default swallows the term,
+  and both readings type-check: W0318 marks it when the fallback's
+  leftmost term is a literal or a bare name and the term after the
+  operator is not a literal, naming `(x else 0) + y` (W0307 is the
+  same scar on a comparison). A two-literal fallback (`e else 0 - 1`,
+  the `-1` sentinel) folds to a constant and is left alone.
   Files: `else_default.lu`, `else_chain.lu`, `else_default_newline.lu`,
   `if_then_paren_default.lu`.
 - `[gram.amb.bang]` `!` prefix in expression position = not; `!` in type
@@ -1136,12 +1210,13 @@ rows, E07xx comptime, E08xx sema completion, E1xxx memory tiers
   (bare prefix-operator statement — the broken-continuation shape),
   W0307 (comparison binds to an `else` fallback), W0308 (`mut`
   argument inside an interpolation), W0309 (interpolation-shaped
-  braces in a raw literal).
+  braces in a raw literal), W0318 (arithmetic binds to an `else`
+  fallback whose leftmost term is a literal or a bare name).
 - **W04xx** — typing-adjacent warnings, mirroring E04xx. W0401
   (literal outside the cast target's range), W0402 (`0.0 - x` as
   negation — loses `-0.0`).
 - **W06xx** — error-row-adjacent warnings, mirroring E06xx. W0601
-  (fallible result discarded by an expression statement, or by a `!()`
+  (fallible result discarded by an expression statement, or by a `!T`
   tail in a unit context — `[type.unit.discard]`), W0602
   (anonymous row spelled inline on a `pub` signature — the s15 lean,
   recorded there as allowed-but-linted).
