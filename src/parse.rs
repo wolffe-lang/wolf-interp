@@ -2989,7 +2989,10 @@ impl<'a> Parser<'a> {
     /// this one position after a complete condition, so `if then { … }` with
     /// a bool named `then` reads the identifier as the condition, and
     /// `less.then(greater)` is a member the postfix parser consumed before
-    /// this position was reached.
+    /// this position was reached. §6.2 (`[gram.inv.ctx]`) names it since
+    /// s154 (wolf-lang#318), so it sits in [`lex::CONTEXTUAL`] with the other
+    /// eleven; `tests/spec_extract.rs` holds that list to §6.2's prose in
+    /// both directions.
     ///
     /// A bare branch is a brace-less [`Block`] holding its one expression as
     /// the tail (`Block::stmts` empty, the span the expression's), so every
@@ -4340,6 +4343,33 @@ mod tests {
         let d = rejects("fn detached() -> int\n");
         assert_eq!(d.code, diag::E_FN_NEEDS_BODY);
         parses("extern \"c\" fn detached() -> int\n");
+    }
+
+    /// `fn_body ::= block | TERM /* absent only before the enclosing '}' */`
+    /// — s154's amendment to §2.3 (wolf-lang#332), and BOTH of its halves.
+    ///
+    /// lupin 0.1.32 accepted `trait Add { fn add(self, other: Self) -> Self }`
+    /// on one line while wolfc answered E0201 with the caret on the trait's
+    /// `}`; the divergence closed from the other end — the grammar moved to
+    /// this machine's reading and the compiler followed. The half that did
+    /// NOT move is the one this test exists for: the TERM may be omitted only
+    /// when the enclosing `}` follows immediately, so a body-less signature
+    /// with another declaration after it on the same line is still E0201.
+    /// Nothing in this tree pinned that, so a permissive drift on the second
+    /// half would have looked exactly like the first half landing
+    /// (wolf-interp#100 §2; is46 measured the row matching wolfc at [28,30]).
+    #[test]
+    fn a_bodyless_trait_member_may_omit_its_term_only_before_the_closing_brace() {
+        parses("trait Add {\n    fn add(self, other: Self) -> Self\n}\n");
+        parses("trait Add { fn add(self, other: Self) -> Self }\n");
+        parses("trait Two { fn a(self) -> int; fn b(self) -> int }\n");
+
+        // E0201, the generic unexpected-token code, at the `fn` that should
+        // have been a TERM — the same code wolfc answers on its own reduction
+        // (is46 measured it at [28,30]), not E0204 "expected a function body".
+        let d = rejects("trait Two { fn a(self) -> int fn b(self) -> int }\n");
+        assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN, "{d:?}");
+        assert_eq!(d.anchor, "gram.item.fn");
     }
 
     #[test]

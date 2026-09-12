@@ -233,6 +233,56 @@ fn the_contextual_keyword_list_matches_the_spec_prose() {
         );
         assert!(!lex::is_keyword(contextual));
     }
+
+    // The OTHER direction, which nothing held until is47. Until s154 the
+    // asymmetry was invisible in the only place it mattered: §6.2 did not
+    // name `then`, `lex::CONTEXTUAL` did not carry it, and the loop above
+    // agreed with both — a word the clause names and this machine does not
+    // list is exactly the shape wolf-lang#318 / wolf-interp#100 spent two
+    // pins on, and it went unasserted. Adding `then` to the list without
+    // adding this loop would have left the same hole open for the next word.
+    //
+    // Two rules keep a §6.2-mentioned word OUT of the list, and both are
+    // facts about this machine rather than a backlog:
+    //
+    // * it is a RESERVED keyword (`[gram.inv.kw]`) — `lex::KEYWORDS` decides
+    //   the token kind, so the word can never reach the identifier rule a
+    //   contextual keyword is matched by. §6.2's paragraph cites several
+    //   while locating the real contextual words (`noalias` "after `assume`",
+    //   `then` "after a complete `if` condition") and names `in` among the
+    //   asm operand directions, where it is spelled like one. The extractor
+    //   reads inline code and cannot tell a word being defined from a word
+    //   locating it; `is_keyword` can.
+    // * `reg` — §6.2's "the v1 asm register class `reg`". No production tests
+    //   for it: an asm constraint is read with the ordinary identifier rule,
+    //   so the parser never matches it by spelling, and this list holds only
+    //   the words a production tests for.
+    //
+    // Anything else §6.2 names and this machine does not list is a drift,
+    // and the assertion below is the alarm.
+    for word in &mentioned {
+        let word = word.as_str();
+        if lex::is_keyword(word) || word == "reg" {
+            assert!(
+                !lex::CONTEXTUAL.contains(&word),
+                "`{word}` is exempt from the contextual list and yet appears in it"
+            );
+            continue;
+        }
+        assert!(
+            lex::CONTEXTUAL.contains(&word),
+            "§6.2 names `{word}` as contextual and `lex::CONTEXTUAL` does not carry it — \
+             either the word joins the list (and a production matches it by spelling) or \
+             the exemption rules above gain the one that keeps it out"
+        );
+    }
+
+    // `then` is the word this direction was built for: s154 amended §6.2
+    // (wolf-lang#318) and the pin that carries the sentence is the pin the
+    // list grows on. Both halves are asserted so neither can move alone.
+    assert!(mentioned.iter().any(|m| m == "then"));
+    assert!(lex::CONTEXTUAL.contains(&"then"));
+    assert_eq!(lex::CONTEXTUAL.len(), 12);
 }
 
 #[test]

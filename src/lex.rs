@@ -50,15 +50,18 @@ pub const KEYWORDS: [&str; 50] = [
 /// therefore absent from this list, which holds only the words a production
 /// tests for.
 ///
-/// `then` (`[gram.expr.if]`, wolf-lang s151) is contextual by the clause's
-/// own word — "contextual, not reserved" — and the parser matches it by
-/// spelling in the one position after a complete `if` condition
-/// (`parse::Parser::parse_if`). It is NOT in this list because §6.2
-/// (`[gram.inv.ctx]`) does not name it, and `tests/spec_extract.rs` holds
-/// this list to §6.2's prose both ways; the omission is filed upstream
-/// (is45). When §6.2 names it, it joins here and the test says so.
-pub const CONTEXTUAL: [&str; 11] = [
-    "c", "rc", "pool", "from", "timeout", "noalias", "pkg", "self", "out", "inout", "lateout",
+/// `then` (`[gram.expr.if]`, wolf-lang s151) was contextual by the clause's
+/// own word — "contextual, not reserved" — while §6.2 did not name it, so it
+/// sat outside this list from is45 with the omission filed upstream
+/// (wolf-lang#318, wolf-interp#100). s154 amended §6.2: it reads "`self`
+/// (receiver), `then` (after a complete `if` condition, `[gram.expr.if]`)"
+/// at this pin, and the word joins the list in the same change as the pin
+/// that carries the sentence. Nothing in the parser moves — `then` was always
+/// matched by spelling in the one position after a complete `if` condition
+/// (`parse::Parser::parse_if`), which is what "contextual" means.
+pub const CONTEXTUAL: [&str; 12] = [
+    "c", "rc", "pool", "from", "timeout", "noalias", "pkg", "self", "then", "out", "inout",
+    "lateout",
 ];
 
 /// Is this identifier a reserved keyword (`[gram.inv.kw]`)?
