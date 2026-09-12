@@ -1,5 +1,105 @@
 # Changelog
 
+## 0.1.35 — 2026-09-11
+
+THE REMAINDER (is47). Pin `c9237c1` -> `a7f517e` — **the v0.2.12 tag**. The
+delta is two sprints and a release lane: s154 (nine papercuts — E0409 on
+either operand side, W1002 standing down beside a mode error, a `!T` tail in
+a unit context as W0601, W0318 over a swallowed term, E0410 on a `let`
+binding's fields, the one-line body-less trait member, and **`[gram.inv.ctx]`
+naming `then`**), s156 (eleven — `fmt`'s break selection and fallback parens,
+`%` on a float as `fmod`, the checked tier's converting casts, an operator's
+trait being the one reachable, a container-index store lending, **E0413** on a
+format spec over a `!T` hole, `str.find` by needle length, and the two stale
+seed headers re-pinned) and r17. Ten corpus files join (536 -> 545 entries,
+34 -> 35 members, 570 -> 580 files) and four anchors (471 -> 475; key sets
+diffed BOTH ways — four arrive, **nothing drops**, no owner changes):
+`[gram.fmt.break]`, `[gram.fmt.paren]`, `[mem.region.edge.elem]`,
+`[type.float.rem]`. No new namespace — all four sit under `gram`/`mem`/`type`
+and spec/05 is untouched in the range, so `anchor::REGISTERED_NAMESPACES`
+holds at thirteen.
+
+**`then` joins the contextual table, and the table is held to §6.2 BOTH ways
+(wolf-interp#100).** §6.2 now reads "… `self` (receiver), **`then` (after a
+complete `if` condition, `[gram.expr.if]`)**, …", so `lex::CONTEXTUAL` goes to
+twelve in the same change as the pin that carries the sentence. Nothing in the
+parser moves: `then` was matched by spelling in the one position after a
+complete condition from is45, which is what "contextual" means. The test that
+was supposed to make this impossible to get wrong only ran ONE way — over
+`lex::CONTEXTUAL`, asserting §6.2 names each entry — so a word the CLAUSE
+names and this machine does not list, `then`'s exact shape for two pins,
+asserted nothing. The reverse loop lands with the two rules that keep a
+mentioned word out: a reserved keyword (`assume`, `if`, `in` — `lex::KEYWORDS`
+decides the token kind), or `reg`, which no production tests for. #100's other
+half is a guard nothing in this tree pinned either: a body-less signature
+followed by another declaration on one line is still E0201 at the `fn`.
+
+**`free_names` collects a binder it never collected (wolf-interp#45).** A
+`match` fell to `walk_child_exprs`, so an arm's OWN binding read as a FREE
+name and a closure that captured nothing could draw W1102 on a later write to
+the outer name. The `for` element and the `else` handler's binder had the
+identical hole; all three land as one rule. The #44 tag-arm judgement is
+SHARED rather than restated — `Walk::arm_is_tag_pattern` becomes
+`lint::pattern_is_tag`, which both walks call — and the `else` binder is what
+makes it answerable here, carrying an empty declared row exactly as `Walk`
+records one when it cannot see a signature. `eval` calls `free_names` twice
+and is fixed by the same change: the nested-`fn` capture probe REFUSED a
+program outright for a "capture" that was a match arm's binding. Five
+witnesses, since no corpus file exercises any of the three shapes, and two of
+them are controls in the other direction.
+
+**The declared-scalar check learns `char` (wolf-interp#61).** `[type.char]`
+and `[type.byte]` state one rule in two documents — a width-bearing scalar
+"adopts no numeric literal, in every position" — and is37 paid the `byte` half
+as a `byte`-only lattice, deliberately, naming `char`'s false-positive surface
+as the reason not to smuggle it in. `ByteTy` becomes `ScalarTy` with `Char`
+and `ListChar`; `'a'` is a `char` the way `65` is an `int`; and the rule reads
+`is_width_bearing` rather than naming one type, so is37's two guards are
+generalised rather than joined by a third sibling. Eight programs, each
+measured against `wolf 0.2.12 conform-run --json --checked`, and lupin answers
+every one with the SAME CODE AT THE SAME SPAN: a `char` parameter handed `65`
+`[77,79]`, a `-> char` returning `65` `[21,23]`, `var c = 'a'; c = 65`
+`[44,46]` — the one that produced a WRONG ANSWER rather than merely accepting
+a rejected program, silently retyping a live variable — plus a `char` in an
+`int` slot, the two width-bearing scalars against each other in both
+directions, a `List[char]` element and a mixed comparison. Four rows of
+`char_is_not_an_integer` move from `unsupported` to `fail(E0401)`; the two `+`
+rows stay dynamic, because `[type.byte.op]`'s widening rule is about `byte`
+and this pass will not invent one `[type.char]` does not state. The
+false-positive surface, measured over the whole pinned corpus: **zero**.
+
+**Two refusals name the way forward (wolf-lang#158, B28).** `when` with one
+operand said "call the method on the sync type" and `Mutex` has no such
+method; it states the rule now, as wolfc's own message does. `for c in "abc"`
+said "`for` cannot iterate str" and named no way forward; it names `chars()`,
+`words()` and `lines()` now, and the test runs all three.
+
+**B28's three row classes mirrored** as wolf-interp#103 (four programs the
+compiler refuses statically and this machine runs — if-without-else as a
+value, call-site unification, the element binding in a loop, an omitted
+result), #104 (the rendering rows) and #105 (the observability surface, B29
+folded in). Two rows of #153 HEALED and are recorded rather than filed: the
+captured-`var` write now answers E1101/W1101/W1102 byte-identically to wolf
+0.2.12, and the element binding outside a loop runs on both machines. #158's
+byte-offset row healed too — `line:col` has arrived, the excerpt has not.
+
+**Two divergences retire on the pin.** wolf-lang#341 re-pinned both seed
+headers: `wordcount.lu` teaches `tally[w] = (tally[w] else 0) + 1` and
+`grammar/structlit_paren.lu` binds its parenthesized literal instead of
+comparing it. DIV-2026-022 and DIV-2026-023 both match at first sight and
+leave `differ::FILED_DIVERGENCES`.
+
+Census 536 -> 545 entries, 404 -> 412 reach run, 413 -> **422** match; 20 ->
+21 dynamic counterparts, 38 conservatism, 62 -> 63 out of scope. Mismatches
+3 -> **1**: DIV-2026-019 alone. The sprint's own three issues are
+corpus-neutral by construction — no corpus file exercises a match-arm capture,
+a declared-`char` boundary or either refusal message — so every number above
+is the pin's, measured before a line was edited and unchanged after.
+
+**Pairing:** this release declares **v0.2.12**; the compiler's PAIRING at
+`a7f517e` names lupin **0.1.34**, which r17 closed for the previous release —
+the next release lane closes this one from the other side.
+
 ## 0.1.34 — 2026-09-11
 
 THE MAP MIRROR (is46). Pin `662b14c` -> `c9237c1` — **the v0.2.11 tag**. The
