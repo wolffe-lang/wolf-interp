@@ -101,9 +101,88 @@ pub(crate) type FsResult<T> = Result<T, FsErr>;
 #[derive(Default)]
 pub(crate) struct FsTable {
     slots: Vec<Option<File>>,
+    /// The private working directory an OBSERVED program's paths resolve
+    /// against. See [`FsTable::observation_root`]. `None` until first use,
+    /// and never used at all by a live `lupin run`.
+    root: Option<PathBuf>,
+}
+
+/// Removes the private root when the observation ends. Best effort: a
+/// directory this machine could not clean is a stale temp directory, never a
+/// failed run.
+impl Drop for FsTable {
+    fn drop(&mut self) {
+        if let Some(root) = self.root.take() {
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
 }
 
 impl FsTable {
+    /// The working directory an OBSERVED program's relative paths resolve
+    /// against: a private, empty project root, made once per observation.
+    ///
+    /// # Why an observed program does not share the process's cwd
+    ///
+    /// This machine runs many programs at once and by design: several test
+    /// harnesses walk the whole corpus, `cargo test` runs test binaries in
+    /// parallel, and `export::export` runs a full walk inside any of them.
+    /// Once programs write REAL files, a shared cwd makes them interfere —
+    /// measured, before this existed: `fs/fstat.lu` read `size=0` off a file
+    /// another thread had just truncated, two concurrent exports appended to
+    /// one `log.txt` twice (`log=one|one|twotwo size=14`), and a bundle's
+    /// sha256 stopped being reproducible.
+    ///
+    /// Ordering the runs was tried first and is the wrong answer: one
+    /// advisory lock per program serialises correctly, but
+    /// `memory/byte_producers_ledger.lu` takes **74 seconds** in a debug
+    /// build, and serialising it across every walker would have added
+    /// something like twenty minutes to a CI run that is already three hours.
+    /// A private directory removes the contention instead of scheduling it —
+    /// no waiting, no lock files, and the oracle is reproducible BY
+    /// CONSTRUCTION rather than by everyone remembering to take a lock.
+    ///
+    /// # Why it has a `target/`
+    ///
+    /// Every fs witness writes under `target/`, and most write there without
+    /// creating it (`corpus/fs/roundtrip.lu`'s
+    /// `fs_write_text("target/s38-fs-roundtrip.tmp", …)`), because both lanes
+    /// run from a project root where `target/` is the build directory. So the
+    /// private root is given the one directory that makes it a project root.
+    /// The files are real, the syscalls are real and the rows are the host's;
+    /// only the DIRECTORY they happen in is this embedding's choice, which is
+    /// the same choice a shell makes by `cd`-ing somewhere before running a
+    /// program.
+    ///
+    /// A live `lupin run` never comes here: a user's program writes in the
+    /// user's own directory, exactly as `wolf run` does.
+    fn observation_root(&mut self) -> Result<&Path, Row> {
+        if self.root.is_none() {
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let root = std::env::temp_dir()
+                .join("wolf-interp-obs")
+                .join(format!("{}-{serial}", std::process::id()));
+            // A serial never repeats within a process and the pid separates
+            // processes, so this directory is this observation's alone. It is
+            // removed rather than reused if a previous run of this pid died
+            // before its `Drop`.
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(root.join("target")).map_err(|_| "io")?;
+            self.root = Some(root);
+        }
+        Ok(self.root.as_deref().expect("just set"))
+    }
+
+    /// Resolve one contained relative path against the observation root, or
+    /// hand it back unchanged for a live run.
+    pub(crate) fn resolve(&mut self, relative: &Path, live: bool) -> Result<PathBuf, Row> {
+        if live {
+            return Ok(relative.to_path_buf());
+        }
+        Ok(self.observation_root()?.join(relative))
+    }
+
     /// Mint a handle. 1-based, so `0` and every negative are `io` for free.
     fn mint(&mut self, file: File) -> i128 {
         self.slots.push(Some(file));
@@ -711,9 +790,32 @@ impl Machine {
         self.files()
     }
 
-    /// Containment, as a method so every arm reads the same.
+    /// The directory this machine's relative paths resolve against — the
+    /// answer `os_cwd` gives, so the two never disagree.
+    ///
+    /// # Errors
+    ///
+    /// `Err(())` when neither a private root nor the process cwd can be had;
+    /// the caller turns that into `os_cwd`'s `io` row.
+    pub(crate) fn fs_working_dir(&self) -> Result<PathBuf, ()> {
+        if self.is_live() {
+            return std::env::current_dir().map_err(|_| ());
+        }
+        self.files().resolve(Path::new(""), false).map_err(|_| ())
+    }
+
+    /// Containment AND resolution, as one method so every arm reads the same:
+    /// the shape is checked, then resolved against this observation's private
+    /// working directory ([`FsTable::observation_root`]) — or left alone for
+    /// a live `lupin run`, which uses the user's own cwd.
+    ///
+    /// The two halves belong together: containment is what makes the root a
+    /// real jail rather than a prefix, since a path that could climb out
+    /// would escape it on the first `..`.
     fn fs_contained(&self, path: &str, name: &str) -> FsResult<PathBuf> {
-        contained(path, name)
+        let relative = contained(path, name)?;
+        let live = self.is_live();
+        self.files().resolve(&relative, live).map_err(FsErr::Row)
     }
 
     /// A row becomes an error VALUE with a note; a by-name refusal becomes

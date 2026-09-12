@@ -362,9 +362,24 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             machine.env_write(name, value);
             Ok(Value::Unit)
         }
-        // The current directory is process state like env, not the fs tier:
-        // no file is opened or observed. The corpus asserts predicates over
-        // it, never paths (host independence).
+        // The current directory is process state like env, no file being
+        // opened or observed. The corpus asserts predicates over it, never
+        // paths (host independence, `corpus/os/args_cwd.lu`).
+        //
+        // is48: it answers the SAME directory the fs tier resolves against,
+        // so a program's world is coherent — an observed run sees its private
+        // project root, a live `lupin run` sees the user's own cwd. Reporting
+        // the process cwd while `fs_write_text("a.txt")` wrote somewhere else
+        // would be a split no program should have to know about.
+        #[cfg(not(target_family = "wasm"))]
+        "os_cwd" => match machine.fs_working_dir() {
+            Ok(dir) => Ok(Value::Str(dir.to_string_lossy().into_owned().into())),
+            Err(()) => {
+                machine.note(Rule::ErrUnion, span, "`os_cwd` yields the `io` row");
+                Ok(error_value("os_cwd", "io"))
+            }
+        },
+        #[cfg(target_family = "wasm")]
         "os_cwd" => match std::env::current_dir() {
             Ok(dir) => Ok(Value::Str(dir.to_string_lossy().into_owned().into())),
             Err(_) => {

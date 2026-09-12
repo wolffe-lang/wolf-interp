@@ -729,6 +729,17 @@ impl Machine {
         self.shared.files.lock().expect("files lock")
     }
 
+    /// Whether this machine is a LIVE run (`lupin run`'s front door, is12)
+    /// rather than an embedded observation.
+    ///
+    /// The fs tier reads it to decide where a program's relative paths land:
+    /// a live run writes in the user's own working directory, and an observed
+    /// one gets a private project root so that the many programs this crate
+    /// runs at once cannot interfere (`eval::fs::FsTable::observation_root`).
+    pub(crate) fn is_live(&self) -> bool {
+        self.shared.live_stdout
+    }
+
     /// Stack the tree-walk runs on.
     ///
     /// The same argument the parser makes for [`crate::parse::PARSE_STACK`],

@@ -259,89 +259,6 @@ pub fn observe_buffer(
 }
 
 #[allow(clippy::too_many_arguments)]
-/// One advisory lock per PROGRAM, for observational runs of programs that
-/// touch the fs tier.
-///
-/// The fs tier landed at is48, and with it corpus programs that write REAL
-/// files at paths of their own choosing (`target/s38-fs-roundtrip.tmp`). Those
-/// witnesses are idempotent BY CONSTRUCTION, which makes a *sequential*
-/// re-run safe — and sequential is what the compiler's conform pass does, one
-/// lane after the other, "twice per conform pass against one real directory"
-/// in `corpus/fs/bytes_dirs.lu`'s own words. Nothing in the corpus, and
-/// nothing in the spec, contemplates two runs of one program at once.
-///
-/// This crate does exactly that, in several places at once: `cargo test` runs
-/// test binaries in parallel, several harnesses walk the whole corpus, and
-/// `export::export` runs its own full walk inside any of them. The symptom
-/// was `fs/fstat.lu` reading `size=0` off a file another thread had just
-/// truncated, and a bundle whose sha256 changed between two exports of the
-/// same corpus. That is a harness artifact rather than a language fact, so it
-/// is answered by ORDERING the runs and never by weakening the tier or the
-/// witness — the observable behaviour of a program is untouched.
-///
-/// Three narrowings keep this from becoming a tax on everything:
-///
-/// - **Observational runs only.** `live` is `lupin run`'s own front door
-///   (is12), and a user's single run contends with nobody; it takes no lock
-///   and writes no lock file.
-/// - **Programs that mention `fs_` only.** A cheap scan of the source, so the
-///   ~9 corpus programs that touch the tier pay for it and the other 536 do
-///   not.
-/// - **Bounded.** A lock that cannot be taken within the deadline is
-///   abandoned and the run proceeds. Ordering is a test-quality property, not
-///   a correctness invariant, so a pathological case degrades to today's
-///   behaviour instead of hanging — which also means a nested observation
-///   (an embedded run that spawns a counterparty over the same file) can
-///   never deadlock against itself.
-///
-/// The key is the working directory and the program's SOURCE, not its path.
-/// That is the pairing that actually contends: a program's paths are written
-/// in its own text (`target/s38-fs-roundtrip.tmp`) and resolved against the
-/// process's cwd, so two runs collide exactly when both agree. Keying on the
-/// path would miss the worst case outright — `export::export` observes each
-/// program from a COPY inside its own bundle directory, so two exports of one
-/// corpus have different paths for the same program, and they appended to one
-/// `log.txt` twice (`log=one|one|twotwo size=14`, measured). Keying on the cwd
-/// as well keeps runs in unrelated directories out of each other's way.
-fn fs_program_lock(file: Option<&Path>, source: &[u8], live: bool) -> Option<std::fs::File> {
-    if live {
-        return None;
-    }
-    // A buffer with no path is stdin's (`lupin run -`), which contends with
-    // nobody in the harnesses this orders.
-    file?;
-    if !source.windows(3).any(|window| window == b"fs_") {
-        return None;
-    }
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let mut identity = crate::slash_path(&cwd).into_bytes();
-    identity.push(0);
-    identity.extend_from_slice(source);
-    let key = crate::sha256::hex(&identity);
-    let dir = std::env::temp_dir().join("wolf-interp-fs-locks");
-    std::fs::create_dir_all(&dir).ok()?;
-    let handle = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(dir.join(format!("{key}.lock")))
-        .ok()?;
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-    while std::time::Instant::now() < deadline {
-        match handle.try_lock() {
-            Ok(()) => return Some(handle),
-            // Held by someone else: wait and ask again until the deadline.
-            Err(std::fs::TryLockError::WouldBlock) => {
-                std::thread::sleep(std::time::Duration::from_millis(20));
-            }
-            // A host that cannot lock at all (some network filesystems):
-            // proceed unordered rather than fail an observation over it.
-            Err(std::fs::TryLockError::Error(_)) => return None,
-        }
-    }
-    None
-}
-
 fn observe_with(
     file: Option<&Path>,
     source: &[u8],
@@ -354,10 +271,6 @@ fn observe_with(
     if requested == Some(Phase::None) {
         return Observation::clean(Phase::None, Verdict::Pass);
     }
-
-    // Held for the whole observation: see [`fs_program_lock`]. `None` for
-    // every program that does not touch the fs tier, and for `lupin run`.
-    let _fs_lock = fs_program_lock(file, source, live);
 
     // -- lex ---------------------------------------------------------------
     let lexed = lex::lex_bytes(source);
