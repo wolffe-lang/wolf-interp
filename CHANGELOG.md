@@ -60,27 +60,32 @@ does. No corpus file reads twice, so `eof` is invisible to the census and is
 pinned by unit tests instead — `[os.fs.open]`'s mode-5 prose is the clause
 that names it.
 
-**Observational runs of one fs program are now ordered, and the tier is
-why.** Corpus programs write REAL files at paths of their own choosing. The
-witnesses are idempotent BY CONSTRUCTION, which makes a *sequential* re-run
-safe — and sequential is what the compiler's conform pass does. This crate is
-not sequential: several harnesses walk the whole corpus at once, cargo runs
-test binaries in parallel on top, and `export::export` runs a full walk inside
-any of them. Two symptoms, both measured: `fs/fstat.lu` read `size=0` off a
-file another thread had just truncated, and two concurrent exports of one
-corpus appended to one `log.txt` twice (`log=one|one|twotwo size=14`),
-producing bundles whose sha256 differed.
+**An observed program gets its own project root, and the tier is why.**
+Corpus programs write REAL files at paths of their own choosing, and this
+crate runs many programs at once by design: several harnesses walk the whole
+corpus, cargo runs test binaries in parallel on top, and `export::export`
+runs a full walk inside any of them. Three symptoms, all measured:
+`fs/fstat.lu` read `size=0` off a file another thread had just truncated, two
+concurrent exports of one corpus appended to one `log.txt` twice
+(`log=one|one|twotwo size=14`), and a bundle's sha256 stopped being
+reproducible.
 
-`frontend::observe_with` now takes one advisory lock per program, and the key
-is **the working directory and the program's SOURCE, not its path** — which is
-the part that had to be measured rather than assumed, because
-`export::export` observes each program from a COPY inside its own bundle
-directory, so a path-keyed lock excluded nothing in exactly the case that was
-failing. Three narrowings keep it from being a tax: observational runs only
-(`lupin run`'s live door takes no lock and writes no lock file), programs
-whose source mentions `fs_` only (nine of 545), and a bounded wait that
-proceeds unordered rather than hanging. No program's observable behaviour
-changes; only the order two runs of one program may interleave in.
+So an OBSERVED program's relative paths resolve against a private, empty
+project root — made once per observation, removed when it ends, and given the
+one `target/` directory that makes it a project root, because the witnesses
+write there without creating it and both lanes run from a directory that has
+one. A live `lupin run` is untouched: a user's program writes in the user's
+own directory, exactly as `wolf run` does, and `os_cwd` answers whichever of
+the two applies so a program's world is never split.
+
+**Ordering was tried first and was the wrong answer.** One advisory lock per
+program does serialise correctly — but `memory/byte_producers_ledger.lu`
+takes **74 seconds** in a debug build, and serialising it across every walker
+would have added something like twenty minutes to a CI run already near three
+hours. The private root removes the contention rather than scheduling it: no
+waiting, no lock files, reproducible BY CONSTRUCTION rather than by every
+harness remembering to take a lock. It also stops the corpus walk littering
+the repository's own `target/` with witness scratch files.
 
 **Census, predicted before the first edit and measured after.** The nine
 files that were out of scope for the fs tier and nothing else:

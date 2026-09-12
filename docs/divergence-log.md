@@ -180,17 +180,29 @@ bundle sha256 was not reproducible.
 The corpus's own answer to re-running a witness is "idempotent by
 construction", which covers a SEQUENTIAL re-run — what the compiler's conform
 pass does, one lane after the other — and says nothing about two at once.
-Nothing in the spec contemplates it either. So the defect is the harness's
-and it is answered by ORDERING the runs, never by weakening the tier or
-editing a witness: `frontend::observe_with` takes one advisory lock per
-program for observational runs only.
+Nothing in the spec contemplates it either. So the defect is this crate's,
+and it is answered without weakening the tier or editing a witness: an
+OBSERVED program's relative paths now resolve against a private, empty
+project root, one per observation. A live `lupin run` keeps the user's own
+cwd, and `os_cwd` answers whichever applies so a program never sees a split
+between where it thinks it is and where it writes.
 
-**The key is the cwd and the program's SOURCE, not its path**, and that had to
-be measured rather than assumed: `export::export` observes each program from a
-copy inside its own bundle directory, so a path-keyed lock excluded nothing in
-precisely the case that was failing. Recorded because the first fix looked
-right and was not, and the test that caught it (`export::re_export_is_byte_identical`)
-only fails when it runs beside its sibling.
+**Two wrong turns, recorded so they are not retaken.** The first fix ordered
+the runs with one advisory lock per corpus FILE, keyed on the file's path. It
+made `run_corpus` green and left `export` red, because `export::export`
+observes each program from a COPY inside its own bundle directory — a
+path-keyed lock excluded nothing in precisely the failing case. Re-keying on
+the cwd plus the program's SOURCE fixed that and passed in release. It then
+failed in DEBUG, for a reason measurement settled rather than argument:
+`memory/byte_producers_ledger.lu` takes **74 seconds** in a debug build, so a
+queue of walkers blew the lock's deadline, and making the deadline long
+enough would have added roughly twenty minutes to a three-hour CI. Ordering
+was the wrong shape of answer; removing the contention was the right one.
+
+The lesson generalises past this tier: `export::re_export_is_byte_identical`
+only fails when it runs beside its sibling, and the debug failure only
+appears under the full suite. A green run of the failing test alone proved
+nothing, twice.
 
 #### Rows the census cannot see
 
