@@ -659,12 +659,18 @@ impl Machine {
                         )?;
                         let mut slots = Vec::with_capacity(names.len());
                         for entry in names {
-                            self.allocate(
+                            // Each name carries the home it was minted in,
+                            // not `None`: a name that escapes its region
+                            // faults like any other built `str`
+                            // (`memory/region_str_concat_return.lu`).
+                            let name_home = self.allocate(
                                 span,
                                 "fs_read_dir",
                                 super::region::ledger::str_bytes(entry.len() as u64),
                             )?;
-                            slots.push(super::value::Slot::live(Value::Str(entry.into())));
+                            slots.push(super::value::Slot::live(Value::Str(
+                                super::value::Str::built(entry, Some(name_home)),
+                            )));
                         }
                         // No `ElemTy`: that context exists to decide what
                         // width a pushed literal adopts, and a `str` element
