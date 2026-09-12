@@ -1099,7 +1099,7 @@ pub fn method(
                 // numeric-literal adoption "in any position", so there is
                 // nothing here to range-check and nothing to adopt — the
                 // element type decides before the width does. The compilers
-                // refuse the program at typecheck (E0401) and `sema::byte_check`
+                // refuse the program at typecheck (E0401) and `sema::scalar_check`
                 // now refuses it at `resolve` wherever it can see both types;
                 // this is the same law at the rung where a list's element type
                 // is a fact about the VALUE, which is where the flows the

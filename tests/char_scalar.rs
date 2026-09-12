@@ -253,6 +253,22 @@ fn refuses(body: &str) {
     );
 }
 
+/// A program the DECLARED-SCALAR pass refuses before it runs — the answer
+/// wolfc gives, at the rung wolfc gives it (`sema::scalar_check`, is47 /
+/// wolf-interp#61). Stronger than [`refuses`]: an `unsupported` says "this
+/// machine did not implement that", a `fail(E0401)` says "this program is
+/// wrong", and only the second is a verdict the corpus can pin.
+fn refuses_statically(body: &str) {
+    let observation = observe(body);
+    assert_eq!(
+        observation.verdict,
+        Verdict::Fail("E0401".to_owned()),
+        "body: {body}\nreason: {:?}",
+        observation.reason
+    );
+    assert_eq!(observation.phase_reached, Phase::Resolve, "body: {body}");
+}
+
 #[test]
 fn char_orders_by_scalar_value() {
     // [type.char.order]: total, locale-free, and honestly NOT collation —
@@ -278,12 +294,119 @@ fn char_is_not_an_integer() {
     // [type.char]: no arithmetic, no numeric-literal adoption, no mixed
     // comparison. Every one of these is a program the compiler rejects; a
     // refusal beats running it (the permissive divergence).
+    //
+    // is47 (wolf-interp#61) moved four of the six from the dynamic channel to
+    // the static one. `unsupported` was the honest answer while nothing read
+    // the declared type — but it is the "not implemented yet" channel, and
+    // these are defects in the reader's program, which is a different
+    // sentence. `sema::scalar_check` reads `char` beside `byte` now and the
+    // four answer E0401 at resolve, where wolfc answers.
+    refuses_statically("if 'a' == 97 { 0 } else { 1 }");
+    refuses_statically("if 'a' < 97 { 0 } else { 1 }");
+    refuses_statically("let c: char = 65\n0");
+    refuses_statically("let n: int = 'a'\n0");
+
+    // The two that stay dynamic, and deliberately: `[type.byte.op]`'s
+    // widening rule is about `byte`, and this pass says nothing about what a
+    // `+` over two `char`s produces rather than guessing a rule `[type.char]`
+    // does not state. The evaluator still refuses them by name.
     refuses("let x = 'a' + 'b'\nx as int");
     refuses("let x = 'a' + 1\nx");
-    refuses("if 'a' == 97 { 0 } else { 1 }");
-    refuses("if 'a' < 97 { 0 } else { 1 }");
-    refuses("let c: char = 65\n0");
-    refuses("let n: int = 'a'\n0");
+}
+
+/// wolf-interp#61's three programs and the five rows the one rule brings with
+/// them, each measured against `wolf 0.2.12 (wolfgang) conform-run --json
+/// --checked` at pin `a7f517e` — the code AND the span, because "the same
+/// answer" is a claim about bytes.
+///
+/// All eight RAN on lupin 0.1.34. The first three are the issue's own, filed
+/// at is36 and unpaid through seven releases because is37's lattice was
+/// `byte`-only by construction; the third is the one that mattered most,
+/// because it did not merely accept a program the compiler rejects — the
+/// assignment silently RETYPED a live variable, so every later `{c}` printed
+/// an int's rendering of whatever the arithmetic produced. The last five are
+/// what "one rule, not a third sibling guard" buys: a `char` in an `int`
+/// slot, the two width-bearing scalars against each other in BOTH directions,
+/// a `List[char]` element, and a mixed comparison — none of them measured
+/// before this lane, all of them E0401 on the counterparty.
+const WOLFC_ROWS: &[(&str, &str, [usize; 2])] = &[
+    (
+        "a parameter declared `char`",
+        "fn widen(c: char) -> int { c as int }\n\nfn main() -> !int {\n    print(\"{widen(65)}\")\n    0\n}\n",
+        [77, 79],
+    ),
+    (
+        "a return type declared `char`",
+        "fn givec() -> char { 65 }\n\nfn main() -> !int {\n    print(\"{givec()}\")\n    0\n}\n",
+        [21, 23],
+    ),
+    (
+        "an assignment place declared `char`",
+        "fn main() -> !int {\n    var c = 'a'\n    c = 65\n    print(\"{c}\")\n    0\n}\n",
+        [44, 46],
+    ),
+    (
+        "a `char` in an `int` slot",
+        "fn f(n: int) -> int { n }\n\nfn main() -> !int { f('a') }\n",
+        [49, 52],
+    ),
+    (
+        "a `char` in a `byte` slot",
+        "fn f(b: byte) -> int { b as int }\n\nfn main() -> !int { f('a') }\n",
+        [57, 60],
+    ),
+    (
+        "a `byte` in a `char` slot",
+        "fn f(c: char) -> int { c as int }\n\nfn main() -> !int { f(65 as byte) }\n",
+        [57, 67],
+    ),
+    (
+        "a `List[char]` element",
+        "fn main() -> !int {\n    var xs = List[char]()\n    (mut xs).push(65)\n    xs.len\n}\n",
+        [64, 66],
+    ),
+    (
+        "a mixed comparison, spanning the `int` side",
+        "fn main() -> !int {\n    let c = 'a'\n    if c == 97 { 0 } else { 1 }\n}\n",
+        [48, 50],
+    ),
+];
+
+#[test]
+fn the_declared_char_boundaries_answer_wolfc_span_for_span() {
+    for (what, source, span) in WOLFC_ROWS {
+        let observed = frontend::observe(source.as_bytes(), Some(Phase::Resolve));
+        let diag = observed
+            .detail
+            .clone()
+            .unwrap_or_else(|| panic!("{what} was not refused: {:?}", observed.verdict));
+        assert_eq!(
+            (diag.code, [diag.span.start, diag.span.end]),
+            ("E0401", *span),
+            "{what}: the counterparty's code and span are the contract"
+        );
+        assert_eq!(observed.verdict, Verdict::Fail("E0401".to_owned()), "{what}");
+        assert_eq!(observed.phase_reached, Phase::Resolve, "{what}");
+    }
+}
+
+#[test]
+fn the_char_half_of_the_rule_is_the_byte_half() {
+    // is37's two guards did not gain a third sibling: one lattice answers
+    // every boundary it can see, for both width-bearing scalars and in both
+    // directions. `byte`'s own rows are unmoved — `tests/byte_domain.rs` and
+    // `tests/byte_scalar.rs` are the proof, and they run unchanged.
+    //
+    // The cast is the spelling, in both directions, on the same programs:
+    // nothing here refuses a program that says what it means.
+    exits_zero("let c: char = 65 as char\nlet n: int = 'a' as int\nif n == 97 { 0 } else { 1 }");
+    exits_zero("var c = 'a'\nc = 65 as char\nif c == 'A' { 0 } else { 1 }");
+    exits_zero("var xs = List[char]()\n(mut xs).push(65 as char)\nif xs[0] == 'A' { 0 } else { 1 }");
+
+    // And the sema boundary holds: a side this pass cannot see says nothing.
+    // `List()` carries no element annotation and a generic parameter resolves
+    // somewhere this walk does not go, so neither is judged.
+    exits_zero("var xs = List()\n(mut xs).push(65)\nif xs[0] == 65 { 0 } else { 1 }");
 }
 
 #[test]

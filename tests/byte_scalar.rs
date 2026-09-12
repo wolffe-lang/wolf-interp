@@ -61,7 +61,7 @@ fn refused(name: &str, body: &str) -> String {
 ///
 /// is36 answered every one of these with the by-name refusal above, because a
 /// tree-walk had no static rung for a type error. is37 gave it one for this
-/// one type (wolf-interp#62, `sema::byte_check`): the domain of `[type.byte]`
+/// one type (wolf-interp#62, `sema::scalar_check`): the domain of `[type.byte]`
 /// is refused where the compilers refuse it, with their code and their span.
 /// The four tests that moved from `refused` to here are the visible half of
 /// that change, and the by-name refusals they used to make are still the
@@ -481,7 +481,7 @@ fn a_byte_producer_mints_at_exact_capacity() {
 
 #[test]
 fn a_byte_place_still_refuses_dynamically_when_the_pass_cannot_see_it() {
-    // `sema::byte_check` refuses only where BOTH sides are known. A `List()`
+    // `sema::scalar_check` refuses only where BOTH sides are known. A `List()`
     // with no element annotation types nothing, so `xs[0]` is not an `int`
     // this machine can name at `resolve` — and the write into a byte place
     // still must not land. is36's dynamic rule is what catches it, which is

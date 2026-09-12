@@ -1055,7 +1055,7 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| move_check(program))
         .or_else(|| unsafe_sig_check(program))
         .or_else(|| tier_check(program))
-        .or_else(|| byte_check(program))
+        .or_else(|| scalar_check(program))
         .or_else(|| tail_check(program))
         .or_else(|| bound_check(program))
         .or_else(|| row_operand_check(program))
@@ -3598,12 +3598,13 @@ fn collect_type_refs(ty: &Type, scope: &mut FileScope) {
 }
 
 // ---------------------------------------------------------------------------
-// D72's domain: a `byte` is `0..=255` by construction (is37, wolf-interp#62)
+// The declared-scalar domain: a `byte` is `0..=255` and a `char` is one
+// Unicode scalar value, both BY CONSTRUCTION (is37 wolf-interp#62, is47 #61)
 // ---------------------------------------------------------------------------
 
-/// What the byte pass can say about an expression, and nothing more.
+/// What the declared-scalar pass can say about an expression, and nothing more.
 ///
-/// [`ByteTy::Unknown`] is the answer to everything the walk cannot see, and it
+/// [`ScalarTy::Unknown`] is the answer to everything the walk cannot see, and it
 /// is the answer by default: **no rule below fires unless BOTH sides are
 /// known**. That is the sema boundary restated for one type. A type checker is
 /// not growing here — `[type.byte]` gives this machine a value whose domain is
@@ -3612,47 +3613,79 @@ fn collect_type_refs(ty: &Type, scope: &mut FileScope) {
 /// shipped the type and left the domain to the compilers; wolf-interp#62 is
 /// what that cost — `List[byte].push(256)` stored 256 here and the compilers
 /// answered E0401, eight wolf-std rows divergent.
+///
+/// is47 (wolf-interp#61) adds `char` rather than a third sibling guard.
+/// `[type.char]` and `[type.byte]` state ONE rule in two documents — a
+/// width-bearing scalar "adopts no numeric literal, in every position" — and
+/// is37 built a `byte`-only lattice deliberately, saying nothing it could not
+/// measure. The positions were the cost: `fn widen(c: char)` handed `65`,
+/// `fn givec() -> char { 65 }` and `var c = 'a'; c = 65` all ran here and are
+/// E0401 on wolfc, and the third SILENTLY RETYPED a live variable, so every
+/// later `{c}` printed an int. One lattice, two scalars, and `int` is the
+/// thing neither of them is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ByteTy {
+enum ScalarTy {
     /// `[type.byte]`'s octet.
     Byte,
+    /// `[type.char]`'s Unicode scalar value.
+    Char,
     /// Any integer type, an unsuffixed `{integer}` literal included. The pass
     /// never distinguishes widths: `byte` versus `int` is the only question
     /// it asks, and `i32` versus `u64` belongs to a checker this is not.
     Int,
     /// A `List` whose element is a `byte`.
     ListByte,
+    /// A `List` whose element is a `char`.
+    ListChar,
     /// A `List` whose element is an integer type.
     ListInt,
     /// Say nothing.
     Unknown,
 }
 
-impl ByteTy {
+impl ScalarTy {
     /// The element type a load out of this container yields.
-    fn elem(self) -> ByteTy {
+    fn elem(self) -> ScalarTy {
         match self {
-            ByteTy::ListByte => ByteTy::Byte,
-            ByteTy::ListInt => ByteTy::Int,
-            _ => ByteTy::Unknown,
+            ScalarTy::ListByte => ScalarTy::Byte,
+            ScalarTy::ListChar => ScalarTy::Char,
+            ScalarTy::ListInt => ScalarTy::Int,
+            _ => ScalarTy::Unknown,
         }
     }
 
     fn is_list(self) -> bool {
-        matches!(self, ByteTy::ListByte | ByteTy::ListInt)
+        matches!(
+            self,
+            ScalarTy::ListByte | ScalarTy::ListChar | ScalarTy::ListInt
+        )
+    }
+
+    /// A WIDTH-BEARING scalar: a type whose values are a fixed domain the
+    /// language never enters from a numeric literal (`[type.byte]`,
+    /// `[type.char]`). The whole rule below is a question about this
+    /// predicate and `Int`.
+    fn is_width_bearing(self) -> bool {
+        matches!(self, ScalarTy::Byte | ScalarTy::Char)
     }
 }
 
-/// The pass's single rule: a `byte` slot takes no `int`, an `int` slot takes
-/// no `byte`. `[type.byte]` says why — a `byte` "adopts no numeric literal in
-/// any position" and is not an integer type, so neither direction is a
-/// conversion the language performs for you. Both bridges are spelled
-/// (`[type.byte.cast]`).
-fn byte_int_clash(slot: ByteTy, found: ByteTy) -> bool {
-    matches!(
-        (slot, found),
-        (ByteTy::Byte, ByteTy::Int) | (ByteTy::Int, ByteTy::Byte)
-    )
+/// The pass's single rule: a width-bearing slot takes no `int`, an `int` slot
+/// takes no width-bearing value, and the two width-bearing scalars are not
+/// each other. `[type.byte]` and `[type.char]` each say why — the value
+/// "adopts no numeric literal in any position" and is not an integer type, so
+/// no direction is a conversion the language performs for you. Every bridge is
+/// spelled (`[type.byte.cast]`, `[type.char.cast]`).
+///
+/// `Unknown` on either side answers `false`, which is the sema boundary in one
+/// line: no rule fires unless BOTH sides are known.
+fn scalar_clash(slot: ScalarTy, found: ScalarTy) -> bool {
+    match (slot, found) {
+        (ScalarTy::Unknown, _) | (_, ScalarTy::Unknown) => false,
+        (a, b) if a.is_width_bearing() && b.is_width_bearing() => a != b,
+        (a, ScalarTy::Int) | (ScalarTy::Int, a) => a.is_width_bearing(),
+        _ => false,
+    }
 }
 
 /// The E0401 a clash earns, at the offending expression's own span — which is
@@ -3661,9 +3694,9 @@ fn byte_int_clash(slot: ByteTy, found: ByteTy) -> bool {
 /// `let b: byte = 65`) and `typecheck/byte_elem_arith_fail.lu` `[849,850]`
 /// (the `b` of `table[b]`). The wrong-typed OPERAND is spanned, never the
 /// annotation and never the whole statement.
-fn byte_clash_diag(slot: ByteTy, span: Span, position: &str) -> Diag {
-    if slot == ByteTy::Byte {
-        Diag::new(
+fn scalar_clash_diag(slot: ScalarTy, span: Span, position: &str) -> Diag {
+    match slot {
+        ScalarTy::Byte => Diag::new(
             "E0401",
             span,
             "type.byte.cast",
@@ -3673,56 +3706,73 @@ fn byte_clash_diag(slot: ByteTy, span: Span, position: &str) -> Diag {
                  spell it `… as byte`, which keeps the low eight bits and never traps \
                  (`[type.byte.cast]`)"
             ),
-        )
-    } else {
-        Diag::new(
+        ),
+        // `[type.char.cast]`, the two halves: `c as int` is total (every
+        // scalar names its code point) and `n as char` TRAPS on a value no
+        // scalar spells, which is why the narrowing direction is the one the
+        // message spells out rather than waving at.
+        ScalarTy::Char => Diag::new(
+            "E0401",
+            span,
+            "type.char.cast",
+            format!(
+                "{position} is a `char` and this is not: a `char` is one Unicode scalar \
+                 value and adopts no numeric literal in any position (`[type.char]`) — \
+                 spell it `… as char`, which traps on a value no scalar spells \
+                 (`[type.char.cast]`)"
+            ),
+        ),
+        _ => Diag::new(
             "E0401",
             span,
             "type.byte.cast",
             format!(
-                "{position} is an `int` and this is a `byte`: a `byte` is not an integer \
-                 type (`[type.byte]`) — widen it with `… as int`, which zero-extends \
-                 (`[type.byte.cast]`)"
+                "{position} is an `int` and this is not: a width-bearing scalar is not an \
+                 integer type (`[type.byte]`, `[type.char]`) — widen it with `… as int`, \
+                 which zero-extends a `byte` and names a `char`'s code point"
             ),
-        )
+        ),
     }
 }
 
-/// The `ByteTy` a declared type names. Bare names only: a qualified path, a
+/// The `ScalarTy` a declared type names. Bare names only: a qualified path, a
 /// generic parameter and an alias all resolve somewhere this pass does not
 /// walk, so they are `Unknown`.
-fn byte_ty_of_type(ty: &Type) -> ByteTy {
+fn scalar_ty_of_type(ty: &Type) -> ScalarTy {
     let TypeKind::Path { path, args } = &*ty.kind else {
-        return ByteTy::Unknown;
+        return ScalarTy::Unknown;
     };
     if !path.is_single() {
-        return ByteTy::Unknown;
+        return ScalarTy::Unknown;
     }
     let name = path.segments[0].name.as_str();
     if args.is_empty() {
-        return byte_ty_of_name(name);
+        return scalar_ty_of_name(name);
     }
     if name != "List" {
-        return ByteTy::Unknown;
+        return ScalarTy::Unknown;
     }
     let [TypeArg::Type(elem)] = &args[..] else {
-        return ByteTy::Unknown;
+        return ScalarTy::Unknown;
     };
-    match byte_ty_of_type(elem) {
-        ByteTy::Byte => ByteTy::ListByte,
-        ByteTy::Int => ByteTy::ListInt,
-        _ => ByteTy::Unknown,
+    match scalar_ty_of_type(elem) {
+        ScalarTy::Byte => ScalarTy::ListByte,
+        ScalarTy::Char => ScalarTy::ListChar,
+        ScalarTy::Int => ScalarTy::ListInt,
+        _ => ScalarTy::Unknown,
     }
 }
 
-/// The scalar a bare type NAME denotes. `byte` is its own thing; every integer
-/// width — and `u8`, deliberately, because D72 declined the alias — is `Int`.
-fn byte_ty_of_name(name: &str) -> ByteTy {
+/// The scalar a bare type NAME denotes. `byte` and `char` are each their own
+/// thing; every integer width — and `u8`, deliberately, because D72 declined
+/// the alias — is `Int`.
+fn scalar_ty_of_name(name: &str) -> ScalarTy {
     match name {
-        "byte" => ByteTy::Byte,
+        "byte" => ScalarTy::Byte,
+        "char" => ScalarTy::Char,
         "int" | "uint" | "i8" | "i16" | "i32" | "i64" | "i128" | "u8" | "u16" | "u32" | "u64"
-        | "u128" => ByteTy::Int,
-        _ => ByteTy::Unknown,
+        | "u128" => ScalarTy::Int,
+        _ => ScalarTy::Unknown,
     }
 }
 
@@ -3730,14 +3780,14 @@ fn byte_ty_of_name(name: &str) -> ByteTy {
 /// `[gram.amb.brackets]` makes `List[byte]()` one production, so the element
 /// arrives as an ordinary expression argument and this is where it is read
 /// back (`eval::list_elem_of`'s static twin).
-fn byte_ty_of_index_arg(arg: &crate::ast::IndexArg) -> ByteTy {
+fn scalar_ty_of_index_arg(arg: &crate::ast::IndexArg) -> ScalarTy {
     match arg {
-        crate::ast::IndexArg::Type(ty) => byte_ty_of_type(ty),
+        crate::ast::IndexArg::Type(ty) => scalar_ty_of_type(ty),
         crate::ast::IndexArg::Value(arg) => match &*arg.expr.kind {
             ExprKind::Path(path) if path.is_single() => {
-                byte_ty_of_name(path.segments[0].name.as_str())
+                scalar_ty_of_name(path.segments[0].name.as_str())
             }
-            _ => ByteTy::Unknown,
+            _ => ScalarTy::Unknown,
         },
     }
 }
@@ -3745,25 +3795,25 @@ fn byte_ty_of_index_arg(arg: &crate::ast::IndexArg) -> ByteTy {
 /// A function's byte-relevant signature: the positional parameter types and
 /// the declared return type. Collected per module, for the two boundaries a
 /// call crosses.
-struct ByteSig {
-    params: Vec<ByteTy>,
-    ret: ByteTy,
+struct ScalarSig {
+    params: Vec<ScalarTy>,
+    ret: ScalarTy,
 }
 
 /// The byte walk's lexical state: one pass per function body, source order,
 /// first finding wins (`[proto.cmp.phase]` compares the first diagnostic).
-struct ByteWalk<'a> {
-    scopes: Vec<Vec<(String, ByteTy)>>,
+struct ScalarWalk<'a> {
+    scopes: Vec<Vec<(String, ScalarTy)>>,
     /// This module's plain function items, by name.
-    sigs: &'a BTreeMap<String, ByteSig>,
+    sigs: &'a BTreeMap<String, ScalarSig>,
     /// This module's struct fields, by struct name then field name.
-    fields: &'a BTreeMap<String, BTreeMap<String, ByteTy>>,
+    fields: &'a BTreeMap<String, BTreeMap<String, ScalarTy>>,
     /// The enclosing function's declared return type.
-    ret: ByteTy,
+    ret: ScalarTy,
 }
 
-impl ByteWalk<'_> {
-    fn lookup(&self, name: &str) -> ByteTy {
+impl ScalarWalk<'_> {
+    fn lookup(&self, name: &str) -> ScalarTy {
         for scope in self.scopes.iter().rev() {
             for (n, ty) in scope.iter().rev() {
                 if n == name {
@@ -3771,10 +3821,10 @@ impl ByteWalk<'_> {
                 }
             }
         }
-        ByteTy::Unknown
+        ScalarTy::Unknown
     }
 
-    fn declare(&mut self, name: &str, ty: ByteTy) {
+    fn declare(&mut self, name: &str, ty: ScalarTy) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.push((name.to_owned(), ty));
         }
@@ -3786,9 +3836,9 @@ impl ByteWalk<'_> {
     /// read through a shadow that is not one.
     fn declare_pat_kind(&mut self, pattern: &PatKind) {
         match pattern {
-            PatKind::Binding(ident) => self.declare(&ident.name, ByteTy::Unknown),
+            PatKind::Binding(ident) => self.declare(&ident.name, ScalarTy::Unknown),
             PatKind::At { name, pattern } => {
-                self.declare(&name.name, ByteTy::Unknown);
+                self.declare(&name.name, ScalarTy::Unknown);
                 self.declare_pat_kind(&pattern.kind);
             }
             PatKind::Variant { fields, .. } | PatKind::Tuple(fields) | PatKind::Or(fields) => {
@@ -3800,7 +3850,7 @@ impl ByteWalk<'_> {
                 for field in fields {
                     match &field.pattern {
                         Some(pattern) => self.declare_pat_kind(&pattern.kind),
-                        None => self.declare(&field.name.name, ByteTy::Unknown),
+                        None => self.declare(&field.name.name, ScalarTy::Unknown),
                     }
                 }
             }
@@ -3809,28 +3859,33 @@ impl ByteWalk<'_> {
     }
 
     /// The type of an expression, conservatively.
-    fn classify(&self, expr: &Expr) -> ByteTy {
+    fn classify(&self, expr: &Expr) -> ScalarTy {
         match &*expr.kind {
-            ExprKind::Int(_) => ByteTy::Int,
+            ExprKind::Int(_) => ScalarTy::Int,
+            // `'a'` is a `char` the way `65` is an `int` — the literal
+            // classifier wolf-interp#61 names, and the half without which
+            // `var c = 'a'` declares nothing and the later `c = 65` is
+            // measured against `Unknown`.
+            ExprKind::Char(_) => ScalarTy::Char,
             ExprKind::Group(inner) => self.classify(inner),
             ExprKind::Path(path) if path.is_single() => self.lookup(&path.segments[0].name),
-            ExprKind::Cast { ty, .. } => byte_ty_of_type(ty),
+            ExprKind::Cast { ty, .. } => scalar_ty_of_type(ty),
             // `[type.byte.op]`: every arithmetic and bitwise operator widens
             // its byte operand to `int` FIRST and yields `int`, which is why
             // `b + 1` is not a finding and `b += 1` is (the compound half is
             // the assignment rule below). Measured at pin `982f857`: wolfc
             // accepts `let s = b + 1` on a `byte` `b`.
             ExprKind::Unary { operand, .. } => match self.classify(operand) {
-                ByteTy::Int => ByteTy::Int,
-                _ => ByteTy::Unknown,
+                ScalarTy::Int => ScalarTy::Int,
+                _ => ScalarTy::Unknown,
             },
             ExprKind::Binary { op, lhs, rhs } => {
                 if !is_widening_op(*op) {
-                    return ByteTy::Unknown;
+                    return ScalarTy::Unknown;
                 }
                 match (self.classify(lhs), self.classify(rhs)) {
-                    (ByteTy::Int | ByteTy::Byte, ByteTy::Int | ByteTy::Byte) => ByteTy::Int,
-                    _ => ByteTy::Unknown,
+                    (ScalarTy::Int | ScalarTy::Byte, ScalarTy::Int | ScalarTy::Byte) => ScalarTy::Int,
+                    _ => ScalarTy::Unknown,
                 }
             }
             ExprKind::BracketApply { base, args, .. } => {
@@ -3838,17 +3893,17 @@ impl ByteWalk<'_> {
                 if base_ty.is_list() && args.len() == 1 {
                     base_ty.elem()
                 } else {
-                    ByteTy::Unknown
+                    ScalarTy::Unknown
                 }
             }
             ExprKind::Call { callee, args } => self.classify_call(callee, args),
-            _ => ByteTy::Unknown,
+            _ => ScalarTy::Unknown,
         }
     }
 
     /// `List[byte]()`, `s.bytes()`, and a call to a function of this module
     /// whose return type is a bare scalar. Everything else says nothing.
-    fn classify_call(&self, callee: &Expr, args: &[Arg]) -> ByteTy {
+    fn classify_call(&self, callee: &Expr, args: &[Arg]) -> ScalarTy {
         if let ExprKind::BracketApply {
             base, args: targs, ..
         } = &*callee.kind
@@ -3856,10 +3911,11 @@ impl ByteWalk<'_> {
             && path.segments.last().is_some_and(|s| s.name == "List")
             && let [arg] = &targs[..]
         {
-            return match byte_ty_of_index_arg(arg) {
-                ByteTy::Byte => ByteTy::ListByte,
-                ByteTy::Int => ByteTy::ListInt,
-                _ => ByteTy::Unknown,
+            return match scalar_ty_of_index_arg(arg) {
+                ScalarTy::Byte => ScalarTy::ListByte,
+                ScalarTy::Char => ScalarTy::ListChar,
+                ScalarTy::Int => ScalarTy::ListInt,
+                _ => ScalarTy::Unknown,
             };
         }
         // `[mem.str.view]`'s producer: `s.bytes()` is a `List[byte]` (s136,
@@ -3870,7 +3926,7 @@ impl ByteWalk<'_> {
             && let Some((_, name)) = self.method_of(callee)
             && name == "bytes"
         {
-            return ByteTy::ListByte;
+            return ScalarTy::ListByte;
         }
         if let ExprKind::Path(path) = &*callee.kind
             && path.is_single()
@@ -3878,14 +3934,14 @@ impl ByteWalk<'_> {
         {
             return sig.ret;
         }
-        ByteTy::Unknown
+        ScalarTy::Unknown
     }
 
     /// A method call's receiver type and method name, for the two receiver
     /// shapes `[gram.item.use]`'s path production leaves behind:
     /// `(mut xs).push(…)` arrives as a `Member` over a moded receiver, and
     /// `xs.push(…)` as a two-segment path.
-    fn method_of(&self, callee: &Expr) -> Option<(ByteTy, String)> {
+    fn method_of(&self, callee: &Expr) -> Option<(ScalarTy, String)> {
         match &*callee.kind {
             ExprKind::Member {
                 base,
@@ -3936,7 +3992,7 @@ fn is_comparison_op(op: crate::ast::BinOp) -> bool {
     )
 }
 
-impl ByteWalk<'_> {
+impl ScalarWalk<'_> {
     fn block(&mut self, block: &Block) -> Option<Diag> {
         self.scopes.push(Vec::new());
         for stmt in &block.stmts {
@@ -3956,8 +4012,8 @@ impl ByteWalk<'_> {
     /// The declared return type is a slot like any other: a function that says
     /// `-> byte` and hands back an `int` is the E0401 a binding would be.
     fn returned(&self, value: &Expr) -> Option<Diag> {
-        byte_int_clash(self.ret, self.classify(value))
-            .then(|| byte_clash_diag(self.ret, value.span, "this function's return type"))
+        scalar_clash(self.ret, self.classify(value))
+            .then(|| scalar_clash_diag(self.ret, value.span, "this function's return type"))
     }
 
     fn stmt(&mut self, stmt: &Stmt) -> Option<Diag> {
@@ -3976,10 +4032,10 @@ impl ByteWalk<'_> {
                 let found = if matches!(op, crate::ast::AssignOp::Assign) {
                     self.classify(value)
                 } else {
-                    ByteTy::Int
+                    ScalarTy::Int
                 };
-                byte_int_clash(slot, found)
-                    .then(|| byte_clash_diag(slot, value.span, "this place's type"))
+                scalar_clash(slot, found)
+                    .then(|| scalar_clash_diag(slot, value.span, "this place's type"))
             }
             StmtKind::AssumeNoalias(operands) => {
                 operands.iter().find_map(|operand| self.expr(operand))
@@ -3998,17 +4054,17 @@ impl ByteWalk<'_> {
         if let Some(diag) = self.expr(&binding.value) {
             return Some(diag);
         }
-        let annotated = binding.ty.as_ref().map_or(ByteTy::Unknown, byte_ty_of_type);
+        let annotated = binding.ty.as_ref().map_or(ScalarTy::Unknown, scalar_ty_of_type);
         let found = self.classify(&binding.value);
-        if byte_int_clash(annotated, found) {
-            return Some(byte_clash_diag(
+        if scalar_clash(annotated, found) {
+            return Some(scalar_clash_diag(
                 annotated,
                 binding.value.span,
                 "this binding's declared type",
             ));
         }
         if let PatKind::Binding(ident) = &*binding.pattern.kind {
-            let ty = if annotated == ByteTy::Unknown {
+            let ty = if annotated == ScalarTy::Unknown {
                 found
             } else {
                 annotated
@@ -4057,14 +4113,18 @@ impl ByteWalk<'_> {
                 if !is_comparison_op(*op) {
                     return None;
                 }
+                // The span is the side that has to change — the counterparty
+                // spans the INT operand (`byte_elem_arith_fail.lu`
+                // `[883,886]`, the `119` of `b == 119`), and the slot named
+                // is the width-bearing one the comparison is about.
                 match (self.classify(lhs), self.classify(rhs)) {
-                    (ByteTy::Byte, ByteTy::Int) => Some(byte_clash_diag(
-                        ByteTy::Byte,
+                    (slot, ScalarTy::Int) if slot.is_width_bearing() => Some(scalar_clash_diag(
+                        slot,
                         rhs.span,
                         "the other side of this comparison",
                     )),
-                    (ByteTy::Int, ByteTy::Byte) => Some(byte_clash_diag(
-                        ByteTy::Byte,
+                    (ScalarTy::Int, slot) if slot.is_width_bearing() => Some(scalar_clash_diag(
+                        slot,
                         lhs.span,
                         "the other side of this comparison",
                     )),
@@ -4094,8 +4154,9 @@ impl ByteWalk<'_> {
                     let crate::ast::IndexArg::Value(arg) = arg else {
                         return None;
                     };
-                    (self.classify(&arg.expr) == ByteTy::Byte)
-                        .then(|| byte_clash_diag(ByteTy::Int, arg.expr.span, "a `List` subscript"))
+                    self.classify(&arg.expr)
+                        .is_width_bearing()
+                        .then(|| scalar_clash_diag(ScalarTy::Int, arg.expr.span, "a `List` subscript"))
                 })
             }
             ExprKind::Call { callee, args } => self.call(callee, args),
@@ -4114,8 +4175,8 @@ impl ByteWalk<'_> {
                 fields.iter().find_map(|field| {
                     let value = field.value.as_ref()?;
                     let slot = *declared.get(&field.name.name)?;
-                    byte_int_clash(slot, self.classify(value))
-                        .then(|| byte_clash_diag(slot, value.span, "this field's declared type"))
+                    scalar_clash(slot, self.classify(value))
+                        .then(|| scalar_clash_diag(slot, value.span, "this field's declared type"))
                 })
             }
             ExprKind::Tuple(items) => items.iter().find_map(|item| self.expr(item)),
@@ -4176,7 +4237,7 @@ impl ByteWalk<'_> {
             ExprKind::Closure { params, body, .. } => {
                 self.scopes.push(Vec::new());
                 for param in params {
-                    let ty = param.ty.as_ref().map_or(ByteTy::Unknown, byte_ty_of_type);
+                    let ty = param.ty.as_ref().map_or(ScalarTy::Unknown, scalar_ty_of_type);
                     self.declare(&param.name.name, ty);
                 }
                 let out = self.expr(body);
@@ -4236,8 +4297,8 @@ impl ByteWalk<'_> {
         {
             let slot = receiver.elem();
             if let Some(diag) = args.iter().find_map(|arg| {
-                byte_int_clash(slot, self.classify(&arg.expr))
-                    .then(|| byte_clash_diag(slot, arg.expr.span, "this `List`'s element type"))
+                scalar_clash(slot, self.classify(&arg.expr))
+                    .then(|| scalar_clash_diag(slot, arg.expr.span, "this `List`'s element type"))
             }) {
                 return Some(diag);
             }
@@ -4248,8 +4309,8 @@ impl ByteWalk<'_> {
             && sig.params.len() == args.len()
         {
             return sig.params.iter().zip(args).find_map(|(slot, arg)| {
-                byte_int_clash(*slot, self.classify(&arg.expr)).then(|| {
-                    byte_clash_diag(*slot, arg.expr.span, "this parameter's declared type")
+                scalar_clash(*slot, self.classify(&arg.expr)).then(|| {
+                    scalar_clash_diag(*slot, arg.expr.span, "this parameter's declared type")
                 })
             });
         }
@@ -4294,10 +4355,10 @@ impl ByteWalk<'_> {
 /// `[588,590]` and `typecheck/byte_elem_arith_fail.lu` `[849,850]`. One
 /// deterministic pass per function body; the first finding wins, because
 /// `[proto.cmp.phase]` compares the first diagnostic and a record carries one.
-fn byte_check(program: &Program) -> Option<Diag> {
+fn scalar_check(program: &Program) -> Option<Diag> {
     for module in program.modules.values() {
-        let mut sigs: BTreeMap<String, ByteSig> = BTreeMap::new();
-        let mut fields: BTreeMap<String, BTreeMap<String, ByteTy>> = BTreeMap::new();
+        let mut sigs: BTreeMap<String, ScalarSig> = BTreeMap::new();
+        let mut fields: BTreeMap<String, BTreeMap<String, ScalarTy>> = BTreeMap::new();
         for (name, (def, _)) in &module.items {
             match def {
                 Def::Fn(decl) => {
@@ -4305,21 +4366,21 @@ fn byte_check(program: &Program) -> Option<Diag> {
                         .params
                         .iter()
                         .map(|param| match &param.kind {
-                            crate::ast::ParamKind::Named { ty, .. } => byte_ty_of_type(ty),
-                            crate::ast::ParamKind::SelfParam { .. } => ByteTy::Unknown,
+                            crate::ast::ParamKind::Named { ty, .. } => scalar_ty_of_type(ty),
+                            crate::ast::ParamKind::SelfParam { .. } => ScalarTy::Unknown,
                         })
                         .collect();
                     let ret = decl
                         .ret
                         .as_ref()
-                        .map_or(ByteTy::Unknown, |ret| byte_ty_of_type(&ret.ty));
-                    sigs.insert(name.clone(), ByteSig { params, ret });
+                        .map_or(ScalarTy::Unknown, |ret| scalar_ty_of_type(&ret.ty));
+                    sigs.insert(name.clone(), ScalarSig { params, ret });
                 }
                 Def::Struct(def) => {
                     let declared = def
                         .fields
                         .iter()
-                        .map(|field| (field.name.name.clone(), byte_ty_of_type(&field.ty)))
+                        .map(|field| (field.name.name.clone(), scalar_ty_of_type(&field.ty)))
                         .collect();
                     fields.insert(name.clone(), declared);
                 }
@@ -4327,18 +4388,18 @@ fn byte_check(program: &Program) -> Option<Diag> {
             }
         }
         for decl in each_fn(module) {
-            let mut walk = ByteWalk {
+            let mut walk = ScalarWalk {
                 scopes: vec![Vec::new()],
                 sigs: &sigs,
                 fields: &fields,
                 ret: decl
                     .ret
                     .as_ref()
-                    .map_or(ByteTy::Unknown, |ret| byte_ty_of_type(&ret.ty)),
+                    .map_or(ScalarTy::Unknown, |ret| scalar_ty_of_type(&ret.ty)),
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
-                    walk.declare(&name.name, byte_ty_of_type(ty));
+                    walk.declare(&name.name, scalar_ty_of_type(ty));
                 }
             }
             if let Some(body) = &decl.body
@@ -4349,11 +4410,11 @@ fn byte_check(program: &Program) -> Option<Diag> {
         }
         for (def, _) in module.items.values() {
             if let Def::Binding(binding) = def {
-                let mut walk = ByteWalk {
+                let mut walk = ScalarWalk {
                     scopes: vec![Vec::new()],
                     sigs: &sigs,
                     fields: &fields,
-                    ret: ByteTy::Unknown,
+                    ret: ScalarTy::Unknown,
                 };
                 if let Some(diag) = walk.binding(binding) {
                     return Some(diag);
@@ -4411,7 +4472,7 @@ fn byte_check(program: &Program) -> Option<Diag> {
 ///   `[type.byte.op]`) and the pinned corpus pins `fail(E0401)` at phase
 ///   `resolve` on six files. E0401 it is, and it stays out of
 ///   [`crate::diag::UNPINNED_CODES`] for the same reason
-///   [`byte_clash_diag`]'s does.
+///   [`scalar_clash_diag`]'s does.
 /// - **The operand.** `[type.interp.union]` rules that a `!T` renders as its
 ///   ok payload in an interpolation hole and says so as a carve-out — "this
 ///   is a reading rule, not a handling rule: `?` and `else` still decide what
