@@ -60,15 +60,27 @@ does. No corpus file reads twice, so `eof` is invisible to the census and is
 pinned by unit tests instead — `[os.fs.open]`'s mode-5 prose is the clause
 that names it.
 
-**The corpus walk needed a lock, and the tier is why.** Corpus programs now
-write REAL files at paths of their own choosing. The witnesses are idempotent
-BY CONSTRUCTION, which makes a *sequential* re-run safe — and sequential is
-what the compiler's conform pass does. `cargo test` is not sequential: four
-tests here walk the whole corpus at once and cargo runs test binaries in
-parallel on top, so `fs/fstat.lu` read `size=0` off a file another thread had
-just truncated. One advisory lock per corpus FILE answers it, so unrelated
-programs still run in parallel and the contention is handled where it is —
-in the harness, not by weakening the tier or the witness.
+**Observational runs of one fs program are now ordered, and the tier is
+why.** Corpus programs write REAL files at paths of their own choosing. The
+witnesses are idempotent BY CONSTRUCTION, which makes a *sequential* re-run
+safe — and sequential is what the compiler's conform pass does. This crate is
+not sequential: several harnesses walk the whole corpus at once, cargo runs
+test binaries in parallel on top, and `export::export` runs a full walk inside
+any of them. Two symptoms, both measured: `fs/fstat.lu` read `size=0` off a
+file another thread had just truncated, and two concurrent exports of one
+corpus appended to one `log.txt` twice (`log=one|one|twotwo size=14`),
+producing bundles whose sha256 differed.
+
+`frontend::observe_with` now takes one advisory lock per program, and the key
+is **the working directory and the program's SOURCE, not its path** — which is
+the part that had to be measured rather than assumed, because
+`export::export` observes each program from a COPY inside its own bundle
+directory, so a path-keyed lock excluded nothing in exactly the case that was
+failing. Three narrowings keep it from being a tax: observational runs only
+(`lupin run`'s live door takes no lock and writes no lock file), programs
+whose source mentions `fs_` only (nine of 545), and a bounded wait that
+proceeds unordered rather than hanging. No program's observable behaviour
+changes; only the order two runs of one program may interleave in.
 
 **Census, predicted before the first edit and measured after.** The nine
 files that were out of scope for the fs tier and nothing else:

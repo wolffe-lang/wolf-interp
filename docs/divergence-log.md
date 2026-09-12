@@ -167,6 +167,31 @@ capacity through `region::ledger::byte_buffer_bytes`, the way `s.bytes()` and
 the net byte reader already did; a byte list built by pushing would pay
 `[mem.region.account.1]`'s growth history and fail it.
 
+#### The harness defect the tier exposed
+
+Corpus programs now write real files, and this crate runs many programs at
+once — several harnesses walk the whole corpus, cargo runs test binaries in
+parallel, and `export::export` runs a full walk inside any of them. Two
+symptoms, both measured before the fix: `fs/fstat.lu` read `size=0` off a
+file another thread had just truncated, and two concurrent exports of one
+corpus appended to one `log.txt` twice (`log=one|one|twotwo size=14`), so the
+bundle sha256 was not reproducible.
+
+The corpus's own answer to re-running a witness is "idempotent by
+construction", which covers a SEQUENTIAL re-run — what the compiler's conform
+pass does, one lane after the other — and says nothing about two at once.
+Nothing in the spec contemplates it either. So the defect is the harness's
+and it is answered by ORDERING the runs, never by weakening the tier or
+editing a witness: `frontend::observe_with` takes one advisory lock per
+program for observational runs only.
+
+**The key is the cwd and the program's SOURCE, not its path**, and that had to
+be measured rather than assumed: `export::export` observes each program from a
+copy inside its own bundle directory, so a path-keyed lock excluded nothing in
+precisely the case that was failing. Recorded because the first fix looked
+right and was not, and the test that caught it (`export::re_export_is_byte_identical`)
+only fails when it runs beside its sibling.
+
 #### Rows the census cannot see
 
 Three facts about this tier are invisible to the corpus, because no witness
