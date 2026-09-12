@@ -2,6 +2,6 @@
 source: tests/frontend_snapshots.rs
 expression: excerpt
 ---
-  574..578   str-open multiline
-  578..647     text "usage: wc FILE...\nCount words across files, in parallel.\n"
-  647..650   str-close
+ 1127..1131  str-open multiline
+ 1131..1200    text "usage: wc FILE...\nCount words across files, in parallel.\n"
+ 1200..1203  str-close

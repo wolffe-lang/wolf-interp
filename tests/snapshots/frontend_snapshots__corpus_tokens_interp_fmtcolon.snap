@@ -2,76 +2,80 @@
 source: tests/frontend_snapshots.rs
 expression: "tokens_of(&corpus(\"grammar/interp_fmtcolon.lu\"))"
 ---
-  132..134   kw fn
-  135..139   ident main
-  139..140   punct (
-  140..141   punct )
-  142..144   punct ->
-  145..146   punct !
-  146..149   ident int
-  150..151   punct {
-  156..159   kw var
-  160..161   ident m
-  162..163   punct =
-  164..167   ident Map
-  167..168   punct [
-  168..171   ident str
-  171..172   punct ,
-  173..176   ident int
-  176..177   punct ]
-  177..178   punct (
-  178..179   punct )
-  179..179   term nl
-  184..185   ident m
-  185..186   punct [
-  186..187   str-open plain
-  187..188     text "k"
-  188..189   str-close
-  189..190   punct ]
-  191..192   punct =
-  193..195   int 42
-  195..195   term nl
-  200..205   ident print
-  205..206   punct (
-  206..207   str-open plain
-  207..208     interp-open
-  208..209       ident m
-  209..210       punct [
-  210..211       str-open plain
-  211..212         text "k"
-  212..213       str-close
-  213..214       punct ]
-  214..215       fmt-open
-  215..217       fmt ">8"
-  217..218     interp-close
-  218..219   str-close
-  219..220   punct )
-  264..264   term nl
-  269..272   kw let
-  273..274   ident w
-  275..276   punct =
-  277..278   int 8
-  278..278   term nl
-  283..288   ident print
-  288..289   punct (
-  289..290   str-open plain
-  290..291     interp-open
-  291..292       ident m
-  292..293       punct [
-  293..294       str-open plain
-  294..295         text "k"
-  295..296       str-close
-  296..297       punct ]
-  297..298       fmt-open
-  298..299       fmt ">"
-  299..300       interp-open
-  300..301         ident w
-  301..302       interp-close
-  302..303     interp-close
-  303..304   str-close
-  304..305   punct )
-  342..342   term nl
-  347..348   int 0
-  348..348   term nl
-  349..350   punct }
-  350..350   term nl
+  496..498   kw fn
+  499..503   ident main
+  503..504   punct (
+  504..505   punct )
+  506..508   punct ->
+  509..510   punct !
+  510..513   ident int
+  514..515   punct {
+  520..523   kw var
+  524..525   ident m
+  526..527   punct =
+  528..531   ident Map
+  531..532   punct [
+  532..535   ident str
+  535..536   punct ,
+  537..540   ident int
+  540..541   punct ]
+  541..542   punct (
+  542..543   punct )
+  543..543   term nl
+  548..549   ident m
+  549..550   punct [
+  550..551   str-open plain
+  551..552     text "k"
+  552..553   str-close
+  553..554   punct ]
+  555..556   punct =
+  557..559   int 42
+  559..559   term nl
+  564..569   ident print
+  569..570   punct (
+  570..571   str-open plain
+  571..572     interp-open
+  572..573       ident m
+  573..574       punct [
+  574..575       str-open plain
+  575..576         text "k"
+  576..577       str-close
+  577..578       punct ]
+  579..583       kw else
+  584..585       int 0
+  585..586       fmt-open
+  586..588       fmt ">8"
+  588..589     interp-close
+  589..590   str-close
+  590..591   punct )
+  630..630   term nl
+  635..638   kw let
+  639..640   ident w
+  641..642   punct =
+  643..644   int 8
+  644..644   term nl
+  649..654   ident print
+  654..655   punct (
+  655..656   str-open plain
+  656..657     interp-open
+  657..658       ident m
+  658..659       punct [
+  659..660       str-open plain
+  660..661         text "k"
+  661..662       str-close
+  662..663       punct ]
+  664..668       kw else
+  669..670       int 8
+  670..671       fmt-open
+  671..672       fmt ">"
+  672..673       interp-open
+  673..674         ident w
+  674..675       interp-close
+  675..676     interp-close
+  676..677   str-close
+  677..678   punct )
+  708..708   term nl
+  713..714   int 0
+  714..714   term nl
+  715..716   punct }
+  716..716   term nl
