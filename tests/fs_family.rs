@@ -379,3 +379,99 @@ fn a_rename_moves_bytes_no_text_reader_could_hold() {
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     assert_eq!(stdout_of(&output), "moved=true gone=true first=128\n");
 }
+
+#[test]
+fn a_live_run_writes_in_the_users_directory_and_an_observed_one_does_not() {
+    // is48's working-directory rule, as the two halves a user can see.
+    //
+    // `lupin run` is the front door (is12): the program writes where the user
+    // is standing, exactly as `wolf run` does. `lupin conform-run` is an
+    // OBSERVATION, and an observation gets a private project root, because
+    // this crate runs many programs at once and a shared directory makes them
+    // interfere — measured, before the root existed: two concurrent exports
+    // of one corpus appended to one `log.txt` twice.
+    let dir = scratch("fs-live-vs-observed");
+    let source = "fn main() -> !int {\n\
+        \x20   fs_write_text(\"witness.txt\", \"here\")?\n\
+        \x20   print(\"wrote={fs_exists(\"witness.txt\")}\")\n\
+        \x20   0\n\
+        }\n";
+    let entry = dir.join("main.lu");
+    std::fs::write(&entry, source).expect("written");
+
+    // Observed: the program sees its own file, and the user's directory does
+    // not gain one.
+    let observed = Command::new(env!("CARGO_BIN_EXE_lupin"))
+        .arg("conform-run")
+        .arg("main.lu")
+        .current_dir(&dir)
+        .output()
+        .expect("lupin observes");
+    assert_eq!(observed.status.code(), Some(0), "{observed:?}");
+    assert!(
+        String::from_utf8_lossy(&observed.stdout).contains("wrote=true"),
+        "the observed program must really write its file: {}",
+        String::from_utf8_lossy(&observed.stdout)
+    );
+    assert!(
+        !dir.join("witness.txt").exists(),
+        "an observation wrote into the user's directory"
+    );
+
+    // Live: the same program, the same directory, and now the file is there.
+    let live = run_program(dir.as_path(), source);
+    assert_eq!(live.status.code(), Some(0), "{live:?}");
+    assert_eq!(stdout_of(&live), "wrote=true\n");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("witness.txt")).expect("a real file"),
+        "here"
+    );
+}
+
+#[test]
+fn two_concurrent_observations_of_one_program_do_not_interfere() {
+    // The defect the private root exists to remove, as a regression test: the
+    // same program, observed from several processes at once, against the same
+    // working directory. Before is48's root this raced — one run removed the
+    // file another was about to read (`error: not_found`), or two appends
+    // landed in one file (`log=one|one|twotwo`).
+    let dir = scratch("fs-concurrent-observations");
+    // Write, append twice, read back: the shape that showed the interference.
+    let source = "fn main() -> !int {\n\
+        \x20   fs_write_text(\"log.txt\", \"\")?\n\
+        \x20   let a = fs_open_mode(\"log.txt\", 2)?\n\
+        \x20   fs_write(a, \"one|\")?\n\
+        \x20   fs_close(a)?\n\
+        \x20   let b = fs_open_mode(\"log.txt\", 2)?\n\
+        \x20   fs_write(b, \"two\")?\n\
+        \x20   fs_close(b)?\n\
+        \x20   print(\"log={fs_read_text(\"log.txt\")?}\")\n\
+        \x20   fs_remove(\"log.txt\")?\n\
+        \x20   0\n\
+        }\n";
+    let entry = dir.join("main.lu");
+    std::fs::write(&entry, source).expect("written");
+
+    let children: Vec<_> = (0..6)
+        .map(|_| {
+            Command::new(env!("CARGO_BIN_EXE_lupin"))
+                .arg("conform-run")
+                .arg("main.lu")
+                .current_dir(&dir)
+                // `spawn` inherits stdout unless told otherwise, and
+                // `wait_with_output` would then hand back nothing.
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .expect("lupin observes")
+        })
+        .collect();
+    for child in children {
+        let output = child.wait_with_output().expect("a child finishes");
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("log=one|two"),
+            "concurrent observations interfered: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+}
