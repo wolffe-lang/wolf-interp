@@ -385,7 +385,11 @@ fn the_declared_char_boundaries_answer_wolfc_span_for_span() {
             ("E0401", *span),
             "{what}: the counterparty's code and span are the contract"
         );
-        assert_eq!(observed.verdict, Verdict::Fail("E0401".to_owned()), "{what}");
+        assert_eq!(
+            observed.verdict,
+            Verdict::Fail("E0401".to_owned()),
+            "{what}"
+        );
         assert_eq!(observed.phase_reached, Phase::Resolve, "{what}");
     }
 }
@@ -401,7 +405,9 @@ fn the_char_half_of_the_rule_is_the_byte_half() {
     // nothing here refuses a program that says what it means.
     exits_zero("let c: char = 65 as char\nlet n: int = 'a' as int\nif n == 97 { 0 } else { 1 }");
     exits_zero("var c = 'a'\nc = 65 as char\nif c == 'A' { 0 } else { 1 }");
-    exits_zero("var xs = List[char]()\n(mut xs).push(65 as char)\nif xs[0] == 'A' { 0 } else { 1 }");
+    exits_zero(
+        "var xs = List[char]()\n(mut xs).push(65 as char)\nif xs[0] == 'A' { 0 } else { 1 }",
+    );
 
     // And the sema boundary holds: a side this pass cannot see says nothing.
     // `List()` carries no element annotation and a generic parameter resolves
@@ -594,14 +600,25 @@ fn for_over_a_str_stays_a_named_refusal_that_names_the_way_forward() {
     // up elsewhere.
     let observation = observe("for c in \"str\" {\n    print(\"{c}\")\n}\n0");
     assert_eq!(observation.verdict, Verdict::Unsupported);
-    let reason = observation.reason.expect("a named refusal carries its reason");
+    let reason = observation
+        .reason
+        .expect("a named refusal carries its reason");
     for named in ["chars()", "words()", "lines()", "mem.str.view"] {
-        assert!(reason.contains(named), "the reason must name {named}: {reason}");
+        assert!(
+            reason.contains(named),
+            "the reason must name {named}: {reason}"
+        );
     }
 
     // And the three it names all work, which is what makes naming them a fix
     // rather than a nicer wording.
-    exits_zero("var n = 0\nfor c in \"ab\".chars() {\n    n = n + 1\n}\nif n == 2 { 0 } else { 1 }");
-    exits_zero("var n = 0\nfor w in \"a b\".words() {\n    n = n + 1\n}\nif n == 2 { 0 } else { 1 }");
-    exits_zero("var n = 0\nfor l in \"a\\nb\".lines() {\n    n = n + 1\n}\nif n == 2 { 0 } else { 1 }");
+    exits_zero(
+        "var n = 0\nfor c in \"ab\".chars() {\n    n = n + 1\n}\nif n == 2 { 0 } else { 1 }",
+    );
+    exits_zero(
+        "var n = 0\nfor w in \"a b\".words() {\n    n = n + 1\n}\nif n == 2 { 0 } else { 1 }",
+    );
+    exits_zero(
+        "var n = 0\nfor l in \"a\\nb\".lines() {\n    n = n + 1\n}\nif n == 2 { 0 } else { 1 }",
+    );
 }

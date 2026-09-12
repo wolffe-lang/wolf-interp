@@ -2139,7 +2139,10 @@ fn free_names_inner(
         // The binder always BINDS — a handler pattern is irrefutable (E0806's
         // law) — so even a binder spelled like a declared tag is a real local;
         // what travels with it is its tag-shapedness, for a `match` over it.
-        ExprKind::ElseDefault { expr: operand, handler } => {
+        ExprKind::ElseDefault {
+            expr: operand,
+            handler,
+        } => {
             free_names_inner(operand, locals, binders, out, row_tags);
             match &**handler {
                 ElseHandler::Block(block) => {

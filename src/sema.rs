@@ -3884,7 +3884,9 @@ impl ScalarWalk<'_> {
                     return ScalarTy::Unknown;
                 }
                 match (self.classify(lhs), self.classify(rhs)) {
-                    (ScalarTy::Int | ScalarTy::Byte, ScalarTy::Int | ScalarTy::Byte) => ScalarTy::Int,
+                    (ScalarTy::Int | ScalarTy::Byte, ScalarTy::Int | ScalarTy::Byte) => {
+                        ScalarTy::Int
+                    }
                     _ => ScalarTy::Unknown,
                 }
             }
@@ -4054,7 +4056,10 @@ impl ScalarWalk<'_> {
         if let Some(diag) = self.expr(&binding.value) {
             return Some(diag);
         }
-        let annotated = binding.ty.as_ref().map_or(ScalarTy::Unknown, scalar_ty_of_type);
+        let annotated = binding
+            .ty
+            .as_ref()
+            .map_or(ScalarTy::Unknown, scalar_ty_of_type);
         let found = self.classify(&binding.value);
         if scalar_clash(annotated, found) {
             return Some(scalar_clash_diag(
@@ -4154,9 +4159,9 @@ impl ScalarWalk<'_> {
                     let crate::ast::IndexArg::Value(arg) = arg else {
                         return None;
                     };
-                    self.classify(&arg.expr)
-                        .is_width_bearing()
-                        .then(|| scalar_clash_diag(ScalarTy::Int, arg.expr.span, "a `List` subscript"))
+                    self.classify(&arg.expr).is_width_bearing().then(|| {
+                        scalar_clash_diag(ScalarTy::Int, arg.expr.span, "a `List` subscript")
+                    })
                 })
             }
             ExprKind::Call { callee, args } => self.call(callee, args),
@@ -4237,7 +4242,10 @@ impl ScalarWalk<'_> {
             ExprKind::Closure { params, body, .. } => {
                 self.scopes.push(Vec::new());
                 for param in params {
-                    let ty = param.ty.as_ref().map_or(ScalarTy::Unknown, scalar_ty_of_type);
+                    let ty = param
+                        .ty
+                        .as_ref()
+                        .map_or(ScalarTy::Unknown, scalar_ty_of_type);
                     self.declare(&param.name.name, ty);
                 }
                 let out = self.expr(body);
