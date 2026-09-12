@@ -583,15 +583,10 @@ impl Walk<'_> {
     /// and binds nothing. No binding, no shadow: W0305 has no subject in
     /// such an arm, which is exactly where it used to false-fire.
     fn arm_is_tag_pattern(&self, pattern: &Pattern, scrutinee_row: Option<&[String]>) -> bool {
-        let Some(row) = scrutinee_row else {
-            return false;
-        };
-        if let PatKind::Binding(ident) = &*pattern.kind {
-            ident.name.starts_with(char::is_lowercase)
-                && (row.contains(&ident.name) || self.row_tags.contains(&ident.name))
-        } else {
-            false
-        }
+        // One judgement, two walks: `free_names` asks the same question for
+        // W1102's capture set (wolf-interp#45), and the two answering
+        // differently is how #44's rule would come apart again.
+        pattern_is_tag(pattern, scrutinee_row, self.row_tags)
     }
 
     // -- attributes ---------------------------------------------------------
@@ -1817,7 +1812,7 @@ impl Walk<'_> {
         let mut locals: BTreeSet<String> =
             params.iter().map(|param| param.name.name.clone()).collect();
         let mut captured = BTreeSet::new();
-        free_names(body, &mut locals, &mut captured);
+        free_names(body, &mut locals, &mut captured, self.row_tags);
         captured.retain(|name| self.declared(name) == Some(true));
         self.closures.push(ClosureRec {
             span: expr.span,
@@ -2012,10 +2007,46 @@ fn expr_type_head(expr: &Expr) -> Option<&str> {
     }
 }
 
+/// The binders a closure body declares as the free-name walk descends.
+///
+/// `names` is the set the walk subtracts from what it sees. `err_rows` is the
+/// half that makes the arm-resolution rule answerable here: an `else`
+/// handler's binder carries the declared error row of its operand
+/// (`Walk::declare_err_binder`'s `err_row`), and that is what makes a `match`
+/// over it tag-shaped. This walk cannot read a callee's signature, so the row
+/// it records is EMPTY — which is the same thing `Walk` records when the
+/// operand's row is not in sight (`Walk::operand_row` answers `Vec::new()`),
+/// and the module's row vocabulary decides from there. Same rule, same
+/// fallback, one function deciding it (`pattern_is_tag`).
+#[derive(Default, Clone)]
+struct BodyBinders {
+    err_rows: BTreeMap<String, Vec<String>>,
+}
+
 /// The free bare names of a closure body: referenced names minus the ones the
 /// body itself declares. Approximate downward (module items and prelude names
 /// are filtered by the caller against the enclosing scopes).
-pub(crate) fn free_names(expr: &Expr, locals: &mut BTreeSet<String>, out: &mut BTreeSet<String>) {
+///
+/// `row_tags` is the module's row-tag vocabulary (`sema::Module::row_tags`),
+/// for the arm-resolution rule below; a caller with no module in hand passes
+/// an empty set and every arm pattern is read as the binding it then is.
+pub(crate) fn free_names(
+    expr: &Expr,
+    locals: &mut BTreeSet<String>,
+    out: &mut BTreeSet<String>,
+    row_tags: &BTreeSet<String>,
+) {
+    let mut binders = BodyBinders::default();
+    free_names_inner(expr, locals, &mut binders, out, row_tags);
+}
+
+fn free_names_inner(
+    expr: &Expr,
+    locals: &mut BTreeSet<String>,
+    binders: &mut BodyBinders,
+    out: &mut BTreeSet<String>,
+    row_tags: &BTreeSet<String>,
+) {
     match &*expr.kind {
         ExprKind::Path(path) if path.is_single() => {
             let name = &path.segments[0].name;
@@ -2025,40 +2056,130 @@ pub(crate) fn free_names(expr: &Expr, locals: &mut BTreeSet<String>, out: &mut B
         }
         ExprKind::Block(block) => {
             let mut inner = locals.clone();
-            for stmt in &block.stmts {
-                free_names_stmt(stmt, &mut inner, out);
-            }
-            if let Some(tail) = &block.tail {
-                free_names(tail, &mut inner, out);
-            }
+            let mut inner_binders = binders.clone();
+            free_names_block(block, &mut inner, &mut inner_binders, out, row_tags);
         }
         ExprKind::Closure { params, body, .. } => {
             let mut inner = locals.clone();
+            let mut inner_binders = binders.clone();
             for param in params {
                 inner.insert(param.name.name.clone());
             }
-            free_names(body, &mut inner, out);
+            free_names_inner(body, &mut inner, &mut inner_binders, out, row_tags);
+        }
+        // wolf-interp#45: a `match` used to fall to `walk_child_exprs`, so an
+        // arm's OWN binding read as a free name and a closure that captures
+        // nothing could draw W1102 on a later write to the outer name. An arm
+        // binds per arm, and a tag-pattern arm binds nothing at all
+        // (`pattern_is_tag`, is24's #44 rule, shared rather than restated).
+        ExprKind::Match { scrutinee, arms } => {
+            free_names_inner(scrutinee, locals, binders, out, row_tags);
+            let scrutinee_row: Option<Vec<String>> = match &*scrutinee.kind {
+                ExprKind::Path(path) if path.is_single() => {
+                    binders.err_rows.get(&path.segments[0].name).cloned()
+                }
+                _ => None,
+            };
+            for arm in arms {
+                let mut inner = locals.clone();
+                let mut inner_binders = binders.clone();
+                if !pattern_is_tag(&arm.pattern, scrutinee_row.as_deref(), row_tags) {
+                    collect_pattern_names(&arm.pattern, &mut inner);
+                }
+                if let Some(guard) = &arm.guard {
+                    free_names_inner(guard, &mut inner, &mut inner_binders, out, row_tags);
+                }
+                free_names_inner(&arm.body, &mut inner, &mut inner_binders, out, row_tags);
+            }
+        }
+        // The same hole, one keyword over: the element binding is in scope for
+        // the body and nowhere else.
+        ExprKind::For {
+            pattern,
+            iter,
+            body,
+        } => {
+            free_names_inner(iter, locals, binders, out, row_tags);
+            let mut inner = locals.clone();
+            let mut inner_binders = binders.clone();
+            collect_pattern_names(pattern, &mut inner);
+            free_names_block(body, &mut inner, &mut inner_binders, out, row_tags);
+        }
+        // And the third: `expr else |e| …` binds `e` over the handler body.
+        // The binder always BINDS — a handler pattern is irrefutable (E0806's
+        // law) — so even a binder spelled like a declared tag is a real local;
+        // what travels with it is its tag-shapedness, for a `match` over it.
+        ExprKind::ElseDefault { expr: operand, handler } => {
+            free_names_inner(operand, locals, binders, out, row_tags);
+            match &**handler {
+                ElseHandler::Block(block) => {
+                    let mut inner = locals.clone();
+                    let mut inner_binders = binders.clone();
+                    free_names_block(block, &mut inner, &mut inner_binders, out, row_tags);
+                }
+                ElseHandler::Expr(body) => {
+                    free_names_inner(body, locals, binders, out, row_tags);
+                }
+                ElseHandler::Handler { pattern, body } => {
+                    let mut inner = locals.clone();
+                    let mut inner_binders = binders.clone();
+                    if let PatKind::Binding(ident) = &*pattern.kind {
+                        inner.insert(ident.name.clone());
+                        inner_binders
+                            .err_rows
+                            .insert(ident.name.clone(), Vec::new());
+                    } else {
+                        collect_pattern_names(pattern, &mut inner);
+                    }
+                    free_names_inner(body, &mut inner, &mut inner_binders, out, row_tags);
+                }
+            }
         }
         _ => {
-            walk_child_exprs(expr, &mut |child| free_names(child, locals, out));
+            walk_child_exprs(expr, &mut |child| {
+                free_names_inner(child, locals, binders, out, row_tags);
+            });
         }
     }
 }
 
-fn free_names_stmt(stmt: &Stmt, locals: &mut BTreeSet<String>, out: &mut BTreeSet<String>) {
+fn free_names_block(
+    block: &Block,
+    locals: &mut BTreeSet<String>,
+    binders: &mut BodyBinders,
+    out: &mut BTreeSet<String>,
+    row_tags: &BTreeSet<String>,
+) {
+    for stmt in &block.stmts {
+        free_names_stmt(stmt, locals, binders, out, row_tags);
+    }
+    if let Some(tail) = &block.tail {
+        free_names_inner(tail, locals, binders, out, row_tags);
+    }
+}
+
+fn free_names_stmt(
+    stmt: &Stmt,
+    locals: &mut BTreeSet<String>,
+    binders: &mut BodyBinders,
+    out: &mut BTreeSet<String>,
+    row_tags: &BTreeSet<String>,
+) {
     match &stmt.kind {
         StmtKind::Binding(binding) => {
-            free_names(&binding.value, locals, out);
+            free_names_inner(&binding.value, locals, binders, out, row_tags);
             collect_pattern_names(&binding.pattern, locals);
         }
         StmtKind::Assign { place, value, .. } => {
-            free_names(place, locals, out);
-            free_names(value, locals, out);
+            free_names_inner(place, locals, binders, out, row_tags);
+            free_names_inner(value, locals, binders, out, row_tags);
         }
-        StmtKind::Defer { expr, .. } | StmtKind::Expr(expr) => free_names(expr, locals, out),
+        StmtKind::Defer { expr, .. } | StmtKind::Expr(expr) => {
+            free_names_inner(expr, locals, binders, out, row_tags);
+        }
         StmtKind::AssumeNoalias(operands) => {
             for operand in operands {
-                free_names(operand, locals, out);
+                free_names_inner(operand, locals, binders, out, row_tags);
             }
         }
         StmtKind::Item(_) => {}
@@ -2186,6 +2307,39 @@ fn product_key(
                 .collect(),
         }),
         _ => None,
+    }
+}
+
+/// Whether a match arm's pattern dispatches on a ROW TAG rather than binding —
+/// `[gram.expr.tagident]`'s handler side (wolf-lang#48, wolf-interp#44), the
+/// static mirror of `eval::match_pattern`.
+///
+/// Over a tag-shaped scrutinee (one whose declared error row is in sight,
+/// `Walk::declare_err_binder`), a bare lowercase identifier that names a
+/// declared tag — the scrutinee's own row first, the module's row vocabulary
+/// behind it — dispatches on the tag and binds nothing. Over anything else it
+/// is an ordinary binding, which is why `scrutinee_row: None` answers `false`
+/// rather than consulting the vocabulary: a lowercase name that happens to
+/// spell a tag somewhere in the module is still a BINDING when the scrutinee
+/// is not tag-shaped.
+///
+/// Free-standing because two walks ask it: `Walk::arm_is_tag_pattern` for
+/// W0305's shadow subject, and `free_names` for W1102's capture set. is24
+/// fixed the first and filed the second (#45); one function is what keeps the
+/// two from drifting apart.
+pub(crate) fn pattern_is_tag(
+    pattern: &Pattern,
+    scrutinee_row: Option<&[String]>,
+    row_tags: &BTreeSet<String>,
+) -> bool {
+    let Some(row) = scrutinee_row else {
+        return false;
+    };
+    if let PatKind::Binding(ident) = &*pattern.kind {
+        ident.name.starts_with(char::is_lowercase)
+            && (row.contains(&ident.name) || row_tags.contains(&ident.name))
+    } else {
+        false
     }
 }
 
@@ -3227,6 +3381,153 @@ mod tests {
             found.len(),
             1,
             "the tag arm binds nothing, so the write is captured: {found:?}"
+        );
+    }
+
+    // ---- W1102's capture set and the binders it never collected (#45) ----
+
+    /// Does this program draw W1102 — "captured by value before the write"?
+    fn captures_before_write(source: &str) -> bool {
+        warn_codes(source).iter().any(|code| code == "W1102")
+    }
+
+    #[test]
+    fn a_match_arm_binding_is_not_a_capture() {
+        // wolf-interp#45, found by is24's bounded honesty pass and filed
+        // rather than fixed in-sprint: `free_names` had arms for `Path`,
+        // `Block` and `Closure` only, so a `match` fell to the generic walk
+        // and an arm's OWN binding read as a free name. The closure below
+        // captures `n` and nothing else — its `x` is the arm's binding — and
+        // the later write to the outer `var x` drew W1102 for a capture that
+        // never happened. Over-reporting, W1102-only; the capture-law path
+        // reads `Walk::scopes` and was always right, which is why this is
+        // NOT #44's bug.
+        let source = "fn main() -> !int {\n\
+             \x20   var x = 0\n\
+             \x20   var n = 7\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() {\n\
+             \x20           match n {\n\
+             \x20               x => x + 1,\n\
+             \x20           }\n\
+             \x20       })\n\
+             \x20   }\n\
+             \x20   x = 1\n\
+             \x20   x\n\
+             }\n";
+        assert!(
+            !captures_before_write(source),
+            "the arm's `x` is the arm's own binding"
+        );
+    }
+
+    #[test]
+    fn a_closure_that_really_captures_still_warns() {
+        // The control, in the same shape: one character apart from the file
+        // above — the arm binds `y`, so the body's `x` IS the outer `var`.
+        // Without this the fix could be "collect everything and warn never".
+        let source = "fn main() -> !int {\n\
+             \x20   var x = 0\n\
+             \x20   var n = 7\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() {\n\
+             \x20           match n {\n\
+             \x20               y => y + x,\n\
+             \x20           }\n\
+             \x20       })\n\
+             \x20   }\n\
+             \x20   x = 1\n\
+             \x20   x\n\
+             }\n";
+        assert!(
+            captures_before_write(source),
+            "the body's `x` is the captured outer var"
+        );
+    }
+
+    #[test]
+    fn a_for_element_binding_is_not_a_capture() {
+        // The same hole one keyword over: `free_names_stmt` collected a
+        // pattern for `StmtKind::Binding` alone, so a `for` header's element
+        // binding was never a local of the body that owns it.
+        let source = "fn main() -> !int {\n\
+             \x20   var x = 0\n\
+             \x20   var xs = List[int]()\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() {\n\
+             \x20           var total = 0\n\
+             \x20           for x in xs {\n\
+             \x20               total = total + x\n\
+             \x20           }\n\
+             \x20           total\n\
+             \x20       })\n\
+             \x20   }\n\
+             \x20   x = 1\n\
+             \x20   x\n\
+             }\n";
+        assert!(
+            !captures_before_write(source),
+            "the element binding is the loop's own"
+        );
+    }
+
+    #[test]
+    fn an_else_handler_binder_is_not_a_capture() {
+        // And the third: `expr else |e| …` binds `e` over the handler body.
+        // The binder always BINDS (E0806's law makes a handler pattern
+        // irrefutable), so it is a local of the body even when it is spelled
+        // like a declared tag.
+        let source = "fn f() -> int ! {refused} {\n\
+             \x20   return refused\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   var e = 0\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() {\n\
+             \x20           let v = f() else |e| match e {\n\
+             \x20               refused => 1,\n\
+             \x20               _ => 2,\n\
+             \x20           }\n\
+             \x20           v\n\
+             \x20       })\n\
+             \x20   }\n\
+             \x20   e = 1\n\
+             \x20   e\n\
+             }\n";
+        assert!(
+            !captures_before_write(source),
+            "the handler's `e` is the handler's own binding"
+        );
+    }
+
+    #[test]
+    fn a_tag_arm_binds_nothing_in_the_capture_set_either() {
+        // The #44 rule, on the side this fix touches: over a TAG-SHAPED
+        // scrutinee a bare lowercase name that spells a declared tag
+        // dispatches and binds NOTHING, so the arm's `refused` here is the
+        // captured outer `var` and the write below is a real W1102. One
+        // judgement decides it on both walks (`pattern_is_tag`); collecting
+        // the arm pattern unconditionally would have silenced this.
+        let source = "fn f() -> int ! {refused} {\n\
+             \x20   return refused\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   var refused = 0\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() {\n\
+             \x20           let v = f() else |e| match e {\n\
+             \x20               refused => refused + 1,\n\
+             \x20               _ => 2,\n\
+             \x20           }\n\
+             \x20           v\n\
+             \x20       })\n\
+             \x20   }\n\
+             \x20   refused = 1\n\
+             \x20   refused\n\
+             }\n";
+        assert!(
+            captures_before_write(source),
+            "a tag arm binds nothing, so the body's `refused` is the capture"
         );
     }
 

@@ -3338,7 +3338,11 @@ impl Machine {
         // captures; they resolve at call time as they do everywhere.
         let mut bound: BTreeSet<String> = params.iter().cloned().collect();
         let mut used = BTreeSet::new();
-        crate::lint::free_names(&body_expr, &mut bound, &mut used);
+        // No module row vocabulary here (this machine's evaluator carries no
+        // `sema::Module`), so every match arm reads as the binding it is —
+        // the conservative half of `lint::pattern_is_tag`, and the direction
+        // that cannot invent a capture (wolf-interp#45).
+        crate::lint::free_names(&body_expr, &mut bound, &mut used, &BTreeSet::new());
         for free in &used {
             if self.local_exists(free) {
                 return unsupported(format!(
@@ -5781,7 +5785,7 @@ impl Machine {
         // it instead of running the stale read.
         let mut bound: BTreeSet<String> = params.iter().map(|p| p.name.name.clone()).collect();
         let mut used = BTreeSet::new();
-        crate::lint::free_names(body, &mut bound, &mut used);
+        crate::lint::free_names(body, &mut bound, &mut used, &BTreeSet::new());
         let mut loans = Vec::new();
         if let Some(frame) = self.frames.last() {
             let serial = frame.serial;
