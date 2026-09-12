@@ -76,14 +76,38 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // ambient OS surface, so no capability and no sandbox category.
     "region_bytes",
     "live_region_bytes",
-    // The s38 io/fs surface (wolf-interp#18 item 6): the names resolve so
-    // the refusal is "unsupported feature", never "unknown name" — this
-    // machine has no filesystem by design (see `call`'s fs arm).
+    // The s38/s90 io/fs surface (`[os.fs]`, spec/11 §6 — is48). Until
+    // 0.1.36 these five names resolved only so the refusal would read
+    // "unsupported feature" instead of "unknown name": this machine had no
+    // filesystem by design. The maintainer's ruling (BACKLOG B16) retired
+    // that posture — the tier is BUILT, over real files under the working
+    // directory, from the clauses and the witnesses (see `eval::fs`).
     "fs_read_text",
     "fs_write_text",
+    "fs_read_bytes",
+    "fs_write_bytes",
     "fs_open",
+    "fs_create",
+    "fs_open_mode",
+    "fs_read",
+    "fs_read_chunk",
+    "fs_write",
+    "fs_fstat",
+    "fs_close",
     "fs_remove",
+    "fs_rename",
     "fs_exists",
+    "fs_is_dir",
+    "fs_is_file",
+    "fs_size",
+    "fs_modified_ms",
+    "fs_read_dir",
+    "fs_create_dir_all",
+    "fs_remove_dir_all",
+    // `read_line` is NOT part of that landing and stays declined: stdin is
+    // not a file, no clause names an injectable one, and nothing in the
+    // pinned corpus calls it. Named here so the refusal still reads
+    // "unsupported feature" rather than "unknown name".
     "read_line",
     // The s40 os/env/time tier (0.1.7): env and time are implemented (the
     // checked-lane posture — overlay env, empty argv, X12 monotonic
@@ -273,18 +297,32 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             machine.err_out(&text);
             Ok(Value::Unit)
         }
-        // The s38 fs family and `read_line` (wolf-interp#18 item 6): this
-        // machine has no filesystem and no stdin by design — an interpreter
-        // observing the HOST's filesystem would put the host into a
-        // differential comparison, and `[proto.cmp.defined-divergence]`
-        // already rules that surface out. The honest verdict is
+        // `read_line` alone keeps the old posture: stdin is not a file and
+        // no clause names an injectable one, so the honest verdict is
         // `unsupported` with the construct named, never a mock.
-        "fs_read_text" | "fs_write_text" | "fs_open" | "fs_remove" | "fs_exists" | "read_line" => {
-            unsupported(format!(
-                "`{name}` is the s38 io/fs surface; this machine has no filesystem (or \
-                 injectable stdin) by design, so the fs tier is declined rather than mocked"
-            ))
-        }
+        "read_line" => unsupported(format!(
+            "`{name}` reads stdin; no pinned clause names an injectable stdin for this \
+             machine, so it is declined rather than mocked (the fs tier itself landed at \
+             is48 — see `eval::fs`)"
+        )),
+        // The s38/s90 fs family (is48): one dispatch arm, the semantics in
+        // `eval::fs`. No filesystem on wasm — the tier declines there, as
+        // the net tier does.
+        #[cfg(target_family = "wasm")]
+        "fs_read_text" | "fs_write_text" | "fs_read_bytes" | "fs_write_bytes" | "fs_open"
+        | "fs_create" | "fs_open_mode" | "fs_read" | "fs_read_chunk" | "fs_write" | "fs_fstat"
+        | "fs_close" | "fs_remove" | "fs_rename" | "fs_exists" | "fs_is_dir" | "fs_is_file"
+        | "fs_size" | "fs_modified_ms" | "fs_read_dir" | "fs_create_dir_all"
+        | "fs_remove_dir_all" => unsupported(format!(
+            "`{name}` is the s38/s90 fs tier; this wasm build has no filesystem to open, so \
+             the tier is declined rather than mocked"
+        )),
+        #[cfg(not(target_family = "wasm"))]
+        "fs_read_text" | "fs_write_text" | "fs_read_bytes" | "fs_write_bytes" | "fs_open"
+        | "fs_create" | "fs_open_mode" | "fs_read" | "fs_read_chunk" | "fs_write" | "fs_fstat"
+        | "fs_close" | "fs_remove" | "fs_rename" | "fs_exists" | "fs_is_dir" | "fs_is_file"
+        | "fs_size" | "fs_modified_ms" | "fs_read_dir" | "fs_create_dir_all"
+        | "fs_remove_dir_all" => machine.fs_call(name, &args, span),
         // -- the s40 os/env/time tier (0.1.7) ------------------------------
         //
         // env v0: the machine-local OVERLAY — `env_set` writes here and
@@ -2101,6 +2139,38 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // 0..=255; wolf-std's facade adopts both rows verbatim).
         "net_read_bytes" => &["closed", "timeout", "io"],
         "net_write_bytes" => &["closed", "invalid", "io"],
+        // The s38/s90 fs tier (is48). `[os.fs.open]` pins the open family's
+        // rows outright and `[os.fs.fstat]` pins the stat's; the rest are
+        // the witnesses' and the probed lane's, and each one is written
+        // where `eval::fs` answers it.
+        //
+        // `invalid` sits on `fs_open_mode` ALONE: it is the moded spelling's
+        // own pre-open check over a mode outside the set, and `fs_open` and
+        // `fs_create` carry their mode themselves, so no program can reach it
+        // through them (`corpus/fs/open_nonblock.lu` pins the row on the
+        // moded call).
+        "fs_open" | "fs_create" => &["not_found", "denied", "io"],
+        "fs_open_mode" => &["not_found", "denied", "exists", "invalid", "io"],
+        // `[os.fs.fstat]`: "the row set is the path stat's, so one handler
+        // serves both spellings"; on a handle the hosts answer `io` for
+        // nearly everything, the entry being already resolved.
+        "fs_fstat" | "fs_size" | "fs_modified_ms" => &["not_found", "denied", "io"],
+        // `eof` is the read's own row — a read that wanted bytes and got
+        // none. No corpus file reads twice, so it is pinned by `eval::fs`'s
+        // unit tests rather than by the census; `[os.fs.open]`'s mode-5
+        // prose is the clause that names it.
+        "fs_read" => &["eof", "utf8", "io"],
+        "fs_read_chunk" => &["eof", "io"],
+        "fs_write" | "fs_close" => &["io"],
+        // The path readers: `utf8` on the text spelling and not on the byte
+        // one, which is `net_read`/`net_read_bytes`'s split exactly — a lone
+        // 0x80 is data to a byte reader and a refusal to a text reader.
+        "fs_read_text" => &["not_found", "denied", "utf8", "io"],
+        "fs_read_bytes" | "fs_write_text" | "fs_remove" | "fs_rename" | "fs_create_dir_all"
+        | "fs_remove_dir_all" | "fs_read_dir" => &["not_found", "denied", "io"],
+        // `invalid` as at `net_write_bytes`: an element outside the octet,
+        // checked before the write.
+        "fs_write_bytes" => &["not_found", "denied", "invalid", "io"],
         // The s40 process trio (`eval::os`'s module doc, probed prelude sigs).
         "os_spawn" => &["not_found", "denied", "io"],
         "os_wait" => &["signal", "io"],

@@ -26,6 +26,10 @@
 
 pub mod builtin;
 mod conc;
+/// The s38/s90 file family over real files (`[os.fs]`, is48 — no filesystem
+/// on wasm, where the builtin arms decline as the net tier's do).
+#[cfg(not(target_family = "wasm"))]
+mod fs;
 /// The s39 net family over std::net (no sockets on wasm — the builtin
 /// arms decline there, like the time tier).
 #[cfg(not(target_family = "wasm"))]
@@ -471,6 +475,11 @@ struct Shared {
     /// reason (`net/spawn_accept.lu`'s task accepts on the fd main bound).
     #[cfg(not(target_family = "wasm"))]
     net: Arc<Mutex<net::NetTable>>,
+    /// is48: the fs family's open files, by handle — shared for the same
+    /// reason a socket fd is, and spent on close so a stale handle is `io`
+    /// rather than a live file (`corpus/fs/fstat.lu`'s `closed_is_io`).
+    #[cfg(not(target_family = "wasm"))]
+    files: Arc<Mutex<fs::FsTable>>,
     /// s40 time v0 (X12): `time_now_ms`'s process-local monotonic anchor —
     /// values compare and subtract; they are never wall timestamps.
     ///
@@ -640,6 +649,8 @@ impl Machine {
             #[cfg(not(target_family = "wasm"))]
             net: Arc::new(Mutex::new(net::NetTable::default())),
             #[cfg(not(target_family = "wasm"))]
+            files: Arc::new(Mutex::new(fs::FsTable::default())),
+            #[cfg(not(target_family = "wasm"))]
             epoch: std::time::Instant::now(),
         };
         Machine::for_task(shared, 0, BTreeMap::new())
@@ -710,6 +721,12 @@ impl Machine {
     #[cfg(not(target_family = "wasm"))]
     pub(crate) fn net(&self) -> MutexGuard<'_, net::NetTable> {
         self.shared.net.lock().expect("net lock")
+    }
+
+    /// The fs family's open-file table (is48) — same posture as the store.
+    #[cfg(not(target_family = "wasm"))]
+    pub(crate) fn files(&self) -> MutexGuard<'_, fs::FsTable> {
+        self.shared.files.lock().expect("files lock")
     }
 
     /// Stack the tree-walk runs on.
