@@ -475,3 +475,54 @@ fn two_concurrent_observations_of_one_program_do_not_interfere() {
         );
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn an_observed_programs_socket_lands_beside_its_files_and_not_in_the_users_directory() {
+    // The coherence bug the private root introduced and this pins shut: a
+    // unix socket is a filesystem object, so `net_listen_unix` has to resolve
+    // it exactly where `fs_exists` looks. `corpus/net/unix_echo.lu` is the
+    // witness that depends on it — it sweeps a stale socket with `fs_remove`,
+    // binds it, and ends with `cleaned = !fs_exists(path)`. When the two
+    // families disagreed, that sweep swept a path nothing bound, `cleaned`
+    // was vacuously true, and a stale socket left in the real directory made
+    // the bind fail at random.
+    let dir = scratch("fs-socket-coherence");
+    std::fs::create_dir_all(dir.join("target")).expect("a target/ to bind under");
+    let source = "fn main() -> !int {\n\
+        \x20   let path = \"target/probe.sock\"\n\
+        \x20   let before = fs_exists(path)\n\
+        \x20   let srv = net_listen_unix(path)?\n\
+        \x20   let during = fs_exists(path)\n\
+        \x20   net_close(srv)?\n\
+        \x20   print(\"before={before} during={during} after={fs_exists(path)}\")\n\
+        \x20   0\n\
+        }\n";
+    let entry = dir.join("main.lu");
+    std::fs::write(&entry, source).expect("written");
+
+    // A stale socket in the USER's directory must not reach an observation.
+    std::fs::write(dir.join("target").join("probe.sock"), b"stale").expect("stale planted");
+
+    let observed = Command::new(env!("CARGO_BIN_EXE_lupin"))
+        .arg("conform-run")
+        .arg("main.lu")
+        .current_dir(&dir)
+        .output()
+        .expect("lupin observes");
+    assert_eq!(observed.status.code(), Some(0), "{observed:?}");
+    let text = String::from_utf8_lossy(&observed.stdout);
+    // `before=false` is the whole point: the observation never saw the stale
+    // file, because it is not in the observation's directory. `during=true`
+    // is the other half — the bind really made a file, and `fs_exists` really
+    // found it, so the two families agree.
+    assert!(
+        text.contains("before=false during=true after=false"),
+        "the fs and net families disagree about where a socket path is: {text}"
+    );
+    // And the user's own stale file is untouched.
+    assert_eq!(
+        std::fs::read_to_string(dir.join("target").join("probe.sock")).expect("still there"),
+        "stale"
+    );
+}
