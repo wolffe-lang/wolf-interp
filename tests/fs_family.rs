@@ -526,3 +526,61 @@ fn an_observed_programs_socket_lands_beside_its_files_and_not_in_the_users_direc
         "stale"
     );
 }
+
+#[test]
+fn the_repl_front_door_writes_in_the_users_directory_and_keeps_the_file() {
+    // `lupin eval` and the REPL are one door (`repl::Session`), and a person
+    // is standing in a directory of their own when they use it. Before is48
+    // gave that door its own flag, a session's `fs_write_text` landed in a
+    // private observation root and was DELETED when the session ended —
+    // data loss dressed as isolation. The flag is deliberately not
+    // `live_stdout`: stdout pass-through and "this is somebody's real
+    // directory" are different properties.
+    let dir = scratch("fs-repl-door");
+    let output = Command::new(env!("CARGO_BIN_EXE_lupin"))
+        .arg("eval")
+        .arg("fs_write_text(\"notes.txt\", \"kept\")?\nprint(\"here={fs_exists(\"notes.txt\")}\")")
+        .current_dir(&dir)
+        .output()
+        .expect("lupin evaluates");
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert!(
+        stdout_of(&output).contains("here=true"),
+        "{}",
+        stdout_of(&output)
+    );
+    // The point: it is still there afterwards, in the user's own directory.
+    assert_eq!(
+        std::fs::read_to_string(dir.join("notes.txt")).expect("the file survives the session"),
+        "kept"
+    );
+}
+
+#[test]
+fn a_windows_device_name_is_refused_by_name_at_the_surface() {
+    // Refused on every host, because the corpus and the manual are shared
+    // across the matrix: a program admitted here on unix would be a program
+    // that cannot run on windows.
+    let dir = scratch("fs-device-names");
+    for name in ["NUL", "con.txt", "COM1"] {
+        let source = format!(
+            "fn main() -> !int {{\n\
+             \x20   fs_write_text(\"{name}\", \"x\")?\n\
+             \x20   0\n\
+             }}\n"
+        );
+        let output = run_program(dir.as_path(), &source);
+        assert_eq!(output.status.code(), Some(4), "{name}: {output:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("windows device"), "{name}: {stderr}");
+    }
+    // A name that merely starts the same way is untouched.
+    let source = "fn main() -> !int {\n\
+        \x20   fs_write_text(\"console.txt\", \"x\")?\n\
+        \x20   print(\"ok={fs_exists(\"console.txt\")}\")\n\
+        \x20   0\n\
+        }\n";
+    let output = run_program(dir.as_path(), source);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(stdout_of(&output), "ok=true\n");
+}
