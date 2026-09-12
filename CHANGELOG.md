@@ -1,5 +1,122 @@
 # Changelog
 
+## 0.1.36 — 2026-09-12
+
+THE FS TIER (is48). Pin unchanged at `a7f517e` (wolf-lang **v0.2.12**); this
+release adds no spec and no corpus, only an implementation this machine had
+declined since s38.
+
+**The ruling.** lupin has answered the whole io/fs family with "this machine
+has no filesystem by design" for every release up to 0.1.35 — a reading of
+`[proto.cmp.defined-divergence]` that put the HOST's filesystem outside the
+comparison surface. Asked whether that meant file input and output would
+never be possible in the reference implementation, the maintainer ruled
+otherwise (BACKLOG B16): **build the tier.** Real files, no mocks, written
+from `spec/11-os.md` §6 and the witnesses under `corpus/fs/`, never from
+`wolf_rt::fs`.
+
+**`eval::fs` implements `[os.fs]`.** Twenty-two names, three of which are one
+call: `fs_open` is mode 0 and `fs_create` is mode 1, and `fs_open_mode` takes
+the caller's own out of a set of SIX — 0 read, 1 write (create, truncate), 2
+append (create), 3 read-write (create, no truncate), 4 create-new
+(exclusive), 5 read non-blocking. A mode outside the set is `invalid`
+**decided before the filesystem is touched**, which is the clause's own
+ordering and is tested as such: `fs_open_mode("no-such-dir/x", 99)` is
+`invalid` and not `not_found`. Handles are 1-based and never reused, so `0`,
+a negative and a closed handle are all the `io` row — `corpus/fs/fstat.lu`'s
+`closed_is_io` and `forged_is_io`. `fs_fstat` answers `[kind, size,
+modified_ms]` off ONE metadata read on the handle, in `fs_size`'s and
+`fs_modified_ms`'s units so the handle's answer and the path's compare
+without a conversion. `fs_read_dir` SORTS, bytewise, which is what makes a
+listing program's stdout the same on ext4, APFS and NTFS.
+
+**wolf-interp#86's mode-5 half closes for real.** Mode 5 is a read open that
+cannot park: on unix it carries `O_NONBLOCK`, and on a regular file it is
+mode 0 in every respect — same handle, same bytes, same `fs_fstat` — which is
+the parity `corpus/fs/open_nonblock.lu` exists to pin. There is no `libc`
+dependency here and `unsafe_code` is `forbid`, so the flag is a written-down
+constant per host; it is pinned BY BEHAVIOUR rather than by inspection, by a
+test that opens a REAL fifo with no writer and fails on a timeout if the open
+parks. windows has no equivalent on this path and serves mode 5 as mode 0,
+by name, exactly as the clause says.
+
+**Containment: the one thing the old posture got right, kept.** A path that
+is absolute or climbs out of the working directory is refused BY NAME
+(`unsupported`), never by a row — a row would be a claim about the host. The
+compiled lane does not contain paths this way (probed), so this is a stated
+narrowing and not an accident: the corpus walk, the differ, the explorer and
+the fuzzer all run corpus programs in-process, and a path that climbs out is
+the one bug in this tree that could damage the machine it runs on.
+
+**`read_line` does NOT land.** Stdin is not a file, no pinned clause names an
+injectable one, and nothing in the whole corpus calls it. The name still
+resolves, so the refusal reads "unsupported feature" and never "unknown
+name" — the same reason the fs names resolved before they worked.
+
+**Rows probed rather than guessed.** A read past end-of-file is the `eof`
+row; `fs_read_text` over bytes that are not UTF-8 is `utf8`, never lossy and
+never a trap; an append handle does not read (`io`) and a create-new handle
+does. No corpus file reads twice, so `eof` is invisible to the census and is
+pinned by unit tests instead — `[os.fs.open]`'s mode-5 prose is the clause
+that names it.
+
+**The corpus walk needed a lock, and the tier is why.** Corpus programs now
+write REAL files at paths of their own choosing. The witnesses are idempotent
+BY CONSTRUCTION, which makes a *sequential* re-run safe — and sequential is
+what the compiler's conform pass does. `cargo test` is not sequential: four
+tests here walk the whole corpus at once and cargo runs test binaries in
+parallel on top, so `fs/fstat.lu` read `size=0` off a file another thread had
+just truncated. One advisory lock per corpus FILE answers it, so unrelated
+programs still run in parallel and the contention is handled where it is —
+in the harness, not by weakening the tier or the witness.
+
+**Census, predicted before the first edit and measured after.** The nine
+files that were out of scope for the fs tier and nothing else:
+
+| class | baseline (0.1.35) | predicted | measured |
+| --- | --- | --- | --- |
+| match | 423 | 432 | **432** |
+| out of scope | 62 | 53 | **53** |
+| mismatch | 1 | 1 | **1** |
+| dynamic counterpart | 21 | 21 | **21** |
+| conservatism | 38 | 38 | **38** |
+| reach `run` | 412 | 421 | **421** |
+
+Six of six exact, including the one figure the prediction flagged as
+uncertain (whether `net/unix_echo.lu`, which failed at `run` rather than at
+`resolve`, was already inside the 412 — it was not). The files:
+`fs/bytes_dirs.lu`, `fs/error_row.lu`, `fs/fstat.lu`, `fs/open_nonblock.lu`,
+`fs/roundtrip.lu`, `memory/byte_producers_ledger.lu`, `net/unix_echo.lu`,
+`projects/count.lu`, `projects/count_dir.lu`. The row that was in doubt was
+`memory/byte_producers_ledger.lu`, because it pins a REGION-accounting
+relation and not an fs one: `read_tight` holds only because `fs_read_bytes`
+and `fs_read_chunk` mint their buffer at exact capacity through
+`region::ledger::byte_buffer_bytes`, the way `s.bytes()` and the net byte
+reader already did.
+
+**Two corrections to the record, found while measuring.**
+
+1. **0.1.35's census line was one file stale.** It reads "413 -> **422**
+   match … 62 -> 63 out of scope" and asserts "every number above is the
+   pin's, measured before a line was edited and unchanged after". It was not
+   unchanged after: is47's own E0413 mirror moved
+   `typecheck/interp_spec_on_union.lu` from out-of-scope to `match`, so the
+   0.1.35 binary answers **423 match / 62 out of scope**, not 422 / 63. The
+   figures in the is47 table in `docs/divergence-log.md` are correct as
+   labelled — they say "measured with the 0.1.34 binary at the new pin" — and
+   it is only the "unchanged after" sentence that was wrong. The baseline
+   column above is the re-measured one.
+2. **The sprint's premise did not survive measurement.** is48 was written
+   expecting an `unsupported` count of "87-114 rows, most of them fs/net".
+   Measured at `a7f517e` it is **62**, of which fs, net, os and ffi together
+   are 16; the largest single group is `comptime` at 21. The tier is worth
+   building on the ruling; it was not worth building on that arithmetic, and
+   the number is written down here so no later lane re-derives it.
+
+**Pairing:** the pin is unchanged, so the compiler's PAIRING at `a7f517e`
+still names lupin **0.1.34**. The rows this tier moves are listed above by
+name, for the next compiler release lane to predict against.
+
 ## 0.1.35 — 2026-09-11
 
 THE REMAINDER (is47). Pin `c9237c1` -> `a7f517e` — **the v0.2.12 tag**. The
