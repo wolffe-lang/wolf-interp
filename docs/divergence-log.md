@@ -261,6 +261,62 @@ which is the flaky-CI shape this log exists to prevent. `net_listen_unix` and
 kept short because `sockaddr_un` caps a socket path near 104 bytes and
 macOS's temp directory alone is about fifty characters.
 
+#### What a hostile review of the branch found
+
+The tier was reviewed against itself before the merge, and the review earned
+its place. Six findings, all fixed on the branch and each with a test:
+
+1. **A reachable `unreachable!`.** The three predicates (`fs_exists`,
+   `fs_is_dir`, `fs_is_file`) asserted that containment answers no row — true
+   of `contained`, false of `fs_contained`, which is containment AND
+   resolution, and resolution fails when the observation root cannot be made.
+   `touch $TMPDIR/wolf-obs` and every observed run panicked on the first
+   predicate. A `panic!` in this module "is by definition an interpreter bug"
+   (`eval`'s own module doc), and a predicate has no row to carry a failure
+   in, so the answer is the by-name refusal — `false` would be a claim about
+   a filesystem this machine could not reach.
+2. **A path call answering a row it does not declare.** `path_row` mapped
+   `AlreadyExists` to `exists`, but no PATH call declares `exists` — it is
+   `[os.fs.open]`'s mode-4 row. `fs_create_dir_all` over an existing FILE
+   reaches it (std forwards the kind verbatim), so a program's handler got a
+   tag no arm could match and the whole `match` fell through. The compiled
+   lane answers `io` there (probed), which is also the only declared row, so
+   `path_row` no longer produces `exists` at all.
+3. **A failure collapsing into the live sentinel.** `fs_observation_base`
+   returned `Option<PathBuf>` with `None` meaning "live: use the user's own
+   cwd", and used `.ok()` — so a root that could not be built bound a unix
+   socket in the user's real directory, which is the precise opposite of what
+   that failure should cause. It returns a `Result` now.
+4. **A predictable name in a world-writable directory.** The root was
+   `$TMPDIR/wolf-obs/<pid>-<serial>` built with `create_dir_all`, so a
+   symlink planted at that name redirected every write an observed program
+   made. The leaf is now claimed with `create_dir` — which fails on anything
+   already there, symlink included — and carries a clock reading.
+5. **A leak on partial failure.** `self.root` was recorded after `target/`
+   was created, so a failure in between left a directory nothing would ever
+   remove. It is recorded first.
+6. **The REPL was treated as an observation.** `is_live` read
+   `live_stdout`, which only `lupin run` sets, so a REPL or `lupin eval`
+   session wrote its files into a private root and DELETED them when it
+   ended. Stdout pass-through and "this is somebody's real directory" are
+   different properties and now have different flags.
+
+Items 1, 4 and 6 are the ones worth carrying forward as a lesson: each was a
+consequence of the private-observation-root design rather than of the fs tier
+proper, and none was visible from the census, the corpus, or a green CI.
+
+#### A containment hole the matrix would have found later
+
+`contained` is lexical, and `NUL`, `CON`, `AUX`, `PRN`, `COM1`-`COM9` and
+`LPT1`-`LPT9` are ordinary path components to a parser while being DEVICES to
+windows wherever they appear. `fs_write_text("NUL", …)` would have written
+nowhere and `fs_read_text("CON")` would have read the console, both outside
+the working directory the tier promises. They are refused by name on EVERY
+host rather than only on windows: the corpus and the manual are shared across
+the matrix, so a program admitted here on unix is a program that cannot run
+there. The guard is a device list and not a prefix ban — `console.txt`,
+`communication.log`, `COM0` and `COM10` are all still admitted.
+
 #### wolf-interp#86's mode-5 half, closed
 
 `[os.fs.open]` mode 5 is a read open that cannot park. On a regular file it

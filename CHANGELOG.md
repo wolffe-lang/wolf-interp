@@ -48,6 +48,29 @@ narrowing and not an accident: the corpus walk, the differ, the explorer and
 the fuzzer all run corpus programs in-process, and a path that climbs out is
 the one bug in this tree that could damage the machine it runs on.
 
+**Six bugs found by reviewing the branch against itself, all fixed here.**
+The private observation root paid for most of them: the three predicates
+asserted away a row that resolution really can answer, so a file planted at
+`$TMPDIR/wolf-obs` turned every observed run into a PANIC; a root that could
+not be built collapsed into the live sentinel and bound a unix socket in the
+user's real directory; the root's name was predictable in a world-writable
+directory, so a planted symlink redirected every write (the leaf is claimed
+with `create_dir` now, which fails on a symlink, and carries a clock
+reading); a failure between making the root and making its `target/` leaked a
+directory nothing would remove; `path_row` produced an `exists` row that no
+path call declares, so `fs_create_dir_all` over a FILE handed a program a tag
+its own handler could not match (the compiled lane answers `io`, and so does
+this one now); and the REPL was treated as an observation, so a session's
+files were written to a temp root and deleted when it ended — stdout
+pass-through and "this is somebody's real directory" are different properties
+and now have different flags.
+
+**Windows device names are refused by name.** `NUL`, `CON`, `AUX`, `PRN`,
+`COM1`-`COM9` and `LPT1`-`LPT9` are ordinary components to a path parser and
+DEVICES to windows wherever they appear, so the lexical containment check had
+to name them. Refused on every host, because the corpus is shared across the
+matrix; `console.txt`, `communication.log`, `COM0` and `COM10` stay admitted.
+
 **Two spec gaps filed, not guessed at (wolf-lang#365).** `[proto.cmp.triage]`
 makes the clause the defendant first, and §6 is silent twice over: it never
 says whether an `fs_*` path may be absolute or climb out of the working
