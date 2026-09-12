@@ -1547,16 +1547,18 @@ mod tests {
         // assigns that retirement to this lane's pin bump). Seven of those
         // eight are byte-identical now; the eighth is DIV-2026-021, a
         // different finding wearing the same file.
-        // DIV-2026-022 and DIV-2026-023 filed at the c9237c1 pin (is46):
-        // two seed files whose headers predate s152 and s155 — wordcount's
-        // `tally[w] += 1` (E0417) and structlit_paren's struct `==`
-        // (E0301) — both wolf-lang#341.
-        assert_eq!(FILED_DIVERGENCES.len(), 4);
-        let (id, _) = filed("upstream/corpus/wordcount.lu").expect("DIV-2026-022 is filed");
-        assert_eq!(id, "DIV-2026-022");
-        let (id, _) =
-            filed("upstream/corpus/grammar/structlit_paren.lu").expect("DIV-2026-023 is filed");
-        assert_eq!(id, "DIV-2026-023");
+        // DIV-2026-022 and DIV-2026-023 were filed at the c9237c1 pin (is46)
+        // and CLOSED at a7f517e (is47), both upstream: two seed files whose
+        // headers predated s152 and s155 — wordcount's `tally[w] += 1`
+        // (E0417) and structlit_paren's struct `==` (E0301) — and
+        // wolf-lang#341 re-pinned both headers at s156. Measured with the
+        // 0.1.34 binary at the new pin before any edit: both match at first
+        // sight, so the waivers go. The two asserts below are the other half
+        // of the rule the retired list already states: a waiver that outlives
+        // its divergence is a green report that means nothing.
+        assert_eq!(FILED_DIVERGENCES.len(), 2);
+        assert_eq!(filed("upstream/corpus/wordcount.lu"), None);
+        assert_eq!(filed("upstream/corpus/grammar/structlit_paren.lu"), None);
         let (id, _) = filed("upstream/corpus/resolve/broken_sibling/entry.lu")
             .expect("DIV-2026-019 is filed against the D59 broken-sibling witness");
         assert_eq!(id, "DIV-2026-019");
