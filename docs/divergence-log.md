@@ -110,6 +110,112 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The fs tier — is48, lupin 0.1.36, pin `a7f517e` (wolf-lang **v0.2.12**)
+
+**No pin move.** The pin, the corpus and the anchors are is47's exactly; what
+changed is that this machine stopped declining `[os.fs]`.
+
+#### The posture that was retired, and the one that survived it
+
+Every release to 0.1.35 answered the whole io/fs family with "this machine
+has no filesystem by design" — reading `[proto.cmp.defined-divergence]` as
+putting the HOST's filesystem outside the comparison surface. The maintainer
+ruled otherwise (BACKLOG B16), and the ruling is right for a reason the old
+posture missed: the corpus's own fs witnesses are written to be **idempotent
+by construction** and to print **relations** (`same_size`, `kind`, `cleaned`)
+rather than host values, so they compare across lanes without the host
+entering the comparison at all.
+
+What survived is the containment rule: a path that is absolute or climbs out
+of the working directory is refused **BY NAME**, never by a row. The compiled
+lane does not contain paths this way — probed at `a7f517e`, `wolf` will write
+`/tmp/x` on request — so this is a **stated, named narrowing** of this
+machine's surface and the one place the two implementations are deliberately
+not equivalent. It is not a divergence in the census sense (no corpus file
+names such a path) and it is recorded here so a later lane meets it as a
+decision rather than as a surprise.
+
+#### Predicted, then measured
+
+Written before the first edit, from `spec/11-os.md` §6, the five witness
+headers under `corpus/fs/`, and empirical probes of `wolf 0.2.12` at this pin
+— never `wolf_rt::fs`. The prediction named the nine files first and the
+figures second:
+
+| class | baseline (0.1.35) | predicted | measured (0.1.36) |
+| --- | --- | --- | --- |
+| match | 423 | 432 | **432** |
+| out of scope | 62 | 53 | **53** |
+| mismatch | 1 | 1 | **1** |
+| dynamic counterpart | 21 | 21 | **21** |
+| conservatism | 38 | 38 | **38** |
+| reach `run` | 412 | 421 | **421** |
+
+**Six of six exact**, and the nine files by name as predicted:
+`fs/bytes_dirs.lu`, `fs/error_row.lu`, `fs/fstat.lu`, `fs/open_nonblock.lu`,
+`fs/roundtrip.lu`, `memory/byte_producers_ledger.lu`, `net/unix_echo.lu`,
+`projects/count.lu`, `projects/count_dir.lu`. The prediction flagged one
+figure as uncertain — whether `net/unix_echo.lu`, which reached `run` before
+failing rather than stopping at `resolve`, was already inside the 412. It was
+not, and the landing is 412 -> 421 rather than 412 -> 420.
+
+The row that was in doubt on its merits was
+`memory/byte_producers_ledger.lu`, which pins a REGION-accounting relation
+and not an fs one. `read_tight` ("at most the payload plus a header") holds
+only because `fs_read_bytes` and `fs_read_chunk` mint their buffer at exact
+capacity through `region::ledger::byte_buffer_bytes`, the way `s.bytes()` and
+the net byte reader already did; a byte list built by pushing would pay
+`[mem.region.account.1]`'s growth history and fail it.
+
+#### Rows the census cannot see
+
+Three facts about this tier are invisible to the corpus, because no witness
+exercises the shape. They were probed against the compiled lane and are
+pinned by unit tests instead:
+
+| shape | row | why no witness reaches it |
+| --- | --- | --- |
+| `fs_read`/`fs_read_chunk` past end of file | **`eof`** | no corpus file reads a handle twice; `[os.fs.open]`'s mode-5 prose names the row |
+| `fs_read_text` over bytes that are not UTF-8 | **`utf8`** | `corpus/fs/bytes_dirs.lu` witnesses the refusal but takes the tag with `_` |
+| a mode-2 (append) handle read | **`io`** | the witnesses only write through an append handle |
+
+A fourth is a genuine host split both implementations take together, because
+both are `std`-backed: `fs_remove` on a DIRECTORY is `denied` on macOS
+(`unlink` gives EPERM) and `io` on linux (EISDIR). No witness names it, and
+neither implementation is the defendant — the row is the host's.
+
+#### wolf-interp#86's mode-5 half, closed
+
+`[os.fs.open]` mode 5 is a read open that cannot park. On a regular file it
+is mode 0 in every respect, which is the parity `corpus/fs/open_nonblock.lu`
+pins and which now matches. The half the corpus cannot reach — a fifo with no
+writer — is pinned by `eval::fs`'s own test, which builds a real fifo with the
+host's `mkfifo` and fails on a timeout if the open parks. There is no `libc`
+dependency here and `unsafe_code` is `forbid`, so `O_NONBLOCK` is a
+written-down constant per host; that test is what makes it a measured
+constant rather than a copied one, and it runs on both unix hosts of the
+matrix. windows serves mode 5 as mode 0, by name, as the clause states.
+
+#### A correction to 0.1.35's record
+
+0.1.35's CHANGELOG census reads "413 -> **422** match … 62 -> 63 out of
+scope" and asserts the numbers were "measured before a line was edited and
+unchanged after". They were not unchanged after: is47's own E0413 mirror
+moved `typecheck/interp_spec_on_union.lu` from out-of-scope to `match`, so
+the 0.1.35 binary answers **423 / 62**. The is47 table below is correct as
+labelled — it says "measured with the 0.1.34 binary at the new pin" — and
+`docs/manual/00-building.md` already carried 423 / 62, so the CHANGELOG
+sentence was the only wrong thing. Recorded because a census figure nobody
+re-measures is how a waiver outlives its divergence (wolf-lang#177's lesson,
+one tier over).
+
+#### The sprint premise that did not survive measurement
+
+is48 was written expecting an `unsupported` count of "87-114 rows, most of
+them fs/net". At `a7f517e` it is **62**, of which fs, net, os and ffi
+together are 16; the largest single group is `comptime`, at 21. The tier
+stands on the ruling, not on that arithmetic.
+
 ### The remainder — is47, lupin 0.1.35, pin `a7f517e` (wolf-lang **v0.2.12**)
 
 Pin `c9237c1` -> `a7f517e`, **the v0.2.12 tag**. The delta is s154, s156 and
@@ -380,6 +486,7 @@ release archive, darwin `a91b77c0…`):
 | #99 | `let r = Row {…}; r.cents = 5` | ran, `5` | E0410 at `r.cents` | unsupported@wir at v0.2.11 (s154 is past the tag; trunk: E0410) |
 | #100 | body-less member followed by a member on one line | E0201 | E0201 @ [28,30] | E0201 |
 | #86 | `fs/open_nonblock.lu` | unsupported@resolve | unsupported@resolve (the fs tier declines by name) | runs |
+| #86 | the same at **0.1.36** (is48) | — | **runs, match** — mode 5 served, `invalid` still decided before the open | runs |
 
 Two cost rulings measured against the compiler's checked tier rather than
 assumed: a `str` built by `+`, `+=` or a holed interpolation **charges the
