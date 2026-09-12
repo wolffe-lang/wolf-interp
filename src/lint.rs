@@ -1727,6 +1727,36 @@ impl Walk<'_> {
     }
 
     fn call(&mut self, _call: &Expr, callee: &Expr, args: &[Arg]) {
+        // W1002/W1003 evidence a flat scan used to miss: a BARE receiver call
+        // to a mutating method — `xs.pop()`, `xs.push(v)` — where the spelling
+        // the language wants is `(mut xs).pop()`. The bare form is a mode
+        // error (E0804 on the compilers, `trap(exclusivity)` here), and it is
+        // ALSO the body writing its parameter: the writer misspelled the
+        // write, they did not omit it.
+        //
+        // Without this, `fn take_last[T](mut xs: List[T]) { xs.pop() }` drew
+        // W1002 — "`xs` is `mut`, and the body never writes it" — and offered
+        // to drop the `mut`, which is the OPPOSITE of the fix the mode error
+        // names; a reader who took it landed on E1014. That is wolf-lang#325
+        // (s154) in this machine's vocabulary, and the corpus states it:
+        // `typecheck/receiver_bare_mut_param.lu` carries no `warns:` at all.
+        // wolfc reaches the same silence from the other end, by standing
+        // W1002 down where E0804 names the parameter; this machine has no
+        // static mode error to stand it down against, so it fixes the scan
+        // that was wrong on its own terms.
+        //
+        // The two method names are `eval::builtin::mutates_receiver`'s exact
+        // pair — `List.push` and `List.pop`, the only arms that take their
+        // receiver's elements mutably — read statically, by name. Anything
+        // else stays evidence-free, so `fn f(mut xs: List[int]) -> int
+        // { xs.len }` still warns, which is what keeps this from being "any
+        // method call silences W1002".
+        if let ExprKind::Path(path) = &*callee.kind
+            && let [head, member] = path.segments.as_slice()
+            && matches!(member.name.as_str(), "push" | "pop")
+        {
+            self.writes.push(head.name.clone());
+        }
         // W0317 — the D61 kindness lint (`[gram.expr.index.origin]`): `.get`
         // is origin-free, so an int literal fed to it inside a 1-origin
         // scope is usually a subscript habit carried over, off by one. Span:
@@ -3381,6 +3411,65 @@ mod tests {
             found.len(),
             1,
             "the tag arm binds nothing, so the write is captured: {found:?}"
+        );
+    }
+
+    // ---- W1002's evidence, and the write a flat scan could not see -------
+
+    #[test]
+    fn a_bare_receiver_call_to_a_mutating_method_is_evidence_of_the_write() {
+        // `typecheck/receiver_bare_mut_param.lu` (s154, wolf-lang#325), which
+        // arrives with the a7f517e pin carrying NO `warns:` at all. The body
+        // does write `xs`; it misspelled the write — `xs.pop()` where the
+        // language wants `(mut xs).pop()` — and the lint's flat scan saw only
+        // the `ModedReceiver` spelling, so it said "`xs` is `mut`, and the
+        // body never writes it" and offered to drop the `mut`. That is the
+        // OPPOSITE of the fix the mode error names, and a reader who took it
+        // landed on E1014.
+        //
+        // wolfc reaches the same silence from the other end — E0804 stands
+        // W1002 down for the parameter it names — and this machine has no
+        // static mode error to stand it down against, so it fixes the scan
+        // that was wrong on its own terms. Measured: `wolf 0.2.12
+        // conform-run --json --checked` reports E0804 and no warning on this
+        // program.
+        let found = warn_codes(
+            "fn take_last[T](mut xs: List[T]) -> T ! {none} {\n\
+             \x20   xs.pop()\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   (mut xs).push(1)\n\
+             \x20   take_last(mut xs) else 0\n\
+             }\n",
+        );
+        assert!(
+            !found.iter().any(|code| code == "W1002"),
+            "the body writes `xs`, misspelled: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_mut_parameter_the_body_only_reads_still_warns() {
+        // The control, and the reason the evidence is two method NAMES rather
+        // than "any method call": `eval::builtin::mutates_receiver`'s exact
+        // pair, `List.push` and `List.pop`, the only arms that take their
+        // receiver's elements mutably. A read-only method leaves the lint
+        // alone. wolf 0.2.12 warns W1002 at `[8,11]` on this program; so does
+        // this machine, at the same bytes.
+        let found = warn_codes(
+            "fn size(mut xs: List[int]) -> int {\n\
+             \x20   xs.len\n\
+             }\n\
+             fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   (mut xs).push(1)\n\
+             \x20   size(mut xs)\n\
+             }\n",
+        );
+        assert!(
+            found.iter().any(|code| code == "W1002"),
+            "a `mut` parameter nothing writes: {found:?}"
         );
     }
 
