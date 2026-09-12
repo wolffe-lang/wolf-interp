@@ -221,6 +221,35 @@ both are `std`-backed: `fs_remove` on a DIRECTORY is `denied` on macOS
 (`unlink` gives EPERM) and `io` on linux (EISDIR). No witness names it, and
 neither implementation is the defendant — the row is the host's.
 
+#### Two host splits closed rather than documented
+
+**A handle-level failure is `io` everywhere.** The first cut forwarded the
+host's `io::ErrorKind` from handle calls, and the three-host matrix found the
+hole immediately: reading an APPEND handle is `EBADF` on macOS and
+`ERROR_ACCESS_DENIED` on windows, so the same program answered `io` on one
+and `denied` on the other. `[os.fs.fstat]` already rules it — "on a handle
+the hosts answer `io` for nearly everything, the entry being already
+resolved" — and the compiled lane agrees (probed: a write to a read handle, a
+read from a write handle and a closed handle are all `io`). So the row is
+uniform, and the split is gone rather than written down. The PATH calls keep
+their kinds, the entry being exactly what they resolve.
+
+This is the value of the matrix stated plainly: the local host was green and
+the reading was wrong.
+
+**The socket and the files agree about where they are.** Giving observed
+programs a private root introduced an incoherence in the tier next door:
+`fs_exists` resolved against the root while `net_listen_unix` resolved
+against the process cwd. `corpus/net/unix_echo.lu` depends on the two
+agreeing — it sweeps a stale socket with `fs_remove`, binds it, and closes
+with `cleaned = !fs_exists(path)` — so the sweep swept a path nothing bound
+and `cleaned` was vacuously TRUE. The witness passed while checking nothing,
+and a stale socket left in the real cwd would have failed the bind at random,
+which is the flaky-CI shape this log exists to prevent. `net_listen_unix` and
+`net_connect_unix` now resolve through the same root, and the root's NAME is
+kept short because `sockaddr_un` caps a socket path near 104 bytes and
+macOS's temp directory alone is about fifty characters.
+
 #### wolf-interp#86's mode-5 half, closed
 
 `[os.fs.open]` mode 5 is a read open that cannot park. On a regular file it

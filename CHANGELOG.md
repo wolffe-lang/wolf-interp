@@ -53,6 +53,27 @@ injectable one, and nothing in the whole corpus calls it. The name still
 resolves, so the refusal reads "unsupported feature" and never "unknown
 name" — the same reason the fs names resolved before they worked.
 
+**A handle-level failure is `io` on every host.** `[os.fs.fstat]` says "on a
+handle the hosts answer `io` for nearly everything, the entry being already
+resolved", and this release takes that literally instead of forwarding the
+host's error kind. CI is what found it: reading an APPEND handle is `EBADF`
+on macOS and `ERROR_ACCESS_DENIED` on windows, so forwarding the kind made
+one program answer `io` on one host and `denied` on the other — a portability
+hole in a row set programs branch on. The compiled lane answers `io` here too
+(probed at this pin: a write to a read handle, a read from a write handle and
+a closed handle are all `io`), so the uniform row is the compatible reading as
+well as the clause's. The PATH calls keep their kinds, where `not_found` and
+`denied` are the answer rather than noise.
+
+**A unix socket lands in the observed program's own directory.** A socket
+path is a filesystem object, so `net_listen_unix` resolves it exactly where
+`fs_exists` looks. `corpus/net/unix_echo.lu` is why this had to be fixed
+rather than noted: the witness sweeps a stale socket with `fs_remove`, binds
+it, and ends with `cleaned = !fs_exists(path)`. With the two families
+disagreeing, that sweep swept a path nothing bound, `cleaned` was vacuously
+true — the witness passed while checking nothing — and a stale socket in the
+real directory would have failed the bind at random.
+
 **Rows probed rather than guessed.** A read past end-of-file is the `eof`
 row; `fs_read_text` over bytes that are not UTF-8 is `utf8`, never lossy and
 never a trap; an append handle does not read (`io`) and a create-new handle
