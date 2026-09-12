@@ -691,8 +691,8 @@ impl NetTable {
     /// runtime never clobbers a path it did not bind), a missing directory
     /// `not_found`, a permission the caller lacks `denied`.
     #[cfg(unix)]
-    fn listen_unix(&mut self, path: &str) -> NetResult<i128> {
-        let path = socket_path(path, "net_listen_unix")?;
+    fn listen_unix(&mut self, path: &str, base: Option<&Path>) -> NetResult<i128> {
+        let path = socket_path(path, "net_listen_unix", base)?;
         // "an existing path is `exists`" — asked BEFORE the bind, because
         // `bind(2)` answers `EADDRINUSE` for a live socket and for a stale
         // file alike, and the clause makes both the same row anyway.
@@ -711,8 +711,8 @@ impl NetTable {
     /// At dial, no socket file is `not_found`, a file nobody listens on is
     /// `refused`, and `denied` is the permission the caller lacks.
     #[cfg(unix)]
-    fn connect_unix(&mut self, path: &str) -> NetResult<i128> {
-        let path = socket_path(path, "net_connect_unix")?;
+    fn connect_unix(&mut self, path: &str, base: Option<&Path>) -> NetResult<i128> {
+        let path = socket_path(path, "net_connect_unix", base)?;
         let stream =
             std::os::unix::net::UnixStream::connect(&path).map_err(|e| unix_dial_row(&e))?;
         stream
@@ -757,8 +757,16 @@ impl NetTable {
 /// it runs on. The two checks are spelled separately on purpose: they answer
 /// to different clauses (`[os.net.unix]` and `[os.fs]`), and either could
 /// narrow without the other.
+///
+/// `base` is the OBSERVATION root when there is one (is48): a socket file is
+/// a filesystem object, so it belongs in the same directory as everything
+/// else an observed program writes, or `fs_exists` and `net_listen_unix`
+/// would disagree about where it is — see
+/// [`Machine::fs_observation_base`][super::Machine::fs_observation_base].
+/// `None` is a live `lupin run`, where the path stays exactly as written and
+/// resolves against the user's own cwd, as before.
 #[cfg(unix)]
-fn socket_path(path: &str, name: &str) -> NetResult<PathBuf> {
+fn socket_path(path: &str, name: &str, base: Option<&Path>) -> NetResult<PathBuf> {
     let candidate = Path::new(path);
     let escapes = candidate.is_absolute()
         || candidate.components().any(|c| {
@@ -775,7 +783,7 @@ fn socket_path(path: &str, name: &str) -> NetResult<PathBuf> {
              refused by name rather than observed"
         )));
     }
-    Ok(candidate.to_path_buf())
+    Ok(base.map_or_else(|| candidate.to_path_buf(), |base| base.join(candidate)))
 }
 
 /// `[os.net.unix]`'s bind rows: a missing directory is `not_found`, a
@@ -946,10 +954,17 @@ impl Machine {
                 // bare `io`, which is the distinction #227 was filed to make
                 // measurable from inside a program.
                 #[cfg(unix)]
-                let answer = if name == "net_listen_unix" {
-                    self.net().listen_unix(path)
-                } else {
-                    self.net().connect_unix(path)
+                let answer = {
+                    // is48: an observed program's socket lands under its own
+                    // private root, beside the files it writes, so the fs and
+                    // net families never disagree about where the path is.
+                    let base = self.fs_observation_base();
+                    let path = path.clone();
+                    if name == "net_listen_unix" {
+                        self.net().listen_unix(&path, base.as_deref())
+                    } else {
+                        self.net().connect_unix(&path, base.as_deref())
+                    }
                 };
                 #[cfg(not(unix))]
                 let answer = {
