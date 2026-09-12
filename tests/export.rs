@@ -235,7 +235,14 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // 209 -> 221 at c9237c1 (is46): the thirteen new anchors minus the two
 // the pin cites only from prose (`exec`, `exec.checked`) — every clause
 // this sprint mirrored is covered by its own witnesses.
-const RATCHET_FLOOR: usize = 221;
+// 221 -> 223 at a7f517e (is47): TWO of the four new anchors arrive with a
+// `conforms:` witness — `[mem.region.edge.elem]` on
+// `memory/map_set_generic.lu` and `[type.float.rem]` on
+// `typecheck/float_rem.lu`. The other two are `wolf fmt`'s
+// (`[gram.fmt.break]`, `[gram.fmt.paren]`): this machine has no formatter,
+// the corpus ships no file tagged with either, and coverage claims only what
+// a witness actually exercises.
+const RATCHET_FLOOR: usize = 223;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -384,7 +391,18 @@ const RATCHET_FLOOR: usize = 221;
 // Key sets diffed BOTH ways — thirteen added, NOTHING dropped, no owner
 // changed. `exec` is a new NAMESPACE, registered in spec/05's list and in
 // `anchor::REGISTERED_NAMESPACES` in one change (`[conf.anchor.ns.admit]`).
-const ANCHORS_TOTAL: usize = 471;
+// 471 -> 475 at a7f517e (is47, wolf-lang v0.2.12 — the TAG): FOUR over two
+// sprints — s154's `[gram.fmt.break]` and `[gram.fmt.paren]` (wolf-lang#339,
+// #340: the break that achieves the width, and a binary `else` fallback
+// keeping the author's parens); s156's `[mem.region.edge.elem]` (#333, a
+// store through a container index lends) and `[type.float.rem]` (#327, `%`
+// on a float is C's `fmod`). Key sets diffed BOTH ways — four added, NOTHING
+// dropped, no owner changed (wolf-lang#177's lesson, still standing). No new
+// NAMESPACE: all four sit under `gram`/`mem`/`type`, and
+// `spec/05-conformance.md` is untouched across `c9237c1..a7f517e`, which is
+// the independent check on that — `anchor::REGISTERED_NAMESPACES` holds at
+// thirteen.
+const ANCHORS_TOTAL: usize = 475;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -620,9 +638,15 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     let (_, summary) = bundle();
     // 572/538 -> 608/574 at c9237c1 (is46, wolf-lang v0.2.11 — the TAG):
     // thirty-six entries, `members` holds at 34.
-    assert_eq!(summary.pin, "c9237c11d081d5649825b5293bcff6d2814a5ad2");
-    assert_eq!(summary.programs, 608);
-    assert_eq!(summary.records, 574);
+    // 608/574 -> 618/583 at a7f517e (is47, wolf-lang v0.2.12 — the TAG): 10
+    // corpus files, none leaving, so `programs` moves by 10 — but NINE of
+    // them are entries and one is the member `traits/op_eq_imported/cmp/c.lu`,
+    // so `records` moves by 9 and the two counts part company for the first
+    // time in this ledger. The suite is unmoved (is47's new tests are inline
+    // fixtures and one measured table, which the extractor does not harvest).
+    assert_eq!(summary.pin, "a7f517e1f667f142ffaf61b57aa2bff06e32b520");
+    assert_eq!(summary.programs, 618);
+    assert_eq!(summary.records, 583);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

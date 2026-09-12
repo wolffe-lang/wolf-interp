@@ -250,7 +250,13 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // The registry gains thirteen anchors and a namespace (`exec`), and
     // without the namespace the walk counted ONE failure here — the
     // pre-bump prediction's one miss, `strings/bytes_view_walk.lu`.
-    assert!(stdout.contains("570 file(s)"), "{stdout}");
+    // 570 -> 580 at a7f517e (is47, wolf-lang v0.2.12 — the TAG): TEN over
+    // two sprints, none leaves. NINE are entries and ONE is a MEMBER —
+    // `traits/op_eq_imported/cmp/c.lu`, the first member to arrive since the
+    // `3befc3e` pin (is35), so `members` moves at last: 34 -> 35.
+    // The registry gains four anchors and no namespace (all four sit under
+    // `gram`/`mem`/`type`, and spec/05 is untouched in the range).
+    assert!(stdout.contains("580 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -259,7 +265,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 570);
+    assert_eq!(value["total"], 580);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
@@ -571,8 +577,11 @@ fn the_front_door_runs_a_file_and_the_exit_code_is_the_programs() {
 
     // A program's own exit(N) is the process exit code — a usage path that
     // exits 2 by its own choice, not as a diagnostic. (This was
-    // `corpus/wordcount.lu`'s usage path until the c9237c1 pin: its
-    // `tally[w] += 1` is E0417 under `[mem.map.absent]` now, DIV-2026-022.)
+    // `corpus/wordcount.lu`'s usage path until the c9237c1 pin, where its
+    // `tally[w] += 1` became E0417 under `[mem.map.absent]`, DIV-2026-022.
+    // s156 re-pinned that line and the seed program runs again at `a7f517e`,
+    // but the probe keeps its own two-line program: a CLI contract about
+    // exit codes should not be re-measured every time the corpus moves.)
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("cli-usage-exit");
     std::fs::create_dir_all(&dir).expect("scratch");
     let usage = dir.join("main.lu");

@@ -179,26 +179,6 @@ pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
          spec assigns neither code to junk recovery",
     ),
     (
-        "wordcount.lu",
-        "DIV-2026-022",
-        "the seed program's `tally[w] += 1` is E0417 under s152's \
-         `[mem.map.absent]` (`m[k] op= v` refuses in every profile — \
-         `typecheck/map_compound_absent.lu` is that sentence) while its \
-         header still pins run(exit=2); the compiler's ledger stops at \
-         resolve on the std surface and never reaches the refusal. Filed \
-         upstream as wolf-lang#341",
-    ),
-    (
-        "grammar/structlit_paren.lu",
-        "DIV-2026-023",
-        "`p == (Point { x: 0 })` is E0301 under s155's `[type.trait.op]` \
-         (`==` on a user type is `Eq.eq`, nothing synthesized — \
-         `traits/op_eq_no_trait.lu` is the same program) while the header \
-         still pins check: pass at resolve; wolf 0.2.11 answers \
-         fail(E0301)@typecheck at the same operand. Filed upstream as \
-         wolf-lang#341",
-    ),
-    (
         "grammar/let_group_bare_tuple.lu",
         "DIV-2026-021",
         "where a D63 let-group refusal POINTS: both machines answer E0201 at \
@@ -210,6 +190,20 @@ pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
     ),
 ];
 
+// DIV-2026-022 (`wordcount.lu`) and DIV-2026-023
+// (`grammar/structlit_paren.lu`) stood here for exactly one release. is46
+// filed them the day the s152/s155 clauses made two seed headers stale —
+// `tally[w] += 1` is E0417 under `[mem.map.absent]`, `p == (Point { x: 0 })`
+// is E0301 under `[type.trait.op]` — and the compiler's own ledger could not
+// see either, because both headers name a phase that stops one rung before
+// the refusal. wolf-lang#341 re-pinned both files at s156 (`0bb7024`,
+// `2600f34`): `wordcount.lu` teaches the clause's own spelling,
+// `tally[w] = (tally[w] else 0) + 1`, and `structlit_paren.lu` binds its
+// parenthesized literal instead of comparing it. Measured with the 0.1.34
+// binary at `a7f517e` BEFORE a line of this sprint was edited: both match at
+// first sight. The waivers retire with the divergence, which is the half of
+// wolf-lang#177's lesson that only shows up when the corpus moves.
+//
 // DIV-2026-017 stood here from is05 to is34 —
 // `lints/raw_interp_braces.lu`, the compiler's raw-literal decode keeping
 // the `r"` prefix's opening quote (`"{who}` there, `{who}` here). It retires

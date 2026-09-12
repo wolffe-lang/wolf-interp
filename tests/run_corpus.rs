@@ -1394,6 +1394,53 @@ const RUN_LEDGER: &[(&str, &str)] = &[
         "trap(exclusivity)",
     ),
     ("typecheck/fn_value_capturing.lu", "exit(0)"),
+    // The a7f517e pin (is47, wolf-lang v0.2.12): EIGHT files reach `run`, and
+    // only two of them are new arrivals of the ordinary kind. Predicted
+    // before the bump and measured with the 0.1.34 binary — every one at
+    // FIRST SIGHT, which is what a pin whose two sprints are papercuts looks
+    // like from this side.
+    //
+    // SIX new entries run. `lints/else_arithmetic.lu` is W0318's witness and
+    // the lint is the compiler's; the file is built so that both readings of
+    // `else 0 + extra` compute the same value, which is exactly why nothing
+    // refused it and nothing told the writer. `typecheck/unit_tail_value_discard.lu`
+    // is W0601's widened tail, also a lint this machine does not have, and
+    // it runs silently as s154's own header says it does here.
+    // `memory/map_set_generic.lu` is s156's `[mem.region.edge.elem]` — a
+    // `[K, V]`-generic `set` beside its `List` twin — and this machine has
+    // no region SOLVER to have refused it, so the clause arrives already
+    // satisfied. `typecheck/float_rem.lu` is `%` on a float as C's `fmod`,
+    // sign of the dividend and NaN for a zero divisor, which is this
+    // machine's `f64` remainder already. `traits/op_eq_imported/main.lu` is
+    // `==` on a type its own module publishes, used from a file that imports
+    // it — is46's #96 is the commit that made it answer, one pin early.
+    // `typecheck/receiver_bare_mut_param.lu` is the mode error on a `mut`
+    // PARAMETER's receiver: the corpus pins E0804 and this machine traps
+    // `exclusivity`, which `[conf.trap.map]` makes a DYNAMIC COUNTERPART —
+    // the census's 21st — exactly as its pre-existing twin
+    // `typecheck/receiver_bare_mut.lu` already was.
+    //
+    // TWO RETURN. `wordcount.lu` and `grammar/structlit_paren.lu` left this
+    // list at is46 as DIV-2026-022 and DIV-2026-023, filed upstream because
+    // their headers pinned verdicts the clauses had retired. wolf-lang#341
+    // re-pinned both (s156 `0bb7024`, `2600f34`) and both match at first
+    // sight, so the waivers retire and the rows come back. A waiver
+    // outliving its divergence is what wolf-lang#177 taught, and this is the
+    // other end of that lesson: the waiver ending when the corpus moves.
+    //
+    // NOT here: `typecheck/let_field_assign.lu` (E0410, mirrored at 0.1.34),
+    // `rows/negative/row_operand_rhs.lu` (E0409 on either side, answered
+    // since is43) and `typecheck/interp_spec_on_union.lu` (E0413 on a format
+    // spec over a `!T` hole, this lane's one behavioural mirror) are `fail`
+    // pins that stop at resolve by design.
+    ("grammar/structlit_paren.lu", "exit(0)"),
+    ("lints/else_arithmetic.lu", "exit(0)"),
+    ("memory/map_set_generic.lu", "exit(0)"),
+    ("traits/op_eq_imported/main.lu", "exit(0)"),
+    ("typecheck/float_rem.lu", "exit(0)"),
+    ("typecheck/receiver_bare_mut_param.lu", "trap(exclusivity)"),
+    ("typecheck/unit_tail_value_discard.lu", "exit(0)"),
+    ("wordcount.lu", "exit(2)"),
 ];
 
 #[test]

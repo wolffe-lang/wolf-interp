@@ -500,10 +500,14 @@ fn the_ambiguity_annex_pairs_read_the_way_section_eight_says() {
             &[],
         ),
         ("gram.amb.closure", &["grammar/closure_extent.lu"], &[]),
-        // `structlit_paren.lu` still PARSES, which is the annex's point:
-        // its `p == (Point { x: 0 })` is E0301 one rung later under s155's
-        // `[type.trait.op]` (DIV-2026-023, wolf-lang#341), as wolf 0.2.11
-        // refuses it at typecheck.
+        // `structlit_paren.lu` was the accepted half here through a release
+        // in which it did not RUN: its `p == (Point { x: 0 })` became E0301
+        // one rung later under s155's `[type.trait.op]` (DIV-2026-023,
+        // wolf-lang#341). s156 re-pinned it — the file's own subject is
+        // `[gram.amb.structlit]` and needs no equality, so it binds the
+        // parenthesized literal and reads it — and it is `run(exit=0)` at
+        // `a7f517e`. The annex pair is unchanged either way, which is the
+        // point of judging it at `parse`.
         (
             "gram.amb.structlit",
             &["grammar/structlit_paren.lu"],

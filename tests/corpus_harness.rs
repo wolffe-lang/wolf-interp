@@ -692,15 +692,40 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             `type.trait.op`, `type.trait.op.alias` — 458 -> 471 in
     //             this count (`exec` is a namespace heading, admitted to
     //             `anchor::REGISTERED_NAMESPACES` in the same change).)
+    // (570 -> 580 at a7f517e (is47, wolf-lang v0.2.12, the TAG): TEN over
+    //             two sprints. s154's `lints/else_arithmetic.lu` (W0318),
+    //             `rows/negative/row_operand_rhs.lu` (E0409 on the right),
+    //             `typecheck/let_field_assign.lu` (E0410 on a `let`'s
+    //             field), `typecheck/receiver_bare_mut_param.lu` (W1002
+    //             standing down beside a mode error) and
+    //             `typecheck/unit_tail_value_discard.lu` (W0601's widened
+    //             tail); s156's `memory/map_set_generic.lu`,
+    //             `typecheck/float_rem.lu`,
+    //             `typecheck/interp_spec_on_union.lu` and the two-file
+    //             `traits/op_eq_imported/` module. NINE are entries and ONE
+    //             is a MEMBER — `traits/op_eq_imported/cmp/c.lu` — so
+    //             `members` moves for the first time since the `3befc3e` pin
+    //             (is35's `conc/proc_cross_module/`), 34 -> 35, and the
+    //             member-reachability rule holds: its entry is
+    //             `traits/op_eq_imported/main.lu`, one directory up. FIVE
+    //             more files are EDITED rather than added and move no count:
+    //             `grammar/interp_fmtcolon.lu`, `grammar/structlit_paren.lu`,
+    //             `traits/op_total_num.lu`,
+    //             `typecheck/fn_value_captured_int.lu` and `wordcount.lu`.
+    //             The registry gains FOUR anchors and drops none, key sets
+    //             diffed both ways — `gram.fmt.break`, `gram.fmt.paren`,
+    //             `mem.region.edge.elem`, `type.float.rem`, 471 -> 475. No
+    //             new namespace: spec/05-conformance.md is untouched in the
+    //             range, so `anchor::REGISTERED_NAMESPACES` holds at 13.)
     let report = report();
     assert_eq!(
         report.total(),
-        570,
+        580,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 536);
-    assert_eq!(report.members(), 34);
+    assert_eq!(report.entries(), 545);
+    assert_eq!(report.members(), 35);
 }
 
 #[test]
