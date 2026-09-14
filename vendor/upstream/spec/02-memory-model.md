@@ -84,7 +84,26 @@ law: `.docs/refs/papers/swift-ownership-manifesto.md`.
 
 - `[mem.tier0.mode.read]` Default (unwritten) mode: the callee reads a
   value that is **immutable for the whole call**; the caller retains it.
-  No syntax exists to name this mode — absence is the syntax.
+  No syntax exists to name this mode — absence is the syntax. *The
+  caller retains it* is a rule, not a description: a `read` parameter
+  cannot be **given away** either, so spelling `take` on it at an inner
+  call site is refused with the same code as a write (E1014). Ruled
+  2026-09-11 (wolf-lang#60): move-out is the same immutability
+  question as mutation, and the worse answer — the value the caller
+  kept would be gone. `copy` the parameter and hand the duplicate on,
+  or declare the parameter `take` and let the call site say so.
+  The **plain** move-out — `fn f(b: T) -> T { b }`, no `take`
+  spelled — is a DIFFERENT question, and this clause does not refuse
+  it. Ruled 2026-09-12 (wolf-lang#359). `take` ends the caller's
+  value: the binding the caller kept is gone, which is what the
+  sentence above forbids in terms. A plain move-out does not do that.
+  Measured at v0.2.13: the caller's binding survives the call and its
+  value is intact — what the callee hands back is a SECOND live path
+  to the same value. So the two spellings are not the same act by a
+  quieter name; the plain one gives nothing away and instead creates
+  an **undeclared alias**, with both paths writable and no `shared`
+  spelling anywhere. The rule that breaks is `[mem.tier0.excl.1]`,
+  not this one, and it carries that clause's code rather than E1014.
 - `[mem.tier0.mode.mut]` `mut` parameters are **exclusive inout**: for the
   duration of the call no other access (read or write) to the argument
   place or any conflicting path may occur. Call sites must write `mut`
@@ -159,6 +178,49 @@ fact, polymorphism defaults), `.docs/refs/papers/verona-refcaps.pdf`
 - `[mem.region.create.4]` Region identity is a static type fact with
   **zero runtime representation**; the dynamic machine tracks it, compiled
   code need not.
+- `[mem.region.proc]` **A proc entry's ambient is the proc's own
+  region.** `[mem.region.create.3]`'s default names the *caller's*
+  current region; a function named by `spawn proc f(args)` has no such
+  caller. `spawn proc` starts a failure domain that owns its regions
+  (`[conc.proc.1]`) and outlives the frame that spawned it by design,
+  and `[conc.proc.kill]` step 3 bulk-frees those regions at the proc's
+  exit — before any exit reason is delivered. So the body of a proc
+  entry executes with a current region **frame-local to the proc**,
+  and every `[mem.model.alloc]` site in it — a built `str` above all
+  (`[mem.region.escape]`) — belongs to that region. Anything allocated
+  there that leaves the proc is E1010 exactly as a `region scratch {
+  }`-built value leaving its block is: sent on a channel
+  (`[conc.chan.payload]`, the shape that matters, because a `str`
+  payload crosses as its view and the bytes stay where they were
+  built), stored into module state, or handed out any other way. A
+  proc's PARAMETERS are untouched: their regions are the spawner's,
+  which outlive the proc, so building the bytes in the spawner and
+  handing them in is the fix — and the only fix, because a proc's
+  extent cannot be widened the way a block's can. A function spawned
+  in one place and called directly in another is checked under this
+  rule in both places (the conservative reading: a reader can see a
+  `spawn proc` naming the function without tracing every call site).
+  **The cost, stated:** zero, on both tiers, in both directions. The
+  rule is a static refusal — no instruction, no word, no allocation is
+  added to any accepted program, and region identity keeps
+  `[mem.region.create.4]`'s zero runtime representation. The refused
+  program's repair costs nothing either: the payload is built once and
+  copied once at the send whether the bytes were materialized in the
+  proc or in the spawner; only the arena they are charged to changes.
+  (Ruled 2026-09-12 by s160 for wolf-lang#355. `fn worker(n: int, out:
+  channel[str]) { out.send("built {n} here")? }` under `spawn proc`
+  printed `built 7 here` and exited 0 on wolf 0.2.12 and trapped
+  `region-fault` on lupin 0.1.34, which models the proc's region — a
+  two-machine disagreement the book's control run caught at bs44. The
+  compiler's side was the unsound one, and the reason it printed
+  rather than faulted is that the native tier realizes every ambient
+  region as one process-lifetime root arena (wolf-lang#191): the bytes
+  were leaked, not freed. When #191 lands and a proc's region becomes
+  an arena that actually frees, this refusal is what stands between
+  the program and a read of freed memory. Witnesses
+  `corpus/conc/chan_payload_escape_proc.lu` (`fail(E1010)`) and
+  `corpus/conc/chan_payload_proc_param.lu` (the accepted parameter
+  form, `run(exit=0)`).)
 
 ### Intra-region freedom `[mem.region.intra]`
 
@@ -189,6 +251,48 @@ fact, polymorphism defaults), `.docs/refs/papers/verona-refcaps.pdf`
   were built, so a `str` read from a binding carries that binding's
   sites out with it. A literal's bytes are static and a literal is no
   site; a slice and every `[mem.str.view]` product allocate nothing.
+  The ambient region of a `spawn proc` entry's body is the proc's own,
+  not its spawner's (`[mem.region.proc]`).
+  (Extended 2026-09-12 by s160 for wolf-lang#321, both halves one step
+  out from #310. **First**, the site list is not only the operators:
+  it is **every `str`-producing builtin that materializes** — `upper`,
+  `lower`, `repeat` and `replace` build fresh bytes in the ambient
+  region, and so does the free producer `str_from_utf8`, whose error
+  row is why asking "is the result `str`" did not find it; each is a
+  site exactly as `+` is. The other side of
+  `[mem.str.view]` is unchanged and allocates nothing: `trim`,
+  `trim_start`, `trim_end`, `get`, `strip_prefix`, `strip_suffix`, the
+  byte view, and the pieces of `split`/`words`/`lines`. The mem tier
+  minted a call result only for a non-`Copy` return, and a `str` is
+  `Copy`, so `region scratch { let s = "re".repeat(2); s }` returned
+  `rere` from freed bytes with no diagnostic on either tier. **Second**,
+  a `str` read carries its place's sites through a **projection**, not
+  only out of a whole local: `d.title` out of a region-local `Doc` was
+  site-free because a `Copy` field read flows none — the rule that
+  rightly stops an `int` field from pinning its parent's region, and is
+  wrong for a `str` whose bytes live in that region. **The cost,
+  stated.** The rules themselves cost nothing at run time on either
+  tier: they are refusals, and the builtins they name were already
+  allocating — what changes is that the bytes are now attributed, so a
+  region holding only string work stops being called empty by W1001.
+  The repair costs, and the second half's costs more: hoisting the
+  build out of the block is free, but `copy` — the first rung of the
+  ladder — materializes the bytes into the ambient region, one
+  allocation and one copy of the value's length, where the view cost
+  nothing. The second half is also deliberately **conservative rather
+  than precise**: there is no per-field site tracking, so a field read
+  carries the parent's whole site set and a literal-initialized field
+  (`region scratch { let d = Doc { title: "static" }; d.title }`) is
+  refused too, though its bytes are static. Never unsound, sometimes
+  strict; per-field attribution is the debt that would make it exact.
+  Measured before it landed: over `corpus/`, wolf-std's 50 module
+  entries and lobo's whole source, the first half moved **zero** rows
+  and the second moved **one** — lobo's `acc.addr = pl.pt.authority`,
+  an E1004 cross-parameter-region field store, which
+  `[mem.region.edge]`'s field-store arm rules an error and whose repair
+  is the one-word `copy`. Witnesses
+  `corpus/memory/region_str_repeat_return.lu` and
+  `corpus/memory/region_str_field_return.lu`.)
   (Ruled 2026-09-11 by s153 for wolf-lang#310: `region scratch { let s
   = "re" + "gions"; s }` returned from a function printed `regions`
   from freed bytes on wolf 0.2.10 and lupin 0.1.31 alike, with a W1001
@@ -311,12 +415,37 @@ Edge legality (source stores a reference to target):
   Tier-3 address inspection, not a `[mem.region.promote.1]`
   observation: an allocation the implementation promotes or elides may
   charge nothing, and no program may read placement from the number.
-  Known per-tier gap, recorded: the native tier realizes `str`
-  materialization's ambient region as the process root (wolf-lang#191,
-  the c09 seam), so string bytes appear in **no** named region's
-  ledger there today; when that seam closes they charge the current
-  region — programs must not read this clause as "`str` never
-  charges". (Added 2026-09-01, s131 — wolf-lang#187, the wolf-web
+  The per-tier gap this clause used to record is CLOSED (s160,
+  wolf-lang#191): the native tier realized `str` materialization's
+  ambient region as the process root, so string bytes appeared in no
+  named region's ledger and a `region scratch { }` block reclaimed a
+  `List`'s storage — the s76/#81 contract — while reclaiming not one
+  byte of the string work beside it. `str` now charges the current
+  region on both tiers, exactly as `[mem.region.create.3]` always
+  said, and a `List[str]`'s ELEMENT bytes charge the list's own region
+  rather than splitting header from contents across two. **The cost,
+  stated, and it is a saving on one tier and nothing on the other.**
+  On the checked tier: zero — it charged the ambient region already.
+  On the native tier the materializing path swaps one process-global
+  `Mutex`-guarded bump for the current region's unsynchronized one, so
+  a materialization inside a named region gets *cheaper* by a lock
+  acquisition; outside any named region the path is unchanged, because
+  the root arena is still what "the current region" resolves to there.
+  What changes is memory, and by a lot: a 20,000-iteration loop
+  building a ~1.2 KB `str` by repeated interpolation inside `region
+  pass { }` measured **481.8 MB** max RSS before and **2.5 MB** after
+  (macOS/arm64, debug tier, standalone executables, the same loop
+  without the region block unchanged at 481.6 MB both ways — the
+  control that says the region is doing the work and not the
+  allocator). Two consequences a program can see, both intended: a
+  region's ledger and `live_region_bytes()` now count string bytes, so
+  `[mem.region.cap]` budgets bind string building as they always bound
+  container building; and bytes that used to leak are now genuinely
+  freed, which turns any `str` escape the checker fails to refuse from
+  a silent leak into a real use-after-free. That is why wolf-lang#355
+  (`[mem.region.proc]`) and wolf-lang#321 landed first: they are the
+  holes that closing this seam would otherwise have opened.
+  (Added 2026-09-01, s131 — wolf-lang#187, the wolf-web
   `memory_budget` customer; the query half. A creation-time cap and
   its fault semantics are #187's second half, not this clause.)
 - `[mem.region.account.2]` `live_region_bytes()` reads the
@@ -580,7 +709,11 @@ adopt that design and give `for` its desugar.)
   `for` iterates ascending, `+1` steps, checked arithmetic (X3); both
   endpoints are evaluated exactly once, left-to-right, before the first
   test. An owned range value implements `Iter[int]` with identical
-  semantics.
+  semantics. Since s158 that value has a **name** — `range[int]` /
+  `range[char]`, with `start` and `end` — and `[type.range]` has it;
+  the loop is unchanged by that clause in every respect, `..=`
+  normalizing to an exclusive `end` at construction under the same
+  checked arithmetic this one already rules.
 - `[mem.iter.impl]` `List[T]` and `Pool[T]` adopt `Iter` builtin-side
   (std surface); user types implement the trait **by name** — no
   structural conformance.
@@ -589,7 +722,11 @@ adopt that design and give `for` its desugar.)
   slices got in sc24 — open sides default to the edges (`cs[1..]`,
   `cs[..n]`), `^n` counts from the end (`cs[a..^b]`, both ends may be
   end-relative), `..=` is inclusive, and the D61 origin marker shifts
-  spelled plain endpoints exactly as it does for `str`. The domain is
+  spelled plain endpoints exactly as it does for `str`. That endpoint
+  surface is **subscript-position only**, and `[type.range]` states it
+  once for both slice clauses to cite: the open and end-relative
+  spellings are resolved against this collection's length here, so
+  they are not `range[T]` values and never escape the brackets. The domain is
   `lo <= hi <= len`; outside it the slice faults `bounds`
   (`[mem.ub.defined]`), the reversed range included. The value is a
   **fresh `List[T]`** — the elements copied in order, the source
