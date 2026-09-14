@@ -3850,4 +3850,26 @@ mod tests {
             .is_empty()
         );
     }
+
+    #[test]
+    fn range_is_a_type_name_and_not_a_w0304_hazard() {
+        // `[type.range.name]` (s158): `range` is bound in type position
+        // only — there is no `range(…)` constructor — so a declaration named
+        // `range` shadows nothing a program can spell. `List` is the
+        // contrast: `List[int]()` IS an expression.
+        let w0304 = |source: &str| -> Vec<String> {
+            warn_codes(source)
+                .into_iter()
+                .filter(|code| code == "W0304")
+                .collect()
+        };
+        assert!(
+            w0304("fn main() -> !int {\n    var range = true\n    if range { 0 } else { 1 }\n}\n")
+                .is_empty()
+        );
+        assert_eq!(
+            w0304("fn List() -> int { 1 }\nfn main() -> !int { 0 }\n"),
+            vec!["W0304".to_owned()]
+        );
+    }
 }
