@@ -64,8 +64,8 @@ use prov::{AccessKind, Prov, Provenance, RawPtr, RetagKind, UbFinding, UbRow};
 use region::{Edge, Ref, RegionId, RegionState, Store, Strategy};
 use rules::Rule;
 use value::{
-    ArithMode, CaptureLoan, ClosureValue, ElemTy, ErrorValue, HandleValue, IntTy, RegionValue,
-    Slot, SlotState, Value,
+    ArithMode, CaptureLoan, ClosureValue, ElemTy, ErrorValue, HandleValue, IntTy, RangeElem,
+    RegionValue, Slot, SlotState, Value,
 };
 
 /// A trap: a fault of a *defined* execution, named by the closed vocabulary.
@@ -4309,19 +4309,7 @@ impl Machine {
                 };
                 let start = self.eval(start)?;
                 let end = self.eval(end)?;
-                match (start, end) {
-                    (Value::Int(a, ty), Value::Int(b, _)) => Ok(Value::Range {
-                        start: a,
-                        end: b,
-                        inclusive: *inclusive,
-                        ty: if ty.literal { IntTy::INT } else { ty },
-                    }),
-                    (a, b) => unsupported(format!(
-                        "a range needs integer endpoints, got {} and {}",
-                        a.kind(),
-                        b.kind()
-                    )),
-                }
+                self.range_value(start, end, *inclusive, expr.span)
             }
             ExprKind::FromEnd(_) => unsupported(
                 "`^n` from-end indexing needs the string/collection surface s-tier owns".to_owned(),
@@ -5532,6 +5520,42 @@ impl Machine {
         body: &Block,
         span: Span,
     ) -> EResult<Value> {
+        // `[type.range.value]`: `for` over a range HEADER is unchanged by
+        // s158 — it never materializes a range value, so `..=` is not
+        // normalized here and `for i in 0..=int.MAX` does not trap where
+        // `let r = 0..=int.MAX` does. Both endpoints are evaluated exactly
+        // once, left to right, before the first test (`[mem.iter.range]`),
+        // and the loop is a counted walk to the inclusive bound.
+        if let ExprKind::Range {
+            start: Some(lo),
+            end: Some(hi),
+            inclusive,
+        } = &*iter.kind
+        {
+            let lo = self.eval(lo)?;
+            let hi = self.eval(hi)?;
+            let (elem, a, b) = match (lo, hi) {
+                (Value::Int(a, ty), Value::Int(b, _)) => (
+                    RangeElem::Int(if ty.literal { IntTy::INT } else { ty }),
+                    a,
+                    b,
+                ),
+                (Value::Char(a), Value::Char(b)) => {
+                    (RangeElem::Char, i128::from(a as u32), i128::from(b as u32))
+                }
+                (a, b) => {
+                    return unsupported(format!(
+                        "a range needs two `int` or two `char` endpoints, got {} and {}",
+                        a.kind(),
+                        b.kind()
+                    ));
+                }
+            };
+            let last = if *inclusive { b } else { b - 1 };
+            let items = Self::range_items(elem, a, last);
+            self.fire(Rule::Flow, span, "for over a range header");
+            return self.eval_for_items(items, false, pattern, iter, body);
+        }
         // The `for` head is `[mem.str.view]`'s first consumed position.
         let iterable = self.eval_consumed(iter)?;
         // `for v in ch` iterates a channel lazily until drained-close
@@ -5542,21 +5566,9 @@ impl Machine {
         }
         let is_container = matches!(&iterable, Value::List(..) | Value::Map(..));
         let items: Vec<Value> = match iterable {
-            Value::Range {
-                start,
-                end,
-                inclusive,
-                ty,
-            } => {
-                let last = if inclusive { end } else { end - 1 };
-                let mut out = Vec::new();
-                let mut at = start;
-                while at <= last {
-                    out.push(Value::Int(at, ty));
-                    at += 1;
-                }
-                out
-            }
+            // A range VALUE iterates by the `Iter` `[mem.iter.range]`
+            // promises, to its exclusive `end` (`[type.range.value]`).
+            Value::Range { start, end, elem } => Self::range_items(elem, start, end - 1),
             Value::List(slots, _, _) => std::sync::Arc::unwrap_or_clone(slots)
                 .into_iter()
                 .map(|s| s.value)
@@ -5571,6 +5583,98 @@ impl Machine {
         };
 
         self.fire(Rule::Flow, span, "for");
+        self.eval_for_items(items, is_container, pattern, iter, body)
+    }
+
+    /// A range VALUE from two evaluated endpoints (`[type.range]`, s158).
+    ///
+    /// `[type.range.name]`: the family is closed at `int` and `char`, and
+    /// the FIRST endpoint decides which. `[type.range.accessor]`: **`end` is
+    /// exclusive, always** — `a..=b` normalizes HERE to `end = b + 1`, under
+    /// the checked arithmetic `[mem.iter.range]` already rules, so
+    /// `0..=int.MAX` traps `overflow` where the range is built and not where
+    /// it is read (`grammar/range_type_overflow.lu`). A char range's `end`
+    /// steps the scalar value; a step off the end of the scalar domain is
+    /// the same trap.
+    fn range_value(&mut self, lo: Value, hi: Value, inclusive: bool, span: Span) -> EResult<Value> {
+        match (lo, hi) {
+            (Value::Int(a, ty), Value::Int(b, _)) => {
+                let ty = if ty.literal { IntTy::INT } else { ty };
+                let end = if inclusive {
+                    let Value::Int(end, _) =
+                        self.checked(ty, b.checked_add(1), span, "an inclusive range's `end`")?
+                    else {
+                        unreachable!("checked answers an int")
+                    };
+                    end
+                } else {
+                    b
+                };
+                Ok(Value::Range {
+                    start: a,
+                    end,
+                    elem: RangeElem::Int(ty),
+                })
+            }
+            (Value::Char(a), Value::Char(b)) => {
+                let end = i128::from(b as u32) + i128::from(inclusive);
+                if inclusive && char::from_u32(b as u32 + 1).is_none() {
+                    return self.trap(
+                        TrapKind::Overflow,
+                        Rule::ArithChecked,
+                        span,
+                        format!(
+                            "an inclusive range's `end` steps past {b:?}, and no `char` spells \
+                             the next scalar value (`[type.char]`)"
+                        ),
+                        None,
+                    );
+                }
+                Ok(Value::Range {
+                    start: i128::from(a as u32),
+                    end,
+                    elem: RangeElem::Char,
+                })
+            }
+            (a, b) => unsupported(format!(
+                "a range needs two `int` or two `char` endpoints, got {} and {}",
+                a.kind(),
+                b.kind()
+            )),
+        }
+    }
+
+    /// The elements of a range from `start` to `last` INCLUSIVE, as the
+    /// counted walk `[mem.iter.range]` describes (`+1` steps, ascending).
+    /// A char range yields every scalar value in the interval; a code point
+    /// no `char` spells is skipped rather than invented.
+    fn range_items(elem: RangeElem, start: i128, last: i128) -> Vec<Value> {
+        let mut out = Vec::new();
+        let mut at = start;
+        while at <= last {
+            match elem {
+                RangeElem::Int(ty) => out.push(Value::Int(at, ty)),
+                RangeElem::Char => {
+                    if let Some(c) = u32::try_from(at).ok().and_then(char::from_u32) {
+                        out.push(Value::Char(c));
+                    }
+                }
+            }
+            at += 1;
+        }
+        out
+    }
+
+    /// The loop proper over materialized items, shared by the range header,
+    /// the range value and the containers.
+    fn eval_for_items(
+        &mut self,
+        items: Vec<Value>,
+        is_container: bool,
+        pattern: &Pattern,
+        iter: &Expr,
+        body: &Block,
+    ) -> EResult<Value> {
         // D40 (resolves S-11): `for x in xs` holds a READ claim on the
         // container for the loop's whole extent, so a mut use of the
         // container inside the body — push/pop/clear, an element write, a

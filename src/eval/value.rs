@@ -377,6 +377,30 @@ pub struct HandleValue {
     pub generation: u32,
 }
 
+/// The element type of a range value — `[type.range.name]`'s closed family:
+/// `range[int]` (with the int's checking context) or `range[char]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RangeElem {
+    Int(IntTy),
+    Char,
+}
+
+impl RangeElem {
+    /// One endpoint as a value of the element type.
+    #[must_use]
+    pub fn endpoint(self, v: i128) -> Value {
+        match self {
+            RangeElem::Int(ty) => Value::Int(v, ty),
+            RangeElem::Char => Value::Char(
+                u32::try_from(v)
+                    .ok()
+                    .and_then(char::from_u32)
+                    .unwrap_or('\u{FFFD}'),
+            ),
+        }
+    }
+}
+
 /// A container element's declared type, where the syntax stated one.
 ///
 /// Until is37 this was a bare `Option<IntTy>`, and that is precisely how
@@ -613,11 +637,17 @@ pub enum Value {
     /// Insertion-ordered; wolf's `Map` has no specified iteration order, and
     /// insertion order is the one that makes output reproducible.
     Map(Vec<(Value, Slot)>),
+    /// A range VALUE (`[type.range]`, s158): two present, plain endpoints
+    /// and **an exclusive `end`, always**. `a..=b` normalized to `b + 1` at
+    /// construction under the checked arithmetic `[mem.iter.range]` rules
+    /// (`[type.range.accessor]`), so no consumer ever asks which spelling
+    /// built it. Before s158's mirror this carried `inclusive: bool` to the
+    /// `for` loop, which is the claim wolf-interp#106 made about this
+    /// machine and the one this lane measured false before fixing.
     Range {
         start: i128,
         end: i128,
-        inclusive: bool,
-        ty: IntTy,
+        elem: RangeElem,
     },
     /// A named function, by module-qualified name.
     Fn(String),
@@ -876,12 +906,18 @@ impl fmt::Display for Value {
                 }
                 f.write_str("}")
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-                ..
-            } => write!(f, "{start}..{}{end}", if *inclusive { "=" } else { "" }),
+            Value::Range { start, end, elem } => match elem {
+                RangeElem::Int(_) => write!(f, "{start}..{end}"),
+                RangeElem::Char => {
+                    let scalar = |v: &i128| {
+                        u32::try_from(*v)
+                            .ok()
+                            .and_then(char::from_u32)
+                            .map_or_else(|| format!("{v}"), |c| format!("{c:?}"))
+                    };
+                    write!(f, "{}..{}", scalar(start), scalar(end))
+                }
+            },
             Value::Fn(name) | Value::Module(name) => f.write_str(name),
             Value::Builtin(name) => f.write_str(name),
             Value::Closure(_) => f.write_str("<closure>"),

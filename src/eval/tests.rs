@@ -3560,3 +3560,88 @@ fn a_list_literal_s_elements_are_evaluated_once_each_left_to_right() {
                   }\n";
     assert_eq!(stdout(source), "123 3\n");
 }
+
+// -- `[type.range]` (s158, wolf-interp#106) ----------------------------------
+
+#[test]
+fn start_and_end_read_the_endpoints_and_end_is_exclusive_always() {
+    // `[type.range.accessor]`: `a..=b` normalizes at CONSTRUCTION to
+    // `end = b + 1`, so one exclusive `end` makes `r.end - r.start` the
+    // count for both spellings.
+    let source = "fn width(r: range[int]) -> int { r.end - r.start }\n\
+                  fn main() -> !int {\n\
+                  \x20   let inc = 2..=7\n\
+                  \x20   let exc = 2..7\n\
+                  \x20   print(\"{inc.start} {inc.end} {width(inc)} {exc.end} {width(exc)}\")\n\
+                  \x20   print(\"{inc} {exc}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "2 8 6 7 5\n2..8 2..7\n");
+}
+
+#[test]
+fn an_inclusive_range_at_int_max_traps_overflow_where_it_is_built() {
+    // `[type.range.accessor]`: the normalization runs under the checked
+    // arithmetic `[mem.iter.range]` rules — trapped at the `let`, never at
+    // a later read, and never a wrap or a panic.
+    let source = "fn main() -> !int {\n\
+                  \x20   let big = 0..=9223372036854775807\n\
+                  \x20   print(\"never\")\n\
+                  \x20   0\n\
+                  }\n";
+    let trap = trap_of(source);
+    assert_eq!(trap.kind, TrapKind::Overflow);
+    assert_eq!(
+        &source[trap.span.start..trap.span.end],
+        "0..=9223372036854775807"
+    );
+    assert!(run(source).stdout.is_empty());
+}
+
+#[test]
+fn a_for_over_a_range_header_never_materializes_a_value_and_does_not_trap() {
+    // `[type.range.value]`: `for` is unchanged — a header range lowers
+    // without a value, its loop a counted walk to the INCLUSIVE bound, so
+    // the same endpoints that trap as a value iterate here.
+    let source = "fn main() -> !int {\n\
+                  \x20   var n = 0\n\
+                  \x20   for i in 9223372036854775805..=9223372036854775807 { n = n + 1 }\n\
+                  \x20   var total = 0\n\
+                  \x20   for i in 0..4 { total = total + i }\n\
+                  \x20   print(\"{n} {total}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "3 6\n");
+}
+
+#[test]
+fn a_range_value_passes_returns_binds_and_iterates() {
+    let source = "fn window(n: int) -> range[int] { 0..n }\n\
+                  fn main() -> !int {\n\
+                  \x20   let w = window(4)\n\
+                  \x20   var total = 0\n\
+                  \x20   for i in w { total = total + i }\n\
+                  \x20   let inc = 1..=3\n\
+                  \x20   var seen = 0\n\
+                  \x20   for i in inc { seen = seen + 1 }\n\
+                  \x20   print(\"{w.start} {w.end} {total} {seen}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "0 4 6 3\n");
+}
+
+#[test]
+fn a_char_range_has_char_endpoints_and_iterates_by_scalar_value() {
+    // `[type.range.name]`: the family's second member. The FIRST endpoint
+    // decides which, and `..=` steps the scalar value at construction.
+    let source = "fn last_of(r: range[char]) -> char { r.end }\n\
+                  fn main() -> !int {\n\
+                  \x20   let cs: range[char] = 'a'..'d'\n\
+                  \x20   let inc = 'a'..='d'\n\
+                  \x20   var walked = \"\"\n\
+                  \x20   for c in cs { walked = \"{walked}{c}\" }\n\
+                  \x20   print(\"{cs.start} {last_of(cs)} {inc.end} {walked} {cs}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "a d e abc 'a'..'d'\n");
+}

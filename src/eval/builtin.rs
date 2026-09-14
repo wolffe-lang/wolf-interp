@@ -1030,6 +1030,13 @@ pub fn property(machine: &mut Machine, receiver: &Value, name: &str, span: Span)
     let _ = span;
     match (receiver, name) {
         (Value::List(items, _, _), "len") => Ok(Value::Int(items.len() as i128, IntTy::INT)),
+        // `[type.range.accessor]` (s158): `start` and `end` read the
+        // endpoints as properties, the way `xs.len` is read. `end` is
+        // exclusive always — the value was normalized where it was built, so
+        // `(2..=7).end` is 8 here without a second rule. A range has no `len`
+        // of its own (`[type.range.value]`): `r.end - r.start` is the count.
+        (Value::Range { start, elem, .. }, "start") => Ok(elem.endpoint(*start)),
+        (Value::Range { end, elem, .. }, "end") => Ok(elem.endpoint(*end)),
         (Value::Map(pairs), "len") => Ok(Value::Int(pairs.len() as i128, IntTy::INT)),
         // D25: `str` is bytes, and `len` is a byte count — the same unit
         // slicing uses, so `s[..s.len]` is the whole string.
@@ -1323,16 +1330,13 @@ pub fn method(
             // Open-ended and `^n` endpoints have no value shape; those
             // spellings are read off the syntax in `eval_method` and land
             // in `str_get` directly.
-            let Some(Value::Range {
-                start,
-                end,
-                inclusive,
-                ..
-            }) = args.first()
-            else {
+            let Some(Value::Range { start, end, .. }) = args.first() else {
                 return unsupported("`str.get` takes a byte range, like `s.get(4..8)`".to_owned());
             };
-            str_get(machine, s, Some(*start), Some(*end), *inclusive, span)
+            // A range VALUE's `end` is exclusive by construction
+            // (`[type.range.accessor]`); `..=` was normalized where it was
+            // built, so there is no inclusive flag left to honour here.
+            str_get(machine, s, Some(*start), Some(*end), false, span)
         }
         (Value::Str(s), "chars") => {
             // `[mem.str.chars]` (s120; typed by s121/D58): the Unicode scalar
