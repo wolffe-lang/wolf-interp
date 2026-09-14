@@ -724,7 +724,9 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
-    assert_eq!(report.entries(), 545);
+    // 545 -> 580 at 30731a6 (is49, wolf-lang v0.2.14): thirty-five new
+    // files, every one an entry — `members` holds at 35.
+    assert_eq!(report.entries(), 580);
     assert_eq!(report.members(), 35);
 }
 
