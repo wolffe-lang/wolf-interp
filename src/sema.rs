@@ -1947,7 +1947,9 @@ impl TierWalk<'_> {
             ExprKind::StructLit { fields, .. } => fields
                 .iter()
                 .find_map(|field| field.value.as_ref().and_then(|value| self.expr(value))),
-            ExprKind::Tuple(items) => items.iter().find_map(|item| self.expr(item)),
+            ExprKind::Tuple(items) | ExprKind::List(items) => {
+                items.iter().find_map(|item| self.expr(item))
+            }
             ExprKind::Block(block) | ExprKind::Loop { body: block } => self.block(block),
             ExprKind::Range { start, end, .. } => start
                 .as_ref()
@@ -2812,7 +2814,9 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
             .iter()
             .filter_map(|field| field.value.as_ref())
             .find_map(|value| walk_expr_assigns(value, env)),
-        ExprKind::Tuple(items) => items.iter().find_map(|item| walk_expr_assigns(item, env)),
+        ExprKind::Tuple(items) | ExprKind::List(items) => {
+            items.iter().find_map(|item| walk_expr_assigns(item, env))
+        }
         ExprKind::Group(inner)
         | ExprKind::Try(inner)
         | ExprKind::FromEnd(inner)
@@ -3350,7 +3354,7 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
         | ExprKind::Bool(_)
         | ExprKind::Char(_)
         | ExprKind::Wildcard => {}
-        ExprKind::Tuple(items) => {
+        ExprKind::Tuple(items) | ExprKind::List(items) => {
             for item in items {
                 collect_expr_refs(item, scope);
             }
@@ -4184,7 +4188,9 @@ impl ScalarWalk<'_> {
                         .then(|| scalar_clash_diag(slot, value.span, "this field's declared type"))
                 })
             }
-            ExprKind::Tuple(items) => items.iter().find_map(|item| self.expr(item)),
+            ExprKind::Tuple(items) | ExprKind::List(items) => {
+                items.iter().find_map(|item| self.expr(item))
+            }
             ExprKind::Block(block) | ExprKind::Unsafe { body: block } => self.block(block),
             ExprKind::Scope { body, .. } => self.block(body),
             ExprKind::Range { start, end, .. } => start

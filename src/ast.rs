@@ -784,6 +784,11 @@ pub enum ExprKind {
     /// Postfix `?` — error propagation (D30).
     Try(Expr),
 
+    /// `[e, …]` — a list literal (`[gram.expr.list]`, s158). A `[` that
+    /// BEGINS a primary opens one; a `[` that follows an expression is
+    /// [`ExprKind::BracketApply`]. Position decides, never lookahead.
+    List(Vec<Expr>),
+
     Range {
         start: Option<Expr>,
         end: Option<Expr>,

@@ -2930,8 +2930,47 @@ impl<'a> Parser<'a> {
                 let from = self.parse_prefix()?;
                 Ok(self.expr(ExprKind::Borrow { place, from }, start, "gram.expr.unsafe"))
             }
+            Some(Tok::LBracket) => self.parse_list_literal(),
             _ => Err(self.unexpected(anchor, "an expression")),
         }
+    }
+
+    /// `list_lit ::= '[' (expr (',' expr)* ','?)? ']'` — `[gram.expr.list]`
+    /// (s158, wolf-lang#154; wolf-interp#106).
+    ///
+    /// **Position settles the clash with indexing, and nothing else does.**
+    /// This is reached only from [`Self::parse_primary`], so the `[` here
+    /// BEGINS an operand; a `[` after a complete expression never arrives
+    /// here — [`Self::parse_postfix`] has already taken it as
+    /// `index_args` (`[gram.amb.brackets]`). `[10, 20, 30][1]` is therefore
+    /// a literal indexed, with no lookahead deciding between the two. No
+    /// program that parsed before the clause changes shape: a leading `[`
+    /// was E0201 everywhere it now opens a literal.
+    ///
+    /// The element list is an argument list's shape (`[gram.fmt.commas]`):
+    /// a trailing comma is admitted, and inserted terminators around the
+    /// elements are skipped so the multi-line form parses.
+    fn parse_list_literal(&mut self) -> PResult<Expr> {
+        let anchor = "gram.expr.list";
+        let start = self.expect(&Tok::LBracket, anchor)?.start;
+        let mut items = Vec::new();
+        self.with_struct_lit(true, |p| -> PResult<()> {
+            loop {
+                p.skip_inserted_terms();
+                if p.at(&Tok::RBracket) {
+                    break;
+                }
+                items.push(p.parse_expr()?);
+                p.skip_inserted_terms();
+                if !p.eat(&Tok::Comma) {
+                    break;
+                }
+            }
+            Ok(())
+        })?;
+        self.skip_inserted_terms();
+        self.expect(&Tok::RBracket, anchor)?;
+        Ok(self.expr(ExprKind::List(items), start, anchor))
     }
 
     /// `(e)` grouping; `(a, b)` tuple; `(a,)` one-tuple — comma decides.
@@ -3855,6 +3894,7 @@ fn trace_expr(out: &mut String, depth: usize, expr: &Expr) {
             )
         }
         ExprKind::Tuple(items) => format!("tuple ({})", items.len()),
+        ExprKind::List(items) => format!("list ({})", items.len()),
         ExprKind::Group(_) => "group".to_owned(),
         ExprKind::Block(_) => "block expression".to_owned(),
         ExprKind::Unary { op, .. } => format!("unary {op:?}"),
@@ -3932,7 +3972,7 @@ fn trace_expr(out: &mut String, depth: usize, expr: &Expr) {
         | ExprKind::Try(inner)
         | ExprKind::FromEnd(inner)
         | ExprKind::Freeze(inner) => trace_expr(out, child, inner),
-        ExprKind::Tuple(items) => {
+        ExprKind::Tuple(items) | ExprKind::List(items) => {
             for item in items {
                 trace_expr(out, child, item);
             }
@@ -4895,5 +4935,89 @@ mod tests {
         }
         assert_eq!(rejects("fn f(p: proc").code, diag::E_EXPECTED_TYPE);
         assert_eq!(rejects("fn f(p: ").code, diag::E_UNEXPECTED_EOF);
+    }
+
+    // -- `[gram.expr.list]` (s158, wolf-interp#106) -----------------------
+
+    fn body_tail(unit: &Unit) -> &Expr {
+        let ItemKind::Fn(decl) = &unit.items[0].kind else {
+            panic!("a fn")
+        };
+        decl.body
+            .as_ref()
+            .expect("a body")
+            .tail
+            .as_deref()
+            .expect("a tail")
+    }
+
+    #[test]
+    fn a_bracket_that_begins_a_primary_opens_a_list_literal() {
+        let unit = parses("fn f() -> int { [1, 2, 3] }\n");
+        let ExprKind::List(items) = &*body_tail(&unit).kind else {
+            panic!("a list literal")
+        };
+        assert_eq!(items.len(), 3);
+        assert_eq!(body_tail(&unit).anchor, "gram.expr.list");
+        let unit = parses("fn f() -> int { [] }\n");
+        let ExprKind::List(items) = &*body_tail(&unit).kind else {
+            panic!("an empty list literal")
+        };
+        assert!(items.is_empty(), "`[]` is two tokens and no elements");
+    }
+
+    #[test]
+    fn position_settles_the_bracket_clash_with_indexing() {
+        // `[gram.amb.brackets]`: a `[` that FOLLOWS an expression is
+        // `index_args`, a `[` that BEGINS one opens a literal — both in a
+        // single expression, neither decided by lookahead.
+        let unit = parses("fn f() -> int { [10, 20, 30][1] }\n");
+        let ExprKind::BracketApply { base, args, .. } = &*body_tail(&unit).kind else {
+            panic!("a literal indexed")
+        };
+        assert_eq!(args.len(), 1);
+        assert!(matches!(&*base.kind, ExprKind::List(items) if items.len() == 3));
+        // Unchanged: a name indexed is still the postfix form.
+        let unit = parses("fn f(xs: List[int]) -> int { xs[1] }\n");
+        let ExprKind::BracketApply { base, .. } = &*body_tail(&unit).kind else {
+            panic!("an index")
+        };
+        assert!(matches!(&*base.kind, ExprKind::Path(_)));
+    }
+
+    #[test]
+    fn a_list_literal_has_an_argument_list_s_shape() {
+        // `[gram.fmt.list]`/`[gram.fmt.commas]`: one element per line with a
+        // trailing comma parses to the same list as the inline form.
+        let inline = parses("fn f() -> int { [\"a\", \"b\"] }\n");
+        let broken = parses("fn f() -> int {\n    [\n        \"a\",\n        \"b\",\n    ]\n}\n");
+        let (ExprKind::List(a), ExprKind::List(b)) =
+            (&*body_tail(&inline).kind, &*body_tail(&broken).kind)
+        else {
+            panic!("two list literals")
+        };
+        assert_eq!(a.len(), 2);
+        assert_eq!(b.len(), 2);
+        // Nesting is ordinary recursion.
+        let unit = parses("fn f() -> int { [[1, 2], [3, 4]] }\n");
+        let ExprKind::List(rows) = &*body_tail(&unit).kind else {
+            panic!("a nested literal")
+        };
+        assert!(
+            rows.iter()
+                .all(|r| matches!(&*r.kind, ExprKind::List(c) if c.len() == 2))
+        );
+    }
+
+    #[test]
+    fn a_list_literal_left_open_is_e0201_where_the_element_list_stops() {
+        assert_eq!(
+            rejects("fn f() -> int { [1, 2 }\n").code,
+            diag::E_UNEXPECTED_TOKEN
+        );
+        assert_eq!(
+            rejects("fn f() -> int { [1 2] }\n").code,
+            diag::E_UNEXPECTED_TOKEN
+        );
     }
 }

@@ -3482,3 +3482,81 @@ fn cap_is_contextual_and_still_an_ordinary_name() {
                   }\n";
     assert_eq!(stdout(source), "7\n");
 }
+
+// -- `[type.list.lit.value]` (s158, wolf-interp#106) ------------------------
+
+#[test]
+fn a_list_literal_is_a_fresh_list_of_its_elements_in_order() {
+    let source = "fn main() -> !int {\n\
+                  \x20   let cents = [340, 275, 100]\n\
+                  \x20   print(\"{cents.len}\")\n\
+                  \x20   print(\"{cents[0]}\")\n\
+                  \x20   print(\"{cents[2]}\")\n\
+                  \x20   print(\"{[10, 20, 30][1]}\")\n\
+                  \x20   let grid = [[1, 2], [3, 4]]\n\
+                  \x20   print(\"{grid[1][1]}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "3\n340\n100\n20\n4\n");
+}
+
+#[test]
+fn a_list_literal_written_twice_is_two_lists() {
+    // `[type.list.lit.value]`: sugar with no static storage — pushing into
+    // one leaves the other at its literal length, and an empty annotated
+    // literal is a list `push` grows like any other.
+    let source = "fn main() -> !int {\n\
+                  \x20   var a = [1, 2]\n\
+                  \x20   let b = [1, 2]\n\
+                  \x20   (mut a).push(3)\n\
+                  \x20   print(\"{a.len} {b.len}\")\n\
+                  \x20   var names: List[str] = []\n\
+                  \x20   (mut names).push(\"espresso\")\n\
+                  \x20   print(\"{names.len}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "3 2\n1\n");
+}
+
+#[test]
+fn a_list_literal_charges_its_region_exactly_as_list_plus_push_does() {
+    // `[type.list.lit.value]`: "the same value `List[T]()` followed by a
+    // `push` per element produces" — read through the ledger, in the
+    // literal's own region, against the pushed spelling's.
+    let source = "fn main() -> !int {\n\
+                  \x20   var lit = 0\n\
+                  \x20   var pushed = 0\n\
+                  \x20   region a {\n\
+                  \x20       let xs = [1, 2, 3, 4, 5]\n\
+                  \x20       lit = region_bytes(a)\n\
+                  \x20       if xs.len != 5 { return 1 }\n\
+                  \x20   }\n\
+                  \x20   region b {\n\
+                  \x20       var ys = List[int]()\n\
+                  \x20       (mut ys).push(1)\n\
+                  \x20       (mut ys).push(2)\n\
+                  \x20       (mut ys).push(3)\n\
+                  \x20       (mut ys).push(4)\n\
+                  \x20       (mut ys).push(5)\n\
+                  \x20       pushed = region_bytes(b)\n\
+                  \x20   }\n\
+                  \x20   print(\"{lit == pushed} {lit > 0}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "true true\n");
+}
+
+#[test]
+fn a_list_literal_s_elements_are_evaluated_once_each_left_to_right() {
+    let source = "var n = 0\n\
+                  fn tick() -> int {\n\
+                  \x20   n = n + 1\n\
+                  \x20   n\n\
+                  }\n\
+                  fn main() -> !int {\n\
+                  \x20   let xs = [tick(), tick(), tick()]\n\
+                  \x20   print(\"{xs[0]}{xs[1]}{xs[2]} {n}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "123 3\n");
+}

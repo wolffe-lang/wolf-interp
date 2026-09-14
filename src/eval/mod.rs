@@ -4123,6 +4123,47 @@ impl Machine {
                 }
                 Ok(Value::Tuple(slots))
             }
+            // `[type.list.lit.value]` (s158, wolf-interp#106): a fresh
+            // `List[T]` allocated into the ambient region, the elements
+            // evaluated left to right exactly once each BEFORE the list
+            // exists — the same value `List[T]()` followed by one `push` per
+            // element produces. Written twice is two lists. The ledger agrees
+            // with that spelling by construction: the container is charged
+            // as `List()` charges it, and each element then charges the
+            // growth `push` would have charged, at the same stride, to the
+            // same birth region.
+            ExprKind::List(items) => {
+                let mut values = Vec::with_capacity(items.len());
+                for item in items {
+                    let value = match self.eval_for_init(item)? {
+                        // An int literal adopts the container's element type
+                        // — `int` when nothing stamps one (`[type.numlit]`),
+                        // exactly as `push` adopts it (issue #21).
+                        Value::Int(v, ty) if ty.literal => Value::Int(v, IntTy::INT),
+                        value => value,
+                    };
+                    values.push(value);
+                }
+                let home = self.allocate(expr.span, "List", region::ledger::container_bytes(0))?;
+                let mut slots = Vec::with_capacity(values.len());
+                for value in values {
+                    let stride = if matches!(value, Value::Byte(_)) {
+                        region::ledger::BYTE_SLOT_BYTES
+                    } else {
+                        region::ledger::SLOT_BYTES
+                    };
+                    let was = slots.len() as u64;
+                    slots.push(Slot::live(value));
+                    let grown =
+                        region::ledger::growth_bytes_strided(was, slots.len() as u64, stride);
+                    let charged = self.store().charge_growth(home, grown);
+                    if let Err(breach) = charged {
+                        return self.cap_breach(breach, expr.span, "a list literal's elements");
+                    }
+                }
+                self.note(Rule::Alloc, expr.span, "list literal");
+                Ok(Value::list(slots, None, Some(home)))
+            }
             ExprKind::StructLit { path, fields } => {
                 let mut name = path
                     .segments

@@ -1285,7 +1285,7 @@ impl Walk<'_> {
                     }
                 }
             }
-            ExprKind::Tuple(items) => {
+            ExprKind::Tuple(items) | ExprKind::List(items) => {
                 for item in items {
                     self.expr(item);
                 }
@@ -2438,7 +2438,7 @@ fn walk_child_exprs(expr: &Expr, visit: &mut impl FnMut(&Expr)) {
                 }
             }
         }
-        ExprKind::Tuple(items) => {
+        ExprKind::Tuple(items) | ExprKind::List(items) => {
             for item in items {
                 visit(item);
             }
