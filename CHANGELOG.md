@@ -1,5 +1,98 @@
 # Changelog
 
+## Unreleased
+
+THE THREE CLAUSES (is49). Pin `a7f517e` (wolf-lang v0.2.12) -> **`30731a6`
+(wolf-lang v0.2.14)**, two releases in one bump: 580 -> 615 corpus files,
+475 -> 498 anchors (twenty-three added, none dropped, key sets diffed both
+ways). The subject is wolf-interp#106, s158's mirror — three surface
+additions the compiler carried at 0.2.14 and this machine refused by E0201
+at the first new token: **list literals** (`[gram.expr.list]`,
+`[type.list.lit]`), **a nameable `range[int]` / `range[char]`** with
+`start` / `end` (`[type.range]`), and **transparent error-set aliases**
+(`[gram.item.error]`, `[type.err.alias]`). Eighteen witnesses; the
+eighteenth, `rows/error_alias_ident.lu`, needed no mirror at all.
+
+**List literals.** A `[` that BEGINS a primary opens a literal; a `[` that
+follows an expression is `index_args`, as it always was — position decides
+and nothing else does, so `[10, 20, 30][1]` is a literal indexed with no
+lookahead (`grammar/list_lit_index.lu`). The value is a fresh `List[T]`
+allocated into the ambient region, elements evaluated left to right exactly
+once each before the list exists, and the ledger agrees with the spelling
+the clause names: the container is charged as `List()` charges it and each
+element charges the growth `push` would have, at the same stride, to the
+same birth region — pinned by a test that reads `region_bytes` under both
+spellings. The static half, `sema::list_lit_check`, is a `ScalarWalk`-shaped
+pass over literal SHAPES: the first element that does not fit is **E0401 at
+that element** with the first element as the "because"
+(`grammar/list_lit_mixed.lu`, byte-identical span with the compiler,
+`[368,373]`); an annotated `let`/`var` pushes its element type into every
+element and a non-`List` annotation is E0401 at the literal; a bare
+`let xs = []` is **E0419** at the `[]` with the annotation spelled for that
+binding (`grammar/list_lit_untyped_empty.lu`, `[409,411]` on both
+machines). A call argument, a field, a declared return supply a context this
+pass does not check — the permissive direction, the sema boundary's rule.
+
+**`range[int]` as a type — and the claim that was false.** `range` joins
+`sema::PRELUDE_TYPE_NAMES` (type position only, so `var range = true` is
+not a W0304 hazard; pinned), closed at the two element types: bare `range`
+is E0405, `range[f64]` is E0401 at the argument. `.start`/`.end` are two
+arms of `builtin::property`. wolf-interp#106 says "lupin already does this
+— `Value::Range` has been built half-open since its first range arm". It
+had not: at 0.1.36 `Value::Range` carried `inclusive: bool` to `eval_for`,
+which computed `if inclusive { end } else { end - 1 }` on raw `i128`, and
+`0..=int.MAX` as a value neither trapped nor normalized. Now `a..=b`
+**normalizes at construction** to `end = b + 1` under `Machine::checked`,
+so `(2..=7).end` is 8 and `let big = 0..=9223372036854775807` traps
+`overflow` at the `let` (`grammar/range_type_overflow.lu`, 21:15) — and the
+`for` HEADER form is unchanged, a non-materializing counted walk to the
+inclusive bound, so `for i in 9223372036854775805..=9223372036854775807`
+still iterates three times (`[type.range.value]`). `Value::Range` carries
+`elem: RangeElem` (`Int(IntTy)` | `Char`) and no flag; `'a'..='d'` steps the
+scalar value and `range_type_char.lu` prints `a d e`. Recorded on #106.
+
+**Error-set aliases are spellings, and the spelling is gone before anything
+reads a row.** `error IoErrors = {none, parse}` is an item; `error` is
+CONTEXTUAL on three tokens (`Ident("error")`, `IDENT`, `=`), so a binding, a
+function, a field and an assignment target named `error` parse as they
+always did (`lex::CONTEXTUAL` 12 -> 13, §6.2 at the pin names it). A postfix
+row position admits a bare path — `-> int ! IoErrors` is `-> int ! {IoErrors}`
+— and `! IDENT` continues a type the way `! {` does. The semantics are one
+function: `sema::expand_error_aliases` runs on every unit of a module after
+all are parsed and before any is collected, and REWRITES every error row
+through the module's aliases — signatures, fields, annotations, casts,
+closure parameters, index type arguments — so the raise-tag vocabulary,
+`?`'s widening, the `else` handler coverage, the lints and every rendered
+type work on tags as they always have (`[type.err.alias.transparent]`,
+`[type.err.alias.diag]`). Aliases compose by naming and flatten by
+`[gram.type.row.flatten]`'s rule, a repeated tag one tag
+(`rows/error_alias_union.lu`); an alias entry with a payload is E0601; a
+cycle is **E0610**, once, at the ENTRY that closes it with the loop named
+(`rows/negative/error_alias_cycle.lu`, `[434,435]` — the compiler's own
+locus); an open row in an alias is E0201 at the `..`, in the parser, where
+the corpus's `phase: lex` puts it (`[368,370]`). The clause's prose says
+"E0515" for the cycle; the registry, `docs/diagnostics.md`, the compiler
+and the witness say E0610, which is the code here — the nit is filed
+upstream.
+
+**Census, predicted before the first edit and measured after the last.**
+Baseline re-measured with the 0.1.36 binary at the NEW pin: 443 match, 54
+out of scope, 19 mismatch (18 unfiled: the fourteen positives, the three
+negatives answering E0201 for the wrong reason, and `match_nullary_variant`),
+23 dynamic counterparts, 41 conservatism, 435 reaching `run`. At the head:
+**460 match, 54 out of scope, 0 unfiled mismatches (2 filed), 23, 41, 449
+reaching `run`** — six of seven cells as predicted, the seventh (449, not
+448) an arithmetic slip in the prediction, not a row the census surprised.
+The rows this lane leaves, by name: `grammar/match_nullary_variant.lu`
+(s157's `[gram.pat.nullary]`, filed as DIV-2026-024 against wolf-interp#107
+and waived — is50's), `net/writev_head_gather.lu` (`net_writev_head`
+declined by name, #111), `memory/region_str_{repeat,from_utf8}_return.lu`
+and `memory/read_param_take.lu` (static refusals this machine runs clean —
+conservatism, #111). For r20: fourteen Verdict rows close on the compiler's
+table (six `list_lit_*`, five `range_type_*`, three `error_alias_*`), hard
+23 -> 9 on both tiers, completeness unchanged (the four `fail`-pinned
+negatives sit there whatever this machine answers), unsupported unchanged.
+
 ## 0.1.36 — 2026-09-12
 
 THE FS TIER (is48). Pin unchanged at `a7f517e` (wolf-lang **v0.2.12**); this
