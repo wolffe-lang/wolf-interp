@@ -1474,6 +1474,72 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("net/unix_echo.lu", "exit(0)"),
     ("projects/count.lu", "exit(0)"),
     ("projects/count_dir.lu", "exit(0)"),
+    // -- is49, lupin 0.1.37: the three clauses, at the 30731a6 pin ----------
+    //
+    // The pin moves two releases (v0.2.12 -> v0.2.14) and brings thirty-five
+    // files; twenty-eight reach `run`. FOURTEEN are this lane's mirror of
+    // s158 (wolf-interp#106) and were `fail(E0201)`/`fail(E0301)` on the
+    // 0.1.36 binary, measured at the new pin before a line was edited:
+    // six `grammar/list_lit_*` (`[gram.expr.list]`, `[type.list.lit]`), five
+    // `grammar/range_type_*` (`[type.range]` — `range_type_overflow.lu` is
+    // the one TRAP, `0..=int.MAX` normalizing its exclusive `end` at
+    // construction under checked arithmetic), and three
+    // `rows/error_alias_*` (`[gram.item.error]`, `[type.err.alias]`).
+    // `rows/error_alias_ident.lu` is the fourth alias witness and needed no
+    // mirror: it declares no `error` ITEM, only a field, a function and a
+    // binding named `error`, and ran unchanged on 0.1.36 — the contextual
+    // keyword claim (`[gram.inv.ctx]`) demonstrated rather than argued.
+    //
+    // THIRTEEN are s157's and s160's and ran on 0.1.36 as they run now —
+    // wolf-interp#107 and #111 are is50's and this lane only ledgers them.
+    // Two trap `region-fault` where the corpus pins E1010 (a DYNAMIC
+    // COUNTERPART each: `conc/chan_payload_escape_proc.lu` and
+    // `memory/region_str_field_return.lu`); three run CLEAN where the
+    // corpus pins a static refusal (`memory/region_str_repeat_return.lu`
+    // and `memory/region_str_from_utf8_return.lu` against E1010 — #111's
+    // `[mem.region.escape]` half, the region tag reaching some `str`
+    // producers and not others — and `memory/read_param_take.lu` against
+    // E1014), the conservatism class; the other eight match.
+    //
+    // NOT here: `grammar/match_nullary_variant.lu` (s157, `[gram.pat.nullary]`)
+    // is `exit(0)` on both compiler tiers and `fail(E0201)` at parse on this
+    // machine — filed as DIV-2026-024 against wolf-interp#107 and waived in
+    // `differ::FILED_DIVERGENCES` until is50 lands the pattern; and
+    // `net/writev_head_gather.lu`, `unsupported` at resolve by name
+    // (`net_writev_head`, #111). The four s158 negatives are `fail` rows:
+    // `list_lit_untyped_empty.lu` E0419, `list_lit_mixed.lu` E0401,
+    // `rows/negative/error_alias_cycle.lu` E0610 (all three E0201 on 0.1.36)
+    // and `rows/negative/error_alias_open.lu` E0201 at the `..` (E0201 on
+    // 0.1.36 too, at the `error` — the same code for a different reason,
+    // which this ledger cannot see and `parse::tests` pins).
+    ("conc/chan_payload_escape_proc.lu", "trap(region-fault)"),
+    ("conc/chan_payload_proc_param.lu", "exit(0)"),
+    ("conc/proc_link_root.lu", "exit(0)"),
+    ("grammar/list_lit_arg.lu", "exit(0)"),
+    ("grammar/list_lit_empty.lu", "exit(0)"),
+    ("grammar/list_lit_index.lu", "exit(0)"),
+    ("grammar/list_lit_let.lu", "exit(0)"),
+    ("grammar/list_lit_multiline.lu", "exit(0)"),
+    ("grammar/list_lit_nested.lu", "exit(0)"),
+    ("grammar/range_type_char.lu", "exit(0)"),
+    ("grammar/range_type_inclusive.lu", "exit(0)"),
+    ("grammar/range_type_overflow.lu", "trap(overflow)"),
+    ("grammar/range_type_param.lu", "exit(0)"),
+    ("grammar/range_type_return.lu", "exit(0)"),
+    ("lints/shadow_prelude_call.lu", "exit(0)"),
+    ("memory/list_elem_copy_loop.lu", "exit(0)"),
+    ("memory/read_param_take.lu", "exit(0)"),
+    ("memory/region_str_charged.lu", "exit(0)"),
+    ("memory/region_str_field_return.lu", "trap(region-fault)"),
+    ("memory/region_str_from_utf8_return.lu", "exit(0)"),
+    ("memory/region_str_repeat_return.lu", "exit(0)"),
+    ("rows/error_alias_ident.lu", "exit(0)"),
+    ("rows/error_alias_row.lu", "exit(0)"),
+    ("rows/error_alias_transparent.lu", "exit(0)"),
+    ("rows/error_alias_union.lu", "exit(0)"),
+    ("strings/dollar_brace_escape.lu", "exit(0)"),
+    ("strings/end_relative_get.lu", "exit(0)"),
+    ("typecheck/closure_param_call.lu", "exit(0)"),
 ];
 
 #[test]

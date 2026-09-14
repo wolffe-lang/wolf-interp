@@ -242,7 +242,15 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // (`[gram.fmt.break]`, `[gram.fmt.paren]`): this machine has no formatter,
 // the corpus ships no file tagged with either, and coverage claims only what
 // a witness actually exercises.
-const RATCHET_FLOOR: usize = 223;
+// 223 -> 236 at 30731a6 (is49, wolf-lang v0.2.14 — the TAG, two releases in
+// one bump): THIRTEEN of the twenty-three new anchors arrive with a
+// `conforms:` witness — the s158 families this lane mirrored
+// (`gram.expr.list`, `gram.fmt.list`, `type.list.lit`, `gram.item.error`,
+// `type.err.alias`, `type.range`) and s157's `gram.pat.nullary`, s159's
+// `conf.resolve.ambient`, s160's `mem.region.proc` and `os.net.writev.head`.
+// The rest are the sub-clauses (`type.list.lit.elem` …) the corpus tags
+// only by their parent; coverage claims only what a witness exercises.
+const RATCHET_FLOOR: usize = 236;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -402,7 +410,17 @@ const RATCHET_FLOOR: usize = 223;
 // `spec/05-conformance.md` is untouched across `c9237c1..a7f517e`, which is
 // the independent check on that — `anchor::REGISTERED_NAMESPACES` holds at
 // thirteen.
-const ANCHORS_TOTAL: usize = 475;
+// 475 -> 498 at 30731a6 (is49, wolf-lang v0.2.14 — the TAG): TWENTY-THREE
+// over three sprints — s157's `gram.pat.nullary` and `conf.resolve`/
+// `conf.resolve.ambient`; s158's `gram.expr.list`, `gram.fmt.list`,
+// `gram.item.error`, `type.list.lit` ×5, `type.range` ×5 and
+// `type.err.alias` ×5 (wolf-interp#106, this lane's mirror); s160's
+// `mem.region.proc` and `os.net.writev.head` (#111). Key sets diffed BOTH
+// ways — twenty-three added, NOTHING dropped. No new NAMESPACE: every one
+// sits under `gram`/`type`/`conf`/`mem`/`os`, and `type.err.alias` is in
+// `type`, not the reserved `err` — `anchor::REGISTERED_NAMESPACES` holds at
+// thirteen.
+const ANCHORS_TOTAL: usize = 498;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -644,9 +662,13 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // so `records` moves by 9 and the two counts part company for the first
     // time in this ledger. The suite is unmoved (is47's new tests are inline
     // fixtures and one measured table, which the extractor does not harvest).
-    assert_eq!(summary.pin, "a7f517e1f667f142ffaf61b57aa2bff06e32b520");
-    assert_eq!(summary.programs, 618);
-    assert_eq!(summary.records, 583);
+    // 618/583 -> 653/618 at 30731a6 (is49, wolf-lang v0.2.14 — the TAG): 35
+    // corpus files, none leaving, every one an entry (no new members), so
+    // both counts move by 35 and `members` holds at 35. The suite is unmoved
+    // (is49's tests are inline fixtures the extractor does not harvest).
+    assert_eq!(summary.pin, "30731a6509443ade03724707345da9ceb86a88bf");
+    assert_eq!(summary.programs, 653);
+    assert_eq!(summary.records, 618);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

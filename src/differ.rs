@@ -188,6 +188,16 @@ pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
          `[gram.item.let]` says what the shape is and not where refusing it \
          reports. Filed upstream as wolf-lang#228",
     ),
+    (
+        "grammar/match_nullary_variant.lu",
+        "DIV-2026-024",
+        "a bare dotted path is a pattern (`[gram.pat.nullary]`, s157): the corpus \
+         runs `exit(0)` printing `green\\nfirst\\n` on both compiler tiers and \
+         this machine still refuses the bare `Color.Red =>` at parse with \
+         `E0201: a dotted path in a pattern must carry a payload`; a mirror \
+         lag, not a disagreement about the clause — the pin carried s157's \
+         witness before s157's mirror (wolf-interp#107) landed here",
+    ),
 ];
 
 // DIV-2026-022 (`wordcount.lu`) and DIV-2026-023

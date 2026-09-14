@@ -107,7 +107,19 @@ fn pinned_code(check: Option<&Check>) -> Option<&str> {
 fn declaration_read_code(case: &Case) -> Option<&str> {
     let code = pinned_code(case.check.as_ref())?;
     let owned = match code {
-        "E0401" => ["type.byte", "type.fn.ret"].as_slice(),
+        // s158 (`[type.list.lit]`, `[type.range.name]`, `[type.err.alias]`,
+        // wolf-interp#106): the list literal's first misfit element and the
+        // bare empty literal, `range[T]` outside the closed family, and an
+        // error-set alias cycle are all decided from declarations at resolve.
+        "E0401" => [
+            "type.byte",
+            "type.fn.ret",
+            "type.list.lit",
+            "type.range.name",
+        ]
+        .as_slice(),
+        "E0419" => ["type.list.lit"].as_slice(),
+        "E0610" => ["type.err.alias"].as_slice(),
         "E0409" => ["type.row.operand"].as_slice(),
         "E0417" => ["mem.map.absent"].as_slice(),
         "E0418" => ["type.map.key"].as_slice(),
@@ -296,11 +308,16 @@ fn files_whose_ledger_stops_at_lex_fail_at_parse_with_their_pinned_code() {
     // in-repo (`tests/s151/`, retired here) before the pin carried them.
     // They sort between `closure_params_no_separator` and
     // `index_origin_misplaced`.
+    // `rows/negative/error_alias_open.lu` joined at 30731a6 (is49): s158's
+    // `[gram.item.error]` refuses the open marker inside an alias — E0201
+    // at the `..`, bytes 368..370 on both machines. It is the first
+    // grammar-tier pin outside `grammar/` and sorts last.
     assert_eq!(
         seen.values().cloned().collect::<Vec<_>>(),
         vec![
             "E0201", "E0201", "E0201", "E0201", "E0211", "E0201", "E0201", "E0201", "E0001",
-            "E0201", "E0210", "E0002", "E0201", "E0201", "E0201", "E0006", "E0201", "E0008"
+            "E0201", "E0210", "E0002", "E0201", "E0201", "E0201", "E0006", "E0201", "E0008",
+            "E0201"
         ],
         "the pinned grammar-tier codes changed: {seen:?}"
     );
