@@ -133,6 +133,15 @@ pub struct Module {
     /// is c10's; what `resolve` needs is that the name `c` is bound, so
     /// `c.malloc` resolves to a namespace rather than to nothing.
     pub c_headers: Vec<String>,
+    /// The module's error-set aliases (`[gram.item.error]`, s158), by name,
+    /// with the row as written. Every row in the module's units has already
+    /// been rewritten through them by [`expand_error_aliases`] before
+    /// collection — an alias is a spelling, and the spelling is gone by the
+    /// time anything reads a row (`[type.err.alias.transparent]`).
+    pub error_aliases: BTreeMap<String, crate::ast::ErrorRow>,
+    /// The refusals the expansion found (E0610 a cycle, E0601 a payload on
+    /// an alias entry), reported by [`resolve_check`] at the resolve rung.
+    pub alias_diags: Vec<Diag>,
     /// Variant name → the enums of this module that declare it, in declaration
     /// order. What makes a bare identifier in a pattern a *variant pattern*
     /// rather than a binding (`[gram.pat]`; the checker resolves an in-scope
@@ -464,11 +473,14 @@ pub fn load_source(name: &str, source: &str) -> Result<Program, LoadError> {
         name: String::new(),
         ..Module::default()
     };
-    collect(&parsed.unit, &mut module, name, source);
+    let mut units = vec![parsed.unit];
+    module.alias_diags = expand_error_aliases(&mut units);
+    let unit = units.pop().expect("one unit");
+    collect(&unit, &mut module, name, source);
     module.units.push(SourceUnit {
         file: name.to_owned(),
         source: source.to_owned(),
-        unit: parsed.unit,
+        unit,
         from_std: false,
     });
     let mut modules = BTreeMap::new();
@@ -508,6 +520,7 @@ fn load_module(
         name: name.to_owned(),
         ..Module::default()
     };
+    let mut parsed_units: Vec<(String, String, Unit)> = Vec::new();
     for path in paths {
         let source = std::fs::read_to_string(&path)
             .map_err(|e| LoadError::Io(format!("{}: {e}", path.display())))?;
@@ -532,11 +545,22 @@ fn load_module(
         })?;
         let display = crate::slash_path(&path);
         files.push(display.clone());
-        collect(&parsed.unit, &mut module, &display, &source);
+        parsed_units.push((display, source, parsed.unit));
+    }
+    // `[type.err.alias]`: an alias declared in any file of the module names
+    // tags in every file of it (D32: one directory, one module), so the rows
+    // are rewritten once every unit is parsed and before any is collected.
+    let (names, mut units): (Vec<(String, String)>, Vec<Unit>) = parsed_units
+        .into_iter()
+        .map(|(display, source, unit)| ((display, source), unit))
+        .unzip();
+    module.alias_diags = expand_error_aliases(&mut units);
+    for ((display, source), unit) in names.into_iter().zip(units) {
+        collect(&unit, &mut module, &display, &source);
         module.units.push(SourceUnit {
             file: display,
             source,
-            unit: parsed.unit,
+            unit,
             from_std,
         });
     }
@@ -794,15 +818,22 @@ fn collect(unit: &Unit, module: &mut Module, file: &str, source: &str) {
                 }
             }
             ItemKind::ErrorAlias(alias) => {
+                // `[gram.item.error]`: an item like any other — the name is
+                // defined (so a second `error X` is E0302 and `X` resolves),
+                // and the row is kept as written for the lints and the REPL.
                 let name = alias.name.name.clone();
                 define(
                     module,
-                    name,
+                    name.clone(),
                     Def::Opaque("error"),
                     visible,
                     Some(alias.name.span),
                     file,
                 );
+                module
+                    .error_aliases
+                    .entry(name)
+                    .or_insert_with(|| alias.row.clone());
             }
             ItemKind::TypeAlias(alias) => {
                 // `type Name = struct { … }` defines a constructible type.
@@ -1059,6 +1090,7 @@ fn define(
 #[must_use]
 pub fn resolve_check(program: &Program) -> Option<Diag> {
     cycle_check(program)
+        .or_else(|| error_alias_check(program))
         .or_else(|| dup_check(program))
         .or_else(|| private_check(program))
         .or_else(|| unused_check(program))
@@ -1523,6 +1555,586 @@ fn misfit(items: &[Expr], expected: Option<(LitShape, Span)>) -> Option<Diag> {
         }
     }
     None
+}
+
+/// `[type.err.alias]` (s158, wolf-lang#36; wolf-interp#106): the refusals
+/// [`expand_error_aliases`] recorded while rewriting the module's rows —
+/// E0610 for a cycle, E0601 for a payload on an alias entry — reported at
+/// the resolve rung, earliest span first, right after the import-cycle
+/// check they are the sibling of.
+fn error_alias_check(program: &Program) -> Option<Diag> {
+    program
+        .modules
+        .values()
+        .flat_map(|module| module.alias_diags.iter())
+        .min_by_key(|diag| diag.span.start)
+        .cloned()
+}
+
+/// Rewrites every error row in `units` through the module's error-set
+/// aliases, so that downstream nothing ever sees an alias name in a row.
+///
+/// **An alias is a spelling, never a type** (`[type.err.alias.transparent]`):
+/// `T ! IoErrors` and `T ! {none, parse}` are the SAME type, and the way to
+/// make two machines agree on that by construction is to make the spelling
+/// disappear where it is read. Every reader of a row — the raise-tag
+/// vocabulary (`[gram.expr.tagident]`), `?`'s widening, the `else` handler
+/// coverage, the lints, every rendered type in a diagnostic
+/// (`[type.err.alias.diag]`) — then works on tags, as it always did.
+///
+/// **Aliases compose by naming** (`[type.err.alias.union]`): a row entry
+/// whose single-segment path names an alias in this module contributes that
+/// alias's tags; every other path is a tag. The union is
+/// `[gram.type.row.flatten]`'s — a repeated tag is one tag, first spelling
+/// kept. (The payload-conflict half of that rule, E0609, is a check this
+/// machine does not perform on any row — see `tests/run_corpus.rs` on
+/// `rows/negative/nested_row_conflict.lu` — so an alias layer does not
+/// perform it either.) An alias entry carries no payload of its own:
+/// `{IoErrors(int)}` is **E0601** at the entry.
+///
+/// **A cycle is E0610** (`[type.err.alias.cycle]`), reported once, at the
+/// entry that closes it, with the loop named in full — the tri-colour walk
+/// `cycle_check` runs over imports, in declaration order. Any terminating
+/// depth is fine. (The clause's prose says "E0515" at the v0.2.14 pin; the
+/// diagnostic registry, `docs/diagnostics.md`, the compiler and the witness
+/// `rows/negative/error_alias_cycle.lu` all say E0610, which is the code
+/// here; the prose nit is filed upstream.) A cycle's aliases expand to what
+/// terminates below them, so the program still loads and the refusal is
+/// the one diagnostic.
+///
+/// Returns the refusals; the rows are rewritten either way.
+pub fn expand_error_aliases(units: &mut [Unit]) -> Vec<Diag> {
+    use crate::ast::{ErrorRow, RowEntry};
+
+    // 1. The aliases, in declaration order across the module's files. A
+    //    name declared twice is `dup_check`'s E0302; the first wins here.
+    let mut order: Vec<String> = Vec::new();
+    let mut declared: BTreeMap<String, ErrorRow> = BTreeMap::new();
+    for unit in units.iter() {
+        for item in &unit.items {
+            if let ItemKind::ErrorAlias(alias) = &item.kind
+                && !declared.contains_key(&alias.name.name)
+            {
+                order.push(alias.name.name.clone());
+                declared.insert(alias.name.name.clone(), alias.row.clone());
+            }
+        }
+    }
+    if declared.is_empty() {
+        return Vec::new();
+    }
+    let mut diags = Vec::new();
+
+    // 2. E0601 — an alias entry with a payload, wherever the entry sits.
+    //    (Checked over the alias rows here; ordinary rows are checked in the
+    //    rewrite below, where every row passes.)
+    let alias_of = |entry: &RowEntry| -> Option<String> {
+        match entry.path.segments.as_slice() {
+            [segment] if declared.contains_key(&segment.name) => Some(segment.name.clone()),
+            _ => None,
+        }
+    };
+    let payload_refusal = |entry: &RowEntry, name: &str| -> Diag {
+        Diag::new(
+            "E0601",
+            entry.span,
+            "type.err.alias.union",
+            format!(
+                "`{name}` is an error-set alias and carries no payload of its own: the tags it \
+                 names already declare what they carry, so `{name}(…)` adds nothing a row can \
+                 hold (`[type.err.alias.union]`)"
+            ),
+        )
+    };
+
+    // 3. The cycle walk: tri-colour DFS over alias → alias edges, in
+    //    declaration order, the back edge reported at the ENTRY that closes
+    //    the loop, the loop spelled out from where it starts.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Mark {
+        White,
+        Grey,
+        Black,
+    }
+    let mut marks: BTreeMap<String, Mark> =
+        declared.keys().map(|k| (k.clone(), Mark::White)).collect();
+    let mut path: Vec<String> = Vec::new();
+    fn visit(
+        name: &str,
+        declared: &BTreeMap<String, ErrorRow>,
+        marks: &mut BTreeMap<String, Mark>,
+        path: &mut Vec<String>,
+        diags: &mut Vec<Diag>,
+    ) {
+        marks.insert(name.to_owned(), Mark::Grey);
+        path.push(name.to_owned());
+        let row = &declared[name];
+        for entry in &row.entries {
+            let [segment] = entry.path.segments.as_slice() else {
+                continue;
+            };
+            let Some(mark) = marks.get(&segment.name).copied() else {
+                continue; // a tag, not an alias
+            };
+            match mark {
+                Mark::White => visit(&segment.name, declared, marks, path, diags),
+                Mark::Grey => {
+                    let start = path.iter().position(|p| p == &segment.name).unwrap_or(0);
+                    let mut loop_names: Vec<&str> =
+                        path[start..].iter().map(String::as_str).collect();
+                    loop_names.push(&segment.name);
+                    let self_loop = path.len() - start == 1;
+                    diags.push(Diag::new(
+                        "E0610",
+                        entry.span,
+                        "type.err.alias.cycle",
+                        if self_loop {
+                            format!(
+                                "the error-set alias `{}` names itself: an alias is a spelling for \
+                                 the tags it lists, and a loop lists none (`[type.err.alias.cycle]`)",
+                                segment.name
+                            )
+                        } else {
+                            format!(
+                                "the error-set alias `{}` names itself through `{}`: an alias is a \
+                                 spelling for the tags it lists, and a loop lists none \
+                                 (`[type.err.alias.cycle]`)",
+                                segment.name,
+                                loop_names.join("` → `")
+                            )
+                        },
+                    ));
+                }
+                Mark::Black => {}
+            }
+        }
+        path.pop();
+        marks.insert(name.to_owned(), Mark::Black);
+    }
+    for name in &order {
+        if marks[name] == Mark::White {
+            visit(name, &declared, &mut marks, &mut path, &mut diags);
+        }
+    }
+    for name in &order {
+        for entry in &declared[name].entries {
+            if let Some(inner) = alias_of(entry)
+                && !entry.payload.is_empty()
+            {
+                diags.push(payload_refusal(entry, &inner));
+            }
+        }
+    }
+
+    // 4. Each alias's flattened tags, memoized; a cycle is cut where it
+    //    closes (the diagnostic above is the one report of it).
+    let mut flat: BTreeMap<String, Vec<RowEntry>> = BTreeMap::new();
+    fn flatten(
+        name: &str,
+        declared: &BTreeMap<String, ErrorRow>,
+        flat: &mut BTreeMap<String, Vec<RowEntry>>,
+        visiting: &mut Vec<String>,
+    ) -> Vec<RowEntry> {
+        if let Some(done) = flat.get(name) {
+            return done.clone();
+        }
+        if visiting.iter().any(|v| v == name) {
+            return Vec::new();
+        }
+        visiting.push(name.to_owned());
+        let mut out: Vec<RowEntry> = Vec::new();
+        for entry in &declared[name].entries {
+            let nested = match entry.path.segments.as_slice() {
+                [segment] if declared.contains_key(&segment.name) => {
+                    Some(flatten(&segment.name, declared, flat, visiting))
+                }
+                _ => None,
+            };
+            match nested {
+                Some(tags) => {
+                    for tag in tags {
+                        if !out.iter().any(|e| same_tag(&e.path, &tag.path)) {
+                            out.push(tag);
+                        }
+                    }
+                }
+                None => {
+                    if !out.iter().any(|e| same_tag(&e.path, &entry.path)) {
+                        out.push(entry.clone());
+                    }
+                }
+            }
+        }
+        visiting.pop();
+        flat.insert(name.to_owned(), out.clone());
+        out
+    }
+    for name in &order {
+        flatten(name, &declared, &mut flat, &mut Vec::new());
+    }
+
+    // 5. The rewrite: every row in every unit, alias entries spliced out for
+    //    their tags. The alias items themselves are left as written (the
+    //    REPL and the lints read them by name).
+    let mut rewriter = RowRewriter {
+        flat: &flat,
+        diags: Vec::new(),
+    };
+    for unit in units.iter_mut() {
+        for item in &mut unit.items {
+            if !matches!(item.kind, ItemKind::ErrorAlias(_)) {
+                rewriter.item(item);
+            }
+        }
+    }
+    diags.extend(rewriter.diags);
+    diags.sort_by_key(|d| d.span.start);
+    diags
+}
+
+/// Two row-entry paths spell the same tag when their segments do — spans
+/// differ between an alias's declaration and its use, and a tag is a name.
+fn same_tag(a: &crate::ast::Path, b: &crate::ast::Path) -> bool {
+    a.segments.len() == b.segments.len()
+        && a.segments
+            .iter()
+            .zip(&b.segments)
+            .all(|(x, y)| x.name == y.name)
+}
+
+/// The `&mut` walk [`expand_error_aliases`] runs: every `ErrorRow` reachable
+/// from an item — signatures, fields, aliases, annotations, casts, closure
+/// parameters, index type arguments — rewritten in place.
+struct RowRewriter<'a> {
+    flat: &'a BTreeMap<String, Vec<crate::ast::RowEntry>>,
+    diags: Vec<Diag>,
+}
+
+impl RowRewriter<'_> {
+    fn row(&mut self, row: &mut crate::ast::ErrorRow) {
+        let mut out: Vec<crate::ast::RowEntry> = Vec::with_capacity(row.entries.len());
+        for entry in row.entries.drain(..) {
+            let alias = match entry.path.segments.as_slice() {
+                [segment] => self.flat.get(&segment.name).cloned(),
+                _ => None,
+            };
+            match alias {
+                Some(tags) => {
+                    if !entry.payload.is_empty() {
+                        self.diags.push(Diag::new(
+                            "E0601",
+                            entry.span,
+                            "type.err.alias.union",
+                            format!(
+                                "`{}` is an error-set alias and carries no payload of its own: \
+                                 the tags it names already declare what they carry \
+                                 (`[type.err.alias.union]`)",
+                                entry.path.segments[0].name
+                            ),
+                        ));
+                    }
+                    for tag in tags {
+                        if !out.iter().any(|e| same_tag(&e.path, &tag.path)) {
+                            out.push(tag);
+                        }
+                    }
+                }
+                None => {
+                    if !out.iter().any(|e| same_tag(&e.path, &entry.path)) {
+                        out.push(entry);
+                    }
+                }
+            }
+        }
+        row.entries = out;
+        for entry in &mut row.entries {
+            for ty in &mut entry.payload {
+                self.ty(ty);
+            }
+        }
+    }
+
+    fn ret(&mut self, ret: &mut crate::ast::RetType) {
+        self.ty(&mut ret.ty);
+        if let Some(row) = &mut ret.row {
+            self.row(row);
+        }
+    }
+
+    fn ty(&mut self, ty: &mut Type) {
+        match &mut *ty.kind {
+            TypeKind::Path { args, .. } => {
+                for arg in args {
+                    match arg {
+                        TypeArg::Type(inner) => self.ty(inner),
+                        TypeArg::Expr(expr) => self.expr(expr),
+                    }
+                }
+            }
+            TypeKind::ErrorUnion(inner)
+            | TypeKind::Prefixed { ty: inner, .. }
+            | TypeKind::RawPointer(inner) => self.ty(inner),
+            TypeKind::Fallible { ty: inner, row } => {
+                self.ty(inner);
+                self.row(row);
+            }
+            TypeKind::Tuple(parts) => {
+                for part in parts {
+                    self.ty(part);
+                }
+            }
+            TypeKind::Fn { params, ret } => {
+                for param in params {
+                    self.ty(param);
+                }
+                if let Some(ret) = ret {
+                    self.ret(ret);
+                }
+            }
+            TypeKind::Dyn(_) | TypeKind::TypeOfTypes | TypeKind::Region => {}
+        }
+    }
+
+    fn decl(&mut self, decl: &mut FnDecl) {
+        for param in &mut decl.params {
+            if let crate::ast::ParamKind::Named { ty, .. } = &mut param.kind {
+                self.ty(ty);
+            }
+        }
+        if let Some(ret) = &mut decl.ret {
+            self.ret(ret);
+        }
+        if let Some(body) = &mut decl.body {
+            self.block(body);
+        }
+    }
+
+    fn item(&mut self, item: &mut Item) {
+        match &mut item.kind {
+            ItemKind::Fn(decl) => self.decl(decl),
+            ItemKind::Binding(binding) => self.binding(binding),
+            ItemKind::TypeAlias(alias) => match &mut alias.def {
+                crate::ast::TypeDef::Struct(def) => self.struct_def(def),
+                crate::ast::TypeDef::Enum(def) => self.enum_def(def),
+                crate::ast::TypeDef::Alias(ty) => self.ty(ty),
+            },
+            ItemKind::Struct(def) => self.struct_def(def),
+            ItemKind::Enum(def) => self.enum_def(def),
+            ItemKind::Trait(def) => {
+                for member in &mut def.members {
+                    self.item(member);
+                }
+            }
+            ItemKind::Impl(def) => {
+                self.ty(&mut def.trait_or_subject);
+                if let Some(subject) = &mut def.subject {
+                    self.ty(subject);
+                }
+                for member in &mut def.members {
+                    self.item(member);
+                }
+            }
+            ItemKind::ErrorAlias(alias) => self.row(&mut alias.row),
+            ItemKind::Use(_) | ItemKind::ImportC(_) => {}
+        }
+    }
+
+    fn struct_def(&mut self, def: &mut StructDef) {
+        for field in &mut def.fields {
+            self.ty(&mut field.ty);
+        }
+    }
+
+    fn enum_def(&mut self, def: &mut crate::ast::EnumDef) {
+        for variant in &mut def.variants {
+            for ty in &mut variant.payload {
+                self.ty(ty);
+            }
+        }
+    }
+
+    fn binding(&mut self, binding: &mut crate::ast::Binding) {
+        if let Some(ty) = &mut binding.ty {
+            self.ty(ty);
+        }
+        self.expr(&mut binding.value);
+    }
+
+    fn block(&mut self, block: &mut Block) {
+        for stmt in &mut block.stmts {
+            match &mut stmt.kind {
+                StmtKind::Binding(binding) => self.binding(binding),
+                StmtKind::Assign { place, value, .. } => {
+                    self.expr(place);
+                    self.expr(value);
+                }
+                StmtKind::Defer { expr, .. } | StmtKind::Expr(expr) => self.expr(expr),
+                StmtKind::AssumeNoalias(operands) => {
+                    for operand in operands {
+                        self.expr(operand);
+                    }
+                }
+                StmtKind::Item(item) => self.item(item),
+            }
+        }
+        if let Some(tail) = &mut block.tail {
+            self.expr(tail);
+        }
+    }
+
+    fn expr(&mut self, expr: &mut Expr) {
+        match &mut *expr.kind {
+            ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Char(_)
+            | ExprKind::Wildcard
+            | ExprKind::Path(_)
+            | ExprKind::Continue
+            | ExprKind::RegionValue { .. }
+            | ExprKind::UnsafeC { .. } => {}
+            ExprKind::Str(lit) => {
+                for part in &mut lit.parts {
+                    if let StrPart::Interp(interp) = part {
+                        self.expr(&mut interp.expr);
+                    }
+                }
+            }
+            ExprKind::StructLit { fields, .. } => {
+                for field in fields {
+                    if let Some(value) = &mut field.value {
+                        self.expr(value);
+                    }
+                }
+            }
+            ExprKind::Tuple(items) | ExprKind::List(items) => {
+                for item in items {
+                    self.expr(item);
+                }
+            }
+            ExprKind::Block(block) => self.block(block),
+            ExprKind::Group(inner)
+            | ExprKind::Try(inner)
+            | ExprKind::FromEnd(inner)
+            | ExprKind::Freeze(inner)
+            | ExprKind::Unary { operand: inner, .. }
+            | ExprKind::Member { base: inner, .. }
+            | ExprKind::ModedReceiver { place: inner, .. } => self.expr(inner),
+            ExprKind::Cast { expr: inner, ty } => {
+                self.expr(inner);
+                self.ty(ty);
+            }
+            ExprKind::Binary { lhs, rhs, .. } => {
+                self.expr(lhs);
+                self.expr(rhs);
+            }
+            ExprKind::Call { callee, args } => {
+                self.expr(callee);
+                for arg in args {
+                    self.expr(&mut arg.expr);
+                }
+            }
+            ExprKind::BracketApply { base, args, .. } => {
+                self.expr(base);
+                for arg in args {
+                    match arg {
+                        IndexArg::Value(arg) => self.expr(&mut arg.expr),
+                        IndexArg::Type(ty) => self.ty(ty),
+                    }
+                }
+            }
+            ExprKind::Range { start, end, .. } => {
+                if let Some(start) = start {
+                    self.expr(start);
+                }
+                if let Some(end) = end {
+                    self.expr(end);
+                }
+            }
+            ExprKind::ElseDefault {
+                expr: inner,
+                handler,
+            } => {
+                self.expr(inner);
+                match &mut **handler {
+                    ElseHandler::Block(block) => self.block(block),
+                    ElseHandler::Expr(fallback) | ElseHandler::Handler { body: fallback, .. } => {
+                        self.expr(fallback);
+                    }
+                }
+            }
+            ExprKind::If {
+                cond,
+                then,
+                otherwise,
+            } => {
+                self.expr(cond);
+                self.block(then);
+                if let Some(otherwise) = otherwise {
+                    self.expr(otherwise);
+                }
+            }
+            ExprKind::Match { scrutinee, arms } => {
+                self.expr(scrutinee);
+                for arm in arms {
+                    if let Some(guard) = &mut arm.guard {
+                        self.expr(guard);
+                    }
+                    self.expr(&mut arm.body);
+                }
+            }
+            ExprKind::For { iter, body, .. } => {
+                self.expr(iter);
+                self.block(body);
+            }
+            ExprKind::While { cond, body } => {
+                self.expr(cond);
+                self.block(body);
+            }
+            ExprKind::Loop { body }
+            | ExprKind::RegionSugar { body, .. }
+            | ExprKind::In { body, .. }
+            | ExprKind::Scope { body, .. }
+            | ExprKind::Unsafe { body }
+            | ExprKind::When { body, .. } => self.block(body),
+            ExprKind::Return(value) | ExprKind::Break(value) => {
+                if let Some(value) = value {
+                    self.expr(value);
+                }
+            }
+            ExprKind::Closure { params, body, .. } => {
+                for param in params {
+                    if let Some(ty) = &mut param.ty {
+                        self.ty(ty);
+                    }
+                }
+                self.expr(body);
+            }
+            ExprKind::SpawnProc { args, .. } => {
+                for arg in args {
+                    self.expr(&mut arg.expr);
+                }
+            }
+            ExprKind::Select { arms } => {
+                for arm in arms {
+                    match &mut arm.kind {
+                        SelectArmKind::Recv { channel, .. } => self.expr(channel),
+                        SelectArmKind::Timeout(deadline) => self.expr(deadline),
+                    }
+                    self.expr(&mut arm.body);
+                }
+            }
+            ExprKind::Asm { operands, .. } => {
+                for operand in operands {
+                    self.expr(&mut operand.value);
+                }
+            }
+            ExprKind::Borrow { place, from } => {
+                self.expr(place);
+                self.expr(from);
+            }
+        }
+    }
 }
 
 /// `[mod.cycle]` (D32): imports form a DAG. E0303 at the `use` that closes
@@ -8309,5 +8921,76 @@ mod tests {
             diag_of("fn f(rs: List[range[str]]) -> int { 0 }\nfn main() -> !int { 0 }\n").code,
             "E0401"
         );
+    }
+
+    // -- `[type.err.alias]` (s158, wolf-interp#106) -----------------------
+
+    #[test]
+    fn an_alias_is_a_spelling_and_rows_are_rewritten_through_it_before_anything_reads_them() {
+        // `[type.err.alias.transparent]` and `.union`: after loading, the
+        // declared raise tags of every signature are TAGS — the alias name
+        // appears in no row, and a union flattens with a repeated tag as one.
+        let program = load_source(
+            "t.lu",
+            "error IoErrors = {none, parse}\n\
+             error ConfigErrors = {IoErrors, parse, closed}\n\
+             fn a() -> int ! IoErrors { 0 }\n\
+             fn b() -> int ! ConfigErrors { 0 }\n\
+             fn c() -> int ! {IoErrors, stale} { 0 }\n",
+        )
+        .expect("loads");
+        let tags = |name: &str| -> Vec<String> {
+            match &program.root().items[name].0 {
+                Def::Fn(decl) => declared_raise_tags(decl),
+                _ => panic!("a fn"),
+            }
+        };
+        assert_eq!(tags("a"), vec!["none", "parse"]);
+        assert_eq!(tags("b"), vec!["none", "parse", "closed"]);
+        assert_eq!(tags("c"), vec!["none", "parse", "stale"]);
+        assert!(program.root().error_aliases.contains_key("IoErrors"));
+        assert!(
+            program.root().items.contains_key("ConfigErrors"),
+            "an alias is an item"
+        );
+        assert!(resolve_check(&program).is_none());
+    }
+
+    #[test]
+    fn a_cycle_is_e0610_once_at_the_entry_that_closes_it_with_the_loop_named() {
+        let source = "error A = {B, io}\n\nerror B = {A, parse}\n\nfn f() -> int ! A { 0 }\n";
+        let diag = diag_of(source);
+        assert_eq!(diag.code, "E0610");
+        assert_eq!(diag.anchor, "type.err.alias.cycle");
+        // The entry `A` inside `error B = {A, parse}` — the compiler's locus
+        // on `rows/negative/error_alias_cycle.lu`, byte for byte.
+        assert_eq!(
+            diag.span.start,
+            source.find("{A, parse}").expect("the entry") + 1
+        );
+        assert!(diag.message.contains("`A` → `B` → `A`"), "{}", diag.message);
+        // Reported once: the program still loads, and the loop is the only diag.
+        let program = load_source("t.lu", source).expect("loads");
+        assert_eq!(program.root().alias_diags.len(), 1);
+        // A self-loop, and a terminating depth that is not a loop.
+        assert_eq!(
+            diag_of("error S = {S, io}\nfn f() -> int ! S { 0 }\n").code,
+            "E0610"
+        );
+        assert!(
+            resolve("error A = {B}\nerror B = {C}\nerror C = {io}\nfn f() -> int ! A { 0 }\n")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn an_alias_entry_carries_no_payload_e0601() {
+        let source = "error Io = {io}\nerror Bad = {Io(int), parse}\nfn f() -> int ! Bad { 0 }\n";
+        let diag = diag_of(source);
+        assert_eq!(diag.code, "E0601");
+        assert_eq!(&source[diag.span.start..diag.span.end], "Io(int)");
+        // In an ordinary row, too.
+        let source = "error Io = {io}\nfn f() -> int ! {Io(str)} { 0 }\n";
+        assert_eq!(diag_of(source).code, "E0601");
     }
 }
