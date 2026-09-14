@@ -110,6 +110,113 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The three clauses — is49, lupin 0.1.37, pin `30731a6` (wolf-lang **v0.2.14**)
+
+**The pin moves two releases**, `a7f517e` (v0.2.12) -> `30731a6` (v0.2.14):
+580 -> 615 files, 475 -> 498 anchors (twenty-three added, none dropped —
+key sets diffed both ways), the spec's §12–§14 of `10-types.md` and §2.8 of
+`01-grammar.md` new. The subject is wolf-interp#106, s158's mirror: **list
+literals** (`[gram.expr.list]`, `[type.list.lit]`), **a nameable
+`range[int]`/`range[char]`** with `start`/`end` (`[type.range]`), and
+**transparent error-set aliases** (`[gram.item.error]`, `[type.err.alias]`).
+Eighteen witnesses, all measured on the 0.1.36 binary at the new pin before
+a line was edited (`is49-baseline.txt`): fourteen `exit(0)`/`trap` rows
+answered `fail(E0201)` at the `[`/`error` or `fail(E0301)` at `range`, three
+`fail` rows answered E0201 for the wrong reason, and one (`error_alias_open`,
+`fail(E0201)` at the `..`) was already a MATCH by code alone — E0201 at the
+`error` item, the same code for a different reason, which a code ledger
+cannot see. The eighteenth, `rows/error_alias_ident.lu`, needed no mirror at
+all.
+
+#### Predicted, then measured
+
+The census, predicted before the first edit and measured after the last
+(`lupin corpus` at the head, the 0.1.36 binary's column re-measured at the
+new pin as the baseline):
+
+| class | 0.1.36 at `a7f517e` | 0.1.36 at `30731a6` (baseline) | predicted | measured |
+| --- | --- | --- | --- | --- |
+| match | 432 | 443 | 460 | **460** |
+| out of scope | 53 | 54 | 54 | **54** |
+| mismatch (unfiled) | 0 | 18 | 0 | **0** |
+| mismatch (filed) | 1 | 1 | 2 | **2** |
+| dynamic counterpart | 21 | 23 | 24 -> 23 | **23** |
+| conservatism | 38 | 41 | 40 -> 41 | **41** |
+| reach `run` | 421 | 435 | 448 | **449** |
+
+The prediction was written from r19's pairing table and the thirty-five
+new headers; the baseline measurement then corrected the one row it had
+flagged as uncertain before any edit: `memory/read_param_take.lu` (E1014
+pinned) runs clean here rather than trapping `exclusivity`, so it is
+conservatism and not a dynamic counterpart — 24 -> 23 and 40 -> 41 in the
+table above, with the arrows kept so the miss is visible. Six of seven
+cells then measured as predicted; the seventh, reach `run`, is 449 and not
+448 — an arithmetic slip in the prediction (the fourteen mirrored rows added
+to the measured baseline of 435 is 449), not a row the census surprised.
+`lupin corpus` at the head: "449 entries reach the `run` rung; 460 match …
+23 … 41 … 54 are out of scope, 2 mismatch" — the two being DIV-2026-019
+(`resolve/broken_sibling/entry.lu`) and DIV-2026-024 below, both filed,
+zero unfiled, `0 failure(s)`.
+
+#### What the pin's other rows are, by name
+
+The thirty-five new files less the eighteen: s157's and s160's, ledgered
+here and NOT mirrored — wolf-interp#107 and #111 are is50's.
+
+- `grammar/match_nullary_variant.lu` — **DIV-2026-024** below: the one
+  unfiled MISMATCH the bump left, waived by filing.
+- `net/writev_head_gather.lu` — `unsupported` at resolve, `net_writev_head`
+  declined by name (#111's third ask). Out of scope, honestly.
+- `memory/region_str_repeat_return.lu`, `memory/region_str_from_utf8_return.lu`
+  — E1010 pinned, `exit(0)` here (the region tag reaches a `str` field and
+  an interpolated `str` but not `repeat`/`str_from_utf8`; #111's second
+  ask). Conservatism. `memory/read_param_take.lu` — E1014 pinned, `exit(0)`
+  here. Conservatism.
+- `conc/chan_payload_escape_proc.lu`, `memory/region_str_field_return.lu` —
+  E1010 pinned, `trap(region-fault)` here: dynamic counterparts.
+- The other nine run and match at first sight: `conc/chan_payload_proc_param`,
+  `conc/proc_link_root`, `grammar/str_dollar_brace` (E0102 at lex, a match),
+  `lints/shadow_prelude_call` (with its W0304), `memory/list_elem_copy_loop`,
+  `memory/region_str_charged`, `strings/dollar_brace_escape`,
+  `strings/end_relative_get`, `typecheck/closure_param_call`.
+
+#### The claim that was false, and the clause that names the wrong code
+
+wolf-interp#106 says of `[type.range.accessor]` that "lupin already does
+this — `Value::Range` has been built half-open since its first range arm".
+Measured at `6e94436`: it had not. `Value::Range` carried `inclusive: bool`
+and `eval_for` consumed it as `if inclusive { end } else { end - 1 }` on raw
+`i128`; `0..=int.MAX` as a value neither trapped nor normalized. The mirror
+normalizes at construction under `Machine::checked` (the trap lands at the
+`let`, 21:15 in `range_type_overflow.lu`), keeps the `for` HEADER as a
+non-materializing counted walk (so `for i in 0..=int.MAX` still does not
+trap, `[type.range.value]`), and drops the flag. Recorded on #106.
+
+`[type.err.alias.cycle]` says "A cycle is **E0515**"; `docs/diagnostics.md`,
+`wolf_diag`'s registry, `wolf_sema` and `rows/negative/error_alias_cycle.lu`
+all say E0610. This machine answers E0610 at the entry that closes the loop
+(bytes 434..435, the compiler's own locus). Filed upstream as a prose nit.
+
+### DIV-2026-024 — `grammar/match_nullary_variant.lu` — **OPEN, a mirror lag: wolf-interp#107 (s157's `[gram.pat.nullary]`), is50's**
+
+`match c { Color.Red => "red", … }` and `match e { none => "first", bad =>
+"second" }` under `check: run(exit=0, stdout="green\nfirst\n")`, `phase:
+run`.
+
+| | verdict |
+| --- | --- |
+| wolf 0.2.14 (both tiers) | `exit(0)`, `green\nfirst\n` |
+| lupin 0.1.36 at `30731a6` | `fail(E0201)` at parse, `[993,993]` — "a dotted path in a pattern must carry a payload, like `io.Error(e)`" |
+| **lupin 0.1.37** | unmoved — this lane took s158, not s157 |
+
+Triage: case 3 in shape (spec clear, compiler matches it) but not a defect
+of reading — s157's clause and witness arrived in the same pin as s158's,
+and this lane's brief names #107 as the next lane's. Waived in
+`differ::FILED_DIVERGENCES` so the corpus walk stays green on the rows it
+CAN see; the row stays visible in every differential report and retires
+the day the bare-path pattern lands (`differ::retired_waivers` will say so
+in the round it becomes true).
+
 ### The fs tier — is48, lupin 0.1.36, pin `a7f517e` (wolf-lang **v0.2.12**)
 
 **No pin move.** The pin, the corpus and the anchors are is47's exactly; what

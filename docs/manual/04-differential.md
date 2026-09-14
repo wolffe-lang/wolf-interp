@@ -123,15 +123,15 @@ pin as filed, and every export is notice-free again:
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":223,"anchors_total":475,"bundle_sha256":"…","files":635,"forward_tags":109,"out":"target/bundle","pin":"a7f517e1f667f142ffaf61b57aa2bff06e32b520","programs":618,"records":583}
+{"anchors_covered":236,"anchors_total":498,"bundle_sha256":"…","files":670,"forward_tags":109,"out":"target/bundle","pin":"30731a6509443ade03724707345da9ceb86a88bf","programs":653,"records":618}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 583 entries compared, 0 member(s) exercised through their entries
+differential: 618 entries compared, 0 member(s) exercised through their entries
 divergences: 0
-conservatism ledger: 106 entries
-  unsupported(counterparty): 53
-  unsupported(interp): 53
+conservatism ledger: 108 entries
+  unsupported(counterparty): 54
+  unsupported(interp): 54
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin a7f517e1f667f142ffaf61b57aa2bff06e32b520 verified (bundle_sha256 …)
+notice: bundle target/bundle at pin 30731a6509443ade03724707345da9ceb86a88bf verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the
