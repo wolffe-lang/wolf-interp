@@ -36,10 +36,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use crate::ast::{
-    Arg, BinOp, Block, Expr, ExprKind, FnDecl, Item, ItemKind, ParamMode, PatKind, Pattern, Stmt,
-    StmtKind, StrLit, StrPart, StructDef, Type, TypeArg, TypeKind, Unit,
+    Arg, BinOp, BindingKind, Block, ElseHandler, Expr, ExprKind, FnDecl, IndexArg, Item, ItemKind,
+    ParamMode, PatKind, Pattern, SelectArmKind, Stmt, StmtKind, StrLit, StrPart, StructDef, Type,
+    TypeArg, TypeKind, UnOp, Unit,
 };
-use crate::diag::{Diag, Span};
+use crate::diag::{Diag, Help, Span};
 
 /// What a name in a module denotes.
 #[derive(Debug, Clone)]
@@ -1056,10 +1057,461 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| unsafe_sig_check(program))
         .or_else(|| tier_check(program))
         .or_else(|| scalar_check(program))
+        .or_else(|| list_lit_check(program))
         .or_else(|| tail_check(program))
         .or_else(|| bound_check(program))
         .or_else(|| row_operand_check(program))
         .or_else(|| annotation_check(program))
+}
+
+/// `[type.list.lit]` (s158, wolf-lang#154; wolf-interp#106) — the list
+/// literal's static half, at the width this machine can state it.
+///
+/// Three clauses, one walk over every body (items, methods, closures):
+///
+/// - `[type.list.lit.elem]` **the first element fixes the type and the
+///   FIRST element that does not fit is the error site** — E0401 at that
+///   element, with the first element's span as the "because"; never the
+///   whole literal and never the last element. The comparison is between
+///   literal SHAPES (`1` is an int, `"two"` a str, `'c'` a char, `[…]` a
+///   list …): a name, a call, a member read has no shape this pass can see,
+///   and an element it cannot classify never refuses — the sema boundary's
+///   rule that a guess never becomes a diagnostic.
+/// - `[type.list.lit.expect]` an annotated `let`/`var` pushes its element
+///   type into every element (`let xs: List[str] = [1]` is E0401 at the
+///   `1`), and an annotation that is not a `List` is E0401 at the literal
+///   (`let n: int = [1]`) — the shape is wrong before the contents are.
+///   Only the annotation is read here: a call argument, a field
+///   initializer and a declared return supply a context this pass does
+///   not check, which is the permissive direction.
+/// - `[type.list.lit.empty]` **bare `let xs = []` is E0419**, at the
+///   literal, and the message spells the annotation for THIS binding. It
+///   is the one position nothing supplies an element type to; `[]` in a
+///   call argument, a field, a return or an annotated binding takes its
+///   type from there and is not refused.
+fn list_lit_check(program: &Program) -> Option<Diag> {
+    for module in program.modules.values() {
+        let methods = module
+            .methods
+            .values()
+            .flat_map(|by_name| by_name.values().flatten())
+            .map(|method| &*method.decl);
+        let items = module.items.values().filter_map(|(def, _)| match def {
+            Def::Fn(decl) => Some(&**decl),
+            _ => None,
+        });
+        let mut walk = ListLitWalk { found: None };
+        for decl in items.chain(methods) {
+            if let Some(body) = &decl.body {
+                walk.block(body);
+                if let Some(diag) = walk.found.take() {
+                    return Some(diag);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// What a list element spells, when a literal spells it outright.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LitShape {
+    Int,
+    Float,
+    Str,
+    Char,
+    Bool,
+    List,
+}
+
+impl LitShape {
+    fn name(self) -> &'static str {
+        match self {
+            LitShape::Int => "int",
+            LitShape::Float => "float",
+            LitShape::Str => "str",
+            LitShape::Char => "char",
+            LitShape::Bool => "bool",
+            LitShape::List => "List",
+        }
+    }
+
+    /// The shape an expression spells, or `None` when it names, calls or
+    /// projects — anything whose type this pass would have to guess.
+    fn of(expr: &Expr) -> Option<LitShape> {
+        match &*expr.kind {
+            ExprKind::Int(_) => Some(LitShape::Int),
+            ExprKind::Float(_) => Some(LitShape::Float),
+            ExprKind::Str(_) => Some(LitShape::Str),
+            ExprKind::Char(_) => Some(LitShape::Char),
+            ExprKind::Bool(_) => Some(LitShape::Bool),
+            ExprKind::List(_) => Some(LitShape::List),
+            ExprKind::Group(inner) => LitShape::of(inner),
+            ExprKind::Unary {
+                op: UnOp::Neg,
+                operand,
+            } => match LitShape::of(operand) {
+                shape @ Some(LitShape::Int | LitShape::Float) => shape,
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// The shape an annotation's element type names: `int` and its widths,
+    /// `f32`/`f64`, `str`, `char`, `bool`, `List[…]`. A `byte` names none
+    /// (it adopts no literal; `scalar_check` owns that refusal), and so does
+    /// a user type, an alias or a generic parameter.
+    fn of_type(ty: &Type) -> Option<LitShape> {
+        match &*ty.kind {
+            TypeKind::Path { path, args } if path.segments.len() == 1 => {
+                match path.segments[0].name.as_str() {
+                    "int" | "i8" | "i16" | "i32" | "i64" | "i128" | "uint" | "u8" | "u16"
+                    | "u32" | "u64" | "u128" => Some(LitShape::Int),
+                    "f32" | "f64" => Some(LitShape::Float),
+                    "str" => Some(LitShape::Str),
+                    "char" => Some(LitShape::Char),
+                    "bool" => Some(LitShape::Bool),
+                    "List" if args.len() == 1 => Some(LitShape::List),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+/// The element type an annotation pushes into a literal: `List[T]` gives
+/// `T`; anything else that names a known non-list type refuses the literal.
+enum ListExpect<'a> {
+    /// No annotation: the literal's own first element fixes the type.
+    Own,
+    /// `List[T]`, with `T` — the element type flows in.
+    Elem(&'a Type),
+    /// A known type that is not a `List`.
+    NotList,
+    /// A type this pass cannot read (an alias, a generic, a path).
+    Unknown,
+}
+
+fn list_expect(ty: Option<&Type>) -> ListExpect<'_> {
+    let Some(ty) = ty else {
+        return ListExpect::Own;
+    };
+    match &*ty.kind {
+        TypeKind::Path { path, args } if path.segments.len() == 1 => {
+            let head = path.segments[0].name.as_str();
+            if head == "List" {
+                return match args.as_slice() {
+                    [TypeArg::Type(elem)] => ListExpect::Elem(elem),
+                    _ => ListExpect::Unknown,
+                };
+            }
+            if BUILTIN_SCALAR_TYPES.contains(&head)
+                || matches!(head, "Map" | "Set" | "Option" | "Pool" | "range")
+            {
+                ListExpect::NotList
+            } else {
+                ListExpect::Unknown
+            }
+        }
+        TypeKind::Tuple(_) | TypeKind::Fn { .. } | TypeKind::Dyn(_) | TypeKind::Region => {
+            ListExpect::NotList
+        }
+        _ => ListExpect::Unknown,
+    }
+}
+
+struct ListLitWalk {
+    found: Option<Diag>,
+}
+
+impl ListLitWalk {
+    fn block(&mut self, block: &Block) {
+        for stmt in &block.stmts {
+            if self.found.is_some() {
+                return;
+            }
+            match &stmt.kind {
+                StmtKind::Binding(binding) => self.binding(binding),
+                StmtKind::Assign { place, value, .. } => {
+                    self.expr(place);
+                    self.expr(value);
+                }
+                StmtKind::Defer { expr, .. } | StmtKind::Expr(expr) => self.expr(expr),
+                StmtKind::AssumeNoalias(operands) => {
+                    for operand in operands {
+                        self.expr(operand);
+                    }
+                }
+                StmtKind::Item(item) => {
+                    if let ItemKind::Fn(decl) = &item.kind
+                        && let Some(body) = &decl.body
+                    {
+                        self.block(body);
+                    }
+                }
+            }
+        }
+        if let Some(tail) = &block.tail {
+            self.expr(tail);
+        }
+    }
+
+    fn binding(&mut self, binding: &crate::ast::Binding) {
+        if let ExprKind::List(items) = &*binding.value.kind {
+            let name = match &*binding.pattern.kind {
+                PatKind::Binding(ident) => ident.name.clone(),
+                _ => "xs".to_owned(),
+            };
+            let keyword = match binding.kind {
+                BindingKind::Let => "let",
+                BindingKind::Var => "var",
+                BindingKind::Const => "const",
+            };
+            match list_expect(binding.ty.as_ref()) {
+                ListExpect::Own if items.is_empty() => {
+                    self.found = Some(Diag::new(
+                        "E0419",
+                        binding.value.span,
+                        "type.list.lit.empty",
+                        format!(
+                            "`{name}` binds an empty list literal and nothing here says what it \
+                             holds: `[]` takes its element type from the context, and a bare \
+                             `{keyword}` is the one position that supplies none \
+                             (`[type.list.lit.empty]`) — annotate the binding, \
+                             `{keyword} {name}: List[T] = []`, with the element type in place \
+                             of `T`"
+                        ),
+                    ));
+                    return;
+                }
+                ListExpect::Own | ListExpect::Unknown => {}
+                ListExpect::Elem(elem) => {
+                    if let Some(want) = LitShape::of_type(elem)
+                        && let Some(diag) = misfit(items, Some((want, elem.span)))
+                    {
+                        self.found = Some(diag);
+                        return;
+                    }
+                }
+                ListExpect::NotList => {
+                    self.found = Some(Diag::new(
+                        "E0401",
+                        binding.value.span,
+                        "type.list.lit.expect",
+                        format!(
+                            "`{name}` is declared as something that is not a `List`, and a \
+                             list literal builds a `List` and nothing else \
+                             (`[type.list.lit.expect]`): the shape is wrong before the \
+                             elements are read"
+                        ),
+                    ));
+                    return;
+                }
+            }
+        }
+        self.expr(&binding.value);
+    }
+
+    fn expr(&mut self, expr: &Expr) {
+        if self.found.is_some() {
+            return;
+        }
+        match &*expr.kind {
+            ExprKind::List(items) => {
+                if let Some(diag) = misfit(items, None) {
+                    self.found = Some(diag);
+                    return;
+                }
+                for item in items {
+                    self.expr(item);
+                }
+            }
+            ExprKind::Block(block) => self.block(block),
+            ExprKind::Closure { body, .. } => self.expr(body),
+            ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Char(_)
+            | ExprKind::Wildcard
+            | ExprKind::Path(_)
+            | ExprKind::Continue
+            | ExprKind::RegionValue { .. }
+            | ExprKind::UnsafeC { .. } => {}
+            ExprKind::Str(lit) => {
+                for part in &lit.parts {
+                    if let StrPart::Interp(interp) = part {
+                        self.expr(&interp.expr);
+                    }
+                }
+            }
+            ExprKind::StructLit { fields, .. } => {
+                for field in fields {
+                    if let Some(value) = &field.value {
+                        self.expr(value);
+                    }
+                }
+            }
+            ExprKind::Tuple(items) => {
+                for item in items {
+                    self.expr(item);
+                }
+            }
+            ExprKind::Group(inner)
+            | ExprKind::Try(inner)
+            | ExprKind::FromEnd(inner)
+            | ExprKind::Freeze(inner)
+            | ExprKind::Unary { operand: inner, .. }
+            | ExprKind::Cast { expr: inner, .. }
+            | ExprKind::Member { base: inner, .. }
+            | ExprKind::ModedReceiver { place: inner, .. } => self.expr(inner),
+            ExprKind::Binary { lhs, rhs, .. } => {
+                self.expr(lhs);
+                self.expr(rhs);
+            }
+            ExprKind::Call { callee, args } => {
+                self.expr(callee);
+                for arg in args {
+                    self.expr(&arg.expr);
+                }
+            }
+            ExprKind::BracketApply { base, args, .. } => {
+                self.expr(base);
+                for arg in args {
+                    if let IndexArg::Value(arg) = arg {
+                        self.expr(&arg.expr);
+                    }
+                }
+            }
+            ExprKind::Range { start, end, .. } => {
+                if let Some(start) = start {
+                    self.expr(start);
+                }
+                if let Some(end) = end {
+                    self.expr(end);
+                }
+            }
+            ExprKind::ElseDefault {
+                expr: inner,
+                handler,
+            } => {
+                self.expr(inner);
+                match &**handler {
+                    ElseHandler::Block(block) => self.block(block),
+                    ElseHandler::Expr(fallback) | ElseHandler::Handler { body: fallback, .. } => {
+                        self.expr(fallback);
+                    }
+                }
+            }
+            ExprKind::If {
+                cond,
+                then,
+                otherwise,
+            } => {
+                self.expr(cond);
+                self.block(then);
+                if let Some(otherwise) = otherwise {
+                    self.expr(otherwise);
+                }
+            }
+            ExprKind::Match { scrutinee, arms } => {
+                self.expr(scrutinee);
+                for arm in arms {
+                    if let Some(guard) = &arm.guard {
+                        self.expr(guard);
+                    }
+                    self.expr(&arm.body);
+                }
+            }
+            ExprKind::For { iter, body, .. } => {
+                self.expr(iter);
+                self.block(body);
+            }
+            ExprKind::While { cond, body } => {
+                self.expr(cond);
+                self.block(body);
+            }
+            ExprKind::Loop { body }
+            | ExprKind::RegionSugar { body, .. }
+            | ExprKind::In { body, .. }
+            | ExprKind::Scope { body, .. }
+            | ExprKind::Unsafe { body }
+            | ExprKind::When { body, .. } => self.block(body),
+            ExprKind::Return(value) | ExprKind::Break(value) => {
+                if let Some(value) = value {
+                    self.expr(value);
+                }
+            }
+            ExprKind::SpawnProc { args, .. } => {
+                for arg in args {
+                    self.expr(&arg.expr);
+                }
+            }
+            ExprKind::Select { arms } => {
+                for arm in arms {
+                    match &arm.kind {
+                        SelectArmKind::Recv { channel, .. } => self.expr(channel),
+                        SelectArmKind::Timeout(deadline) => self.expr(deadline),
+                    }
+                    self.expr(&arm.body);
+                }
+            }
+            ExprKind::Asm { operands, .. } => {
+                for operand in operands {
+                    self.expr(&operand.value);
+                }
+            }
+            ExprKind::Borrow { place, from } => {
+                self.expr(place);
+                self.expr(from);
+            }
+        }
+    }
+}
+
+/// `[type.list.lit.elem]`: the first element that does not fit. With an
+/// `expected` shape (from an annotation, `[type.list.lit.expect]`) every
+/// element is checked against it and the "because" is the annotation;
+/// without one the first classifiable element fixes the shape and is the
+/// "because". An element with no readable shape neither fixes nor fails.
+fn misfit(items: &[Expr], expected: Option<(LitShape, Span)>) -> Option<Diag> {
+    let mut fixed: Option<(LitShape, Span, &str)> =
+        expected.map(|(shape, span)| (shape, span, "the declared element type"));
+    for item in items {
+        let Some(shape) = LitShape::of(item) else {
+            continue;
+        };
+        match fixed {
+            None => fixed = Some((shape, item.span, "the first element")),
+            Some((want, because, who)) if want != shape => {
+                return Some(
+                    Diag::new(
+                        "E0401",
+                        item.span,
+                        if expected.is_some() {
+                            "type.list.lit.expect"
+                        } else {
+                            "type.list.lit.elem"
+                        },
+                        format!(
+                            "this element is a `{}` in a list of `{}`: {who} fixes the element \
+                             type and every element unifies with it, left to right \
+                             (`[type.list.lit.elem]`)",
+                            shape.name(),
+                            want.name()
+                        ),
+                    )
+                    .with_help(Help {
+                        span: because,
+                        note: format!("because {who} is a `{}`", want.name()),
+                    }),
+                );
+            }
+            Some(_) => {}
+        }
+    }
+    None
 }
 
 /// `[mod.cycle]` (D32): imports form a DAG. E0303 at the `use` that closes
@@ -7631,5 +8083,101 @@ mod tests {
         ] {
             assert_eq!(resolve(source), None, "{source}");
         }
+    }
+
+    // -- `[type.list.lit]` (s158, wolf-interp#106) -----------------------
+
+    fn diag_of(source: &str) -> Diag {
+        resolve(source).expect("a refusal")
+    }
+
+    #[test]
+    fn the_first_element_that_does_not_fit_is_the_e0401_site() {
+        // `[type.list.lit.elem]`: never the whole literal, never the last
+        // element; the first element is the "because".
+        let source = "fn main() -> !int {\n    let xs = [1, \"two\", 3]\n    0\n}\n";
+        let diag = diag_of(source);
+        assert_eq!(diag.code, "E0401");
+        assert_eq!(&source[diag.span.start..diag.span.end], "\"two\"");
+        let because = diag.help.expect("names the first element");
+        assert_eq!(&source[because.span.start..because.span.end], "1");
+        // Nested: the inner misfit is the site.
+        let source = "fn main() -> !int {\n    let g = [[1, 2], [3, 'x']]\n    0\n}\n";
+        let diag = diag_of(source);
+        assert_eq!(diag.code, "E0401");
+        assert_eq!(&source[diag.span.start..diag.span.end], "'x'");
+        // An element with no readable shape neither fixes nor fails.
+        assert!(
+            resolve(
+                "fn f() -> int { 1 }\nfn main() -> !int {\n    let xs = [f(), 2, f()]\n    0\n}\n"
+            )
+            .is_none()
+        );
+        assert!(resolve("fn main() -> !int {\n    let xs = [1, -2, (3)]\n    0\n}\n").is_none());
+    }
+
+    #[test]
+    fn a_bare_empty_list_literal_is_e0419_and_spells_the_annotation() {
+        // `[type.list.lit.empty]`: the one position that supplies nothing.
+        let source = "fn main() -> !int {\n    let names = []\n    0\n}\n";
+        let diag = diag_of(source);
+        assert_eq!(diag.code, "E0419");
+        assert_eq!(&source[diag.span.start..diag.span.end], "[]");
+        assert!(
+            diag.message.contains("`let names: List[T] = []`"),
+            "{}",
+            diag.message
+        );
+        let diag = diag_of("fn main() -> !int {\n    var names = []\n    0\n}\n");
+        assert!(
+            diag.message.contains("`var names: List[T] = []`"),
+            "{}",
+            diag.message
+        );
+        // Inside a nested block, too.
+        assert_eq!(
+            diag_of("fn main() -> !int {\n    if true {\n        let t = []\n    }\n    0\n}\n")
+                .code,
+            "E0419"
+        );
+    }
+
+    #[test]
+    fn an_empty_list_literal_takes_its_type_from_every_other_context() {
+        // `[type.list.lit.expect]`: an annotation, a parameter, a declared
+        // return — none of these is refused.
+        let source = "fn count(xs: List[str]) -> int { xs.len }\n\
+                      fn three() -> List[int] { [] }\n\
+                      fn main() -> !int {\n\
+                      \x20   let a: List[int] = []\n\
+                      \x20   var b: List[str] = []\n\
+                      \x20   print(\"{count([])}{three().len}{a.len}{b.len}\")\n\
+                      \x20   0\n\
+                      }\n";
+        assert!(resolve(source).is_none());
+    }
+
+    #[test]
+    fn an_annotation_flows_into_the_elements_and_a_non_list_annotation_refuses_the_literal() {
+        // `[type.list.lit.expect]`: `List[str]` is pushed into every element,
+        // so the `1` is the site and the annotation the "because"; an
+        // expected type that is not a `List` is E0401 at the LITERAL.
+        let source = "fn main() -> !int {\n    let xs: List[str] = [1, 2]\n    0\n}\n";
+        let diag = diag_of(source);
+        assert_eq!(diag.code, "E0401");
+        assert_eq!(&source[diag.span.start..diag.span.end], "1");
+        assert_eq!(
+            &source[diag.help.expect("because").span.start..][..3],
+            "str"
+        );
+        let source = "fn main() -> !int {\n    let n: int = [1]\n    0\n}\n";
+        let diag = diag_of(source);
+        assert_eq!(diag.code, "E0401");
+        assert_eq!(&source[diag.span.start..diag.span.end], "[1]");
+        // A List annotation the pass cannot read the element of is not a guess.
+        assert!(
+            resolve("type Row = int\nfn main() -> !int {\n    let xs: List[Row] = [1]\n    0\n}\n")
+                .is_none()
+        );
     }
 }
