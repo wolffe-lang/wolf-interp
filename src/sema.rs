@@ -5140,7 +5140,9 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
                     })
                     .chain(decl.ret.as_ref().map(|ret| &ret.ty))
                     .filter(|ty| unresolved_type_name(ty, &scope).is_none())
-                    .filter_map(|ty| map_key_refusal(ty, &generics))
+                    .filter_map(|ty| {
+                        map_key_refusal(ty, &generics).or_else(|| range_type_refusal(ty))
+                    })
                     .collect::<Vec<_>>()
             })
             .min_by_key(|diag| diag.span.start);
@@ -5318,6 +5320,79 @@ fn map_key_refusal(ty: &Type, generics: &BTreeSet<String>) -> Option<Diag> {
                 ret.as_ref()
                     .and_then(|ret| map_key_refusal(&ret.ty, generics))
             }),
+        TypeKind::Dyn(_) | TypeKind::TypeOfTypes | TypeKind::Region => None,
+    }
+}
+
+/// `[type.range.name]` (s158): `range[int]` and `range[char]` are the whole
+/// family. `range` with no argument is E0405 — the element type is not
+/// inferable from the name alone — and `range[T]` for any other `T` is
+/// E0401 at the argument, the family being closed at the two types `..`
+/// iterates. Signature positions, the width `map_key_refusal` reads; a
+/// `range[…]` nested in another type application is found the same way.
+fn range_type_refusal(ty: &Type) -> Option<Diag> {
+    match &*ty.kind {
+        TypeKind::Path { path, args } => {
+            if path.is_single() && path.segments[0].name == "range" {
+                let head = path.segments[0].span;
+                match args.as_slice() {
+                    [] => {
+                        return Some(Diag::new(
+                            "E0405",
+                            head,
+                            "type.range.name",
+                            "`range` names a family, not a type: the element type is not \
+                             inferable from the name alone — spell `range[int]` or \
+                             `range[char]` (`[type.range.name]`)"
+                                .to_owned(),
+                        ));
+                    }
+                    [TypeArg::Type(elem)] => {
+                        let admitted = matches!(&*elem.kind,
+                            TypeKind::Path { path, args } if path.is_single() && args.is_empty()
+                                && matches!(path.segments[0].name.as_str(), "int" | "char"));
+                        if !admitted {
+                            return Some(Diag::new(
+                                "E0401",
+                                elem.span,
+                                "type.range.name",
+                                "the range family is closed at `range[int]` and `range[char]` — \
+                                 the two element types `..` steps by one (`[mem.iter.range]`) — \
+                                 and this is neither (`[type.range.name]`)"
+                                    .to_owned(),
+                            ));
+                        }
+                    }
+                    [first, ..] => {
+                        let span = match first {
+                            TypeArg::Type(t) => t.span,
+                            TypeArg::Expr(e) => e.span,
+                        };
+                        return Some(Diag::new(
+                            "E0401",
+                            span,
+                            "type.range.name",
+                            "`range` takes exactly one element type, `int` or `char` \
+                             (`[type.range.name]`)"
+                                .to_owned(),
+                        ));
+                    }
+                }
+            }
+            args.iter().find_map(|arg| match arg {
+                TypeArg::Type(inner) => range_type_refusal(inner),
+                TypeArg::Expr(_) => None,
+            })
+        }
+        TypeKind::ErrorUnion(inner)
+        | TypeKind::Fallible { ty: inner, .. }
+        | TypeKind::Prefixed { ty: inner, .. }
+        | TypeKind::RawPointer(inner) => range_type_refusal(inner),
+        TypeKind::Tuple(parts) => parts.iter().find_map(range_type_refusal),
+        TypeKind::Fn { params, ret } => params
+            .iter()
+            .find_map(range_type_refusal)
+            .or_else(|| ret.as_ref().and_then(|ret| range_type_refusal(&ret.ty))),
         TypeKind::Dyn(_) | TypeKind::TypeOfTypes | TypeKind::Region => None,
     }
 }
@@ -6754,7 +6829,11 @@ fn unresolved_expr_type_name<'a>(
 /// (`[type.numlit.cast.wrap]` — and note that `saturating[T]` is deliberately
 /// NOT here: no clause rules it, which is wolf-interp#79's chapter-3 case),
 /// and `Self` inside an item that has one.
-const PRELUDE_TYPE_NAMES: &[&str] = &["List", "Map", "Option", "Self", "Set", "wrapping"];
+/// `range` (s158, `[type.range.name]`): a prelude name **in type position
+/// only** — there is no `range(…)` constructor, a range value being spelled
+/// `a..b` — so it lives here and NOT in `builtin::AMBIENT_NAMES`, which is
+/// what keeps `var range = true` off W0304's list of shadowed prelude names.
+const PRELUDE_TYPE_NAMES: &[&str] = &["List", "Map", "Option", "Self", "Set", "range", "wrapping"];
 
 /// The first head name in `ty` that `scope` does not contain, with the span of
 /// the name token — the counterparty's span for E0301 at a type position.
@@ -8178,6 +8257,43 @@ mod tests {
         assert!(
             resolve("type Row = int\nfn main() -> !int {\n    let xs: List[Row] = [1]\n    0\n}\n")
                 .is_none()
+        );
+    }
+
+    // -- `[type.range.name]` (s158, wolf-interp#106) ----------------------
+
+    #[test]
+    fn range_int_and_range_char_are_types_in_every_signature_position() {
+        assert!(
+            resolve(
+                "fn width(r: range[int]) -> int { r.end - r.start }\n\
+             fn last_of(r: range[char]) -> char { r.end }\n\
+             fn window(n: int) -> range[int] { 0..n }\n\
+             fn main() -> !int {\n\
+             \x20   let cs: range[char] = 'a'..'d'\n\
+             \x20   print(\"{width(2..7)}{last_of(cs)}{window(3).end}\")\n\
+             \x20   0\n\
+             }\n"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn the_range_family_is_closed_at_int_and_char() {
+        // `range[f64]` is E0401 at the argument; bare `range` is E0405.
+        let source = "fn f(r: range[f64]) -> int { 0 }\nfn main() -> !int { 0 }\n";
+        let diag = diag_of(source);
+        assert_eq!(diag.code, "E0401");
+        assert_eq!(&source[diag.span.start..diag.span.end], "f64");
+        let source = "fn f(r: range) -> int { 0 }\nfn main() -> !int { 0 }\n";
+        let diag = diag_of(source);
+        assert_eq!(diag.code, "E0405");
+        assert_eq!(&source[diag.span.start..diag.span.end], "range");
+        // Nested in another application, found the same way.
+        assert_eq!(
+            diag_of("fn f(rs: List[range[str]]) -> int { 0 }\nfn main() -> !int { 0 }\n").code,
+            "E0401"
         );
     }
 }
