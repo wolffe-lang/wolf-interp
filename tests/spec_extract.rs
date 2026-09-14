@@ -282,7 +282,12 @@ fn the_contextual_keyword_list_matches_the_spec_prose() {
     // list grows on. Both halves are asserted so neither can move alone.
     assert!(mentioned.iter().any(|m| m == "then"));
     assert!(lex::CONTEXTUAL.contains(&"then"));
-    assert_eq!(lex::CONTEXTUAL.len(), 12);
+    // `error` (s158, `[gram.item.error]`): the second word to arrive this
+    // way — §6.2 names it at the v0.2.14 pin and the item parser matches it
+    // by spelling before an `IDENT` and an `=`.
+    assert!(mentioned.iter().any(|m| m == "error"));
+    assert!(lex::CONTEXTUAL.contains(&"error"));
+    assert_eq!(lex::CONTEXTUAL.len(), 13);
 }
 
 #[test]

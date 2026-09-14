@@ -59,9 +59,9 @@ pub const KEYWORDS: [&str; 50] = [
 /// that carries the sentence. Nothing in the parser moves — `then` was always
 /// matched by spelling in the one position after a complete `if` condition
 /// (`parse::Parser::parse_if`), which is what "contextual" means.
-pub const CONTEXTUAL: [&str; 12] = [
-    "c", "rc", "pool", "from", "timeout", "noalias", "pkg", "self", "then", "out", "inout",
-    "lateout",
+pub const CONTEXTUAL: [&str; 13] = [
+    "c", "rc", "pool", "from", "timeout", "noalias", "pkg", "self", "then", "error", "out",
+    "inout", "lateout",
 ];
 
 /// Is this identifier a reserved keyword (`[gram.inv.kw]`)?

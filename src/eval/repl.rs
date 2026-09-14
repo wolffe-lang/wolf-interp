@@ -612,6 +612,24 @@ impl Session {
                     ));
                 }
             }
+            ItemKind::ErrorAlias(alias) => {
+                // `[gram.item.error]`: recorded by name. A loaded program's
+                // rows are rewritten through its aliases before anything
+                // reads them (`sema::expand_error_aliases`); a session's
+                // later items are installed one at a time and are not.
+                self.install_def(&alias.name.name.clone(), Def::Opaque("error"));
+                out.push(format!(
+                    "recorded error-set alias `{}` ({} tag{}; expands in signatures loaded from a \
+                     file, not in this session's later items)",
+                    alias.name.name,
+                    alias.row.entries.len(),
+                    if alias.row.entries.len() == 1 {
+                        ""
+                    } else {
+                        "s"
+                    }
+                ));
+            }
             ItemKind::TypeAlias(alias) => {
                 self.install_def(&alias.name.name.clone(), Def::Opaque("type"));
                 out.push(format!(

@@ -231,6 +231,7 @@ pub fn analyze(program: &Program) -> Analysis {
                     ItemKind::Enum(def) => def.name.as_ref().map(|name| name.span),
                     ItemKind::Trait(def) => Some(def.name.span),
                     ItemKind::TypeAlias(alias) => Some(alias.name.span),
+                    ItemKind::ErrorAlias(alias) => Some(alias.name.span),
                     ItemKind::Binding(binding) => match &*binding.pattern.kind {
                         PatKind::Binding(ident) => Some(ident.span),
                         _ => None,
@@ -272,6 +273,7 @@ pub fn analyze(program: &Program) -> Analysis {
                 let name = match &item.kind {
                     ItemKind::Fn(decl) => Some(&decl.name),
                     ItemKind::TypeAlias(alias) => Some(&alias.name),
+                    ItemKind::ErrorAlias(alias) => Some(&alias.name),
                     ItemKind::Struct(def) => def.name.as_ref(),
                     ItemKind::Enum(def) => def.name.as_ref(),
                     ItemKind::Trait(def) => Some(&def.name),
@@ -745,6 +747,7 @@ impl Walk<'_> {
                     | ItemKind::Enum(_)
                     | ItemKind::Trait(_)
                     | ItemKind::TypeAlias(_)
+                    | ItemKind::ErrorAlias(_)
             )
             && !self.documented(item.span.start)
         {
@@ -789,6 +792,9 @@ impl Walk<'_> {
                 }
             }
             ItemKind::TypeAlias(alias) => {
+                self.shadow_check(&alias.name.name, alias.name.span);
+            }
+            ItemKind::ErrorAlias(alias) => {
                 self.shadow_check(&alias.name.name, alias.name.span);
             }
             ItemKind::Trait(_) | ItemKind::Use(_) | ItemKind::ImportC(_) => {}

@@ -163,6 +163,19 @@ pub enum ItemKind {
     /// `import c "stdlib.h"` — the string is a header name, opaque to wolf
     /// (`[gram.item.use]`).
     ImportC(Box<StrLit>),
+    /// `error IoErrors = {none, parse}` — an error-set alias
+    /// (`[gram.item.error]`, s158): a spelling for a set of tags, never a
+    /// type (`[type.err.alias]`). `error` is contextual: the keyword only
+    /// here, before an `IDENT` and an `=`.
+    ErrorAlias(Box<ErrorAliasDef>),
+}
+
+/// `error_item ::= 'error' IDENT '=' error_row TERM?` (`[gram.item.error]`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ErrorAliasDef {
+    pub name: Ident,
+    pub row: ErrorRow,
+    pub span: Span,
 }
 
 /// `fn_qual ::= 'comptime' | 'extern' STRING | 'export'` (`[gram.item.fn]`).
@@ -243,6 +256,13 @@ pub struct ErrorRow {
     pub entries: Vec<RowEntry>,
     /// A trailing `..` — the row is open.
     pub open: bool,
+    /// Where the `..` was written, when the row is open — the locus
+    /// `[gram.item.error]` refuses it at inside an alias.
+    pub open_at: Option<Span>,
+    /// The bare spelling (`[gram.item.error]`, s158): `-> T ! IoErrors` is
+    /// `-> T ! {IoErrors}`, the same one-entry row with the braces off. The
+    /// shape is identical; the flag records what the author wrote.
+    pub bare: bool,
     pub span: Span,
 }
 

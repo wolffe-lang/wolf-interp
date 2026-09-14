@@ -973,6 +973,21 @@ impl<'a> Parser<'a> {
                 self.expect_term("gram.item.use")?;
                 (ItemKind::ImportC(Box::new(literal)), "gram.item.use")
             }
+            // `[gram.item.error]` (s158): `error` is CONTEXTUAL — the
+            // keyword only in item position with an `IDENT` and an `=` after
+            // it. Two tokens of lookahead decide, so `error(reason)`, a field
+            // or a binding named `error` and `error = 1` all keep parsing as
+            // the identifier they always were (`[gram.inv.ctx]`).
+            Some(Tok::Ident(word))
+                if word == "error"
+                    && matches!(self.tok_at(1), Some(Tok::Ident(_)))
+                    && self.tok_at(2) == Some(&Tok::Assign) =>
+            {
+                (
+                    ItemKind::ErrorAlias(Box::new(self.parse_error_alias()?)),
+                    "gram.item.error",
+                )
+            }
             _ => return Err(self.unexpected("gram.item.unit", "an item")),
         };
 
@@ -1261,6 +1276,47 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// `error_item ::= 'error' IDENT '=' error_row TERM?` — `[gram.item.error]`
+    /// (s158, wolf-lang#36; wolf-interp#106).
+    ///
+    /// The right-hand side is exactly `error_row`, so an alias composes by
+    /// naming another alias in an entry; the checker flattens at use
+    /// (`[gram.type.row.flatten]`, `sema::expand_error_aliases`). The open
+    /// marker is refused HERE, E0201 at the `..`: an alias is a closed set
+    /// of tags by definition, and "these tags and any others" is not a set a
+    /// name can stand for (`rows/negative/error_alias_open.lu`).
+    fn parse_error_alias(&mut self) -> PResult<ErrorAliasDef> {
+        let anchor = "gram.item.error";
+        let start = self.span().start;
+        if !self.eat_ctx("error") {
+            return Err(self.unexpected(anchor, "`error`"));
+        }
+        let name = self.expect_ident(anchor)?;
+        self.expect(&Tok::Assign, anchor)?;
+        let row = self.parse_error_row()?;
+        if let Some(open_at) = row.open_at {
+            return Err(Diag::new(
+                diag::E_UNEXPECTED_TOKEN,
+                open_at,
+                anchor,
+                format!(
+                    "expected a tag, found `..`: an error-set alias names a closed set of tags, \
+                     and `{}` cannot stand for \"these tags and any others\" — write the open \
+                     row at each use, with no name (`[gram.item.error]`)",
+                    name.name
+                ),
+            ));
+        }
+        if matches!(self.tok(), Some(Tok::Term { .. })) {
+            self.pos += 1;
+        }
+        Ok(ErrorAliasDef {
+            name,
+            row,
+            span: Span::new(start, self.prev_span().end),
+        })
+    }
+
     fn parse_struct_def(&mut self, named: bool) -> PResult<StructDef> {
         let anchor = "gram.item.type";
         let start = self.expect_kw("struct", anchor)?.start;
@@ -1514,11 +1570,12 @@ impl<'a> Parser<'a> {
     fn parse_ret_type(&mut self) -> PResult<RetType> {
         let ty = self.parse_type()?;
         let start = ty.span.start;
-        // `ret_type ::= type ('!' error_row)?` — `-> int ! {Failed, Slow}`.
+        // `ret_type ::= type ('!' (error_row | path))?` — `-> int ! {Failed,
+        // Slow}`, or the bare spelling `-> int ! IoErrors` (`[gram.item.error]`).
         // `-> !int` is the other shape entirely: `type ::= '!' type`.
         let row = if self.at(&Tok::Bang) {
             self.advance();
-            Some(self.parse_error_row()?)
+            Some(self.parse_row_or_bare_path()?)
         } else {
             None
         };
@@ -1529,17 +1586,46 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// A postfix row position admits a bare `path` (`[gram.item.error]`,
+    /// s158): `! IoErrors` is `! {IoErrors}`, the same one-entry row with
+    /// the braces off. A path there that names no alias is one tag, exactly
+    /// as `{tag}` is — resolution decides, the same way in both spellings.
+    fn parse_row_or_bare_path(&mut self) -> PResult<ErrorRow> {
+        if self.at(&Tok::LBrace) {
+            return self.parse_error_row();
+        }
+        if !matches!(self.tok(), Some(Tok::Ident(_))) {
+            return Err(self.unexpected("gram.type.row", "an error row, `{…}`, or an alias name"));
+        }
+        let path = self.parse_path("gram.item.error")?;
+        let span = path.span;
+        Ok(ErrorRow {
+            entries: vec![RowEntry {
+                path,
+                payload: Vec::new(),
+                span,
+            }],
+            open: false,
+            open_at: None,
+            bare: true,
+            span,
+        })
+    }
+
     fn parse_error_row(&mut self) -> PResult<ErrorRow> {
         let anchor = "gram.type.row";
         let start = self.expect(&Tok::LBrace, anchor)?.start;
         let mut entries = Vec::new();
         let mut open = false;
+        let mut open_at = None;
         loop {
             self.skip_inserted_terms();
             if self.at(&Tok::RBrace) {
                 break;
             }
-            if self.eat(&Tok::DotDot) {
+            if self.at(&Tok::DotDot) {
+                open_at = Some(self.span());
+                self.advance();
                 open = true;
                 self.eat(&Tok::Comma);
                 break;
@@ -1570,6 +1656,8 @@ impl<'a> Parser<'a> {
         Ok(ErrorRow {
             entries,
             open,
+            open_at,
+            bare: false,
             span: Span::new(start, end),
         })
     }
@@ -1683,9 +1771,15 @@ impl<'a> Parser<'a> {
         // lookahead keeps `!` unambiguous: only `! {` continues a type —
         // `!=` lexes as one token, and a bare `!` after a type is the next
         // construct's business (`[gram.amb.bang]`).
-        while self.at(&Tok::Bang) && self.tok_at(1) == Some(&Tok::LBrace) {
+        // s158 (`[gram.item.error]`): `! IDENT` continues a type too — the
+        // bare spelling of a one-entry row. `!=` still lexes as one token
+        // and a bare `!` after a type is still the next construct's.
+        while self.at(&Tok::Bang)
+            && (self.tok_at(1) == Some(&Tok::LBrace)
+                || matches!(self.tok_at(1), Some(Tok::Ident(_))))
+        {
             self.advance();
-            let row = self.parse_error_row()?;
+            let row = self.parse_row_or_bare_path()?;
             ty = Type {
                 span: Span::new(start, self.prev_span().end),
                 kind: Box::new(TypeKind::Fallible { ty, row }),
@@ -3800,6 +3894,16 @@ fn trace_item(out: &mut String, depth: usize, item: &Item) {
             }
         ),
         ItemKind::TypeAlias(alias) => format!("type {}", alias.name.name),
+        ItemKind::ErrorAlias(alias) => format!(
+            "error {} ({} entr{})",
+            alias.name.name,
+            alias.row.entries.len(),
+            if alias.row.entries.len() == 1 {
+                "y"
+            } else {
+                "ies"
+            }
+        ),
         ItemKind::Struct(def) => format!(
             "struct {} ({} field(s))",
             def.name.as_ref().map_or("<anon>", |n| n.name.as_str()),
@@ -5019,5 +5123,73 @@ mod tests {
             rejects("fn f() -> int { [1 2] }\n").code,
             diag::E_UNEXPECTED_TOKEN
         );
+    }
+
+    // -- `[gram.item.error]` (s158, wolf-interp#106) ----------------------
+
+    #[test]
+    fn an_error_item_names_a_set_of_tags_and_error_is_contextual() {
+        let unit = parses("error IoErrors = {none, parse}\nfn f() -> int ! IoErrors { 0 }\n");
+        let ItemKind::ErrorAlias(alias) = &unit.items[0].kind else {
+            panic!("an error-set alias")
+        };
+        assert_eq!(alias.name.name, "IoErrors");
+        assert_eq!(alias.row.entries.len(), 2);
+        assert!(!alias.row.bare);
+        assert_eq!(unit.items[0].anchor, "gram.item.error");
+        // The bare spelling: `! IoErrors` is `! {IoErrors}`, one entry, braces
+        // off — and, as `! {…}` always has, it rides the postfix-row type
+        // (`TypeKind::Fallible`) rather than `RetType::row`.
+        let ItemKind::Fn(decl) = &unit.items[1].kind else {
+            panic!("a fn")
+        };
+        let TypeKind::Fallible { row, .. } = &*decl.ret.as_ref().expect("a return").ty.kind else {
+            panic!("a fallible return type")
+        };
+        assert!(row.bare);
+        assert_eq!(row.entries.len(), 1);
+        assert_eq!(row.entries[0].path.segments[0].name, "IoErrors");
+        // Two tokens of lookahead: `error` stays an identifier everywhere else
+        // (`[gram.inv.ctx]`) — a binding, a call, a field, an assignment.
+        let unit = parses(
+            "type R = struct { error: int }\n\
+             fn error(n: int) -> int { n }\n\
+             fn main() -> !int {\n\
+             \x20   var error = 3\n\
+             \x20   error = error(error)\n\
+             \x20   let r = R { error: error }\n\
+             \x20   r.error\n\
+             }\n",
+        );
+        assert_eq!(unit.items.len(), 3);
+        assert!(matches!(&unit.items[1].kind, ItemKind::Fn(d) if d.name.name == "error"));
+    }
+
+    #[test]
+    fn an_alias_may_not_name_an_open_row_e0201_at_the_dots() {
+        let source = "error Loose = { none, ..}\n";
+        let diag = rejects(source);
+        assert_eq!(diag.code, diag::E_UNEXPECTED_TOKEN);
+        assert_eq!(&source[diag.span.start..diag.span.end], "..");
+        assert_eq!(diag.anchor, "gram.item.error");
+        // `error` with no `=` after the name is not the item — the identifier.
+        assert_eq!(
+            rejects("error Loose {none}\n").code,
+            diag::E_UNEXPECTED_TOKEN
+        );
+    }
+
+    #[test]
+    fn a_postfix_row_position_admits_a_bare_path_in_a_type() {
+        let unit =
+            parses("fn f(cb: fn(int) -> int ! IoErrors) -> int { 0 }\nlet x: int ! IoErrors = 1\n");
+        let ItemKind::Binding(binding) = &unit.items[1].kind else {
+            panic!("a binding")
+        };
+        let TypeKind::Fallible { row, .. } = &*binding.ty.as_ref().expect("annotated").kind else {
+            panic!("a fallible type")
+        };
+        assert!(row.bare);
+        assert_eq!(row.entries[0].path.segments[0].name, "IoErrors");
     }
 }

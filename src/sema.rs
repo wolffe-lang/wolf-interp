@@ -793,6 +793,17 @@ fn collect(unit: &Unit, module: &mut Module, file: &str, source: &str) {
                     module.bindings.push(ident.name.clone());
                 }
             }
+            ItemKind::ErrorAlias(alias) => {
+                let name = alias.name.name.clone();
+                define(
+                    module,
+                    name,
+                    Def::Opaque("error"),
+                    visible,
+                    Some(alias.name.span),
+                    file,
+                );
+            }
             ItemKind::TypeAlias(alias) => {
                 // `type Name = struct { … }` defines a constructible type.
                 match &alias.def {
@@ -3637,6 +3648,9 @@ const fn mode_anchor(mode: ParamMode) -> &'static str {
 fn collect_item_refs(item: &Item, scope: &mut FileScope) {
     match &item.kind {
         ItemKind::Fn(decl) => collect_fn_refs(decl, scope),
+        // An alias's entries are tags and other aliases, resolved by
+        // `expand_error_aliases` before collection — not name references.
+        ItemKind::ErrorAlias(_) => {}
         ItemKind::Binding(binding) => {
             if let Some(ty) = &binding.ty {
                 collect_type_refs(ty, scope);
