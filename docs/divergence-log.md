@@ -158,6 +158,36 @@ to the measured baseline of 435 is 449), not a row the census surprised.
 (`resolve/broken_sibling/entry.lu`) and DIV-2026-024 below, both filed,
 zero unfiled, `0 failure(s)`.
 
+#### The compiler's table, re-derived at the head (for r20 to predict against)
+
+`cargo xtask differ wolf lupin --triage --<tier> --corpus=corpus --control <0.1.36>`
+at wolf-lang v0.2.14 (`30731a6`), `wolf 0.2.14 (pin 30731a6)` against
+`lupin 0.1.36+dev.2135dcb`, the control the 0.1.36 release binary on the
+same tree — 615 files, 580 entries, both tiers:
+
+                    checked                     native
+    agreements      332 -> 346  (+14)           362 -> 376  (+14)
+    completeness    151 -> 151   (0)            151 -> 151   (0)
+    soundness         0 ->   0   (0)              0 ->   0   (0)
+    unsupported     108 -> 108   (0)             78 ->  78   (0)
+    hard             23 ->   9  (-14)            23 ->   9  (-14)
+    coverage A      340 -> 340   (0)            372 -> 372   (0)
+    coverage B      435 -> 449  (+14)           435 -> 449  (+14)
+    coverage BOTH   315 -> 329  (+14)           345 -> 359  (+14)
+
+`THE INTERPRETER BUMP MOVED 14 LEDGER COUNT(S)` on each tier, the same
+fourteen files on both, every one `Verdict -> agreement`: six
+`grammar/list_lit_*`, five `grammar/range_type_*`, three `rows/error_alias_*`.
+Three files moved BELOW the ledger on both tiers — the `fail`-pinned rows
+whose lupin code changed while their class (completeness) could not:
+`list_lit_mixed.lu` E0201 -> E0401, `list_lit_untyped_empty.lu` E0201 ->
+E0419, `rows/negative/error_alias_cycle.lu` E0201 -> E0610. Hard stays
+**9 = 8 Diag + 1 Verdict** on both tiers: the eight Diag are v0.2.12's
+warning-parity rows (#167), the one Verdict is `grammar/match_nullary_variant.lu`
+(DIV-2026-024, #107). Predicted before the run as 346/151/0/108/9 and
+376/151/0/78/9 with coverage B 449 and BOTH 329/359 — every cell measured
+as predicted, on both tiers.
+
 #### What the pin's other rows are, by name
 
 The thirty-five new files less the eighteen: s157's and s160's, ledgered
