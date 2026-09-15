@@ -692,6 +692,20 @@ when there is none. Files: `grammar/list_lit_let.lu`,
   (Ruled 2026-08-26, D52 / issue #38.) Files: `rows/tag_arg_position.lu`,
   `rows/tag_let_position.lu`, `rows/tag_shadow_local.lu`,
   `rows/negative/tag_undeclared_arg.lu` (counter).
+- **A variant value is spelled with its enum** `[gram.expr.variant]`:
+  `Ordering.Less`, `Shape.Box(3)` — the variant belongs to its enum,
+  and the value names both. A bare capitalized name in value position
+  is an error-row tag's spelling (D30, `[gram.expr.tagident]`), so a
+  bare `Less` that no local, item, import or declared row resolves is
+  **E0301**, and when an enum this file names directly (a module-local
+  enum, or one imported by name) declares a variant of that name, the
+  diagnostic names the enum and offers `Ordering.` as the edit —
+  machine-applicable when exactly one such enum exists. A `match` arm
+  is the other position and keeps the bare name (`[gram.pat.nullary]`):
+  there the scrutinee's type already says which enum. (Ruled
+  2026-09-15, wolf-lang#348: until then the bare value declined at
+  typing as an out-of-context row tag and named no fix. No runtime
+  cost; a static rule.) File: `typecheck/variant_bare_value.lu`.
 
 ### 3.3b The subscript origin `[gram.expr.index.origin]`
 
@@ -1112,6 +1126,9 @@ no `goto`, no *required* semicolons (terminators are inserted;
   operators and after `.` (trailing style — required by
   `[gram.lex.newline]`); continuations indent one level.
 - `[gram.fmt.commas]` Trailing comma in every multiline list; none inline.
+  The one list that ends without one is a struct pattern's `..` rest: the
+  grammar closes the member list at the `..` (`[gram.pat.struct]`), so a
+  broken pattern's last line is `..` alone (wolf-lang#351).
 - `[gram.fmt.list]` A **list literal breaks like an argument list**
   (s158, wolf-lang#154): inline while it fits — `[1, 2, 3]`, one space
   after each comma, none inside the brackets, and no trailing comma —
@@ -1220,8 +1237,14 @@ Each entry: the rule, and its paired files in `corpus/grammar/`.
   (`[gram.expr.list]`, s158). The two are disjoint by position, the way
   `[gram.amb.bang]`'s two `!`s are — postfix `[` continues an operand,
   primary `[` starts one — so no lookahead and no sema decides between
-  them. Files: `brackets_index.lu`, `brackets_generic_call.lu`,
-  `list_lit_index.lu`.
+  them. Because the arguments are expressions, a TUPLE type argument is
+  spelled as a tuple of type heads — `List[(str, int)]()`,
+  `Map[str, (int, bool)]()` — and sema reads it as the tuple type,
+  element by element, exactly as it reads a nested `List[int]` or a
+  qualified `geo.Point` in that position (wolf-lang#349; a parenthesized
+  single head is that head). Files: `brackets_index.lu`,
+  `brackets_generic_call.lu`, `list_lit_index.lu`,
+  `typecheck/list_tuple_elem.lu`.
 - `[gram.amb.intdot]` `1.s` = member on int; `1.0` float; `1..2` range;
   `1.` = int then member-dot (awaiting member). Files: `intdot_member.lu`,
   `intdot_range.lu`.

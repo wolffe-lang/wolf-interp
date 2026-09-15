@@ -77,6 +77,18 @@ system.
   (an `f64` from one side and an `i32` from another) is the ordinary
   type mismatch (E0401, `[type.numlit.ambig]`) — the checker names the
   conflict and the spelled `as` fix, it never picks one side.
+  **A bound is context** (wolf-lang#347, 2026-09-15). An `{integer}`
+  literal whose only context is a type parameter under a trait bound —
+  `refund(340)` under `fn refund[T: Neg](charged: T) -> T` — is not a
+  literal with no context: the bound constrains it. It still takes
+  `i32` when `i32` satisfies every bound recorded against it; when
+  `i32` does not, it takes `int` if `int` does (the language's integer
+  type, the one every `impl … for int` names), else the one other
+  integer type that does. With none, or with two or more other
+  candidates, the rule's `i32` stands and the unmet bound is E0502,
+  whose note says the literal defaulted and names the candidates. No
+  runtime cost; a static rule, and a `{float}` literal is unchanged.
+  Witness `corpus/traits/bound_literal_default.lu`.
 
 - `[type.numlit.ambig]` Ambiguity is a **named error, never a guess.**
   If a single literal is required to be two incompatible concrete types
@@ -632,7 +644,13 @@ filing left open, not the home).)
   a local `Eq`). **The surface** the language types, beside the index
   of `[mem.map.absent]`: `Map[K, V]()` constructs; `m.len` counts
   entries (`count()` is the same number); `m.is_empty()` probes;
-  `m.clear()` drains (a `mut` receiver); `m.pairs()` answers a fresh
+  `m.clear()` drains (a `mut` receiver); `m.remove(k)` erases a key
+  through a `mut` receiver and answers `V ! {none}` — the erased value,
+  or the `none` row with the map unchanged, the read's shape
+  (`[mem.map.absent]`) — and the remaining entries keep their order
+  (ruled by D50 on #11, landed 2026-09-15 as wolf-lang#344; **cost**:
+  one scan to the key and a shift of the entries after it, nothing
+  freed, on both tiers — `corpus/memory/map_remove.lu`); `m.pairs()` answers a fresh
   `List[(K, V)]` of every entry, which `for (k, v) in m.pairs()`
   destructures. **Iteration order is unspecified and consistent**:
   `pairs()` reports one order for an unmodified map and promises
@@ -696,7 +714,12 @@ substrate.)
   undispatchable: every user type any library publishes had operators
   that worked inside its own module and nowhere else). Two imported
   modules declaring one operator trait is no answer and keeps the
-  E0301. Nothing by that name reachable is **E0301** naming the trait
+  E0301. An import binding an operator trait by name (`use cmp.Eq`) is
+  **used**, for the unused-import rule (E0305), by any operator of that
+  trait the file spells: unused imports are reported before the checker
+  chooses any operator's trait, so the spelling is what counts (`-`
+  counts for both `Sub` and `Neg`), and a file that spells none still
+  hears E0305 (wolf-lang#352, `traits/op_eq_item_import/`). Nothing by that name reachable is **E0301** naming the trait
   and the three places looked in, and a type without an impl is
   **E0502** naming the trait and the operator, discharged with the
   body's other obligations. `!`, `&&`, `||` and the bitwise
@@ -1070,8 +1093,25 @@ has promised `totals.pairs().sorted_by(…)` since bs00, and
   | `sorted` | `sorted[T: cmp.Ord](xs: List[T]) -> List[T]` | none | `sorted_by` with `<` (`[type.trait.op]`; the builtin `<` on the primitives) |
   | `enumerate` | `enumerate[T](xs: List[T]) -> List[(int, T)]` | none | one fresh `List` of pairs; indices from 0 |
   | `zip` | `zip[T, U](xs: List[T], ys: List[U]) -> List[(T, U)]` | none | one fresh `List` of `min(xs.len, ys.len)` pairs |
-  | `collect` | `collect(r: range[int]) -> List[int]`, and `range[char]` | none; traps as the range's `for` does | one fresh `List` of the range's length |
+  | `collect` | `collect[T](r: range[T]) -> List[T]` (`T` is `int` or `char`, `[type.range.name]`) | none; traps as the range's `for` does | one fresh `List` of the range's length |
   | `par` | `xs.par(f)`, `f: fn(T) -> U` or `fn(T) -> U ! E` | `E`, when `f` has one | `[conc.task.par]` |
+
+  **What a combinator copies** (stated 2026-09-15 with s165's
+  `[mem.tier0.move.3]` and `[mem.tier0.mode.read]`, and wolf-lang#384,
+  #366 and #385's ruling). The receiver is `read`, so a combinator never
+  hands the caller's own value on: `fold`'s accumulator starts as the
+  lent seed and outlives the activation, so the seed **copies** (`copy
+  init`). The elements `filter`, `sorted_by`, `sorted`, `enumerate` and
+  `zip` keep are `push`ed into a fresh `List`, and **`push` copies a
+  non-`Copy` element** (wolf-lang#385, ruled 2026-09-15; `push(take x)`
+  is the move, and s167 implements both) — so each of those combinators
+  pays one copy per element it keeps, and `map`, whose pushed value is
+  `f`'s own temporary, spells `take` and pays nothing, as does
+  `enumerate` for the pair it builds. **Every such copy is deep**: one
+  allocation and a buffer copy for every `List` or `Map` reached, so a
+  combinator over a `List[List[int]]` pays per container and not per
+  element, while a `str` element shares its bytes. A caller who wants
+  the elements moved rather than copied has `take` at its own call.
 
   The functions `std.list` already ships over fn values — `any`, `all`,
   `count_where`, `index_where`, `find_where`, `min_by`, `max_by` — are
