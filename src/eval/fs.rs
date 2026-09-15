@@ -289,6 +289,14 @@ impl FsTable {
         file.write_all(text.as_bytes()).map_err(io_row)
     }
 
+    /// `fs_write_chunk(fd, bytes)`: [`Self::write`]'s byte twin, at the
+    /// handle's cursor (wolf-interp#112). A read-only, closed or forged handle
+    /// is `io` (probed on wolf 0.2.14, both tiers).
+    pub(crate) fn write_bytes(&mut self, handle: i128, bytes: &[u8]) -> FsResult<()> {
+        let file = self.file(handle)?;
+        file.write_all(bytes).map_err(io_row)
+    }
+
     /// `fs_fstat(fd) -> [kind, size, modified_ms]` (`[os.fs.fstat]`): ONE
     /// metadata read on the handle the open returned.
     pub(crate) fn fstat(&mut self, handle: i128) -> FsResult<[i128; 3]> {
@@ -614,6 +622,25 @@ pub(crate) fn create_dir_all(path: &Path) -> FsResult<()> {
     std::fs::create_dir_all(path).map_err(|e| path_row(&e))
 }
 
+/// `fs_create_dir(path)`: exactly ONE level (wolf-interp#112). `exists` for
+/// anything already at the path — a directory or a file — because the call's
+/// contract is that it created the directory; `not_found` for a missing
+/// parent. Both probed on wolf 0.2.14, both tiers.
+pub(crate) fn create_dir(path: &Path) -> FsResult<()> {
+    std::fs::create_dir(path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::AlreadyExists => FsErr::Row("exists"),
+        _ => path_row(&e),
+    })
+}
+
+/// `fs_remove_dir(path)`: one EMPTY directory (wolf-interp#112). A non-empty
+/// directory and a regular file are `io` — the hosts spell those errnos
+/// differently and a caller acts on neither differently — and a missing path
+/// is `not_found` (probed on wolf 0.2.14, both tiers).
+pub(crate) fn remove_dir(path: &Path) -> FsResult<()> {
+    std::fs::remove_dir(path).map_err(|e| path_row(&e))
+}
+
 /// `fs_remove_dir_all(path)`: the directory and everything under it.
 pub(crate) fn remove_dir_all(path: &Path) -> FsResult<()> {
     std::fs::remove_dir_all(path).map_err(|e| path_row(&e))
@@ -733,6 +760,25 @@ impl Machine {
                 let answer = self.fs_byte_list(answer, "fs_read_chunk", span)?;
                 self.fs_answer(name, answer, span)
             }
+            "fs_write_chunk" => {
+                // The handle is resolved before the payload is read, the order
+                // wolf-interp#110 item 1 fixes for `fs_write_bytes`: the call's
+                // target decides first. `invalid` is unreachable from typed
+                // source (`List[int]` is E0401 there), so the order is this
+                // machine's consistency and not an observable of a program.
+                let fd = int_arg(args, 0, name)?;
+                let answer = match fs_bytes_arg(args, 1, name)? {
+                    Ok(bytes) => self
+                        .shared_fs()
+                        .write_bytes(fd, &bytes)
+                        .map(|()| Value::Unit),
+                    Err(tag) => match self.shared_fs().file(fd) {
+                        Ok(_) => Err(FsErr::Row(tag)),
+                        Err(row) => Err(FsErr::Row(row)),
+                    },
+                };
+                self.fs_answer(name, answer, span)
+            }
             "fs_write" => {
                 let text = self.fs_str_arg(args, 1, name)?;
                 let fd = int_arg(args, 0, name)?;
@@ -804,13 +850,16 @@ impl Machine {
                 };
                 self.fs_answer(name, answer, span)
             }
-            "fs_remove" | "fs_remove_dir_all" | "fs_create_dir_all" => {
+            "fs_remove" | "fs_remove_dir_all" | "fs_create_dir_all" | "fs_create_dir"
+            | "fs_remove_dir" => {
                 let path = self.fs_path_arg(args, 0, name)?;
                 let answer = self
                     .fs_contained(&path, name)
                     .and_then(|path| match name {
                         "fs_remove" => remove(&path),
                         "fs_remove_dir_all" => remove_dir_all(&path),
+                        "fs_create_dir" => create_dir(&path),
+                        "fs_remove_dir" => remove_dir(&path),
                         _ => create_dir_all(&path),
                     })
                     .map(|()| Value::Unit);
