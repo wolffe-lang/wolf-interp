@@ -268,3 +268,52 @@ fn a_fired_budget_answers_the_row_the_call_declares_and_not_a_wider_tag() {
     assert_eq!(output.status.code(), Some(0), "{stdout}\n{output:?}");
     assert_eq!(stdout, "writev-io\nread-timeout\n");
 }
+
+#[test]
+fn the_head_gather_takes_every_degenerate_shape_and_a_multibyte_head() {
+    // `[os.net.writev.head]` (s160, wolf-interp#111) at the edges
+    // `corpus/net/writev_head_gather.lu` does not walk: an empty head over no
+    // parts ("a completed write with no syscall"), a head over no parts, an
+    // empty head over parts one of which is empty, a head whose bytes are not
+    // one-per-char, and a closed handle (`io`, the family's rule). Measured
+    // on wolf 0.2.14 `--checked` and `--native` (pin 30731a6): the same three
+    // lines, byte for byte.
+    let dir = scratch("net-s160-writev-head-edges");
+    let source = format!(
+        "{BYTES_OF}\
+         fn main() -> !int {{\n\
+         \x20   let srv = net_listen(\"127.0.0.1:0\")?\n\
+         \x20   let port = net_port(srv)?\n\
+         \x20   let cli = net_connect(\"127.0.0.1:{{port}}\")?\n\
+         \x20   let conn = net_accept(srv)?\n\
+         \x20   var none = List[List[byte]]()\n\
+         \x20   net_writev_head(conn, \"\", none)?\n\
+         \x20   print(\"empty-ok\")\n\
+         \x20   net_writev_head(conn, \"ab\", none)?\n\
+         \x20   var parts = List[List[byte]]()\n\
+         \x20   (mut parts).push(List[byte]())\n\
+         \x20   (mut parts).push(bytes_of(\"cd\"))\n\
+         \x20   net_writev_head(conn, \"\", parts)?\n\
+         \x20   net_writev_head(conn, \"\u{e9}\", parts)?\n\
+         \x20   net_deadline(cli, 5000)?\n\
+         \x20   var got = \"\"\n\
+         \x20   while got.len < 8 {{\n\
+         \x20       let piece = net_read(cli, 16)?\n\
+         \x20       got = \"{{got}}{{piece}}\"\n\
+         \x20   }}\n\
+         \x20   print(\"got {{got}}\")\n\
+         \x20   net_close(conn)?\n\
+         \x20   net_writev_head(conn, \"x\", none) else |e| match e {{\n\
+         \x20       io => print(\"closed-io\"),\n\
+         \x20       _ => print(\"closed-OTHER\"),\n\
+         \x20   }}\n\
+         \x20   net_close(cli)?\n\
+         \x20   net_close(srv)?\n\
+         \x20   0\n\
+         }}\n"
+    );
+    let output = run_in(&dir, &source);
+    let stdout = stdout_of(&output);
+    assert_eq!(output.status.code(), Some(0), "{stdout}\n{output:?}");
+    assert_eq!(stdout, "empty-ok\ngot abcd\u{e9}cd\nclosed-io\n");
+}
