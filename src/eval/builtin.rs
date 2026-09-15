@@ -729,14 +729,10 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 }
             }
             match String::from_utf8(bytes) {
-                Ok(text) => {
-                    machine.allocate(
-                        span,
-                        "str_from_utf8",
-                        ledger::str_bytes(text.len() as u64),
-                    )?;
-                    Ok(Value::Str(text.into()))
-                }
+                // Charged since 0.1.21 but never HOMED, so the answer read
+                // clean after its region died (wolf-interp#111,
+                // `corpus/memory/region_str_from_utf8_return.lu`).
+                Ok(text) => produced_str(machine, text, "str_from_utf8", span),
                 Err(_) => {
                     machine.note(
                         Rule::ErrUnion,
@@ -1316,8 +1312,17 @@ pub fn method(
         // materialize `List`s at v0.
         (Value::Str(s), "len") => Ok(Value::Int(s.len() as i128, IntTy::INT)),
         (Value::Str(s), "is_empty") => Ok(Value::Bool(s.is_empty())),
-        (Value::Str(s), "upper") => Ok(Value::Str(s.to_uppercase().into())),
-        (Value::Str(s), "lower") => Ok(Value::Str(s.to_lowercase().into())),
+        // `[mem.region.escape]` (s160, wolf-lang#321): "every `str`-producing
+        // builtin that materializes — `upper`, `lower`, `repeat` and
+        // `replace` build fresh bytes in the ambient region, and so does the
+        // free producer `str_from_utf8` … each is a site exactly as `+` is".
+        // So each answer is charged there and carries it as its home, and a
+        // read after that region's wholesale free is the
+        // `[mem.region.intra.2]` fault (E1010's dynamic half). The view side
+        // of `[mem.str.view]` — `trim`, `get`, `strip_*`, the `split`/
+        // `words`/`lines` pieces — allocates nothing and stays home-less.
+        (Value::Str(s), "upper") => produced_str(machine, s.to_uppercase(), "upper", span),
+        (Value::Str(s), "lower") => produced_str(machine, s.to_lowercase(), "lower", span),
         (Value::Str(s), "trim") => Ok(Value::Str(match args.first() {
             Some(Value::Str(cut)) => s.trim_matches(|c| cut.contains(c)).into(),
             _ => s.trim().into(),
@@ -1402,9 +1407,12 @@ pub fn method(
                     ),
                 );
             }
-            Ok(Value::Str(
-                s.repeat(usize::try_from(*n).unwrap_or_default()).into(),
-            ))
+            produced_str(
+                machine,
+                s.repeat(usize::try_from(*n).unwrap_or_default()),
+                "repeat",
+                span,
+            )
         }
         (Value::Str(s), "contains") => Ok(Value::Bool(match args.first() {
             Some(Value::Str(needle)) => s.contains(needle.as_str()),
@@ -1498,10 +1506,18 @@ pub fn method(
             };
             if from.is_empty() {
                 // `[mem.str.empty]`: an empty needle matches nothing, so the
-                // replacement is the identity.
-                return Ok(Value::Str(s.clone()));
+                // replacement is the identity — of the TEXT. The answer is
+                // still `replace`'s fresh `str` (`[mem.region.escape]` names
+                // the call a site, and a static checker cannot see the needle
+                // is empty), so it is charged and homed like any other.
+                return produced_str(machine, s.text.clone(), "replace", span);
             }
-            Ok(Value::Str(s.replace(from.as_str(), to.as_str()).into()))
+            produced_str(
+                machine,
+                s.replace(from.as_str(), to.as_str()),
+                "replace",
+                span,
+            )
         }
         (Value::Str(s), "words") => Ok(Value::list(
             s.split_whitespace()
@@ -2211,6 +2227,15 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "str_from_utf8" => &["utf8"],
         _ => &[],
     }
+}
+
+/// A `str` a builtin MATERIALIZES (`[mem.region.escape]`, s160): the fresh
+/// bytes are charged to the ambient region at the call, at exact size, and
+/// the value carries that region as its home — the same site rule
+/// `Machine::built_str` gives `+` and interpolation.
+fn produced_str(machine: &mut Machine, text: String, what: &str, span: Span) -> BResult {
+    let home = machine.allocate(span, what, ledger::str_bytes(text.len() as u64))?;
+    Ok(Value::Str(super::value::Str::built(text, Some(home))))
 }
 
 /// The row-carrying error value a named builtin raises — pub(crate) because
