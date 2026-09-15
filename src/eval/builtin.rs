@@ -1100,13 +1100,101 @@ pub fn property(machine: &mut Machine, receiver: &Value, name: &str, span: Span)
     }
 }
 
+/// `[type.method.home]`: a std data type's **home module**, as `(type
+/// constructor, module directory under the std root)`. The table is closed —
+/// `List`, `Map`, `str` and the two `range`s — so every other receiver
+/// answers `None` and keeps exactly the method surface it had (builtin,
+/// inherent, trait).
+#[must_use]
+pub fn home_of(value: &Value) -> Option<(&'static str, &'static str)> {
+    match value {
+        Value::List(..) => Some(("List", "list")),
+        Value::Map(_) => Some(("Map", "map")),
+        Value::Str(_) => Some(("str", "str")),
+        Value::Range { .. } => Some(("range", "range")),
+        _ => None,
+    }
+}
+
+/// Every home type with the directory its module lives in — the loader walks
+/// this to decide which home modules a program needs (`[type.method.root]`).
+pub const HOMES: &[(&str, &str)] = &[
+    ("List", "list"),
+    ("Map", "map"),
+    ("str", "str"),
+    ("range", "range"),
+];
+
+/// `[type.method.resolve]` step (1): the builtin methods of each home type —
+/// exactly the names [`method`] answers for that receiver, and so exactly the
+/// names that never reach the home module. `len` and `count` are this
+/// machine's older spellings of the `len` property and agree with std's
+/// functions of the same names, which is std's obligation under the clause,
+/// not the resolver's. `str.get`'s range spelling is served in `eval_method`
+/// ahead of the table and is the same name.
+///
+/// `eval::tests::every_builtin_method_the_table_names_dispatches` holds the
+/// table to the match arms.
+pub const BUILTIN_METHODS: &[(&str, &[&str])] = &[
+    (
+        "List",
+        &[
+            "push", "pop", "len", "count", "is_empty", "get", "first", "last", "clear",
+        ],
+    ),
+    ("Map", &["len", "count", "is_empty", "pairs", "clear"]),
+    (
+        "str",
+        &[
+            "len",
+            "is_empty",
+            "upper",
+            "lower",
+            "trim",
+            "trim_start",
+            "trim_end",
+            "get",
+            "chars",
+            "bytes",
+            "repeat",
+            "contains",
+            "starts_with",
+            "ends_with",
+            "find",
+            "rfind",
+            "count",
+            "split",
+            "strip_prefix",
+            "strip_suffix",
+            "replace",
+            "words",
+            "lines",
+            "to_int",
+        ],
+    ),
+    ("range", &[]),
+];
+
+/// Is `name` a step-(1) builtin method on `receiver`? `false` for any
+/// receiver with no home module, whose surface this table does not describe.
+#[must_use]
+pub fn is_builtin_method(receiver: &Value, name: &str) -> bool {
+    let Some((ctor, _)) = home_of(receiver) else {
+        return false;
+    };
+    BUILTIN_METHODS
+        .iter()
+        .find(|(ty, _)| *ty == ctor)
+        .is_some_and(|(_, names)| names.contains(&name))
+}
+
 /// Whether [`method`] can change `receiver` in place — that is, whether the
 /// arm it dispatches to takes the receiver's elements mutably.
 ///
-/// Exactly two arms of [`method`] do: `List.push` and `List.pop`. Every other
-/// arm either reads its receiver and returns a fresh value, or changes
-/// *machine* state (the store, the provenance forest, the scheduler) behind a
-/// receiver that is an immutable id.
+/// Four arms of [`method`] do: `List.push`, `List.pop`, `List.clear` and
+/// `Map.clear`. Every other arm either reads its receiver and returns a fresh
+/// value, or changes *machine* state (the store, the provenance forest, the
+/// scheduler) behind a receiver that is an immutable id.
 ///
 /// The caller uses this to know whether the end of a lend is a write. Both
 /// answers are safe in the direction that matters: the lend restores the
@@ -1117,16 +1205,21 @@ pub fn property(machine: &mut Machine, receiver: &Value, name: &str, span: Span)
 /// the corpus make, so drift here is caught rather than deduced.
 #[must_use]
 pub fn mutates_receiver(receiver: &Value, name: &str) -> bool {
-    matches!((receiver, name), (Value::List(..), "push" | "pop"))
+    matches!(
+        (receiver, name),
+        (Value::List(..), "push" | "pop" | "clear") | (Value::Map(_), "clear")
+    )
 }
 
-/// The O(1) witness for [`mutates_receiver`]'s two methods: `List.push` and
-/// `List.pop` change the element count exactly when they change the value, so
-/// the count is a complete stand-in for comparing the whole list.
+/// The O(1) witness for [`mutates_receiver`]'s four methods: each changes the
+/// element count exactly when it changes the value (`clear` on an empty
+/// container changes neither), so the count is a complete stand-in for
+/// comparing the whole container.
 #[must_use]
 pub fn list_len(value: &Value) -> Option<usize> {
     match value {
         Value::List(items, _, _) => Some(items.len()),
+        Value::Map(pairs) => Some(pairs.len()),
         _ => None,
     }
 }
@@ -1263,6 +1356,14 @@ pub fn method(
                 }
             }
         }
+        // `[type.method.resolve]` step (1) names `clear` among `List`'s
+        // builtins: it drains in place, a `mut` receiver like `push`/`pop`,
+        // and consults the home region first for the same reason they do.
+        (Value::List(items, _, home), "clear") => {
+            machine.check_home_write(*home, "this `clear`", span)?;
+            std::sync::Arc::make_mut(items).clear();
+            Ok(Value::Unit)
+        }
         (Value::List(items, _, _), "len" | "count") => {
             Ok(Value::Int(items.len() as i128, IntTy::INT))
         }
@@ -1305,6 +1406,12 @@ pub fn method(
 
         (Value::Map(pairs), "len" | "count") => Ok(Value::Int(pairs.len() as i128, IntTy::INT)),
         (Value::Map(pairs), "is_empty") => Ok(Value::Bool(pairs.is_empty())),
+        // `[type.map]`'s surface: "`m.clear()` drains (a `mut` receiver)",
+        // and `[type.method.resolve]` step (1) lists it among `Map`'s builtins.
+        (Value::Map(pairs), "clear") => {
+            pairs.clear();
+            Ok(Value::Unit)
+        }
         (Value::Map(pairs), "pairs") => Ok(Value::list(
             pairs
                 .iter()

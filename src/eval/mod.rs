@@ -6900,7 +6900,7 @@ impl Machine {
                 return None;
             }
             match &slot.value {
-                value @ Value::List(..) => {
+                value @ (Value::List(..) | Value::Map(_)) => {
                     return builtin::mutates_receiver(value, method).then_some(None);
                 }
                 Value::Struct { name, .. } => name.clone(),
