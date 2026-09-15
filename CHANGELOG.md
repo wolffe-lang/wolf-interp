@@ -88,10 +88,15 @@ The rows this lane leaves, by name: `grammar/match_nullary_variant.lu`
 and waived — is50's), `net/writev_head_gather.lu` (`net_writev_head`
 declined by name, #111), `memory/region_str_{repeat,from_utf8}_return.lu`
 and `memory/read_param_take.lu` (static refusals this machine runs clean —
-conservatism, #111). For r20: fourteen Verdict rows close on the compiler's
-table (six `list_lit_*`, five `range_type_*`, three `error_alias_*`), hard
-23 -> 9 on both tiers, completeness unchanged (the four `fail`-pinned
-negatives sit there whatever this machine answers), unsupported unchanged.
+conservatism, #111). **The compiler's table, re-derived at the head** (`cargo xtask differ` with
+`--control` the 0.1.36 release binary, wolf 0.2.14 at `30731a6`, both
+tiers): agreements 332 -> 346 checked and 362 -> 376 native, hard 23 -> 9 on
+both (8 Diag warning-parity rows + 1 Verdict, `match_nullary_variant.lu`),
+completeness 151 and unsupported 108/78 unmoved, coverage B 435 -> 449 and
+BOTH 315 -> 329 / 345 -> 359 — `THE INTERPRETER BUMP MOVED 14 LEDGER
+COUNT(S)`, the fourteen files named, three `fail`-pinned rows moved below
+the ledger to their right codes. Every cell as predicted, on both tiers;
+r20 predicts against these.
 
 ## 0.1.36 — 2026-09-12
 
