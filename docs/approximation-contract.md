@@ -1289,3 +1289,38 @@ is no declaration to read, so `finish` remains the only judge, and
 that shape to keep §6.17's rule under test now that the corpus has no
 program which prints and then declines.
 
+
+### 6.19 Two fs-tier facts a program can see, stated rather than fixed (is50, 0.1.37)
+
+wolf-interp#110 filed five residues of the fs tier (is48). Three were code
+and landed (`fs_write_bytes` resolves its path before its payload; a read
+interrupted by a signal retries; a listing holding a name that is not UTF-8
+is the `utf8` row `fs_read_dir` declares). The other two are behaviour this
+machine keeps on purpose, and a program can observe both.
+
+**An observed program's `os_cwd()` names a private root, and the name varies
+run to run.** Measured at `30731a6`: `lupin conform-run` of
+`print(os_cwd()?)` printed
+`…/T/wolf-obs/1539f-0-1ab3c8f0` and then `…/T/wolf-obs/153a1-0-1be24670` —
+the root carries the pid and a serial — while `lupin run` of the same file
+printed the directory it was invoked in, twice alike. The private root is
+what makes concurrent observations of one program safe (divergence log, the
+is48 harness defect) and `os_cwd` answers it so a program never sees a split
+between where it thinks it is and where it writes. The cost is that a
+program which PRINTS its cwd has run-varying stdout under observation. That
+is not comparison surface on either side: an absolute directory is a host
+value, the compiled lane prints its own invocation directory, and
+`corpus/os/args_cwd.lu` asserts the cwd "as a predicate, never a path".
+A corpus file that printed one would be a witness about the host.
+
+**A handle read consumes the bytes before it charges the region.**
+`fs_read` and `fs_read_chunk` advance the file cursor and then mint the
+answer in the ambient region, and that charge can raise a trap — a `cap`
+breach, a freed region. When it does, the bytes read are gone. The order is
+forced rather than chosen: the size of the answer is only known after the
+read, and charging the requested size first would make the ledger report a
+buffer this machine never holds (§6.15's exact-capacity rule, which
+`memory/byte_producers_ledger.lu`'s `read_tight` relation pins). A trapped
+read ends the program or the proc that made it, so the lost bytes are
+observable only from a second proc reading the same descriptor afterwards.
+`fs_fstat` and `fs_read_dir` are idempotent and unaffected.
