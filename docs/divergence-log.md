@@ -110,6 +110,71 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The two mirrors — is50, lupin 0.1.37 (unreleased), pin `30731a6` (wolf-lang **v0.2.14**)
+
+**No pin move.** The subject is two mirrors and their residue:
+wolf-interp#107 (s157's three clauses: `[gram.pat.nullary]`,
+`[conf.resolve.ambient]`, `[mem.tier0.mode.read]`'s `take`), wolf-interp#111
+(s160's: `[mem.region.proc]`, `[mem.region.escape]`'s materializing `str`
+producers and projected reads, `[os.net.writev.head]`), wolf-interp#112 (the
+four `fs_*` names std.fs calls), #110 (the fs tier's residue) and #102 (an
+imported trait alias expands no bound).
+
+#### Predicted, before the first edit
+
+Baseline: the 0.1.36+is49 binary at trunk `790c127`, `lupin corpus`,
+measured at the head before a line was edited — 449 reach `run`, 460 match,
+23 dynamic counterparts, 41 conservatism, 54 out of scope, 2 mismatch (both
+filed), exactly is49's closing figures. The rows this lane moves, by name:
+
+- `grammar/match_nullary_variant.lu` — MISMATCH (filed, DIV-2026-024) ->
+  **match**, reaching `run`. The waiver retires.
+- `net/writev_head_gather.lu` — out of scope (`net_writev_head` does not
+  resolve) -> **match**, reaching `run`.
+- `memory/read_param_take.lu` — conservatism (`exit(0)`) -> **dynamic
+  counterpart**, `trap(exclusivity)` at the `take`: E1014's dynamic row is
+  `exclusivity` (`ledger::static_code_to_trap`), the posture
+  `read_param_write.lu` already holds.
+- `memory/region_str_repeat_return.lu`, `memory/region_str_from_utf8_return.lu`
+  — conservatism (`exit(0)`) -> **dynamic counterpart**,
+  `trap(region-fault)` at the read after `scratch` dies.
+- Unmoved and pinned by tests instead: `conc/chan_payload_escape_proc.lu`
+  and `memory/region_str_field_return.lu` (already `trap(region-fault)`),
+  `lints/shadow_prelude_call.lu` (already a match), and every row #112,
+  #110 and #102 touch — none of them has a corpus file.
+
+| class | baseline (`790c127`) | predicted |
+| --- | --- | --- |
+| match | 460 | 462 |
+| out of scope | 54 | 53 |
+| mismatch (unfiled) | 0 | 0 |
+| mismatch (filed) | 2 | 1 |
+| dynamic counterpart | 23 | 26 |
+| conservatism | 41 | 38 |
+| reach `run` | 449 | 451 |
+
+The risk the prediction names: charging `upper`/`lower`/`repeat`/`replace`
+to the ambient region could move a ledger relation in a file that builds
+strings inside a region (`memory/byte_producers_ledger.lu`,
+`memory/region_bytes_query.lu`). Predicted: none moves.
+
+The compiler's table (`cargo xtask differ wolf lupin --triage`, 615 files,
+580 entries), predicted from is49's measured head:
+
+                    checked                     native
+    agreements      346 -> 351  (+5)            376 -> 381  (+5)
+    completeness    151 -> 148  (-3)            151 -> 148  (-3)
+    soundness         0 ->   0                    0 ->   0
+    unsupported     108 -> 107  (-1)             78 ->  77  (-1)
+    hard              9 ->   8  (-1)              9 ->   8  (-1)
+    coverage A      340 -> 340                  372 -> 372
+    coverage B      449 -> 451  (+2)            449 -> 451  (+2)
+    coverage BOTH   329 -> 331  (+2)            359 -> 361  (+2)
+
+The five agreements are the five files above; the three completeness notes
+leaving are the `exit(0)`-against-a-static-code rows; hard loses its one
+Verdict (DIV-2026-024) and keeps #167's eight Diag rows.
+
 ### The three clauses — is49, lupin 0.1.37, pin `30731a6` (wolf-lang **v0.2.14**)
 
 **The pin moves two releases**, `a7f517e` (v0.2.12) -> `30731a6` (v0.2.14):
