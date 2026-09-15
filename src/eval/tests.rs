@@ -3777,3 +3777,176 @@ fn take_of_a_local_or_a_take_parameter_still_moves() {
                  }\n";
     assert_eq!(stdout(plain), "1\n");
 }
+
+// -- `[mem.region.escape]`: the materializing `str` producers (s160, #111) ----
+
+fn scratch_return(expr: &str) -> String {
+    format!(
+        "fn build() -> str {{\n\
+         \x20   region scratch {{\n\
+         \x20       let s = {expr}\n\
+         \x20       s\n\
+         \x20   }}\n\
+         }}\n\
+         fn main() -> !int {{\n\
+         \x20   print(\"{{build()}}\")\n\
+         \x20   0\n\
+         }}\n"
+    )
+}
+
+#[test]
+fn every_materializing_str_producer_dies_with_its_region() {
+    // "`upper`, `lower`, `repeat` and `replace` build fresh bytes in the
+    // ambient region, and so does the free producer `str_from_utf8` … each is
+    // a site exactly as `+` is." wolf 0.2.14 `--checked` answers E1010 on
+    // every one of these (pin 30731a6) — `repeat(0)` and an empty-needle
+    // `replace` included, since a static checker cannot see the count or the
+    // needle; the corpus witnesses two of the five.
+    for expr in [
+        "\"re\".upper()",
+        "\"RE\".lower()",
+        "\"re\".repeat(2)",
+        "\"re\".repeat(0)",
+        "\"re\".replace(\"r\", \"x\")",
+        "\"re\".replace(\"\", \"x\")",
+        "str_from_utf8(\"hi\".bytes()) else \"?\"",
+    ] {
+        assert_eq!(
+            trap_kind(&scratch_return(expr)),
+            TrapKind::RegionFault,
+            "{expr}"
+        );
+    }
+}
+
+#[test]
+fn a_view_product_is_no_site_and_escapes_clean() {
+    // The other side of `[mem.str.view]`, "unchanged and allocates nothing":
+    // a view of a LITERAL returned out of the region runs on both compiler
+    // tiers and here. (A view of a region-BUILT `str` also runs clean on
+    // both compiler tiers and here — the clause is silent on whether a view
+    // carries its receiver's sites, and that silence is filed upstream
+    // rather than decided in this machine.)
+    for (expr, want) in [
+        ("\"  re  \".trim()", "re\n"),
+        ("\"re\".strip_prefix(\"r\") else \"?\"", "e\n"),
+    ] {
+        assert_eq!(stdout(&scratch_return(expr)), want, "{expr}");
+    }
+}
+
+#[test]
+fn a_produced_str_is_charged_to_the_ambient_region() {
+    // `[mem.region.account.1]`: the charge is what makes `region_bytes` move
+    // and a `cap: 0` region refuse. wolf 0.2.14's NATIVE tier answers
+    // `charged true` and `trap(alloc-contract)` for each producer, as the
+    // clause says; its CHECKED tier answers `charged false` and runs the cap
+    // clean for all four, while charging `+` — a two-tier split inside the
+    // compiler, filed upstream. This machine follows the clause.
+    for expr in [
+        "base.upper()",
+        "base.repeat(3)",
+        "base.replace(\"e\", \"x\")",
+    ] {
+        let charged = format!(
+            "fn main() -> !int {{\n\
+             \x20   let base = \"re\"\n\
+             \x20   var charged = 0\n\
+             \x20   region pass {{\n\
+             \x20       let s = {expr}\n\
+             \x20       charged = region_bytes(pass)\n\
+             \x20       if s.len == 0 {{ return 1 }}\n\
+             \x20   }}\n\
+             \x20   print(\"{{charged > 0}}\")\n\
+             \x20   0\n\
+             }}\n"
+        );
+        assert_eq!(stdout(&charged), "true\n", "{expr}");
+        let capped = format!(
+            "fn main() -> !int {{\n\
+             \x20   let base = \"re\"\n\
+             \x20   region idle(cap: 0) {{\n\
+             \x20       let s = {expr}\n\
+             \x20       print(s)\n\
+             \x20   }}\n\
+             \x20   0\n\
+             }}\n"
+        );
+        assert_eq!(trap_kind(&capped), TrapKind::AllocContract, "{expr}");
+    }
+}
+
+#[test]
+fn a_projected_str_read_carries_its_places_region() {
+    // `[mem.region.escape]`'s second half: "a `str` read carries its place's
+    // sites through a projection, not only out of a whole local". The corpus
+    // witnesses one field; a nested field, a tuple element and a list element
+    // are the same rule, each E1010 on wolf 0.2.14 `--checked`.
+    let nested = "struct Inner { title: str }\n\
+                  struct Doc { inner: Inner, words: int }\n\
+                  fn build() -> str {\n\
+                  \x20   region scratch {\n\
+                  \x20       let d = Doc { inner: Inner { title: \"re\" + \"gions\" }, words: 1 }\n\
+                  \x20       d.inner.title\n\
+                  \x20   }\n\
+                  }\n\
+                  fn main() -> !int {\n\
+                  \x20   print(\"{build()}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(trap_kind(nested), TrapKind::RegionFault);
+    assert_eq!(
+        trap_kind(
+            &scratch_return("(\"re\" + \"gions\", 1)").replace("        s\n", "        s.0\n")
+        ),
+        TrapKind::RegionFault
+    );
+    let element = "fn build() -> str {\n\
+                   \x20   region scratch {\n\
+                   \x20       var xs = List[str]()\n\
+                   \x20       (mut xs).push(\"re\" + \"gions\")\n\
+                   \x20       xs[0]\n\
+                   \x20   }\n\
+                   }\n\
+                   fn main() -> !int {\n\
+                   \x20   print(\"{build()}\")\n\
+                   \x20   0\n\
+                   }\n";
+    assert_eq!(trap_kind(element), TrapKind::RegionFault);
+}
+
+#[test]
+fn a_produced_str_held_outside_its_region_or_sent_from_a_proc_faults() {
+    // The escape shapes besides a return, for a producer rather than `+`: a
+    // binding declared outside the block, and `[mem.region.proc]`'s send out
+    // of a proc's own ambient region. Both E1010 on wolf 0.2.14 `--checked`.
+    let held = "fn main() -> !int {\n\
+                \x20   var keep = \"\"\n\
+                \x20   region scratch {\n\
+                \x20       keep = \"re\".upper()\n\
+                \x20   }\n\
+                \x20   print(keep)\n\
+                \x20   0\n\
+                }\n";
+    assert_eq!(trap_kind(held), TrapKind::RegionFault);
+    let sent = "fn worker(n: int, out: channel[str]) -> !int {\n\
+                \x20   out.send(\"ab\".repeat(n))?\n\
+                \x20   0\n\
+                }\n\
+                fn main() -> !int {\n\
+                \x20   let out = channel[str](4)\n\
+                \x20   let c = spawn proc worker(2, out)\n\
+                \x20   let m = c.monitor()\n\
+                \x20   select {\n\
+                \x20       exit(reason) from m => {},\n\
+                \x20       timeout(1.s) => { return 1 },\n\
+                \x20   }\n\
+                \x20   out.close()\n\
+                \x20   for line in out { print(line) }\n\
+                \x20   0\n\
+                }\n";
+    let trap = trap_of(sent);
+    assert_eq!(trap.kind, TrapKind::RegionFault);
+    assert!(trap.message.contains("proc:worker"), "{}", trap.message);
+}
