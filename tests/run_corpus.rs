@@ -1562,6 +1562,9 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // are sites (#111), so their answers carry the ambient region as a home
     // and die with it — two more conservatism rows become E1010's dynamic
     // counterpart.
+    // `net/writev_head_gather.lu` is `[os.net.writev.head]` (#111): the name
+    // resolves and the gather runs, out of scope -> match.
+    ("net/writev_head_gather.lu", "exit(0)"),
 ];
 
 #[test]
