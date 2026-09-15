@@ -274,7 +274,11 @@ impl FsTable {
         }
         let want = usize::try_from(want).unwrap_or(usize::MAX).min(READ_CAP);
         let mut buf = vec![0u8; want];
-        let got = file.read(&mut buf).map_err(io_row)?;
+        // A signal that lands mid-read is `Interrupted`, and it is not a
+        // failure of the read: `write_all` retries it internally and a bare
+        // `read` does not, so without this loop an EINTR became a spurious
+        // `io` row (wolf-interp#110 item 3).
+        let got = read_retrying(file, &mut buf).map_err(io_row)?;
         if got == 0 {
             // Wanted bytes, got none: the `eof` row.
             return Err(FsErr::Row("eof"));
@@ -313,6 +317,17 @@ impl FsTable {
             return Err(FsErr::Row("io"));
         }
         Ok(())
+    }
+}
+
+/// One `read`, retried while the host reports `Interrupted` and never
+/// otherwise — the loop `write_all` already carries for the other direction.
+fn read_retrying(reader: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usize> {
+    loop {
+        match reader.read(buf) {
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            other => return other,
+        }
     }
 }
 
@@ -837,16 +852,19 @@ impl Machine {
                 self.fs_answer(name, answer, span)
             }
             "fs_write_bytes" => {
-                let bytes = fs_bytes_arg(args, 1, name)?;
+                // The PATH is resolved before the payload is read
+                // (wolf-interp#110 item 1): "a path this machine will not
+                // look at is still refused by name", and a payload error
+                // answered first let `invalid` win over that refusal.
                 let path = self.fs_path_arg(args, 0, name)?;
-                let answer = match bytes {
-                    Ok(bytes) => self
-                        .fs_contained(&path, name)
-                        .and_then(|path| write_bytes(&path, &bytes))
-                        .map(|()| Value::Unit),
+                let target = self.fs_contained(&path, name);
+                let bytes = fs_bytes_arg(args, 1, name)?;
+                let answer = match (target, bytes) {
+                    (Err(refusal), _) => Err(refusal),
+                    (Ok(path), Ok(bytes)) => write_bytes(&path, &bytes).map(|()| Value::Unit),
                     // An int outside the octet is the declared `invalid`
                     // row, the net byte writer's discipline.
-                    Err(tag) => Err(FsErr::Row(tag)),
+                    (Ok(_), Err(tag)) => Err(FsErr::Row(tag)),
                 };
                 self.fs_answer(name, answer, span)
             }
@@ -1173,6 +1191,46 @@ fn fs_bytes_arg(args: &[Value], at: usize, name: &str) -> Result<Result<Vec<u8>,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_interrupted_read_is_retried_and_is_never_a_row() {
+        // wolf-interp#110 item 3: a signal mid-read is not a failure of the
+        // read. A reader that is interrupted twice and then answers must
+        // hand back its bytes; any other error still surfaces on the first
+        // attempt.
+        struct Flaky {
+            interruptions: usize,
+            calls: usize,
+        }
+        impl Read for Flaky {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                self.calls += 1;
+                if self.interruptions > 0 {
+                    self.interruptions -= 1;
+                    return Err(std::io::Error::from(std::io::ErrorKind::Interrupted));
+                }
+                buf[..3].copy_from_slice(b"abc");
+                Ok(3)
+            }
+        }
+        let mut flaky = Flaky {
+            interruptions: 2,
+            calls: 0,
+        };
+        let mut buf = [0u8; 8];
+        assert_eq!(read_retrying(&mut flaky, &mut buf).expect("retried"), 3);
+        assert_eq!(&buf[..3], b"abc");
+        assert_eq!(flaky.calls, 3);
+
+        struct Broken;
+        impl Read for Broken {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+            }
+        }
+        let err = read_retrying(&mut Broken, &mut buf).expect_err("not retried");
+        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+    }
 
     /// A scratch directory of this test's own, under the crate's `target/`.
     ///
