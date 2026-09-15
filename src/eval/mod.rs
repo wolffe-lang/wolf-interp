@@ -6877,9 +6877,15 @@ impl Machine {
         }
         let (slot, _) = self.resolve(path)?;
         match &slot.value {
-            value @ (Value::List(..) | Value::Map(_) | Value::Str(_)) => Some(Lend {
-                mutating: builtin::mutates_receiver(value, method),
-            }),
+            // Only a step-(1) builtin lends: a home-module call runs std code,
+            // which keeps the copy for the reason an impl method does.
+            value @ (Value::List(..) | Value::Map(_) | Value::Str(_))
+                if builtin::is_builtin_method(value, method) =>
+            {
+                Some(Lend {
+                    mutating: builtin::mutates_receiver(value, method),
+                })
+            }
             _ => None,
         }
     }
@@ -6900,11 +6906,27 @@ impl Machine {
                 return None;
             }
             match &slot.value {
-                value @ (Value::List(..) | Value::Map(_)) => {
-                    return builtin::mutates_receiver(value, method).then_some(None);
+                value @ (Value::List(..) | Value::Map(_) | Value::Str(_)) => {
+                    if builtin::is_builtin_method(value, method) {
+                        return builtin::mutates_receiver(value, method).then_some(None);
+                    }
+                    Err(builtin::home_of(value)?.0)
                 }
-                Value::Struct { name, .. } => name.clone(),
+                Value::Struct { name, .. } => Ok(name.clone()),
                 _ => return None,
+            }
+        };
+        // `[type.method.resolve]`: a home candidate whose first parameter is
+        // `mut` is called `(mut xs).sort_by(less)`, and the bare spelling is
+        // E0804 exactly as it is on a builtin's `mut` receiver.
+        let type_name = match type_name {
+            Ok(name) => name,
+            Err(ctor) => {
+                let module = self.shared.program.homes.get(ctor)?;
+                let Some(Def::Fn(decl)) = self.shared.program.lookup(module, method, true) else {
+                    return None;
+                };
+                return (decl.params.first()?.mode == Some(ParamMode::Mut)).then_some(None);
             }
         };
         let (_, defs) = self.method_defs_named(&type_name, method)?;
@@ -6918,6 +6940,83 @@ impl Machine {
             .first()
             .filter(|param| matches!(param.kind, ParamKind::SelfParam { .. }))?;
         (receiver_param.mode == Some(ParamMode::Mut)).then_some(Some(receiver_param.span))
+    }
+
+    /// `[type.method.resolve]` step (2), at the depth a tree walk can state
+    /// it: `None` for a receiver with no home module or a name step (1)
+    /// answers; `Some` the home module's candidate; and a refusal by the
+    /// counterparty's code where the clause names one — E0301 with no std root
+    /// (`[type.method.root]`), E0403 for no candidate or a first parameter that
+    /// does not fit, E0402 for a wrong count against the written arguments,
+    /// E0804 for a `mut` receiver the candidate does not take `mut`. Each is
+    /// the checker's decision, so each is `unsupported`, never a trap.
+    fn home_candidate(
+        &self,
+        receiver: &Value,
+        method: &str,
+        argc: usize,
+        mode: Option<ParamMode>,
+    ) -> EResult<Option<(String, Box<FnDecl>)>> {
+        let Some((ctor, dir)) = builtin::home_of(receiver) else {
+            return Ok(None);
+        };
+        if method == "take" || builtin::is_builtin_method(receiver, method) {
+            return Ok(None);
+        }
+        let program = &self.shared.program;
+        let kind = receiver.kind();
+        let no_method = || {
+            unsupported(format!(
+                "`{kind}` has no method `{method}`: no builtin answers it, and `std.{dir}` under \
+                 the configured std root has no `pub fn {method}` taking a `{ctor}` first — the \
+                 counterparty's E0403 ([type.method.resolve])"
+            ))
+        };
+        let Some(module) = program.homes.get(ctor) else {
+            if !program.std_configured {
+                return unsupported(format!(
+                    "`{kind}.{method}` is no builtin, so it reaches `{ctor}`'s home module \
+                     `std.{dir}` ([type.method.resolve] step 2), and no std root is configured: \
+                     pass `--std-root DIR` or set `LUPIN_STD` (the compiler reads `WOLF_STD` or a \
+                     `std` path dependency in `wolf.pkg`) — the counterparty's E0301 \
+                     ([type.method.root])"
+                ));
+            }
+            return no_method();
+        };
+        let Some(Def::Fn(decl)) = program.lookup(module, method, true) else {
+            return no_method();
+        };
+        let decl = decl.clone();
+        let Some(first) = decl.params.first() else {
+            return no_method();
+        };
+        let ParamKind::Named { ty, .. } = &first.kind else {
+            return no_method();
+        };
+        let generics: Vec<&str> = decl.generics.iter().map(|g| g.name.name.as_str()).collect();
+        if !first_param_fits(ty, ctor, &generics, receiver) {
+            return unsupported(format!(
+                "`{kind}` has no method `{method}`: the candidate `std.{dir}.{method}` was found, \
+                 and its first parameter does not fit this receiver's element type — the \
+                 counterparty's E0403 ([type.method.resolve])"
+            ));
+        }
+        if decl.params.len() != argc + 1 {
+            return unsupported(format!(
+                "`{kind}.{method}` is `std.{dir}.{method}`, which takes {} argument(s) after the \
+                 receiver, and {argc} were written — the counterparty's E0402 \
+                 ([type.method.resolve])",
+                decl.params.len() - 1
+            ));
+        }
+        if mode == Some(ParamMode::Mut) && first.mode != Some(ParamMode::Mut) {
+            return unsupported(format!(
+                "`(mut …).{method}` spells a `mut` receiver, and `std.{dir}.{method}` does not take \
+                 its first parameter `mut` — the counterparty's E0804 (X1, [type.method.resolve])"
+            ));
+        }
+        Ok(Some((module.clone(), decl)))
     }
 
     fn eval_method(
@@ -7105,13 +7204,37 @@ impl Machine {
                         applied.value
                     })
             }
-            None => builtin::method(
-                self,
-                &mut receiver_value,
-                method,
-                evaluated.values.clone(),
-                span,
-            ),
+            // `[type.method.resolve]` step (2): a receiver with a home module,
+            // and a name no builtin answers, is the free call
+            // `home.name(recv, args)` — the receiver the first argument, its
+            // post-call value the writeback, exactly as an impl method's.
+            None => {
+                match self.home_candidate(&receiver_value, method, evaluated.values.len(), mode) {
+                    Err(signal) => Err(signal),
+                    Ok(Some((module, decl))) => {
+                        let mut call_args = Vec::with_capacity(evaluated.values.len() + 1);
+                        call_args.push(receiver_value.clone());
+                        call_args.extend(evaluated.values.iter().cloned());
+                        self.pending_retags = Vec::new();
+                        self.call_fn(&decl, &module, call_args, span)
+                            .map(|applied| {
+                                let mut params = applied.params.into_iter();
+                                if let Some(next_self) = params.next() {
+                                    receiver_value = next_self;
+                                }
+                                final_args = params.collect();
+                                applied.value
+                            })
+                    }
+                    Ok(None) => builtin::method(
+                        self,
+                        &mut receiver_value,
+                        method,
+                        evaluated.values.clone(),
+                        span,
+                    ),
+                }
+            }
         };
         self.finish_args(
             &evaluated.writebacks,
@@ -8732,3 +8855,50 @@ pub fn run_source_seeded(
 
 #[cfg(test)]
 mod tests;
+
+/// `[type.method.home]`'s candidate rule at a tree walk's depth: the first
+/// parameter is spelled with the receiver's type constructor, and a CONCRETE
+/// element type argument — one that is not the function's own generic — agrees
+/// with the element the receiver holds (`sum(xs: List[int])` on a `List[str]`
+/// does not fit). An empty receiver holds no element to read, so that half
+/// cannot refuse, which is the permissive direction.
+fn first_param_fits(
+    ty: &crate::ast::Type,
+    ctor: &str,
+    generics: &[&str],
+    receiver: &Value,
+) -> bool {
+    let crate::ast::TypeKind::Path { path, args } = &*ty.kind else {
+        return false;
+    };
+    if path.segments.last().map(|segment| segment.name.as_str()) != Some(ctor) {
+        return false;
+    }
+    let Value::List(items, _, _) = receiver else {
+        return true;
+    };
+    let (Some(crate::ast::TypeArg::Type(elem)), Some(first)) = (args.first(), items.first()) else {
+        return true;
+    };
+    let crate::ast::TypeKind::Path {
+        path: elem_path,
+        args: elem_args,
+    } = &*elem.kind
+    else {
+        return true;
+    };
+    let [segment] = elem_path.segments.as_slice() else {
+        return true;
+    };
+    let spelled = segment.name.as_str();
+    if !elem_args.is_empty() || generics.contains(&spelled) {
+        return true;
+    }
+    let held = prim_type_names(&first.value);
+    held.is_empty()
+        || held.iter().any(|name| {
+            name == spelled
+                || (spelled == "int" && name == "i64")
+                || (spelled == "uint" && name == "u64")
+        })
+}
