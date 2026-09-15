@@ -420,7 +420,12 @@ const RATCHET_FLOOR: usize = 236;
 // sits under `gram`/`type`/`conf`/`mem`/`os`, and `type.err.alias` is in
 // `type`, not the reserved `err` — `anchor::REGISTERED_NAMESPACES` holds at
 // thirteen.
-const ANCHORS_TOTAL: usize = 498;
+// 498 -> 513 at 4c046f1 (is51, wolf-lang s166, dev-stamped): FIFTEEN, all
+// s166's — `type.method` ×5 and `type.comb` ×4 in spec/10, and
+// `conc.task.par.{order,fail,capture,chunk,det,cost}` in spec/03. Key sets
+// diffed BOTH ways — fifteen added, NOTHING dropped, no owner changed. No new
+// NAMESPACE (`type`, `conc`): `anchor::REGISTERED_NAMESPACES` holds.
+const ANCHORS_TOTAL: usize = 513;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -666,9 +671,11 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // corpus files, none leaving, every one an entry (no new members), so
     // both counts move by 35 and `members` holds at 35. The suite is unmoved
     // (is49's tests are inline fixtures the extractor does not harvest).
-    assert_eq!(summary.pin, "30731a6509443ade03724707345da9ceb86a88bf");
-    assert_eq!(summary.programs, 653);
-    assert_eq!(summary.records, 618);
+    // 653/618 -> 655/620 at 4c046f1 (is51, wolf-lang s166, dev-stamped): two
+    // corpus files, both entries (s162's #146 witnesses), none leaving.
+    assert_eq!(summary.pin, "4c046f15746bbf11821312152165be5f6340b9b6");
+    assert_eq!(summary.programs, 655);
+    assert_eq!(summary.records, 620);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

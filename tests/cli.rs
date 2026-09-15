@@ -256,7 +256,10 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // `3befc3e` pin (is35), so `members` moves at last: 34 -> 35.
     // The registry gains four anchors and no namespace (all four sit under
     // `gram`/`mem`/`type`, and spec/05 is untouched in the range).
-    assert!(stdout.contains("615 file(s)"), "{stdout}");
+    // 615 -> 617 at 4c046f1 (is51, wolf-lang s166, dev-stamped): TWO over
+    // s162's #146 witnesses, both entries; s166's two commits at the pin are
+    // spec only. The registry gains fifteen anchors and no namespace.
+    assert!(stdout.contains("617 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -265,7 +268,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 615);
+    assert_eq!(value["total"], 617);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

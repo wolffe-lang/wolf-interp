@@ -1565,6 +1565,15 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // `net/writev_head_gather.lu` is `[os.net.writev.head]` (#111): the name
     // resolves and the gather runs, out of scope -> match.
     ("net/writev_head_gather.lu", "exit(0)"),
+
+    // -- is51, lupin 0.1.37: the combinators, at the 4c046f1 pin ------------
+    //
+    // The pin is wolf-lang s166's spec head (dev-stamped): trunk's s162 pair
+    // below, both plain `List` programs that ran on the unchanged binary
+    // and match; s166's `[type.method]`/`[type.comb]`/`[conc.task.par]`
+    // commits carry no corpus files.
+    ("memory/push_grow_guarded_index.lu", "exit(240)"),
+    ("memory/push_grow_nested_guarded_index.lu", "exit(0)"),
 ];
 
 #[test]

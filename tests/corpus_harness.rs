@@ -720,13 +720,15 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     let report = report();
     assert_eq!(
         report.total(),
-        615,
+        617,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
     // 545 -> 580 at 30731a6 (is49, wolf-lang v0.2.14): thirty-five new
     // files, every one an entry — `members` holds at 35.
-    assert_eq!(report.entries(), 580);
+    // 580 -> 582 at 4c046f1 (is51, wolf-lang s166, dev-stamped): s162's
+    // two `memory/push_grow_*guarded_index.lu` rows, both entries.
+    assert_eq!(report.entries(), 582);
     assert_eq!(report.members(), 35);
 }
 
