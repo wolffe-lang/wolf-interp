@@ -593,8 +593,19 @@ pub(crate) fn remove(path: &Path) -> FsResult<()> {
 
 /// `fs_rename(from, to)`: moves an entry WITHOUT reading it
 /// (`corpus/fs/bytes_dirs.lu` moves bytes no text reader can hold).
+///
+/// Two host refusals keep their own rows because a caller answers them with a
+/// copy rather than a failure: `cross_device` (`EXDEV`,
+/// `ERROR_NOT_SAME_DEVICE`) and `exists` (a destination this host's rename
+/// will not replace — windows' `ERROR_ALREADY_EXISTS`; unix replaces). A
+/// non-empty directory, a file over a directory and a directory over a file
+/// are `io` (probed on wolf 0.2.14, both tiers, macOS).
 pub(crate) fn rename(from: &Path, to: &Path) -> FsResult<()> {
-    std::fs::rename(from, to).map_err(|e| path_row(&e))
+    std::fs::rename(from, to).map_err(|e| match e.kind() {
+        std::io::ErrorKind::CrossesDevices => FsErr::Row("cross_device"),
+        std::io::ErrorKind::AlreadyExists => FsErr::Row("exists"),
+        _ => path_row(&e),
+    })
 }
 
 /// `fs_create_dir_all(path)`: the whole chain, and an existing directory is
@@ -624,10 +635,16 @@ pub(crate) fn read_dir(path: &Path) -> FsResult<Vec<String>> {
     let mut names = Vec::new();
     for entry in std::fs::read_dir(path).map_err(|e| path_row(&e))? {
         let entry = entry.map_err(|e| path_row(&e))?;
+        // wolf-interp#110 item 2, decided: a name that is not UTF-8 (legal
+        // on unix) refuses the WHOLE listing with `utf8`, the row
+        // `fs_read_dir` declares for exactly this (read off the compiled
+        // lane's E0602 at wolf 0.2.14). Skipping the entry would answer a
+        // listing that is not the directory's; `io` was a tag chosen by
+        // accident of `into_string()`, and not the one the call declares.
         let name = entry
             .file_name()
             .into_string()
-            .map_err(|_| FsErr::Row("io"))?;
+            .map_err(|_| FsErr::Row("utf8"))?;
         names.push(name);
     }
     names.sort();
@@ -973,6 +990,17 @@ impl Machine {
         match answer {
             Ok(value) => Ok(value),
             Err(FsErr::Row(tag)) => {
+                // A row the call does not DECLARE is coarsened to `io`, which
+                // every fs call declares. The host can say more than a
+                // signature does — std maps `EEXIST`, `EXDEV`, `ENOENT`
+                // wherever they occur — and a tag outside the declared row is
+                // a tag no handler can name: its arm stops reading as a tag,
+                // binds, and swallows every other row (wolf-interp#112's
+                // measurement, where `fs_rename`'s `cross_device =>` arm
+                // caught a plain `io`). The compiled lane coarsens the same
+                // way (probed: `fs_create` under a missing parent is `io`).
+                let declared = super::builtin::declared_row(name);
+                let tag = if declared.contains(&tag) { tag } else { "io" };
                 self.note(
                     Rule::ErrUnion,
                     span,
