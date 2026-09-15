@@ -428,7 +428,7 @@ struct Walk<'a> {
     assigns: Vec<AssignRec>,
     /// Spans of the closures the walk is currently inside.
     closure_stack: Vec<Span>,
-    /// > 0 while inside a closure passed to `.spawn(…)` or `.par(…)`
+    /// Nonzero while inside a closure passed to `.spawn(…)` or `.par(…)`
     /// (E1101/W1101).
     task_depth: usize,
     /// The scope-stack depth where the innermost task closure begins: a name
