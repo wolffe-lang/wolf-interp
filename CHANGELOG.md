@@ -2,6 +2,109 @@
 
 ## Unreleased
 
+THE TWO MIRRORS (is50). No pin move: `30731a6` (wolf-lang v0.2.14), is49's.
+The subject is s157's and s160's clauses that is49 ledgered and left,
+wolf-interp#107 and #111, and three smaller issues: #112 (std.fs names that
+did not resolve), #110 (the fs tier's residue) and #102 (an imported trait
+alias).
+
+**A bare dotted path is a pattern** (`[gram.pat.nullary]`, #107).
+`Color.Green =>` and `io.Eof =>` parse as `PatKind::Path` and match a
+payload-less constructor by the payload form's own resolution rule
+(`Machine::constructor_path_matches`, shared by both). This covers or-patterns
+and the `else |pat|` handler position too. The E0201 "a dotted path in a pattern must carry a
+payload" is retired, and `grammar/match_nullary_variant.lu` runs `exit(0)`,
+`green\nfirst\n`, so DIV-2026-024 and its waiver go. Arity stays the checker's question: a bare
+path that names the value's constructor while the value carries a payload
+declines by name citing E0808, with the payload spelled
+(`Shape.Rgb(_, _, _)`), rather than falling to a later arm.
+
+**`take` of a `read` parameter traps** (`[mem.tier0.mode.read]`, #107).
+`eat(take b)` where `b` is a read-mode parameter traps `exclusivity` at the
+argument, the row E1014's write half has trapped since 0.1.8. The barrier
+is the write barrier's (`read_param_write`), so a projection
+(`take b.items`) and a `Copy` element trap too, while a body-scope shadow
+(`var b = copy b`), a `take`-mode parameter and the plain move-out
+`fn f(b: T) -> T { b }` (wolf-lang#359's question, not this one) do not.
+Every shape was measured against wolf 0.2.14 `--checked`.
+`memory/read_param_take.lu` moves from conservatism to dynamic counterpart.
+
+**A declaration wins its own name, pinned** (`[conf.resolve.ambient]`,
+#107). Already right at 0.1.34. `tests/resolve_ambient.rs` pins the three
+shapes the corpus file does not: a sibling file's `read_line` called from
+the entry file, `fn assert` (declared and warned, but the call still reaches
+the primitive) and a declared `time_now_ms`. Each has the compiler's
+verdict, stdout and W0304 span.
+
+**The materializing `str` producers are region sites**
+(`[mem.region.escape]`, #111). `upper`, `lower`, `repeat` and `replace`
+now charge their answer to the ambient region at exact size and carry it
+as the value's home (`builtin::produced_str`). `str_from_utf8` had charged
+since 0.1.21 but was never homed. A read after the region's wholesale free
+is the `[mem.region.intra.2]` fault, so `memory/region_str_repeat_return.lu`
+and `region_str_from_utf8_return.lu` trap `region-fault` (conservatism ->
+dynamic counterpart), as do `repeat(0)`, an empty-needle `replace`, a
+produced `str` held by a binding outside its block, and one sent out of a
+proc's own region (`[mem.region.proc]`). The view side (`trim`, `get`,
+`strip_*`, the `split`/`words`/`lines` pieces) stays home-less. Projected
+reads already carried their place's region: a nested field, a tuple element
+and a list element are pinned beside the corpus's one field. **Measured
+against wolf 0.2.14, the compiler's two tiers disagree on the charge:**
+`--native` charges all five and `trap(alloc-contract)`s them under
+`cap: 0`, while `--checked` charges none of them (it does charge `+`). This
+machine follows the clause and the native tier; filed as wolf-lang#391.
+Whether a view of a region-BUILT `str` carries its receiver's sites is
+unstated, and all three lanes let it escape clean; filed as wolf-lang#392
+instead of decided here.
+
+**`net_writev_head`** (`[os.net.writev.head]`, #111). The gather with a
+`str` head: the head enters `net_writev`'s vector as one more part, and an
+empty one contributes none, so the wire, the park and the rows are
+`net_writev`'s by construction. `net/writev_head_gather.lu` moves from out
+of scope to a match, and its degenerate shapes plus a multibyte head are
+byte-identical to both compiler tiers.
+
+**std.fs's missing names, and the rows they exposed** (#112). `fs_create_dir`
+(one level: `exists` over anything already there, `not_found` under a
+missing parent), `fs_remove_dir` (one empty directory: `io` for a non-empty
+one or a file) and `fs_write_chunk` (the handle's byte write) are in the
+tier. The issue's fourth name, `fs_rename_atomic`, is no builtin on either
+machine (E0301 on wolf 0.2.14; std.fs names it only to say it does not
+exist). Reading the three rows off the compiler's own E0602 showed that five
+of this machine's declared fs rows had drifted: `fs_create` has no
+`not_found`, `fs_create_dir_all` is `{denied, io}`, `fs_read_dir` carries
+`utf8`, and `fs_rename` carries `cross_device` and `exists`. It was
+observable: a handler's `cross_device =>` arm was a binding and caught a
+plain `io`. The rows are now the compiler's. `fs_answer` coarsens any tag
+outside a call's declared row to `io`, so a host error can never reach a
+handler as an undeclared tag again, and `fs_rename` keeps its two refusals
+by kind. Recorded on wolf-lang#181. wolf-std's four dark rows
+(`fs/chunk_stream`, `directories_and_metadata`, `exists_row`, `fstat_rows`)
+run with the expected verdicts under this binary, and the other thirteen
+rows are unchanged.
+
+**The fs residue** (#110). `fs_write_bytes` resolves its path before it reads
+its payload, so a refused path wins over `invalid`. A handle read retries
+`Interrupted` (`fs::read_retrying`). A listing holding a non-UTF-8 name is
+the `utf8` row `fs_read_dir` declares, for the whole call (linux-only test).
+The run-varying `os_cwd` under observation and the consumed-then-charged
+handle read are behaviour kept on purpose, stated in the approximation
+contract §6.19.
+
+**An imported trait alias expands its bound** (#102). `sema::expand_bound`
+reads a qualified bound (`tiny.Num`) through the alias table of the module
+its head names, and the alias's own list in that module, so an alias chain
+behind a renamed import works too. wolf-std's `tests/ops/num_alias_tier.lu`
+(`Num = Add + Sub + Mul + Div + Rem + cmp.Eq + cmp.Ord`, ledgered
+`mirror-lag(E0501)`) runs `exit(0)` with the compiler's stdout sha256, and
+wolf-std's ledger goes red on it, as designed. The cost was one function.
+
+**Census, predicted before the first edit and measured after the last**
+(`lupin corpus`). Baseline `790c127`: 460 match / 54 out of scope / 2
+mismatch (both filed) / 23 dynamic counterpart / 41 conservatism / 449
+reach `run`. Predicted and measured: **462 / 53 / 1 / 26 / 38 / 451**, every cell,
+the five rows by name.
+
 THE THREE CLAUSES (is49). Pin `a7f517e` (wolf-lang v0.2.12) -> **`30731a6`
 (wolf-lang v0.2.14)**, two releases in one bump: 580 -> 615 corpus files,
 475 -> 498 anchors (twenty-three added, none dropped, key sets diffed both
