@@ -175,6 +175,81 @@ The five agreements are the five files above; the three completeness notes
 leaving are the `exit(0)`-against-a-static-code rows; hard loses its one
 Verdict (DIV-2026-024) and keeps #167's eight Diag rows.
 
+#### Measured, after the last edit
+
+`lupin corpus` at the head: "451 entries reach the `run` rung; 462 match
+… 26 … 38 … 53 are out of scope, 1 mismatch", with the one mismatch
+DIV-2026-019, filed, and `0 failure(s)`.
+
+| class | baseline (`790c127`) | predicted | measured |
+| --- | --- | --- | --- |
+| match | 460 | 462 | **462** |
+| out of scope | 54 | 53 | **53** |
+| mismatch (unfiled) | 0 | 0 | **0** |
+| mismatch (filed) | 2 | 1 | **1** |
+| dynamic counterpart | 23 | 26 | **26** |
+| conservatism | 41 | 38 | **38** |
+| reach `run` | 449 | 451 | **451** |
+
+Seven of seven cells as predicted, and the five rows by name. The risk the
+prediction named did not fire: `memory/byte_producers_ledger.lu` and
+`memory/region_str_charged.lu` still match with the producers charging.
+The work that moves no corpus row, #112's three names, #110's residue and
+#102's alias, was measured against wolf-std's rig instead. Its four dark
+fs rows run with their expected verdicts, its other thirteen fs rows are
+unchanged, and `tests/ops/num_alias_tier.lu`, ledgered `mirror-lag(E0501)`
+there, runs `exit(0)` with the compiler's stdout sha256.
+
+#### The compiler's table, re-derived at the head (for r20 to predict against)
+
+`xtask differ wolf <lupin@is50> --triage --<tier> --corpus=corpus --control
+<lupin@790c127>` at wolf-lang v0.2.14 (`30731a6`), `wolf 0.2.14 (pin
+30731a6)`, 615 files, 580 entries, both tiers:
+
+                    checked                     native
+    agreements      346 -> 351  (+5)            376 -> 381  (+5)
+    completeness    151 -> 148  (-3)            151 -> 148  (-3)
+    soundness         0 ->   0                    0 ->   0
+    unsupported     108 -> 107  (-1)             78 ->  77  (-1)
+    hard              9 ->   8  (-1)              9 ->   8  (-1)
+    coverage A      340 -> 340                  372 -> 372
+    coverage B      449 -> 451  (+2)            449 -> 451  (+2)
+    coverage BOTH   329 -> 331  (+2)            359 -> 361  (+2)
+
+`THE INTERPRETER BUMP MOVED 5 LEDGER COUNT(S)` on each tier, the same five
+files on both, every one `-> agreement`: `grammar/match_nullary_variant.lu`
+(Verdict), `memory/read_param_take.lu`, `memory/region_str_from_utf8_return.lu`,
+`memory/region_str_repeat_return.lu` (Completeness), `net/writev_head_gather.lu`
+(unsupported). Zero files moved below the ledger. Hard is **8 = 8 Diag +
+0 Verdict** on both tiers: v0.2.12's warning-parity rows (#167) and
+nothing else. **Every cell measured as predicted, on both tiers.** The
+control's own ledger reproduces is49's closing table exactly, so the
+control and the head differ by this lane alone.
+
+#### What the measurements found beyond the rows
+
+- **The compiler's two tiers disagree on the s160 producers' charge.**
+  `--native` charges `upper`, `lower`, `repeat`, `replace` and
+  `str_from_utf8` to the ambient region (`region_bytes` moves, `cap: 0`
+  traps `alloc-contract`), as `[mem.region.escape]` says. `--checked`
+  charges none of them, though it charges `+`. This machine follows the
+  clause. Filed as **wolf-lang#391**.
+- **A view of a region-built `str` escapes clean on all three lanes.**
+  `let t = (a + b).trim(); t` out of `region scratch` prints on both
+  tiers and here. The clause says a view product allocates nothing and
+  never says whether it carries its receiver's sites. This machine keeps
+  the checker's reading rather than inventing one. Filed as
+  **wolf-lang#392**.
+- **Five of this machine's declared fs rows had drifted from the
+  compiler's**, and it was observable: a `cross_device =>` arm on
+  `fs_rename` was a binding and caught `io`. Re-read off the compiler's
+  E0602 and corrected; `fs_answer` now coarsens an undeclared tag to `io`.
+  The rows are pinned nowhere upstream, so this is recorded on
+  **wolf-lang#181**, which asks for exactly that pin.
+- **wolf-interp#112's fourth name does not exist.** `fs_rename_atomic` is
+  E0301 on wolf 0.2.14, and std.fs mentions it only to say there is none.
+  The issue counted it from a ledger comment.
+
 ### The three clauses — is49, lupin 0.1.37, pin `30731a6` (wolf-lang **v0.2.14**)
 
 **The pin moves two releases**, `a7f517e` (v0.2.12) -> `30731a6` (v0.2.14):
@@ -292,7 +367,7 @@ trap, `[type.range.value]`), and drops the flag. Recorded on #106.
 all say E0610. This machine answers E0610 at the entry that closes the loop
 (bytes 434..435, the compiler's own locus). Filed upstream as a prose nit.
 
-### DIV-2026-024 — `grammar/match_nullary_variant.lu` — **OPEN, a mirror lag: wolf-interp#107 (s157's `[gram.pat.nullary]`), is50's**
+### DIV-2026-024 — `grammar/match_nullary_variant.lu` — **RESOLVED here at is50 (0.1.37): the bare-path pattern landed; the file matches, the waiver is gone**
 
 `match c { Color.Red => "red", … }` and `match e { none => "first", bad =>
 "second" }` under `check: run(exit=0, stdout="green\nfirst\n")`, `phase:
@@ -302,7 +377,8 @@ run`.
 | --- | --- |
 | wolf 0.2.14 (both tiers) | `exit(0)`, `green\nfirst\n` |
 | lupin 0.1.36 at `30731a6` | `fail(E0201)` at parse, `[993,993]` — "a dotted path in a pattern must carry a payload, like `io.Error(e)`" |
-| **lupin 0.1.37** | unmoved — this lane took s158, not s157 |
+| lupin 0.1.37 at is49 | unmoved — that lane took s158, not s157 |
+| **lupin 0.1.37 at is50** | `exit(0)`, `green\nfirst\n` — `PatKind::Path` (wolf-interp#107) |
 
 Triage: case 3 in shape (spec clear, compiler matches it) but not a defect
 of reading — s157's clause and witness arrived in the same pin as s158's,
@@ -311,6 +387,11 @@ and this lane's brief names #107 as the next lane's. Waived in
 CAN see; the row stays visible in every differential report and retires
 the day the bare-path pattern lands (`differ::retired_waivers` will say so
 in the round it becomes true).
+
+Resolved at is50: `[gram.pat.nullary]` is mirrored, the file matches, and
+`FILED_DIVERGENCES` is two entries again (DIV-2026-019, DIV-2026-021). The
+compiler's table records the same move as `Verdict -> agreement` on both
+tiers.
 
 ### The fs tier — is48, lupin 0.1.36, pin `a7f517e` (wolf-lang **v0.2.12**)
 
