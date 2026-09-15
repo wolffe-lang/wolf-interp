@@ -476,6 +476,255 @@ fn an_imported_trait_alias_expands_its_bound_through_the_import() {
             "--std-root",
             std_arg,
             pos.to_str().expect("utf-8"),
+
+// -- [type.method]: methods on std data reach their home module (is51) -----
+
+/// A std tree with the three home modules this suite needs. `is_empty` is
+/// DELIBERATELY wrong in std so the test can see that step (1)'s builtin
+/// answers the method spelling and the std function the qualified one.
+fn stage_homes(dir: &Path) -> PathBuf {
+    let root = dir.join("std");
+    write(
+        &root,
+        "list/list.lu",
+        "pub fn any[T](xs: List[T], pred: fn(T) -> bool) -> bool {\n\
+         \x20   for x in xs {\n\
+         \x20       if pred(x) { return true }\n\
+         \x20   }\n\
+         \x20   false\n\
+         }\n\
+         \n\
+         pub fn map[T, U](xs: List[T], f: fn(T) -> U) -> List[U] {\n\
+         \x20   var out = List[U]()\n\
+         \x20   for x in xs { (mut out).push(f(x)) }\n\
+         \x20   out\n\
+         }\n\
+         \n\
+         pub fn sum(xs: List[int]) -> int {\n\
+         \x20   var total: int = 0\n\
+         \x20   for v in xs { total = total + v }\n\
+         \x20   total\n\
+         }\n\
+         \n\
+         pub fn sort_by[T](mut xs: List[T], less: fn(T, T) -> bool) {\n\
+         \x20   var out = List[T]()\n\
+         \x20   for x in xs {\n\
+         \x20       var placed = List[T]()\n\
+         \x20       var done = false\n\
+         \x20       for y in out {\n\
+         \x20           if !done && less(x, y) {\n\
+         \x20               (mut placed).push(x)\n\
+         \x20               done = true\n\
+         \x20           }\n\
+         \x20           (mut placed).push(y)\n\
+         \x20       }\n\
+         \x20       if !done { (mut placed).push(x) }\n\
+         \x20       out = placed\n\
+         \x20   }\n\
+         \x20   xs = out\n\
+         }\n\
+         \n\
+         pub fn is_empty[T](xs: List[T]) -> bool { false }\n",
+    );
+    write(
+        &root,
+        "str/str.lu",
+        "pub fn shout(s: str) -> str { s.upper() }\n",
+    );
+    write(
+        &root,
+        "map/map.lu",
+        "pub fn size[K, V](m: Map[K, V]) -> int { m.len }\n",
+    );
+    root
+}
+
+/// Runs `source` as `pkg/main.lu` under `dir`, with the staged homes as the
+/// std root when `with_root` holds.
+fn run_homes(name: &str, source: &str, with_root: bool) -> Output {
+    let dir = scratch(name);
+    let root = stage_homes(&dir);
+    write(&dir, "pkg/main.lu", source);
+    let entry = dir.join("pkg/main.lu");
+    let entry = entry.to_str().expect("utf-8 path");
+    let root = root.to_str().expect("utf-8 path");
+    if with_root {
+        lupin(&["run", entry, "--std-root", root], &[])
+    } else {
+        lupin(&["run", entry], &[])
+    }
+}
+
+fn stdout_text(output: &Output) -> &str {
+    std::str::from_utf8(&output.stdout).expect("utf-8")
+}
+
+fn stderr_text(output: &Output) -> &str {
+    std::str::from_utf8(&output.stderr).expect("utf-8")
+}
+
+#[test]
+fn a_method_call_on_std_data_is_the_free_call_with_no_use() {
+    // `[type.method.resolve]` step (2) on all three home types, and
+    // `[type.method.home]`'s "reaches it with no `use`".
+    let output = run_homes(
+        "homes-methods",
+        "fn main() -> !int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   (mut xs).push(3)\n\
+         \x20   (mut xs).push(1)\n\
+         \x20   (mut xs).push(2)\n\
+         \x20   let tens = xs.map(fn(x) x * 10)\n\
+         \x20   (mut xs).sort_by(fn(a, b) a < b)\n\
+         \x20   var m = Map[str, int]()\n\
+         \x20   m[\"k\"] = 1\n\
+         \x20   let s = \"wolf\"\n\
+         \x20   print(\"{xs.any(fn(x) x > 2)} {tens.sum()} {xs[0]}{xs[1]}{xs[2]} {m.size()} {s.shout()}\")\n\
+         \x20   0\n\
+         }\n",
+        true,
+    );
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(stdout_text(&output), "true 60 123 1 WOLF\n");
+}
+
+#[test]
+fn the_method_and_the_qualified_spelling_are_one_call() {
+    // "`xs.any(p)` and `list.any(xs, p)` the same call" — and a name step (1)
+    // answers never reaches step (2): the staged std `is_empty` says `false`
+    // on an empty list, the builtin says `true`.
+    let output = run_homes(
+        "homes-one-call",
+        "use std.list\n\
+         \n\
+         fn main() -> !int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   let e = xs.is_empty()\n\
+         \x20   let q = list.is_empty(xs)\n\
+         \x20   (mut xs).push(5)\n\
+         \x20   print(\"{xs.any(fn(x) x == 5)} {list.any(xs, fn(x) x == 5)} {e} {q}\")\n\
+         \x20   0\n\
+         }\n",
+        true,
+    );
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(stdout_text(&output), "true true true false\n");
+}
+
+#[test]
+fn a_home_module_binds_no_name() {
+    // `[type.method.home]`: "`list` is still not in scope there".
+    let output = run_homes(
+        "homes-no-binding",
+        "fn main() -> !int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   (mut xs).push(5)\n\
+         \x20   let a = xs.sum()\n\
+         \x20   let b = list.sum(xs)\n\
+         \x20   print(\"{a} {b}\")\n\
+         \x20   0\n\
+         }\n",
+        true,
+    );
+    assert_ne!(output.status.code(), Some(0), "{output:?}");
+    assert!(stdout_text(&output).is_empty(), "{output:?}");
+}
+
+#[test]
+fn step_two_with_no_std_root_is_e0301_and_a_builtin_needs_none() {
+    // `[type.method.root]`: E0301 naming the home module, never a stand-in;
+    // step (1) — `par` included — runs on a bare run.
+    let refused = run_homes(
+        "homes-no-root",
+        "fn main() -> !int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   (mut xs).push(5)\n\
+         \x20   print(\"{xs.sum()}\")\n\
+         \x20   0\n\
+         }\n",
+        false,
+    );
+    assert_ne!(refused.status.code(), Some(0), "{refused:?}");
+    let reason = stderr_text(&refused);
+    assert!(
+        reason.contains("E0301") && reason.contains("std.list"),
+        "{reason}"
+    );
+    let bare = run_homes(
+        "homes-no-root-builtin",
+        "fn main() -> !int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   (mut xs).push(5)\n\
+         \x20   let ys = xs.par(fn(x) x + 1)\n\
+         \x20   print(\"{xs.is_empty()} {ys[0]}\")\n\
+         \x20   0\n\
+         }\n",
+        false,
+    );
+    assert_eq!(bare.status.code(), Some(0), "{bare:?}");
+    assert_eq!(stdout_text(&bare), "false 6\n");
+}
+
+#[test]
+fn a_candidate_that_does_not_fit_is_e0403_and_a_wrong_count_is_e0402() {
+    let mismatch = run_homes(
+        "homes-e0403",
+        "fn main() -> !int {\n\
+         \x20   var names = List[str]()\n\
+         \x20   (mut names).push(\"a\")\n\
+         \x20   print(\"{names.sum()}\")\n\
+         \x20   0\n\
+         }\n",
+        true,
+    );
+    assert!(stderr_text(&mismatch).contains("E0403"), "{mismatch:?}");
+    let absent = run_homes(
+        "homes-e0403-absent",
+        "fn main() -> !int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   print(\"{xs.frob()}\")\n\
+         \x20   0\n\
+         }\n",
+        true,
+    );
+    assert!(stderr_text(&absent).contains("E0403"), "{absent:?}");
+    let arity = run_homes(
+        "homes-e0402",
+        "fn main() -> !int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   (mut xs).push(1)\n\
+         \x20   print(\"{xs.sum(2)}\")\n\
+         \x20   0\n\
+         }\n",
+        true,
+    );
+    assert!(stderr_text(&arity).contains("E0402"), "{arity:?}");
+}
+
+#[test]
+fn the_receiver_mode_is_the_first_parameters() {
+    // X1: a `mut` candidate spelled bare traps `exclusivity` (E0804's
+    // dynamic meaning); a `mut` spelled where the candidate takes none is
+    // E0804 by name.
+    let dir = scratch("homes-mode-bare");
+    let root = stage_homes(&dir);
+    write(
+        &dir,
+        "pkg/main.lu",
+        "fn main() -> !int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   (mut xs).push(2)\n\
+         \x20   xs.sort_by(fn(a, b) a < b)\n\
+         \x20   0\n\
+         }\n",
+    );
+    let entry = dir.join("pkg/main.lu");
+    let value = record(&lupin(
+        &[
+            "conform-run",
+            entry.to_str().expect("utf-8 path"),
+            "--std-root",
+            root.to_str().expect("utf-8 path"),
             "--json",
         ],
         &[],
@@ -497,5 +746,38 @@ fn an_imported_trait_alias_expands_its_bound_through_the_import() {
     assert_eq!(
         refused["diagnostics"][0]["span"],
         serde_json::json!([73, 74])
+
+    assert_eq!(value["verdict"], "trap(exclusivity)", "{value}");
+    let over = run_homes(
+        "homes-mode-over",
+        "fn main() -> !int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   (mut xs).push(2)\n\
+         \x20   print(\"{(mut xs).sum()}\")\n\
+         \x20   0\n\
+         }\n",
+        true,
+    );
+    assert!(stderr_text(&over).contains("E0804"), "{over:?}");
+}
+
+#[test]
+fn take_is_never_a_method_and_the_refusal_names_the_slices() {
+    // `[type.method.take]`.
+    let output = run_homes(
+        "homes-take",
+        "fn main() -> !int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   (mut xs).push(1)\n\
+         \x20   let ys = xs.take(1)\n\
+         \x20   0\n\
+         }\n",
+        true,
+    );
+    assert_ne!(output.status.code(), Some(0), "{output:?}");
+    let reason = stderr_text(&output);
+    assert!(
+        reason.contains("xs[..n]") && reason.contains("xs[n..]"),
+        "{reason}"
     );
 }

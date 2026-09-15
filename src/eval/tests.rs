@@ -3980,12 +3980,22 @@ fn every_builtin_method_the_table_names_dispatches() {
             }
         }
     }
+    // A receiver with NO home module keeps the fallthrough it always had.
     let Outcome::Unsupported(reason) =
-        outcome("fn main() -> !int {\n    var r = List[int]()\n    let v = r.frob()\n    0\n}\n")
+        outcome("fn main() -> !int {\n    let p = Pool[int]()\n    let v = p.frob()\n    0\n}\n")
     else {
         panic!("a name outside the table and every arm must decline");
     };
     assert!(reason.contains("has no method"), "{reason}");
+    // A home-typed receiver's unknown name reaches step (2) instead, and with
+    // no std root configured that is E0301 ([type.method.root]) — still a
+    // refusal by the counterparty's name, never a guess.
+    let Outcome::Unsupported(reason) =
+        outcome("fn main() -> !int {\n    var r = List[int]()\n    let v = r.frob()\n    0\n}\n")
+    else {
+        panic!("an unknown name on std data must decline");
+    };
+    assert!(reason.contains("E0301"), "{reason}");
 }
 
 #[test]
