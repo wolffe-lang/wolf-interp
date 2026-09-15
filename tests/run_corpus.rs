@@ -1531,8 +1531,11 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/read_param_take.lu", "trap(exclusivity)"),
     ("memory/region_str_charged.lu", "exit(0)"),
     ("memory/region_str_field_return.lu", "trap(region-fault)"),
-    ("memory/region_str_from_utf8_return.lu", "exit(0)"),
-    ("memory/region_str_repeat_return.lu", "exit(0)"),
+    (
+        "memory/region_str_from_utf8_return.lu",
+        "trap(region-fault)",
+    ),
+    ("memory/region_str_repeat_return.lu", "trap(region-fault)"),
     ("rows/error_alias_ident.lu", "exit(0)"),
     ("rows/error_alias_row.lu", "exit(0)"),
     ("rows/error_alias_transparent.lu", "exit(0)"),
@@ -1553,6 +1556,12 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // `trap(exclusivity)` at the `take` rather than running clean: the
     // conservatism row becomes E1014's dynamic counterpart, the posture
     // `read_param_write.lu` has held since 0.1.8.
+    // `memory/region_str_repeat_return.lu` and
+    // `memory/region_str_from_utf8_return.lu` (also above) now answer
+    // `trap(region-fault)`: `[mem.region.escape]`'s materializing producers
+    // are sites (#111), so their answers carry the ambient region as a home
+    // and die with it — two more conservatism rows become E1010's dynamic
+    // counterpart.
 ];
 
 #[test]
