@@ -110,6 +110,68 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The combinators — is51, lupin 0.1.37, pin `4c046f1` (wolf-lang s166, dev-stamped)
+
+wolf-lang#390 was ruled option 1 (`par` stays), and s166 wrote the clauses
+lupin mirrors: `[type.method]` (a `List`, `Map`, `str` or `range` receiver
+has a home module, and `recv.name(args)` IS `home.name(recv, args)`),
+`[type.comb]` (eager combinators as std wolf code, with `par` the only
+builtin), and `[conc.task.par]` completed (order, failure, capture, chunk,
+det, cost). Built from the clause text at `acad573`/`4c046f1`, never from
+wolfc.
+
+#### What lupin did before the first edit (`790c127`)
+
+- `eval_method` tries a user `impl` (`method_of`, nominal receivers only),
+  then `builtin::method`, one `(Value, name)` match whose fallthrough is
+  "`List` has no method `x` in this machine's std subset". `method_of` never
+  answers for `List`/`Map`/`str`, so the order on std data was builtin-only.
+- `use std.list` already loads `<std root>/list` (`--std-root`/`LUPIN_STD`),
+  and `list.any(xs, fn(x) x > 1)` ran and printed `true` against wolf-std
+  `073aa19`. The gap was resolution, not evaluation: `xs.any(p)` was
+  `unsupported` bare, and E0305 (`list` unused) beside a `use`.
+- `par` had no arm. The scheduler is single-threaded by construction: one
+  task runs at a time, and every spawn is a numbered `sched-ev/0` event.
+
+#### Predicted before the first edit
+
+Stage 1 is the pin bump alone, `30731a6` -> `4c046f1`, measured with the
+unchanged binary. It adds trunk's two s162 rows and s166's spec (fifteen
+anchors). Stage 2 is the mirror at the pin that carries s166's witnesses.
+Those rows did not exist when this was written, so stage 2 is predicted by
+class, and each row gets its name when the witnesses land.
+
+| class | `790c127` at `30731a6` (measured) | stage 1, `4c046f1` | stage 2, by class |
+| --- | --- | --- | --- |
+| match | 460 | 462 | + every run-tier `par` row, the E1101-in-`par` row, `xs.take(n)`'s refusal |
+| out of scope | 54 | 54 | + the step-(2) refusals lupin makes at run time (E0301 no root, E0402, E0403) |
+| mismatch (unfiled) | 0 | 0 | 0 |
+| mismatch (filed) | 2 | 2 | 2, or 1 if is50 lands #107 first |
+| dynamic counterpart | 23 | 23 | 23 |
+| conservatism | 41 | 41 | 41 |
+| reach `run` | 449 | 451 | + the run-tier `par` rows |
+
+The reasoning, per class:
+
+- **`par` rows (order, failure, empty list) match.** `par` is step (1),
+  needs no std root, and the corpus walk has none.
+- **E1101 in a `par` closure matches** once the lint's task-closure context
+  learns `.par(fn …)`. That is a static check lupin already runs for
+  `.spawn(fn …)`.
+- **`xs.take(n)` matches as a static refusal.** `take` is reserved, so no std
+  function and no user method can carry the name, and a member call named
+  `take` is refused whatever the receiver.
+- **Step-(2) refusals are out of scope.** E0301 (no std configured), E0402
+  (arity) and E0403 (no candidate, or a first parameter that does not unify)
+  all turn on the receiver's static type, which lupin does not compute. It
+  refuses them by name at run time, the posture E0403's struct-pattern rows
+  already have.
+- **Positive combinator rows (`map`, `filter`, … through a home module) need
+  a std.** If s166's witnesses carry no std root, the compiler answers E0301
+  for them and so does lupin (out of scope on both). If they do, those rows
+  are this lane's matches, and the prediction is revised at the pin with the
+  names.
+
 ### The two mirrors — is50, lupin 0.1.37 (unreleased), pin `30731a6` (wolf-lang **v0.2.14**)
 
 **No pin move.** The subject is two mirrors and their residue:
