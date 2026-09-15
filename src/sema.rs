@@ -5800,7 +5800,7 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
                 .map(|g| {
                     let list = match &g.bound {
                         Some(crate::ast::Bound::Paths(paths)) => {
-                            expand_bound(paths, &module.trait_aliases)
+                            expand_bound(paths, &module.trait_aliases, program)
                         }
                         _ => Vec::new(),
                     };
@@ -6265,21 +6265,39 @@ fn operator_shape(decl: &FnDecl, unary: bool, result: OpResult) -> bool {
 /// A generic parameter's bound, expanded through alias bounds
 /// (`[type.trait.op.alias]`: a bound naming `Num` means every trait in its
 /// list, an alias may name an alias; a cycle is cut, not chased).
+///
+/// A QUALIFIED bound (`tiny.Num`) expands through the alias table of the
+/// module its head names, not the declaring module's (wolf-interp#102): wolf
+/// binds whole modules and has no item imports, so `ops.Num` is the only
+/// spelling a caller of a library alias has, and an alias that expanded only
+/// when re-declared in the caller's own module is one no library could
+/// publish. The names an alias lists are read in the alias's own module.
 fn expand_bound(
     paths: &[crate::ast::Path],
     aliases: &BTreeMap<String, Vec<String>>,
+    program: &Program,
 ) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    let mut queue: Vec<String> = paths
+    let mut queue: Vec<(String, &BTreeMap<String, Vec<String>>)> = paths
         .iter()
-        .filter_map(|path| path.segments.last().map(|s| s.name.clone()))
+        .filter_map(|path| {
+            let last = path.segments.last()?.name.clone();
+            let table = match path.segments.as_slice() {
+                [head, _, ..] => program
+                    .modules
+                    .get(&head.name)
+                    .map_or(aliases, |module| &module.trait_aliases),
+                _ => aliases,
+            };
+            Some((last, table))
+        })
         .collect();
-    while let Some(name) = queue.pop() {
+    while let Some((name, table)) = queue.pop() {
         if out.contains(&name) {
             continue;
         }
-        if let Some(list) = aliases.get(&name) {
-            queue.extend(list.iter().cloned());
+        if let Some(list) = table.get(&name) {
+            queue.extend(list.iter().map(|entry| (entry.clone(), table)));
         }
         out.push(name);
     }
