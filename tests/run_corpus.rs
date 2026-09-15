@@ -1528,7 +1528,7 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("grammar/range_type_return.lu", "exit(0)"),
     ("lints/shadow_prelude_call.lu", "exit(0)"),
     ("memory/list_elem_copy_loop.lu", "exit(0)"),
-    ("memory/read_param_take.lu", "exit(0)"),
+    ("memory/read_param_take.lu", "trap(exclusivity)"),
     ("memory/region_str_charged.lu", "exit(0)"),
     ("memory/region_str_field_return.lu", "trap(region-fault)"),
     ("memory/region_str_from_utf8_return.lu", "exit(0)"),
@@ -1549,6 +1549,10 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // (wolf-interp#107): a bare dotted path is a pattern, and the witness
     // that was `fail(E0201)` at parse (DIV-2026-024, waived) runs.
     ("grammar/match_nullary_variant.lu", "exit(0)"),
+    // `memory/read_param_take.lu` (above, in is49's block) now answers
+    // `trap(exclusivity)` at the `take` rather than running clean: the
+    // conservatism row becomes E1014's dynamic counterpart, the posture
+    // `read_param_write.lu` has held since 0.1.8.
 ];
 
 #[test]
