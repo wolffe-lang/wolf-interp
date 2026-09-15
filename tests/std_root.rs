@@ -781,3 +781,40 @@ fn take_is_never_a_method_and_the_refusal_names_the_slices() {
         "{reason}"
     );
 }
+
+#[test]
+fn a_std_tree_beside_the_entry_is_the_std_root_with_no_flag() {
+    // The corpus's fixture convention (s166, `[type.method.root]`): a
+    // method-surface witness carries its own home modules beside it.
+    let dir = scratch("homes-beside");
+    let pkg = dir.join("pkg");
+    write(
+        &pkg,
+        "std/list/list.lu",
+        "pub fn sum(xs: List[int]) -> int {\n\
+         \x20   var total: int = 0\n\
+         \x20   for v in xs { total = total + v }\n\
+         \x20   total\n\
+         }\n",
+    );
+    let source = "fn main() -> !int {\n\
+                  \x20   var xs = List[int]()\n\
+                  \x20   (mut xs).push(2)\n\
+                  \x20   (mut xs).push(5)\n\
+                  \x20   print(\"{xs.sum()}\")\n\
+                  \x20   0\n\
+                  }\n";
+    write(&dir, "pkg/main.lu", source);
+    let entry = dir.join("pkg/main.lu");
+    let output = lupin(&["run", entry.to_str().expect("utf-8 path")], &[]);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(stdout_text(&output), "7\n");
+
+    // No `std/` beside the entry, no root: the same call is E0301.
+    let bare = scratch("homes-beside-none");
+    write(&bare, "pkg/main.lu", source);
+    let entry = bare.join("pkg/main.lu");
+    let refused = lupin(&["run", entry.to_str().expect("utf-8 path")], &[]);
+    assert_ne!(refused.status.code(), Some(0), "{refused:?}");
+    assert!(stderr_text(&refused).contains("E0301"), "{refused:?}");
+}
