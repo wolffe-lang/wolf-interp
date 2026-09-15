@@ -332,6 +332,21 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
         Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
         _ => PathBuf::from("."),
     };
+    // The fixture convention (s166, `[type.method.root]`): an entry with a
+    // `std/` tree BESIDE it runs with that tree as its std root, so a
+    // method-surface witness carries its own home modules and needs no flag —
+    // which is how `corpus/methods/*.lu` reach `corpus/methods/std/` and how
+    // `corpus/typecheck/method_home_no_std.lu`, with no `std/` beside it,
+    // stays E0301. An explicit `--std-root`/`LUPIN_STD` still wins, and the
+    // search is exactly one directory: never an ancestor walk that could
+    // adopt a stranger's `std/`.
+    let beside = package_root.join("std");
+    let std_root: Option<&Path> = match std_root {
+        Some(root) => Some(root),
+        None if beside.is_dir() => Some(beside.as_path()),
+        None => None,
+    };
+
     let mut program = Program {
         modules: BTreeMap::new(),
         entry: crate::slash_path(entry),
@@ -5898,7 +5913,7 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
                     .chain(decl.ret.as_ref().map(|ret| &ret.ty))
                     .filter(|ty| unresolved_type_name(ty, &scope).is_none())
                     .filter_map(|ty| {
-                        map_key_refusal(ty, &generics).or_else(|| range_type_refusal(ty))
+                        map_key_refusal(ty, &generics).or_else(|| range_type_refusal(ty, &generics))
                     })
                     .collect::<Vec<_>>()
             })
@@ -6087,7 +6102,15 @@ fn map_key_refusal(ty: &Type, generics: &BTreeSet<String>) -> Option<Diag> {
 /// E0401 at the argument, the family being closed at the two types `..`
 /// iterates. Signature positions, the width `map_key_refusal` reads; a
 /// `range[…]` nested in another type application is found the same way.
-fn range_type_refusal(ty: &Type) -> Option<Diag> {
+///
+/// A RIGID generic parameter is admitted, exactly as `[type.map.key]`'s rigid
+/// `K` is (`map_key_diag`): inside a generic body the element is not spelled
+/// yet, and each instantiation is checked where it spells one. s166's
+/// `[type.comb.set]` makes this reachable — `collect[T](r: range[T])` is one
+/// generic function because wolf has no overloading (wolf-lang `33ec635e`) —
+/// and without it every home module carrying `collect` was E0401 at its own
+/// signature (is51; `corpus/methods/home_range_str_map.lu`).
+fn range_type_refusal(ty: &Type, generics: &BTreeSet<String>) -> Option<Diag> {
     match &*ty.kind {
         TypeKind::Path { path, args } => {
             if path.is_single() && path.segments[0].name == "range" {
@@ -6107,7 +6130,8 @@ fn range_type_refusal(ty: &Type) -> Option<Diag> {
                     [TypeArg::Type(elem)] => {
                         let admitted = matches!(&*elem.kind,
                             TypeKind::Path { path, args } if path.is_single() && args.is_empty()
-                                && matches!(path.segments[0].name.as_str(), "int" | "char"));
+                                && (matches!(path.segments[0].name.as_str(), "int" | "char")
+                                    || generics.contains(&path.segments[0].name)));
                         if !admitted {
                             return Some(Diag::new(
                                 "E0401",
@@ -6137,19 +6161,24 @@ fn range_type_refusal(ty: &Type) -> Option<Diag> {
                 }
             }
             args.iter().find_map(|arg| match arg {
-                TypeArg::Type(inner) => range_type_refusal(inner),
+                TypeArg::Type(inner) => range_type_refusal(inner, generics),
                 TypeArg::Expr(_) => None,
             })
         }
         TypeKind::ErrorUnion(inner)
         | TypeKind::Fallible { ty: inner, .. }
         | TypeKind::Prefixed { ty: inner, .. }
-        | TypeKind::RawPointer(inner) => range_type_refusal(inner),
-        TypeKind::Tuple(parts) => parts.iter().find_map(range_type_refusal),
+        | TypeKind::RawPointer(inner) => range_type_refusal(inner, generics),
+        TypeKind::Tuple(parts) => parts
+            .iter()
+            .find_map(|part| range_type_refusal(part, generics)),
         TypeKind::Fn { params, ret } => params
             .iter()
-            .find_map(range_type_refusal)
-            .or_else(|| ret.as_ref().and_then(|ret| range_type_refusal(&ret.ty))),
+            .find_map(|param| range_type_refusal(param, generics))
+            .or_else(|| {
+                ret.as_ref()
+                    .and_then(|ret| range_type_refusal(&ret.ty, generics))
+            }),
         TypeKind::Dyn(_) | TypeKind::TypeOfTypes | TypeKind::Region => None,
     }
 }
@@ -9068,6 +9097,31 @@ mod tests {
         // Nested in another application, found the same way.
         assert_eq!(
             diag_of("fn f(rs: List[range[str]]) -> int { 0 }\nfn main() -> !int { 0 }\n").code,
+            "E0401"
+        );
+    }
+
+    #[test]
+    fn a_rigid_generic_parameter_is_an_admitted_range_element() {
+        // `[type.range.name]` with `[type.map.key]`'s rigid-parameter rule:
+        // inside a generic body the element is not spelled yet, so
+        // `collect[T](r: range[T])` — s166's one generic `collect`, wolf
+        // having no overloading — is not the family's refusal. The check
+        // still fires for a spelled type that is neither, and for a name that
+        // is not a parameter of THIS signature.
+        assert!(
+            resolve(
+                "pub fn collect[T](r: range[T]) -> List[T] {\n\
+                 var out = List[T]()\n\
+                 for x in r { (mut out).push(x) }\n\
+                 out\n\
+             }\n\
+             fn main() -> !int { 0 }\n"
+            )
+            .is_none()
+        );
+        assert_eq!(
+            diag_of("fn f[U](r: range[bool]) -> int { 0 }\nfn main() -> !int { 0 }\n").code,
             "E0401"
         );
     }
