@@ -1566,7 +1566,14 @@ mod tests {
         // sight, so the waivers go. The two asserts below are the other half
         // of the rule the retired list already states: a waiver that outlives
         // its divergence is a green report that means nothing.
-        assert_eq!(FILED_DIVERGENCES.len(), 2);
+        // DIV-2026-024 FILED at the 30731a6 pin (is49, wolf-lang v0.2.14):
+        // `grammar/match_nullary_variant.lu` — s157's `[gram.pat.nullary]`
+        // arrived in the same pin as s158's three clauses, and this lane took
+        // s158 (wolf-interp#106) and not s157 (#107, is50's). A mirror lag,
+        // waived so the corpus walk gates the rows it can see; the row stays
+        // in every differential report and `retired_waivers` names the day
+        // the bare-path pattern lands.
+        assert_eq!(FILED_DIVERGENCES.len(), 3);
         assert_eq!(filed("upstream/corpus/wordcount.lu"), None);
         assert_eq!(filed("upstream/corpus/grammar/structlit_paren.lu"), None);
         let (id, _) = filed("upstream/corpus/resolve/broken_sibling/entry.lu")
