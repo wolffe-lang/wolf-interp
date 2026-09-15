@@ -432,3 +432,70 @@ fn a_qualified_trait_in_a_generic_bound_counts_as_a_use_of_its_import() {
     assert_eq!(value["verdict"], "exit(0)", "{value}");
     assert_eq!(value["stdout_inline"], "3\n", "{value}");
 }
+
+/// wolf-interp#102: a trait ALIAS reached through an import expands its bound.
+///
+/// The issue's witness is `fn twice[T: tiny.Num]` over `pub trait Num = Add`
+/// in `std/tiny`, E0501 on 0.1.36 while `[T: tiny.Add]` through the same
+/// import ran. Here: the alias names an alias (`Num = Small + Mul`,
+/// `Small = Add`) and the import is renamed (`use std.tiny as t`), so the
+/// head of the bound is the BOUND name and the chain is read in the alias's
+/// own module; and the negative twin, `t.Small` with a `*`, is still E0501 at
+/// the operator. Both measured on wolf 0.2.14 `--checked` (pin 30731a6):
+/// `42\n`, and `fail(E0501)` at `[73, 74]`.
+#[test]
+fn an_imported_trait_alias_expands_its_bound_through_the_import() {
+    let dir = scratch("std-root-imported-alias");
+    let std = dir.join("std");
+    write(
+        &std,
+        "tiny/tiny.lu",
+        "//! member: true\n\n\
+         pub trait Add {\n    fn add(self, other: Self) -> Self\n}\n\n\
+         pub trait Mul {\n    fn mul(self, other: Self) -> Self\n}\n\n\
+         pub trait Small = Add\n\
+         pub trait Num = Small + Mul\n\n\
+         impl Add for int {\n    fn add(self, other: Self) -> Self {\n        self + other\n    }\n}\n\n\
+         impl Mul for int {\n    fn mul(self, other: Self) -> Self {\n        self * other\n    }\n}\n",
+    );
+    let program = |bound: &str| {
+        format!(
+            "//! member: true\n\
+             use std.tiny as t\n\n\
+             fn poly[T: t.{bound}](a: T) -> T {{\n    a * a + a\n}}\n\n\
+             fn main() {{\n    let n: int = 6\n    print(\"{{poly(n)}}\")\n}}\n"
+        )
+    };
+    write(&dir, "pos/main.lu", &program("Num"));
+    write(&dir, "neg/main.lu", &program("Small"));
+    let std_arg = std.to_str().expect("utf-8 path");
+    let pos = dir.join("pos/main.lu");
+    let accepted = record(&lupin(
+        &[
+            "conform-run",
+            "--std-root",
+            std_arg,
+            pos.to_str().expect("utf-8"),
+            "--json",
+        ],
+        &[],
+    ));
+    assert_eq!(accepted["verdict"], "exit(0)", "{accepted}");
+    assert_eq!(accepted["stdout_inline"], "42\n", "{accepted}");
+    let neg = dir.join("neg/main.lu");
+    let refused = record(&lupin(
+        &[
+            "conform-run",
+            "--std-root",
+            std_arg,
+            neg.to_str().expect("utf-8"),
+            "--json",
+        ],
+        &[],
+    ));
+    assert_eq!(refused["verdict"], "fail(E0501)", "{refused}");
+    assert_eq!(
+        refused["diagnostics"][0]["span"],
+        serde_json::json!([73, 74])
+    );
+}
