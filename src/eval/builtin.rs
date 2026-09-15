@@ -1985,6 +1985,17 @@ pub fn method(
             Ok(Value::Bool(frozen))
         }
 
+        // `[type.method.take]`: `take` is the ownership verb and never a method
+        // name. It parses in member position and no step finds it, and the
+        // refusal names the two slices the clause gives the prefix and the
+        // suffix.
+        (receiver @ Value::List(..), "take") => unsupported(format!(
+            "`{}` has no method `take`: `take` is the ownership verb and never a method name \
+             ([type.method.take]) — the first `n` elements are the slice `xs[..n]` (faults \
+             `bounds` past the end), the clamped prefix is `xs[..min(n, xs.len)]`, and the \
+             suffix is `xs[n..]` (the counterparty's E0403)",
+            receiver.kind()
+        )),
         (receiver, name) => unsupported(format!(
             "`{}` has no method `{name}` in this machine's std subset",
             receiver.kind()
