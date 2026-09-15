@@ -247,6 +247,15 @@ pub struct Program {
     pub entry: String,
     /// Files that were loaded, in load order.
     pub files: Vec<String>,
+    /// `[type.method.home]` (is51): each home type constructor (`List`,
+    /// `Map`, `str`, `range`) whose home module this program loaded, with the
+    /// module key it lives under. A home module binds no name, so a module
+    /// loaded only for its methods has the unspellable key `std.<dir>`; one the
+    /// program also `use`s is that module, under its bound name.
+    pub homes: BTreeMap<String, String>,
+    /// Whether a std root was configured (`--std-root`, `LUPIN_STD`) — what
+    /// separates `[type.method.root]`'s E0301 from a plain "no method".
+    pub std_configured: bool,
 }
 
 impl Program {
@@ -327,7 +336,13 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
         modules: BTreeMap::new(),
         entry: crate::slash_path(entry),
         files: Vec::new(),
+        homes: BTreeMap::new(),
+        std_configured: std_root.is_some(),
     };
+    // `[type.method.root]`: a home module is loaded when some method call in
+    // the program names one of its `pub fn`s, and not otherwise. The ones not
+    // yet loaded wait here until a pass finds such a call.
+    let mut pending_homes: Vec<(&'static str, &'static str)> = crate::eval::builtin::HOMES.to_vec();
 
     let mut queue = vec![(
         String::new(),
@@ -346,116 +361,217 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
     // ordinary case.
     let mut resolved: BTreeMap<String, PathBuf> = BTreeMap::new();
 
-    while let Some((name, dir, entry, from_std)) = queue.pop() {
-        if loaded.contains(&name) {
-            // An import cycle is a compile error the compiler owns (E0303).
-            // Here it is simply a module already loaded — the graph is walked
-            // once, so a cycle terminates instead of recursing forever.
-            continue;
-        }
-        loaded.push(name.clone());
+    loop {
+        while let Some((name, dir, entry, from_std)) = queue.pop() {
+            if loaded.contains(&name) {
+                // An import cycle is a compile error the compiler owns (E0303).
+                // Here it is simply a module already loaded — the graph is walked
+                // once, so a cycle terminates instead of recursing forever.
+                continue;
+            }
+            loaded.push(name.clone());
 
-        let module = load_module(&name, &dir, entry.as_deref(), &mut program.files, from_std)?;
-        let mut queued: Vec<String> = Vec::new();
-        let mut claim = |bound: &str, candidate: &Path, module: &Module| -> Result<(), LoadError> {
-            match resolved.get(bound) {
-                None => {
-                    resolved.insert(bound.to_owned(), candidate.to_path_buf());
-                    Ok(())
-                }
-                Some(first) if same_dir(first, candidate) => Ok(()),
-                Some(first) => {
-                    // The later decl's own span, from this module's scopes.
-                    let (span, file) = module
-                        .scopes
-                        .iter()
-                        .flat_map(|scope| {
-                            scope
-                                .uses
+            let module = load_module(&name, &dir, entry.as_deref(), &mut program.files, from_std)?;
+            let mut queued: Vec<String> = Vec::new();
+            let mut claim =
+                |bound: &str, candidate: &Path, module: &Module| -> Result<(), LoadError> {
+                    match resolved.get(bound) {
+                        None => {
+                            resolved.insert(bound.to_owned(), candidate.to_path_buf());
+                            Ok(())
+                        }
+                        Some(first) if same_dir(first, candidate) => Ok(()),
+                        Some(first) => {
+                            // The later decl's own span, from this module's scopes.
+                            let (span, file) = module
+                                .scopes
                                 .iter()
-                                .filter(|used| used.name == bound)
-                                .map(|used| (used.name_span, scope.file.clone()))
-                        })
-                        .next_back()
-                        .unwrap_or((Span::new(0, 0), module.name.clone()));
-                    Err(LoadError::Syntax {
-                        file,
-                        diag: Box::new(Diag::new(
-                            "E0306",
-                            span,
-                            "gram.item.use",
-                            format!(
-                                "`{bound}` is already bound to the module at `{}`; this \
+                                .flat_map(|scope| {
+                                    scope
+                                        .uses
+                                        .iter()
+                                        .filter(|used| used.name == bound)
+                                        .map(|used| (used.name_span, scope.file.clone()))
+                                })
+                                .next_back()
+                                .unwrap_or((Span::new(0, 0), module.name.clone()));
+                            Err(LoadError::Syntax {
+                                file,
+                                diag: Box::new(Diag::new(
+                                    "E0306",
+                                    span,
+                                    "gram.item.use",
+                                    format!(
+                                        "`{bound}` is already bound to the module at `{}`; this \
                                  import names `{}` — module identity is the full path \
                                  (#39), so give one side its own name with `use … as`",
-                                first.display(),
-                                candidate.display()
-                            ),
-                        )),
-                    })
+                                        first.display(),
+                                        candidate.display()
+                                    ),
+                                )),
+                            })
+                        }
+                    }
+                };
+            for (bound, segments) in &module.use_paths {
+                // `use std.X[.Y]` against a configured root: `<root>/X[/Y]/`.
+                if let Some(root) = std_root
+                    && segments.len() >= 2
+                    && segments[0] == "std"
+                {
+                    let mut candidate = root.to_path_buf();
+                    for segment in &segments[1..] {
+                        candidate.push(segment);
+                    }
+                    if candidate.is_dir() {
+                        claim(bound, &candidate, &module)?;
+                        if !loaded.contains(bound) && !queued.contains(bound) {
+                            queue.push((bound.clone(), candidate, None, true));
+                            queued.push(bound.clone());
+                        }
+                        continue;
+                    }
                 }
-            }
-        };
-        for (bound, segments) in &module.use_paths {
-            // `use std.X[.Y]` against a configured root: `<root>/X[/Y]/`.
-            if let Some(root) = std_root
-                && segments.len() >= 2
-                && segments[0] == "std"
-            {
-                let mut candidate = root.to_path_buf();
-                for segment in &segments[1..] {
-                    candidate.push(segment);
+                // #39: a dotted `use` names the directory at its FULL path —
+                // `use fmt.float` is `<package root>/fmt/float`, and two leaves
+                // spelled `float` coexist under distinct bound names. The flat
+                // `<package root>/<bound>` spelling stays as the fallback, which
+                // keeps single-segment imports and flat mirrors working
+                // unchanged.
+                let mut full = package_root.clone();
+                for segment in segments {
+                    full.push(segment);
                 }
-                if candidate.is_dir() {
-                    claim(bound, &candidate, &module)?;
+                if segments.len() >= 2 && full.is_dir() {
+                    claim(bound, &full, &module)?;
                     if !loaded.contains(bound) && !queued.contains(bound) {
-                        queue.push((bound.clone(), candidate, None, true));
+                        queue.push((bound.clone(), full, None, false));
                         queued.push(bound.clone());
                     }
                     continue;
                 }
-            }
-            // #39: a dotted `use` names the directory at its FULL path —
-            // `use fmt.float` is `<package root>/fmt/float`, and two leaves
-            // spelled `float` coexist under distinct bound names. The flat
-            // `<package root>/<bound>` spelling stays as the fallback, which
-            // keeps single-segment imports and flat mirrors working
-            // unchanged.
-            let mut full = package_root.clone();
-            for segment in segments {
-                full.push(segment);
-            }
-            if segments.len() >= 2 && full.is_dir() {
-                claim(bound, &full, &module)?;
-                if !loaded.contains(bound) && !queued.contains(bound) {
-                    queue.push((bound.clone(), full, None, false));
-                    queued.push(bound.clone());
-                }
-                continue;
-            }
-            let candidate = package_root.join(bound);
-            if candidate.is_dir() {
-                claim(bound, &candidate, &module)?;
-                if !loaded.contains(bound) && !queued.contains(bound) {
-                    queue.push((bound.clone(), candidate, None, false));
-                    queued.push(bound.clone());
+                let candidate = package_root.join(bound);
+                if candidate.is_dir() {
+                    claim(bound, &candidate, &module)?;
+                    if !loaded.contains(bound) && !queued.contains(bound) {
+                        queue.push((bound.clone(), candidate, None, false));
+                        queued.push(bound.clone());
+                    }
                 }
             }
-        }
-        // The heads of dotted `use` paths (`std` in `use std.prelude`) sit in
-        // `module.uses` without a `use_paths` entry of their own; a sibling
-        // directory by that name is still a module of this program.
-        for used in &module.uses {
-            let candidate = package_root.join(used);
-            if candidate.is_dir() && !loaded.contains(used) && !queued.contains(used) {
-                queue.push((used.clone(), candidate, None, false));
-                queued.push(used.clone());
+            // The heads of dotted `use` paths (`std` in `use std.prelude`) sit in
+            // `module.uses` without a `use_paths` entry of their own; a sibling
+            // directory by that name is still a module of this program.
+            for used in &module.uses {
+                let candidate = package_root.join(used);
+                if candidate.is_dir() && !loaded.contains(used) && !queued.contains(used) {
+                    queue.push((used.clone(), candidate, None, false));
+                    queued.push(used.clone());
+                }
             }
+            program.modules.insert(name, module);
         }
-        program.modules.insert(name, module);
+        // Every `use` is loaded. Now the home modules the method calls reach, and
+        // then again for the calls THEY make, until a pass queues nothing.
+        let Some(root) = std_root else {
+            break;
+        };
+        let called = method_call_names(&program);
+        let mut queued_home = false;
+        pending_homes.retain(|(ctor, dir)| {
+            let candidate = root.join(dir);
+            if !candidate.is_dir() {
+                return true;
+            }
+            // A home module the program already loaded through `use std.list` is
+            // that module: one directory, one module (#39).
+            let already = resolved
+                .iter()
+                .find(|(_, seen)| same_dir(seen, &candidate))
+                .map(|(bound, _)| bound.clone());
+            if let Some(bound) = already {
+                let hit = program.modules.get(&bound).is_some_and(|module| {
+                    module.items.iter().any(|(name, (def, public))| {
+                        *public && matches!(def, Def::Fn(_)) && called.contains(name)
+                    })
+                });
+                if hit {
+                    program.homes.insert((*ctor).to_owned(), bound);
+                }
+                return !hit;
+            }
+            if !pub_fn_names(&candidate)
+                .iter()
+                .any(|name| called.contains(name))
+            {
+                return true;
+            }
+            let key = format!("std.{dir}");
+            resolved.insert(key.clone(), candidate.clone());
+            queue.push((key.clone(), candidate, None, true));
+            program.homes.insert((*ctor).to_owned(), key);
+            queued_home = true;
+            false
+        });
+        if !queued_home {
+            break;
+        }
     }
 
     Ok(program)
+}
+
+/// Every `name` spelled `.name(` anywhere in the program: the method calls a
+/// home module could answer (`[type.method.root]`). A token scan, so it also
+/// reads `module.f(` — which at worst loads a home module no call reaches,
+/// never misses one a call does.
+fn method_call_names(program: &Program) -> std::collections::BTreeSet<String> {
+    use crate::lex::Tok;
+    let mut names = std::collections::BTreeSet::new();
+    for module in program.modules.values() {
+        for unit in &module.units {
+            let tokens = crate::lex::lex(&unit.source).tokens;
+            for window in tokens.windows(3) {
+                if let [dot, ident, paren] = window
+                    && matches!(dot.tok, Tok::Dot)
+                    && matches!(paren.tok, Tok::LParen)
+                    && let Tok::Ident(name) = &ident.tok
+                {
+                    names.insert(name.clone());
+                }
+            }
+        }
+    }
+    names
+}
+
+/// The `pub fn` names a module directory's `.lu` files declare, by token scan
+/// — enough to decide whether a home module is worth loading.
+fn pub_fn_names(dir: &Path) -> std::collections::BTreeSet<String> {
+    use crate::lex::Tok;
+    let mut names = std::collections::BTreeSet::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return names;
+    };
+    for path in entries.flatten().map(|entry| entry.path()) {
+        if !path.extension().is_some_and(|ext| ext == "lu") {
+            continue;
+        }
+        let Ok(source) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let tokens = crate::lex::lex(&source).tokens;
+        for window in tokens.windows(3) {
+            if let [public, func, ident] = window
+                && matches!(public.tok, Tok::Kw("pub"))
+                && matches!(func.tok, Tok::Kw("fn"))
+                && let Tok::Ident(name) = &ident.tok
+            {
+                names.insert(name.clone());
+            }
+        }
+    }
+    names
 }
 
 /// Loads one program from a single source buffer, with no filesystem module
@@ -489,6 +605,8 @@ pub fn load_source(name: &str, source: &str) -> Result<Program, LoadError> {
         modules,
         entry: name.to_owned(),
         files: vec![name.to_owned()],
+        homes: BTreeMap::new(),
+        std_configured: false,
     })
 }
 
