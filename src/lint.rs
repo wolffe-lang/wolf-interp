@@ -428,7 +428,8 @@ struct Walk<'a> {
     assigns: Vec<AssignRec>,
     /// Spans of the closures the walk is currently inside.
     closure_stack: Vec<Span>,
-    /// > 0 while inside a closure passed to `.spawn(…)` (E1101/W1101).
+    /// > 0 while inside a closure passed to `.spawn(…)` or `.par(…)`
+    /// (E1101/W1101).
     task_depth: usize,
     /// The scope-stack depth where the innermost task closure begins: a name
     /// resolved at or above this index is the task's own; below it, captured.
@@ -1751,15 +1752,16 @@ impl Walk<'_> {
         // static mode error to stand it down against, so it fixes the scan
         // that was wrong on its own terms.
         //
-        // The two method names are `eval::builtin::mutates_receiver`'s exact
-        // pair — `List.push` and `List.pop`, the only arms that take their
-        // receiver's elements mutably — read statically, by name. Anything
+        // The method names are `eval::builtin::mutates_receiver`'s exact
+        // set — `List.push`, `List.pop`, and `clear` on `List` and `Map`
+        // (`[type.method.resolve]` step 1, is51), the only arms that take
+        // their receiver's elements mutably — read statically, by name. Anything
         // else stays evidence-free, so `fn f(mut xs: List[int]) -> int
         // { xs.len }` still warns, which is what keeps this from being "any
         // method call silences W1002".
         if let ExprKind::Path(path) = &*callee.kind
             && let [head, member] = path.segments.as_slice()
-            && matches!(member.name.as_str(), "push" | "pop")
+            && matches!(member.name.as_str(), "push" | "pop" | "clear")
         {
             self.writes.push(head.name.clone());
         }
@@ -1823,8 +1825,25 @@ impl Walk<'_> {
         }
 
         // A task closure: `s.spawn(fn() { … })` — the E1101/W1101 context.
-        let spawn = matches!(&*callee.kind, ExprKind::Member { member: Member::Named(name), .. }
-            if name.name == "spawn");
+        // `xs.par(fn(x) …)` is the same context (`[conc.task.par.capture]`:
+        // `f` is checked as a spawned closure's body, once, valid for every
+        // chunk), and its parameter is the task's own name, never a capture.
+        //
+        // The two arrive in different shapes. `spawn` is a keyword, so the
+        // path a primary opens stops before it and `s.spawn` is a postfix
+        // `Member`; `par` is an identifier, so `xs.par` is the dotted `Path`
+        // `[xs, par]` — the same shape the W1002 scan above reads `xs.push`
+        // in. Both shapes are the task context.
+        let spawn = match &*callee.kind {
+            ExprKind::Member {
+                member: Member::Named(name),
+                ..
+            } => name.name == "spawn" || name.name == "par",
+            ExprKind::Path(path) => {
+                matches!(path.segments.as_slice(), [_, member] if member.name == "par")
+            }
+            _ => false,
+        };
         self.expr(callee);
         for arg in args {
             if spawn && matches!(&*arg.expr.kind, ExprKind::Closure { .. }) {
@@ -3062,6 +3081,43 @@ mod tests {
              }\n",
         );
         assert_eq!(found.len(), 1, "the lend spelling raises E1101: {found:?}");
+    }
+
+    // ---- `[conc.task.par.capture]`: `f` is checked as a spawned closure (is51)
+
+    #[test]
+    fn a_write_to_captured_state_inside_par_is_e1101() {
+        let found = capture_codes(
+            "fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   (mut xs).push(1)\n\
+             \x20   var total = 0\n\
+             \x20   let ys = xs.par(fn(x) { total = total + x\n x })\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert_eq!(
+            found.len(),
+            1,
+            "a captured write in `par`'s f is E1101: {found:?}"
+        );
+    }
+
+    #[test]
+    fn par_s_own_parameter_and_a_captured_read_are_not_captured_writes() {
+        let found = capture_codes(
+            "fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   (mut xs).push(1)\n\
+             \x20   let k = 3\n\
+             \x20   let ys = xs.par(fn(x) { var y = x\n y = y + k\n y })\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert!(
+            found.is_empty(),
+            "the task's own names are not captures: {found:?}"
+        );
     }
 
     #[test]
