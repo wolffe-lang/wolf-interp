@@ -20,9 +20,18 @@ use super::place::Path;
 use super::region::{RegionId, Strategy, TaskClaim};
 use super::rules::Rule;
 use super::sched::{ChanId, MutexId, ProcId, Resolved, ScopeId, TaskEnd};
-use super::value::{ClosureValue, Slot, Value};
+use super::value::{ClosureValue, ErrorValue, Slot, Value};
 use super::{EResult, Frame, Machine, Scope, Signal, unsupported};
 
+/// `W` of `[conc.task.par.chunk]`: the workers this machine schedules `par`'s
+/// chunks onto. Implementation-specified by the clause, and FIXED here rather
+/// than read off the host's cores: the scheduler runs one task at a time
+/// whatever `W` is, so a host-sized `W` would buy no speed and would make the
+/// `spawn` events — the only trace `k` leaves (`[conc.task.par.det]`) — differ
+/// between two hosts running the same seed. One seed is one `k` everywhere.
+/// wasm has no thread to spawn, so its `W` is 1: the clause's single chunk on
+/// the calling task.
+pub(crate) const PAR_WORKERS: usize = if cfg!(target_family = "wasm") { 1 } else { 4 };
 /// Stack for a spawned task's tree walk. Smaller than `main`'s 64MiB
 /// reservation — a task deeper than this hits the 512-frame rail first.
 const TASK_STACK: usize = 16 * 1024 * 1024;
@@ -261,6 +270,229 @@ impl Machine {
             .expect("a task thread must spawn");
         self.shared.sched.register_thread(task, handle);
         self.drain_sched();
+        Ok(Value::Unit)
+    }
+
+    /// `xs.par(f)` (`[conc.task.par]`), the desugar made literal: `k =
+    /// min(n, W)` contiguous chunks whose lengths differ by at most one, one
+    /// spawned task each under a scope of their own, one join, and the result
+    /// in input order because every chunk writes only its own slots
+    /// (`[conc.task.par.order]`). `k == 1` runs on the calling task with no
+    /// spawn, which `[conc.task.par.chunk]` permits; `n == 0` spawns nothing.
+    ///
+    /// A failure is `[conc.task.fail]`'s: a chunk stops at its first error
+    /// value, the scheduler cancels the siblings, and the first failure in
+    /// schedule order is the `par`'s value — an error row the call site's `?`
+    /// or `else` handles, never a partial list. A fault in `f` is the fault.
+    pub(crate) fn eval_par(
+        &mut self,
+        items: Vec<Value>,
+        args: Vec<Value>,
+        span: Span,
+    ) -> EResult<Value> {
+        let mut args = args.into_iter();
+        let (Some(f), None) = (args.next(), args.next()) else {
+            return unsupported(
+                "`par` takes exactly one fn value, `xs.par(f)` — a wrong count is the \
+                 counterparty's E0402, counted against the written arguments ([conc.task.par])",
+            );
+        };
+        match &f {
+            Value::Closure(closure) => {
+                if closure.params.len() != 1 {
+                    return unsupported(format!(
+                        "`par`'s `f` takes one element, `fn(T) -> U`; this closure takes {} \
+                         ([conc.task.par])",
+                        closure.params.len()
+                    ));
+                }
+                if closure
+                    .captures
+                    .iter()
+                    .any(|(_, value)| matches!(value, Value::Region(_)))
+                {
+                    return unsupported(
+                        "`[conc.task.par.capture]`: `f` captures a region value, and one value \
+                         cannot move into k tasks — refused",
+                    );
+                }
+            }
+            Value::Fn(_) => {}
+            other => {
+                return unsupported(format!(
+                    "`par` takes a fn value, got {} ([conc.task.par])",
+                    other.kind()
+                ));
+            }
+        }
+        let n = items.len();
+        let k = n.min(PAR_WORKERS);
+        self.fire(
+            Rule::TaskScope,
+            span,
+            &format!(
+                "`par` over {n} element(s): k = min(n, W = {PAR_WORKERS}) = {k} contiguous \
+                 chunk(s) ([conc.task.par.chunk])"
+            ),
+        );
+        let out = if k <= 1 {
+            let mut out = Vec::with_capacity(n);
+            for item in items {
+                match self.invoke(f.clone(), vec![item], span)? {
+                    Value::Error(err) if !err.enum_variant => return Ok(Value::Error(err)),
+                    value => out.push(value),
+                }
+            }
+            out
+        } else {
+            match self.par_chunks(items, &f, k, span)? {
+                Ok(out) => out,
+                Err(err) => return Ok(Value::Error(err)),
+            }
+        };
+        Ok(Value::list(
+            out.into_iter().map(Slot::live).collect(),
+            None,
+            Some(self.current_region()),
+        ))
+    }
+
+    /// The `k > 1` half of [`Machine::eval_par`]: spawn, join, collect.
+    fn par_chunks(
+        &mut self,
+        items: Vec<Value>,
+        f: &Value,
+        k: usize,
+        span: Span,
+    ) -> EResult<Result<Vec<Value>, Box<ErrorValue>>> {
+        let n = items.len();
+        let scope = self.shared.sched.open_scope(self.task, Some("par"));
+        self.drain_sched();
+        let items = std::sync::Arc::new(items);
+        let slots = std::sync::Arc::new(std::sync::Mutex::new(vec![None::<Value>; n]));
+        let proc = self.shared.sched.proc_of(self.task);
+        let ambient = self.store().current();
+        let module = self
+            .frames
+            .last()
+            .map(|frame| frame.module.clone())
+            .unwrap_or_default();
+        let (base, extra) = (n / k, n % k);
+        let mut lo = 0;
+        for chunk in 0..k {
+            let hi = lo + base + usize::from(chunk < extra);
+            let name = format!("par@{}#{chunk}", span.start);
+            let task = self
+                .shared
+                .sched
+                .spawn_task(self.task, Some(scope), proc, name.clone());
+            self.shared.sched.seed_stack(task, vec![ambient]);
+            let shared = self.shared.clone();
+            let globals = self.globals.clone();
+            let body = ParChunk {
+                f: f.clone(),
+                items: items.clone(),
+                range: lo..hi,
+                slots: slots.clone(),
+                span,
+            };
+            let module = module.clone();
+            let handle = std::thread::Builder::new()
+                .name(name)
+                .stack_size(TASK_STACK)
+                .spawn(move || {
+                    Machine::for_task(shared, task, globals).run_par_chunk(&body, module);
+                })
+                .expect("a par chunk's thread must spawn");
+            self.shared.sched.register_thread(task, handle);
+            self.drain_sched();
+            lo = hi;
+        }
+        let joined = self.sched_block(|sched, task| sched.join_scope(task, scope));
+        let failures = match joined {
+            Ok(failures) => failures,
+            Err(Resolved::Killed) => return Err(Signal::ProcKilled),
+            Err(Resolved::Deadlock(roster)) => return self.deadlock_trap(&roster, span),
+            Err(_) => unreachable!("join resolves to killed or deadlock only"),
+        };
+        match failures.into_iter().next() {
+            None => {}
+            Some(TaskEnd::Error(err)) => {
+                self.fire(
+                    Rule::TaskFail,
+                    span,
+                    &format!(
+                        "`par` answers its first chunk failure after the join: `{}` \
+                         ([conc.task.par.fail])",
+                        err.tag
+                    ),
+                );
+                return Ok(Err(err));
+            }
+            Some(TaskEnd::Trapped(trap)) => return Err(Signal::Trap(trap)),
+            Some(TaskEnd::Ub(finding)) => return Err(Signal::Ub(finding)),
+            Some(TaskEnd::Unsupported(reason)) => return Err(Signal::Unsupported(reason)),
+            Some(TaskEnd::Value(_) | TaskEnd::Cancelled | TaskEnd::Killed) => {
+                unreachable!("not failures")
+            }
+        }
+        let filled = std::mem::take(&mut *slots.lock().expect("the slots lock is never poisoned"));
+        filled
+            .into_iter()
+            .map(|slot| {
+                slot.ok_or_else(|| {
+                    Signal::Unsupported(
+                        "a `par` slot was never filled after a clean join — an interpreter bug"
+                            .to_owned(),
+                    )
+                })
+            })
+            .collect::<EResult<Vec<Value>>>()
+            .map(Ok)
+    }
+
+    /// One `par` chunk's whole life, on its own thread: the desugar's
+    /// `for i in lo(c)..hi(c) { out[i] = f(xs[i])? }`.
+    fn run_par_chunk(mut self, chunk: &ParChunk, module: String) {
+        if !self.shared.sched.first_schedule(self.task) {
+            let regions = self.shared.sched.end_task(self.task, TaskEnd::Killed);
+            self.free_regions(regions, Span::new(0, 0));
+            self.shared.sched.dispatch_next();
+            return;
+        }
+        {
+            let mut stack = self.shared.sched.restore_stack(self.task);
+            self.store().swap_open(&mut stack);
+        }
+        let serial = self.mint_frame_serial();
+        self.frames.push(Frame {
+            module,
+            serial,
+            scopes: vec![Scope::default()],
+            row: Vec::new(),
+            read_params: Vec::new(),
+        });
+        let result = self.par_chunk_body(chunk);
+        self.finish_task_thread(result);
+    }
+
+    fn par_chunk_body(&mut self, chunk: &ParChunk) -> EResult<Value> {
+        for index in chunk.range.clone() {
+            let value = self.invoke(
+                chunk.f.clone(),
+                vec![chunk.items[index].clone()],
+                chunk.span,
+            )?;
+            if let Value::Error(err) = &value
+                && !err.enum_variant
+            {
+                return Ok(value);
+            }
+            chunk
+                .slots
+                .lock()
+                .expect("the slots lock is never poisoned")[index] = Some(value);
+        }
         Ok(Value::Unit)
     }
 
@@ -948,4 +1180,14 @@ impl Machine {
             None,
         )
     }
+}
+
+/// What one `par` chunk task carries: the fn value, the shared read of `xs`,
+/// its own index range, and the result slots it alone writes in that range.
+struct ParChunk {
+    f: Value,
+    items: std::sync::Arc<Vec<Value>>,
+    range: std::ops::Range<usize>,
+    slots: std::sync::Arc<std::sync::Mutex<Vec<Option<Value>>>>,
+    span: Span,
 }

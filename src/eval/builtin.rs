@@ -1139,7 +1139,7 @@ pub const BUILTIN_METHODS: &[(&str, &[&str])] = &[
     (
         "List",
         &[
-            "push", "pop", "len", "count", "is_empty", "get", "first", "last", "clear",
+            "push", "pop", "len", "count", "is_empty", "get", "first", "last", "clear", "par",
         ],
     ),
     ("Map", &["len", "count", "is_empty", "pairs", "clear"]),
@@ -1363,6 +1363,13 @@ pub fn method(
             machine.check_home_write(*home, "this `clear`", span)?;
             std::sync::Arc::make_mut(items).clear();
             Ok(Value::Unit)
+        }
+        // `[conc.task.par]`: the one builtin combinator (`[type.comb.builtin]`),
+        // found at step (1) and needing no std root. `xs` is read, never
+        // moved; the chunked desugar lives with the rest of the task tier.
+        (Value::List(items, _, _), "par") => {
+            let items: Vec<Value> = items.iter().map(|slot| slot.value.clone()).collect();
+            machine.eval_par(items, args, span)
         }
         (Value::List(items, _, _), "len" | "count") => {
             Ok(Value::Int(items.len() as i128, IntTy::INT))
