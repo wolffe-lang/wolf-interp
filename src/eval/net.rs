@@ -16,7 +16,9 @@
 //! -> unit ! {io}`; the s141 pair whose clauses the SPEC pins outright —
 //! `net_writev(int, List[List[byte]]) -> unit ! {closed, io}` and
 //! `net_nodelay(int, bool) -> unit ! {io}`, `[os.net.writev]` and
-//! `[os.net.nodelay]`), the corpus witnesses under `corpus/net/`, and
+//! `[os.net.nodelay]`; and s160's `net_writev_head(int, str,
+//! List[List[byte]]) -> unit ! {closed, io}`, `[os.net.writev.head]`), the
+//! corpus witnesses under `corpus/net/`, and
 //! empirical probes of the compiled lanes — never `wolf_rt::net`. The
 //! pinned facts:
 //!
@@ -1124,49 +1126,35 @@ impl Machine {
             // syscall where the parts would have been several.
             "net_writev" => {
                 let fd = int_arg(args, 0, name)?;
-                let Some(outer) = args.get(1).and_then(Value::seq_slots) else {
+                let parts = writev_parts(name, args.get(1))?;
+                let mut cursor = (0usize, 0usize);
+                let answer = self.net_park(name, fd, span, move |table| {
+                    table.poll_writev(fd, &parts, &mut cursor)
+                })?;
+                self.net_answer(name, answer.map(|()| Value::Unit), span)
+            }
+            // `[os.net.writev.head]` (s160, wolf-lang#299): "`[os.net.writev]`
+            // in every respect (the same drain, the same park, the same
+            // rows), with the head carried as the `{ptr, len}` pair a `str`
+            // already is instead of as a list. An empty head contributes no
+            // segment." A tree-walk has no pointers, so the head enters the
+            // gather as one more part — the wire, the park and the rows are
+            // `net_writev`'s by construction, and what the clause subtracts
+            // (the copy into a `List[byte]`) is a native-tier cost this
+            // machine never modelled in the first place.
+            "net_writev_head" => {
+                let fd = int_arg(args, 0, name)?;
+                let Some(Value::Str(head)) = args.get(1) else {
                     return Err(Signal::Unsupported(format!(
-                        "`{name}` takes an fd and a `List[List[byte]]` payload"
+                        "`{name}` takes an fd, a `str` head and a `List[List[byte]]` payload"
                     )));
                 };
-                let mut parts: Vec<Vec<u8>> = Vec::with_capacity(outer.len());
-                for slot in outer {
-                    let Some(inner) = slot.value.seq_slots() else {
-                        return Err(Signal::Unsupported(format!(
-                            "`{name}`'s parts must each be a `List[byte]`, got {}",
-                            slot.value.kind()
-                        )));
-                    };
-                    let mut part = Vec::with_capacity(inner.len());
-                    for element in inner {
-                        match &element.value {
-                            Value::Byte(b) => part.push(*b),
-                            Value::Int(v, _) if (0..=255).contains(v) => {
-                                part.push(u8::try_from(*v).expect("checked 0..=255"));
-                            }
-                            // NOT the `invalid` row, and the clause is
-                            // explicit about why: "`invalid` is
-                            // `net_write_bytes`'s refusal of a list that is
-                            // not a `List[byte]`, which a typed
-                            // `List[List[byte]]` cannot present and this call
-                            // does not declare." A row the call never
-                            // declared would be a tag no handler's arms can
-                            // resolve, so the untyped shapes machinery can
-                            // still build are refused BY NAME instead.
-                            other => {
-                                return Err(Signal::Unsupported(format!(
-                                    "`{name}`'s parts hold {}, and the call declares no \
-                                     `invalid` row to answer with — a typed \
-                                     `List[List[byte]]` cannot present this, so the shape \
-                                     is refused by name rather than given a row \
-                                     `[os.net.writev]` does not carry",
-                                    other.kind()
-                                )));
-                            }
-                        }
-                    }
-                    parts.push(part);
+                let rest = writev_parts(name, args.get(2))?;
+                let mut parts = Vec::with_capacity(rest.len() + 1);
+                if !head.is_empty() {
+                    parts.push(head.as_bytes().to_vec());
                 }
+                parts.extend(rest);
                 let mut cursor = (0usize, 0usize);
                 let answer = self.net_park(name, fd, span, move |table| {
                     table.poll_writev(fd, &parts, &mut cursor)
@@ -1446,6 +1434,55 @@ fn int_arg(args: &[Value], at: usize, name: &str) -> Result<i128, Signal> {
 
 /// What a builtin arm hands back to `eval_call`.
 type EvalOut = Result<Value, Signal>;
+
+/// `[os.net.writev]`'s vector, read off a `List[List[byte]]` value — shared
+/// by `net_writev` and `net_writev_head`, whose parts are the same parts.
+fn writev_parts(name: &str, payload: Option<&Value>) -> Result<Vec<Vec<u8>>, Signal> {
+    let Some(outer) = payload.and_then(Value::seq_slots) else {
+        return Err(Signal::Unsupported(format!(
+            "`{name}` takes an fd and a `List[List[byte]]` payload"
+        )));
+    };
+    let mut parts: Vec<Vec<u8>> = Vec::with_capacity(outer.len());
+    for slot in outer {
+        let Some(inner) = slot.value.seq_slots() else {
+            return Err(Signal::Unsupported(format!(
+                "`{name}`'s parts must each be a `List[byte]`, got {}",
+                slot.value.kind()
+            )));
+        };
+        let mut part = Vec::with_capacity(inner.len());
+        for element in inner {
+            match &element.value {
+                Value::Byte(b) => part.push(*b),
+                Value::Int(v, _) if (0..=255).contains(v) => {
+                    part.push(u8::try_from(*v).expect("checked 0..=255"));
+                }
+                // NOT the `invalid` row, and the clause is
+                // explicit about why: "`invalid` is
+                // `net_write_bytes`'s refusal of a list that is
+                // not a `List[byte]`, which a typed
+                // `List[List[byte]]` cannot present and this call
+                // does not declare." A row the call never
+                // declared would be a tag no handler's arms can
+                // resolve, so the untyped shapes machinery can
+                // still build are refused BY NAME instead.
+                other => {
+                    return Err(Signal::Unsupported(format!(
+                        "`{name}`'s parts hold {}, and the call declares no \
+                         `invalid` row to answer with — a typed \
+                         `List[List[byte]]` cannot present this, so the shape \
+                         is refused by name rather than given a row \
+                         `[os.net.writev]` does not carry",
+                        other.kind()
+                    )));
+                }
+            }
+        }
+        parts.push(part);
+    }
+    Ok(parts)
+}
 
 #[cfg(test)]
 mod tests {

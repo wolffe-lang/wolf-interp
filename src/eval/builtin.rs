@@ -145,6 +145,9 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // gathered write, and the one stream option — with `TCP_NODELAY` ON by
     // default on every TCP stream this machine hands a program.
     "net_writev",
+    // `[os.net.writev.head]` (s160, wolf-lang#299): the gather with a `str`
+    // head.
+    "net_writev_head",
     "net_nodelay",
     "net_close",
     "net_deadline",
@@ -1000,7 +1003,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         "net_listen" | "net_listen_unix" | "net_listen_with" | "net_adopt_listener"
         | "net_wait" | "net_port" | "net_accept" | "net_connect" | "net_connect_unix"
         | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes" | "net_writev"
-        | "net_nodelay" | "net_close" | "net_deadline" => unsupported(format!(
+        | "net_writev_head" | "net_nodelay" | "net_close" | "net_deadline" => unsupported(format!(
             "`{name}` is the s39 net tier; this wasm build has no sockets to open, so the \
                  tier is declined rather than mocked"
         )),
@@ -1008,7 +1011,9 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         "net_listen" | "net_listen_unix" | "net_listen_with" | "net_adopt_listener"
         | "net_wait" | "net_port" | "net_accept" | "net_connect" | "net_connect_unix"
         | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes" | "net_writev"
-        | "net_nodelay" | "net_close" | "net_deadline" => machine.net_call(name, &args, span),
+        | "net_writev_head" | "net_nodelay" | "net_close" | "net_deadline" => {
+            machine.net_call(name, &args, span)
+        }
         other => unsupported(format!(
             "`{other}` is in the ambient std stub but has no pinned semantics; the real std \
              surface is not specified yet, and guessing it would put invented behavior into a \
@@ -2168,6 +2173,8 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // `net_write_bytes`'s own pre-write check over a shape a typed
         // `List[List[byte]]` cannot present.
         "net_writev" => &["closed", "io"],
+        // `[os.net.writev.head]`: "the same rows" as `[os.net.writev]`.
+        "net_writev_head" => &["closed", "io"],
         // The s106 byte pair (is30, wolf-interp#52 / wolf-std F-0102):
         // no `utf8` row anywhere — a lone 0x80 is data — and `invalid`
         // is `net_write_bytes`' whole pre-write check (an element outside
