@@ -1540,6 +1540,15 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("strings/dollar_brace_escape.lu", "exit(0)"),
     ("strings/end_relative_get.lu", "exit(0)"),
     ("typecheck/closure_param_call.lu", "exit(0)"),
+    // -- is50, lupin 0.1.37: the two mirrors, at the same pin ---------------
+    //
+    // No new files: the pin is is49's. What moves is which of is49's
+    // ledgered s157/s160 rows reach `run`, and what they answer there — each
+    // one PREDICTED by name in `docs/divergence-log.md` before the first
+    // edit. `grammar/match_nullary_variant.lu` is `[gram.pat.nullary]`
+    // (wolf-interp#107): a bare dotted path is a pattern, and the witness
+    // that was `fail(E0201)` at parse (DIV-2026-024, waived) runs.
+    ("grammar/match_nullary_variant.lu", "exit(0)"),
 ];
 
 #[test]
