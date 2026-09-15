@@ -584,3 +584,165 @@ fn a_windows_device_name_is_refused_by_name_at_the_surface() {
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     assert_eq!(stdout_of(&output), "ok=true\n");
 }
+
+// -- wolf-interp#112: the three names std.fs calls, and the rows they carry --
+
+#[test]
+fn the_one_level_directory_pair_answers_the_compiled_lanes_rows() {
+    // `fs_create_dir` and `fs_remove_dir`, every row a program can reach on
+    // one host: a fresh create, `exists` over a directory AND over a file,
+    // `not_found` under a missing parent; `io` for a non-empty directory and
+    // for a regular file, `not_found` for nothing there, and the empty
+    // directory removed. The stdout is wolf 0.2.14's, `--checked` and
+    // `--native` (pin 30731a6), byte for byte.
+    let dir = scratch("fs-one-level-dirs");
+    let source = "fn main() -> !int {\n\
+        \x20   fs_remove_dir_all(\"probe-d\") else |_| {}\n\
+        \x20   var a = \"ok\"\n\
+        \x20   fs_create_dir(\"probe-d\") else |e| match e { exists => { a = \"exists\" }, not_found => { a = \"not_found\" }, denied => { a = \"denied\" }, io => { a = \"io\" } }\n\
+        \x20   var b = \"ok\"\n\
+        \x20   fs_create_dir(\"probe-d\") else |e| match e { exists => { b = \"exists\" }, not_found => { b = \"not_found\" }, denied => { b = \"denied\" }, io => { b = \"io\" } }\n\
+        \x20   fs_write_text(\"probe-d/f.txt\", \"x\")?\n\
+        \x20   var c = \"ok\"\n\
+        \x20   fs_create_dir(\"probe-d/f.txt\") else |e| match e { exists => { c = \"exists\" }, not_found => { c = \"not_found\" }, denied => { c = \"denied\" }, io => { c = \"io\" } }\n\
+        \x20   var d = \"ok\"\n\
+        \x20   fs_create_dir(\"probe-d/missing/child\") else |e| match e { exists => { d = \"exists\" }, not_found => { d = \"not_found\" }, denied => { d = \"denied\" }, io => { d = \"io\" } }\n\
+        \x20   var e1 = \"ok\"\n\
+        \x20   fs_remove_dir(\"probe-d\") else |e| match e { not_found => { e1 = \"not_found\" }, denied => { e1 = \"denied\" }, io => { e1 = \"io\" } }\n\
+        \x20   var f = \"ok\"\n\
+        \x20   fs_remove_dir(\"probe-d/f.txt\") else |e| match e { not_found => { f = \"not_found\" }, denied => { f = \"denied\" }, io => { f = \"io\" } }\n\
+        \x20   var g = \"ok\"\n\
+        \x20   fs_remove_dir(\"probe-d/nope\") else |e| match e { not_found => { g = \"not_found\" }, denied => { g = \"denied\" }, io => { g = \"io\" } }\n\
+        \x20   fs_remove(\"probe-d/f.txt\")?\n\
+        \x20   var h = \"ok\"\n\
+        \x20   fs_remove_dir(\"probe-d\") else |e| match e { not_found => { h = \"not_found\" }, denied => { h = \"denied\" }, io => { h = \"io\" } }\n\
+        \x20   print(\"{a} {b} {c} {d} | {e1} {f} {g} {h} {fs_is_dir(\"probe-d\")}\")\n\
+        \x20   0\n\
+        }\n\
+        ";
+    let output = run_program(dir.as_path(), source);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(
+        stdout_of(&output),
+        "ok exists exists not_found | io io not_found ok false\n"
+    );
+}
+
+#[test]
+fn the_handles_byte_write_lands_at_the_cursor_and_refuses_a_read_handle() {
+    // `fs_write_chunk`: two bytes no text writer could hold (0x80, 0xFF),
+    // an empty chunk that writes nothing, and `io` from a read-only handle
+    // and from a closed one. wolf 0.2.14, both tiers: `size 2 ro io closed io`.
+    let dir = scratch("fs-write-chunk");
+    let source = "fn main() -> !int {\n\
+        \x20   var raw = List[byte]()\n\
+        \x20   (mut raw).push(128 as byte)\n\
+        \x20   (mut raw).push(255 as byte)\n\
+        \x20   var f = fs_create(\"probe-chunk.bin\")?\n\
+        \x20   fs_write_chunk(f, raw)?\n\
+        \x20   fs_write_chunk(f, List[byte]())?\n\
+        \x20   fs_close(f)?\n\
+        \x20   let n = fs_size(\"probe-chunk.bin\")?\n\
+        \x20   var r = fs_open(\"probe-chunk.bin\")?\n\
+        \x20   var ro = \"ok\"\n\
+        \x20   fs_write_chunk(r, raw) else |e| match e {\n\
+        \x20       invalid => { ro = \"invalid\" },\n\
+        \x20       io => { ro = \"io\" },\n\
+        \x20   }\n\
+        \x20   fs_close(r)?\n\
+        \x20   var closed = \"ok\"\n\
+        \x20   fs_write_chunk(r, raw) else |e| match e {\n\
+        \x20       invalid => { closed = \"invalid\" },\n\
+        \x20       io => { closed = \"io\" },\n\
+        \x20   }\n\
+        \x20   fs_remove(\"probe-chunk.bin\")?\n\
+        \x20   print(\"size {n} ro {ro} closed {closed}\")\n\
+        \x20   0\n\
+        }\n\
+        ";
+    let output = run_program(dir.as_path(), source);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(stdout_of(&output), "size 2 ro io closed io\n");
+}
+
+// unix only: the three rename refusals are `io` on linux and macOS
+// (`ENOTEMPTY`, `EISDIR`, `ENOTDIR`); windows' `MoveFileEx` spells them its
+// own way, and both lanes take that host's answer together rather than this
+// test's string.
+#[cfg(unix)]
+#[test]
+fn a_row_the_call_does_not_declare_never_reaches_a_handler() {
+    // The measurement that re-read every fs row: with `fs_rename` declared
+    // `{not_found, denied, io}` here, a handler's `cross_device =>` arm was
+    // a BINDING and caught a plain `io` — `rename dir>full cross_device`
+    // where the compiled lane printed `io`. Likewise `fs_create` under a
+    // missing parent raised the undeclared `not_found` into a `_` arm, and
+    // `fs_read_dir`'s `utf8 =>` arm bound. The stdout is wolf 0.2.14's on
+    // both tiers (the compiler also warns E0802 on the `_` arm, a warning
+    // this machine does not emit).
+    let dir = scratch("fs-declared-rows");
+    let source = "fn main() -> !int {\n\
+        \x20   fs_remove_dir_all(\"pr\") else |_| {}\n\
+        \x20   fs_create_dir_all(\"pr/full\")?\n\
+        \x20   fs_write_text(\"pr/full/x.txt\", \"x\")?\n\
+        \x20   fs_create_dir_all(\"pr/empty\")?\n\
+        \x20   fs_create_dir_all(\"pr/src\")?\n\
+        \x20   fs_write_text(\"pr/file.txt\", \"f\")?\n\
+        \x20   var c = \"ok\"\n\
+        \x20   let h = fs_create(\"pr/missing/x.txt\") else |e| match e { denied => { c = \"denied\"; 0 }, io => { c = \"io\"; 0 }, _ => { c = \"OTHER\"; 0 } }\n\
+        \x20   var r1 = \"ok\"\n\
+        \x20   fs_rename(\"pr/src\", \"pr/full\") else |e| match e { not_found => { r1 = \"not_found\" }, denied => { r1 = \"denied\" }, cross_device => { r1 = \"cross_device\" }, exists => { r1 = \"exists\" }, io => { r1 = \"io\" } }\n\
+        \x20   var r2 = \"ok\"\n\
+        \x20   fs_rename(\"pr/file.txt\", \"pr/empty\") else |e| match e { not_found => { r2 = \"not_found\" }, denied => { r2 = \"denied\" }, cross_device => { r2 = \"cross_device\" }, exists => { r2 = \"exists\" }, io => { r2 = \"io\" } }\n\
+        \x20   var r3 = \"ok\"\n\
+        \x20   fs_rename(\"pr/empty\", \"pr/file.txt\") else |e| match e { not_found => { r3 = \"not_found\" }, denied => { r3 = \"denied\" }, cross_device => { r3 = \"cross_device\" }, exists => { r3 = \"exists\" }, io => { r3 = \"io\" } }\n\
+        \x20   var r4 = \"ok\"\n\
+        \x20   fs_rename(\"pr/nope\", \"pr/x\") else |e| match e { not_found => { r4 = \"not_found\" }, denied => { r4 = \"denied\" }, cross_device => { r4 = \"cross_device\" }, exists => { r4 = \"exists\" }, io => { r4 = \"io\" } }\n\
+        \x20   var a1 = \"ok\"\n\
+        \x20   fs_create_dir_all(\"pr/file.txt/sub\") else |e| match e { denied => { a1 = \"denied\" }, io => { a1 = \"io\" } }\n\
+        \x20   var d1 = \"ok\"\n\
+        \x20   let ls = fs_read_dir(\"pr/file.txt\") else |e| match e { not_found => { d1 = \"not_found\"; List[str]() }, denied => { d1 = \"denied\"; List[str]() }, utf8 => { d1 = \"utf8\"; List[str]() }, io => { d1 = \"io\"; List[str]() } }\n\
+        \x20   fs_remove_dir_all(\"pr\")?\n\
+        \x20   print(\"create {c} | rename dir>full {r1} file>dir {r2} dir>file {r3} missing {r4} | all {a1} | readdir-file {d1}\")\n\
+        \x20   0\n\
+        }\n\
+        ";
+    let output = run_program(dir.as_path(), source);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(
+        stdout_of(&output),
+        "create io | rename dir>full io file>dir io dir>file io missing not_found | all io \
+         | readdir-file io\n"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_listing_holding_a_non_utf8_name_is_the_utf8_row() {
+    // wolf-interp#110 item 2, decided by the row `fs_read_dir` declares on
+    // the compiled lane (`{not_found, denied, utf8, io}`): a name no `str`
+    // can carry refuses the whole listing with `utf8`, never a silent skip
+    // and never `io`. linux only — APFS and NTFS refuse to create the name.
+    use std::os::unix::ffi::OsStrExt;
+    let dir = scratch("fs-non-utf8-listing");
+    std::fs::create_dir_all(dir.join("listing")).expect("listing dir");
+    std::fs::write(dir.join("listing").join("fine.txt"), "x").expect("a fine name");
+    std::fs::write(
+        dir.join("listing")
+            .join(std::ffi::OsStr::from_bytes(b"bad-\xff.txt")),
+        "x",
+    )
+    .expect("a non-UTF-8 name");
+    let source = "fn main() -> !int {\n\
+        \x20   var row = \"ok\"\n\
+        \x20   let names = fs_read_dir(\"listing\") else |e| match e {\n\
+        \x20       utf8 => { row = \"utf8\"; List[str]() },\n\
+        \x20       _ => { row = \"other\"; List[str]() },\n\
+        \x20   }\n\
+        \x20   print(\"{row} {names.len}\")\n\
+        \x20   0\n\
+        }\n";
+    let output = run_program(dir.as_path(), source);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(stdout_of(&output), "utf8 0\n");
+}
