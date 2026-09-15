@@ -4042,3 +4042,101 @@ fn map_clear_drains_and_a_bare_receiver_is_the_mode_refusal() {
                 }\n";
     assert_eq!(trap_kind(bare), TrapKind::Exclusivity);
 }
+
+// -- [conc.task.par]: the one builtin combinator (is51) ---------------------
+
+#[test]
+fn par_answers_in_input_order_whatever_the_chunking() {
+    // `[conc.task.par.order]`: ten elements over W = 4 is four contiguous
+    // chunks of 3/3/2/2, and `out[i]` is `f(xs[i])` for every `i`.
+    let source = "fn main() -> !int {\n\
+                  \x20   var xs = List[int]()\n\
+                  \x20   var i = 1\n\
+                  \x20   while i <= 10 {\n\
+                  \x20       (mut xs).push(i)\n\
+                  \x20       i = i + 1\n\
+                  \x20   }\n\
+                  \x20   let ys = xs.par(fn(x) x * 2)\n\
+                  \x20   var line = \"\"\n\
+                  \x20   for y in ys { line = \"{line} {y}\" }\n\
+                  \x20   print(\"{ys.len}:{line}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "10: 2 4 6 8 10 12 14 16 18 20\n");
+}
+
+#[test]
+fn par_on_an_empty_list_is_empty_and_one_element_runs_inline() {
+    // `[conc.task.par.chunk]`: `n == 0` spawns nothing and answers `[]`; a
+    // single chunk may run on the calling task.
+    let source = "fn main() -> !int {\n\
+                  \x20   let none_yet = List[int]()\n\
+                  \x20   let a = none_yet.par(fn(x) x + 1)\n\
+                  \x20   var one = List[int]()\n\
+                  \x20   (mut one).push(41)\n\
+                  \x20   let b = one.par(fn(x) x + 1)\n\
+                  \x20   print(\"{a.len} {b.len} {b[0]}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "0 1 42\n");
+}
+
+#[test]
+fn par_takes_a_named_function_as_its_fn_value() {
+    let source = "fn sq(x: int) -> int { x * x }\n\
+                  fn main() -> !int {\n\
+                  \x20   var xs = List[int]()\n\
+                  \x20   (mut xs).push(2)\n\
+                  \x20   (mut xs).push(3)\n\
+                  \x20   (mut xs).push(4)\n\
+                  \x20   let ys = xs.par(sq)\n\
+                  \x20   print(\"{ys[0]} {ys[1]} {ys[2]}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "4 9 16\n");
+}
+
+#[test]
+fn a_failing_chunk_is_the_pars_row_and_never_a_partial_list() {
+    // `[conc.task.par.fail]`: the first failure re-raises at the `par` after
+    // the join, and a failed `par` has no value — the caller's `else` sees
+    // the row, never a list with holes.
+    let source = "fn half(x: int) -> int ! {odd} {\n\
+                  \x20   if x % 2 == 1 { return odd }\n\
+                  \x20   x / 2\n\
+                  }\n\
+                  fn run(xs: List[int]) -> int ! {odd} {\n\
+                  \x20   let ys = xs.par(half)?\n\
+                  \x20   ys.len\n\
+                  }\n\
+                  fn main() -> !int {\n\
+                  \x20   var even = List[int]()\n\
+                  \x20   var mixed = List[int]()\n\
+                  \x20   var i = 0\n\
+                  \x20   while i < 8 {\n\
+                  \x20       (mut even).push(i * 2)\n\
+                  \x20       (mut mixed).push(i)\n\
+                  \x20       i = i + 1\n\
+                  \x20   }\n\
+                  \x20   let a = run(even) else 99\n\
+                  \x20   let b = run(mixed) else 99\n\
+                  \x20   print(\"{a} {b}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "8 99\n");
+}
+
+#[test]
+fn par_refuses_a_second_argument_by_the_counterpartys_code() {
+    let Outcome::Unsupported(reason) = outcome(
+        "fn main() -> !int {\n\
+         \x20   var xs = List[int]()\n\
+         \x20   (mut xs).push(1)\n\
+         \x20   let ys = xs.par(fn(x) x, 2)\n\
+         \x20   0\n\
+         }\n",
+    ) else {
+        panic!("two arguments to `par` must decline");
+    };
+    assert!(reason.contains("E0402"), "{reason}");
+}
