@@ -746,3 +746,36 @@ fn a_listing_holding_a_non_utf8_name_is_the_utf8_row() {
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     assert_eq!(stdout_of(&output), "utf8 0\n");
 }
+
+#[test]
+fn a_refused_path_wins_over_a_payload_the_writer_would_also_refuse() {
+    // wolf-interp#110 item 1, the issue's own program: `fs_write_bytes`
+    // parsed its payload before it resolved its path, so an element outside
+    // the octet answered `invalid` (exit 1) for a path this machine refuses
+    // by name. The path decides first now — `unsupported`, exit 4, nothing
+    // written — and the same payload under a path it DOES look at is still
+    // the declared `invalid` row.
+    let dir = scratch("fs-path-before-payload");
+    let refused = "fn main() -> !int {\n\
+        \x20   var b = List[int]()\n\
+        \x20   (mut b).push(999)\n\
+        \x20   fs_write_bytes(\"../is50-should-refuse.bin\", b)?\n\
+        \x20   0\n\
+        }\n";
+    let output = run_program(dir.as_path(), refused);
+    assert_eq!(output.status.code(), Some(4), "{output:?}");
+    assert!(!dir.join("../is50-should-refuse.bin").exists());
+    let looked_at = "fn main() -> !int {\n\
+        \x20   var b = List[int]()\n\
+        \x20   (mut b).push(999)\n\
+        \x20   fs_write_bytes(\"ok.bin\", b) else |e| match e {\n\
+        \x20       invalid => print(\"invalid\"),\n\
+        \x20       _ => print(\"other\"),\n\
+        \x20   }\n\
+        \x20   0\n\
+        }\n";
+    let output = run_program(dir.as_path(), looked_at);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(stdout_of(&output), "invalid\n");
+    assert!(!dir.join("ok.bin").exists());
+}
