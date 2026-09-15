@@ -3705,3 +3705,75 @@ fn a_bare_path_over_a_variant_that_carries_values_declines_by_name() {
                  }\n";
     assert_eq!(stdout(other), "1\n");
 }
+
+// -- `[mem.tier0.mode.read]`: `take` of a `read` parameter (s157, #107) ------
+
+#[test]
+fn take_of_a_read_parameter_traps_exclusivity_at_the_call_site() {
+    // `corpus/memory/read_param_take.lu` is the whole-binding shape; the
+    // projection and a `Copy` element are the two the witness does not
+    // spell. wolf 0.2.14 `--checked` (pin 30731a6) answers `fail(E1014)` on
+    // all three, at the argument; E1014's dynamic row is `exclusivity`, the
+    // same trap a write through the parameter already raises.
+    let whole = "fn eat(take xs: List[int]) -> int { xs.len }\n\
+                 fn hand_on(b: List[int]) -> int { eat(take b) }\n\
+                 fn main() -> !int {\n\
+                 \x20   var v = List[int]()\n\
+                 \x20   (mut v).push(1)\n\
+                 \x20   hand_on(v) - 1\n\
+                 }\n";
+    let trap = trap_of(whole);
+    assert_eq!(trap.kind, TrapKind::Exclusivity);
+    assert!(trap.message.contains("`take b`"), "{}", trap.message);
+    let projected = "struct Bag { items: List[int], n: int }\n\
+                     fn eat(take xs: List[int]) -> int { xs.len }\n\
+                     fn hand_on(b: Bag) -> int { eat(take b.items) }\n\
+                     fn main() -> !int {\n\
+                     \x20   let b = Bag { items: List[int](), n: 1 }\n\
+                     \x20   hand_on(b)\n\
+                     }\n";
+    assert_eq!(trap_kind(projected), TrapKind::Exclusivity);
+    let scalar = "fn eat(take n: int) -> int { n }\n\
+                  fn hand_on(b: int) -> int { eat(take b) }\n\
+                  fn main() -> !int { hand_on(1) - 1 }\n";
+    assert_eq!(trap_kind(scalar), TrapKind::Exclusivity);
+}
+
+#[test]
+fn take_of_a_local_or_a_take_parameter_still_moves() {
+    // The two shapes the clause leaves alone, both `exit(0)` on wolf 0.2.14:
+    // a body-scope shadow is an ordinary local (the clause's own repair,
+    // `copy` the parameter and hand the duplicate on), and a parameter
+    // declared `take` is the caller's to give. The plain move-out
+    // `fn f(b: T) -> T { b }` is wolf-lang#359's and not this rule's.
+    let shadow = "fn eat(take xs: List[int]) -> int { xs.len }\n\
+                  fn hand_on(b: List[int]) -> int {\n\
+                  \x20   var b = copy b\n\
+                  \x20   eat(take b)\n\
+                  }\n\
+                  fn main() -> !int {\n\
+                  \x20   var v = List[int]()\n\
+                  \x20   (mut v).push(1)\n\
+                  \x20   print(\"{hand_on(v)}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(shadow), "1\n");
+    let declared = "fn eat(take xs: List[int]) -> int { xs.len }\n\
+                    fn hand_on(take b: List[int]) -> int { eat(take b) }\n\
+                    fn main() -> !int {\n\
+                    \x20   var v = List[int]()\n\
+                    \x20   (mut v).push(1)\n\
+                    \x20   print(\"{hand_on(take v)}\")\n\
+                    \x20   0\n\
+                    }\n";
+    assert_eq!(stdout(declared), "1\n");
+    let plain = "fn keep(b: List[int]) -> List[int] { b }\n\
+                 fn main() -> !int {\n\
+                 \x20   var v = List[int]()\n\
+                 \x20   (mut v).push(1)\n\
+                 \x20   let w = keep(v)\n\
+                 \x20   print(\"{w.len}\")\n\
+                 \x20   0\n\
+                 }\n";
+    assert_eq!(stdout(plain), "1\n");
+}

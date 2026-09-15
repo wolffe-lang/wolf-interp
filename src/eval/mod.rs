@@ -1820,7 +1820,8 @@ impl Machine {
 
     /// D39's callee-side write barrier (`[mem.tier0.mode.read]`): the span of
     /// the read-mode parameter `path` writes through, when it writes through
-    /// one. The innermost binding of the base decides — scope 0 of a call
+    /// one. The `take` barrier asks the same question (s157: a `read`
+    /// parameter cannot be given away either). The innermost binding of the base decides — scope 0 of a call
     /// frame holds exactly the parameters, so a body-scope shadow of the name
     /// is an ordinary local and passes.
     fn read_param_write(&self, path: &Path) -> Option<Span> {
@@ -2992,6 +2993,35 @@ impl Machine {
                     // (`[mem.tier0.mode.take]` → `[mem.tier0.move.1]`).
                     let value = match self.live_place(&arg.expr)? {
                         Some(path) => {
+                            // `[mem.tier0.mode.read]` (s157, wolf-lang#60):
+                            // "a `read` parameter cannot be given away either,
+                            // so spelling `take` on it at an inner call site
+                            // is refused with the same code as a write
+                            // (E1014)". The dynamic row is the write's —
+                            // `exclusivity` — and the barrier is the write's
+                            // too: the innermost binding of the base decides,
+                            // so `var b = copy b` then `take b` gives away a
+                            // local and passes, as it does on the compiler.
+                            if let Some(param_span) = self.read_param_write(&path) {
+                                return self.trap(
+                                    TrapKind::Exclusivity,
+                                    Rule::ModeRead,
+                                    arg.span,
+                                    format!(
+                                        "`take {path}` gives away the read-mode parameter \
+                                         `{}`: the default (unwritten) mode reads a value the \
+                                         caller retains, so it cannot be moved out any more \
+                                         than written through (`[mem.tier0.mode.read]`, \
+                                         wolf-lang#60) — `copy` it and hand the duplicate on, \
+                                         or declare the parameter `take`",
+                                        path.base
+                                    ),
+                                    Some((
+                                        param_span,
+                                        format!("`{}` bound in read mode here", path.base),
+                                    )),
+                                );
+                            }
                             self.fire(Rule::ModeTake, arg.span, &format!("`take {path}`"));
                             self.move_path(&path, arg.span)?
                         }
