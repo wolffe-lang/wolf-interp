@@ -3949,4 +3949,96 @@ fn a_produced_str_held_outside_its_region_or_sent_from_a_proc_faults() {
     let trap = trap_of(sent);
     assert_eq!(trap.kind, TrapKind::RegionFault);
     assert!(trap.message.contains("proc:worker"), "{}", trap.message);
+
+// -- [type.method.resolve] step (1): the builtin table (is51) ---------------
+
+#[test]
+fn every_builtin_method_the_table_names_dispatches() {
+    // `builtin::BUILTIN_METHODS` is the step-(1) set: a name in it must reach
+    // an arm of `builtin::method`, or step (2) would never be consulted for a
+    // name nothing answers. Called with no arguments, an arm may refuse its
+    // argument shape — that is dispatch — but never "has no method".
+    let receivers = [
+        ("List", "var r = List[int]()"),
+        ("Map", "var r = Map[str, int]()"),
+        ("str", "var r = \"ab\""),
+    ];
+    for (ty, names) in builtin::BUILTIN_METHODS {
+        let Some((_, bind)) = receivers.iter().find(|(name, _)| name == ty) else {
+            assert!(names.is_empty(), "`{ty}` lists builtins but has no fixture");
+            continue;
+        };
+        for name in *names {
+            let source = format!(
+                "fn main() -> !int {{\n    {bind}\n    let v = (mut r).{name}()\n    0\n}}\n"
+            );
+            if let Outcome::Unsupported(reason) = outcome(&source) {
+                assert!(
+                    !reason.contains("has no method"),
+                    "`{ty}.{name}` is in the step-(1) table and no arm answers it: {reason}"
+                );
+            }
+        }
+    }
+    let Outcome::Unsupported(reason) =
+        outcome("fn main() -> !int {\n    var r = List[int]()\n    let v = r.frob()\n    0\n}\n")
+    else {
+        panic!("a name outside the table and every arm must decline");
+    };
+    assert!(reason.contains("has no method"), "{reason}");
+}
+
+#[test]
+fn the_home_table_is_closed_at_four_types() {
+    // `[type.method.home]`: List, Map, str and range have home modules, and
+    // nothing else does — a struct, a scalar, a pool keep their old surface.
+    assert_eq!(
+        builtin::HOMES
+            .iter()
+            .map(|(ty, dir)| format!("{ty}:{dir}"))
+            .collect::<Vec<_>>(),
+        ["List:list", "Map:map", "str:str", "range:range"]
+    );
+    assert!(builtin::home_of(&Value::Int(1, IntTy::INT)).is_none());
+    assert!(builtin::home_of(&Value::Bool(true)).is_none());
+    assert_eq!(
+        builtin::home_of(&Value::Str("x".into())),
+        Some(("str", "str"))
+    );
+}
+
+#[test]
+fn list_clear_drains_in_place_through_a_mut_receiver() {
+    // `[type.method.resolve]` step (1) lists `clear` among `List`'s builtins.
+    let source = "fn main() -> !int {\n\
+                  \x20   var xs = List[int]()\n\
+                  \x20   (mut xs).push(1)\n\
+                  \x20   (mut xs).push(2)\n\
+                  \x20   (mut xs).clear()\n\
+                  \x20   (mut xs).push(7)\n\
+                  \x20   print(\"{xs.len} {xs[0]}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "1 7\n");
+}
+
+#[test]
+fn map_clear_drains_and_a_bare_receiver_is_the_mode_refusal() {
+    // `[type.map]`: "`m.clear()` drains (a `mut` receiver)". X1 binds the
+    // mode at the call site, so the bare spelling is E0804's dynamic meaning.
+    let source = "fn main() -> !int {\n\
+                  \x20   var m = Map[str, int]()\n\
+                  \x20   m[\"a\"] = 1\n\
+                  \x20   m[\"b\"] = 2\n\
+                  \x20   (mut m).clear()\n\
+                  \x20   print(\"{m.len} {m.is_empty()}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "0 true\n");
+    let bare = "fn main() -> !int {\n\
+                \x20   var m = Map[str, int]()\n\
+                \x20   m.clear()\n\
+                \x20   0\n\
+                }\n";
+    assert_eq!(trap_kind(bare), TrapKind::Exclusivity);
 }
