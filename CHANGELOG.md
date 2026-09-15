@@ -103,7 +103,12 @@ wolf-std's ledger goes red on it, as designed. The cost was one function.
 (`lupin corpus`). Baseline `790c127`: 460 match / 54 out of scope / 2
 mismatch (both filed) / 23 dynamic counterpart / 41 conservatism / 449
 reach `run`. Predicted and measured: **462 / 53 / 1 / 26 / 38 / 451**, every cell,
-the five rows by name.
+the five rows by name. The compiler's table at wolf-lang v0.2.14, re-derived
+against the `790c127` binary as control, is **351/148/0/107/8** checked and
+**381/148/0/77/8** native (agreements / completeness / soundness /
+unsupported / hard), coverage B 451 and BOTH 331/361. That is five ledger
+counts moved per tier, all `-> agreement`, and hard is now the eight #167
+warning-parity rows alone. Every cell was predicted before the first edit.
 
 THE THREE CLAUSES (is49). Pin `a7f517e` (wolf-lang v0.2.12) -> **`30731a6`
 (wolf-lang v0.2.14)**, two releases in one bump: 580 -> 615 corpus files,
