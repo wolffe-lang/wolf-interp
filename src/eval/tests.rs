@@ -3645,3 +3645,63 @@ fn a_char_range_has_char_endpoints_and_iterates_by_scalar_value() {
                   }\n";
     assert_eq!(stdout(source), "a d e abc 'a'..'d'\n");
 }
+
+// -- `[gram.pat.nullary]`: a bare dotted path is a pattern (s157, #107) -----
+
+#[test]
+fn a_bare_dotted_path_matches_a_payload_less_variant() {
+    // `corpus/grammar/match_nullary_variant.lu`'s enum half, plus the two
+    // compositions the witness does not spell: an or-pattern of bare paths
+    // and a bare path in the `else |pat|` handler position. Measured on
+    // wolf 0.2.14 `--checked` (pin 30731a6): `true false 2`, byte for byte.
+    let source = "enum Color { Red, Green, Blue }\n\
+                  fn warm(c: Color) -> bool {\n\
+                  \x20   match c {\n\
+                  \x20       Color.Red | Color.Green => true,\n\
+                  \x20       Color.Blue => false,\n\
+                  \x20   }\n\
+                  }\n\
+                  fn rank(c: Color) -> int {\n\
+                  \x20   match c { Color.Blue => 3, Color.Green => 2, Color.Red => 1 }\n\
+                  }\n\
+                  fn main() -> !int {\n\
+                  \x20   print(\"{warm(Color.Red)} {warm(Color.Blue)} {rank(Color.Green)}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(source), "true false 2\n");
+}
+
+#[test]
+fn a_bare_path_over_a_variant_that_carries_values_declines_by_name() {
+    // "a variant that carries values, written bare, is E0808 naming the
+    // shape it wants" — wolf 0.2.14 answers `fail(E0808)` at typecheck on
+    // this program. This machine owns no E0808, and the silent answer would
+    // take the `_` arm and print `other`: a wrong answer is the worst shape
+    // a permissive divergence takes, so the arm declines by name instead.
+    let source = "enum Shape { Dot, Rgb(int, int, int) }\n\
+                  fn name(s: Shape) -> str {\n\
+                  \x20   match s {\n\
+                  \x20       Shape.Rgb => \"rgb\",\n\
+                  \x20       _ => \"other\",\n\
+                  \x20   }\n\
+                  }\n\
+                  fn main() -> !int {\n\
+                  \x20   print(name(Shape.Rgb(1, 2, 3)))\n\
+                  \x20   0\n\
+                  }\n";
+    let Outcome::Unsupported(reason) = outcome(source) else {
+        panic!("a bare path over a payload variant must decline")
+    };
+    assert!(reason.contains("E0808"), "{reason}");
+    assert!(reason.contains("`Shape.Rgb(_, _, _)`"), "{reason}");
+    // A bare path that names ANOTHER constructor is simply an arm that does
+    // not apply: `Shape.Dot` over an `Rgb` value is no arity question.
+    let other = "enum Shape { Dot, Rgb(int, int, int) }\n\
+                 fn main() -> !int {\n\
+                 \x20   let s = Shape.Rgb(1, 2, 3)\n\
+                 \x20   let n = match s { Shape.Dot => 0, Shape.Rgb(r, _, _) => r }\n\
+                 \x20   print(\"{n}\")\n\
+                 \x20   0\n\
+                 }\n";
+    assert_eq!(stdout(other), "1\n");
+}

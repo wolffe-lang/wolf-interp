@@ -452,6 +452,14 @@ pub enum PatKind {
     Wildcard,
     Literal(Box<Expr>),
     Binding(Ident),
+    /// A bare dotted `path` — `Color.Green`, `io.Eof` — matching a
+    /// constructor that carries nothing (`[gram.pat.nullary]`, s157,
+    /// wolf-interp#107). Always two or more segments: a single identifier is
+    /// [`PatKind::Binding`], whose own resolution rule already reads an
+    /// in-scope variant or a declared tag. Arity is the checker's question
+    /// (E0808 for a payload variant written bare); this machine answers it
+    /// when a value meets the arm.
+    Path(Path),
     /// `path '(' pattern,* ')'` — payload binding, `BadDigit(e)`.
     Variant {
         path: Path,

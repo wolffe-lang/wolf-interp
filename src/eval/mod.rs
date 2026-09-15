@@ -4808,6 +4808,55 @@ impl Machine {
         unsupported(format!("`{head}.{tail}` does not resolve"))
     }
 
+    /// Does the constructor a pattern spells as `path` name `err`'s tag?
+    ///
+    /// The same resolution rule as bare identifiers (issue #5): a pattern
+    /// spelled `Rgb(…)` matches a value built as `Color.Rgb(…)` when `Rgb` is
+    /// an in-scope variant, and the enum-qualified spelling matches the
+    /// bare-built value — the checker equates the two through the
+    /// scrutinee's type; this machine equates them through the variant
+    /// table. Shared by the payload form (`path '(' … ')'`) and the bare form
+    /// (`[gram.pat.nullary]`), which differ only in what they ask of the
+    /// payload.
+    fn constructor_path_matches(&self, path: &crate::ast::Path, err: &ErrorValue) -> bool {
+        let tag = path
+            .segments
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".");
+        if err.tag == tag {
+            return true;
+        }
+        let module = self
+            .frames
+            .last()
+            .map(|f| f.module.clone())
+            .unwrap_or_default();
+        let variants = self
+            .shared
+            .program
+            .modules
+            .get(&module)
+            .map(|m| &m.variants);
+        match path.segments.as_slice() {
+            [single] => variants
+                .and_then(|v| v.get(&single.name))
+                .is_some_and(|enums| {
+                    enums
+                        .iter()
+                        .any(|en| err.tag == format!("{en}.{}", single.name))
+                }),
+            [qualifier, name] => {
+                err.tag == name.name
+                    && variants
+                        .and_then(|v| v.get(&name.name))
+                        .is_some_and(|enums| enums.contains(&qualifier.name))
+            }
+            _ => false,
+        }
+    }
+
     /// Does an `enum` in the current module declare `variant`, optionally
     /// under the specific enum name `owner`?
     ///
@@ -6184,8 +6233,20 @@ impl Machine {
                     )),
                 }
             }
-            PatKind::Variant { path, fields } => {
-                let tag = path
+            // `[gram.pat.nullary]` (s157, wolf-interp#107): a bare dotted path
+            // matches a constructor that carries nothing — `Color.Green` for
+            // a payload-less enum variant, `io.Eof` for a payload-less row
+            // tag — by the payload form's own resolution rule, with no fields.
+            //
+            // "Arity is the checker's question and it asks it either way — a
+            // variant that carries values, written bare, is E0808." This
+            // machine owns no E0808, and the silent answer (the arm simply
+            // does not apply) would run the program down a later arm and
+            // print a wrong answer. So a bare path that NAMES the value's
+            // constructor while the value carries a payload declines by name,
+            // at the arm, citing the code the checker would have spelled.
+            PatKind::Path(path) => {
+                let spelled = path
                     .segments
                     .iter()
                     .map(|s| s.name.as_str())
@@ -6194,43 +6255,32 @@ impl Machine {
                 let Value::Error(err) = value else {
                     return Ok(false);
                 };
-                // The same resolution rule as bare identifiers (issue #5): a
-                // payload pattern spelled `Rgb(…)` matches a value built as
-                // `Color.Rgb(…)` when `Rgb` is an in-scope variant, and the
-                // enum-qualified spelling matches the bare-built value — the
-                // checker equates the two through the scrutinee's type; this
-                // machine equates them through the variant table.
-                let matched = err.tag == tag || {
-                    let module = self
-                        .frames
-                        .last()
-                        .map(|f| f.module.clone())
-                        .unwrap_or_default();
-                    let variants = self
-                        .shared
-                        .program
-                        .modules
-                        .get(&module)
-                        .map(|m| &m.variants);
-                    match path.segments.as_slice() {
-                        [single] => {
-                            variants
-                                .and_then(|v| v.get(&single.name))
-                                .is_some_and(|enums| {
-                                    enums
-                                        .iter()
-                                        .any(|en| err.tag == format!("{en}.{}", single.name))
-                                })
-                        }
-                        [qualifier, name] => {
-                            err.tag == name.name
-                                && variants
-                                    .and_then(|v| v.get(&name.name))
-                                    .is_some_and(|enums| enums.contains(&qualifier.name))
-                        }
-                        _ => false,
-                    }
+                if !self.constructor_path_matches(path, err) {
+                    return Ok(false);
+                }
+                if !err.payload.is_empty() {
+                    return unsupported(format!(
+                        "`{spelled}` is written bare, but the `{}` it matches carries {} \
+                         value(s): a bare path matches a constructor that carries nothing \
+                         ([gram.pat.nullary]) and the checker refuses this arm with E0808 \
+                         — spell the payload, like `{spelled}({})`",
+                        err.tag,
+                        err.payload.len(),
+                        vec!["_"; err.payload.len()].join(", ")
+                    ));
+                }
+                self.fire(
+                    Rule::Flow,
+                    pattern.span,
+                    &format!("`{spelled}` is a bare path: a payload-less constructor pattern"),
+                );
+                Ok(true)
+            }
+            PatKind::Variant { path, fields } => {
+                let Value::Error(err) = value else {
+                    return Ok(false);
                 };
+                let matched = self.constructor_path_matches(path, err);
                 if !matched || err.payload.len() != fields.len() {
                     return Ok(false);
                 }

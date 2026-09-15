@@ -1076,7 +1076,9 @@ fn collect_bound_names(pattern: &Pattern, out: &mut Vec<String>) {
         }
         // A range binds nothing — it is a test, exactly as a literal is
         // (`[gram.pat.range]`).
-        PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } => {}
+        // A bare dotted path (`[gram.pat.nullary]`) names a constructor
+        // that carries nothing, so it binds nothing either.
+        PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } | PatKind::Path(_) => {}
     }
 }
 

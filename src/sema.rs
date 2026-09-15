@@ -3346,6 +3346,9 @@ fn handler_cover(pattern: &Pattern, row: &[String]) -> Cover {
             [segment] => Cover::Tags(std::iter::once(segment.name.clone()).collect()),
             _ => Cover::Opaque,
         },
+        // A bare dotted path (`[gram.pat.nullary]`) is always two or more
+        // segments, which the payload form above already calls opaque.
+        PatKind::Path(_) => Cover::Opaque,
         PatKind::At { pattern, .. } => handler_cover(pattern, row),
         PatKind::Or(alternatives) => {
             let mut tags = std::collections::BTreeSet::new();
@@ -3687,7 +3690,7 @@ fn declare_pattern(pattern: &Pattern, assignable: bool, env: &mut Env) {
     match &*pattern.kind {
         // A range binds nothing — it is a test, exactly as a literal is
         // (`[gram.pat.range]`).
-        PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } => {}
+        PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } | PatKind::Path(_) => {}
         PatKind::Binding(ident) => env.declare(&ident.name, assignable),
         PatKind::Variant { fields, .. } => {
             for field in fields {
@@ -4603,6 +4606,16 @@ fn collect_pattern_refs(pattern: &Pattern, scope: &mut FileScope) {
                 collect_pattern_refs(field, scope);
             }
         }
+        // `[gram.pat.nullary]`: the payload-less spelling marks its head used
+        // exactly as the payload form does.
+        PatKind::Path(path) => {
+            if let Some(head) = path.segments.first() {
+                scope.refs.push(PathRef {
+                    head: head.name.clone(),
+                    tail: None,
+                });
+            }
+        }
         PatKind::Tuple(items) => {
             for item in items {
                 collect_pattern_refs(item, scope);
@@ -4936,7 +4949,7 @@ impl ScalarWalk<'_> {
                     }
                 }
             }
-            PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } => {}
+            PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } | PatKind::Path(_) => {}
         }
     }
 
@@ -7224,7 +7237,7 @@ fn declare_pattern_names(pattern: &Pattern, walk: &mut RowWalk<'_>) {
                 }
             }
         }
-        PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } => {}
+        PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } | PatKind::Path(_) => {}
     }
 }
 

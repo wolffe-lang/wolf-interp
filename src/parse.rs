@@ -2027,21 +2027,13 @@ impl<'a> Parser<'a> {
                 } else if path.is_single() {
                     PatKind::Binding(path.segments.into_iter().next().expect("single"))
                 } else {
-                    // `[gram.pat]` has no bare `path` production: a dotted
-                    // path in a pattern exists only with a payload
-                    // (`path '(' pattern,* ')'`). The counterparty rejects
-                    // this at parse with E0201 and a zero-width span at the
-                    // token after the path (observed at pin a0c4564), and so
-                    // does this machine — accepting it was the out-of-grammar
-                    // mirror image of issue #5's bare-pattern bug.
-                    let at = self.tok().map_or(self.eof, |_| self.span()).start;
-                    return Err(Diag::new(
-                        diag::E_UNEXPECTED_TOKEN,
-                        Span::new(at, at),
-                        anchor,
-                        "a dotted path in a pattern must carry a payload, like `io.Error(e)`"
-                            .to_owned(),
-                    ));
+                    // `[gram.pat.nullary]` (s157, wolf-lang#162): a bare
+                    // dotted path is a pattern — a payload-less enum variant
+                    // or row tag. Until the v0.2.14 pin the grammar had no
+                    // bare `path` production and this parser answered E0201
+                    // here, identically to the compiler; the clause gave
+                    // `match` over a closed set of names its spelling.
+                    PatKind::Path(path)
                 }
             }
             _ => return Err(self.unexpected(anchor, "a pattern")),
@@ -4283,18 +4275,22 @@ mod tests {
     }
 
     #[test]
-    fn a_bare_dotted_path_pattern_is_rejected_like_the_counterparty() {
-        // `[gram.pat]` has no bare `path` production — a dotted path in a
-        // pattern exists only with a payload. Accepting it was the
-        // out-of-grammar mirror image of issue #5's bare-pattern bug; the
-        // counterparty answers E0201 with a zero-width span at the token
-        // after the path (observed at pin a0c4564), and so does this parser.
-        let d = rejects("fn f(o: int) -> int {\n    match o { Ordering.Less => 1, _ => 0 }\n}\n");
-        assert_eq!(d.code, diag::E_UNEXPECTED_TOKEN);
-        assert_eq!(
-            d.span.start, d.span.end,
-            "zero-width, at the token after the path"
+    fn a_bare_dotted_path_is_a_pattern() {
+        // `[gram.pat.nullary]` (s157): `closed_pattern ::= … | path`. Through
+        // the v0.2.12 pin this was E0201 ("a dotted path in a pattern must
+        // carry a payload") on both machines; the clause retired the refusal,
+        // in or-patterns and `else |pat|` handlers as much as in arms.
+        let unit = parses(
+            "enum Color { Red, Green }\n\
+             fn f(c: Color) -> int {\n\
+             \x20   match c { Color.Red | Color.Green => 1 }\n\
+             }\n\
+             fn g(n: int) -> int ! {io.Eof} { n }\n\
+             fn h() -> int { g(1) else |io.Eof| 0 }\n",
         );
+        let text = format!("{:?}", unit.items);
+        assert_eq!(text.matches("Pattern { kind: Path(").count(), 3, "{text}");
+        assert!(!text.contains("kind: Variant {"), "{text}");
     }
 
     #[test]
