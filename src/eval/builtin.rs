@@ -2191,7 +2191,14 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // `fs_create` carry their mode themselves, so no program can reach it
         // through them (`corpus/fs/open_nonblock.lu` pins the row on the
         // moded call).
-        "fs_open" | "fs_create" => &["not_found", "denied", "io"],
+        // Every row below was re-read at is50 off the compiled lane's own
+        // E0602 ("this can also fail with …") at wolf 0.2.14, pin 30731a6 —
+        // the declared row is what decides whether a lowercase arm reads as
+        // a tag or binds, so a row this table spelled wider or narrower than
+        // the call's was a handler that ran the wrong arm (wolf-interp#112).
+        // `fs_create` declares no `not_found`: a missing parent is `io` there.
+        "fs_open" => &["not_found", "denied", "io"],
+        "fs_create" => &["denied", "io"],
         "fs_open_mode" => &["not_found", "denied", "exists", "invalid", "io"],
         // `[os.fs.fstat]`: "the row set is the path stat's, so one handler
         // serves both spellings"; on a handle the hosts answer `io` for
@@ -2204,12 +2211,28 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "fs_read" => &["eof", "utf8", "io"],
         "fs_read_chunk" => &["eof", "io"],
         "fs_write" | "fs_close" => &["io"],
+        // The handle's byte write (wolf-interp#112): `invalid` as at
+        // `net_write_bytes`, over a shape a typed `List[byte]` cannot present.
+        "fs_write_chunk" => &["invalid", "io"],
         // The path readers: `utf8` on the text spelling and not on the byte
         // one, which is `net_read`/`net_read_bytes`'s split exactly — a lone
         // 0x80 is data to a byte reader and a refusal to a text reader.
         "fs_read_text" => &["not_found", "denied", "utf8", "io"],
-        "fs_read_bytes" | "fs_write_text" | "fs_remove" | "fs_rename" | "fs_create_dir_all"
-        | "fs_remove_dir_all" | "fs_read_dir" => &["not_found", "denied", "io"],
+        "fs_read_bytes" | "fs_write_text" | "fs_remove" | "fs_remove_dir_all" | "fs_remove_dir" => {
+            &["not_found", "denied", "io"]
+        }
+        // `cross_device` and `exists` are the rename's own: the two host
+        // refusals a caller answers with a copy (std.fs `move_file` takes
+        // both as its fallback's triggers).
+        "fs_rename" => &["not_found", "denied", "cross_device", "exists", "io"],
+        // `exists` is the one-level create's point: it CREATED the directory
+        // or it says what was already there.
+        "fs_create_dir" => &["exists", "not_found", "denied", "io"],
+        // The idempotent chain declares neither: an existing directory is
+        // success and anything else in the way is `io`.
+        "fs_create_dir_all" => &["denied", "io"],
+        // `utf8` is a listing that holds a name no `str` can carry.
+        "fs_read_dir" => &["not_found", "denied", "utf8", "io"],
         // `invalid` as at `net_write_bytes`: an element outside the octet,
         // checked before the write.
         "fs_write_bytes" => &["not_found", "denied", "invalid", "io"],
