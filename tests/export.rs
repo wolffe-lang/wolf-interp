@@ -250,7 +250,20 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // `conf.resolve.ambient`, s160's `mem.region.proc` and `os.net.writev.head`.
 // The rest are the sub-clauses (`type.list.lit.elem` …) the corpus tags
 // only by their parent; coverage claims only what a witness exercises.
-const RATCHET_FLOOR: usize = 236;
+// 236 -> 248 at 41695e7 (is51, wolf-lang s166 rebased): TWELVE anchors gain
+// their first `conforms:` witness, none loses one (tag sets diffed both ways
+// across the bump). ELEVEN are s166's and this lane mirrors every one:
+// `conc.task.par` with `.order`, `.chunk`, `.fail` and `.capture`
+// (`conc/par_*.lu`, `methods/wordcount_par.lu`), `type.comb.set` and
+// `type.comb.eager` (the `methods/comb_*.lu` rows), and `type.method.resolve`,
+// `.home`, `.root` and `.take` (the `methods/method_*.lu` rows and
+// `typecheck/method_home_no_std.lu`). The twelfth, `gram.expr.variant`, rides
+// in with s165's `typecheck/variant_bare_value.lu`. Still uncovered at this
+// pin: `conc.task.par.det` and `.cost`, `type.comb.builtin` and the two
+// parents `type.method` and `type.comb` — the corpus tags sub-clauses by
+// their parent only where a witness exercises them, and coverage claims
+// nothing else.
+const RATCHET_FLOOR: usize = 248;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -420,12 +433,13 @@ const RATCHET_FLOOR: usize = 236;
 // sits under `gram`/`type`/`conf`/`mem`/`os`, and `type.err.alias` is in
 // `type`, not the reserved `err` — `anchor::REGISTERED_NAMESPACES` holds at
 // thirteen.
-// 498 -> 513 at 4c046f1 (is51, wolf-lang s166, dev-stamped): FIFTEEN, all
-// s166's — `type.method` ×5 and `type.comb` ×4 in spec/10, and
-// `conc.task.par.{order,fail,capture,chunk,det,cost}` in spec/03. Key sets
-// diffed BOTH ways — fifteen added, NOTHING dropped, no owner changed. No new
-// NAMESPACE (`type`, `conc`): `anchor::REGISTERED_NAMESPACES` holds.
-const ANCHORS_TOTAL: usize = 513;
+// 498 -> 514 at 41695e7 (is51, wolf-lang s166 rebased on trunk 4b56441):
+// SIXTEEN. Fifteen are s166's — `type.method` ×5 and `type.comb` ×4 in
+// spec/10, and `conc.task.par.{order,fail,capture,chunk,det,cost}` in spec/03
+// — and the sixteenth is s165's, carried in by the rebase. Key sets diffed
+// BOTH ways: sixteen added, NOTHING dropped, no owner changed. No new
+// NAMESPACE (`type`, `conc`, `mem`): `anchor::REGISTERED_NAMESPACES` holds.
+const ANCHORS_TOTAL: usize = 514;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -671,11 +685,13 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // corpus files, none leaving, every one an entry (no new members), so
     // both counts move by 35 and `members` holds at 35. The suite is unmoved
     // (is49's tests are inline fixtures the extractor does not harvest).
-    // 653/618 -> 655/620 at 4c046f1 (is51, wolf-lang s166, dev-stamped): two
-    // corpus files, both entries (s162's #146 witnesses), none leaving.
-    assert_eq!(summary.pin, "4c046f15746bbf11821312152165be5f6340b9b6");
-    assert_eq!(summary.programs, 655);
-    assert_eq!(summary.records, 620);
+    // 653/618 -> 692/651 at 41695e7 (is51, wolf-lang s166 rebased on trunk
+    // 4b56441): thirty-nine corpus files, none leaving, thirty-three of them
+    // entries — so `programs` moves by 39 and `records` by 33, and the two
+    // counts part company again by the six new members.
+    assert_eq!(summary.pin, "41695e78437fbf3644accad40ddb4804737d4440");
+    assert_eq!(summary.programs, 692);
+    assert_eq!(summary.records, 651);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
