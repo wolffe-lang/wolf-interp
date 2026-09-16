@@ -1574,6 +1574,53 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // commits carry no corpus files.
     ("memory/push_grow_guarded_index.lu", "exit(240)"),
     ("memory/push_grow_nested_guarded_index.lu", "exit(0)"),
+    // -- is51, lupin 0.1.37: the combinators, at the 41695e7 pin ------------
+    //
+    // The pin takes s166's rebase onto trunk `4b56441`, so it carries two
+    // lanes' rows. NINE are this lane's mirror of `[type.method]`,
+    // `[type.comb]` and `[conc.task.par]`: `conc/par_order.lu` (100 000
+    // elements across every chunk boundary) and `conc/par_fail_reraises.lu`
+    // (the first chunk failure as the `par`'s row), and seven `methods/`
+    // rows that resolve through the fixture std root beside them
+    // (`[type.method.root]`) — the combinators, the home table's other three
+    // types, `xs.any(p)` beside `list.any(xs, p)`, and the word counter with
+    // its one-call `par` diff, byte-identical to its serial twin.
+    //
+    // FOURTEEN are s165's, ledgered here and NOT mirrored (wolf-interp#115
+    // is that lane's): `memory/copy_independent.lu`, eight
+    // `memory/read_param_*`, `traits/bound_literal_default.lu`,
+    // `traits/op_eq_item_import/main.lu`, `typecheck/list_tuple_elem.lu` and
+    // `typecheck/variant_bare_value.lu`. Every one runs clean here at first
+    // sight — s165's native `copy` went deep and this machine's always was.
+    //
+    // NOT here: `conc/par_capture_write.lu` (E1101 at resolve, a static
+    // refusal), the five `methods/method_*` refusals and
+    // `typecheck/method_home_no_std.lu` (E0403/E0402/E0301, which this
+    // machine refuses by name at run time rather than statically), and the
+    // five `methods/std/` fixture members, which are never entries.
+    ("conc/par_fail_reraises.lu", "exit(0)"),
+    ("conc/par_order.lu", "exit(0)"),
+    ("memory/copy_independent.lu", "exit(0)"),
+    ("memory/read_param_escape_field.lu", "exit(0)"),
+    ("memory/read_param_escape_generic.lu", "exit(0)"),
+    ("memory/read_param_escape_local.lu", "exit(0)"),
+    ("memory/read_param_escape_mut.lu", "exit(0)"),
+    ("memory/read_param_escape_static.lu", "exit(0)"),
+    ("memory/read_param_move_legal.lu", "exit(0)"),
+    ("memory/read_param_rebind_take.lu", "exit(0)"),
+    ("memory/read_param_rebind_write.lu", "exit(0)"),
+    ("memory/read_param_return.lu", "exit(0)"),
+    ("methods/comb_map_filter_fold.lu", "exit(0)"),
+    ("methods/comb_sort_enumerate_zip.lu", "exit(0)"),
+    ("methods/comb_sorted_ord.lu", "exit(0)"),
+    ("methods/home_range_str_map.lu", "exit(0)"),
+    ("methods/method_is_free_call.lu", "exit(0)"),
+    ("methods/wordcount_par.lu", "exit(0)"),
+    ("methods/wordcount_serial.lu", "exit(0)"),
+    ("traits/bound_literal_default.lu", "exit(0)"),
+    ("traits/op_eq_item_import/main.lu", "exit(0)"),
+    ("typecheck/list_tuple_elem.lu", "exit(0)"),
+    ("typecheck/variant_bare_value.lu", "exit(0)"),
 ];
 
 #[test]
