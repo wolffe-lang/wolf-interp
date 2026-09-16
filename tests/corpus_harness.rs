@@ -720,16 +720,18 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     let report = report();
     assert_eq!(
         report.total(),
-        617,
+        654,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
     // 545 -> 580 at 30731a6 (is49, wolf-lang v0.2.14): thirty-five new
     // files, every one an entry — `members` holds at 35.
-    // 580 -> 582 at 4c046f1 (is51, wolf-lang s166, dev-stamped): s162's
-    // two `memory/push_grow_*guarded_index.lu` rows, both entries.
-    assert_eq!(report.entries(), 582);
-    assert_eq!(report.members(), 35);
+    // 580 -> 613 at 41695e7 (is51, wolf-lang s166 rebased): thirty-nine new
+    // files, thirty-three of them entries. `members` moves 35 -> 41: the five
+    // `methods/std/` fixture modules (a std root the witnesses resolve
+    // against, `[type.method.root]`) and s165's `traits/op_eq_item_import/cmp/c.lu`.
+    assert_eq!(report.entries(), 613);
+    assert_eq!(report.members(), 41);
 }
 
 #[test]
