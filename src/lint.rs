@@ -190,6 +190,7 @@ pub fn analyze(program: &Program) -> Analysis {
                 assigns: Vec::new(),
                 closure_stack: Vec::new(),
                 task_depth: 0,
+                par_depth: 0,
                 task_scope_base: Vec::new(),
                 when_depth: 0,
                 in_interp: false,
@@ -431,6 +432,13 @@ struct Walk<'a> {
     /// Nonzero while inside a closure passed to `.spawn(…)` or `.par(…)`
     /// (E1101/W1101).
     task_depth: usize,
+    /// Nonzero while inside a `.par(…)` closure specifically. W1101's text is
+    /// a claim about ONE task's own copy, and `par` runs `f` in `k` chunks,
+    /// so the warning does not ride along there: `[conc.task.par.capture]`
+    /// names E1101 and nothing else, and the witnesses pin exactly that —
+    /// `conc/capture_write_assign.lu` and `conc/store_buffer.lu` carry
+    /// `warns: W1101, W1102`, `conc/par_capture_write.lu` carries none.
+    par_depth: usize,
     /// The scope-stack depth where the innermost task closure begins: a name
     /// resolved at or above this index is the task's own; below it, captured.
     task_scope_base: Vec<usize>,
@@ -1239,6 +1247,8 @@ impl Walk<'_> {
         if !capture {
             return;
         }
+        // `[conc.task.par.capture]`: E1101 and nothing else under `par`.
+        let stays_inside = stays_inside && self.par_depth == 0;
         self.statics.push(Diag::new(
             "E1101",
             span,
@@ -1834,21 +1844,31 @@ impl Walk<'_> {
         // `Member`; `par` is an identifier, so `xs.par` is the dotted `Path`
         // `[xs, par]` — the same shape the W1002 scan above reads `xs.push`
         // in. Both shapes are the task context.
-        let spawn = match &*callee.kind {
+        let (spawn, par) = match &*callee.kind {
             ExprKind::Member {
                 member: Member::Named(name),
                 ..
-            } => name.name == "spawn" || name.name == "par",
+            } => (
+                name.name == "spawn" || name.name == "par",
+                name.name == "par",
+            ),
             ExprKind::Path(path) => {
-                matches!(path.segments.as_slice(), [_, member] if member.name == "par")
+                let par = matches!(path.segments.as_slice(), [_, member] if member.name == "par");
+                (par, par)
             }
-            _ => false,
+            _ => (false, false),
         };
         self.expr(callee);
         for arg in args {
             if spawn && matches!(&*arg.expr.kind, ExprKind::Closure { .. }) {
                 if let ExprKind::Closure { params, body, .. } = &*arg.expr.kind {
+                    if par {
+                        self.par_depth += 1;
+                    }
                     self.closure(&arg.expr, params, body, true);
+                    if par {
+                        self.par_depth -= 1;
+                    }
                 }
                 continue;
             }
@@ -3101,6 +3121,34 @@ mod tests {
             1,
             "a captured write in `par`'s f is E1101: {found:?}"
         );
+    }
+
+    #[test]
+    fn w1101_rides_along_with_spawn_and_never_with_par() {
+        // The witnesses pin the split: `conc/capture_write_assign.lu` carries
+        // `warns: W1101, W1102`, `conc/par_capture_write.lu` carries none, and
+        // `[conc.task.par.capture]` names E1101 alone. W1101's text is about
+        // the write landing on the task's own copy, and `par` has `k` of them.
+        let spawned = warn_codes(
+            "fn main() -> !int {\n\
+             \x20   var total = 0\n\
+             \x20   scope s {\n\
+             \x20       s.spawn(fn() { total = total + 1 })\n\
+             \x20   }\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert!(spawned.iter().any(|code| code == "W1101"), "{spawned:?}");
+        let parred = warn_codes(
+            "fn main() -> !int {\n\
+             \x20   var xs = List[int]()\n\
+             \x20   (mut xs).push(1)\n\
+             \x20   var total = 0\n\
+             \x20   let ys = xs.par(fn(x) { total = total + x\n x })\n\
+             \x20   0\n\
+             }\n",
+        );
+        assert!(!parred.iter().any(|code| code == "W1101"), "{parred:?}");
     }
 
     #[test]
