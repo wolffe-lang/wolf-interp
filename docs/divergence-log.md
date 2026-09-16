@@ -119,10 +119,25 @@ a home module, and `recv.name(args)` IS `home.name(recv, args)`),
 and `[conc.task.par]` completed (order, failure, capture, chunk, det, cost).
 Built from the clause text, never from wolfc.
 
-**The pin moves twice.** s166's spec commits were read at `4c046f1`; the
-branch was then rebased onto trunk `4b56441` (s165), so the sha this lane
-pins is `41695e7` and it carries two lanes' rows: 615 -> 654 files, 498 ->
-514 anchors (sixteen added, none dropped, key sets diffed both ways).
+**The pin moves twice, and the branch moved again after it.** s166's spec
+commits were read at `4c046f1`; the branch was then rebased onto trunk
+`4b56441` (s165), so the sha this lane pins is `41695e7` and it carries two
+lanes' rows: 615 -> 654 files, 498 -> 514 anchors (sixteen added, none
+dropped, key sets diffed both ways).
+
+**`41695e7` is dev-stamped off an active branch, and s166 rebased again
+after this lane vendored it** — the sha is no longer reachable from
+`origin/s166`. What that does and does not cost: `vendor/upstream` holds the
+byte-exact `spec/` and `corpus/` of that sha, and CI reads the snapshot and
+never the submodule (the snapshot exists because CI cannot clone the private
+upstream), so every number in this section is reproducible from this tree
+alone. The `upstream` gitlink is the part that now names a commit `origin`
+may garbage-collect. The pin was NOT chased a third time on purpose: each
+rebase lands s166 on a newer trunk, and the later ones carry `[type.interp.spec]`,
+s163's `[type.numlit.default]` correction (#403) and the `os.*` /
+`type.generic` anchors — other lanes' rows, whose mismatches would be other
+lanes' to file. **The merge, or r20, should re-pin to whatever s166 lands
+as**, and re-derive the counts below at that sha.
 
 #### What lupin did before the first edit (`790c127`)
 
