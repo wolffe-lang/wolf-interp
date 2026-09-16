@@ -1,6 +1,40 @@
 # Changelog
 
-## Unreleased
+## 0.1.37 — 2026-09-16
+
+THE METHOD SURFACE (is49, is50, is51). Pin `a7f517e` (wolf-lang
+**v0.2.12**) -> `30731a6` (**v0.2.14**) -> **`41695e7`** — two pin moves
+in one release, the first time this machine has taken two, and the
+reason is that three lanes landed behind one tag.
+
+**What a reader can do at 0.1.37 that they could not at 0.1.36.** Write
+`xs.map(f)`, `xs.filter(keep)`, `xs.fold(init, step)`, `xs.sorted()` and
+the rest of the **ten** combinators, and have them run here — as the std
+wolf code they are, resolved to their home module and called as the free
+call, never as builtins this machine special-cases. Write `xs.par(f)`
+beside them and get `map`'s answer. Write a list literal, name a
+`range[int]`, alias an error set, match a bare dotted path like
+`io.Eof`, and open, create and remove real files and directories through
+`std.fs`. Three lanes, one surface.
+
+is49 wrote the three clauses (list literals, `range[int]`/`range[char]`,
+named error-set aliases) and took the pin to v0.2.14. is50 mirrored
+s157's and s160's clauses that is49 had ledgered and left, filled in the
+`std.fs` names that did not resolve, and closed all five of its issues.
+is51 took the pin to s166's tree and mirrored the method surface and the
+combinator set from the clause text, never from wolfc.
+
+**The ten combinators, and why the number is ten.** `[type.comb.set]`
+names `map`, `filter`, `fold`, `sum`, `sort_by`, `sorted_by`, `sorted`,
+`enumerate`, `zip` and `collect` as std wolf code, with `par` an
+eleventh row that is the language's own builtin. `sorted` is the one
+worth saying out loud: it was written early, withheld while
+`use std.cmp` in `std.list` darkened every importer on the native rung,
+and carried in on a rebase once that cleared — so wolf-std's own
+changelog headline still says "nine functions" and calls `sorted`
+missing while its body records that `sorted` shipped. Ten is the number
+this machine mirrors and ten is the number the pairing below is derived
+for; a nine-row table drops `sorted` silently.
 
 THE COMBINATORS (is51). Pin `30731a6` (wolf-lang v0.2.14) -> **`41695e7`
 (wolf-lang s166, dev-stamped, rebased on trunk `4b56441`)**: 615 -> 654
