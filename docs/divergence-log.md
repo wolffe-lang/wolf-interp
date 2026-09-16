@@ -110,67 +110,170 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
-### The combinators — is51, lupin 0.1.37, pin `4c046f1` (wolf-lang s166, dev-stamped)
+### The combinators — is51, lupin 0.1.37, pin `41695e7` (wolf-lang s166, dev-stamped)
 
 wolf-lang#390 was ruled option 1 (`par` stays), and s166 wrote the clauses
-lupin mirrors: `[type.method]` (a `List`, `Map`, `str` or `range` receiver
-has a home module, and `recv.name(args)` IS `home.name(recv, args)`),
-`[type.comb]` (eager combinators as std wolf code, with `par` the only
-builtin), and `[conc.task.par]` completed (order, failure, capture, chunk,
-det, cost). Built from the clause text at `acad573`/`4c046f1`, never from
-wolfc.
+lupin mirrors: `[type.method]` (a `List`, `Map`, `str` or `range` receiver has
+a home module, and `recv.name(args)` IS `home.name(recv, args)`),
+`[type.comb]` (eager combinators as std wolf code, `par` the only builtin),
+and `[conc.task.par]` completed (order, failure, capture, chunk, det, cost).
+Built from the clause text, never from wolfc.
+
+**The pin moves twice.** s166's spec commits were read at `4c046f1`; the
+branch was then rebased onto trunk `4b56441` (s165), so the sha this lane
+pins is `41695e7` and it carries two lanes' rows: 615 -> 654 files, 498 ->
+514 anchors (sixteen added, none dropped, key sets diffed both ways).
 
 #### What lupin did before the first edit (`790c127`)
 
-- `eval_method` tries a user `impl` (`method_of`, nominal receivers only),
+- `eval_method` tried a user `impl` (`method_of`, nominal receivers only),
   then `builtin::method`, one `(Value, name)` match whose fallthrough is
   "`List` has no method `x` in this machine's std subset". `method_of` never
   answers for `List`/`Map`/`str`, so the order on std data was builtin-only.
-- `use std.list` already loads `<std root>/list` (`--std-root`/`LUPIN_STD`),
+- `use std.list` already loaded `<std root>/list` (`--std-root`/`LUPIN_STD`),
   and `list.any(xs, fn(x) x > 1)` ran and printed `true` against wolf-std
-  `073aa19`. The gap was resolution, not evaluation: `xs.any(p)` was
-  `unsupported` bare, and E0305 (`list` unused) beside a `use`.
+  `073aa19`. The gap was resolution, not evaluation.
 - `par` had no arm. The scheduler is single-threaded by construction: one
   task runs at a time, and every spawn is a numbered `sched-ev/0` event.
 
-#### Predicted before the first edit
+#### Predicted, then measured
 
-Stage 1 is the pin bump alone, `30731a6` -> `4c046f1`, measured with the
-unchanged binary. It adds trunk's two s162 rows and s166's spec (fifteen
-anchors). Stage 2 is the mirror at the pin that carries s166's witnesses.
-Those rows did not exist when this was written, so stage 2 is predicted by
-class, and each row gets its name when the witnesses land.
+The prediction was written before the first edit, when s166 had pushed its
+spec and none of its witnesses, so stage 2 was predicted **by class** and
+each row got its name when the witnesses landed.
 
-| class | `790c127` at `30731a6` (measured) | stage 1, `4c046f1` | stage 2, by class |
-| --- | --- | --- | --- |
-| match | 460 | 462 | + every run-tier `par` row, the E1101-in-`par` row, `xs.take(n)`'s refusal |
-| out of scope | 54 | 54 | + the step-(2) refusals lupin makes at run time (E0301 no root, E0402, E0403) |
-| mismatch (unfiled) | 0 | 0 | 0 |
-| mismatch (filed) | 2 | 2 | 2, or 1 if is50 lands #107 first |
-| dynamic counterpart | 23 | 23 | 23 |
-| conservatism | 41 | 41 | 41 |
-| reach `run` | 449 | 451 | + the run-tier `par` rows |
+| class | `790c127` at `30731a6` | stage 1 `4c046f1` pred / meas | stage 2 `8bafa20` pred / meas | stage 3 `41695e7` (head) |
+| --- | --- | --- | --- | --- |
+| match | 460 | 462 / **462** | by class / **471** | **476** |
+| out of scope | 54 | 54 / **54** | by class / **60** | **61** |
+| mismatch (unfiled) | 0 | 0 / **0** | 0 / **1** | **0** |
+| mismatch (filed) | 2 | 2 / **2** | 2 / **2** | **2** |
+| dynamic counterpart | 23 | 23 / **23** | 23 / **23** | **23** |
+| conservatism | 41 | 41 / **41** | 41 / **41** | **51** |
+| reach `run` | 449 | 451 / **451** | by class / **459** | **474** |
 
-The reasoning, per class:
+Stage 1 is the pin bump alone (trunk's two s162 rows), measured with the
+unchanged binary: every cell as predicted. Stage 3 is stage 2 plus the
+rebase's s165 rows — the ten new conservatism entries and fourteen new run
+rows are s165's, ledgered and not mirrored (wolf-interp#115 is that lane's).
 
-- **`par` rows (order, failure, empty list) match.** `par` is step (1),
-  needs no std root, and the corpus walk has none.
-- **E1101 in a `par` closure matches** once the lint's task-closure context
-  learns `.par(fn …)`. That is a static check lupin already runs for
-  `.spawn(fn …)`.
-- **`xs.take(n)` matches as a static refusal.** `take` is reserved, so no std
-  function and no user method can carry the name, and a member call named
-  `take` is refused whatever the receiver.
-- **Step-(2) refusals are out of scope.** E0301 (no std configured), E0402
-  (arity) and E0403 (no candidate, or a first parameter that does not unify)
-  all turn on the receiver's static type, which lupin does not compute. It
-  refuses them by name at run time, the posture E0403's struct-pattern rows
-  already have.
-- **Positive combinator rows (`map`, `filter`, … through a home module) need
-  a std.** If s166's witnesses carry no std root, the compiler answers E0301
-  for them and so does lupin (out of scope on both). If they do, those rows
-  are this lane's matches, and the prediction is revised at the pin with the
-  names.
+Per row, for s166's sixteen new entries:
+
+| row | predicted | measured |
+| --- | --- | --- |
+| `conc/par_order.lu` | match | **match** |
+| `conc/par_fail_reraises.lu` | match | **match** |
+| `conc/par_capture_write.lu` | match (E1101) | **match**, after the W1101 split below |
+| `methods/comb_map_filter_fold.lu` | match if the rows carry a std | **match** |
+| `methods/comb_sort_enumerate_zip.lu` | match if the rows carry a std | **match** |
+| `methods/comb_sorted_ord.lu` | match if the rows carry a std | **match** |
+| `methods/method_is_free_call.lu` | match if the rows carry a std | **match** |
+| `methods/wordcount_serial.lu` | match if the rows carry a std | **match** |
+| `methods/wordcount_par.lu` | match if the rows carry a std | **match** |
+| `methods/home_range_str_map.lu` | match if the rows carry a std | **MISMATCH at stage 2**, match at stage 3 |
+| `methods/method_unknown.lu` | out of scope | **out of scope** |
+| `methods/method_wrong_arity.lu` | out of scope | **out of scope** |
+| `methods/method_wrong_receiver.lu` | out of scope | **out of scope** |
+| `methods/method_non_std_receiver.lu` | out of scope | **out of scope** |
+| `methods/method_take.lu` | **match** | **out of scope** |
+| `typecheck/method_home_no_std.lu` | out of scope | **out of scope** |
+
+**Two predictions missed, and both are the census earning its keep.**
+
+1. `method_take.lu` was predicted a match on the reasoning that `take` is a
+   reserved word, so a member call named `take` can be refused statically
+   with no type knowledge. It is a refusal by name at RUN time like the other
+   five, because this machine has no resolve-tier method check to carry it —
+   the refusal names E0403 and the two slices `[type.method.take]` gives the
+   prefix and the suffix, but it arrives a rung late. Out of scope, honestly.
+2. Stage 2 was predicted to open zero unfiled mismatches and opened one:
+   `methods/home_range_str_map.lu`, `fail(E0401)@resolve` against the pinned
+   `exit(0)`. The cause was is49's own `[type.range.name]` check, not this
+   lane's dispatch — see below. Fixed here, and the row matches at stage 3.
+
+#### The range family is closed at two types, not at two spellings
+
+`(2..6).collect()` reaches `std.range`'s `collect`, and s166 made that one
+generic function (`collect[T](r: range[T])`, wolf-lang `fcfe9db`: wolf has no
+overloading, so the two element types cannot be two functions). is49's
+`range_type_refusal` refused the fixture's own signature — `T` is neither
+`int` nor `char` — so every home module carrying `collect` was E0401 at its
+own declaration, and no program could reach the method at all.
+
+The fix is `[type.map.key]`'s rule, which the sibling check already had: a
+RIGID generic parameter is admitted, because inside a generic body the
+element is not spelled yet and each instantiation is checked where it spells
+one. `range_type_refusal` now takes the in-scope generic names exactly as
+`map_key_refusal` does. `range[bool]` is still E0401 and bare `range` still
+E0405, both pinned.
+
+#### `par` in lupin: W is fixed at 4, and the events are the clause's
+
+`[conc.task.par.chunk]` leaves `W` implementation-specified. lupin fixes it
+at **4 on every host** (`eval::conc::PAR_WORKERS`; wasm has no thread to
+spawn, so its `W` is 1 — the clause's single chunk on the calling task).
+Reading the host's core count would buy no speed, because the scheduler runs
+one task at a time whatever `W` is, and it would make the `spawn` events —
+the only trace `k` leaves — differ between two hosts replaying one seed.
+
+`xs.par(f)` opens a scope, splits `0..n` into `k = min(n, W)` contiguous
+chunks whose lengths differ by at most one, spawns one task per chunk,
+joins, and reads the slots back in index order. `k == 1` runs on the calling
+task with no spawn at all and `n == 0` spawns nothing, both of which the
+clause permits. A chunk stops at its first error value; the scheduler cancels
+the siblings and the first failure in schedule order becomes the `par`'s own
+row, so a failed `par` has no value and the caller's `?` or `else` sees the
+row. A fault is the fault, and a captured region value is refused
+(`[conc.task.par.capture]`).
+
+**Measured, not asserted** (`lupin conform-run … --trace=all`), eight
+elements:
+
+    trace  TaskScope  `par` over 8 element(s): k = min(n, W = 4) = 4 contiguous chunk(s)
+    trace  TaskScope  ev#1 scope#0 `par` opens (owner task 0)
+    trace  SchedSpawn ev#2 spawn `par@139#0` (task 1) under scope#0 in proc#0
+    trace  SchedSpawn ev#3 spawn `par@139#1` (task 2) under scope#0 in proc#0
+    trace  SchedSpawn ev#4 spawn `par@139#2` (task 3) under scope#0 in proc#0
+    trace  SchedSpawn ev#5 spawn `par@139#3` (task 4) under scope#0 in proc#0
+    trace  TaskJoin   ev#6 `main` blocks at scope#0's exit join
+    trace  TaskJoin   ev#18 scope#0 joins: all 4 child(ren) complete
+
+One element records **no** spawn event at all. So `k` leaves exactly the
+trace the clause says it may: numbered `spawn` events in the `sched-ev/0`
+stream under the `par`'s own scope, and nothing else. The schedule explorer
+enumerates the chunk tasks' interleavings as it enumerates any spawned
+task's, because they ARE spawned tasks to the scheduler; `--seed=N` replays
+one `k`, which is a function of `n` and a fixed `W`, so one seed is one `k`
+on every host. lupin has no checked lane of its own to refuse `par` the way
+`wolf conform-run --checked` refuses `scope` and closures: this machine has
+one engine, and it runs `par` on every lane.
+
+#### W1101 rides along with `spawn` and never with `par`
+
+The corpus pins the split: `conc/capture_write_assign.lu` and
+`conc/store_buffer.lu` carry `warns: W1101, W1102`, and
+`conc/par_capture_write.lu` carries no `warns:` line at all. W1101's text is
+a claim about the write landing on **the task's own copy**, and `par` runs
+`f` in `k` of them, so the warning does not hold there;
+`[conc.task.par.capture]` names E1101 and nothing else. lupin now emits
+E1101 alone under `par` and both under `spawn`.
+
+#### What this lane did NOT take
+
+- The combinators are std wolf code that lupin runs, per `[type.comb.set]` —
+  `map`, `filter`, `fold`, `sum`, `sort_by`, `sorted_by`, `sorted`,
+  `enumerate`, `zip` and `collect` are none of them lupin builtins, and the
+  only builtin this lane added to the method surface is `par`, plus `clear`
+  on `List` and `Map`, which `[type.method.resolve]` step (1) names.
+- The step-(2) refusals are `unsupported` by the counterparty's code
+  (E0301, E0402, E0403, E0804), never traps and never guesses: this machine
+  computes no receiver type at resolve, so each arrives at run time. Six
+  corpus rows sit in the out-of-scope class for exactly that reason, and
+  closing them means a resolve-tier type for std data, which is its own lane.
+- s165's rows (`copy_independent`, the eight `read_param_*`,
+  `bound_literal_default`, `op_eq_item_import`, `list_tuple_elem`,
+  `variant_bare_value`) are ledgered here and mirrored nowhere: they run
+  clean at first sight, and wolf-interp#115 is that lane's.
 
 ### The two mirrors — is50, lupin 0.1.37 (unreleased), pin `30731a6` (wolf-lang **v0.2.14**)
 

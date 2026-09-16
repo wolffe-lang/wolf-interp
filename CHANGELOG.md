@@ -2,6 +2,65 @@
 
 ## Unreleased
 
+THE COMBINATORS (is51). Pin `30731a6` (wolf-lang v0.2.14) -> **`41695e7`
+(wolf-lang s166, dev-stamped, rebased on trunk `4b56441`)**: 615 -> 654
+corpus files, 498 -> 514 anchors (sixteen added, none dropped, key sets
+diffed both ways). The subject is wolf-lang#390, ruled option 1 by the
+maintainer — **`par` stays** — and the clauses s166 wrote for it:
+`[type.method]` (methods on std data), `[type.comb]` (the combinator set),
+and `[conc.task.par]` completed with order, failure, captures, chunking,
+determinism and cost. Mirrored from the clause text, never from wolfc.
+
+**The method surface.** `recv.name(args)` IS `home.name(recv, args)`:
+`List` -> `std.list`, `Map` -> `std.map`, `str` -> `std.str`, `range` ->
+`std.range`, a closed table. Resolution is (1) the builtin methods of the
+type, (2) the home module's `pub fn` whose first parameter carries the
+receiver's type constructor, called as the FREE call — same instance, same
+code, so `xs.any(p)` and `list.any(xs, p)` are one call by construction —
+and (3) traits, unchanged. A home module needs no `use` and binds no name:
+it loads when some method call in the program names one of its `pub fn`s,
+under a key no source can spell. The refusals are the counterparty's codes
+by name: **E0301** with no std root configured (naming the home module and
+the ways to configure one), **E0403** for no candidate or a first parameter
+the receiver does not fit (`sum(xs: List[int])` on a `List[str]`), **E0402**
+for arity counted against the written arguments, and **E0804** where the
+spelled receiver mode disagrees with the candidate's first parameter — a
+`mut` candidate is `(mut xs).sort_by(less)` and the bare spelling traps
+`exclusivity`, as it does on a builtin. `take` is never a method name
+(`[type.method.take]`), and its refusal names `xs[..n]`,
+`xs[..min(n, xs.len)]` and `xs[n..]`. Step (1) gains `clear` on `List` and
+`Map`. The combinators themselves are std wolf code this machine RUNS —
+none of them is a lupin builtin.
+
+**`par`.** The one builtin combinator: `xs.par(f)` opens a scope, splits
+`0..n` into `k = min(n, W)` contiguous chunks whose lengths differ by at
+most one, spawns a task per chunk, joins, and reads the slots back in index
+order — `out[i]` is `f(xs[i])` whatever the schedule. `W` is **fixed at 4**
+on every host (1 on wasm), because the scheduler runs one task at a time
+whatever `W` is, and a host-sized `W` would make the `spawn` events differ
+between two hosts replaying one seed. `k == 1` runs on the calling task with
+no spawn and `n == 0` spawns nothing, both permitted. A chunk stops at its
+first error value, the scheduler cancels its siblings, and the first failure
+in schedule order becomes the `par`'s row — a failed `par` has no value.
+`f` is checked as a spawned closure's body (E1101), and W1101 does NOT ride
+along there: its text is a claim about one task's own copy and `par` has
+`k` of them, which is what the witnesses pin.
+
+**The census**: 476 match, 61 out of scope, 23 dynamic counterparts, 51
+static-conservatism, 2 mismatch — both filed, zero unfiled — with 474
+entries reaching `run`. Sixteen of s166's rows are new here: ten match and
+six are the refusals this machine makes by name at run time rather than at
+resolve. One prediction missed in each direction, both recorded in
+`docs/divergence-log.md`.
+
+**A lupin gap the new clauses exposed.** `[type.comb.set]`'s `collect` is
+one generic function over `range[T]`, and is49's `[type.range.name]` check
+refused that signature outright — `T` is neither `int` nor `char` — so every
+home module carrying `collect` was E0401 at its own declaration. The check
+now admits a RIGID generic parameter, exactly as `[type.map.key]`'s sibling
+check already did; `range[bool]` is still E0401 and bare `range` still
+E0405.
+
 THE TWO MIRRORS (is50). No pin move: `30731a6` (wolf-lang v0.2.14), is49's.
 The subject is s157's and s160's clauses that is49 ledgered and left,
 wolf-interp#107 and #111, and three smaller issues: #112 (std.fs names that
