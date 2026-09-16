@@ -476,6 +476,29 @@ fn an_imported_trait_alias_expands_its_bound_through_the_import() {
             "--std-root",
             std_arg,
             pos.to_str().expect("utf-8"),
+            "--json",
+        ],
+        &[],
+    ));
+    assert_eq!(accepted["verdict"], "exit(0)", "{accepted}");
+    assert_eq!(accepted["stdout_inline"], "42\n", "{accepted}");
+    let neg = dir.join("neg/main.lu");
+    let refused = record(&lupin(
+        &[
+            "conform-run",
+            "--std-root",
+            std_arg,
+            neg.to_str().expect("utf-8"),
+            "--json",
+        ],
+        &[],
+    ));
+    assert_eq!(refused["verdict"], "fail(E0501)", "{refused}");
+    assert_eq!(
+        refused["diagnostics"][0]["span"],
+        serde_json::json!([73, 74])
+    );
+}
 
 // -- [type.method]: methods on std data reach their home module (is51) -----
 
@@ -729,24 +752,6 @@ fn the_receiver_mode_is_the_first_parameters() {
         ],
         &[],
     ));
-    assert_eq!(accepted["verdict"], "exit(0)", "{accepted}");
-    assert_eq!(accepted["stdout_inline"], "42\n", "{accepted}");
-    let neg = dir.join("neg/main.lu");
-    let refused = record(&lupin(
-        &[
-            "conform-run",
-            "--std-root",
-            std_arg,
-            neg.to_str().expect("utf-8"),
-            "--json",
-        ],
-        &[],
-    ));
-    assert_eq!(refused["verdict"], "fail(E0501)", "{refused}");
-    assert_eq!(
-        refused["diagnostics"][0]["span"],
-        serde_json::json!([73, 74])
-
     assert_eq!(value["verdict"], "trap(exclusivity)", "{value}");
     let over = run_homes(
         "homes-mode-over",

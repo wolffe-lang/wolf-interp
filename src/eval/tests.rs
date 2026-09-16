@@ -3949,6 +3949,7 @@ fn a_produced_str_held_outside_its_region_or_sent_from_a_proc_faults() {
     let trap = trap_of(sent);
     assert_eq!(trap.kind, TrapKind::RegionFault);
     assert!(trap.message.contains("proc:worker"), "{}", trap.message);
+}
 
 // -- [type.method.resolve] step (1): the builtin table (is51) ---------------
 
