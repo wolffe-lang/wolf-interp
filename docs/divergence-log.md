@@ -157,20 +157,28 @@ The prediction was written before the first edit, when s166 had pushed its
 spec and none of its witnesses, so stage 2 was predicted **by class** and
 each row got its name when the witnesses landed.
 
-| class | `790c127` at `30731a6` | stage 1 `4c046f1` pred / meas | stage 2 `8bafa20` pred / meas | stage 3 `41695e7` (head) |
-| --- | --- | --- | --- | --- |
-| match | 460 | 462 / **462** | by class / **471** | **476** |
-| out of scope | 54 | 54 / **54** | by class / **60** | **61** |
-| mismatch (unfiled) | 0 | 0 / **0** | 0 / **1** | **0** |
-| mismatch (filed) | 2 | 2 / **2** | 2 / **2** | **2** |
-| dynamic counterpart | 23 | 23 / **23** | 23 / **23** | **23** |
-| conservatism | 41 | 41 / **41** | 41 / **41** | **51** |
-| reach `run` | 449 | 451 / **451** | by class / **459** | **474** |
+| class | `790c127` at `30731a6` | stage 1 `4c046f1` pred / meas | stage 2 `8bafa20` pred / meas | stage 3 `41695e7` | stage 4 `92d98af` rebased (head) |
+| --- | --- | --- | --- | --- | --- |
+| match | 460 | 462 / **462** | by class / **471** | 476 | **478** |
+| out of scope | 54 | 54 / **54** | by class / **60** | 61 | **60** |
+| mismatch (unfiled) | 0 | 0 / **0** | 0 / **1** | 0 | **0** |
+| mismatch (filed) | 2 | 2 / **2** | 2 / **2** | 2 | **1** |
+| dynamic counterpart | 23 | 23 / **23** | 23 / **23** | 23 | **26** |
+| conservatism | 41 | 41 / **41** | 41 / **41** | 51 | **48** |
+| reach `run` | 449 | 451 / **451** | by class / **459** | 474 | **476** |
 
 Stage 1 is the pin bump alone (trunk's two s162 rows), measured with the
 unchanged binary: every cell as predicted. Stage 3 is stage 2 plus the
 rebase's s165 rows — the ten new conservatism entries and fourteen new run
 rows are s165's, ledgered and not mirrored (wolf-interp#115 is that lane's).
+
+**Stage 4 is the rebase onto trunk `92d98af`** (is50's two mirrors). Stages
+1-3 are left as they were predicted and measured against `790c127`; the
+head figures move because is50's rows are now underneath this lane, and
+they are MEASURED on the rebased tree, never carried over by arithmetic.
+DIV-2026-024 retires there (is50 landed the bare-path pattern), so the
+filed mismatch falls 2 -> 1 and the differential stays GREEN with every
+divergence filed.
 
 Per row, for s166's sixteen new entries:
 

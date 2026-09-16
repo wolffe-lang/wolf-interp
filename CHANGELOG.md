@@ -46,9 +46,11 @@ in schedule order becomes the `par`'s row — a failed `par` has no value.
 along there: its text is a claim about one task's own copy and `par` has
 `k` of them, which is what the witnesses pin.
 
-**The census**: 476 match, 61 out of scope, 23 dynamic counterparts, 51
-static-conservatism, 2 mismatch — both filed, zero unfiled — with 474
-entries reaching `run`. Sixteen of s166's rows are new here: ten match and
+**The census**, measured on the rebased tree (trunk `92d98af`, is50
+underneath): 478 match, 60 out of scope, 26 dynamic counterparts, 48
+static-conservatism, 1 mismatch — filed, zero unfiled — with 476 entries
+reaching `run`. DIV-2026-024 retires at is50, which is why the filed
+mismatch falls from two to one. Sixteen of s166's rows are new here: ten match and
 six are the refusals this machine makes by name at run time rather than at
 resolve. One prediction missed in each direction, both recorded in
 `docs/divergence-log.md`.
