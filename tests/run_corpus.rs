@@ -1619,7 +1619,21 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("traits/bound_literal_default.lu", "exit(0)"),
     ("traits/op_eq_item_import/main.lu", "exit(0)"),
     ("typecheck/list_tuple_elem.lu", "exit(0)"),
-    ("typecheck/variant_bare_value.lu", "exit(0)"),
+    // is52, wolf-interp#118's three clauses at pin `41695e7`.
+    //
+    // ADDED: `memory/map_remove.lu`. `[type.map]` (wolf-lang#344) gave `Map`
+    // an erase, and this machine had none — the file was `unsupported: Map
+    // has no method remove in this machine's std subset`, out of scope, and
+    // ledgered NOWHERE. It runs now, byte-identical to the pinned stdout.
+    //
+    // REMOVED: `typecheck/variant_bare_value.lu`, which used to run and print
+    // `true` against a pinned `fail(E0301)`. Losing a RUN_LEDGER entry is a
+    // regression by this list's own rule, and this one is the exception the
+    // rule wants stated: the file leaves because `[gram.expr.variant]`
+    // (wolf-lang#348) is now MIRRORED and the bare variant value is refused
+    // at `resolve`, which is the pinned expectation. The row moves from the
+    // conservatism class to `match`; it did not stop working.
+    ("memory/map_remove.lu", "exit(0)"),
 ];
 
 #[test]
