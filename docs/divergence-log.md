@@ -110,6 +110,253 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The windows shard, and the two mirrors — is52, lupin 0.1.37, pin `41695e7` (**no pin move**)
+
+Two subjects: wolf-interp#121, the windows leg against GitHub's 6 h job cap,
+and the mirrors is50 priced — wolf-interp#118's three clauses and
+wolf-interp#115's ledger move.
+
+#### Item 1 — windows had no coverage at all, and the cap is not the whole of it
+
+The `test (windows-latest)` job was **cancelled** at 6 h on every head
+carrying is50's and is51's corpus growth. r20 sized `cargo test` at 7 h+;
+re-derived here from the log timestamps, it is **29,267 s = 8 h 08 m**, and
+r20's three per-target figures reproduce to the decimal (`run_corpus` 8,262 s,
+`export` 4,588 s, `doc_truth` 5,864 s). The derivation reconciles: the macOS
+per-target durations sum to **15,564.3 s** against an independently taken step
+total of 15,616 s, the 52 s difference being the build before the first
+`Running` line.
+
+**What the sizing did not carry.** r20's probe ran `cargo test` and nothing
+else. Because the cancel lands *inside* step 7, steps 8-15 never ran either,
+so windows had never run the corpus walk, the conform-run rungs, the
+explorer, the differential lane, the fuzz smoke or the bundle export — which
+is also why `bundle identical across OSes` had been **skipping**, and why the
+cross-OS bundle assertion was dark on one of its three OSes. Those steps are
+3,331 s on macOS, so the true windows leg is about **9 h 54 m**, not 7 h.
+
+| target | macOS | windows | ratio |
+| --- | --- | --- | --- |
+| whole `cargo test` | 15,564 s | **29,267 s** | 1.88x |
+| `run_corpus` | 5,038 s | 8,262 s | 1.64x |
+| `doc_truth` | 2,515 s | 5,865 s | 2.33x |
+| `export` | 2,593 s | 4,588 s | 1.77x |
+| `cli` | 2,117 s | 3,998 s | 1.89x |
+| `region_machine` | 1,170 s | 2,220 s | 1.90x |
+| `rule_registry` | 1,017 s | 1,930 s | 1.90x |
+| `divergence` | 854 s | 1,883 s | 2.21x |
+| `fuzz_smoke` | 236 s | 488 s | 2.07x |
+| the other 42 binaries | 24 s | 34 s | 1.40x |
+
+**The fix.** `ci/test-shards.sh` keys a target's shard on its NAME alone —
+eight heavies pinned by measurement, every other target (one that does not
+exist yet included) by `cksum` of its name mod 3 — so a failure names the same
+shard twice and a target a later lane adds never moves an existing one. The
+`test` matrix became an `include` list carrying one copy of every step body,
+selected with `if:`, so a shard cannot drift from what linux runs; windows is
+three test shards plus a `ladder` job for the steps after `cargo test`. Every
+job has `timeout-minutes` (330 windows, 355 linux/macOS): a cancel reads as
+infrastructure, a failure reads as "this leg does not fit".
+
+**Coverage is proved, not claimed.** `ci/assert-shard-coverage.sh` ignores the
+shard table and compares what the shards' `cargo test` runs *reported*
+running — cargo's own `Running` lines — against what the macOS and ubuntu
+jobs reported, and against the crate's own target list: three independent
+sources, set equality in both directions, the offending names printed on
+disagreement, and non-emptiness asserted before equality. Measured green at
+`313d87a`: **"the three windows shards ran 50 test binaries, the same set the
+macOS and ubuntu jobs ran on this head"**, 14 + 21 + 15 = 50. That is r20's
+hand count made a gate.
+
+Predicted against measured, first green run:
+
+| job | predicted | measured |
+| --- | --- | --- |
+| windows test shard 1 | 10,145 s | **10,780 s** |
+| windows test shard 2 | 10,015 s | **10,608 s** |
+| windows test shard 3 | 9,074 s | **9,852 s** |
+| windows ladder + bundle | ~6,300 s | **8,733 s** |
+
+All four are under half the 330-minute timeout. The ladder ran 39 % over its
+prediction, which is the honest residual of predicting a leg that had never
+executed on that OS from a macOS ratio.
+
+**The limit, stated rather than buried.** `run_corpus` is ONE test binary at
+8,262 s and no target-level key can divide it. This fix lasts until that
+binary alone passes the cap — roughly 2.4x today's corpus. Splitting *inside*
+a target is the next mechanism, and it is a different one.
+
+**And linux is next: wolf-interp#123.** On the run #121 was sized from, `test
+(ubuntu-latest)` took **5 h 41 m 12 s of the 6 h cap — 18 m 48 s of
+headroom** — and 20,390 of its 20,472 seconds are the three corpus-scaling
+steps. On is52's own green run macOS took **5 h 40 m 36 s**, so the two
+unsharded legs trade places on runner luck and both sit at the edge. Filed
+with the numbers; the `timeout-minutes: 355` here at least converts that
+future cancel into a failure without redding anything today.
+
+#### Items 2-3 — wolf-interp#118's three clauses
+
+- **`[type.map]` (wolf-lang#344) — `m.remove(k)`.** Implemented.
+  `Value::Map` is a `Vec` of pairs in insertion order, so "the remaining
+  entries keep their order" costs nothing: the erase is `Vec::remove` and the
+  survivors cannot reorder. It answers `V ! {none}` — the erased value, or the
+  `none` row with the map unchanged — deliberately the same answer `m[k]`
+  gives, so the two reads of an absent key cannot disagree. Added to the
+  step-(1) table, to `mutates_receiver` and to the `list_len` mutation
+  witness, where a remove that MISSES changes no count, which is exactly
+  right. `memory/map_remove.lu` prints the pinned bytes.
+  It was ledgered **nowhere** before this lane — no `RUN_LEDGER` row, no
+  divergence-log row — and now has one.
+- **`[gram.expr.variant]` (wolf-lang#348) — a bare variant value.** Refused,
+  E0301 at `resolve`, as the file pins. is50 priced this the risky one because
+  lupin's "an unresolved capitalized name is a row tag" posture is
+  load-bearing, and **the measurement narrows the price rather than confirming
+  it**: the refusal is gated on `module.variants`, so it fires only when an
+  enum of the module actually declares the name. Swept over the 654-file
+  corpus, **eight** files return a bare capitalized name as a row tag
+  (`return Failed`, `return Boom`, `return Timeout`, …) and **not one of those
+  names is a declared variant**; thirteen files declare an enum and twelve
+  already spell every variant VALUE qualified. **The blast radius is one
+  file** — the witness. A `match` arm keeps the bare name
+  (`[gram.pat.nullary]`): a nullary variant pattern parses as
+  `PatKind::Binding`, which the ref walk deliberately does not treat as a
+  path, so an arm can never reach the check. The check runs LAST in
+  `resolve_check`, so a file that trips an older check keeps the diagnostic it
+  had.
+- **`[type.trait.op]` (wolf-lang#352) — an operator uses its imported trait.**
+  is50 found lupin agreeing on the positive **by accident**: `unused_check`
+  skipped any bound name that was not itself a module the loader resolved, so
+  `use cmp.Eq` — which binds `Eq`, a trait — could never be E0305 whatever the
+  file spelled. Two halves fixed. The guard now asks the import's PATH rather
+  than its bound name (`use a.B` is judged when `a` is a module this loader
+  resolved), and an operator SPELLED pushes a reference to its trait, the
+  precedent being `collect_generic_refs` (wolf-interp#97, the same bug class).
+  The spelling is what counts, so `-` counts for both `Sub` and `Neg`, as the
+  clause says. is50's four rows, re-measured here:
+
+| program (the `cmp` member module in all four) | lupin at is50 | lupin at is52 | wolf 0.2.14 |
+| --- | --- | --- | --- |
+| `use cmp` + `use cmp.Eq`, `==` spelled | `exit(0)` | **`exit(0)`** | `fail(E0305)` (the bug #352 fixes) |
+| the same, the `==` line deleted | `exit(0)` | **`fail(E0305)`** | `fail(E0305)` |
+| `use cmp` alone, never used | `fail(E0305)` | **`fail(E0305)`** | `fail(E0305)` |
+| `use cmp` used + `use cmp.Eq` unused | `exit(0)` | **`fail(E0305)`** | `fail(E0305)` |
+
+  Both halves are pinned by
+  `tests/std_root.rs::an_operator_is_a_use_of_its_imported_trait_and_an_unused_one_is_still_unused`,
+  because a fix that merely exempted operator traits would pass the first row
+  and fail the fourth, and the clause names that case explicitly.
+
+#### Item — wolf-interp#115, the lend rule: the ledger move, and the tier's price
+
+**Done as a ledger move, and the argument for the alternative is written
+here rather than left implied.**
+
+s165's eight `read_param_*` witnesses pin `fail(E1002)`/`fail(E1014)` at
+`typecheck`. All eight RUN clean here, because lupin **copies at the
+crossing**: a `read` parameter is a value, so nothing can alias, so no second
+live path to the caller's value can exist for the rule to refuse. There is
+therefore no dynamic counterpart to reach for — the trap vocabulary has
+nothing to say about a situation this machine cannot construct — and the rows
+are the conservatism class exactly as `read_param_take.lu` was under
+wolf-interp#107. `read_param_move_legal.lu`, the file that says what the
+refusal leaves alone, runs identically either way and matches.
+
+**What a real mirror would cost.** Not a check — a rung. The clause needs a
+static analysis that tracks, per binding, whether a value is reached by a move
+out of a `read` parameter *through* fields, elements, match bindings and
+rebindings, and then whether that value's type can reach shared storage — a
+type-reachability relation over `List`/`Map`/`Pool` including through fields,
+payloads, tuple elements and rows, and through a type parameter, which always
+can because a generic body is checked once for every instantiation. lupin has
+**no typecheck tier at all**: `conform-run --phase=typecheck` answers
+`unsupported` at `resolve`, by design and by the approximation contract. So
+this is not a missing check in an existing rung, it is the first tenant of a
+rung that does not exist, and it would arrive with the escape analysis and
+the reachability relation as its dependencies. That is a lane, not a fix, and
+it should be taken as one if it is taken. **The ledger move is the honest
+answer at this machine's tier**, and it is recorded rather than assumed.
+
+The eight rows are unmoved by this lane, and that is the point: they were
+already `exit(0)` in `RUN_LEDGER` under is51's block and already counted
+conservatism. Recording them here is what turns "they run clean at first
+sight" into a stated posture.
+
+#### Predicted, before the first edit
+
+Baseline: the binary at `cde9d86` (the windows-shard commits are CI-only and
+change no source), `lupin corpus`, measured before a source line was edited —
+613 entries, **478 match, 60 out of scope, 48 conservatism, 26 dynamic
+counterparts, 1 filed mismatch, 476 reach `run`**, which reproduces is51's
+closing figures cell for cell.
+
+Rows this lane moves, by name:
+
+- `memory/map_remove.lu` — out of scope (`unsupported: Map has no method
+  remove in this machine's std subset`) -> **match**, reaching `run`.
+- `typecheck/variant_bare_value.lu` — conservatism (runs, prints `true`,
+  against a pinned `fail(E0301)`) -> **match**, refused at `resolve` and so no
+  longer reaching `run`.
+- `traits/op_eq_item_import/main.lu` — match -> **match, unmoved**, but for
+  the right reason instead of by accident. The negative case has no corpus
+  file and is pinned by a test.
+- The eight `read_param_*` lend witnesses — conservatism -> **conservatism,
+  unmoved**. The ledger move records them; it does not move them.
+
+| class | baseline (`cde9d86`) | predicted |
+| --- | --- | --- |
+| match | 478 | 480 |
+| out of scope | 60 | 59 |
+| mismatch (unfiled) | 0 | 0 |
+| mismatch (filed) | 1 | 1 |
+| dynamic counterpart | 26 | 26 |
+| conservatism | 48 | 47 |
+| reach `run` | 476 | 476 |
+
+The risk the prediction names: the bare-variant refusal could catch a row tag
+in a module that also declares an enum of that name, and narrowing
+`unused_check`'s guard touches every E0305 row in the corpus. Named at risk:
+the eight row-tag files, the twelve other enum-declaring files,
+`resolve/unused/main.lu` (must stay `fail(E0305)`) and
+`lints/pkg_item_unused/main.lu` (must stay `exit(0)`). Predicted: none moves.
+
+#### Measured, after the last edit
+
+`lupin corpus` at the head: 654 files, 613 entries, 41 members, **0
+failure(s)**, 350 distinct conforms.
+
+| class | baseline (`cde9d86`) | predicted | measured |
+| --- | --- | --- | --- |
+| match | 478 | 480 | **480** |
+| out of scope | 60 | 59 | **59** |
+| mismatch (unfiled) | 0 | 0 | **0** |
+| mismatch (filed) | 1 | 1 | **1** |
+| dynamic counterpart | 26 | 26 | **26** |
+| conservatism | 48 | 47 | **47** |
+| reach `run` | 476 | 476 | **476** |
+
+**Seven of seven cells as predicted, and the three rows by name.** The risk
+the prediction named did not fire: no file outside the witness moved, which
+the totals prove rather than assert — the classes still partition 613.
+
+#### What the measurements found beyond the rows
+
+- **A slow file is not a hung one, and I called one hung.** The census paused
+  nine minutes at entry 41 and `lupin` sat at 99.7 % CPU with flat RSS, which
+  reads exactly like an infinite loop. It is not:
+  `memory/byte_list_ledger.lu` does 65,536 `push`es three times over with
+  region accounting and takes **211.87 s** measured, and
+  `byte_producers_ledger.lu` is its twin. The bisect that "found" the culprit
+  was measuring my own 25-second timeout, and it convicted `Map.remove` —
+  until the same file was run at `cde9d86`, where it "hangs" too. **Checking
+  the baseline is what caught it**; the bisect alone would have reverted a
+  correct change. Recorded because the wave's own note says wolf-interp is
+  slow, not hung, and a per-file cost of three and a half minutes is also a
+  number wolf-interp#123 should carry.
+- **The windows ladder is the leg nobody had priced.** It is 39 % over the
+  macOS-ratio prediction, and it is the half of the windows job that had never
+  run at all. Any future re-balancing should size it from this run's 8,733 s,
+  not from a ratio.
+
 ### The combinators — is51, lupin 0.1.37, pin `41695e7` (wolf-lang s166, dev-stamped)
 
 wolf-lang#390 was ruled option 1 (`par` stays), and s166 wrote the clauses
