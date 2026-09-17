@@ -1306,7 +1306,8 @@ fn variant_value_check(program: &Program) -> Option<Diag> {
                 };
                 let mut diag = Diag::new("E0301", *span, "gram.expr.variant", message);
                 if let Some(owner) = sole {
-                    diag = diag.with_help(crate::diag::Help::insert(span.start, format!("{owner}.")));
+                    diag =
+                        diag.with_help(crate::diag::Help::insert(span.start, format!("{owner}.")));
                 }
                 if earliest
                     .as_ref()
@@ -4614,7 +4615,10 @@ fn collect_generic_refs(generics: &[crate::ast::GenericParam], scope: &mut FileS
 /// over-counting is the safe direction for a rule whose fix-it deletes a
 /// line. What it must NOT do is exempt operator traits wholesale: a file that
 /// spells no operator still hears E0305 for `use cmp.Eq`.
-fn operator_import_names(binary: Option<BinOp>, unary: Option<crate::ast::UnOp>) -> &'static [&'static str] {
+fn operator_import_names(
+    binary: Option<BinOp>,
+    unary: Option<crate::ast::UnOp>,
+) -> &'static [&'static str] {
     use crate::ast::UnOp;
     match (binary, unary) {
         // `-` is the one token two traits answer to, and the check runs

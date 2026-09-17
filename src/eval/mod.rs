@@ -5632,7 +5632,13 @@ impl Machine {
             };
             let last = if *inclusive { b } else { b - 1 };
             self.fire(Rule::Flow, span, "for over a range header");
-            return self.eval_for_items(Self::range_iter(elem, a, last), false, pattern, iter, body);
+            return self.eval_for_items(
+                Self::range_iter(elem, a, last),
+                false,
+                pattern,
+                iter,
+                body,
+            );
         }
         // The `for` head is `[mem.str.view]`'s first consumed position.
         let iterable = self.eval_consumed(iter)?;

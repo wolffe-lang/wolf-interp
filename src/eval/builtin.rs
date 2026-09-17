@@ -1142,7 +1142,10 @@ pub const BUILTIN_METHODS: &[(&str, &[&str])] = &[
             "push", "pop", "len", "count", "is_empty", "get", "first", "last", "clear", "par",
         ],
     ),
-    ("Map", &["len", "count", "is_empty", "pairs", "clear", "remove"]),
+    (
+        "Map",
+        &["len", "count", "is_empty", "pairs", "clear", "remove"],
+    ),
     (
         "str",
         &[

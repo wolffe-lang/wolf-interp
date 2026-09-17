@@ -368,12 +368,18 @@ mod tests {
         };
         for code in [1_u8, 2, 42, 255] {
             assert!(
-                matches!(judge(&check, &record(Verdict::Exit(code)), ""), Judgement::Match(_)),
+                matches!(
+                    judge(&check, &record(Verdict::Exit(code)), ""),
+                    Judgement::Match(_)
+                ),
                 "exit({code}) should satisfy exit=nonzero"
             );
         }
         assert!(
-            !matches!(judge(&check, &record(Verdict::Exit(0)), ""), Judgement::Match(_)),
+            !matches!(
+                judge(&check, &record(Verdict::Exit(0)), ""),
+                Judgement::Match(_)
+            ),
             "exit(0) must not satisfy exit=nonzero"
         );
         assert!(

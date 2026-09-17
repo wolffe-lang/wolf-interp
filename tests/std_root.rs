@@ -463,7 +463,10 @@ fn an_operator_is_a_use_of_its_imported_trait_and_an_unused_one_is_still_unused(
         &["conform-run", entry.to_str().expect("utf-8 path"), "--json"],
         &[],
     ));
-    assert_eq!(value["verdict"], "exit(0)", "an operator uses its import: {value}");
+    assert_eq!(
+        value["verdict"], "exit(0)",
+        "an operator uses its import: {value}"
+    );
 
     // The operator is NOT spelled: the same two imports, a qualified call and
     // no operator at all. `Eq` is unused and E0305 says so.
