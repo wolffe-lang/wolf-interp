@@ -5631,9 +5631,8 @@ impl Machine {
                 }
             };
             let last = if *inclusive { b } else { b - 1 };
-            let items = Self::range_items(elem, a, last);
             self.fire(Rule::Flow, span, "for over a range header");
-            return self.eval_for_items(items, false, pattern, iter, body);
+            return self.eval_for_items(Self::range_iter(elem, a, last), false, pattern, iter, body);
         }
         // The `for` head is `[mem.str.view]`'s first consumed position.
         let iterable = self.eval_consumed(iter)?;
@@ -5643,11 +5642,25 @@ impl Machine {
             self.fire(Rule::Flow, span, "for over a channel");
             return self.eval_for_chan(chan, pattern, body, iter.span);
         }
+        // A range VALUE iterates by the `Iter` `[mem.iter.range]` promises, to
+        // its exclusive `end` (`[type.range.value]`). Taken before the
+        // container match so it keeps the lazy walk the header gets: a range
+        // is the one iterable whose length is not bounded by anything already
+        // in memory.
+        let iterable = match iterable {
+            Value::Range { start, end, elem } => {
+                return self.eval_for_items(
+                    Self::range_iter(elem, start, end - 1),
+                    false,
+                    pattern,
+                    iter,
+                    body,
+                );
+            }
+            other => other,
+        };
         let is_container = matches!(&iterable, Value::List(..) | Value::Map(..));
         let items: Vec<Value> = match iterable {
-            // A range VALUE iterates by the `Iter` `[mem.iter.range]`
-            // promises, to its exclusive `end` (`[type.range.value]`).
-            Value::Range { start, end, elem } => Self::range_items(elem, start, end - 1),
             Value::List(slots, _, _) => std::sync::Arc::unwrap_or_clone(slots)
                 .into_iter()
                 .map(|s| s.value)
@@ -5727,28 +5740,38 @@ impl Machine {
     /// counted walk `[mem.iter.range]` describes (`+1` steps, ascending).
     /// A char range yields every scalar value in the interval; a code point
     /// no `char` spells is skipped rather than invented.
-    fn range_items(elem: RangeElem, start: i128, last: i128) -> Vec<Value> {
-        let mut out = Vec::new();
-        let mut at = start;
-        while at <= last {
-            match elem {
-                RangeElem::Int(ty) => out.push(Value::Int(at, ty)),
-                RangeElem::Char => {
-                    if let Some(c) = u32::try_from(at).ok().and_then(char::from_u32) {
-                        out.push(Value::Char(c));
-                    }
-                }
-            }
-            at += 1;
-        }
-        out
+    ///
+    /// **Lazy, and that is the point** (wolf-interp#121's pin item). This
+    /// used to answer a `Vec<Value>`, so `for i in a..b` allocated the whole
+    /// range BEFORE the first iteration: measured at 3.91 GB peak RSS for a
+    /// 50-million-element range, and r20 hit one 5 GB allocation and 28 GB
+    /// RSS on s161's two range witnesses when it tested re-pinning to
+    /// `12ca8acc`, then reverted the pin. A range is the one iterable whose
+    /// length is bounded by nothing already in memory — a `List` at least had
+    /// to be built — so it is the one that must not be materialized.
+    ///
+    /// The walk is still COUNTED and the semantics are unchanged: both
+    /// endpoints are evaluated exactly once before the first test, so the
+    /// bound is fixed at entry whether or not the elements are, and nothing
+    /// the body does can lengthen or shorten it. An empty range
+    /// (`last < start`) yields nothing, as the `while at <= last` it replaces
+    /// did.
+    fn range_iter(elem: RangeElem, start: i128, last: i128) -> impl Iterator<Item = Value> {
+        (start..=last).filter_map(move |at| match elem {
+            RangeElem::Int(ty) => Some(Value::Int(at, ty)),
+            // A code point no `char` spells is skipped rather than invented.
+            RangeElem::Char => u32::try_from(at)
+                .ok()
+                .and_then(char::from_u32)
+                .map(Value::Char),
+        })
     }
 
     /// The loop proper over materialized items, shared by the range header,
     /// the range value and the containers.
-    fn eval_for_items(
+    fn eval_for_items<I: IntoIterator<Item = Value>>(
         &mut self,
-        items: Vec<Value>,
+        items: I,
         is_container: bool,
         pattern: &Pattern,
         iter: &Expr,
