@@ -2397,9 +2397,33 @@ fn unused_check(program: &Program) -> Option<Diag> {
     for module in program.modules.values() {
         for scope in &module.scopes {
             for used in &scope.uses {
-                if !program.modules.contains_key(&used.name) {
-                    // The ambient prelude: not a module this loader resolved,
-                    // so no law this rung owns speaks about it.
+                // The guard this rung has always had: the ambient prelude is
+                // not a module this loader resolved, so no law it owns speaks
+                // about it.
+                //
+                // It used to read `!program.modules.contains_key(&used.name)`
+                // and that swallowed the ITEM-style import with the prelude
+                // (wolf-interp#118, priced by is50). `use cmp.Eq` binds the
+                // name `Eq`; `Eq` is a trait, not a module the loader
+                // resolved, so the import was skipped before the usage test
+                // was ever applied and could never be E0305 whatever the file
+                // spelled. lupin agreed with the counterparty on the POSITIVE
+                // case by accident and under-reported the negative.
+                //
+                // So the question is asked of the import's PATH rather than
+                // of its bound name: `use a.B` is judged when `a` is a module
+                // this loader resolved, because then `B` is an item of
+                // something we read.
+                let path = module
+                    .use_paths
+                    .iter()
+                    .find(|(bound, _)| *bound == used.name)
+                    .map(|(_, segments)| segments.as_slice());
+                let resolved = match path {
+                    Some([head, _, ..]) => program.modules.contains_key(head),
+                    _ => program.modules.contains_key(&used.name),
+                };
+                if !resolved {
                     continue;
                 }
                 let referenced = scope
@@ -4474,6 +4498,47 @@ fn collect_generic_refs(generics: &[crate::ast::GenericParam], scope: &mut FileS
     }
 }
 
+/// `[type.trait.op]` (wolf-lang#352; wolf-interp#118's third clause) — an
+/// operator IS a use of its trait's import.
+///
+/// An import binding an operator trait by name (`use cmp.Eq`) is used, for
+/// `[mod.use.unused]`, by any operator of that trait the file spells. This is
+/// `collect_generic_refs`'s situation exactly (wolf-interp#97): the walk used
+/// to skip a position that mentions an import, so a file whose only mention
+/// sat there heard "never used" with a machine-applicable fix-it that would
+/// have broken the file.
+///
+/// **The SPELLING is what counts, not the trait the checker would choose.**
+/// Unused imports are reported before any operator's trait is resolved, so
+/// the token `-` counts for both `Sub` and `Neg` — the clause says so, and
+/// over-counting is the safe direction for a rule whose fix-it deletes a
+/// line. What it must NOT do is exempt operator traits wholesale: a file that
+/// spells no operator still hears E0305 for `use cmp.Eq`.
+fn operator_import_names(binary: Option<BinOp>, unary: Option<crate::ast::UnOp>) -> &'static [&'static str] {
+    use crate::ast::UnOp;
+    match (binary, unary) {
+        // `-` is the one token two traits answer to, and the check runs
+        // before either is chosen.
+        (Some(BinOp::Sub), _) | (_, Some(UnOp::Neg)) => &["Sub", "Neg"],
+        (Some(BinOp::Add), _) => &["Add"],
+        (Some(BinOp::Mul), _) => &["Mul"],
+        (Some(BinOp::Div), _) => &["Div"],
+        (Some(BinOp::Rem), _) => &["Rem"],
+        (Some(BinOp::Eq | BinOp::Ne), _) => &["Eq"],
+        (Some(BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge | BinOp::Cmp), _) => &["Ord"],
+        _ => &[],
+    }
+}
+
+fn collect_operator_refs(traits: &'static [&'static str], scope: &mut FileScope) {
+    for name in traits {
+        scope.refs.push(PathRef {
+            head: (*name).to_owned(),
+            tail: None,
+        });
+    }
+}
+
 fn collect_fn_refs(decl: &FnDecl, scope: &mut FileScope) {
     collect_generic_refs(&decl.generics, scope);
     for param in &decl.params {
@@ -4580,8 +4645,12 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
         ExprKind::Block(block) | ExprKind::Loop { body: block } => {
             collect_block_refs(block, scope);
         }
-        ExprKind::Unary { operand, .. } => collect_expr_refs(operand, scope),
-        ExprKind::Binary { lhs, rhs, .. } => {
+        ExprKind::Unary { op, operand } => {
+            collect_operator_refs(operator_import_names(None, Some(*op)), scope);
+            collect_expr_refs(operand, scope);
+        }
+        ExprKind::Binary { op, lhs, rhs } => {
+            collect_operator_refs(operator_import_names(Some(*op), None), scope);
             collect_expr_refs(lhs, scope);
             collect_expr_refs(rhs, scope);
         }
