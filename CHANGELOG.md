@@ -7,6 +7,18 @@ THE METHOD SURFACE (is49, is50, is51). Pin `a7f517e` (wolf-lang
 in one release, the first time this machine has taken two, and the
 reason is that three lanes landed behind one tag.
 
+**The pin this release declares is preserved by a tag.** `41695e7` is an
+s166 branch head, and the rebase-merge that landed s166 on wolf-lang's
+trunk left it reachable from no branch and no tag — so the sha
+`lupin --version` prints could not be checked out of a fresh clone. It is
+now `refs/tags/lupin-0.1.37-conformance-pin` in wolf-lang, a tag rather
+than a branch because it is a fixed point. Re-pinning to a trunk sha was
+tried at the cut and reverted: at `12ca8acc` this machine OOMs on
+`grammar/range_value_wide_iter.lu` and `range_header_inclusive_max.lu`
+(it materializes the range s161's #381 taught the checked machine to
+walk) and its corpus runner does not know s163's `run(exit=nonzero)`.
+Those are this repository's mirrors to take, not the pin's fault.
+
 **What a reader can do at 0.1.37 that they could not at 0.1.36.** Write
 `xs.map(f)`, `xs.filter(keep)`, `xs.fold(init, step)`, `xs.sorted()` and
 the rest of the **ten** combinators, and have them run here — as the std
