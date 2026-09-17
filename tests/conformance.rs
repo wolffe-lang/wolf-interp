@@ -124,7 +124,19 @@ fn declaration_read_code(case: &Case) -> Option<&str> {
         "E0417" => ["mem.map.absent"].as_slice(),
         "E0418" => ["type.map.key"].as_slice(),
         "E0501" => ["generics.golden.def-site"].as_slice(),
-        "E0301" | "E0502" | "E0514" => ["type.trait.op"].as_slice(),
+        "E0502" | "E0514" => ["type.trait.op"].as_slice(),
+        // `[gram.expr.variant]` joins at is52 (wolf-lang#348,
+        // wolf-interp#118): a bare variant value is decided from the enum
+        // declarations in scope, so it is a resolve-rung refusal exactly like
+        // the rest of this table.
+        //
+        // Keyed on the CLAUSE and not on E0301 at large, because the same
+        // code still answers `unsupported` where the fact behind it is a
+        // typecheck one — `rows/negative/tag_undeclared_arg.lu` and
+        // `typecheck/method_home_no_std.lu` both pin `fail(E0301)` and both
+        // are `unsupported` here. Widening this row to the code would assert
+        // a refusal on those two and be wrong about both.
+        "E0301" => ["type.trait.op", "gram.expr.variant"].as_slice(),
         _ => return None,
     };
     case.conforms
