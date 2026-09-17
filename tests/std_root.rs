@@ -433,6 +433,58 @@ fn a_qualified_trait_in_a_generic_bound_counts_as_a_use_of_its_import() {
     assert_eq!(value["stdout_inline"], "3\n", "{value}");
 }
 
+/// `[type.trait.op]` (wolf-lang#352; wolf-interp#118) — an operator is a USE
+/// of its imported trait, and an operator trait no operator uses is still
+/// unused.
+///
+/// is50 priced this one and found lupin agreeing with the counterparty on the
+/// positive **by accident**: `sema::unused_check` skipped any bound name that
+/// was not itself a module the loader resolved, so `use cmp.Eq` — which binds
+/// the name `Eq`, a trait — could never be E0305 whatever the file spelled.
+/// The positive passed for the wrong reason and the negative was
+/// under-reported. Both halves are pinned here, because a fix that merely
+/// exempted operator traits would pass the first assertion and fail the
+/// second, and the clause names that case explicitly: "a file that spells
+/// none still hears E0305".
+#[test]
+fn an_operator_is_a_use_of_its_imported_trait_and_an_unused_one_is_still_unused() {
+    let member = "//! member: true\npub struct Ordering {\n    v: int,\n}\n\n                  pub trait Eq {\n    fn eq(self, other: Self) -> bool\n}\n\n                  impl Eq for Ordering {\n    fn eq(self, other: Self) -> bool { self.v == other.v }\n}\n\n                  pub fn total_cmp(a: f64, b: f64) -> Ordering {\n                      if a < b { Ordering { v: -1 } } else if a > b { Ordering { v: 1 } } else { Ordering { v: 0 } }\n}\n";
+
+    // The operator IS spelled: `use cmp.Eq` is used, and the file resolves.
+    let dir = scratch("std-root-op-import-used");
+    write(&dir, "cmp/c.lu", member);
+    write(
+        &dir,
+        "main.lu",
+        "use cmp\nuse cmp.Eq\n\nfn main() -> !int {\n    let less = cmp.total_cmp(1.0, 2.0)\n             let greater = cmp.total_cmp(2.0, 1.0)\n    if less == greater { return 1 }\n    0\n}\n",
+    );
+    let entry = dir.join("main.lu");
+    let value = record(&lupin(
+        &["conform-run", entry.to_str().expect("utf-8 path"), "--json"],
+        &[],
+    ));
+    assert_eq!(value["verdict"], "exit(0)", "an operator uses its import: {value}");
+
+    // The operator is NOT spelled: the same two imports, a qualified call and
+    // no operator at all. `Eq` is unused and E0305 says so.
+    let dir = scratch("std-root-op-import-unused");
+    write(&dir, "cmp/c.lu", member);
+    write(
+        &dir,
+        "main.lu",
+        "use cmp\nuse cmp.Eq\n\nfn main() -> !int {\n    let less = cmp.total_cmp(1.0, 2.0)\n    0\n}\n",
+    );
+    let entry = dir.join("main.lu");
+    let value = record(&lupin(
+        &["conform-run", entry.to_str().expect("utf-8 path"), "--json"],
+        &[],
+    ));
+    assert_eq!(
+        value["verdict"], "fail(E0305)",
+        "an operator trait no operator uses is still unused: {value}"
+    );
+}
+
 /// wolf-interp#102: a trait ALIAS reached through an import expands its bound.
 ///
 /// The issue's witness is `fn twice[T: tiny.Num]` over `pub trait Num = Add`
