@@ -419,6 +419,20 @@ the gate, and agreeing with it right up until it does not.**
   correct change. Recorded because the wave's own note says wolf-interp is
   slow, not hung, and a per-file cost of three and a half minutes is also a
   number wolf-interp#123 should carry.
+- **A census that moves moves the manual too, and `doc_truth` is what says
+  so.** Two documented sample outputs carried the old figures and drifted the
+  moment the census did: `docs/manual/00-building.md`'s `lupin corpus` summary
+  (478/48/60 -> 480/47/59) and `docs/manual/04-differential.md`'s conformance
+  check (conservatism ledger 120 -> 118, both halves falling by one). The
+  second is the more interesting of the pair, because the differential's
+  ledger is computed over a different population than `lupin corpus` and fell
+  by **two** where the corpus census moved **one** row: `map_remove.lu` leaves
+  `unsupported(interp)` and `variant_bare_value.lu` leaves
+  `unsupported(counterparty)`. Neither number is reachable from the corpus
+  census by arithmetic, which is exactly why the manual is checked against the
+  binary rather than against a lane's report. The gate named both pairs and
+  the count of them ("2 of 20"), so the fix was complete rather than iterative.
+
 - **The windows ladder is the leg nobody had priced.** It is 39 % over the
   macOS-ratio prediction, and it is the half of the windows job that had never
   run at all. Any future re-balancing should size it from this run's 8,733 s,
