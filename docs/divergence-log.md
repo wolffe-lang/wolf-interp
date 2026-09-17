@@ -338,6 +338,73 @@ failure(s)**, 350 distinct conforms.
 the prediction named did not fire: no file outside the witness moved, which
 the totals prove rather than assert — the classes still partition 613.
 
+
+#### Item 4 — the pin: both blockers taken, and the pin still does not move
+
+0.1.37's conformance pin is `41695e7`, preserved at
+`refs/tags/lupin-0.1.37-conformance-pin`. r20 tested re-pinning to `12ca8acc`
+and reverted it for two reasons, both of which are this machine's, and both
+are fixed here so the next lane to try the bump meets neither.
+
+**Blocker 1 — `for` over a range materialized it.** `Machine::range_items`
+answered a `Vec<Value>`, so `for i in a..b` allocated the ENTIRE range before
+the first iteration. Measured on this tree, a 50-million-element range:
+
+| | peak RSS |
+| --- | --- |
+| before | 3,913,104 kB (**3.91 GB**) |
+| after | 12,212 kB (**11.9 MB**) |
+
+a 320x reduction, and now constant in the range's length rather than linear;
+elapsed is unchanged (37.5 s -> 38.7 s, inside the noise of the evaluation-step
+budget that ends both runs). That is r20's shape exactly — "one 5 GB
+allocation, 28 GB RSS" on s161's two range witnesses — at a smaller range.
+A range is the one iterable whose length is bounded by nothing already in
+memory: a `List` at least had to be built first. `range_items` is now
+`range_iter` and `eval_for_items` takes any `IntoIterator`, so the header form
+and the range-VALUE form are both lazy and the container forms are untouched.
+The walk is still COUNTED: both endpoints are evaluated exactly once before
+the first test, so the bound is fixed at entry whether or not the elements
+are, and `[mem.iter.range]`'s semantics are unchanged — including a char
+range skipping a code point no `char` spells rather than inventing one.
+
+**Blocker 2 — `run(exit=nonzero)` was unparseable.** s163 spells a witness
+whose point is that the program FAILS, deliberately without pinning which
+status: the exit status of a raised row is a property of the program's own
+row, and pinning it would make the file a test of the number rather than of
+the refusal. `ExitSpec` had `Code(u8)` and `Trap(Option<TrapKind>)` and
+nothing else, so the directive was a hard parse error and every file carrying
+it was a harness failure. `ExitSpec::Nonzero` is parsed, displayed and judged:
+satisfied by any nonzero exit, by no successful one, and — the part that
+matters — **not** by a trap, because `exit=trap` is the spelling that says
+trap and names its kind. The unknown-spelling message now offers `nonzero`
+among the options, so the next lane to mistype it learns something.
+
+**The pin still does not move, and that is deliberate.** `41695e7` is
+dev-stamped off an s166 branch that has since rebased, and choosing the sha to
+land on is a release decision with the wolf-lang side's own state in it —
+r20's, not a mirror lane's. What this lane owed was that the bump not fail for
+lupin's reasons. Both are unblocked and pinned by tests
+(`directive::tests::check_run_may_demand_a_nonzero_exit_without_naming_it`,
+`ledger::tests::a_nonzero_exit_expectation_takes_any_failing_status_and_no_trap`);
+neither could be verified against the new corpus itself, since the private
+upstream at `12ca8acc` is not reachable from this tree, so both are verified
+against synthesized witnesses and stated as such.
+
+**Neither blocker moved a census cell**, which was the prediction and is the
+measurement: 613 entries, 480 match, 59 out of scope, 47 conservatism, 26
+dynamic counterparts, 1 filed mismatch, 476 reach `run`, 0 failures — the same
+seven figures as before item 4, re-measured after both edits.
+
+**A gate that passes what the real gate fails.** This lane's source edits were
+validated with `cargo check` and CI red on all six test jobs at `rustfmt`,
+step 5, with `independence` — the one job that runs no lint — green. `cargo
+check` says nothing about formatting and `--all-targets` does not make it
+say more; the CI gates are `cargo fmt --check` and `cargo clippy --all-targets
+-- -D warnings`, and those are the two commands a local run must end with.
+Recorded as the eighth false-signal shape: **a cheaper check standing in for
+the gate, and agreeing with it right up until it does not.**
+
 #### What the measurements found beyond the rows
 
 - **A slow file is not a hung one, and I called one hung.** The census paused
