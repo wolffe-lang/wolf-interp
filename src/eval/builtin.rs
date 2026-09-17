@@ -1142,7 +1142,7 @@ pub const BUILTIN_METHODS: &[(&str, &[&str])] = &[
             "push", "pop", "len", "count", "is_empty", "get", "first", "last", "clear", "par",
         ],
     ),
-    ("Map", &["len", "count", "is_empty", "pairs", "clear"]),
+    ("Map", &["len", "count", "is_empty", "pairs", "clear", "remove"]),
     (
         "str",
         &[
@@ -1191,8 +1191,8 @@ pub fn is_builtin_method(receiver: &Value, name: &str) -> bool {
 /// Whether [`method`] can change `receiver` in place — that is, whether the
 /// arm it dispatches to takes the receiver's elements mutably.
 ///
-/// Four arms of [`method`] do: `List.push`, `List.pop`, `List.clear` and
-/// `Map.clear`. Every other arm either reads its receiver and returns a fresh
+/// Five arms of [`method`] do: `List.push`, `List.pop`, `List.clear`,
+/// `Map.clear` and `Map.remove`. Every other arm either reads its receiver and returns a fresh
 /// value, or changes *machine* state (the store, the provenance forest, the
 /// scheduler) behind a receiver that is an immutable id.
 ///
@@ -1207,14 +1207,14 @@ pub fn is_builtin_method(receiver: &Value, name: &str) -> bool {
 pub fn mutates_receiver(receiver: &Value, name: &str) -> bool {
     matches!(
         (receiver, name),
-        (Value::List(..), "push" | "pop" | "clear") | (Value::Map(_), "clear")
+        (Value::List(..), "push" | "pop" | "clear") | (Value::Map(_), "clear" | "remove")
     )
 }
 
-/// The O(1) witness for [`mutates_receiver`]'s four methods: each changes the
+/// The O(1) witness for [`mutates_receiver`]'s five methods: each changes the
 /// element count exactly when it changes the value (`clear` on an empty
-/// container changes neither), so the count is a complete stand-in for
-/// comparing the whole container.
+/// container changes neither, and neither does a `remove` that misses), so
+/// the count is a complete stand-in for comparing the whole container.
 #[must_use]
 pub fn list_len(value: &Value) -> Option<usize> {
     match value {
@@ -1418,6 +1418,40 @@ pub fn method(
         (Value::Map(pairs), "clear") => {
             pairs.clear();
             Ok(Value::Unit)
+        }
+        // `[type.map]` (wolf-lang#344, D50 on wolf-lang#11; wolf-interp#118's
+        // second clause): `m.remove(k)` erases a key through a `mut` receiver
+        // and answers `V ! {none}` — the erased value, or the `none` row with
+        // the map unchanged, which is the READ's shape (`[mem.map.absent]`),
+        // deliberately the same answer as `m[k]` so the two reads of an
+        // absent key cannot disagree.
+        //
+        // "The remaining entries keep their order" costs nothing to honour
+        // here: `Value::Map` is a `Vec` of pairs held in insertion order
+        // (there is no hashing to perturb), so an erase is `Vec::remove` and
+        // the survivors cannot reorder. That is the clause's stated cost
+        // exactly — one scan to the key, one shift of the entries after it,
+        // nothing freed.
+        //
+        // The zero-argument spelling is refused by SHAPE, not by name: the
+        // table above now claims `remove`, and
+        // `eval::tests::every_builtin_method_the_table_names_dispatches`
+        // calls every claimed name with no arguments and requires that it
+        // not answer "has no method".
+        (Value::Map(pairs), "remove") => {
+            let [key] = args.as_slice() else {
+                return unsupported(format!(
+                    "`remove` takes exactly one argument, the key to erase; {} given",
+                    args.len()
+                ));
+            };
+            match pairs.iter().position(|(k, _)| super::value_eq(k, key)) {
+                Some(at) => Ok(pairs.remove(at).1.value),
+                None => {
+                    machine.note(Rule::ErrUnion, span, MAP_NONE_ROW);
+                    Ok(error("none"))
+                }
+            }
         }
         (Value::Map(pairs), "pairs") => Ok(Value::list(
             pairs
