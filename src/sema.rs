@@ -86,6 +86,24 @@ pub struct FileScope {
     pub file: String,
     pub uses: Vec<UseRef>,
     pub refs: Vec<PathRef>,
+    /// Bare capitalized names in **value** position, with their spans
+    /// (`[gram.expr.variant]`, wolf-interp#118's first clause).
+    ///
+    /// Value position is the whole discrimination this clause needs, and the
+    /// walk already draws the line: a nullary variant in a `match` arm parses
+    /// as `PatKind::Binding`, which `collect_pattern_refs` deliberately does
+    /// not walk as a path, so an arm's `Less` never lands here while a tail
+    /// expression's `Less` does. `[gram.pat.nullary]` keeps the bare name in
+    /// an arm and this check must not reach it.
+    pub bare_caps: Vec<(String, Span)>,
+    /// Every name this file BINDS — parameters, closure parameters, `let`/`var`
+    /// and `match` bindings.
+    ///
+    /// Over-approximated on purpose: it is per file rather than per scope, so
+    /// a name bound anywhere shadows everywhere for this check's purposes.
+    /// That errs towards saying nothing, which is the safe direction for a
+    /// refusal whose fix-it rewrites the source.
+    pub binders: BTreeSet<String>,
 }
 
 /// A second definition of a name in one module (D32: file boundaries create no
@@ -1221,6 +1239,87 @@ fn define(
 /// reports the first in this order, which is a defensible choice the spec
 /// does not pin.
 #[must_use]
+/// `[gram.expr.variant]` (wolf-lang#348; wolf-interp#118's first clause) — a
+/// variant value is spelled with its enum.
+///
+/// `Ordering.Less` names both, because the variant belongs to its enum. A
+/// BARE capitalized name in value position is an error row tag's spelling
+/// (D30, `[gram.expr.tagident]`), so a bare `Less` that no local, item,
+/// import or declared row resolves is **E0301** — and when an enum this
+/// module declares carries a variant of that name, the diagnostic names the
+/// enum and offers `Ordering.` as the edit, machine-applicable when exactly
+/// one such enum exists.
+///
+/// **What this must not touch, and why it does not.** lupin's "an unresolved
+/// capitalized name is a row tag" posture (`eval::eval_path_expr`) is
+/// load-bearing across the corpus — is50 priced this clause as the risky one
+/// for exactly that reason. The refusal is therefore gated on
+/// `module.variants`, not on capitalization: a name is refused only when an
+/// enum of this module actually declares it as a variant. Measured over the
+/// 654-file corpus at this pin, eight files return a bare capitalized name as
+/// a row tag (`return Failed`, `return Boom`, `return Timeout`, …) and **not
+/// one of those names is a declared variant**, so the gate leaves all eight
+/// alone. Thirteen files declare an enum and twelve of them already spell
+/// every variant VALUE qualified, using bare names only in `match` arms.
+/// The blast radius is one file, `typecheck/variant_bare_value.lu`, which is
+/// the witness.
+///
+/// A `match` arm is the other position and keeps the bare name
+/// (`[gram.pat.nullary]`): there the scrutinee's type already says which enum.
+/// `FileScope::bare_caps` is fed from the expression-path arm alone, so an
+/// arm can never reach here.
+///
+/// Runs LAST in the chain: a file that trips an older check keeps the
+/// diagnostic it had, so adding this moves no row but the witness's.
+fn variant_value_check(program: &Program) -> Option<Diag> {
+    let mut earliest: Option<Diag> = None;
+    for module in program.modules.values() {
+        for scope in &module.scopes {
+            for (name, span) in &scope.bare_caps {
+                let Some(enums) = module.variants.get(name) else {
+                    continue;
+                };
+                if enums.is_empty() {
+                    continue;
+                }
+                // Everything that DOES resolve the name, in the order
+                // `[gram.expr.variant]` states: a local, an item, an import,
+                // a module. A declared row tag reaches none of these and is
+                // excluded by the `variants` gate above instead.
+                if scope.binders.contains(name)
+                    || module.items.contains_key(name)
+                    || module.uses.iter().any(|bound| bound == name)
+                    || program.modules.contains_key(name)
+                {
+                    continue;
+                }
+                let sole = (enums.len() == 1).then(|| enums[0].clone());
+                let message = match &sole {
+                    Some(owner) => format!(
+                        "a variant value is spelled with its enum: write `{owner}.{name}`. A bare                          capitalized name in value position is an error row tag's spelling                          (`[gram.expr.tagident]`), and no local, item, import or module resolves                          `{name}` here"
+                    ),
+                    None => format!(
+                        "a variant value is spelled with its enum, and `{name}` is a variant of                          {} enums in this module ({}), so no single edit is machine-applicable",
+                        enums.len(),
+                        enums.join(", ")
+                    ),
+                };
+                let mut diag = Diag::new("E0301", *span, "gram.expr.variant", message);
+                if let Some(owner) = sole {
+                    diag = diag.with_help(crate::diag::Help::insert(span.start, format!("{owner}.")));
+                }
+                if earliest
+                    .as_ref()
+                    .is_none_or(|held| span.start < held.span.start)
+                {
+                    earliest = Some(diag);
+                }
+            }
+        }
+    }
+    earliest
+}
+
 pub fn resolve_check(program: &Program) -> Option<Diag> {
     cycle_check(program)
         .or_else(|| error_alias_check(program))
@@ -1238,6 +1337,7 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| bound_check(program))
         .or_else(|| row_operand_check(program))
         .or_else(|| annotation_check(program))
+        .or_else(|| variant_value_check(program))
 }
 
 /// `[type.list.lit]` (s158, wolf-lang#154; wolf-interp#106) — the list
@@ -4542,7 +4642,8 @@ fn collect_operator_refs(traits: &'static [&'static str], scope: &mut FileScope)
 fn collect_fn_refs(decl: &FnDecl, scope: &mut FileScope) {
     collect_generic_refs(&decl.generics, scope);
     for param in &decl.params {
-        if let crate::ast::ParamKind::Named { ty, .. } = &param.kind {
+        if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
+            scope.binders.insert(name.name.clone());
             collect_type_refs(ty, scope);
         }
     }
@@ -4618,7 +4719,18 @@ fn collect_strlit_refs(literal: &StrLit, scope: &mut FileScope) {
 #[allow(clippy::too_many_lines)]
 fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
     match &*expr.kind {
-        ExprKind::Path(path) => collect_path_ref(path, scope),
+        ExprKind::Path(path) => {
+            // The ONLY place a bare capitalized name is collected as a
+            // candidate: an expression path. A type position reaches
+            // `collect_type_refs` and a pattern `collect_pattern_refs`, and
+            // neither may feed this list.
+            if let [only] = path.segments.as_slice()
+                && only.name.starts_with(char::is_uppercase)
+            {
+                scope.bare_caps.push((only.name.clone(), only.span));
+            }
+            collect_path_ref(path, scope);
+        }
         ExprKind::StructLit { path, fields } => {
             collect_path_ref(path, scope);
             for field in fields {
@@ -4737,7 +4849,15 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
             }
         }
         ExprKind::Continue => {}
-        ExprKind::Closure { body, .. } => collect_expr_refs(body, scope),
+        ExprKind::Closure { params, body, .. } => {
+            for param in params {
+                scope.binders.insert(param.name.name.clone());
+                if let Some(ty) = &param.ty {
+                    collect_type_refs(ty, scope);
+                }
+            }
+            collect_expr_refs(body, scope);
+        }
         ExprKind::RegionSugar { body, .. } => collect_block_refs(body, scope),
         ExprKind::RegionValue { .. } => {}
         ExprKind::In { region, body } => {
@@ -4786,7 +4906,13 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
 
 fn collect_pattern_refs(pattern: &Pattern, scope: &mut FileScope) {
     match &*pattern.kind {
-        PatKind::Wildcard | PatKind::Binding(_) => {}
+        PatKind::Wildcard => {}
+        // A binding, or a nullary variant pattern — the two are one shape
+        // here (`[gram.pat.nullary]`), and recording both is what makes the
+        // value-position check above shadow-safe.
+        PatKind::Binding(ident) => {
+            scope.binders.insert(ident.name.clone());
+        }
         PatKind::Literal(expr) => collect_expr_refs(expr, scope),
         // Both endpoints are literals (`[gram.pat.range]`), so this is
         // the literal arm twice over.
