@@ -14,7 +14,7 @@
 //! ```text
 //! check:    pass
 //!         | fail(CODE)
-//!         | run( exit=N | exit=trap | exit=trap(kind) [, stdout="…"] )
+//!         | run( exit=N | exit=nonzero | exit=trap | exit=trap(kind) [, stdout="…"] )
 //! phase:    none | lex | parse | resolve | typecheck | mem | wir | run
 //! conforms: anchor, anchor, …
 //! member:   true | false
@@ -81,6 +81,16 @@ pub enum Check {
 pub enum ExitSpec {
     /// `exit=N` — a plain process exit status.
     Code(u8),
+    /// `exit=nonzero` — the program must FAIL, and the corpus deliberately
+    /// does not say with which status (s163; wolf-interp#121's pin item).
+    ///
+    /// A witness whose point is "this is refused at run time" should not have
+    /// to pin the number a particular machine happens to answer with: the
+    /// exit status of a raised error row is a property of the program's own
+    /// row, and pinning it would make the file a test of the status rather
+    /// than of the refusal. A trap is NOT a nonzero exit for this spelling —
+    /// `exit=trap` says that and says which kind — so the two stay distinct.
+    Nonzero,
     /// `exit=trap` (kind unspecified) or `exit=trap(kind)`.
     Trap(Option<TrapKind>),
 }
@@ -89,6 +99,7 @@ impl fmt::Display for ExitSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ExitSpec::Code(n) => write!(f, "exit={n}"),
+            ExitSpec::Nonzero => f.write_str("exit=nonzero"),
             ExitSpec::Trap(None) => f.write_str("exit=trap"),
             ExitSpec::Trap(Some(kind)) => write!(f, "exit=trap({kind})"),
         }
@@ -514,8 +525,13 @@ fn parse_exit(value: &str) -> Result<ExitSpec, String> {
         })?;
         return Ok(ExitSpec::Trap(Some(parsed)));
     }
+    if value == "nonzero" {
+        return Ok(ExitSpec::Nonzero);
+    }
     let code: u8 = value.parse().map_err(|_| {
-        format!("`exit={value}`: expected an exit status in 0..=255, `trap`, or `trap(kind)`")
+        format!(
+            "`exit={value}`: expected an exit status in 0..=255, `nonzero`, `trap`, or `trap(kind)`"
+        )
     })?;
     Ok(ExitSpec::Code(code))
 }
@@ -763,6 +779,42 @@ mod tests {
                 stdout: None
             })
         );
+    }
+
+    /// s163's spelling, and the reason wolf-interp#121's pin item exists: r20
+    /// tested re-pinning to `12ca8acc`, this directive was unparseable, and
+    /// the pin was reverted. Taken here rather than discovered at the next
+    /// release.
+    #[test]
+    fn check_run_may_demand_a_nonzero_exit_without_naming_it() {
+        let d = ok("//! check: run(exit=nonzero)\n//! phase: run\n");
+        assert_eq!(
+            d.check,
+            Some(Check::Run {
+                exit: ExitSpec::Nonzero,
+                stdout: None
+            })
+        );
+        // It composes with `stdout=` like any other exit spelling.
+        let d = ok("//! check: run(exit=nonzero, stdout=\"boom\")\n//! phase: run\n");
+        assert_eq!(
+            d.check,
+            Some(Check::Run {
+                exit: ExitSpec::Nonzero,
+                stdout: Some("boom".to_owned())
+            })
+        );
+        // And it round-trips, because the ledger prints the spec back.
+        assert_eq!(ExitSpec::Nonzero.to_string(), "exit=nonzero");
+    }
+
+    /// The message must OFFER the new spelling, or the next lane to mistype it
+    /// learns nothing.
+    #[test]
+    fn an_unknown_exit_spelling_names_nonzero_among_the_options() {
+        let message = err("//! check: run(exit=maybe)\n//! phase: run\n");
+        assert!(message.contains("nonzero"), "{message}");
+        assert!(message.contains("trap"), "{message}");
     }
 
     #[test]

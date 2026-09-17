@@ -115,6 +115,15 @@ pub fn judge(check: &Check, record: &ObservationRecord, stdout: &str) -> Judgeme
         (Check::Run { exit, stdout: want }, verdict) => {
             let termination = match (exit, verdict) {
                 (ExitSpec::Code(want), Verdict::Exit(got)) if want == got => None,
+                // `exit=nonzero`: the program must fail, and the corpus does
+                // not pin which status. A TRAP is not this — `exit=trap` is
+                // the spelling for that and names the kind — so a trap
+                // against `nonzero` is still a mismatch and says so.
+                (ExitSpec::Nonzero, Verdict::Exit(got)) if *got != 0 => None,
+                (ExitSpec::Nonzero, got) => Some(format!(
+                    "expected a nonzero exit ({}), got {got}",
+                    ExitSpec::Nonzero
+                )),
                 (ExitSpec::Code(want), got) => {
                     Some(format!("expected exit({want}), observed {got}"))
                 }
@@ -344,6 +353,36 @@ mod tests {
         assert!(!stdout_matches("hello", "hello\n\n"));
         assert!(!stdout_matches("hello", " hello\n"));
         assert!(!stdout_matches("hello", "goodbye\n"));
+    }
+
+    /// `exit=nonzero` is satisfied by ANY failing status and by no successful
+    /// one — and a TRAP does not satisfy it, because `exit=trap` is the
+    /// spelling that says trap and names the kind. The negative halves are the
+    /// point: a spec that accepted everything would pass the first assertion
+    /// alone.
+    #[test]
+    fn a_nonzero_exit_expectation_takes_any_failing_status_and_no_trap() {
+        let check = Check::Run {
+            exit: ExitSpec::Nonzero,
+            stdout: None,
+        };
+        for code in [1_u8, 2, 42, 255] {
+            assert!(
+                matches!(judge(&check, &record(Verdict::Exit(code)), ""), Judgement::Match(_)),
+                "exit({code}) should satisfy exit=nonzero"
+            );
+        }
+        assert!(
+            !matches!(judge(&check, &record(Verdict::Exit(0)), ""), Judgement::Match(_)),
+            "exit(0) must not satisfy exit=nonzero"
+        );
+        assert!(
+            !matches!(
+                judge(&check, &record(Verdict::Trap(TrapKind::Overflow)), ""),
+                Judgement::Match(_)
+            ),
+            "a trap must not satisfy exit=nonzero; `exit=trap` is that spelling"
+        );
     }
 
     #[test]
