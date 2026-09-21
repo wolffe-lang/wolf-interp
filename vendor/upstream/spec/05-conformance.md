@@ -125,9 +125,27 @@ parser contract):
   non-directive `//!` lines are prose. Keys, each at most once
   (duplicates are errors): `check:`, `phase:`, `conforms:`, `member:`.
 - `[conf.directive.check]` `check: pass | fail(CODE) | run(exit=N |
-  exit=trap | exit=trap(kind) [, stdout="…"])` — kinds from
-  `[conf.trap.set]`; unknown kinds/phases are errors. A `fail(CODE)`
-  expectation matches the failing code exactly. A `stdout="…"`
+  exit=nonzero | exit=trap | exit=trap(kind) [, stdout="…"])` — kinds
+  from `[conf.trap.set]`; unknown kinds/phases are errors. A
+  `fail(CODE)` expectation matches the failing code exactly.
+  `exit=nonzero` matches an `exit(N)` verdict whose N is not 0 and
+  nothing else: not a trap (a trap is its own outcome class, spelled
+  `exit=trap`), and never a program that did not compile — a
+  `fail(CODE)` verdict under `exit=nonzero` is an error by name,
+  because a build failure also ends `wolf run` nonzero and the weak
+  claim must not score it. It is the spelling for the outcomes whose
+  status the spec leaves implementation-specified and whose class it
+  fixes (`[conc.proc.root]`), so a witness claims only what the
+  language promises. **The cost, stated:** none at run time — a
+  directive is read by the corpus runner, never by a program — and the
+  runner's cost is one integer comparison per file. (Appended
+  2026-09-15, s163 — wolf-lang#371: wolf-book's bs46 minted the
+  spelling for ch15, where `wolf` exits 121 and lupin 1 on the same
+  root-domain death, and this runner could not parse it, so ch15's
+  exercise directory stopped travelling to this corpus. The grammar
+  grew rather than `[conc.proc.root]` naming a number: a number would
+  move one machine's behaviour to fix a spelling. Witness:
+  `conc/proc_link_root_death.lu`.) A `stdout="…"`
   expectation matches the program's stdout byte-exactly EXCEPT that one
   trailing newline in the observed output is ignored (`print` appends
   one; directives stay single-line). Cross-implementation stdout
@@ -161,7 +179,8 @@ parser contract):
 ## §3 Trap & exit vocabulary `[conf.trap]`
 
 - `[conf.trap.set]` `run(exit=…)` values are plain integer exit codes,
-  `trap` (kind unspecified), or `trap(kind)` with kind from the closed
+  `nonzero` (any status but 0, `[conf.directive.check]`), `trap`
+  (kind unspecified), or `trap(kind)` with kind from the closed
   set: `overflow`, `div-zero`, `bounds`, `use-after-move`, `exclusivity`,
   `region-fault`, `stale-handle`, `alloc-contract`, `assert`, `race`,
   `ub`, `deadlock`. The set is closed; extension requires revising this
@@ -323,6 +342,22 @@ exhausted` arrived — an OOM where an honest refusal was owed.)
   that they are not. Witnesses: `corpus/strings/bytes_view_walk.lu`
   and the driver's `checked_budget` test, which asserts the peak
   resident set of the reduction as a subprocess.)
+  **Call depth is bounded as well, and the bound is the machine's, not
+  the host's.** A call past 128 frames (`CALL_DEPTH_BUDGET`) is
+  `unsupported` (`call depth budget exhausted`), and the machine runs
+  on a thread whose stack it sizes itself — 64 MiB
+  (`CHECKED_STACK_BYTES`), the same on every host — so reaching the
+  bound is the same word on a windows host, whose main thread has
+  1 MiB, as on a unix one with 8 MiB. What it costs: one thread per
+  run and 64 MiB of reserved address space; resident memory is only
+  the frames the program reaches. (s161 for #382: three wolf-std json
+  rows reached the bound with ~1.2 MiB of host frames in a release
+  build and overflowed the windows main thread with no record. Weighed
+  and rejected: 8 MiB, the unix default — a debug build overflows it
+  at the bound; and a depth budget derived from the host's stack,
+  which makes the answer a property of the host. Witness:
+  `ubcheck`'s `recursion_to_the_depth_budget_answers_on_any_callers_stack`,
+  which runs the machine from a 256 KiB thread.)
 
 ## §6 Bare-name resolution `[conf.resolve]`
 
