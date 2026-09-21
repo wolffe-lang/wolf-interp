@@ -110,6 +110,109 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The re-pin on the released line — is53, lupin 0.1.38, pin `41695e7` -> `2e4ca769` (wolf-lang **v0.2.15**)
+
+wolf-interp#127: 0.1.37 declares a pairing pin no downstream can relate to
+the released compiler. The oracle is one command and it is the whole of the
+finding:
+
+```
+$ git -C upstream merge-base --is-ancestor 41695e78437fbf3644accad40ddb4804737d4440 v0.2.15 ; echo $?
+1
+$ git -C upstream merge-base --is-ancestor 2e4ca769b396219585a07ff18492529c944672d9 v0.2.15 ; echo $?
+0
+```
+
+`2e4ca769` **is** `v0.2.15` (`git rev-parse v0.2.15^{commit}`), so the
+ancestry is reflexive and the pin becomes quotable: "lupin 0.1.38 was
+conformance-tested against wolf 0.2.15" is then a sentence with a
+verifiable referent, which is exactly what #127 says 0.1.37 cannot say.
+
+The pin is recorded mechanically in **`vendor/upstream/PIN`** — one line,
+the full 40-character sha — together with the submodule gitlink at
+`upstream` and the vendored `vendor/upstream/{spec,corpus}` snapshot that
+`vendor/README.md` requires to be byte-identical to it. It is *not* in
+`wolf-toolchain.toml`, which names a binary, not a specification checkout.
+
+#### Prediction, before the pin moves
+
+The corpus the pin carries changes by 12 added files and 13 modified ones
+(`git -C upstream diff --name-status 41695e7 2e4ca769 -- corpus`). Of the
+13 modified, twelve change only header prose, a `conforms:` list or the
+retired `warns: W1004` directive; the thirteenth,
+`corpus/methods/std/list/list.lu`, is the only one whose *code* changes —
+`push(take f(x))` and `push(take pair)` under wolf-lang#385. That is the
+one shape that could move a pre-existing row, so it was probed on a
+synthesized witness at this head before the prediction was written:
+lupin parses and evaluates `take <call>` and `take <name>` in argument
+position and prints `3 1` for the equivalent program, exit 0.
+
+**So the claim is: no pre-existing entry changes class. Every moved row is
+a new file.** The falsifier is any row already in the ledger at `41695e7`
+landing in a different column at `2e4ca769`.
+
+The 12 new entries, by name and predicted class:
+
+| new entry | `check:` | predicted |
+| --- | --- | --- |
+| `conc/chan_default_rendezvous.lu` | `run(exit=0, …)` | match |
+| `conc/chan_root_task.lu` | `run(exit=0, …)` | match |
+| `conc/proc_link_root_death.lu` | `run(exit=nonzero)` | match |
+| `fs/remove_dir_refused.lu` | `run(exit=0, …)` | match |
+| `grammar/range_header_inclusive_max.lu` | `run(exit=0, …)` | match |
+| `grammar/range_value_wide_iter.lu` | `run(exit=0, …)` | match |
+| `grammar/type_position_keyword.lu` | `fail(E0206)` | match |
+| `memory/push_copies_element.lu` | `run(exit=0, …)` | match |
+| `memory/push_take_moves.lu` | `fail(E1001)` | **conservatism** |
+| `rows/raised_call_arg_position.lu` | `run(exit=0, …)` | match |
+| `typecheck/generic_bind_once.lu` | `fail(E0401)` | match |
+| `typecheck/generic_bind_scalar.lu` | `fail(E0401)` | **conservatism** |
+
+The two conservatism calls are the corpus's own words, not a guess:
+`generic_bind_scalar.lu`'s header records that "lupin 0.1.36 runs this
+program (exit 0)" because is45's declaration read-back covers a
+struct-typed argument only, and `push_take_moves.lu` pins a move error at
+`typecheck`, a rung this machine does not perform. `type_position_keyword.lu`
+is a match because is45 already adopted the counterparty's number
+(`diag::E_EXPECTED_TYPE = "E0206"`); before is45 this side answered E0201
+and the file would have been a `span-or-code` mismatch.
+
+So the census, predicted:
+
+| class | baseline (`41695e7`) | predicted (`2e4ca769`) |
+| --- | --- | --- |
+| files | 654 | 666 |
+| entries | 613 | 625 |
+| members | 41 | 41 |
+| failures | 0 | 0 |
+| distinct conforms | 350 | 358 |
+| match | 480 | **490** |
+| out of scope | 59 | 59 |
+| mismatch (unfiled) | 0 | 0 |
+| mismatch (filed) | 1 | 1 |
+| dynamic counterpart | 26 | 26 |
+| conservatism | 47 | **49** |
+| reach `run` | 476 | **486** |
+
+`distinct conforms` is derived, not guessed: the union of `conforms:` tags
+over `corpus/` gains exactly eight and loses none across the two revisions
+— `conc.chan.default`, `conf.directive.check`, `gram.type`,
+`gram.type.start`, `os.fs.remove`, `type.generic.bind`, `type.interp.spec`,
+`type.range.value` — which is why 350 becomes 358 and not 360.
+
+`reach run` gains ten, not eight: the eight new `run(…)` entries plus the
+two conservatism entries, which reach `run` on this side precisely because
+this side does not refuse them.
+
+**Corpus verdicts: none change.** No entry moves from match to mismatch, no
+filed divergence resolves, and `differ::FILED_DIVERGENCES` is untouched by
+this lane.
+
+#### Measured, after the pin moved
+
+*(to be filled at the measurement — this section was committed before the
+first code change.)*
+
 ### The windows shard, and the two mirrors — is52, lupin 0.1.37, pin `41695e7` (**no pin move**)
 
 Two subjects: wolf-interp#121, the windows leg against GitHub's 6 h job cap,
