@@ -389,8 +389,13 @@ pub const E_ASSUME_ARITY: &str = "E0212";
 /// spec's §9 reserves E02xx to the parser and names no number; **E0206 is
 /// wolfc's** (wolf-interp#89, measured at pin `662b14c`: identical span,
 /// identical phase, `fail(E0206)` against this side's former `fail(E0201)`),
-/// followed for the same reason E0203 was. Listed in [`UNPINNED_CODES`]
-/// because no corpus file pins it yet.
+/// followed for the same reason E0203 was. **PINNED** since the `2e4ca769`
+/// pin (is53, wolf-lang v0.2.15): s163 landed
+/// `corpus/grammar/type_position_keyword.lu`, which wolf-lang#320 asked for,
+/// so the number stopped being this implementation's choice and came out of
+/// [`UNPINNED_CODES`]. Following the counterparty cost nothing in the end —
+/// is45 had already moved `assume noalias` off E0206 to E0212 to keep the
+/// number free.
 pub const E_EXPECTED_TYPE: &str = "E0206";
 /// Syntactic nesting past the recursion rail. The **code** is unpinned; the
 /// **depth** is not: `[gram.lex.rails]` makes expression/statement recursion
@@ -492,11 +497,6 @@ pub const UNPINNED_CODES: &[(&str, &str, &str)] = &[
         E_ASSUME_ARITY,
         "gram.expr.unsafe",
         "`assume noalias` needs ≥2 operands",
-    ),
-    (
-        E_EXPECTED_TYPE,
-        "gram.type",
-        "type position holds a token that cannot begin a type — wolfc's E0206, followed",
     ),
     (
         E_NESTING_RAIL,
