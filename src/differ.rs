@@ -161,6 +161,14 @@ use crate::schema;
 /// lives in `docs/divergence-log.md` until a witness exists, as
 /// wolf-lang#71's stdout finding did. Filed upstream as wolf-lang#88.
 ///
+/// DIV-2026-021 CLOSED at pin `2e4ca769` (is53, wolf-lang **v0.2.15**):
+/// wolf-lang#228 ruled, and s163 moved the compiler to the comma. Measured at
+/// this pin before the entry came out —
+/// `wolf conform-run …/grammar/let_group_bare_tuple.lu --json --checked` —
+/// the counterparty answers `fail(E0201)@parse` with span `[511, 512]`, which
+/// is byte-for-byte this machine's locus and the `,` itself. The two loci row
+/// is retired rather than re-numbered: there is no disagreement left to file.
+///
 /// DIV-2026-017 CLOSED at pin `3befc3e` (0.1.24): wolf-lang#76 is closed and
 /// `lints/raw_interp_braces.lu` answers `{who}\n` on `--checked`, `--native`
 /// and `--release` alike, byte-identical to this machine. DIV-2026-020
@@ -168,27 +176,15 @@ use crate::schema;
 /// seven of its eight files are byte-identical and the eighth was never a
 /// width question — it is DIV-2026-021 now, and it is about where a D63
 /// let-group refusal points rather than how wide the pointing is.
-pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
-    (
-        "resolve/broken_sibling/entry.lu",
-        "DIV-2026-019",
-        "which parse error fires on the unparseable module sibling: the \
+pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[(
+    "resolve/broken_sibling/entry.lu",
+    "DIV-2026-019",
+    "which parse error fires on the unparseable module sibling: the \
          corpus pins the counterparty's fail(E0202) (EOF inside the mangled \
          item) where this machine stops at the first bad token, fail(E0201) \
          at `{` in the parameter list; same rung, span-or-code class — the \
          spec assigns neither code to junk recovery",
-    ),
-    (
-        "grammar/let_group_bare_tuple.lu",
-        "DIV-2026-021",
-        "where a D63 let-group refusal POINTS: both machines answer E0201 at \
-         parse, this one at the first comma (byte 364) and the counterparty \
-         at the end of the initializer list (byte 374), which is a locus \
-         disagreement and never was the span-WIDTH question D71 settled; \
-         `[gram.item.let]` says what the shape is and not where refusing it \
-         reports. Filed upstream as wolf-lang#228",
-    ),
-];
+)];
 
 // DIV-2026-022 (`wordcount.lu`) and DIV-2026-023
 // (`grammar/structlit_paren.lu`) stood here for exactly one release. is46
@@ -1567,7 +1563,13 @@ mod tests {
         // bare-path pattern landed and the witness runs `exit(0)` printing
         // `green\nfirst\n` here too, so the waiver goes the round it stops
         // being true.
-        assert_eq!(FILED_DIVERGENCES.len(), 2);
+        // DIV-2026-021 RETIRED at the 2e4ca769 pin (is53, wolf-lang v0.2.15):
+        // s163 moved the compiler's let-group refusal onto the comma, so both
+        // machines now report E0201 at the same byte and the locus row has no
+        // two loci left. Measured with the pinned counterparty before the
+        // entry came out, not inferred from the corpus header that announces
+        // it. Two became one.
+        assert_eq!(FILED_DIVERGENCES.len(), 1);
         assert_eq!(
             filed("upstream/corpus/grammar/match_nullary_variant.lu"),
             None
@@ -1577,9 +1579,11 @@ mod tests {
         let (id, _) = filed("upstream/corpus/resolve/broken_sibling/entry.lu")
             .expect("DIV-2026-019 is filed against the D59 broken-sibling witness");
         assert_eq!(id, "DIV-2026-019");
-        let (id, _) = filed("upstream/corpus/grammar/let_group_bare_tuple.lu")
-            .expect("DIV-2026-021 is filed against the D63 let-group witness");
-        assert_eq!(id, "DIV-2026-021");
+        assert_eq!(
+            filed("upstream/corpus/grammar/let_group_bare_tuple.lu"),
+            None,
+            "DIV-2026-021 is retired: both machines point at the comma"
+        );
         // A retired waiver must actually be gone: a file whose divergence was
         // fixed upstream and still carries a filing id is a green report that
         // means nothing, which is the wolf-lang#177 lesson in this shape.
