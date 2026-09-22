@@ -35,7 +35,23 @@ pub const REQUIRED_FIELDS: [&str; 9] = [
 /// Fields that are optional, but reserved: `null` or a value of the right
 /// shape, never a stranger key. `warnings` is `[proto.record.warn]` (s67,
 /// additive within protocol 1): validators accept records with or without it.
-pub const OPTIONAL_FIELDS: [&str; 3] = ["stdout_sha256", "stdout_inline", "warnings"];
+///
+/// `trap_message` is `[proto.record.trap]` (wolf-lang s169, spec/06 §2;
+/// wolf-interp#129), additive in the same way and for the same reason. It
+/// carries the program's OWN words for its fault — today exactly the second
+/// argument of `assert(cond, msg)`. wolfgang emits it on the `--checked`
+/// lane from that PR, so until this entry existed every wolfgang record for a
+/// failing two-argument `assert` read to this validator as MALFORMED rather
+/// than as a record carrying a field it does not use. That is the cost of a
+/// new bare field, and the clause now says so in its own text.
+///
+/// It is never COMPARED. `[proto.record.diag]` makes wording a
+/// per-implementation quality concern, `[conf.trap.assert]` lets an
+/// implementation drop the message entirely, and
+/// `[proto.cmp.defined-divergence]` names it — so an implementation that
+/// drops it must not become a divergence for doing so.
+pub const OPTIONAL_FIELDS: [&str; 4] =
+    ["stdout_sha256", "stdout_inline", "warnings", "trap_message"];
 
 /// `[proto.record.fields]`: `stdout_inline` is included up to 4096 bytes.
 pub const STDOUT_INLINE_LIMIT: usize = 4096;
@@ -462,6 +478,33 @@ mod tests {
         let mut record = valid_record();
         record["protocol"] = json!(2);
         assert!(reasons(&record).contains("unsupported protocol version 2"));
+    }
+
+    #[test]
+    fn a_trap_message_is_accepted_and_an_unknown_bare_key_is_still_refused() {
+        // wolf-interp#129, `[proto.record.trap]`. The two halves must be
+        // asserted together or the first one is not a finding: accepting
+        // `trap_message` is only interesting if the seal it widens still
+        // closes on everything else. The second half is the red one — remove
+        // `trap_message` from OPTIONAL_FIELDS and the first assert fails;
+        // replace the `!key.starts_with("x-")` guard with `true` and the
+        // second does.
+        let mut record = valid_record();
+        record["verdict"] = json!("trap(assert)");
+        record["trap_message"] = json!("balance must stay non-negative");
+        assert_eq!(validate(&record), Ok(()));
+
+        // Absent is still fine: the field is optional, not required.
+        let mut record = valid_record();
+        record["verdict"] = json!("trap(assert)");
+        assert_eq!(validate(&record), Ok(()));
+
+        // A bare stranger that merely LOOKS like the new field is not it.
+        let mut record = valid_record();
+        record["trap_msg"] = json!("balance must stay non-negative");
+        let message = reasons(&record);
+        assert!(message.contains("/trap_msg"), "{message}");
+        assert!(message.contains("must begin with `x-`"), "{message}");
     }
 
     #[test]
