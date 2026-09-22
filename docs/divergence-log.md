@@ -210,8 +210,194 @@ this lane.
 
 #### Measured, after the pin moved
 
-*(to be filled at the measurement — this section was committed before the
-first code change.)*
+`lupin corpus` at the head, at pin `2e4ca769`: **666 files, 625 entries, 41
+members, 0 failure(s), 358 distinct conforms.**
+
+| class | baseline (`41695e7`) | predicted | measured |
+| --- | --- | --- | --- |
+| files | 654 | 666 | **666** |
+| entries | 613 | 625 | **625** |
+| members | 41 | 41 | **41** |
+| failures | 0 | 0 | **0** |
+| distinct conforms | 350 | 358 | **358** |
+| match | 480 | 490 | **491** |
+| out of scope | 59 | 59 | **59** |
+| mismatch (unfiled) | 0 | 0 | **0** |
+| mismatch (filed) | 1 | 1 | **1** |
+| dynamic counterpart | 26 | 26 | **26** |
+| conservatism | 47 | 49 | **48** |
+| reach `run` | 476 | 486 | **485** |
+
+**Nine of twelve cells as predicted. The three that missed are one file.**
+`memory/push_take_moves.lu` was predicted conservatism and measured
+**match**: this machine answers `fail(E1001)` at `resolve`, against the
+corpus's `fail(E1001)@typecheck`, so the codes agree and the row is a match.
+The prediction reasoned "`typecheck` is a rung this machine does not perform"
+and forgot that the move analysis does not live on that rung here — it lives
+on `resolve`, where `E1001` has been answered since long before this pin.
+Three cells move together because it is one file: match 490 -> 491,
+conservatism 49 -> 48, reach-`run` 486 -> 485 (a file refused at `resolve`
+never reaches `run`).
+
+**The central claim held: no pre-existing entry changed class.** Measured by
+diffing the two `lupin corpus` walks row by row on the entry name — twelve
+rows gained, none lost, and of the 613 rows present in both, **zero** land in
+a different column. The thirteen edited corpus files moved nothing:
+`corpus/methods/std/list/list.lu`'s `push(take f(x))` parses and evaluates
+here exactly as `push(f(x))` did, so the six `methods/` entries that resolve
+through it are unmoved.
+
+The twelve new entries, predicted against measured:
+
+| new entry | predicted | measured |
+| --- | --- | --- |
+| `conc/chan_default_rendezvous.lu` | match | match |
+| `conc/chan_root_task.lu` | match | match |
+| `conc/proc_link_root_death.lu` | match | match |
+| `fs/remove_dir_refused.lu` | match | match |
+| `grammar/range_header_inclusive_max.lu` | match | match |
+| `grammar/range_value_wide_iter.lu` | match | match |
+| `grammar/type_position_keyword.lu` | match | match |
+| `memory/push_copies_element.lu` | match | match |
+| `memory/push_take_moves.lu` | conservatism | **match** |
+| `rows/raised_call_arg_position.lu` | match | match |
+| `typecheck/generic_bind_once.lu` | match | match |
+| `typecheck/generic_bind_scalar.lu` | conservatism | conservatism |
+
+Eleven of twelve row calls right; the falsifier the prediction named — a
+moved pre-existing row — did not fire.
+
+**The two blockers 0.1.37's changelog named are gone, and the second one had
+a third site.** That changelog reverted a trunk re-pin because this machine
+OOM'd on the two `grammar/range_*` files and its corpus runner did not know
+`run(exit=nonzero)`. Both range files are matches here at first sight (is52's
+lazy walk), and `conc/proc_link_root_death.lu` — the first corpus file in
+this repository's history to carry `run(exit=nonzero)` — is a match in
+`ledger::judge`, which is what the census reads. But
+`tests/run_corpus.rs`'s `every_run_expectation_this_machine_reaches_is_met_exactly`
+keeps its OWN matcher beside `ledger`'s, and that one had no `Nonzero` arm:
+it panicked `expected exit=nonzero, observed exit(1)`. is52 added the
+spelling against synthesized witnesses because no corpus file used it, and
+this is the file that found the site it missed. A duplicate matcher is only
+as good as its least-updated copy.
+
+#### The bundle, and the export
+
+```console
+$ lupin conformance export --out target/bundle --json
+{"anchors_covered":256,"anchors_total":524,"bundle_sha256":"c00c5ca723f7aa7c5c896847e166bc4f434598a8a9d53766352a177721714fcc","files":721,"forward_tags":109,"out":"target/bundle","pin":"2e4ca769b396219585a07ff18492529c944672d9","programs":704,"records":663}
+$ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
+differential: 663 entries compared, 0 member(s) exercised through their entries
+divergences: 0
+conservatism ledger: 118 entries
+differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
+```
+
+`programs`/`records` 692/651 -> **704/663**, both by twelve: every new corpus
+file is an entry, so the two counts move together for the first time since
+is47. `anchors_total` 514 -> **524** and `anchors_covered` 248 -> **256**;
+key sets diffed both ways, ten added, none dropped, and the eight newly
+covered are listed in `tests/export.rs`'s ratchet comment. `forward_tags`
+holds at 109.
+
+#### DIV-2026-021 — RETIRED, and measured from both ends
+
+The re-pin closed the let-group locus row. `wolf-lang#228` ruled and s163
+moved the compiler onto the comma, so:
+
+```console
+$ upstream/target/debug/wolf conform-run \
+    vendor/upstream/corpus/grammar/let_group_bare_tuple.lu --json --checked
+… "verdict":"fail(E0201)","phase_reached":"parse",
+  "diagnostics":[{"code":"E0201","severity":"error","span":[511,512]}]
+```
+
+`[511, 512]` is this machine's locus byte-for-byte, and the byte is `,`. The
+differential runner says the same thing from both ends. At the OLD pin,
+counterparty built at `41695e7`:
+
+```
+span-or-code  upstream/corpus/grammar/let_group_bare_tuple.lu  a=E0201@[364, 365]  b=E0201@[374, 375]  parse [filed: DIV-2026-021]
+```
+
+At the NEW pin, counterparty built at `2e4ca769`, that line is **absent from
+all four tiers**. The waiver came out of `differ::FILED_DIVERGENCES` in the
+same commit, and `tests/let_group_locus.rs` now asserts the retirement rather
+than the gap — a waiver that outlives its divergence is a green report that
+means nothing, which is wolf-lang#177's lesson one layer down.
+
+#### Two new differential findings, named and NOT triaged
+
+Re-running `lupin diff-run --require-counterparty` over all four counterparty
+tiers at both pins (counterparty built from the submodule at each pin;
+harness profile `release`) gives the delta this lane is responsible for:
+
+| finding | old pin | new pin |
+| --- | --- | --- |
+| `grammar/let_group_bare_tuple.lu` span-or-code | present, filed | **gone** |
+| `memory/push_take_moves.lu` `a=fail(E1001)@resolve b=fail(E1001)@mem` | — | **new, all four tiers** |
+| `conc/proc_link_root_death.lu` `a=exit(1)@run b=exit(121)@run` | — | **new, `native` and `release` only** |
+
+Both new rows arrive with their corpus file and **neither is triaged here**:
+routing a finding is a ruling, and this lane's contract is an ancestry
+oracle and a release, not a triage. Both are named so the next lane meets
+them rather than discovers them.
+
+- `push_take_moves.lu` is the SAME CODE at a different rung — `E1001` at
+  `resolve` here, at `mem` on the counterparty — which is the shape
+  `[proto.cmp.rung]` exists to argue about. It is not a disagreement about
+  the program.
+- `proc_link_root_death.lu` is the status number, and the corpus file's own
+  header says the number is the tool's: `[conc.proc.root]` ends the process
+  "with a nonzero, implementation-specified status", wolf's native tier
+  exits 121 and this machine exits 1. The DIRECTIVE knows that
+  (`run(exit=nonzero)`) and both machines satisfy it; the record COMPARISON
+  does not, because `[proto.cmp]` compares `exit(N)` against `exit(M)`. That
+  looks like a hole in `[proto.cmp]` rather than a divergence, and it is
+  wolf-interp's to file upstream once someone rules it.
+
+**Four gating findings pre-date this lane and are not its doing**, recorded
+because nothing in CI can see them (the differential SKIPs without a
+counterparty, and CI has none): `generics/explicit_apply_arity.lu` and
+`grammar/index_origin_bad.lu` (same code, different rung),
+`methods/method_is_free_call.lu` (`a=exit(0)@run` against
+`b=fail(E0301)@resolve`) and `rows/negative/tag_undeclared_arg.lu`
+(`a=unsupported@resolve` against `b=fail(E0301)@resolve`). All four are
+present at the OLD pin too, in the same four tiers, with the same verdicts.
+
+#### `trap_message`, and the seal that must still close (#129)
+
+`[proto.record.trap]` (wolf-lang s169, spec/06 §2) adds a bare
+`trap_message` field, so `OPTIONAL_FIELDS` is `[&str; 4]`. The interesting
+half of that change is the half that did NOT move: a bare key that is not on
+the list is still refused. Both halves were seen red before the fix was
+trusted, by planting each break in turn:
+
+```console
+=========== BREAK A: trap_message out of OPTIONAL_FIELDS ===========
+thread 'schema::tests::a_trap_message_is_accepted_and_an_unknown_bare_key_is_still_refused'
+panicked at src/schema.rs:494:9: assertion `left == right` failed
+  left: Err(SchemaErrors([SchemaError { pointer: "/trap_message",
+        message: "unknown field; implementation extensions must begin with `x-`" }]))
+ right: Ok(())
+test result: FAILED. 0 passed; 1 failed
+=========== BREAK B: the x- seal opened (`if !key.starts_with("x-")` -> `if false`) ===========
+thread 'schema::tests::a_trap_message_is_accepted_and_an_unknown_bare_key_is_still_refused'
+panicked at src/schema.rs:446:25: must be rejected: ()
+test result: FAILED. 0 passed; 1 failed
+=========== RESTORED ===========
+test schema::tests::a_trap_message_is_accepted_and_an_unknown_bare_key_is_still_refused ... ok
+```
+
+**What is NOT taken from #129, stated so it is not mistaken for done.** Only
+item 1, the blocking one, lands here. Item 2 (this machine EMITTING
+`trap_message`, which it already renders) is owed; item 3 needed no code and
+the ticket records the measurement; item 4 names a real hole —
+`differ::claim()` collapses `Pass` and `Unsupported`, so a `pass`-against-
+`fail` pair may still read as agreement on this side — and item 5 asks
+whether `EXIT_REJECTED = 65` is a class `[conf.exit.class]` should name or a
+rejection wearing the wrong number. Items 4 and 5 are RULINGS, not
+applications of one, and this lane does not make them.
 
 ### The windows shard, and the two mirrors — is52, lupin 0.1.37, pin `41695e7` (**no pin move**)
 
@@ -2601,7 +2787,24 @@ run-reaching corpus files.
 Everything still gating is older than this sprint, and after the two
 retirements the filed list is two entries again rather than nine.
 
-### DIV-2026-021 — `grammar/let_group_bare_tuple.lu` — **OPEN, filed upstream as wolf-lang#228**
+### DIV-2026-021 — `grammar/let_group_bare_tuple.lu` — **RESOLVED upstream at pin `2e4ca769` (0.1.38, is53): wolf-lang#228 ruled and s163 moved the compiler onto the comma; the two loci are one byte range and the waiver is retired**
+
+**Resolution, measured before the entry moved.** At the `2e4ca769` pin
+(wolf-lang **v0.2.15**) the counterparty answers
+`fail(E0201)@parse` with span `[511, 512]` — this machine's own locus, and
+the `,` itself — under
+`wolf conform-run …/grammar/let_group_bare_tuple.lu --json --checked`. The
+numbers moved twice at once: the corpus file's header grew 147 bytes in the
+same bump, so `364 -> 511` is the file and `374 -> 511` is the ruling. The
+differential runner confirms it from both ends — the `span-or-code` line
+below is present at the old pin and absent from all four tiers at the new
+one. `differ::FILED_DIVERGENCES` is one entry again (DIV-2026-019), and
+`tests/let_group_locus.rs` asserts the retirement rather than the gap.
+Nothing in this machine moved: it has pointed at the comma since is38 and
+never moved to the counterparty's byte, which is what the filing rule is for.
+
+The history, as it stood while the row was open:
+
 
 The eighth row of DIV-2026-020's table, promoted when the other seven closed.
 It was never the span-WIDTH question: both machines answer `fail(E0201)` at
