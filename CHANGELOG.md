@@ -1,5 +1,95 @@
 # Changelog
 
+## 0.1.38 — 2026-09-21
+
+THE RE-PIN (is53). Pin `41695e7` (wolf-lang s166, dev-stamped) ->
+**`2e4ca769` (wolf-lang v0.2.15 — the TAG)**. 654 -> 666 corpus files,
+613 -> 625 entries, 514 -> 524 anchors (ten added, none dropped, key
+sets diffed both ways).
+
+**0.1.37 could not be pinned by anybody, and this release is why it can
+be now.** 0.1.37 declared its specification checkout as `41695e7`, and
+`git merge-base --is-ancestor 41695e7 v0.2.15` answers **no** — it is a
+branch head the rebase-merge landing s166 rewrote under other shas,
+surviving only because wolf-lang preserved it as
+`refs/tags/lupin-0.1.37-conformance-pin`. So no downstream had a
+truthful way to say "this runs wolf 0.2.15 and lupin 0.1.37"
+(wolf-interp#127; wolf-web hit it trying to bump three pins and shipped
+two). The new pin is the released tag itself, so the same command
+answers **yes**, reflexively, and the sentence has a referent.
+
+wolf-lang's own 0.2.15 changelog records that a trunk re-pin was tried
+at the cut and reverted, for two reasons that were both this machine's:
+it materialized `for i in a..b` (3.91 GB peak RSS on a 50-million
+range), and its corpus runner could not parse s163's
+`run(exit=nonzero)`. is52 fixed both against synthesized witnesses,
+because the corpus at the old pin had no file that exercised either.
+Both hold against the real files now:
+`grammar/range_value_wide_iter.lu` and
+`grammar/range_header_inclusive_max.lu` are matches at first sight, and
+`conc/proc_link_root_death.lu` — the first `run(exit=nonzero)` file this
+corpus has ever carried — is a match in the ledger. It also found the
+one site is52 missed: `tests/run_corpus.rs` keeps its own matcher beside
+`ledger::judge`'s, and that copy had no `Nonzero` arm, so the file
+panicked `expected exit=nonzero, observed exit(1)` while the census
+called it a match. A duplicate matcher is only as good as its
+least-updated copy.
+
+**The census, predicted before the pin moved and measured after.**
+480 -> **491** match, 47 -> **48** static conservatism, 59 -> **59** out
+of scope, 26 -> **26** dynamic counterparts, 1 -> **1** filed mismatch,
+476 -> **485** reaching `run`, 0 failures. Twelve entries arrive, none
+leaves, and **no pre-existing entry changes class** — which was the
+lane's falsifiable claim, checked by diffing the two corpus walks row by
+row rather than by comparing totals. The prediction called eleven of the
+twelve new rows right and missed `memory/push_take_moves.lu`: it was
+called conservatism on the reasoning that `typecheck` is a rung this
+machine does not perform, and it is a **match**, because the move
+analysis lives on `resolve` here and `E1001` is answered there.
+
+**`trap_message` is accepted** (wolf-interp#129, `[proto.record.trap]`,
+wolf-lang s169). `OPTIONAL_FIELDS` gains a fourth entry, so wolfgang's
+records for a failing two-argument `assert` stop reading to this
+validator as malformed. The field is never compared — `[conf.trap.assert]`
+lets an implementation drop the message, and
+`[proto.cmp.defined-divergence]` names it — and the seal it widens still
+closes: a bare key that is not on the list is still refused with
+"implementation extensions must begin with `x-`". Both halves were seen
+red before the fix was trusted, each break planted in turn.
+
+**E0206 stopped being this implementation's choice.** s163 landed
+`corpus/grammar/type_position_keyword.lu`, the file wolf-lang#320 asked
+for, so "a keyword where a type must begin" is corpus-pinned and comes
+out of `diag::UNPINNED_CODES`. Following the counterparty's number cost
+nothing: is45 had already moved `assume noalias` off E0206 to E0212 to
+keep it free.
+
+**DIV-2026-021 is RETIRED — the let-group locus row, open since is38.**
+`let a, b = 1, 2` is `fail(E0201)@parse` on both machines, and for eight
+releases they pointed ten bytes apart: this parser at the comma, the
+compiler at the end of the initializer list. wolf-lang#228 ruled and
+s163 moved the compiler onto the comma. Measured before the entry came
+out, not inferred from the corpus header that announces it: the
+counterparty answers `span [511, 512]` under `conform-run --json
+--checked`, byte-for-byte this machine's locus, and the differential
+runner's `span-or-code` line is present at the old pin and absent from
+all four tiers at the new one. `differ::FILED_DIVERGENCES` is one entry
+again. This machine never moved.
+
+**Two new differential findings are named and left un-triaged**, because
+routing a finding is a ruling: `memory/push_take_moves.lu` (the same
+`E1001` at a different rung, `resolve` here against `mem`) and
+`conc/proc_link_root_death.lu` (`exit(1)` here against `exit(121)`,
+where `[conc.proc.root]` says the status is implementation-specified and
+`[proto.cmp]` compares it anyway). Four further gating findings pre-date
+this release and are recorded in `docs/divergence-log.md` for the same
+reason: CI's differential lane SKIPs without a counterparty, so nothing
+automatic can see any of them.
+
+**The bundle.** `programs`/`records` 692/651 -> **704/663**, moving
+together for the first time since is47 because every new corpus file is
+an entry; `anchors_covered` 248 -> **256**; `forward_tags` holds at 109.
+
 ## 0.1.37 — 2026-09-16
 
 THE METHOD SURFACE (is49, is50, is51). Pin `a7f517e` (wolf-lang
