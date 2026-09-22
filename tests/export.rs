@@ -263,7 +263,19 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // parents `type.method` and `type.comb` — the corpus tags sub-clauses by
 // their parent only where a witness exercises them, and coverage claims
 // nothing else.
-const RATCHET_FLOOR: usize = 248;
+// 248 -> 256 at 2e4ca769 (is53, wolf-lang v0.2.15 — the TAG, and the first
+// pin on the RELEASED line): EIGHT anchors gain their first `conforms:`
+// witness, none loses one (tag sets diffed both ways across the bump). All
+// eight ride in on s163's, s167's and #342's new corpus files:
+// `conc.chan.default` (`conc/chan_default_rendezvous.lu`), `gram.type` and
+// `gram.type.start` (`grammar/type_position_keyword.lu`),
+// `type.generic.bind` (the two `typecheck/generic_bind_*.lu`),
+// `type.range.value` (`grammar/range_value_wide_iter.lu`), `os.fs.remove`
+// (`fs/remove_dir_refused.lu`), `conf.directive.check`
+// (`conc/proc_link_root_death.lu`, the first `exit=nonzero` file) and
+// `type.interp.spec`, which rides on the six `strings/format*` and
+// `strings/float_format.lu` headers rather than on a new file.
+const RATCHET_FLOOR: usize = 256;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -439,7 +451,12 @@ const RATCHET_FLOOR: usize = 248;
 // — and the sixteenth is s165's, carried in by the rebase. Key sets diffed
 // BOTH ways: sixteen added, NOTHING dropped, no owner changed. No new
 // NAMESPACE (`type`, `conc`, `mem`): `anchor::REGISTERED_NAMESPACES` holds.
-const ANCHORS_TOTAL: usize = 514;
+// 514 -> 524 at 2e4ca769 (is53, wolf-lang v0.2.15 — the TAG): TEN. Key sets
+// diffed BOTH ways: ten added, NOTHING dropped, no owner changed. No new
+// NAMESPACE either — spec/05-conformance.md gains the `[conf.exit]` section
+// s169 ruled, but its anchors sit under the already-registered `conf`, so
+// `anchor::REGISTERED_NAMESPACES` holds at thirteen.
+const ANCHORS_TOTAL: usize = 524;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -689,9 +706,15 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // 4b56441): thirty-nine corpus files, none leaving, thirty-three of them
     // entries — so `programs` moves by 39 and `records` by 33, and the two
     // counts part company again by the six new members.
-    assert_eq!(summary.pin, "41695e78437fbf3644accad40ddb4804737d4440");
-    assert_eq!(summary.programs, 692);
-    assert_eq!(summary.records, 651);
+    // 692/651 -> 704/663 at 2e4ca769 (is53, wolf-lang v0.2.15 — the TAG, and
+    // the first pin `merge-base --is-ancestor` answers yes for): twelve
+    // corpus files, none leaving, every one an ENTRY — so both counts move by
+    // twelve and `members` holds at 41, the first bump since is47 where the
+    // two counts move together. The suite is unmoved (is53's new tests are
+    // inline fixtures the extractor does not harvest).
+    assert_eq!(summary.pin, "2e4ca769b396219585a07ff18492529c944672d9");
+    assert_eq!(summary.programs, 704);
+    assert_eq!(summary.records, 663);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
