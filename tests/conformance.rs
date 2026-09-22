@@ -324,12 +324,20 @@ fn files_whose_ledger_stops_at_lex_fail_at_parse_with_their_pinned_code() {
     // `[gram.item.error]` refuses the open marker inside an alias — E0201
     // at the `..`, bytes 368..370 on both machines. It is the first
     // grammar-tier pin outside `grammar/` and sorts last.
+    // `grammar/type_position_keyword.lu` joined at 2e4ca769 (is53, wolf-lang
+    // v0.2.15): s163 landed the corpus file wolf-lang#320 asked for, so E0206
+    // — "a keyword where a type must begin" — is PINNED at last and stops
+    // being an implementation choice. This side already answers the
+    // counterparty's number: is45 moved `assume noalias` off E0206 to E0212
+    // precisely so that following wolfc here would cost nothing, and the file
+    // is a match at first sight. It sorts between
+    // `grammar/tuple_pattern_no_separator.lu` and `grammar/when_reserved.lu`.
     assert_eq!(
         seen.values().cloned().collect::<Vec<_>>(),
         vec![
             "E0201", "E0201", "E0201", "E0201", "E0211", "E0201", "E0201", "E0201", "E0001",
-            "E0201", "E0210", "E0002", "E0201", "E0201", "E0201", "E0006", "E0201", "E0008",
-            "E0201"
+            "E0201", "E0210", "E0002", "E0201", "E0201", "E0201", "E0006", "E0201", "E0206",
+            "E0008", "E0201"
         ],
         "the pinned grammar-tier codes changed: {seen:?}"
     );
@@ -411,10 +419,18 @@ fn every_parseable_file_resolves_under_sema_lite() {
         // the name (`sema::row_operand_check`, the RowWalk), a resolve-rung
         // refusal like the rest. E0409 is NOT here — see
         // `declaration_read_code` for the half of it this rung owns.
+        // E1001 joined the list at 2e4ca769 (is53, wolf-lang v0.2.15).
+        // `memory/push_take_moves.lu` is the first corpus file to pin
+        // use-after-`take` (wolf-lang#385, ruled option 3), and it is a MATCH,
+        // not a conservatism row: this machine performs the move check on the
+        // resolve rung and answers `fail(E1001)` there. is53 predicted
+        // conservatism for it and was wrong — the prediction reasoned from
+        // "typecheck is a rung this machine does not perform" and forgot that
+        // the move analysis does not live on that rung here.
         if let Some(
-            code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E0809"
-            | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102" | "E1103"
-            | "E1301" | "E1302"),
+            code @ ("E0410" | "E1007" | "E1001" | "E0805" | "E0411" | "E0412" | "E0413"
+            | "E0004" | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101"
+            | "E1102" | "E1103" | "E1301" | "E1302"),
         ) = pinned_code(case.check.as_ref())
         {
             assert_eq!(
@@ -473,9 +489,9 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
                 continue;
             }
             if let Some(
-                code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
-                | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101"
-                | "E1102" | "E1103" | "E1301" | "E1302"),
+                code @ ("E0410" | "E1007" | "E1001" | "E0805" | "E0411" | "E0412" | "E0413"
+                | "E0004" | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416"
+                | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
             ) = pinned_code(case.check.as_ref())
             {
                 assert_eq!(
