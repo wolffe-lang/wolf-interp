@@ -717,10 +717,15 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //             `mem.region.edge.elem`, `type.float.rem`, 471 -> 475. No
     //             new namespace: spec/05-conformance.md is untouched in the
     //             range, so `anchor::REGISTERED_NAMESPACES` holds at 13.)
+    // (654 -> 666 at 2e4ca769, is53, wolf-lang v0.2.15: TWELVE new files,
+    //  every one an entry, none edited away. The registry gains TEN anchors,
+    //  514 -> 524, and no new namespace: spec/05-conformance.md gains a
+    //  [conf.exit] section in the range but no registered namespace, so
+    //  `anchor::REGISTERED_NAMESPACES` holds at 13.)
     let report = report();
     assert_eq!(
         report.total(),
-        654,
+        666,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
@@ -730,7 +735,9 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     // files, thirty-three of them entries. `members` moves 35 -> 41: the five
     // `methods/std/` fixture modules (a std root the witnesses resolve
     // against, `[type.method.root]`) and s165's `traits/op_eq_item_import/cmp/c.lu`.
-    assert_eq!(report.entries(), 613);
+    // 613 -> 625 at 2e4ca769 (is53, wolf-lang v0.2.15): twelve new files,
+    // every one an entry. `members` holds at 41.
+    assert_eq!(report.entries(), 625);
     assert_eq!(report.members(), 41);
 }
 
