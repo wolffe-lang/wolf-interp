@@ -281,6 +281,43 @@ spelling against synthesized witnesses because no corpus file used it, and
 this is the file that found the site it missed. A duplicate matcher is only
 as good as its least-updated copy.
 
+#### E1001 is five files and only one of them is a refusal
+
+The one wrong prediction has a second half worth keeping. `E1001` is
+pinned by **five** corpus files at this pin, all five tagged
+`[mem.tier0.move.2]`, and this machine answers them in two different ways:
+
+| file | this machine | class |
+| --- | --- | --- |
+| `memory/destructure_partial_move.lu` | `trap(use-after-move)@run` | dynamic counterpart |
+| `memory/match_arm_whole_move.lu` | `trap(use-after-move)@run` | dynamic counterpart |
+| `memory/move_use_after.lu` | `trap(use-after-move)@run` | dynamic counterpart |
+| `memory/struct_destructure_partial_move.lu` | `trap(use-after-move)@run` | dynamic counterpart |
+| **`memory/push_take_moves.lu`** | **`fail(E1001)@resolve`** | **match** |
+
+So "this machine answers E1001 at resolve" is true of exactly one file and
+false of four, and the thing that separates them is not the code and not the
+shared tag but `[mem.region.edge.elem]` — wolf-lang#385's store-edge rule,
+which `push_take_moves.lu` alone carries.
+
+**This was found by being wrong about it in public, twice.** The first fix
+put `E1001` in `tests/conformance.rs`'s blanket resolve-rung code list, and
+both CI (run **35672394853**, `test (ubuntu-latest)` and
+`test (macos-latest)`) and the local suite went red on
+`memory/destructure_partial_move.lu` with `left: Pass, right: Fail("E1001")`.
+The file's own table already warned about exactly this — "E0301 is NOT a
+resolve-rung code in general either ... the conforms tag tells them apart" —
+and the widening ignored its own precedent. The row is keyed on the clause
+now.
+
+`typecheck/generic_bind_once.lu` defeats even that, and is keyed by PATH
+rather than pretended into the clause table: it and
+`typecheck/generic_bind_scalar.lu` arrive in the same pin with the SAME two
+tags and the same pinned `fail(E0401)`, and this machine refuses the first at
+`resolve` and RUNS the second. is45's declaration read-back covers a
+struct-typed argument and not a scalar one. The path row leaves the day the
+scalar half of `[type.generic.bind]` is mirrored.
+
 #### The bundle, and the export
 
 ```console
