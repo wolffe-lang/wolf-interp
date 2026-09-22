@@ -428,9 +428,9 @@ fn every_parseable_file_resolves_under_sema_lite() {
         // "typecheck is a rung this machine does not perform" and forgot that
         // the move analysis does not live on that rung here.
         if let Some(
-            code @ ("E0410" | "E1007" | "E1001" | "E0805" | "E0411" | "E0412" | "E0413"
-            | "E0004" | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101"
-            | "E1102" | "E1103" | "E1301" | "E1302"),
+            code @ ("E0410" | "E1007" | "E1001" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
+            | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102"
+            | "E1103" | "E1301" | "E1302"),
         ) = pinned_code(case.check.as_ref())
         {
             assert_eq!(
