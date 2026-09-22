@@ -104,8 +104,36 @@ fn pinned_code(check: Option<&Check>) -> Option<&str> {
 /// impl for the struct, the method's shape). E0301 is NOT a resolve-rung code
 /// in general either: the `resolve/*` module-law files pin it for other
 /// reasons, and the conforms tag tells them apart.
+///
+/// Widened again at 2e4ca769 (is53) past its own name: E1001 by
+/// `[mem.region.edge.elem]` is a MOVE analysis, not a declaration read, and
+/// it earns a row here because it lands on the same rung for the same reason
+/// — the fact is settled where the store edge is, and the table's discipline
+/// (key on the clause, never on the code) is what keeps it from claiming the
+/// four `fail(E1001)` files this machine traps on instead.
+/// The files this machine refuses at `resolve` where the `conforms:` tag
+/// CANNOT tell them from a sibling it does not refuse. The table below keys
+/// on the clause on purpose, and this is the case that defeats the
+/// discipline rather than an exception to it: `typecheck/generic_bind_once.lu`
+/// and `typecheck/generic_bind_scalar.lu` arrive together at the `2e4ca769`
+/// pin (s163, wolf-lang#319), carry the SAME two tags
+/// (`type.generic.bind`, `gram.item.fn`) and the same pinned `fail(E0401)`,
+/// and this machine answers E0401 at `resolve` for the first while RUNNING
+/// the second to `exit(0)`. The difference is is45's declaration read-back,
+/// which covers a struct-typed argument and not a scalar one — the half of
+/// `[type.generic.bind]` this machine still owes, and a conservatism row
+/// until it lands. Nothing in the directive or the tags separates them, so
+/// the path does, and the row leaves the day the mirror lands.
+const RESOLVE_REFUSALS_BY_PATH: &[(&str, &str)] = &[("typecheck/generic_bind_once.lu", "E0401")];
+
 fn declaration_read_code(case: &Case) -> Option<&str> {
     let code = pinned_code(case.check.as_ref())?;
+    if let Some((_, code)) = RESOLVE_REFUSALS_BY_PATH
+        .iter()
+        .find(|(path, _)| case.path.ends_with(path))
+    {
+        return Some(code);
+    }
     let owned = match code {
         // s158 (`[type.list.lit]`, `[type.range.name]`, `[type.err.alias]`,
         // wolf-interp#106): the list literal's first misfit element and the
@@ -137,6 +165,25 @@ fn declaration_read_code(case: &Case) -> Option<&str> {
         // are `unsupported` here. Widening this row to the code would assert
         // a refusal on those two and be wrong about both.
         "E0301" => ["type.trait.op", "gram.expr.variant"].as_slice(),
+        // `[mem.region.edge.elem]` joins at is53 (2e4ca769, wolf-lang
+        // v0.2.15, wolf-lang#385 ruled option 3). `memory/push_take_moves.lu`
+        // is the first corpus file to pin use-after-`take`, and this machine
+        // refuses it at `resolve` — a MATCH, not the conservatism row is53
+        // predicted, because the move analysis does not live on the
+        // `typecheck` rung its `check:` names.
+        //
+        // Keyed on the store-edge clause and NOT on `mem.tier0.move.2`, which
+        // all five of the corpus's `fail(E1001)` files carry, and not on
+        // E1001 at large: the OTHER four — `destructure_partial_move.lu`,
+        // `match_arm_whole_move.lu`, `move_use_after.lu` and
+        // `struct_destructure_partial_move.lu` — are DYNAMIC COUNTERPARTS
+        // here, run to a `trap(use-after-move)`. Widening this row to the
+        // code or to the shared tag asserts a static refusal on four files
+        // that trap instead and is wrong about all four. Measured, not
+        // assumed: the blanket-code spelling was written first and CI and the
+        // local suite both went red on `destructure_partial_move.lu`
+        // (`left: Pass, right: Fail("E1001")`).
+        "E1001" => ["mem.region.edge.elem"].as_slice(),
         _ => return None,
     };
     case.conforms
@@ -419,18 +466,10 @@ fn every_parseable_file_resolves_under_sema_lite() {
         // the name (`sema::row_operand_check`, the RowWalk), a resolve-rung
         // refusal like the rest. E0409 is NOT here — see
         // `declaration_read_code` for the half of it this rung owns.
-        // E1001 joined the list at 2e4ca769 (is53, wolf-lang v0.2.15).
-        // `memory/push_take_moves.lu` is the first corpus file to pin
-        // use-after-`take` (wolf-lang#385, ruled option 3), and it is a MATCH,
-        // not a conservatism row: this machine performs the move check on the
-        // resolve rung and answers `fail(E1001)` there. is53 predicted
-        // conservatism for it and was wrong — the prediction reasoned from
-        // "typecheck is a rung this machine does not perform" and forgot that
-        // the move analysis does not live on that rung here.
         if let Some(
-            code @ ("E0410" | "E1007" | "E1001" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
-            | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102"
-            | "E1103" | "E1301" | "E1302"),
+            code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E0809"
+            | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102" | "E1103"
+            | "E1301" | "E1302"),
         ) = pinned_code(case.check.as_ref())
         {
             assert_eq!(
@@ -489,9 +528,9 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
                 continue;
             }
             if let Some(
-                code @ ("E0410" | "E1007" | "E1001" | "E0805" | "E0411" | "E0412" | "E0413"
-                | "E0004" | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416"
-                | "E1101" | "E1102" | "E1103" | "E1301" | "E1302"),
+                code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
+                | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101"
+                | "E1102" | "E1103" | "E1301" | "E1302"),
             ) = pinned_code(case.check.as_ref())
             {
                 assert_eq!(
