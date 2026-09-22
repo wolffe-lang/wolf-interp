@@ -1634,6 +1634,37 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // at `resolve`, which is the pinned expectation. The row moves from the
     // conservatism class to `match`; it did not stop working.
     ("memory/map_remove.lu", "exit(0)"),
+    // -- is53, lupin 0.1.38: the re-pin on the released line, `2e4ca769` ----
+    //
+    // NINE added, none lost. Twelve corpus files arrive with the pin and nine
+    // of them reach `run` here; the other three are static refusals this
+    // machine performs too (`grammar/type_position_keyword.lu` E0206 at
+    // parse, `typecheck/generic_bind_once.lu` E0401 and
+    // `memory/push_take_moves.lu` E1001 at resolve).
+    //
+    // `conc/proc_link_root_death.lu` is the first entry in this corpus whose
+    // directive is `run(exit=nonzero)` (wolf-lang#371, `[conc.proc.root]`):
+    // the linked shard kills the root and the STATUS is the tool's — wolf's
+    // native tier exits 121, this machine exits 1 — so the file claims the
+    // outcome class and never a number. is52 taught `ExitSpec::Nonzero` to the
+    // directive parser and the ledger against synthesized witnesses because no
+    // corpus file used it; this is the first real one, and it found the one
+    // place is52 missed (the match below).
+    //
+    // `typecheck/generic_bind_scalar.lu` runs here and is pinned
+    // `fail(E0401)`: a conservatism row, and the corpus header says so — is45
+    // reads declarations back for a struct-typed argument only, so the scalar
+    // half of `[type.generic.bind]` is owed. It is ledgered because it RUNS,
+    // not because it agrees.
+    ("conc/chan_default_rendezvous.lu", "exit(0)"),
+    ("conc/chan_root_task.lu", "exit(0)"),
+    ("conc/proc_link_root_death.lu", "exit(1)"),
+    ("fs/remove_dir_refused.lu", "exit(0)"),
+    ("grammar/range_header_inclusive_max.lu", "exit(0)"),
+    ("grammar/range_value_wide_iter.lu", "exit(0)"),
+    ("memory/push_copies_element.lu", "exit(0)"),
+    ("rows/raised_call_arg_position.lu", "exit(0)"),
+    ("typecheck/generic_bind_scalar.lu", "exit(0)"),
 ];
 
 #[test]
@@ -1844,6 +1875,21 @@ fn every_run_expectation_this_machine_reaches_is_met_exactly() {
                 assert_eq!(want, got, "{}", entry.path);
             }
             (ExitSpec::Trap(None), Verdict::Trap(_)) => {}
+            // `run(exit=nonzero)` (is52's `ExitSpec::Nonzero`): the program
+            // must FAIL and the corpus does not pin which status, because the
+            // status is the tool's. A TRAP is not this — `exit=trap` is the
+            // spelling that says trap and names its kind — so a trap against
+            // `nonzero` falls through to the panic arm, exactly as
+            // `ledger::judge` scores it. This arm was MISSING until is53:
+            // is52 added the spelling with no corpus file using it, so the
+            // first file that did (`conc/proc_link_root_death.lu`, at the
+            // 2e4ca769 pin) met a match that could only panic. The census
+            // called the file a match all along — `ledger` had the rule — and
+            // this duplicate matcher did not, which is the whole argument for
+            // the file-level assert existing beside the class-level one.
+            (ExitSpec::Nonzero, Verdict::Exit(got)) => {
+                assert_ne!(*got, 0, "{}", entry.path);
+            }
             // `run(exit=trap(ub))` against `ub(anchor)`: one event, two lenses.
             // `[conf.trap.map]` routes the `ub` kind's comparison semantics to
             // `[proto.record.ub]` precisely so the two must agree.
