@@ -261,7 +261,16 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // (three `conc/par_*`, twelve `methods/` entries, five `methods/std/`
     // FIXTURE members and `typecheck/method_home_no_std.lu`); and s165's
     // sixteen, which this lane ledgers and does not mirror.
-    assert!(stdout.contains("654 file(s)"), "{stdout}");
+    // 654 -> 666 at 2e4ca769 (is53, wolf-lang **v0.2.15** — the TAG, and the
+    // first pin an ancestry oracle answers yes for): TWELVE new files, every
+    // one an entry, none leaves. s163's five (`conc/chan_default_rendezvous.lu`,
+    // `conc/proc_link_root_death.lu`, `grammar/type_position_keyword.lu`,
+    // `typecheck/generic_bind_once.lu`, `typecheck/generic_bind_scalar.lu`),
+    // s167's two `memory/push_*` witnesses for wolf-lang#385, #342's
+    // `conc/chan_root_task.lu`, #201's `rows/raised_call_arg_position.lu`,
+    // the two `grammar/range_*` lazy-walk files and `fs/remove_dir_refused.lu`.
+    // `members` holds at 41. The registry gains TEN anchors, 514 -> 524.
+    assert!(stdout.contains("666 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -270,7 +279,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 654);
+    assert_eq!(value["total"], 666);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
