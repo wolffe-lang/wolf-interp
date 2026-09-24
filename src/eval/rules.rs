@@ -325,6 +325,9 @@ pub enum Rule {
     /// The root supervisor's domain is the process; its abnormal death runs
     /// the killed-proc sequence for every live proc and exits nonzero.
     ProcRoot,
+    /// `p.join()` blocks until the proc exits and yields its value, the four
+    /// abnormal classes as row tags (s170, wolf-interp#130).
+    ProcJoin,
 
     // -- races -------------------------------------------------------------
     /// A detected data race halts with trap kind `race`.
@@ -820,6 +823,10 @@ impl Rule {
                 "conc.proc.root",
                 "the root supervisor's domain is the process: its abnormal death runs the killed-proc sequence for every live proc and terminates nonzero — compare the outcome class, never the number ([conf.trap.exit])",
             ),
+            Rule::ProcJoin => (
+                "conc.proc.join",
+                "`p.join()` blocks until `p` exits and yields `T ! {error, killed, cancelled, fault}` — `normal(value)` read as a VALUE, each abnormal class a payload-free tag; a join after the exit answers at once",
+            ),
             Rule::RaceDetect => (
                 "conc.mm.race.3",
                 "an implementation may detect a data race and halt with trap kind `race`; the sim scheduler detects exactly at realized interleavings",
@@ -991,6 +998,7 @@ impl Rule {
         Rule::ProcCancel,
         Rule::ProcLinkPair,
         Rule::ProcRoot,
+        Rule::ProcJoin,
         Rule::RaceDetect,
         Rule::DetMode,
     ];

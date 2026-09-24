@@ -1846,6 +1846,10 @@ pub fn method(
             let proc = *proc;
             machine.proc_cancel(proc, span)
         }
+        (Value::Proc(proc), "join") => {
+            let proc = *proc;
+            machine.proc_join(proc, span)
+        }
         // Exit-reason predicates (`[conc.proc.exit]`): the closed set as
         // structural tags, queried without a `match`.
         (Value::Error(err), "is_normal") => Ok(Value::Bool(err.tag == "normal")),

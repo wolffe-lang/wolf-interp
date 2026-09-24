@@ -692,6 +692,53 @@ impl Machine {
         Ok(Value::Chan(chan))
     }
 
+    /// `p.join()` (`[conc.proc.join]`, s170 — B21's ruling on wolf-lang#110,
+    /// wolf-interp#130): block until `p` exits and yield its result,
+    /// `T ! {error, killed, cancelled, fault}` — `normal(value)` read as the
+    /// VALUE, each abnormal class read as a payload-free TAG.
+    ///
+    /// The clause says what the join is and is not: "not a second delivery of
+    /// the exit reason, but the same one `w.monitor()` carries, read
+    /// synchronously". So it is built as exactly that — a monitor attached at
+    /// the join and received from at once. A proc that has already exited
+    /// answers immediately (the monitor's late-attach delivery, which is also
+    /// the clause's "a join after the proc has already exited answers
+    /// immediately and never blocks"), and the receive is a blocking point,
+    /// so cancelling the JOINING task surfaces here (`[conc.cancel.points]`).
+    pub(crate) fn proc_join(&mut self, proc: ProcId, span: Span) -> EResult<Value> {
+        let chan = self.shared.sched.monitor(proc);
+        self.drain_sched();
+        let message = self.chan_recv(chan, span)?;
+        // The monitor's message is `exit(reason)`; the reason is the
+        // structural tag `ExitReason::to_value` builds.
+        let reason = match &message {
+            Value::Error(exit) if exit.tag == "exit" => exit.payload.first().cloned(),
+            _ => None,
+        };
+        let Some(Value::Error(reason)) = reason else {
+            return unsupported(format!(
+                "the join of proc#{proc} received {} where the monitor delivers `exit(reason)`",
+                message.kind()
+            ));
+        };
+        self.fire(
+            Rule::ProcJoin,
+            span,
+            &format!("proc#{proc} joined: exit reason `{}`", reason.tag),
+        );
+        if reason.tag == "normal" {
+            return Ok(reason.payload.first().cloned().unwrap_or(Value::Unit));
+        }
+        // The row is payload-free at v1: an `error(tag)`'s tag rides the
+        // monitor channel, and a caller that needs it reads the reason there.
+        Ok(Value::Error(Box::new(super::value::ErrorValue {
+            tag: reason.tag.clone(),
+            payload: Vec::new(),
+            enum_variant: false,
+            row: Vec::new(),
+        })))
+    }
+
     /// `w.kill()` (`[conc.proc.kill]`): the decided sequence, in order.
     pub(crate) fn proc_kill(&mut self, proc: ProcId, span: Span) -> EResult<Value> {
         let regions = self.shared.sched.kill(proc);
