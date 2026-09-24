@@ -1298,8 +1298,8 @@ interrupted by a signal retries; a listing holding a name that is not UTF-8
 is the `utf8` row `fs_read_dir` declares). The other two are behaviour this
 machine keeps on purpose, and a program can observe both.
 
-**An observed program's `os_cwd()` names a private root, and the name varies
-run to run.** Measured at `30731a6`: `lupin conform-run` of
+**An embedded observation's `os_cwd()` names a private root, and the name
+varies run to run.** Measured at `30731a6`: `lupin conform-run` of
 `print(os_cwd()?)` printed
 `…/T/wolf-obs/1539f-0-1ab3c8f0` and then `…/T/wolf-obs/153a1-0-1be24670` —
 the root carries the pid and a serial — while `lupin run` of the same file
@@ -1312,6 +1312,19 @@ is not comparison surface on either side: an absolute directory is a host
 value, the compiled lane prints its own invocation directory, and
 `corpus/os/args_cwd.lu` asserts the cwd "as a predicate, never a path".
 A corpus file that printed one would be a witness about the host.
+
+**Since is55 the root belongs to the EMBEDDED door only.** `lupin
+conform-run` observes one program per process, as `wolf conform-run` does,
+and it now resolves the program's paths against the directory it was
+invoked in — `[os.fs.path]`: "a relative path resolves against the
+process's working directory, on every tier". Taking the private root there
+too made a program that read a file its harness had put in the cwd answer
+`not_found`, a row about a directory it was never run in; s182's
+`fs_path_symlink_in` witness is that row (wolf-lang#386's ruling named it a
+symlink defect; `lupin run` served the same program at 0.1.38, and a plain
+file in the cwd failed the same way, which is what named the cause). The
+corpus walk, `diff-run`, the conformance export, the explorer, the fuzzer
+and every in-process test keep the root, and `os_cwd` there still names it.
 
 **A handle read consumes the bytes before it charges the region.**
 `fs_read` and `fs_read_chunk` advance the file cursor and then mint the
