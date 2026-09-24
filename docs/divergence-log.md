@@ -269,8 +269,174 @@ the link-time libc lacks carries no version. Falsifier: any
 
 #### Measured, after the pin moved
 
-*(to be filled at the measurement — this section was committed before the
-pin moved and before the first code change.)*
+Pin commit `68b3a62` (`vendor/upstream/{spec,corpus}` tree-identical to
+wolf-lang `93a5fe50`: `git rev-parse HEAD:vendor/upstream/corpus` =
+`ef5ae1ce…` = `git -C wolf-lang rev-parse 93a5fe50:corpus`, and `spec` =
+`cf6dbe07…` on both). `lupin corpus`, release build, kasumi.
+
+| class | `ba357aa` @ `2e4ca769` | predicted, 0.1.38 code @ `93a5fe50` | **measured** | predicted after fixes | **measured at head** |
+| --- | --- | --- | --- | --- | --- |
+| files | 666 | 690 | **690** ✓ | 690 | **690** |
+| entries | 625 | 646 | **646** ✓ | 646 | **646** |
+| members | 41 | 44 | **44** ✓ | 44 | **44** |
+| failures | 0 | 0 | **0** ✓ | 0 | **0** |
+| distinct conforms | 358 | 367 | **367** ✓ | 367 | **367** |
+| match | 491 | 502 | **500** ✗ | 505 | **503** |
+| dynamic counterpart | 26 | 28 | **28** ✓ | 28 | **28** |
+| conservatism | 48 | 52 | **53** ✗ | 52 | **53** |
+| out of scope | 59 | 61 | **62** ✗ | 60 | **61** |
+| mismatch | 1 | 3 | **3** ✓ | 1 | **1** (DIV-2026-019, filed) |
+| reach `run` | 485 | 501 | **501** ✓ | 504 | **504** ✓ |
+
+**Claim 1 held.** The two walks diffed row by row on the entry name, not by
+totals: 625 rows at the old pin, 646 at the new; **none lost, none moved,
+none changed its status string**; the 21 new rows are the only difference.
+
+**Nineteen of twenty-one new rows called right.** The two misses, and the
+three cells they account for:
+
+- `memory/pool_place_write.lu` — predicted match, measured **out of
+  scope**: `handle is not a Map key — a key is str, int, char or bool`.
+  The program has no `Map`; it subscripts the pool by handle (`pool[cur]`,
+  `pool[h].next = k`, `[mem.shared.handle.3]`), and this machine sends a
+  subscript on a pool down its map-index path, which refuses a handle key.
+  A finding for the pool surface, not this lane's.
+- `rows/negative/error_alias_private/main.lu` — predicted match (E0304),
+  measured **conservatism**: `probe(p: str) -> int ! disk.IoErrors`
+  names a PRIVATE alias through its module and this machine runs it
+  (`exit(0)`). The private-member check reads expression paths, never a
+  row's entries. It is the half of `[type.err.alias.qualified]` #134 did
+  not ask for, and it is left as the conservatism row it measures.
+
+**After the fixes, exactly three rows move** — the three the prediction
+named, and nothing else (`lupin corpus` at `62eea06` diffed row by row
+against the pin walk):
+
+| row | at the pin | at head | by |
+| --- | --- | --- | --- |
+| `conc/proc_join_param.lu` | `fail(E0301)@resolve` MISMATCH | `exit(0)@run` match | #130 |
+| `conc/proc_join_value.lu` | `unsupported@resolve` out of scope | `exit(0)@run` match | #130 |
+| `rows/error_alias_qualified/main.lu` | `fail(E0305)@resolve` MISMATCH | `exit(0)@run` match | #134 |
+
+The pin commit's own suite (debug, kasumi) went red where the census said
+it would, and nowhere it did not, over the fourteen targets it reached
+before the lane stopped it for the head run: `cli` (the two corpus-walk
+count tests), `corpus_harness::the_pin_holds_the_corpus_we_think_it_does`
+(`left: 690 right: 666`), and `conformance`'s two sema-lite sweeps, both
+on `conc/proc_join_param.lu` — `left: Fail("E0301") right: Pass` and
+`right: Unsupported`. That last pair is #130's census parting, seen red by
+two gates that had nothing to do with this lane.
+
+#### The red witnesses, per issue
+
+Every new test was committed BEFORE its fix, and run on a tree holding the
+tests and none of the fixes (`f420d07`, kasumi `~/lanes/is54/red1`), then
+on `6c68eaf` for the #437 pair (which lands after the other fixes). Output
+verbatim:
+
+- **#134** `std_root::an_imported_error_alias_named_only_in_a_row_is_used_and_an_unnamed_one_is_not`
+  — `left: String("fail(E0305)") right: "exit(0)"`. Its four programs were
+  first run on wolf 0.2.16 `conform-run --json --checked`: `exit(0)` ×3 and
+  `fail(E0305)` at `[18,26]`, the verdicts the test asserts.
+- **#130** `conc_machine::the_handle_names_carry_their_arity_and_the_keywords_are_not_types`
+  — `left: "fail(E0301)" right: "fail(E0401)"`; `a_proc_is_joined_for_its_value…`
+  and `a_join_reads_each_abnormal_exit…` panic in `exit_code` on
+  `Unsupported`; `a_scope_handle_crosses_a_function_boundary_spelled_scope`
+  through the front door — `verdict: Fail("E0301")`, `span: [14, 19]`
+  (measured on `f420d07` with that test's corrected form cherry-picked,
+  because its first form ran the evaluator alone, which never asks the
+  resolve rung, and was GREEN on the unfixed tree: a test that could not
+  fail, caught by the red run, rewritten `efa1798`). The arities are wolf
+  0.2.16's: `Scope[int]` E0401 `[8,18]`, `Proc` `[8,12]`, `Proc[int, int]`
+  `[8,22]`, the keywords E0206 at parse.
+- **#129 item 2** `cli::a_failing_assert_s_message_rides_the_record_and_nothing_else_carries_one`
+  — `left: Null right: "one is not two"` on a record whose verdict is
+  `trap(assert)`. **Its first red was for the wrong reason**: the five
+  programs shared one directory, which is one module (D32), so every one
+  was `fail(E0302)` and the missing key was incidental. Caught when the
+  same test stayed red on the FIXED tree; rewritten one directory per
+  program (`c57415b`) and re-run red on the unfixed tree for the right
+  reason.
+- **#129 item 3** `cli::an_explicit_phase_stop_is_pass_and_never_unsupported_before_the_refusal`
+  — **green on the unfixed tree, as predicted**: the item needed no code,
+  and the test pins the measurement (`comptime/assert_static.lu` is
+  `unsupported@resolve` on the full ladder and `pass` at `--phase=lex` and
+  `--phase=parse`).
+- **#129 item 4** `differ::tests::pass_and_unsupported_are_two_facts…` —
+  `left: Some(DeepDivergence { … a: "unsupported@resolve", b: "fail(E0301)@resolve" … }) right: None`;
+  `divergence::a_pass_meets_each_verdict_as_proto_cmp_pass_rules` —
+  `left: Some(Divergence { … a: "exit(0)@run", b: "pass@wir" … }) right: None`.
+- **#129 item 5** `cli::the_human_frontend_doors_exit_2_on_a_rejection` —
+  `left: Some(65) right: Some(2)`.
+- **wolf-lang#437** `schema::tests::a_file_index_on_diagnostics_is_admitted…`
+  — `Err(… "/files": "unknown field; implementation extensions must begin with x-" …, "/diagnostics/0/file": "a protocol diagnostic carries only code, span and severity" …)`;
+  `cli::a_diagnostic_in_a_sibling_module_names_its_file…` — `left: Null
+  right: Array ["main.lu", "geometry/shapes.lu"]`.
+- **wolf-lang#447** `ci/glibc-floor.sh`, run on kasumi against the
+  PUBLISHED archives: lupin 0.1.38 x86-64 and aarch64 — `GLIBC_2.39 is
+  above the 2.35 floor`, `needs GLIBC_2.39: pidfd_spawnp`, `needs
+  GLIBC_2.39: pidfd_getpid`, exit 1; kasumi's own release build (glibc
+  2.44 host) — the same two, exit 1; wolf 0.2.16 — `GLIBC_2.34`, floor
+  held, exit 0. The green half is the PR's `dist floor` jobs on
+  `ubuntu-22.04` and `ubuntu-22.04-arm`, which build the archive the way
+  `release.yml` does and measure the shipped binary.
+
+#### The differential, against the PUBLISHED wolf 0.2.16
+
+`lupin diff-run --corpus upstream/corpus --compiler <wolf-0.2.16 archive>
+--counterparty-tier T --require-counterparty`, both lupins over the SAME
+corpus (the 0.1.38 archive binary is told the new corpus with `--corpus`):
+
+| tier | 0.1.38 divergences | 0.1.39 divergences | gone | new |
+| --- | --- | --- | --- | --- |
+| default | 8 (8 verdict) | 8 (5 verdict, 3 span-or-code) | 3 | 3 |
+| checked | 8 (8 verdict) | 8 (5 verdict, 3 span-or-code) | 3 | 3 |
+| native | 10 (1 soundness, 9 verdict) | 10 (1 soundness, 6 verdict, 3 span-or-code) | 3 | 3 |
+
+**Gone at every tier:** `conc/proc_join_param.lu` (#130),
+`rows/error_alias_qualified/main.lu` (#134), and
+`rows/negative/tag_undeclared_arg.lu` — `a=unsupported@resolve
+b=fail(E0301)@resolve`, one of is53's four pre-existing gating findings,
+which item 4's split moves from a verdict divergence into the conservatism
+ledger (`rejects-beyond(counterparty)` 129 -> 130), exactly as predicted.
+
+**New at every tier: DIV-2026-025**, below — the file index this release
+emits, against a compiler that does not emit it yet.
+
+### DIV-2026-025 — three sibling-file refusals — **OPEN, resolves when wolf-lang#437's compiler half ships**
+
+`resolve/cycle/main.lu` (E0303 `[18,28]`), `resolve/dup_bare/clash.lu`
+(E0302 `[110,116]`) and `resolve/dupdef/main.lu` (E0302 `[21,27]`): both
+machines reject with the same code at the same bytes, and the bytes are in
+a SIBLING file — `beta/b.lu`, `other.lu`, `twice.lu`. 0.1.39's record says
+so (`files` + `file`); wolf 0.2.16's record carries no index, which
+`[proto.record.diag]` now reads as "the entry". So the comparison, which
+resolves the index as the clause says, reports `span-or-code` — and it is
+right to: wolf 0.2.16's record claims an entry-file offset that points at
+the wrong bytes, which is wolf-lang#437 stated as a measurement.
+
+Triage (`[proto.cmp.triage]`): the clause is unambiguous since s181's
+paragraph; the defendant is the implementation that does not emit the
+index, and the compiler half is s181's (wave 47), unreleased at 0.2.16.
+**Not added to `differ::FILED_DIVERGENCES`**: a waiver there also stops
+`tests/conformance.rs` and `tests/run_corpus.rs` asserting on the three
+files (and on their modules' members), and all three AGREE with the corpus
+— waiving them would buy three silenced gates for a divergence CI cannot
+see anyway (the differential lane SKIPs without a counterparty). The entry
+resolves on the first pin whose compiler emits `files`; the three lines
+leaving `diff-run` is the check.
+
+**What 0.1.39 attributes and what it does not.** The index is emitted for
+the rejection when the check that found it knows its file — a sibling's
+parse failure, the module laws that walk files (`cycle`, `dup`, `private`,
+`unused`, bare variant values) — and for EVERY warning (the lint walk is
+per file, and so are W0314/W0315/W0316). The resolve checks that walk a
+module's ITEMS rather than its files (`annotation`, `bound`, `scalar`,
+`tail`, `mode`, `move`, and the rest of `sema::resolve_check`'s chain)
+still report entry-relative spans for a fault in a sibling file: their
+diagnostics carry no file and read as the entry, which is the pre-0.1.39
+behaviour for exactly those checks. Filed as a follow-up rather than
+guessed at here.
 
 ### The re-pin on the released line — is53, lupin 0.1.38, pin `41695e7` -> `2e4ca769` (wolf-lang **v0.2.15**)
 
