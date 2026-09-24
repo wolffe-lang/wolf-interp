@@ -517,8 +517,14 @@ fn a_rejected_program_is_a_record_and_the_tool_still_exits_zero() {
     );
 }
 
+/// `[conf.exit.static]` (wolf-lang s169; wolf-interp#129 item 5): a rejection
+/// is **2** at every front door, and `lex`/`parse` are front doors by the
+/// clause's own definition — they take a program and report on it for a
+/// person. They used to exit 65 (`EX_DATAERR`), a rejection wearing a second
+/// number that `[conf.exit.class]` names nowhere; `run`, `check` and `eval`
+/// already answered 2 for the same program.
 #[test]
-fn the_human_frontend_doors_exit_65_on_a_rejection() {
+fn the_human_frontend_doors_exit_2_on_a_rejection() {
     let file = format!(
         "{}/corpus/grammar/when_reserved.lu",
         wolf_interp::upstream_root()
@@ -526,7 +532,10 @@ fn the_human_frontend_doors_exit_65_on_a_rejection() {
     // Lexically fine, syntactically not: `when` is reserved.
     assert_eq!(lupin(&["lex", &file]).status.code(), Some(0));
     let parsed = lupin(&["parse", &file]);
-    assert_eq!(parsed.status.code(), Some(65));
+    assert_eq!(parsed.status.code(), Some(2));
+    // The same program at the other front doors: one class, one number.
+    assert_eq!(lupin(&["check", &file]).status.code(), Some(2));
+    assert_eq!(lupin(&["run", &file]).status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&parsed.stderr);
     assert!(stderr.contains("E0008"), "{stderr}");
     assert!(
