@@ -337,6 +337,51 @@ fact, polymorphism defaults), `.docs/refs/papers/verona-refcaps.pdf`
   is the one-word `copy`. Witnesses
   `corpus/memory/region_str_repeat_return.lu` and
   `corpus/memory/region_str_field_return.lu`.)
+  (Extended 2026-09-17 by s171 for wolf-lang#392. **A `[mem.str.view]`
+  product carries its receiver's sites.** The clause said "a slice and
+  every `[mem.str.view]` product allocate nothing" and `[mem.str.view]`
+  said every yielded `str` "is a subslice of the receiver's own
+  storage"; read together as "allocates nothing, so no site", a view of
+  a region-built `str` escaped clean:
+  `region scratch { let s = "  re" + "gions  "; s.trim() }` returned a
+  view into bytes the region had already freed, `exit(0)` on all three
+  lanes, printing correctly only because the arena had not been reused.
+  **Allocating nothing and pointing nowhere are different properties.**
+  "Allocates nothing" governs the ACCOUNT — it is why a view charges
+  zero and why `for w in s.words()` is legal under `#[noalloc]` — and
+  it says nothing about WHERE the bytes a view names live. They live
+  exactly where the receiver's live, because the view IS a subslice of
+  the receiver's own storage. So a view product carries its receiver's
+  sites, the same way "a `str` read from a binding carries that
+  binding's sites out with it", and the shape above is E1010. What
+  decides it is the asymmetry: `s` itself leaving was already E1010
+  (`region_str_concat_return.lu`) while `s.trim()` — the same bytes,
+  one word narrower — left clean, and it is not the refusal that is
+  wrong. Only the RECEIVER's sites flow: `s.strip_prefix(p)` is a
+  subslice of `s` and never of `p`, so the needle's sites do not
+  attach. The family is `trim`/`trim_start`/`trim_end`, `get`,
+  `strip_prefix`/`strip_suffix` and the pieces of
+  `split`/`words`/`lines`; `bytes()` is deliberately excluded, because
+  `[mem.str.view.lend]` materializes a real `List[byte]` copy in
+  exactly the positions that would escape, and pinning the receiver's
+  region on it would refuse programs that copy and are safe. A view of
+  a LITERAL stays site-free: static bytes, no site. **The cost,
+  stated.** Nothing at run time on either tier — this is a refusal, and
+  no lane emits an instruction for it; `[mem.str.view]`'s allocation
+  commitment is unchanged, a view still allocates nothing and still
+  charges zero. The repair is the same ladder the second half of s160
+  named: hoist the build out of the block, or `copy` the view, which
+  materializes the bytes into the ambient region. Measured before it
+  landed, pre-fix binary against post: over `corpus/` (670 files),
+  wolf-std (51 module entries, 419 test and 780 upstream files), lobo
+  (151) and boreutils (61) — 23,722 `.lu` files in all, every one of
+  them answering with a verdict — **zero rows moved**, and wolf-lang's
+  own suite stayed at 2,305 tests green.
+  Witnesses `corpus/memory/region_str_view_return.lu` and its legal
+  companion `corpus/memory/region_str_view_inside.lu`. **lupin does not
+  yet follow**: 0.1.37 runs the refused shape to `exit(0)`, so the
+  wolf-interp mirror is filed and the differ will carry the row until
+  it lands.)
   (Ruled 2026-09-11 by s153 for wolf-lang#310: `region scratch { let s
   = "re" + "gions"; s }` returned from a function printed `regions`
   from freed bytes on wolf 0.2.10 and lupin 0.1.31 alike, with a W1001
@@ -478,6 +523,40 @@ Edge legality (source stores a reference to target):
   receiver write-back. Ruling: the read is legal; the trap is an
   implementation defect to repair, not a spec ambiguity — this
   clause exists so the next machine cannot make the same choice.)
+
+- `[mem.region.root]` **A region carries no root.** A transferred
+  region hands the receiver a placement domain, not a container: there
+  is no distinguished entry point inside it, and there is not going to
+  be one. Two clauses already decide this. `[mem.region.intra.1]` makes
+  every object in a region equally reachable from every other, so no
+  object in it is privileged; and `[mem.region.create.4]` gives region
+  identity **zero runtime representation**, so a root would be the one
+  typed field in an object whose whole design is to have none — and it
+  would make a region's type depend on what was allocated in it. The
+  entry point travels **beside** the region, as a `handle T` into a
+  `Pool[T]` the region owns (`[mem.shared.handle]`): a handle is plain
+  data — an index and a generation — so carrying one across a `move r`
+  is not a cross-region edge and `[mem.region.edge]` has nothing to say
+  about it. The receiver opens the region and resolves the handle. The
+  book's "side channel" is not a workaround for a missing feature; it
+  is the mechanism. (Ruled 2026-09-18, s168, answering wolf-lang#155's
+  ch16 row. The `Pool[T]`/`handle T` runtime shape this prescribes is
+  stub 67's second lane; the clause is the answer, not the lowering.)
+- `[mem.region.imm.ret]` **`imm` is not a type qualifier, in return
+  position or anywhere else** — `-> imm List[Doc]` stays E0204. `imm`
+  is not a property of a type; it is the state of a **region's
+  contents** after `freeze` (`[mem.region.freeze.1]` promotes the
+  entire graph, deep and in place), and `[mem.region.edge.imm]` is what
+  makes that state referable from anywhere. A value-level `imm`
+  qualifier would be a second immutability lattice beside the region
+  one — two mechanisms for one property, and the duplicated one is the
+  one the checker actually enforces. What the qualifier was wanted for
+  already works: return the value out of the frozen region. Frozen
+  sites are exempt from co-location, outlive every frame, and are
+  shareable across threads, so "frozen data crosses by reference"
+  is the behaviour today, with no copy and no annotation. (Ruled
+  2026-09-18, s168, answering wolf-lang#155's ch12 row. A stated no is
+  a result; silence was not.)
 
 ### Unobservable placement `[mem.region.promote]`
 
@@ -959,7 +1038,16 @@ the inputs that would have decided it either way.)
   ```
 
   This is the one set `words`, `trim`, `trim_start` and `trim_end` test
-  against. A position in a `str` is a separator when the scalar
+  against — and the only one: **the family takes no argument.** A
+  cutset is not a parameter of `trim` (`s.trim(".,!?")` is E0402, the
+  arity mismatch, on every implementation); a program that wants
+  punctuation stripped spells the loop, and an implementation that
+  accepted a cutset had grown a surface no clause describes, which is
+  what `[proto.*]` exists to catch. Ruled 2026-09-21 (s175,
+  wolf-interp#125): lupin 0.1.37 ran `word.trim(".,;!?")` and wolf
+  0.2.15 refused it, and the differ could not see the split because
+  the program never compiled on the compiler's arm. Witness
+  `strings/trim_cutset_refused.lu`. A position in a `str` is a separator when the scalar
   **encoded** there is in the set — never when a byte of a longer
   encoding happens to resemble one. A UTF-8 continuation byte is
   therefore never a separator, so every boundary these operations

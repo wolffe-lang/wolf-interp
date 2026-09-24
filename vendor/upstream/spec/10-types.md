@@ -883,8 +883,17 @@ substrate.)
 `[gram.expr.list]`; this is the typing half.)
 
 - `[type.list.lit.elem]` **The element type unifies across the
-  elements, left to right.** `[1, 2, 3]` is `List[int]`; `["a", "b"]`
-  is `List[str]`; `[[1], [2, 3]]` is `List[List[int]]`. The first
+  elements, left to right.** `[1, 2, 3]` is `List[i32]` — its
+  elements are bare `{integer}` literals and default exactly as
+  `[type.numlit.default]` says, `i32` when nothing in the body decides
+  otherwise (corrected 2026-09-21 by s175 for wolf-lang#347's third
+  clause: this sentence said `List[int]` while the defaulting rule
+  and both compiler tiers say `i32`; measured at trunk `2f8deb7f` and
+  at 0.2.15, `let xs = [1, 2, 3]` then `let n: i32 = xs[0]` runs on
+  both tiers and `let ys = [5000000000]` is E0415, "does not fit
+  `i32`", on both — witnesses `typecheck/list_lit_elem_i32.lu`,
+  `typecheck/list_lit_elem_unfit.lu`); `["a", "b"]`
+  is `List[str]`; `[[1], [2, 3]]` is `List[List[i32]]`. The first
   element fixes the type the rest are checked against, so the **first
   element that does not fit is the error site** — E0401 at that
   element, with the first element's span as the "because", never at
@@ -1028,6 +1037,26 @@ precedent, `[type.trait.op.alias]`. The item grammar is
   more layer, and layers flatten. An alias entry carries no payload
   (`{IoErrors(int)}` is E0601): the alias already names what its tags
   carry.
+- `[type.err.alias.qualified]` **The qualified spelling of an alias is
+  the alias.** A row entry's path resolves exactly as a type path
+  does: a bare name is this module's alias or one this file bound with
+  `use m.Alias`; `m.Alias` reaches it through the module binding.
+  Whichever spelling names it, the entry expands to the alias's tags —
+  `-> int ! fs.IoErrors` is `-> int ! {not_found, denied, io}` — so
+  `[type.err.alias.transparent]`'s "the same type, interchangeable in
+  both directions" holds across a module boundary exactly as it holds
+  inside one. A private alias named from another module is E0304, the
+  resolver's own refusal for a private member, never a silent row.
+  Ruled 2026-09-21 (s175, wolf-lang#434, wolf-std F-0138): at 0.2.15
+  the qualified spelling was accepted and contributed no tags, so `?`
+  under it was E0602 listing exactly the alias's three tags — the
+  worst of the three readings the filing named, and the reason
+  wolf-std's `tests/fs/alias_row.lu` kept a local copy of std's alias.
+  **Cost:** none — resolution is static and the expansion is the same
+  syntax read from the alias's own declaration. Witnesses
+  `rows/error_alias_qualified/` (qualified and `use`-bound, both
+  propagating back into a spelled-out row); refused
+  `rows/negative/error_alias_private/` (E0304).
 - `[type.err.alias.cycle]` **A cycle is E0610**, reported once, at the
   alias — the sibling of E0503 for trait aliases and of E0513 for
   associated-type bindings. `error A = {B}` with `error B = {A}` is
