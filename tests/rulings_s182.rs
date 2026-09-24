@@ -104,7 +104,11 @@ fn conform_run(dir: &Path) -> (String, Option<String>, serde_json::Value) {
         .current_dir(dir)
         .output()
         .expect("lupin runs");
-    assert_eq!(output.status.code(), Some(0), "the tool succeeded: {output:?}");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "the tool succeeded: {output:?}"
+    );
     let record: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("one JSON record");
     let verdict = record["verdict"].as_str().expect("a verdict").to_owned();
@@ -130,7 +134,9 @@ fn check(name: &str, dir: &Path) {
         // A decline is BY NAME: the record says why, and nothing ran to a
         // row (`[os.fs.path.domain]`: "never by a row").
         assert!(
-            record["x-unsupported"].as_str().is_some_and(|r| !r.is_empty()),
+            record["x-unsupported"]
+                .as_str()
+                .is_some_and(|r| !r.is_empty()),
             "{name}: an unsupported record names its reason — {record}"
         );
     }
@@ -242,7 +248,12 @@ fn every_parked_witness_has_a_runner_here() {
             .join("rulings"),
     )
     .expect("tests/rulings/")
-    .map(|e| e.expect("an entry").file_name().to_string_lossy().into_owned())
+    .map(|e| {
+        e.expect("an entry")
+            .file_name()
+            .to_string_lossy()
+            .into_owned()
+    })
     .collect();
     names.sort();
     let source = include_str!("rulings_s182.rs");
