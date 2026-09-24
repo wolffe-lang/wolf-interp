@@ -49,20 +49,25 @@
 //!
 //! # Containment
 //!
-//! A path that is absolute or climbs out of the working directory is refused
-//! **BY NAME** (`unsupported`), never by a row — a row would be a lie about
-//! the host. This is [`super::net::socket_path`]'s posture, already ruled
-//! once for unix socket paths, and it costs nothing the corpus asks for:
-//! every witness writes under `target/`. The compiled lane does NOT contain
-//! paths this way (probed: `wolf` will happily write `/tmp/x`), so this is a
-//! stated, named narrowing of the surface and not an accident. It is
-//! deliberate: the corpus walk, the differ, the explorer and the fuzzer all
-//! run corpus programs in-process, and a fuzzed absolute path is the one bug
-//! in this repository that could damage the machine it runs on.
+//! A path that RESOLVES outside the working directory — `..` applied and
+//! symlinks followed, the way the host walks it — is refused **BY NAME**
+//! (`unsupported`), never by a row: a row would be a lie about the host.
+//! This is [`super::net::socket_path`]'s posture too, and it costs nothing
+//! the corpus asks for: every witness writes under `target/`. The compiled
+//! lane does NOT contain paths this way (probed: `wolf` will happily write
+//! `/tmp/x`), so this is a stated, named narrowing of the surface and not an
+//! accident. It is deliberate: the corpus walk, the differ, the explorer and
+//! the fuzzer all run corpus programs in-process, and a fuzzed absolute path
+//! is the one bug in this repository that could damage the machine it runs
+//! on.
 //!
-//! The clause is silent on the path domain, so the narrowing is FILED rather
-//! than merely commented: wolf-lang#365 asks `[os.fs]` to say whether a path
-//! may be absolute or climb, with both readings measured.
+//! wolf-lang#365 asked the clause to rule on the domain, and it has:
+//! `[os.fs.path.domain]` (wolf-lang#386, ruled 2026-09-24) makes the domain
+//! every path the host allows and lets an implementation that serves less
+//! decline the rest by name — "the boundary it declines at is resolved, not
+//! lexical". Until is55 the check here was lexical (any `..`, any absolute
+//! path), which refused `target/sub/../x` although it never leaves the tree
+//! and served a link that does; [`resolves_inside`] is the resolved check.
 
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::{Read, Write};
@@ -518,21 +523,20 @@ pub(crate) fn path_row(error: &std::io::Error) -> FsErr {
     })
 }
 
-/// Containment: a relative path that does not climb out of the working
-/// directory, or a refusal BY NAME.
+/// The lexical half of containment: the windows device names, refused BY
+/// NAME wherever they appear. Everything else about where a path lands is
+/// decided by [`resolves_inside`], against the tree, after resolution.
 ///
-/// See the module header. `net::socket_path` ruled this once already for a
-/// unix socket path; the reasoning is the same and the narrowing is stated
-/// rather than silent.
+/// Until is55 this was the whole check, and it was lexical: any `..`
+/// component, any absolute path. `[os.fs.path.domain]` (wolf-lang#386, ruled
+/// 2026-09-24) says the boundary a confining implementation declines at "is
+/// resolved, not lexical: a path that stays inside the served tree after
+/// `..` is applied is inside it, and a relative path with no `..` that a
+/// symlink carries outside is not" — so `target/sub/../x` is served now and
+/// a link out of the tree is declined, both of which the lexical rule had
+/// backwards.
 pub(crate) fn contained(path: &str, name: &str) -> FsResult<PathBuf> {
     let candidate = Path::new(path);
-    let escapes = candidate.is_absolute()
-        || candidate.components().any(|component| {
-            matches!(
-                component,
-                Component::ParentDir | Component::RootDir | Component::Prefix(_)
-            )
-        });
     // Windows resolves a handful of names to DEVICES wherever they appear,
     // whatever the directory: `NUL`, `CON`, `AUX`, `PRN`, and the numbered
     // `COM`/`LPT` ports. They are ordinary `Component::Normal` to a path
@@ -572,14 +576,99 @@ pub(crate) fn contained(path: &str, name: &str) -> FsResult<PathBuf> {
              name on every host rather than served on some"
         )));
     }
-    if escapes {
-        return Err(FsErr::Outside(format!(
-            "`{name}(\"{path}\")` names a path outside the working directory; this machine \
-             serves the fs tier over REAL files and admits only a relative path that does not \
-             climb out of its own tree, so the shape is refused by name rather than observed"
-        )));
-    }
     Ok(candidate.to_path_buf())
+}
+
+/// The by-name decline for a path that resolves outside the served tree.
+/// One sentence for the fs and the unix-socket families, which
+/// `[os.fs.path.domain]` makes one object.
+pub(crate) fn outside_reason(name: &str, path: &str) -> String {
+    format!(
+        "`{name}(\"{path}\")` resolves outside the working directory — `..` applied and \
+         symlinks followed, as the host would (`[os.fs.path.domain]`); this machine serves \
+         the fs tier over REAL files inside its own tree and declines the rest by name \
+         rather than observing it"
+    )
+}
+
+/// Whether `path`, taken against the directory `root`, RESOLVES inside it:
+/// `..` applied and every symlink on the way followed, exactly as the host
+/// would walk it (`[os.fs.path.domain]`: "the boundary it declines at is
+/// resolved, not lexical").
+///
+/// The walk keeps a canonical prefix. Each component is joined onto it; a
+/// component that is a symlink is replaced by its target's components (an
+/// absolute target restarts from its root, a relative one resolves beside
+/// the link), and `..` pops the prefix — correct because the prefix is
+/// already resolved, which is the whole difference from the lexical rule.
+/// A component that does not exist yet (the file a write creates) ends the
+/// host's knowledge and the rest is taken as written: past it the host
+/// answers `not_found` itself, which is its row to give.
+///
+/// Anything the walk cannot decide — a root that will not canonicalize, a
+/// link that cannot be read, a chain longer than the host's own `ELOOP`
+/// bound — answers `false`, so the caller declines by name rather than
+/// guessing a path is safe.
+pub(crate) fn resolves_inside(root: &Path, path: &Path) -> bool {
+    // Linux's `MAXSYMLINKS`; past it the host would answer `ELOOP`.
+    const HOPS: usize = 40;
+    let Ok(root) = std::fs::canonicalize(root) else {
+        return false;
+    };
+    // One owned component per entry, so a link's target can be spliced in
+    // at the front of what is still to walk.
+    let mut queue: std::collections::VecDeque<PathBuf> = path
+        .components()
+        .map(|c| PathBuf::from(c.as_os_str()))
+        .collect();
+    let mut cursor = root.clone();
+    let mut hops = 0usize;
+    while let Some(piece) = queue.pop_front() {
+        let Some(component) = piece.components().next() else {
+            continue;
+        };
+        match component {
+            // An absolute path (or target) restarts the walk at its root. A
+            // windows prefix (`C:`) arrives first and its root separator
+            // right after, so the separator extends a bare prefix rather than
+            // replacing it.
+            Component::Prefix(_) => cursor = piece,
+            Component::RootDir => {
+                let bare_prefix = matches!(
+                    cursor.components().collect::<Vec<_>>().as_slice(),
+                    [Component::Prefix(_)]
+                );
+                if bare_prefix {
+                    cursor.push(piece);
+                } else {
+                    cursor = piece;
+                }
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                cursor.pop();
+            }
+            Component::Normal(segment) => {
+                let next = cursor.join(segment);
+                match std::fs::symlink_metadata(&next) {
+                    Ok(meta) if meta.file_type().is_symlink() => {
+                        hops += 1;
+                        if hops > HOPS {
+                            return false;
+                        }
+                        let Ok(target) = std::fs::read_link(&next) else {
+                            return false;
+                        };
+                        for part in target.components().rev() {
+                            queue.push_front(PathBuf::from(part.as_os_str()));
+                        }
+                    }
+                    _ => cursor = next,
+                }
+            }
+        }
+    }
+    cursor.starts_with(&root)
 }
 
 // -- the path calls -------------------------------------------------------
@@ -1037,17 +1126,33 @@ impl Machine {
     }
 
     /// Containment AND resolution, as one method so every arm reads the same:
-    /// the shape is checked, then resolved against this observation's private
-    /// working directory ([`FsTable::observation_root`]) — or left alone for
-    /// a live `lupin run`, which uses the user's own cwd.
+    /// the path is taken against this machine's working directory — the
+    /// observation's private root ([`FsTable::observation_root`]), or the
+    /// user's own cwd for a live run and for `lupin conform-run` — and served
+    /// only where it RESOLVES inside that tree ([`resolves_inside`],
+    /// `[os.fs.path.domain]`); anything else is declined by name.
     ///
     /// The two halves belong together: containment is what makes the root a
-    /// real jail rather than a prefix, since a path that could climb out
-    /// would escape it on the first `..`.
+    /// real jail rather than a prefix, and it has to be decided on the
+    /// resolved path — a lexical rule both refused `target/sub/../x`, which
+    /// never leaves the tree, and served a symlink that does.
     fn fs_contained(&self, path: &str, name: &str) -> FsResult<PathBuf> {
-        let relative = contained(path, name)?;
+        let candidate = contained(path, name)?;
         let live = self.is_live();
-        self.files().resolve(&relative, live).map_err(FsErr::Row)
+        let root = if live {
+            std::env::current_dir().map_err(|_| {
+                FsErr::Outside(format!(
+                    "`{name}(\"{path}\")` cannot be served: this machine could not read the \
+                     working directory it would resolve the path against"
+                ))
+            })?
+        } else {
+            self.files().observation_root_path().map_err(FsErr::Row)?
+        };
+        if !resolves_inside(&root, &candidate) {
+            return Err(FsErr::Outside(outside_reason(name, path)));
+        }
+        self.files().resolve(&candidate, live).map_err(FsErr::Row)
     }
 
     /// A row becomes an error VALUE with a note; a by-name refusal becomes
@@ -1520,20 +1625,69 @@ mod tests {
     }
 
     #[test]
-    fn containment_refuses_by_name_and_never_by_a_row() {
-        // A row would be a claim about the HOST; this is a claim about this
-        // implementation's surface, so it is `Outside`, which becomes
-        // `unsupported`.
-        for bad in ["/tmp/x", "../x", "/", "target/../../x"] {
-            let answer = contained(bad, "fs_write_text");
-            assert!(
-                matches!(answer, Err(FsErr::Outside(_))),
-                "{bad}: {answer:?}"
-            );
+    fn containment_is_resolved_not_lexical() {
+        // `[os.fs.path.domain]` (wolf-lang#386): "a path that stays inside
+        // the served tree after `..` is applied is inside it". The lexical
+        // rule refused every `..`; the resolved one refuses only the paths
+        // that land outside.
+        let root = scratch("fs-resolved-containment");
+        std::fs::create_dir_all(root.join("target").join("sub")).expect("a tree");
+        let absolute = std::env::temp_dir().join("x");
+        for bad in [
+            absolute.to_str().expect("utf-8 temp dir"),
+            "../x",
+            "target/../../x",
+            "target/sub/../../../x",
+            "nothere/../../x",
+        ] {
+            assert!(!resolves_inside(&root, Path::new(bad)), "{bad}");
         }
-        for good in ["target/x", "target/sub/x.txt", "x.txt", "./x.txt"] {
-            assert!(contained(good, "fs_open").is_ok(), "{good}");
+        for good in [
+            "target/x",
+            "target/sub/x.txt",
+            "x.txt",
+            "./x.txt",
+            "target/sub/../x",
+            "target/../x",
+            "a/b/../../c",
+        ] {
+            assert!(resolves_inside(&root, Path::new(good)), "{good}");
         }
+        // The lexical half that is left admits every one of them — it names
+        // devices, nothing else.
+        for any in ["../x", "/tmp/x", "target/sub/../x"] {
+            assert!(contained(any, "fs_open").is_ok(), "{any}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn containment_follows_symlinks_both_ways() {
+        // "a relative path with no `..` that a symlink carries outside is
+        // not [inside]" — and one that a symlink keeps inside is.
+        let root = scratch("fs-resolved-symlinks");
+        let outside = scratch("fs-resolved-symlinks-outside");
+        std::fs::create_dir_all(root.join("target").join("in")).expect("a tree");
+        std::os::unix::fs::symlink("in", root.join("target").join("in_link")).expect("in link");
+        std::os::unix::fs::symlink(&outside, root.join("target").join("out_link"))
+            .expect("out link");
+        std::os::unix::fs::symlink("../..", root.join("target").join("up_link")).expect("up link");
+        std::os::unix::fs::symlink("loop_b", root.join("loop_a")).expect("loop a");
+        std::os::unix::fs::symlink("loop_a", root.join("loop_b")).expect("loop b");
+        assert!(resolves_inside(&root, Path::new("target/in_link/x")));
+        assert!(resolves_inside(&root, Path::new("target/in_link/../x")));
+        assert!(!resolves_inside(&root, Path::new("target/out_link/x")));
+        assert!(!resolves_inside(&root, Path::new("target/up_link/x")));
+        // `..` after a link applies to where the link LED, as the host does:
+        // `out_link/..` is the outside directory's parent, not `target/`.
+        assert!(!resolves_inside(&root, Path::new("target/out_link/../x")));
+        // A cycle the host would answer `ELOOP` for is undecidable here, and
+        // undecidable is declined.
+        assert!(!resolves_inside(&root, Path::new("loop_a/x")));
+        // The root itself may be reached through a link: it is canonicalized.
+        let via = scratch("fs-resolved-root-link");
+        std::os::unix::fs::symlink(&root, via.join("root")).expect("root link");
+        assert!(resolves_inside(&via.join("root"), Path::new("target/in_link/x")));
     }
 
     #[test]
