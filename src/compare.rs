@@ -142,8 +142,23 @@ pub fn compare(a: &ObservationRecord, b: &ObservationRecord) -> Option<Divergenc
         }
         let first_a = first_error(a);
         let first_b = first_error(b);
+        // wolf-lang#437: two diagnostics agree when `code`, `span` and the
+        // FILE they name agree — the index resolved through each record's own
+        // `files` table, a diagnostic without one naming the entry.
+        fn file_of(r: &ObservationRecord, d: &crate::protocol::Diagnostic) -> Option<String> {
+            match d.file {
+                None | Some(0) => None,
+                Some(index) => Some(
+                    usize::try_from(index)
+                        .ok()
+                        .and_then(|at| r.files.as_ref()?.get(at).cloned())
+                        .unwrap_or_else(|| format!("<file index {index}>")),
+                ),
+            }
+        }
         match (first_a, first_b) {
-            (Some(x), Some(y)) if x.code == y.code && x.span == y.span => {}
+            (Some(x), Some(y))
+                if x.code == y.code && x.span == y.span && file_of(a, x) == file_of(b, y) => {}
             _ => {
                 return Some(Divergence {
                     file,

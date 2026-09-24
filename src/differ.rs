@@ -499,6 +499,24 @@ fn first_rejection(record: &ObservationRecord) -> Option<Diagnostic> {
         .cloned()
 }
 
+/// The file a rejection's span is an offset into (`[proto.record.diag]`'s
+/// file index, wolf-lang#437): `None` for the entry — no index, or index 0 —
+/// and otherwise the package-relative path the record's `files` names.
+/// Comparison resolves the index, never compares it: two machines may order
+/// their tables differently once their diagnostic lists differ.
+fn rejection_file(record: &ObservationRecord) -> Option<String> {
+    let diagnostic = first_rejection(record)?;
+    match diagnostic.file {
+        None | Some(0) => None,
+        Some(index) => Some(
+            usize::try_from(index)
+                .ok()
+                .and_then(|at| record.files.as_ref()?.get(at).cloned())
+                .unwrap_or_else(|| format!("<file index {index} outside the table>")),
+        ),
+    }
+}
+
 fn claim(record: &ObservationRecord, rung: Phase, performs: impl Fn(Phase) -> bool) -> Claim {
     if !performs(rung) || rung == Phase::None {
         return Claim::Silent;
@@ -605,6 +623,7 @@ pub fn compare_deep(
         && code_a == code_b
         && da.code == db.code
         && da.span == db.span
+        && rejection_file(a) == rejection_file(b)
     {
         return out;
     }
@@ -662,12 +681,16 @@ pub fn compare_deep(
             (Claim::Rejected(code_a, diag_a), Claim::Rejected(code_b, diag_b)) => {
                 let span_a = diag_a.as_ref().map(|d| d.span);
                 let span_b = diag_b.as_ref().map(|d| d.span);
-                if code_a != code_b || span_a != span_b {
+                // wolf-lang#437: the same bytes in two different files are
+                // two different places.
+                let (in_a, in_b) = (rejection_file(a), rejection_file(b));
+                if code_a != code_b || span_a != span_b || in_a != in_b {
+                    let place = |at: Option<String>| at.map(|f| format!(" in {f}")).unwrap_or_default();
                     divergence = Some(DeepDivergence {
                         file: file.clone(),
                         class: DeepClass::SpanOrCode,
-                        a: format!("{code_a}@{:?}", span_a.unwrap_or_default()),
-                        b: format!("{code_b}@{:?}", span_b.unwrap_or_default()),
+                        a: format!("{code_a}@{:?}{}", span_a.unwrap_or_default(), place(in_a)),
+                        b: format!("{code_b}@{:?}{}", span_b.unwrap_or_default(), place(in_b)),
                         rung: Some(rung),
                         detail: "both reject here; the first diagnostic's code or span differs"
                             .to_owned(),
