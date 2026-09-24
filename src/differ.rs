@@ -513,8 +513,26 @@ fn claim(record: &ObservationRecord, rung: Phase, performs: impl Fn(Phase) -> bo
                 Claim::Silent
             }
         }
-        Verdict::Pass | Verdict::Unsupported => {
+        // `[proto.record.pass]` (s169): `pass` is the ladder's clean stop —
+        // every rung THROUGH `phase_reached` completed with nothing to report.
+        Verdict::Pass => {
             if rung <= record.phase_reached {
+                Claim::Passed
+            } else {
+                Claim::Silent
+            }
+        }
+        // `unsupported` is a statement about this implementation's coverage of
+        // the program's constructs (`[proto.record.unsupported]`): the rungs
+        // BELOW `phase_reached` completed, and at `phase_reached` itself the
+        // side stopped without a verdict on the program. This arm used to be
+        // shared with `Pass`, which made an `unsupported@resolve` claim that
+        // resolve had passed — so a counterparty's `fail` at that same rung
+        // read as an accept-set divergence, where
+        // `[proto.cmp.defined-divergence]` says `unsupported` on either side
+        // never is one (wolf-interp#129 item 4).
+        Verdict::Unsupported => {
+            if rung < record.phase_reached {
                 Claim::Passed
             } else {
                 Claim::Silent
@@ -725,24 +743,21 @@ pub fn compare_deep(
             // depths with nothing further to say to each other.
             (Claim::Passed, Claim::Silent) | (Claim::Silent, Claim::Passed) => {}
 
-            // `pass@run` against a run outcome: one record claims it merely
-            // *stopped* at `run` where the other reports how running ended —
-            // a protocol-shape disagreement, reported as a verdict mismatch
-            // rather than guessed away.
-            (Claim::Passed, Claim::Ran(_)) | (Claim::Ran(_), Claim::Passed) => {
-                divergence = Some(DeepDivergence {
+            // `pass@run` against a run outcome. This was reported as a verdict
+            // mismatch until s169 ruled it: `[proto.cmp.pass]` — `pass`
+            // against `exit`/`trap`/`ub` is NEVER a divergence, because the
+            // passing side executed nothing and the two records are not two
+            // answers to one question. The run this machine made is still
+            // unmatched, and says so in the ledger, exactly as against a side
+            // that stopped short of `run`.
+            (Claim::Ran(verdict), Claim::Passed) => {
+                out.ledger.push(LedgerEntry::RunUnmatched {
                     file: file.clone(),
-                    class: DeepClass::Verdict,
-                    a: render(a),
-                    b: render(b),
-                    rung: Some(rung),
-                    detail: "one side reports `pass` at the run rung where the other reports \
-                             a run outcome"
-                        .to_owned(),
-                    filed: filed(&file).map(|(id, _)| id),
+                    verdict: verdict.to_string(),
                 });
                 break;
             }
+            (Claim::Passed, Claim::Ran(_)) => break,
         }
     }
 
