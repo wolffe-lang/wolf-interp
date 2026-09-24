@@ -333,7 +333,7 @@ fn attribute_files(observation: &mut Observation, entry: &Path, std_root: Option
     let rejection = observation
         .detail
         .as_ref()
-        .and_then(|diag| diag.file.as_deref())
+        .and_then(|diag| diag.file.as_deref().map(String::as_str))
         .map_or_else(|| entry_path.clone(), &relative);
     let mut order: Vec<String> = observation
         .diagnostics

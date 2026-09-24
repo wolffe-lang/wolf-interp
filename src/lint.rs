@@ -216,7 +216,7 @@ pub fn analyze(program: &Program) -> Analysis {
             let first_static = statics_before;
             finding_files.resize(walked, unit.file.clone());
             for diag in &mut statics[first_static..] {
-                diag.file = Some(unit.file.clone());
+                diag.file = Some(Box::new(unit.file.clone()));
             }
         }
     }

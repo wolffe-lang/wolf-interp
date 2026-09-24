@@ -160,8 +160,11 @@ pub struct Diag {
     /// The file the span is an offset into, as the loader named it — `None`
     /// for the entry file (or a buffer). Never on the wire as a path:
     /// `[proto.record.diag]`'s file index (wolf-lang#437) is computed from it
-    /// when the record is built, package-relative.
-    pub file: Option<String>,
+    /// when the record is built, package-relative. Boxed so the field is one
+    /// thin pointer: `Diag` is the `Err` of every parser function, and an
+    /// inline `String` (or even a `Box<str>`) puts it over clippy's
+    /// `result_large_err` line.
+    pub file: Option<Box<String>>,
 }
 
 impl Diag {
@@ -185,7 +188,7 @@ impl Diag {
     /// walks a module's files and so knows which one it is reading.
     #[must_use]
     pub fn in_file(mut self, file: impl Into<String>) -> Diag {
-        self.file = Some(file.into());
+        self.file = Some(Box::new(file.into()));
         self
     }
 
