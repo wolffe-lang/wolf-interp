@@ -488,6 +488,70 @@ fn an_operator_is_a_use_of_its_imported_trait_and_an_unused_one_is_still_unused(
     );
 }
 
+/// `[type.err.alias.qualified]` (wolf-lang#434; wolf-interp#134) — an
+/// imported error-set alias named only in an error ROW is used.
+///
+/// `use disk.IoErrors` binds the alias's name; the file's only mention of it
+/// is `-> int ! IoErrors`. 0.1.38 judged the import unused (E0305), because
+/// the reference walk visited a signature's success type and never its row,
+/// so a row was invisible to `[mod.use.unused]` — and the fix-it deleting the
+/// line would have left the row unresolvable. The ruling: the `use`-bound
+/// spelling IS the alias, and a row is a use of it. Three placements of the
+/// row — a return row, a fallible parameter type, and a fn-typed parameter's
+/// return row — each alone must count, and an import that no row, type or
+/// expression names is still E0305, so the fix cannot have become "every
+/// alias import is exempt".
+#[test]
+fn an_imported_error_alias_named_only_in_a_row_is_used_and_an_unnamed_one_is_not() {
+    let member = "//! member: true\n\npub error IoErrors = {not_found, io}\n\npub fn size(p: str) -> int ! IoErrors {\n    if p == \"missing\" { return not_found }\n    p.len\n}\n";
+    let placements = [
+        (
+            "return-row",
+            "fn get(p: str) -> int ! IoErrors {\n    let n = disk.size(p)?\n    n\n}\n\nfn main() -> !int {\n    get(\"missing\") else |e| { print(\"tag: {e}\"); 0 }\n}\n",
+        ),
+        (
+            "fallible-param",
+            "fn pick(v: int ! IoErrors) -> int {\n    v else 7\n}\n\nfn main() -> !int {\n    print(\"{pick(disk.size(\"missing\"))}\")\n    0\n}\n",
+        ),
+        (
+            "fn-typed-param",
+            "fn call(f: fn(str) -> int ! IoErrors) -> int {\n    f(\"missing\") else 7\n}\n\nfn main() -> !int {\n    print(\"{call(disk.size)}\")\n    0\n}\n",
+        ),
+    ];
+    for (label, body) in placements {
+        let dir = scratch(&format!("std-root-alias-row-{label}"));
+        write(&dir, "disk/d.lu", member);
+        write(&dir, "main.lu", &format!("use disk\nuse disk.IoErrors\n\n{body}"));
+        let entry = dir.join("main.lu");
+        let value = record(&lupin(
+            &["conform-run", entry.to_str().expect("utf-8 path"), "--json"],
+            &[],
+        ));
+        assert_eq!(
+            value["verdict"], "exit(0)",
+            "{label}: a row naming the imported alias is a use of the import: {value}"
+        );
+    }
+
+    // No row, type or expression names `IoErrors`: the import is unused.
+    let dir = scratch("std-root-alias-row-unused");
+    write(&dir, "disk/d.lu", member);
+    write(
+        &dir,
+        "main.lu",
+        "use disk\nuse disk.IoErrors\n\nfn main() -> !int {\n    let n = disk.size(\"abc\") else 0\n    n - 3\n}\n",
+    );
+    let entry = dir.join("main.lu");
+    let value = record(&lupin(
+        &["conform-run", entry.to_str().expect("utf-8 path"), "--json"],
+        &[],
+    ));
+    assert_eq!(
+        value["verdict"], "fail(E0305)",
+        "an alias import nothing names is still unused: {value}"
+    );
+}
+
 /// wolf-interp#102: a trait ALIAS reached through an import expands its bound.
 ///
 /// The issue's witness is `fn twice[T: tiny.Num]` over `pub trait Num = Add`
