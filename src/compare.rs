@@ -89,6 +89,18 @@ pub fn compare(a: &ObservationRecord, b: &ObservationRecord) -> Option<Divergenc
         return None;
     }
 
+    // `[proto.cmp.pass]` (s169): `pass` against a DYNAMIC verdict is never a
+    // divergence — the passing side stopped without executing, so the two
+    // records are not two answers to one question — and `pass` against `pass`
+    // agrees at whatever rungs the two lanes stopped. `pass` against `fail`
+    // is NOT carved out: it falls through to the verdict check below.
+    let dynamic = |v: &Verdict| matches!(v, Verdict::Exit(_) | Verdict::Trap(_) | Verdict::Ub(_));
+    match (&a.verdict, &b.verdict) {
+        (Verdict::Pass, Verdict::Pass) => return None,
+        (Verdict::Pass, other) | (other, Verdict::Pass) if dynamic(other) => return None,
+        _ => {}
+    }
+
     let file = a.file.clone();
     let render = |r: &ObservationRecord| format!("{}@{}", r.verdict, r.phase_reached);
 
