@@ -1665,6 +1665,51 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/push_copies_element.lu", "exit(0)"),
     ("rows/raised_call_arg_position.lu", "exit(0)"),
     ("typecheck/generic_bind_scalar.lu", "exit(0)"),
+    // -- is54, lupin 0.1.39: the re-pin at wolf-lang v0.2.16, `93a5fe50` ----
+    //
+    // NINETEEN added, none lost. Twenty-one entries arrive with the pin;
+    // sixteen reach `run` at 0.1.38's code and three more with this release's
+    // own fixes:
+    //
+    // - `rows/error_alias_qualified/main.lu` (wolf-interp#134): 0.1.38 judged
+    //   `use disk.IoErrors` unused because the reference walk never read an
+    //   error row, and refused the file E0305 at `resolve`. A row is a use.
+    // - `conc/proc_join_param.lu` and `conc/proc_join_value.lu`
+    //   (wolf-interp#130): `Proc[int]` was E0301 ("nothing named `Proc`") and
+    //   `p.join()` was out of scope. The handles have type names and a proc
+    //   talks back.
+    //
+    // Two are dynamic counterparts (`memory/move_field_use_after.lu` traps
+    // `use-after-move` where the compiler pins E1001; `memory/mut_elem_nested_call.lu`
+    // traps `exclusivity` where it pins E1002) and five are CONSERVATISM rows —
+    // ledgered because they RUN, not because they agree:
+    // `memory/mut_elem_excl.lu` (E1002: this machine's places are
+    // element-granular), `memory/region_str_view_return.lu` (E1010,
+    // wolf-interp#126), `strings/trim_cutset_refused.lu` (E0402,
+    // wolf-interp#125), `typecheck/list_lit_elem_unfit.lu` (E0415, the
+    // `List[i32]` default, wolf-interp#132), and
+    // `rows/negative/error_alias_private/main.lu` (E0304: a private alias named
+    // qualified from another module runs here — the half of
+    // `[type.err.alias.qualified]` #134 did not ask for).
+    ("conc/freeze_proc_snapshot.lu", "exit(0)"),
+    ("conc/proc_join_param.lu", "exit(0)"),
+    ("conc/proc_join_value.lu", "exit(0)"),
+    ("memory/move_field_siblings_ok.lu", "exit(0)"),
+    ("memory/move_field_use_after.lu", "trap(use-after-move)"),
+    ("memory/mut_arg_element.lu", "exit(0)"),
+    ("memory/mut_elem_excl.lu", "exit(0)"),
+    ("memory/mut_elem_nested_call.lu", "trap(exclusivity)"),
+    ("memory/mut_place_nested.lu", "exit(0)"),
+    ("memory/region_str_producers_charged.lu", "exit(0)"),
+    ("memory/region_str_view_inside.lu", "exit(0)"),
+    ("memory/region_str_view_return.lu", "exit(0)"),
+    ("rows/error_alias_qualified/main.lu", "exit(0)"),
+    ("rows/negative/error_alias_private/main.lu", "exit(0)"),
+    ("strings/trim_cutset_refused.lu", "exit(0)"),
+    ("typecheck/fn_param_shadows_import/main.lu", "exit(0)"),
+    ("typecheck/fn_param_shadows_item.lu", "exit(0)"),
+    ("typecheck/list_lit_elem_i32.lu", "exit(0)"),
+    ("typecheck/list_lit_elem_unfit.lu", "exit(0)"),
 ];
 
 #[test]
