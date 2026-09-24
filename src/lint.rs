@@ -141,12 +141,22 @@ pub struct Analysis {
     /// The warning observations after `#[allow]` suppression, sorted by
     /// `(span, code)` and deduplicated — `[proto.record.warn]`'s array.
     pub warnings: Vec<Warning>,
+    /// The file each entry of `warnings` lies in, index for index, as the
+    /// loader named it (wolf-lang#437). Never on the `warnings` wire array
+    /// (`[proto.record.warn]` is unchanged); it feeds the file index of the
+    /// warning-severity entries that ride `diagnostics`.
+    pub warning_files: Vec<String>,
 }
 
 /// Runs every analysis over the loaded program.
 #[must_use]
 pub fn analyze(program: &Program) -> Analysis {
     let mut findings: Vec<(String, Span)> = Vec::new();
+    // wolf-lang#437: the file each finding lies in, index for index with
+    // `findings`. Every push site below knows its file — the per-unit walk,
+    // W0314's one item, W0315's unit, W0316's scope — so every warning is
+    // attributed, not guessed.
+    let mut finding_files: Vec<String> = Vec::new();
     let mut statics: Vec<Diag> = Vec::new();
     let mut allows: Vec<(String, Span)> = Vec::new();
 
@@ -200,7 +210,14 @@ pub fn analyze(program: &Program) -> Analysis {
                 origin: 0,
                 list_locals: Vec::new(),
             };
+            let statics_before = walk.statics.len();
             walk.unit(&unit.unit);
+            let walked = walk.findings.len();
+            let first_static = statics_before;
+            finding_files.resize(walked, unit.file.clone());
+            for diag in &mut statics[first_static..] {
+                diag.file = Some(unit.file.clone());
+            }
         }
     }
 
@@ -242,22 +259,23 @@ pub fn analyze(program: &Program) -> Analysis {
             };
             // Count what the module DECLARES (uses and C imports are
             // wiring; an impl rides its type): exactly one is ceremony.
-            let declared: Vec<&Item> = module
+            let declared: Vec<(&str, &Item)> = module
                 .units
                 .iter()
                 .filter(|unit| !unit.from_std)
-                .flat_map(|unit| &unit.unit.items)
-                .filter(|item| {
+                .flat_map(|unit| unit.unit.items.iter().map(|item| (unit.file.as_str(), item)))
+                .filter(|(_, item)| {
                     !matches!(
                         item.kind,
                         ItemKind::Use(_) | ItemKind::ImportC(_) | ItemKind::Impl(_)
                     )
                 })
                 .collect();
-            if let [only] = declared[..]
+            if let [(file, only)] = declared[..]
                 && let Some(span) = name_span(only)
             {
                 findings.push(("W0314".to_owned(), span));
+                finding_files.push(file.to_owned());
             }
         }
         for unit in &module.units {
@@ -292,6 +310,7 @@ pub fn analyze(program: &Program) -> Analysis {
                 });
                 if !used {
                     findings.push(("W0315".to_owned(), name.span));
+                    finding_files.push(unit.file.clone());
                 }
             }
         }
@@ -327,6 +346,7 @@ pub fn analyze(program: &Program) -> Analysis {
                         .is_some_and(|base| base.to_string_lossy() == use_ref.name)
                     {
                         findings.push(("W0316".to_owned(), use_ref.name_span));
+                        finding_files.push(scope.file.clone());
                         break;
                     }
                     ancestor = candidate.parent();
@@ -345,18 +365,33 @@ pub fn analyze(program: &Program) -> Analysis {
                 && span.end <= region.end
         })
     };
-    let mut warnings: Vec<Warning> = findings
+    debug_assert_eq!(findings.len(), finding_files.len(), "every finding names its file");
+    let mut attributed: Vec<(Warning, String)> = findings
         .iter()
-        .filter(|(code, span)| !suppressed(code, *span))
-        .map(|(code, span)| Warning {
-            code: code.clone(),
-            span: [span.start as u64, span.end as u64],
+        .zip(&finding_files)
+        .filter(|((code, span), _)| !suppressed(code, *span))
+        .map(|((code, span), file)| {
+            (
+                Warning {
+                    code: code.clone(),
+                    span: [span.start as u64, span.end as u64],
+                },
+                file.clone(),
+            )
         })
         .collect();
-    warnings.sort_by(|a, b| (a.span, a.code.as_str()).cmp(&(b.span, b.code.as_str())));
-    warnings.dedup();
+    // The wire array's order and dedup are unchanged — `(span, code)`, one
+    // entry per pair — so the file only rides along with the entry it
+    // belongs to (the first, where two files share a pair).
+    attributed.sort_by(|(a, _), (b, _)| (a.span, a.code.as_str()).cmp(&(b.span, b.code.as_str())));
+    attributed.dedup_by(|(a, _), (b, _)| a == b);
+    let (warnings, warning_files) = attributed.into_iter().unzip();
 
-    Analysis { statics, warnings }
+    Analysis {
+        statics,
+        warnings,
+        warning_files,
+    }
 }
 
 /// One closure seen in the current function, for W1102.
