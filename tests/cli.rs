@@ -1005,8 +1005,17 @@ fn version_names_the_binary_the_package_and_the_pairing() {
 /// not an agreement.
 #[test]
 fn a_failing_assert_s_message_rides_the_record_and_nothing_else_carries_one() {
-    let dir = std::env::temp_dir().join("lupin-is54-trap-message");
-    std::fs::create_dir_all(&dir).expect("scratch dir");
+    // One directory per program: a directory is a module (D32), and two
+    // `main`s in one directory are E0302, not two programs.
+    let program = |name: &str, source: &str| -> std::path::PathBuf {
+        let dir = std::env::temp_dir()
+            .join("lupin-is54-trap-message")
+            .join(name.trim_end_matches(".lu"));
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        let path = dir.join("main.lu");
+        std::fs::write(&path, source).expect("writable");
+        path
+    };
     let cases: [(&str, &str, Option<&str>); 4] = [
         (
             "with_message.lu",
@@ -1030,8 +1039,7 @@ fn a_failing_assert_s_message_rides_the_record_and_nothing_else_carries_one() {
         ),
     ];
     for (name, source, want) in cases {
-        let path = dir.join(name);
-        std::fs::write(&path, source).expect("writable");
+        let path = program(name, source);
         let output = lupin(&["conform-run", path.to_str().expect("utf-8"), "--json"]);
         assert_eq!(output.status.code(), Some(0), "{name}");
         let text = stdout_of(&output).trim().to_owned();
@@ -1052,12 +1060,10 @@ fn a_failing_assert_s_message_rides_the_record_and_nothing_else_carries_one() {
     }
 
     // A passing assert traps nothing and carries nothing.
-    let path = dir.join("holds.lu");
-    std::fs::write(
-        &path,
+    let path = program(
+        "holds.lu",
         "fn main() -> !int {\n    assert(1 == 1, \"never read\")\n    0\n}\n",
-    )
-    .expect("writable");
+    );
     let output = lupin(&["conform-run", path.to_str().expect("utf-8"), "--json"]);
     let value: serde_json::Value =
         serde_json::from_str(stdout_of(&output).trim()).expect("one JSON object");
