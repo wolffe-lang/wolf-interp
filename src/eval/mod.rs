@@ -81,6 +81,12 @@ pub struct Trap {
     /// `exclusivity`.
     pub secondary: Option<(Span, String)>,
     pub message: String,
+    /// `[proto.record.trap]` (s169; wolf-interp#129 item 2): the text the
+    /// PROGRAM supplied for its own fault — today exactly a failing
+    /// `assert(cond, msg)`'s second argument, evaluated only on the failing
+    /// path. `message` above is this machine's sentence about the fault;
+    /// this is the program's, and it rides the record as `trap_message`.
+    pub program_message: Option<String>,
 }
 
 impl std::fmt::Display for Trap {
@@ -97,6 +103,18 @@ impl std::fmt::Display for Trap {
             write!(f, "; {note} at {span}")?;
         }
         Ok(())
+    }
+}
+
+/// Attaches the program's own words to a trap signal on its way out
+/// (`[proto.record.trap]`); every other signal passes through untouched.
+pub(crate) fn with_program_message(signal: Signal, message: Option<String>) -> Signal {
+    match signal {
+        Signal::Trap(mut trap) => {
+            trap.program_message = message;
+            Signal::Trap(trap)
+        }
+        other => other,
     }
 }
 
@@ -1201,6 +1219,7 @@ impl Machine {
             span,
             secondary,
             message,
+            program_message: None,
         })))
     }
 
@@ -6693,9 +6712,11 @@ impl Machine {
             self.fire(Rule::Assert, span, "assert holds; the message stays cold");
             return Ok(Value::Unit);
         }
+        let mut program_message = None;
         if let Some(msg) = msg {
             let rendered = self.eval(&msg.expr)?;
             self.out(&format!("{rendered}\n"));
+            program_message = Some(rendered.to_string());
         }
         self.fault(
             TrapKind::Assert,
@@ -6703,6 +6724,7 @@ impl Machine {
             span,
             "assertion failed".to_owned(),
         )
+        .map_err(|signal| with_program_message(signal, program_message))
     }
 
     /// Splits a callee into `(receiver, method, receiver mode)` when it is a

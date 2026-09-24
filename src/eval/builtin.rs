@@ -862,15 +862,18 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             if ok {
                 return Ok(Value::Unit);
             }
-            if let Some(msg) = args.get(1) {
+            let program_message = args.get(1).map(ToString::to_string);
+            if let Some(msg) = &program_message {
                 machine.out(&format!("{msg}\n"));
             }
-            machine.fault(
-                TrapKind::Assert,
-                Rule::Assert,
-                span,
-                "assertion failed".to_owned(),
-            )
+            machine
+                .fault(
+                    TrapKind::Assert,
+                    Rule::Assert,
+                    span,
+                    "assertion failed".to_owned(),
+                )
+                .map_err(|signal| super::with_program_message(signal, program_message))
         }
         // -- spec/03: the concurrency constructors (is06) ------------------
         "channel" => {
