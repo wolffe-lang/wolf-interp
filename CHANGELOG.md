@@ -1,5 +1,86 @@
 # Changelog
 
+## 0.1.39 — 2026-09-24
+
+THE THIRTY-NINTH (is54). Pin `2e4ca769` (wolf-lang v0.2.15) ->
+**`93a5fe50` (wolf-lang v0.2.16 — the TAG)**; `git merge-base
+--is-ancestor 93a5fe50 v0.2.16` answers 0. 666 -> 690 corpus files,
+625 -> 646 entries, 41 -> 44 members, 524 -> 539 anchors (fifteen added,
+none dropped, key sets diffed both ways), coverage 256 -> 264.
+
+**The census, predicted before the pin moved and measured after.** No
+pre-existing row moved (the two walks diffed row by row); nineteen of the
+twenty-one new rows were called right — `memory/pool_place_write.lu` is out
+of scope, not a match (a subscript on a pool reaches the map-index path),
+and `rows/negative/error_alias_private/main.lu` runs, a conservatism row,
+where E0304 was predicted. With this release's fixes exactly three rows
+move, the three predicted: 503 match, 28 dynamic counterpart, 53
+conservatism, 61 out of scope, 1 filed mismatch, 504 reaching `run`.
+
+**A row is a use** (wolf-interp#134, `[type.err.alias.qualified]`,
+wolf-lang#434). `use disk.IoErrors` whose only mention is `-> int !
+IoErrors` was E0305 "never used": the reference walk read a signature's
+success type and skipped its row, so the machine-applicable fix-it would
+have deleted a live import. Return rows, fallible parameter types,
+fn-typed parameters' rows and alias unions all count now, and an alias
+import nothing names is still E0305. `rows/error_alias_qualified/main.lu`
+moves from a mismatch to a match (`7a50d0e`).
+
+**The handles have type names, and a proc talks back** (wolf-interp#130,
+`[conc.proc.handle]`, `[conc.proc.join]`, wolf-lang s170). `Scope` and
+`Proc[T]` are prelude type names: `fn fan_out(s: Scope)` and `fn
+collect(p: Proc[int])` resolve, `Scope[T]` and a `Proc` without exactly
+one argument are E0401 at the written type (wolf 0.2.16's code and span),
+and `scope`/`proc` in type position stay E0206 with a help naming the
+capitalised spelling (`78395fb`). `p.join()` blocks until the proc exits
+and yields its value, each abnormal exit — `error`, `killed`,
+`cancelled`, `fault` — a payload-free row tag; it is the monitor's exit
+reason read synchronously, so a join after the exit answers at once
+(`7dc4982`). The site's census parting, `conc/proc_join_param.lu`, is a
+match, and so is `conc/proc_join_value.lu`.
+
+**The protocol mirror's tail** (wolf-interp#129 items 2–5, wolf-lang s169).
+The record emits `trap_message` — a failing `assert(cond, msg)`'s own
+words — on that trap only, never compared (`de020d2`, `40c1e2b`).
+`--phase` stops answer `pass`, never `unsupported`, short of the rung
+where a construct would be refused: measured, and pinned by a test that
+was green before any change (item 3 needed no code). `differ::claim()`
+no longer reads `unsupported` as a clean pass of its own rung, and `pass`
+against a run outcome is never a divergence (`[proto.cmp.pass]`; the
+published reading in `compare` moves with it) — which moves
+`rows/negative/tag_undeclared_arg.lu`, a pre-existing gating finding,
+into the conservatism ledger (`f2e6912`, `c7a5076`). And
+`EXIT_REJECTED = 65` retires: `lupin lex` and `lupin parse` exit **2** on
+a rejection, as every front door does under `[conf.exit.static]`
+(`12fd79a`).
+
+**A file index on record diagnostics** (wolf-lang#437, the lupin half, in
+the shape s181 fixed on the issue). The validator admits a top-level
+`files` table and a `file` index on each diagnostic and refuses them out
+of shape (`31bdffd`); the record emits them when a diagnostic lies outside
+the entry — package-relative, entry at index 0, every warning attributed,
+the file-walking module laws attributed — and is byte-identical otherwise
+(`280d9d8`–`fd6004b`); comparison resolves the index (`fe0c445`). Against
+wolf 0.2.16, which does not emit it yet, three sibling-file refusals now
+compare `span-or-code`: DIV-2026-025, open until the compiler half ships.
+The resolve checks that walk items rather than files still report
+entry-relative spans for a sibling's fault.
+
+**The linux archives start on glibc 2.35** (wolf-lang#447, the lupin
+half). 0.1.38's x86-64 and aarch64 archives were built on ubuntu-latest
+and imported `GLIBC_2.39` through two weak symbols Rust std links when the
+build host has them (`pidfd_spawnp`, `pidfd_getpid`), so they did not
+start on Ubuntu 22.04. Both linux dist jobs build on `ubuntu-22.04` /
+`ubuntu-22.04-arm`, and `ci/glibc-floor.sh` measures the shipped binary's
+highest GLIBC version against the 2.35 floor — in `release.yml` before
+upload and in a new `dist floor` CI job on every PR (`6943e79`,
+`bbad776`, `e593963`). The README states the floor.
+
+**Differential against the published wolf 0.2.16** (`diff-run`, default,
+checked and native): 8/8/10 divergences at 0.1.38 and at 0.1.39, three
+gone at every tier (`proc_join_param`, `error_alias_qualified`,
+`tag_undeclared_arg`) and three arriving (DIV-2026-025).
+
 ## 0.1.38 — 2026-09-21
 
 THE RE-PIN (is53). Pin `41695e7` (wolf-lang s166, dev-stamped) ->
