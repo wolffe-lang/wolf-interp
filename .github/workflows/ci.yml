@@ -582,3 +582,62 @@ jobs:
             echo "::error::A source file imports a wolf-lang crate; the frontend is written from spec/ only."
             exit 1
           fi
+
+  # wolf-lang#447, the lupin half: the linux archive must start on the oldest
+  # glibc the project states (2.35, Ubuntu 22.04). `release.yml` builds its
+  # linux archives on 22.04 and gates the floor with `ci/glibc-floor.sh`, but
+  # release.yml only runs at a tag — so this job builds the SAME archive the
+  # same way on every PR, unpacks it, runs a program from it, and measures the
+  # floor on the shipped binary. A green here is the pre-tag proof; the
+  # release job re-measures on the archive it uploads.
+  dist-floor:
+    name: dist floor (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain
+
+      - name: build
+        run: cargo build --release --locked
+
+      - name: the glibc floor
+        run: ci/glibc-floor.sh target/release/lupin
+
+      # The archive release.yml would upload, unpacked where a user would
+      # unpack it, running a program. `--version` alone proves nothing
+      # (wolf-lang#447's second defect was a correct version string over a
+      # tier that could not run).
+      - name: archive, unpack and smoke a hello
+        run: |
+          set -euxo pipefail
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          target=$(rustc -vV | sed -n 's/^host: //p')
+          stem="lupin-${version}-${target}"
+          mkdir -p "target/dist/${stem}"
+          cp target/release/lupin README.md LICENSE CHANGELOG.md "target/dist/${stem}/"
+          tar -C target/dist -czf "target/dist/${stem}.tar.gz" "${stem}"
+          work="$RUNNER_TEMP/smoke"
+          rm -rf "$work" && mkdir -p "$work"
+          tar -xzf "target/dist/${stem}.tar.gz" -C "$work"
+          ci/glibc-floor.sh "$work/${stem}/lupin"
+          printf 'fn main() -> !int {\n    print("hello, wolf")\n    0\n}\n' > "$work/hello.lu"
+          out=$("$work/${stem}/lupin" run "$work/hello.lu")
+          test "$out" = "hello, wolf" \
+            || { echo "::error::the unpacked binary did not print the hello: $out"; exit 1; }
+          sha256sum "target/dist/${stem}.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-floor-${{ matrix.os }}
+          path: target/dist/*.tar.gz
+          retention-days: 14
