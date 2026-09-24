@@ -4521,9 +4521,11 @@ const fn mode_anchor(mode: ParamMode) -> &'static str {
 fn collect_item_refs(item: &Item, scope: &mut FileScope) {
     match &item.kind {
         ItemKind::Fn(decl) => collect_fn_refs(decl, scope),
-        // An alias's entries are tags and other aliases, resolved by
-        // `expand_error_aliases` before collection — not name references.
-        ItemKind::ErrorAlias(_) => {}
+        // An alias's entries are tags and other aliases. The LOCAL aliases
+        // are expanded by `expand_error_aliases` before collection; a foreign
+        // one (`error All = {IoErrors, gone}` after `use disk.IoErrors`)
+        // survives and is a use of its import, as it is in any other row.
+        ItemKind::ErrorAlias(alias) => collect_row_refs(&alias.row, scope),
         ItemKind::Binding(binding) => {
             if let Some(ty) = &binding.ty {
                 collect_type_refs(ty, scope);
@@ -4653,9 +4655,40 @@ fn collect_fn_refs(decl: &FnDecl, scope: &mut FileScope) {
     }
     if let Some(ret) = &decl.ret {
         collect_type_refs(&ret.ty, scope);
+        if let Some(row) = &ret.row {
+            collect_row_refs(row, scope);
+        }
     }
     if let Some(body) = &decl.body {
         collect_block_refs(body, scope);
+    }
+}
+
+/// `[type.err.alias.qualified]` (wolf-lang#434; wolf-interp#134) — a ROW is a
+/// use of every name it spells.
+///
+/// `use disk.IoErrors` binds an error-set alias, and the ruling is that the
+/// `use`-bound spelling IS the alias: `-> int ! IoErrors` names it, so the
+/// import is used. The walk used to visit a signature's success type and skip
+/// its row, so a file whose only mention of the import sat in a row heard
+/// E0305 "never used" — with a machine-applicable fix-it that would have left
+/// the row naming nothing. Local aliases are already expanded to their tags by
+/// [`expand_error_aliases`] before this walk runs; what survives here is tags
+/// and foreign aliases, and a tag pushed as a reference names no import, so
+/// over-counting is harmless in the direction this rule's fix-it cares about.
+/// The head is marked used and is not an E0304 candidate (`tail: None`): a
+/// row entry's visibility is the checker's half, as a type's is.
+fn collect_row_refs(row: &crate::ast::ErrorRow, scope: &mut FileScope) {
+    for entry in &row.entries {
+        if let Some(head) = entry.path.segments.first() {
+            scope.refs.push(PathRef {
+                head: head.name.clone(),
+                tail: None,
+            });
+        }
+        for ty in &entry.payload {
+            collect_type_refs(ty, scope);
+        }
     }
 }
 
@@ -4997,8 +5030,11 @@ fn collect_type_refs(ty: &Type, scope: &mut FileScope) {
         }
         TypeKind::ErrorUnion(inner)
         | TypeKind::Prefixed { ty: inner, .. }
-        | TypeKind::RawPointer(inner)
-        | TypeKind::Fallible { ty: inner, .. } => collect_type_refs(inner, scope),
+        | TypeKind::RawPointer(inner) => collect_type_refs(inner, scope),
+        TypeKind::Fallible { ty: inner, row } => {
+            collect_type_refs(inner, scope);
+            collect_row_refs(row, scope);
+        }
         TypeKind::Dyn(path) => {
             if let Some(head) = path.segments.first() {
                 scope.refs.push(PathRef {
@@ -5018,6 +5054,9 @@ fn collect_type_refs(ty: &Type, scope: &mut FileScope) {
             }
             if let Some(ret) = ret {
                 collect_type_refs(&ret.ty, scope);
+                if let Some(row) = &ret.row {
+                    collect_row_refs(row, scope);
+                }
             }
         }
         TypeKind::TypeOfTypes | TypeKind::Region => {}
