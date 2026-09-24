@@ -1714,7 +1714,10 @@ mod tests {
         // The root itself may be reached through a link: it is canonicalized.
         let via = scratch("fs-resolved-root-link");
         std::os::unix::fs::symlink(&root, via.join("root")).expect("root link");
-        assert!(resolves_inside(&via.join("root"), Path::new("target/in_link/x")));
+        assert!(resolves_inside(
+            &via.join("root"),
+            Path::new("target/in_link/x")
+        ));
     }
 
     #[test]

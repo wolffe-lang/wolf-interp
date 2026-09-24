@@ -411,12 +411,17 @@ fn both_front_doors_write_in_the_users_directory_and_an_embedded_observation_doe
 
     // Embedded: the program sees its own file, and neither the user's
     // directory nor this process's cwd gains one.
-    let (record, observed) =
-        wolf_interp::observe_record(&entry, source.as_bytes(), None);
+    let (record, observed) = wolf_interp::observe_record(&entry, source.as_bytes(), None);
     assert_eq!(record.verdict.to_string(), "exit(0)", "{record:?}");
     assert_eq!(observed.stdout, "wrote=true\n");
-    assert!(!dir.join("is55-door.txt").exists(), "an embedded observation wrote into the user's directory");
-    assert!(!Path::new("is55-door.txt").exists(), "or into the test process's cwd");
+    assert!(
+        !dir.join("is55-door.txt").exists(),
+        "an embedded observation wrote into the user's directory"
+    );
+    assert!(
+        !Path::new("is55-door.txt").exists(),
+        "or into the test process's cwd"
+    );
 
     // `conform-run`: the same program, the same directory, and the file is
     // the user's.
@@ -502,9 +507,7 @@ fn two_concurrent_embedded_observations_of_one_program_do_not_interfere() {
     let threads: Vec<_> = (0..6)
         .map(|_| {
             let entry = entry.clone();
-            std::thread::spawn(move || {
-                wolf_interp::observe_record(&entry, source.as_bytes(), None)
-            })
+            std::thread::spawn(move || wolf_interp::observe_record(&entry, source.as_bytes(), None))
         })
         .collect();
     for thread in threads {
