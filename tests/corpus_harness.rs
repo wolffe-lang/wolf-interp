@@ -722,10 +722,15 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //  514 -> 524, and no new namespace: spec/05-conformance.md gains a
     //  [conf.exit] section in the range but no registered namespace, so
     //  `anchor::REGISTERED_NAMESPACES` holds at 13.)
+    // (666 -> 690 at 93a5fe50, is54, wolf-lang v0.2.16: TWENTY-FOUR new
+    //  files, twenty-one entries and three members, none edited away and no
+    //  `check:` line changed — the fourteen modified files move `phase:` and
+    //  prose only. The registry gains FIFTEEN anchors, 524 -> 539, and no new
+    //  namespace: `conc`, `conf`, `mem`, `proto`, `type` are all registered.)
     let report = report();
     assert_eq!(
         report.total(),
-        666,
+        690,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
@@ -737,8 +742,11 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     // against, `[type.method.root]`) and s165's `traits/op_eq_item_import/cmp/c.lu`.
     // 613 -> 625 at 2e4ca769 (is53, wolf-lang v0.2.15): twelve new files,
     // every one an entry. `members` holds at 41.
-    assert_eq!(report.entries(), 625);
-    assert_eq!(report.members(), 41);
+    // 625 -> 646 at 93a5fe50 (is54, wolf-lang v0.2.16): twenty-four new
+    // files, twenty-one of them entries; `members` moves 41 -> 44 with the
+    // three sibling modules of s171's and s175's multi-file witnesses.
+    assert_eq!(report.entries(), 646);
+    assert_eq!(report.members(), 44);
 }
 
 #[test]

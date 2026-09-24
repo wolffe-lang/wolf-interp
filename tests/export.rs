@@ -456,7 +456,12 @@ const RATCHET_FLOOR: usize = 256;
 // NAMESPACE either — spec/05-conformance.md gains the `[conf.exit]` section
 // s169 ruled, but its anchors sit under the already-registered `conf`, so
 // `anchor::REGISTERED_NAMESPACES` holds at thirteen.
-const ANCHORS_TOTAL: usize = 524;
+// 524 -> 539 at 93a5fe50 (is54, wolf-lang v0.2.16 — the TAG): FIFTEEN. Key
+// sets diffed BOTH ways: fifteen added, NOTHING dropped, no owner changed —
+// `conc.proc.{arg,handle,join}`, `conf.exit` and its five children,
+// `mem.region.{imm.ret,root}`, `proto.cmp.pass`, `proto.record.{pass,trap}`
+// and `type.err.alias.qualified`. No new namespace.
+const ANCHORS_TOTAL: usize = 539;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -712,9 +717,12 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // twelve and `members` holds at 41, the first bump since is47 where the
     // two counts move together. The suite is unmoved (is53's new tests are
     // inline fixtures the extractor does not harvest).
-    assert_eq!(summary.pin, "2e4ca769b396219585a07ff18492529c944672d9");
-    assert_eq!(summary.programs, 704);
-    assert_eq!(summary.records, 663);
+    // 704/663 -> 728/684 at 93a5fe50 (is54, wolf-lang v0.2.16 — the TAG):
+    // twenty-four corpus files, none leaving, twenty-one of them entries —
+    // `programs` by 24, `records` by 21, the three new members the gap.
+    assert_eq!(summary.pin, "93a5fe504593ca7642b78ba83b4986e7a03cfe71");
+    assert_eq!(summary.programs, 728);
+    assert_eq!(summary.records, 684);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
