@@ -172,3 +172,38 @@ fn the_whole_corpus_agrees_with_a_counterparty_that_mirrors_us() {
         }
     }
 }
+
+#[test]
+fn a_pass_meets_each_verdict_as_proto_cmp_pass_rules() {
+    // `[proto.cmp.pass]` (wolf-lang s169; wolf-interp#129 item 4) moved the
+    // published reading: `pass` against a DYNAMIC verdict is never a
+    // divergence, `pass` against `fail` is one, and `pass` against `pass`
+    // agrees at whatever rungs the two lanes stopped. Before the clause this
+    // reading filed the first and the third as verdict mismatches, because a
+    // passing side and a running side never share `phase_reached`.
+    let (path, source) = corpus("hello.lu");
+    let (ours, _) = wolf_interp::observe_record(&path, &source, None);
+    assert_eq!(ours.verdict, Verdict::Exit(0));
+
+    let mut stopped = counterparty(&ours);
+    stopped.verdict = Verdict::Pass;
+    stopped.phase_reached = Phase::Wir;
+    stopped.diagnostics.clear();
+    assert_eq!(compare::compare(&ours, &stopped), None, "pass against exit");
+    assert_eq!(compare::compare(&stopped, &ours), None, "exit against pass");
+
+    let mut shallower = stopped.clone();
+    shallower.phase_reached = Phase::Resolve;
+    assert_eq!(compare::compare(&shallower, &stopped), None, "pass against pass");
+
+    let mut rejects = stopped.clone();
+    rejects.verdict = Verdict::Fail("E0301".to_owned());
+    rejects.phase_reached = Phase::Resolve;
+    rejects.diagnostics = vec![Diagnostic {
+        code: "E0301".to_owned(),
+        span: [3, 7],
+        severity: "error".to_owned(),
+    }];
+    let divergence = compare::compare(&stopped, &rejects).expect("pass against fail diverges");
+    assert_eq!(divergence.class, Class::VerdictMismatch);
+}

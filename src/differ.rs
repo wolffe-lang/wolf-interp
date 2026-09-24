@@ -1197,6 +1197,81 @@ mod tests {
         ));
     }
 
+    /// `[proto.record.pass]` and `[proto.cmp.pass]` (wolf-lang s169;
+    /// wolf-interp#129 items 3 and 4): `pass` and `unsupported` are two facts,
+    /// and `claim()` used to read them as one. `pass` says the rungs through
+    /// `phase_reached` completed clean; `unsupported` says this implementation
+    /// could not follow a construct AT `phase_reached`, which is a statement
+    /// about its coverage and never a clean rung. Five pairs, the clause's
+    /// whole table.
+    #[test]
+    fn pass_and_unsupported_are_two_facts_and_pass_meets_each_verdict_as_the_clause_rules() {
+        let rejects = with_diag(
+            record(Phase::Resolve, Verdict::Fail("E0301".to_owned())),
+            "E0301",
+            [40, 44],
+        );
+
+        // 1. `unsupported` against `fail` AT the refusing rung: the refusal is
+        //    not a pass, so there is nothing to disagree with —
+        //    `[proto.cmp.defined-divergence]`, "`unsupported` on either side".
+        //    The rejection is the accept-set boundary, ledgered.
+        let refused = record(Phase::Resolve, Verdict::Unsupported);
+        let out = compare_deep(&refused, &rejects, false);
+        assert_eq!(out.divergence, None, "{:?}", out.divergence);
+        assert!(
+            out.ledger.iter().any(|entry| matches!(
+                entry,
+                LedgerEntry::RejectsBeyond { side: Side::Counterparty, phase: Phase::Resolve, code, .. }
+                    if code == "E0301"
+            )),
+            "{:?}",
+            out.ledger
+        );
+
+        // 2. `pass` against `fail` at a rung the passing side completed: a
+        //    disagreement about the language, the one the clause most wants
+        //    to see. Both directions.
+        let passed = record(Phase::Wir, Verdict::Pass);
+        let d = compare_deep(&rejects, &passed, false)
+            .divergence
+            .expect("pass against fail diverges");
+        assert_eq!(d.class, DeepClass::Verdict);
+        assert_eq!(d.rung, Some(Phase::Resolve));
+        assert!(compare_deep(&passed, &rejects, false).divergence.is_some());
+
+        // 3. `pass` against a dynamic verdict is never a divergence — the
+        //    passing side executed nothing — including a `pass` that names the
+        //    `run` rung itself. Both directions.
+        let ran = record(Phase::Run, Verdict::Exit(0));
+        for stop in [Phase::Wir, Phase::Run] {
+            let passed = record(stop, Verdict::Pass);
+            assert_eq!(compare_deep(&ran, &passed, false).divergence, None, "{stop}");
+            assert_eq!(compare_deep(&passed, &ran, false).divergence, None, "{stop}");
+        }
+        let trapped = record(Phase::Run, Verdict::Trap(TrapKind::Bounds));
+        let passed = record(Phase::Run, Verdict::Pass);
+        assert_eq!(compare_deep(&trapped, &passed, false).divergence, None);
+
+        // 4. `pass` against `pass` agrees at whatever rungs the lanes stopped.
+        let shallow = record(Phase::Resolve, Verdict::Pass);
+        let deep = record(Phase::Wir, Verdict::Pass);
+        assert_eq!(compare_deep(&shallow, &deep, false).divergence, None);
+
+        // 5. `unsupported` still claims the rungs BELOW its refusal: a
+        //    rejection at `parse` against an `unsupported@resolve` is the
+        //    same accept-set divergence it always was.
+        let parse_reject = with_diag(
+            record(Phase::Parse, Verdict::Fail("E0201".to_owned())),
+            "E0201",
+            [3, 4],
+        );
+        let d = compare_deep(&parse_reject, &refused, false)
+            .divergence
+            .expect("a parse rejection against a parsed file diverges");
+        assert_eq!(d.rung, Some(Phase::Parse));
+    }
+
     #[test]
     fn a_compiler_rejection_at_a_rung_we_skip_is_the_conservatism_ledger() {
         // The accept-set gap: E04xx at typecheck, a rung this machine never
