@@ -50,8 +50,22 @@ pub const REQUIRED_FIELDS: [&str; 9] = [
 /// implementation drop the message entirely, and
 /// `[proto.cmp.defined-divergence]` names it — so an implementation that
 /// drops it must not become a divergence for doing so.
-pub const OPTIONAL_FIELDS: [&str; 4] =
-    ["stdout_sha256", "stdout_inline", "warnings", "trap_message"];
+///
+/// `files` is `[proto.record.diag]`'s file index (wolf-lang#437, ruled
+/// 2026-09-24; the shape s181 fixed on the issue), additive in the same way:
+/// a package-relative path per file a diagnostic's span lies in, the entry at
+/// index 0, present only when some diagnostic lies outside the entry — so
+/// every single-file record is byte-identical to before. Its partner is the
+/// optional integer `file` on each diagnostic ([`validate_diagnostics`]).
+/// 0.1.38 refused both keys, so until 0.1.39 every wolfgang record carrying
+/// them read to this validator as malformed.
+pub const OPTIONAL_FIELDS: [&str; 5] = [
+    "stdout_sha256",
+    "stdout_inline",
+    "warnings",
+    "trap_message",
+    "files",
+];
 
 /// `[proto.record.fields]`: `stdout_inline` is included up to 4096 bytes.
 pub const STDOUT_INLINE_LIMIT: usize = 4096;
@@ -222,7 +236,8 @@ pub fn validate(value: &Value) -> Result<(), SchemaErrors> {
         }
     }
 
-    validate_diagnostics(&mut checker, object.get("diagnostics"));
+    let files = validate_files(&mut checker, object.get("files"));
+    validate_diagnostics(&mut checker, object.get("diagnostics"), files);
     validate_warnings(&mut checker, object.get("warnings"));
     validate_stdout(&mut checker, object);
 
@@ -233,7 +248,33 @@ pub fn validate(value: &Value) -> Result<(), SchemaErrors> {
     }
 }
 
-fn validate_diagnostics(checker: &mut Checker, entry: Option<&Value>) {
+/// `[proto.record.diag]`'s file table (wolf-lang#437): an array of non-empty
+/// path strings. Returns how many entries a diagnostic's `file` may index —
+/// `None` when the key is absent, which makes any `file` an orphan.
+fn validate_files(checker: &mut Checker, entry: Option<&Value>) -> Option<usize> {
+    let entry = entry?;
+    let Some(items) = entry.as_array() else {
+        checker.err(
+            "/files",
+            format!("expected an array of package-relative paths, found {}", kind_of(entry)),
+        );
+        return Some(0);
+    };
+    if items.is_empty() {
+        checker.err("/files", "a file table is present only when it indexes something; the entry is index 0");
+    }
+    for (index, item) in items.iter().enumerate() {
+        let pointer = format!("/files/{index}");
+        if let Some(text) = checker.string(&pointer, item)
+            && text.is_empty()
+        {
+            checker.err(pointer, "must not be empty");
+        }
+    }
+    Some(items.len())
+}
+
+fn validate_diagnostics(checker: &mut Checker, entry: Option<&Value>, files: Option<usize>) {
     let Some(entry) = entry else { return };
     let Some(items) = entry.as_array() else {
         checker.err(
@@ -255,12 +296,42 @@ fn validate_diagnostics(checker: &mut Checker, entry: Option<&Value>) {
         // `[proto.record.diag]`: exactly {code, span, severity}. A `message`
         // key here is the classic mistake (D22) and is caught by this loop.
         for key in fields.keys() {
-            if !matches!(key.as_str(), "code" | "span" | "severity") {
+            if !matches!(key.as_str(), "code" | "span" | "severity" | "file") {
                 checker.err(
                     format!("{base}/{key}"),
-                    "a protocol diagnostic carries only `code`, `span` and `severity` (messages are never part of the protocol)",
+                    "a protocol diagnostic carries only `code`, `span`, `severity` and, in a multi-file record, `file` (messages are never part of the protocol)",
                 );
             }
+        }
+        // wolf-lang#437: `file` indexes the record's `files` table. With no
+        // table it indexes nothing, and past the table's end it names no file
+        // — both are malformed, never read as "the entry".
+        if let Some(file) = fields.get("file") {
+            let pointer = format!("{base}/file");
+            match (file.as_u64(), files) {
+                (None, _) => checker.err(
+                    pointer,
+                    format!("expected an integer index into `files`, found {}", kind_of(file)),
+                ),
+                (Some(_), None) => checker.err(
+                    pointer,
+                    "a `file` index with no `files` table indexes nothing",
+                ),
+                (Some(index), Some(len)) if usize::try_from(index).map_or(true, |i| i >= len) => {
+                    checker.err(
+                        pointer,
+                        format!("index {index} is past the end of `files` ({len} entries)"),
+                    );
+                }
+                _ => {}
+            }
+        } else if files.is_some() {
+            // "When `files` is present, EVERY diagnostic carries `file`,
+            // including 0" — so a missing index is not a quiet "entry".
+            checker.err(
+                format!("{base}/file"),
+                "the record carries `files`, so every diagnostic carries a `file` index",
+            );
         }
         for key in ["code", "severity"] {
             match fields.get(key) {
@@ -539,6 +610,15 @@ mod tests {
         orphan["diagnostics"] = json!([{"code": "E0302", "span": [1, 2], "severity": "error", "file": 0}]);
         let message = reasons(&orphan);
         assert!(message.contains("/diagnostics/0/file"), "{message}");
+
+        // With a table present, a diagnostic without an index is malformed:
+        // every diagnostic carries `file` once `files` exists.
+        let mut partial = record.clone();
+        partial["diagnostics"] = json!([
+            {"code": "E0302", "span": [245, 249], "severity": "error", "file": 1},
+            {"code": "W0313", "span": [0, 3], "severity": "warning"}
+        ]);
+        assert!(reasons(&partial).contains("/diagnostics/1/file"), "{}", reasons(&partial));
 
         // Out of range.
         let mut far = record.clone();
