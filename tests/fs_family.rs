@@ -10,8 +10,9 @@
 //!
 //! Every test runs with the scratch directory as the process working
 //! directory, because the tier is rooted at the interpreter's cwd and the
-//! containment rule admits only a relative path that does not climb out of
-//! it. That is also what the corpus witnesses assume.
+//! containment rule admits only a path that RESOLVES inside it
+//! (`[os.fs.path.domain]`, is55). That is also what the corpus witnesses
+//! assume.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -381,26 +382,44 @@ fn a_rename_moves_bytes_no_text_reader_could_hold() {
 }
 
 #[test]
-fn a_live_run_writes_in_the_users_directory_and_an_observed_one_does_not() {
-    // is48's working-directory rule, as the two halves a user can see.
+fn both_front_doors_write_in_the_users_directory_and_an_embedded_observation_does_not() {
+    // The working-directory rule, as the halves a user can see (is48, and
+    // is55 for the `conform-run` half).
     //
-    // `lupin run` is the front door (is12): the program writes where the user
-    // is standing, exactly as `wolf run` does. `lupin conform-run` is an
-    // OBSERVATION, and an observation gets a private project root, because
-    // this crate runs many programs at once and a shared directory makes them
-    // interfere — measured, before the root existed: two concurrent exports
-    // of one corpus appended to one `log.txt` twice.
-    let dir = scratch("fs-live-vs-observed");
+    // `lupin run` is the front door (is12) and `lupin conform-run` is the
+    // protocol's (`[proto.invoke]`): each runs ONE program in its own
+    // process, so the program writes where the user is standing, exactly as
+    // `wolf run` and `wolf conform-run` do — `[os.fs.path]`: "a relative path
+    // resolves against the process's working directory, on every tier".
+    // Until is55 `conform-run` took is48's private root instead, and a
+    // program that read a file its harness had put there answered
+    // `not_found` (s182's `fs_path_symlink_in`).
+    //
+    // An observation EMBEDDED in this crate — the corpus walk, `diff-run`,
+    // the export, every in-process test — keeps the private root, because
+    // many programs share one process there and a shared directory makes
+    // them interfere (measured before the root existed: two concurrent
+    // exports of one corpus appended to one `log.txt` twice).
+    let dir = scratch("fs-doors");
     let source = "fn main() -> !int {\n\
-        \x20   fs_write_text(\"witness.txt\", \"here\")?\n\
-        \x20   print(\"wrote={fs_exists(\"witness.txt\")}\")\n\
+        \x20   fs_write_text(\"is55-door.txt\", \"here\")?\n\
+        \x20   print(\"wrote={fs_exists(\"is55-door.txt\")}\")\n\
         \x20   0\n\
         }\n";
     let entry = dir.join("main.lu");
     std::fs::write(&entry, source).expect("written");
 
-    // Observed: the program sees its own file, and the user's directory does
-    // not gain one.
+    // Embedded: the program sees its own file, and neither the user's
+    // directory nor this process's cwd gains one.
+    let (record, observed) =
+        wolf_interp::observe_record(&entry, source.as_bytes(), None);
+    assert_eq!(record.verdict.to_string(), "exit(0)", "{record:?}");
+    assert_eq!(observed.stdout, "wrote=true\n");
+    assert!(!dir.join("is55-door.txt").exists(), "an embedded observation wrote into the user's directory");
+    assert!(!Path::new("is55-door.txt").exists(), "or into the test process's cwd");
+
+    // `conform-run`: the same program, the same directory, and the file is
+    // the user's.
     let observed = Command::new(env!("CARGO_BIN_EXE_lupin"))
         .arg("conform-run")
         .arg("main.lu")
@@ -410,31 +429,59 @@ fn a_live_run_writes_in_the_users_directory_and_an_observed_one_does_not() {
     assert_eq!(observed.status.code(), Some(0), "{observed:?}");
     assert!(
         String::from_utf8_lossy(&observed.stdout).contains("wrote=true"),
-        "the observed program must really write its file: {}",
+        "{}",
         String::from_utf8_lossy(&observed.stdout)
     );
-    assert!(
-        !dir.join("witness.txt").exists(),
-        "an observation wrote into the user's directory"
+    assert_eq!(
+        std::fs::read_to_string(dir.join("is55-door.txt")).expect("the conform-run file"),
+        "here"
     );
+    std::fs::remove_file(dir.join("is55-door.txt")).expect("reset");
 
-    // Live: the same program, the same directory, and now the file is there.
+    // Live: likewise.
     let live = run_program(dir.as_path(), source);
     assert_eq!(live.status.code(), Some(0), "{live:?}");
     assert_eq!(stdout_of(&live), "wrote=true\n");
     assert_eq!(
-        std::fs::read_to_string(dir.join("witness.txt")).expect("a real file"),
+        std::fs::read_to_string(dir.join("is55-door.txt")).expect("a real file"),
         "here"
     );
 }
 
 #[test]
-fn two_concurrent_observations_of_one_program_do_not_interfere() {
+fn a_conform_run_reads_what_its_harness_put_in_the_cwd() {
+    // The discriminating observation behind s182's symlink row, as a test: no
+    // symlink anywhere, a REGULAR file the harness wrote before the run.
+    // lupin 0.1.38 answered `exit(1)` `error: not_found` here under
+    // `conform-run` and `t=here` under `lupin run`.
+    let dir = scratch("fs-harness-file");
+    std::fs::create_dir_all(dir.join("target")).expect("target/");
+    std::fs::write(dir.join("target").join("plain.txt"), "here").expect("planted");
+    std::fs::write(
+        dir.join("main.lu"),
+        "fn main() -> !int {\n    let t = fs_read_text(\"target/plain.txt\")?\n    print(\"t={t}\")\n    0\n}\n",
+    )
+    .expect("written");
+    let observed = Command::new(env!("CARGO_BIN_EXE_lupin"))
+        .args(["conform-run", "main.lu", "--json"])
+        .current_dir(&dir)
+        .output()
+        .expect("lupin observes");
+    let record: serde_json::Value = serde_json::from_slice(&observed.stdout).expect("a record");
+    assert_eq!(record["verdict"], "exit(0)", "{record}");
+    assert_eq!(record["stdout_inline"], "t=here\n", "{record}");
+}
+
+#[test]
+fn two_concurrent_embedded_observations_of_one_program_do_not_interfere() {
     // The defect the private root exists to remove, as a regression test: the
-    // same program, observed from several processes at once, against the same
-    // working directory. Before is48's root this raced — one run removed the
-    // file another was about to read (`error: not_found`), or two appends
-    // landed in one file (`log=one|one|twotwo`).
+    // same program observed from several threads of ONE process at once,
+    // which is what the corpus walk, the export and `cargo test` itself do.
+    // Before is48's root this raced — one run removed the file another was
+    // about to read (`error: not_found`), or two appends landed in one file
+    // (`log=one|one|twotwo`). (Several `conform-run` PROCESSES in one
+    // directory share it by design since is55, as several `wolf
+    // conform-run`s do: the protocol's door runs where it is invoked.)
     let dir = scratch("fs-concurrent-observations");
     // Write, append twice, read back: the shape that showed the interference.
     let source = "fn main() -> !int {\n\
@@ -452,33 +499,27 @@ fn two_concurrent_observations_of_one_program_do_not_interfere() {
     let entry = dir.join("main.lu");
     std::fs::write(&entry, source).expect("written");
 
-    let children: Vec<_> = (0..6)
+    let threads: Vec<_> = (0..6)
         .map(|_| {
-            Command::new(env!("CARGO_BIN_EXE_lupin"))
-                .arg("conform-run")
-                .arg("main.lu")
-                .current_dir(&dir)
-                // `spawn` inherits stdout unless told otherwise, and
-                // `wait_with_output` would then hand back nothing.
-                .stdout(std::process::Stdio::piped())
-                .spawn()
-                .expect("lupin observes")
+            let entry = entry.clone();
+            std::thread::spawn(move || {
+                wolf_interp::observe_record(&entry, source.as_bytes(), None)
+            })
         })
         .collect();
-    for child in children {
-        let output = child.wait_with_output().expect("a child finishes");
-        assert_eq!(output.status.code(), Some(0), "{output:?}");
-        assert!(
-            String::from_utf8_lossy(&output.stdout).contains("log=one|two"),
-            "concurrent observations interfered: {}",
-            String::from_utf8_lossy(&output.stdout)
+    for thread in threads {
+        let (record, observed) = thread.join().expect("an observation finishes");
+        assert_eq!(record.verdict.to_string(), "exit(0)", "{record:?}");
+        assert_eq!(
+            observed.stdout, "log=one|two\n",
+            "concurrent observations interfered"
         );
     }
 }
 
 #[cfg(unix)]
 #[test]
-fn an_observed_programs_socket_lands_beside_its_files_and_not_in_the_users_directory() {
+fn an_embedded_observations_socket_lands_beside_its_files_and_not_in_the_process_cwd() {
     // The coherence bug the private root introduced and this pins shut: a
     // unix socket is a filesystem object, so `net_listen_unix` has to resolve
     // it exactly where `fs_exists` looks. `corpus/net/unix_echo.lu` is the
@@ -486,45 +527,41 @@ fn an_observed_programs_socket_lands_beside_its_files_and_not_in_the_users_direc
     // binds it, and ends with `cleaned = !fs_exists(path)`. When the two
     // families disagreed, that sweep swept a path nothing bound, `cleaned`
     // was vacuously true, and a stale socket left in the real directory made
-    // the bind fail at random.
+    // the bind fail at random. The property belongs to the EMBEDDED door —
+    // the one with a private root — so it is asserted there; a stale file is
+    // planted in this test process's own cwd (cargo's: the package root) under
+    // a name no other test uses.
+    let name = format!("target/is55-probe-{}.sock", std::process::id());
+    std::fs::create_dir_all("target").expect("the package's target/");
+    std::fs::write(&name, b"stale").expect("stale planted in the process cwd");
+    let source = format!(
+        "fn main() -> !int {{\n\
+         \x20   let path = \"{name}\"\n\
+         \x20   let before = fs_exists(path)\n\
+         \x20   let srv = net_listen_unix(path)?\n\
+         \x20   let during = fs_exists(path)\n\
+         \x20   net_close(srv)?\n\
+         \x20   print(\"before={{before}} during={{during}} after={{fs_exists(path)}}\")\n\
+         \x20   0\n\
+         }}\n"
+    );
     let dir = scratch("fs-socket-coherence");
-    std::fs::create_dir_all(dir.join("target")).expect("a target/ to bind under");
-    let source = "fn main() -> !int {\n\
-        \x20   let path = \"target/probe.sock\"\n\
-        \x20   let before = fs_exists(path)\n\
-        \x20   let srv = net_listen_unix(path)?\n\
-        \x20   let during = fs_exists(path)\n\
-        \x20   net_close(srv)?\n\
-        \x20   print(\"before={before} during={during} after={fs_exists(path)}\")\n\
-        \x20   0\n\
-        }\n";
     let entry = dir.join("main.lu");
-    std::fs::write(&entry, source).expect("written");
-
-    // A stale socket in the USER's directory must not reach an observation.
-    std::fs::write(dir.join("target").join("probe.sock"), b"stale").expect("stale planted");
-
-    let observed = Command::new(env!("CARGO_BIN_EXE_lupin"))
-        .arg("conform-run")
-        .arg("main.lu")
-        .current_dir(&dir)
-        .output()
-        .expect("lupin observes");
-    assert_eq!(observed.status.code(), Some(0), "{observed:?}");
-    let text = String::from_utf8_lossy(&observed.stdout);
+    std::fs::write(&entry, &source).expect("written");
+    let (record, observed) = wolf_interp::observe_record(&entry, source.as_bytes(), None);
+    let stale = std::fs::read_to_string(&name);
+    std::fs::remove_file(&name).expect("the planted file removed");
+    assert_eq!(record.verdict.to_string(), "exit(0)", "{record:?}");
     // `before=false` is the whole point: the observation never saw the stale
     // file, because it is not in the observation's directory. `during=true`
     // is the other half — the bind really made a file, and `fs_exists` really
     // found it, so the two families agree.
-    assert!(
-        text.contains("before=false during=true after=false"),
-        "the fs and net families disagree about where a socket path is: {text}"
-    );
-    // And the user's own stale file is untouched.
     assert_eq!(
-        std::fs::read_to_string(dir.join("target").join("probe.sock")).expect("still there"),
-        "stale"
+        observed.stdout, "before=false during=true after=false\n",
+        "the fs and net families disagree about where a socket path is"
     );
+    // And the process's own stale file was untouched.
+    assert_eq!(stale.expect("still there"), "stale");
 }
 
 #[test]
