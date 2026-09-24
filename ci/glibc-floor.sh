@@ -25,7 +25,9 @@ bin=${1:?usage: ci/glibc-floor.sh BINARY [FLOOR_MINOR]}
 floor=${2:-35}
 
 test -f "$bin" || { echo "::error::no binary at $bin"; exit 1; }
-echo "host libc: $(ldd --version 2>/dev/null | head -1 || echo unknown)"
+# `sed -n 1p` reads to the end: `head -1` would close the pipe early, and
+# under pipefail the SIGPIPE it hands `ldd` fails the substitution.
+echo "host libc: $(ldd --version 2>&1 | sed -n 1p)"
 versions=$(objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV)
 need=$(printf '%s\n' "$versions" | tail -1)
 test -n "$need" || { echo "::error::objdump -T named no GLIBC version in $bin — the probe saw nothing"; exit 1; }
