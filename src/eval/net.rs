@@ -86,10 +86,10 @@ use std::collections::VecDeque;
 use std::io::{IoSlice, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 // `[os.net.unix]`'s half only: a socket PATH exists where the family does.
-// Unconditional, these are three unused imports on windows and `-D warnings`
-// is a gate, not a preference.
+// Unconditional, these are unused imports on windows and `-D warnings` is a
+// gate, not a preference.
 #[cfg(unix)]
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::diag::Span;
@@ -744,21 +744,23 @@ impl NetTable {
 ///
 /// The v0 discipline the TCP family states as "loopback + port 0" has a
 /// path-shaped twin: a socket path is a host filesystem object, so the
-/// admitted shape is a RELATIVE path that does not climb out of the working
-/// directory — `target/x.sock`, which is what the corpus witness writes.
-/// Anything else is refused BY NAME (`unsupported`, the by-name refusal and
-/// never the `unsupported` ROW, which would be a lie about the host).
+/// admitted shape is a path that RESOLVES inside the working directory —
+/// `target/x.sock`, which is what the corpus witness writes. Anything else is
+/// refused BY NAME (`unsupported`, the by-name refusal and never the
+/// `unsupported` ROW, which would be a lie about the host).
 ///
 /// This rule was written when the machine declined the host's filesystem
 /// outright (wolf-interp#18 item 6, `[proto.cmp.defined-divergence]`). is48
 /// built the fs tier on the maintainer's ruling, and the rule OUTLIVED its
-/// original premise rather than retiring with it: [`super::fs::contained`] is
-/// the same check, for the reason that survives — the corpus walk, the
-/// differ, the explorer and the fuzzer all run corpus programs in-process, so
-/// a path that climbs out is the one bug here that could damage the machine
-/// it runs on. The two checks are spelled separately on purpose: they answer
-/// to different clauses (`[os.net.unix]` and `[os.fs]`), and either could
-/// narrow without the other.
+/// original premise rather than retiring with it, for the reason that
+/// survives — the corpus walk, the differ, the explorer and the fuzzer all
+/// run corpus programs in-process, so a path that lands outside is the one
+/// bug here that could damage the machine it runs on. The two checks were
+/// spelled separately until `[os.fs.path.domain]` (wolf-lang#386, ruled
+/// 2026-09-24) made them one object: "`[os.net.unix]`'s socket path is the
+/// same object and takes the same answer". So both ask
+/// [`super::fs::resolves_inside`] now, and both answer the resolved path
+/// rather than the lexical one (is55).
 ///
 /// `base` is the OBSERVATION root when there is one (is48): a socket file is
 /// a filesystem object, so it belongs in the same directory as everything
@@ -770,20 +772,21 @@ impl NetTable {
 #[cfg(unix)]
 fn socket_path(path: &str, name: &str, base: Option<&Path>) -> NetResult<PathBuf> {
     let candidate = Path::new(path);
-    let escapes = candidate.is_absolute()
-        || candidate.components().any(|c| {
-            matches!(
-                c,
-                Component::ParentDir | Component::RootDir | Component::Prefix(_)
-            )
-        });
-    if escapes {
-        return Err(NetErr::Outside(format!(
-            "`{name}(\"{path}\")` names a path outside the working directory; a unix socket \
-             path is a host filesystem object, and this machine's fs surface (`eval::fs`, \
-             is48) admits only a relative path that does not climb out — the shape is \
-             refused by name rather than observed"
-        )));
+    // `[os.fs.path.domain]`: "`[os.net.unix]`'s socket path is the same
+    // object and takes the same answer" — resolved against the tree, `..`
+    // applied and symlinks followed, as [`super::fs::resolves_inside`] does
+    // for the fs family (is55; lexical until then).
+    let root = match base {
+        Some(base) => base.to_path_buf(),
+        None => std::env::current_dir().map_err(|_| {
+            NetErr::Outside(format!(
+                "`{name}(\"{path}\")` cannot be served: this machine could not read the \
+                 working directory it would resolve the path against"
+            ))
+        })?,
+    };
+    if !super::fs::resolves_inside(&root, candidate) {
+        return Err(NetErr::Outside(super::fs::outside_reason(name, path)));
     }
     Ok(base.map_or_else(|| candidate.to_path_buf(), |base| base.join(candidate)))
 }
