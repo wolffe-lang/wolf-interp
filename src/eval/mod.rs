@@ -729,6 +729,16 @@ impl Machine {
         self
     }
 
+    /// `lupin conform-run`'s door: every machine this process builds from now
+    /// on resolves a program's paths against the process's own working
+    /// directory, as the compiler's `conform-run` does (`[os.fs.path]`), not
+    /// against a private observation root. For a process that observes ONE
+    /// program; a walk that observes many in one process must not call it.
+    #[cfg(not(target_family = "wasm"))]
+    pub fn observe_in_the_process_cwd() {
+        fs::serve_the_process_cwd();
+    }
+
     /// Mark this machine a front door a PERSON is using, so file paths land
     /// in their own working directory rather than a private observation root
     /// ([`Machine::is_live`]). `lupin run` and the REPL both take it.
@@ -783,7 +793,7 @@ impl Machine {
     /// where the tier declines — it would be dead code and `-D warnings` red.
     #[cfg(not(target_family = "wasm"))]
     pub(crate) fn is_live(&self) -> bool {
-        self.shared.fs_user_cwd
+        self.shared.fs_user_cwd || fs::process_cwd()
     }
 
     /// Stack the tree-walk runs on.

@@ -80,6 +80,33 @@ use super::rules::Rule;
 use super::value::{ElemTy, IntTy, Value};
 use super::{Machine, Signal};
 
+/// Whether this PROCESS observes its program in its own working directory —
+/// `lupin conform-run`'s door (is55).
+///
+/// `[os.fs.path]`: "a relative path resolves against the process's working
+/// directory, on every tier". An observation embedded in a walk (the corpus
+/// harness, `diff-run`, the export, the explorer, the fuzzer, every test
+/// that observes in-process) runs many programs in one process and keeps
+/// is48's private root, which is what stops them interfering. The
+/// `conform-run` CLI observes ONE program per process, like the compiler's
+/// `conform-run`, and until is55 it took the private root too — so a program
+/// reading a file its harness had put in the cwd, or writing through a link
+/// its setup had made there, answered `not_found`: a row about a directory
+/// the program was never run in. s182's `fs_path_symlink_in` witness is that
+/// row, and it was never about symlinks (`lupin run` served it at 0.1.38).
+static PROCESS_CWD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Make every machine this process builds observe in the process's cwd.
+/// Called once, by `lupin conform-run`, before it observes.
+pub(crate) fn serve_the_process_cwd() {
+    PROCESS_CWD.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// See [`PROCESS_CWD`].
+pub(crate) fn process_cwd() -> bool {
+    PROCESS_CWD.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// A D30 row tag, ready for the builtin's `error(tag)`.
 pub(crate) type Row = &'static str;
 

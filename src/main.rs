@@ -1317,6 +1317,9 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
         Ok(source) => source,
         Err(code) => return code,
     };
+    // One program, one process: its paths resolve against the cwd it was
+    // invoked in, as the compiler's do (`[os.fs.path]`, is55).
+    wolf_interp::eval::Machine::observe_in_the_process_cwd();
 
     if let Some(budget) = args.explore {
         return run_explore(args, budget);
