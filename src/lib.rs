@@ -403,6 +403,12 @@ fn record_of(
         }));
     }
 
+    // `[proto.record.trap]`: only on a `trap(kind)` verdict, and only when the
+    // program supplied the words.
+    let trap_message = match (&observation.verdict, &observation.trap) {
+        (Verdict::Trap(_), Some(trap)) => trap.program_message.clone(),
+        _ => None,
+    };
     let record = ObservationRecord {
         protocol: PROTOCOL_VERSION,
         impl_name: IMPL_NAME.to_owned(),
@@ -414,6 +420,7 @@ fn record_of(
         diagnostics,
         warnings: observation.warnings.clone(),
         verdict: observation.verdict,
+        trap_message,
         stdout_sha256: digest,
         stdout_inline: inline,
         extensions,
@@ -478,6 +485,7 @@ pub fn unsupported_record(file: &Path) -> ObservationRecord {
         diagnostics: Vec::new(),
         warnings: None,
         verdict: Verdict::Unsupported,
+        trap_message: None,
         stdout_sha256: None,
         stdout_inline: None,
         extensions: BTreeMap::new(),

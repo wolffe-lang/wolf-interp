@@ -167,6 +167,13 @@ pub struct ObservationRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub warnings: Option<Vec<Warning>>,
     pub verdict: Verdict,
+    /// `[proto.record.trap]` (s169; wolf-interp#129 item 2): the program's
+    /// own words for its fault — a failing `assert(cond, msg)`'s `msg` —
+    /// present only on a `trap(kind)` verdict and only where this machine
+    /// holds the text; honest-absent otherwise. Never compared
+    /// (`[proto.cmp.defined-divergence]`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trap_message: Option<String>,
     #[serde(default)]
     pub stdout_sha256: Option<String>,
     #[serde(default)]
@@ -270,6 +277,7 @@ mod tests {
             }],
             warnings: None,
             verdict: Verdict::Unsupported,
+            trap_message: None,
             stdout_sha256: None,
             stdout_inline: None,
             extensions: BTreeMap::new(),

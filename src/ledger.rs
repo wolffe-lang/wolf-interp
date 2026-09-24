@@ -338,6 +338,7 @@ mod tests {
             diagnostics: Vec::new(),
             warnings: None,
             verdict,
+            trap_message: None,
             stdout_sha256: None,
             stdout_inline: None,
             extensions: BTreeMap::new(),

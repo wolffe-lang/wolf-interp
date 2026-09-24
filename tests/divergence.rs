@@ -46,6 +46,7 @@ fn counterparty(ours: &ObservationRecord) -> ObservationRecord {
         diagnostics: ours.diagnostics.clone(),
         warnings: ours.warnings.clone(),
         verdict: ours.verdict.clone(),
+        trap_message: None,
         stdout_sha256: None,
         stdout_inline: None,
         extensions: BTreeMap::new(),
