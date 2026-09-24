@@ -930,3 +930,139 @@ fn main() -> !int {
     let run = run(source);
     assert_eq!(exit_code(&run), 0);
 }
+
+// ---------------------------------------------------------------------------
+// wolf-interp#130: the handles have type names, and a proc talks back
+// (`[conc.proc.handle]`, `[conc.proc.join]` — wolf-lang s170, B21's rulings)
+// ---------------------------------------------------------------------------
+
+/// One program, one directory (D32: a directory is a module), observed the way
+/// `conform-run --json` observes it.
+fn record_of(name: &str, source: &str) -> wolf_interp::protocol::ObservationRecord {
+    let dir = std::env::temp_dir().join(format!("lupin-is54-conc-{name}"));
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let path = dir.join("main.lu");
+    std::fs::write(&path, source).expect("writable");
+    wolf_interp::observe_record(&path, source.as_bytes(), None).0
+}
+
+/// `p.join()` yields the proc's completion value as a VALUE — each join its own
+/// proc's — and the handle crosses a function boundary spelled `Proc[int]`.
+/// Before 0.1.39 the parameter was E0301 ("nothing named `Proc`") and `join`
+/// was `unsupported` (no such method on a proc handle).
+#[test]
+fn a_proc_is_joined_for_its_value_and_its_handle_is_spelled_proc_of_t() {
+    let source = r#"fn twice(n: int) -> int { n * 2 }
+fn plus_one(n: int) -> int { n + 1 }
+
+fn collect(p: Proc[int]) -> !int {
+    p.join()
+}
+
+fn main() -> !int {
+    let a = spawn proc twice(21)
+    let b = spawn proc plus_one(6)
+    let x = a.join() else |_| { return 1 }
+    let y = collect(b) else |_| { return 2 }
+    print("{x} {y}")
+    0
+}
+"#;
+    let run = run(source);
+    assert_eq!(exit_code(&run), 0);
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "42 7\n");
+}
+
+/// The four abnormal classes arrive as ROW TAGS — `T ! {error, killed,
+/// cancelled, fault}`, payload-free at v1 — and a join after the proc has
+/// already exited answers at once.
+#[test]
+fn a_join_reads_each_abnormal_exit_as_a_tag_and_a_late_join_never_blocks() {
+    let source = r#"fn failing() -> !int { Kaboom }
+
+fn sleeper() -> !int {
+    let never = channel[int](0)
+    let v = never.recv()?
+    v
+}
+
+fn divide(n: int) -> int { 10 / n }
+
+fn quick() -> int { 5 }
+
+fn main() -> !int {
+    let e = spawn proc failing()
+    let k = spawn proc sleeper()
+    k.kill()
+    let f = spawn proc divide(0)
+    let q = spawn proc quick()
+    let first = q.join() else |_| { return 9 }
+    let again = q.join() else |_| { return 9 }
+    print("{first} {again}")
+    let a = e.join() else |t| { print("{t}"); 0 }
+    let b = k.join() else |t| { print("{t}"); 0 }
+    let c = f.join() else |t| { print("{t}"); 0 }
+    a + b + c
+}
+"#;
+    let run = run(source);
+    assert_eq!(exit_code(&run), 0);
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "5 5\nerror\nkilled\nfault\n"
+    );
+}
+
+/// `fn fan_out(s: Scope)` is how "takes the handle as a parameter" is
+/// written (`[conc.task.scope]`).
+#[test]
+fn a_scope_handle_crosses_a_function_boundary_spelled_scope() {
+    let source = r#"fn fan_out(s: Scope, out: channel[int]) {
+    s.spawn(fn() { out.send(4) })
+    s.spawn(fn() { out.send(5) })
+}
+
+fn main() -> !int {
+    let out = channel[int](2)
+    scope s {
+        fan_out(s, out)
+    }
+    let a = out.recv()?
+    let b = out.recv()?
+    print("{a + b}")
+    0
+}
+"#;
+    let run = run(source);
+    assert_eq!(exit_code(&run), 0);
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "9\n");
+}
+
+/// The arity is the ruling's substance: `Scope` takes NO argument and `Proc`
+/// takes exactly one, the type its join collects — E0401 at the whole type,
+/// the counterparty's code and span (wolf 0.2.16 `conform-run --json
+/// --checked`: `Scope[int]` at [8, 18], `Proc` at [8, 12], `Proc[int, int]`
+/// at [8, 22]). The lowercase keywords in type position are E0206 at parse
+/// ([8, 13] and [8, 12]).
+#[test]
+fn the_handle_names_carry_their_arity_and_the_keywords_are_not_types() {
+    let cases = [
+        ("scope-arg", "fn f(s: Scope[int]) -> int { 1 }\nfn main() -> !int { 0 }\n", "fail(E0401)", [8, 18], "resolve"),
+        ("proc-bare", "fn f(p: Proc) -> int { 1 }\nfn main() -> !int { 0 }\n", "fail(E0401)", [8, 12], "resolve"),
+        ("proc-two", "fn f(p: Proc[int, int]) -> int { 1 }\nfn main() -> !int { 0 }\n", "fail(E0401)", [8, 22], "resolve"),
+        ("scope-kw", "fn f(s: scope) -> int { 1 }\nfn main() -> !int { 0 }\n", "fail(E0206)", [8, 13], "parse"),
+        ("proc-kw", "fn f(p: proc) -> int { 1 }\nfn main() -> !int { 0 }\n", "fail(E0206)", [8, 12], "parse"),
+    ];
+    for (name, source, verdict, span, phase) in cases {
+        let record = record_of(name, source);
+        assert_eq!(record.verdict.to_string(), verdict, "{name}: {record:?}");
+        assert_eq!(record.phase_reached.to_string(), phase, "{name}");
+        assert_eq!(record.diagnostics[0].span, span, "{name}: {record:?}");
+    }
+    // And the two admitted spellings resolve.
+    let ok = record_of(
+        "handles-ok",
+        "fn f(s: Scope) -> int { 1 }\nfn g(p: Proc[int]) -> int { 2 }\nfn main() -> !int { 0 }\n",
+    );
+    assert_eq!(ok.verdict.to_string(), "exit(0)", "{ok:?}");
+}
