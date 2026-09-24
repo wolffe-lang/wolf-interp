@@ -1170,6 +1170,7 @@ mod tests {
             file: "corpus/t.lu".to_owned(),
             phase_reached: phase,
             seeded: false,
+            files: None,
             diagnostics: Vec::new(),
             warnings: None,
             verdict,
@@ -1185,6 +1186,7 @@ mod tests {
             code: code.to_owned(),
             span,
             severity: "error".to_owned(),
+            file: None,
         }];
         r
     }
@@ -1431,11 +1433,13 @@ mod tests {
                 code: "W0314".to_owned(),
                 span: [100, 104],
                 severity: "warning".to_owned(),
+                file: None,
             },
             Diagnostic {
                 code: "E0303".to_owned(),
                 span: [18, 28],
                 severity: "error".to_owned(),
+                file: None,
             },
         ];
         let out = compare_deep(&a, &b, false);

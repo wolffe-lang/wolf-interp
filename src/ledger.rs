@@ -335,6 +335,7 @@ mod tests {
             file: "t.lu".to_owned(),
             phase_reached: Phase::Run,
             seeded: false,
+            files: None,
             diagnostics: Vec::new(),
             warnings: None,
             verdict,

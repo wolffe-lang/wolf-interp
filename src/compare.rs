@@ -228,6 +228,7 @@ mod tests {
             file: "corpus/grammar/semicolon.lu".to_owned(),
             phase_reached: phase,
             seeded: false,
+            files: None,
             diagnostics: Vec::new(),
             warnings: None,
             verdict,
@@ -243,6 +244,7 @@ mod tests {
             code: code.to_owned(),
             span,
             severity: "error".to_owned(),
+            file: None,
         }];
         r
     }

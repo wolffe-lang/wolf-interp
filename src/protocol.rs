@@ -132,6 +132,13 @@ pub struct Diagnostic {
     /// Byte-offset half-open span `[start, end)`.
     pub span: [u64; 2],
     pub severity: String,
+    /// `[proto.record.diag]`'s file index (wolf-lang#437, the shape s181
+    /// fixed): the index into the record's `files` table of the file this
+    /// span is an offset into. Present on EVERY diagnostic when the record
+    /// carries `files`, absent on all of them otherwise — and absent names
+    /// the entry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<u64>,
 }
 
 /// One warning observation: `{code, span}` (`[proto.record.warn]`, s67).
@@ -158,6 +165,13 @@ pub struct ObservationRecord {
     pub file: String,
     pub phase_reached: Phase,
     pub seeded: bool,
+    /// `[proto.record.diag]`'s file table (wolf-lang#437): package-relative
+    /// `/`-separated paths, the entry at index 0, then each other file a
+    /// diagnostic's span lies in, once, in order of first appearance.
+    /// Present only when some diagnostic lies outside the entry, so a
+    /// single-file record is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files: Option<Vec<String>>,
     pub diagnostics: Vec<Diagnostic>,
     /// `[proto.record.warn]` (additive within protocol 1): the warning
     /// observations after source-level `#[allow]` suppression. `None` is
@@ -270,10 +284,12 @@ mod tests {
             file: "corpus/hello.lu".to_owned(),
             phase_reached: Phase::None,
             seeded: false,
+            files: None,
             diagnostics: vec![Diagnostic {
                 code: "E1002".to_owned(),
                 span: [120, 133],
                 severity: "error".to_owned(),
+                file: None,
             }],
             warnings: None,
             verdict: Verdict::Unsupported,

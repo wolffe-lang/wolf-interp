@@ -43,6 +43,7 @@ fn counterparty(ours: &ObservationRecord) -> ObservationRecord {
         file: ours.file.clone(),
         phase_reached: ours.phase_reached,
         seeded: false,
+        files: None,
         diagnostics: ours.diagnostics.clone(),
         warnings: ours.warnings.clone(),
         verdict: ours.verdict.clone(),
@@ -84,6 +85,7 @@ fn a_seeded_code_disagreement_files_a_span_or_code_divergence() {
             ours.diagnostics[0].span[1] + 8,
         ],
         severity: "error".to_owned(),
+        file: None,
     }];
 
     let divergence = compare::compare(&ours, &theirs).expect("a span disagreement is a divergence");
@@ -204,6 +206,7 @@ fn a_pass_meets_each_verdict_as_proto_cmp_pass_rules() {
         code: "E0301".to_owned(),
         span: [3, 7],
         severity: "error".to_owned(),
+        file: None,
     }];
     let divergence = compare::compare(&stopped, &rejects).expect("pass against fail diverges");
     assert_eq!(divergence.class, Class::VerdictMismatch);

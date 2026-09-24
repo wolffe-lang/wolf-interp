@@ -157,6 +157,11 @@ pub struct Diag {
     /// The fix, when the refusal knows one (wolf-interp#56). Rendered as a
     /// second line; absent from `to_protocol`, like the message.
     pub help: Option<Help>,
+    /// The file the span is an offset into, as the loader named it — `None`
+    /// for the entry file (or a buffer). Never on the wire as a path:
+    /// `[proto.record.diag]`'s file index (wolf-lang#437) is computed from it
+    /// when the record is built, package-relative.
+    pub file: Option<String>,
 }
 
 impl Diag {
@@ -172,7 +177,16 @@ impl Diag {
             anchor,
             message: message.into(),
             help: None,
+            file: None,
         }
+    }
+
+    /// Names the file the span lies in (wolf-lang#437), for a check that
+    /// walks a module's files and so knows which one it is reading.
+    #[must_use]
+    pub fn in_file(mut self, file: impl Into<String>) -> Diag {
+        self.file = Some(file.into());
+        self
     }
 
     /// Attaches the fix suggestion (wolf-interp#56).
@@ -189,6 +203,7 @@ impl Diag {
             code: self.code.to_owned(),
             span: [self.span.start as u64, self.span.end as u64],
             severity: "error".to_owned(),
+            file: None,
         }
     }
 
