@@ -31,8 +31,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # tier-1 hosts: linux x86-64, linux aarch64, macOS aarch64, windows x86-64
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+        # tier-1 hosts: linux x86-64, linux aarch64, macOS aarch64, windows x86-64.
+        # The two linux archives build on 22.04 — the oldest image GitHub
+        # offers — so their glibc floor is 2.35 (wolf-lang#447, the lupin
+        # half): 0.1.38's, built on ubuntu-latest (24.04), imported
+        # GLIBC_2.39 through two weak symbols Rust std's spawn path links
+        # when the build host's libc has them (`pidfd_spawnp`,
+        # `pidfd_getpid`), and did not start on Ubuntu 22.04 LTS at all.
+        # wolf 0.2.16 moved the same way (wolf-lang 0320443d). The step
+        # `the glibc floor` below measures it on the binary that ships.
+        os: [ubuntu-22.04, ubuntu-22.04-arm, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -93,6 +101,15 @@ jobs:
             "lupin ${version} "*) ;;
             *) echo "::error::--version does not name the release: $out"; exit 1 ;;
           esac
+
+      # The floor, measured on the binary that ships rather than assumed from
+      # the runner (wolf-lang#447): the highest GLIBC symbol version it
+      # imports, printed, and held at the 2.35 floor README states. A weak
+      # reference counts — the loader refuses a missing version node whether
+      # or not the symbol is weak, which is exactly how 0.1.38 failed.
+      - name: the glibc floor
+        if: runner.os == 'Linux'
+        run: ci/glibc-floor.sh target/release/lupin
 
       # Archive layout: one directory, so an unpack cannot scatter files into
       # the user's cwd. `.zip` on Windows and `.tar.gz` everywhere else — the
