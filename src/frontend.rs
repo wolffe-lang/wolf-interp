@@ -43,7 +43,7 @@
 //! `x-unsupported` extension key (`[proto.record.ext]`; the verdict itself
 //! carries no payload, per `[proto.record.verdict]`).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::diag::Diag;
 use crate::eval::prov::UbFinding;
@@ -93,6 +93,17 @@ pub struct Observation {
     /// `Err` when the region forest invariant broke during the run — an
     /// interpreter bug, surfaced rather than swallowed.
     pub forest: Result<(), String>,
+    /// The file each entry of `warnings` lies in, as the loader named it
+    /// (wolf-lang#437); index for index with `warnings`.
+    pub warning_files: Vec<String>,
+    /// `[proto.record.diag]`'s file table (wolf-lang#437), package-relative,
+    /// the entry at index 0 — `Some` only when a diagnostic lies outside the
+    /// entry. When it is `Some`, every entry of `diagnostics` carries its
+    /// `file` index already and `warning_file_index` holds the warnings'.
+    pub files: Option<Vec<String>>,
+    /// The `files` index of each entry of `warnings`, for the warning-severity
+    /// diagnostics the record builds from them. Empty when `files` is `None`.
+    pub warning_file_index: Vec<u64>,
 }
 
 impl Observation {
@@ -120,6 +131,9 @@ impl Observation {
             leaks: Vec::new(),
             host_leaks: Vec::new(),
             forest: Ok(()),
+            warning_files: Vec::new(),
+            files: None,
+            warning_file_index: Vec::new(),
         }
     }
 
@@ -258,8 +272,100 @@ pub fn observe_buffer(
     )
 }
 
+/// [`observe_with_spans`], then `[proto.record.diag]`'s file index
+/// (wolf-lang#437) resolved against the package the entry roots.
 #[allow(clippy::too_many_arguments)]
 fn observe_with(
+    file: Option<&Path>,
+    source: &[u8],
+    requested: Option<Phase>,
+    trace: crate::eval::Trace,
+    request: &SchedRequest,
+    live: bool,
+    std_root: Option<&Path>,
+) -> Observation {
+    let mut observation =
+        observe_with_spans(file, source, requested, trace, request, live, std_root);
+    if let Some(entry) = file {
+        attribute_files(&mut observation, entry, std_root);
+    }
+    observation
+}
+
+/// `[proto.record.diag]`'s file index (wolf-lang#437, the shape s181 fixed on
+/// the issue). A span is a byte range in ONE file and a package is a
+/// directory of files, so when any diagnostic — the rejection or a
+/// warning-severity observation — lies outside the entry, the record names
+/// the files: package-relative, `/`-separated, no leading `./`, the entry at
+/// index 0, then each other file once in order of first appearance in
+/// `diagnostics`, and a std module as `std/` plus its path under the std
+/// root. Otherwise nothing is added, so a single-file record — and a
+/// multi-module record whose diagnostics all sit in the entry — is exactly
+/// what it was.
+fn attribute_files(observation: &mut Observation, entry: &Path, std_root: Option<&Path>) {
+    fn strip_dot(path: &Path) -> PathBuf {
+        path.components()
+            .filter(|component| !matches!(component, std::path::Component::CurDir))
+            .collect()
+    }
+    let package_root = strip_dot(entry.parent().unwrap_or_else(|| Path::new("")));
+    let env_root = std::env::var_os("LUPIN_STD").map(PathBuf::from);
+    let std_root = std_root.map(Path::to_path_buf).or(env_root).map(|root| strip_dot(&root));
+    let relative = |raw: &str| -> String {
+        let path = strip_dot(Path::new(raw));
+        if let Ok(inside) = path.strip_prefix(&package_root) {
+            return crate::slash_path(inside);
+        }
+        if let Some(root) = &std_root
+            && let Ok(inside) = path.strip_prefix(root)
+        {
+            return format!("std/{}", crate::slash_path(inside));
+        }
+        crate::slash_path(&path)
+    };
+    let entry_path = relative(&crate::slash_path(entry));
+
+    // Each diagnostic's file, in the order the record will list them: the
+    // rejection (or nothing), then the warnings.
+    let rejection = observation
+        .detail
+        .as_ref()
+        .and_then(|diag| diag.file.as_deref())
+        .map_or_else(|| entry_path.clone(), &relative);
+    let mut order: Vec<String> = observation
+        .diagnostics
+        .iter()
+        .map(|_| rejection.clone())
+        .collect();
+    let warned = observation.warnings.as_ref().map_or(0, Vec::len);
+    order.extend((0..warned).map(|at| {
+        observation
+            .warning_files
+            .get(at)
+            .map_or_else(|| entry_path.clone(), |raw| relative(raw))
+    }));
+    if order.iter().all(|path| *path == entry_path) {
+        return;
+    }
+    let mut files = vec![entry_path];
+    let mut index_of = |path: &String| -> u64 {
+        let at = files.iter().position(|known| known == path).unwrap_or_else(|| {
+            files.push(path.clone());
+            files.len() - 1
+        });
+        u64::try_from(at).unwrap_or(u64::MAX)
+    };
+    let indices: Vec<u64> = order.iter().map(&mut index_of).collect();
+    let (rejections, warnings) = indices.split_at(observation.diagnostics.len());
+    for (diagnostic, index) in observation.diagnostics.iter_mut().zip(rejections) {
+        diagnostic.file = Some(*index);
+    }
+    observation.warning_file_index = warnings.to_vec();
+    observation.files = Some(files);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn observe_with_spans(
     file: Option<&Path>,
     source: &[u8],
     requested: Option<Phase>,
@@ -324,7 +430,7 @@ fn observe_with(
                 .and_then(Path::parent)
                 .and_then(|dir| Path::new(&module).strip_prefix(dir).ok())
                 .map_or_else(|| module.clone(), crate::slash_path);
-            let mut observation = Observation::failed(Phase::Parse, *diag);
+            let mut observation = Observation::failed(Phase::Parse, (*diag).in_file(module.clone()));
             observation.reason = Some(format!("in module file `{display}`"));
             return observation;
         }
@@ -341,8 +447,10 @@ fn observe_with(
     // whenever it runs warning analyses", and it now does.
     let analysis = crate::lint::analyze(&program);
     let warnings = Some(analysis.warnings);
+    let warning_files = analysis.warning_files;
     let attach = |mut observation: Observation| {
         observation.warnings = warnings.clone();
+        observation.warning_files = warning_files.clone();
         observation
     };
     // The shared admission ladder (issue #22): the module laws the resolve
@@ -411,6 +519,7 @@ fn observe_with(
         Outcome::Unsupported(reason) => Observation::unsupported(DEEPEST_STATIC, reason),
     };
     observation.warnings = warnings;
+    observation.warning_files = warning_files;
     observation.stdout = run.stdout;
     observation.trace = run.trace;
     observation.leaks = run.leaks;

@@ -396,10 +396,19 @@ fn record_of(
     // not run, and honest-absent is the posture.
     let mut diagnostics = observation.diagnostics;
     if let Some(warns) = &observation.warnings {
-        diagnostics.extend(warns.iter().map(|warning| protocol::Diagnostic {
-            code: warning.code.clone(),
-            span: warning.span,
-            severity: "warning".to_owned(),
+        // wolf-lang#437: with a file table, every diagnostic carries its
+        // index — the warning-severity ones included.
+        let index = &observation.warning_file_index;
+        diagnostics.extend(warns.iter().enumerate().map(|(at, warning)| {
+            protocol::Diagnostic {
+                code: warning.code.clone(),
+                span: warning.span,
+                severity: "warning".to_owned(),
+                file: observation
+                    .files
+                    .as_ref()
+                    .map(|_| index.get(at).copied().unwrap_or(0)),
+            }
         }));
     }
 
@@ -417,6 +426,7 @@ fn record_of(
         file,
         phase_reached: observation.phase_reached,
         seeded: request.is_seeded(),
+        files: observation.files,
         diagnostics,
         warnings: observation.warnings.clone(),
         verdict: observation.verdict,
@@ -482,6 +492,7 @@ pub fn unsupported_record(file: &Path) -> ObservationRecord {
         file: slash_path(file),
         phase_reached: Phase::None,
         seeded: false,
+        files: None,
         diagnostics: Vec::new(),
         warnings: None,
         verdict: Verdict::Unsupported,
