@@ -1014,7 +1014,11 @@ fn main() -> !int {
 }
 
 /// `fn fan_out(s: Scope)` is how "takes the handle as a parameter" is
-/// written (`[conc.task.scope]`).
+/// written (`[conc.task.scope]`). Observed through the FRONT DOOR
+/// (`record_of`, the `conform-run` path): the evaluator alone never asks the
+/// resolve rung, so a runtime-only run of this program was green at 0.1.38
+/// too — measured, the red run on the tests-only tree — while `conform-run`
+/// refused it E0301 at the parameter. The name lives at resolve.
 #[test]
 fn a_scope_handle_crosses_a_function_boundary_spelled_scope() {
     let source = r#"fn fan_out(s: Scope, out: channel[int]) {
@@ -1036,6 +1040,9 @@ fn main() -> !int {
     let run = run(source);
     assert_eq!(exit_code(&run), 0);
     assert_eq!(String::from_utf8_lossy(&run.stdout), "9\n");
+    let record = record_of("scope-param", source);
+    assert_eq!(record.verdict.to_string(), "exit(0)", "{record:?}");
+    assert_eq!(record.stdout_inline.as_deref(), Some("9\n"), "{record:?}");
 }
 
 /// The arity is the ruling's substance: `Scope` takes NO argument and `Proc`
