@@ -28,7 +28,9 @@ test -f "$bin" || { echo "::error::no binary at $bin"; exit 1; }
 # `sed -n 1p` reads to the end: `head -1` would close the pipe early, and
 # under pipefail the SIGPIPE it hands `ldd` fails the substitution.
 echo "host libc: $(ldd --version 2>&1 | sed -n 1p)"
-versions=$(objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV)
+# `|| true` inside the group: a binary naming no GLIBC version must reach the
+# loud error below, not die silently on grep's exit 1 under `set -e`.
+versions=$(objdump -T "$bin" | { grep -o 'GLIBC_[0-9.]*' || true; } | sort -uV)
 need=$(printf '%s\n' "$versions" | tail -1)
 test -n "$need" || { echo "::error::objdump -T named no GLIBC version in $bin — the probe saw nothing"; exit 1; }
 echo "highest GLIBC symbol version needed: $need"
