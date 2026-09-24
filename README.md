@@ -20,6 +20,9 @@ yay -S lupin-bin                                    # Arch, prebuilt (lupin buil
 ```
 
 Or an archive from [releases](https://github.com/wolffe-lang/wolf-interp/releases).
+The linux archives (x86-64 and aarch64) need **glibc 2.35 or later**
+(Ubuntu 22.04, Debian 12, Fedora 36+); 0.1.38's needed 2.39 and did not
+start on Ubuntu 22.04 (wolf-lang#447).
 Then:
 
 ```sh
