@@ -49,6 +49,24 @@ fn with_warnings_json_is_accepted() {
 }
 
 #[test]
+fn clean_stop_json_is_accepted() {
+    // `[proto.record.pass]` (s169): a full-ladder `pass` at a lane's deepest
+    // rung, no stdout, nothing executed.
+    assert_eq!(schema::validate(&fixture("clean-stop.json")), Ok(()));
+}
+
+#[test]
+fn with_trap_message_json_is_accepted_and_the_message_lands_in_its_field() {
+    // `[proto.record.trap]` (s169; wolf-interp#129): the program's own words
+    // ride `trap_message`, a typed field since 0.1.39 — never an extension.
+    let value = fixture("with-trap-message.json");
+    assert_eq!(schema::validate(&value), Ok(()));
+    let record: ObservationRecord = serde_json::from_value(value).expect("deserializes");
+    assert_eq!(record.trap_message.as_deref(), Some("one is not two"));
+    assert!(!record.extensions.contains_key("trap_message"));
+}
+
+#[test]
 fn wrong_version_json_is_rejected() {
     let errors = schema::validate(&fixture("wrong-version.json")).expect_err("must be rejected");
     assert!(
@@ -86,10 +104,15 @@ fn the_fixture_set_is_the_one_the_spec_names() {
     names.sort();
     assert_eq!(
         names,
+        // `clean-stop.json` and `with-trap-message.json` arrive at the
+        // `93a5fe50` pin (is54, wolf-lang v0.2.16): s169's `[proto.record.pass]`
+        // and `[proto.record.trap]`, both accepted.
         vec![
+            "clean-stop.json",
             "missing-field.json",
             "valid.json",
             "with-extensions.json",
+            "with-trap-message.json",
             "with-warnings.json",
             "wrong-version.json"
         ]
@@ -98,7 +121,12 @@ fn the_fixture_set_is_the_one_the_spec_names() {
 
 #[test]
 fn accepted_fixtures_round_trip_through_the_typed_record() {
-    for name in ["valid.json", "with-extensions.json"] {
+    for name in [
+        "valid.json",
+        "with-extensions.json",
+        "clean-stop.json",
+        "with-trap-message.json",
+    ] {
         let value = fixture(name);
         let record: ObservationRecord =
             serde_json::from_value(value.clone()).unwrap_or_else(|e| panic!("{name}: {e}"));
