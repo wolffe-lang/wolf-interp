@@ -1304,7 +1304,8 @@ fn variant_value_check(program: &Program) -> Option<Diag> {
                         enums.join(", ")
                     ),
                 };
-                let mut diag = Diag::new("E0301", *span, "gram.expr.variant", message);
+                let mut diag = Diag::new("E0301", *span, "gram.expr.variant", message)
+                    .in_file(scope.file.clone());
                 if let Some(owner) = sole {
                     diag =
                         diag.with_help(crate::diag::Help::insert(span.start, format!("{owner}.")));
@@ -2416,7 +2417,8 @@ fn cycle_check(program: &Program) -> Option<Diag> {
                                  imports between modules must form a DAG (D32)",
                                 used.name, scope.file
                             ),
-                        ));
+                        )
+                        .in_file(scope.file.clone()));
                     }
                     Mark::Black => {}
                     Mark::White => {
@@ -2451,7 +2453,8 @@ fn dup_check(program: &Program) -> Option<Diag> {
                      directory each mark themselves `//! member: false` (D59)",
                     dup.name, dup.file
                 ),
-            ));
+            )
+            .in_file(dup.file.clone()));
         }
     }
     None
@@ -2484,7 +2487,8 @@ fn private_check(program: &Program) -> Option<Diag> {
                              items are visible across modules (D32)",
                             reference.head
                         ),
-                    ));
+                    )
+                    .in_file(scope.file.clone()));
                 }
             }
         }
@@ -2541,7 +2545,8 @@ fn unused_check(program: &Program) -> Option<Diag> {
                              error (D32), and deleting the line is machine-applicable",
                             used.name, scope.file
                         ),
-                    ));
+                    )
+                    .in_file(scope.file.clone()));
                 }
             }
         }
