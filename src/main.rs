@@ -39,18 +39,25 @@ use wolf_interp::{lex, parse};
 const EXIT_OK: u8 = 0;
 const EXIT_CHECK_FAILED: u8 = 1;
 const EXIT_TOOL_ERROR: u8 = 2;
-/// Front door (`run`/`eval`/`check`): a static-phase rejection. Shares the
+/// Front door (`run`/`eval`/`check`/`lex`/`parse`): a static-phase
+/// rejection — `[conf.exit.static]`, "a rejection is 2, never 1", normative
+/// and the same on every implementation (`[conf.exit.class]`). Shares the
 /// number with tool errors deliberately — "this program did not get to run".
 const EXIT_STATIC: u8 = 2;
-/// Front door: the program ran and hit a trap, or the UB oracle's finding.
+/// Front door: the program ran and hit a trap, or the UB oracle's finding —
+/// `[conf.trap.exit]`'s reference-interpreter status.
 const EXIT_FAULT: u8 = 3;
 /// Front door: the program is outside this implementation's scope
 /// (`[proto.record.unsupported]` — the reason prints to stderr).
+/// `[conf.exit.refused]`: a refusal is 4, never a rejection's number.
 const EXIT_UNSUPPORTED: u8 = 4;
-/// A rejected program in human mode. `[gram]`-tier failures are the compiler
-/// convention's 65 (EX_DATAERR); `conform-run` never uses it, because there a
-/// rejection is a *record* and the tool still exits 0 (`[proto.invoke.exit]`).
-const EXIT_REJECTED: u8 = 65;
+// `EXIT_REJECTED = 65` (`EX_DATAERR`) stood here from is01 to 0.1.38 as the
+// `lex`/`parse` doors' rejection status. `[conf.exit]` (s169) defines a front
+// door as a command that takes a program and does something with it for a
+// person, which both are, and names ONE number for a rejection: 2. 65 was a
+// rejection wearing a second number, so it retires (wolf-interp#129 item 5).
+// `conform-run` is unchanged: there a rejection is a record and the tool
+// exits 0 (`[proto.invoke.exit]`).
 
 // Prefer the live submodule; fall back to the tracked vendored snapshot
 // (vendor/README.md — CI cannot clone the private submodule).
@@ -1471,7 +1478,7 @@ fn run_lex(args: &FrontendArgs) -> u8 {
                 wolf_interp::slash_path(&args.file),
                 diag.render(&String::from_utf8_lossy(&source))
             );
-            EXIT_REJECTED
+            EXIT_STATIC
         }
     }
 }
@@ -1488,7 +1495,7 @@ fn run_parse(args: &FrontendArgs) -> u8 {
                 "{}: source is not UTF-8",
                 wolf_interp::slash_path(&args.file)
             );
-            return EXIT_REJECTED;
+            return EXIT_STATIC;
         }
     };
     match parse::parse_source(text) {
@@ -1511,7 +1518,7 @@ fn run_parse(args: &FrontendArgs) -> u8 {
                 wolf_interp::slash_path(&args.file),
                 diag.render(text)
             );
-            EXIT_REJECTED
+            EXIT_STATIC
         }
     }
 }
