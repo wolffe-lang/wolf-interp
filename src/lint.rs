@@ -183,6 +183,22 @@ pub fn analyze(program: &Program) -> Analysis {
                 _ => None,
             })
             .collect();
+        // `use m.Alias` whose target module declares an error-set alias of
+        // that name (its `error_aliases` table) binds the alias.
+        let alias_names: BTreeSet<String> = module
+            .use_paths
+            .iter()
+            .filter_map(|(bound, segments)| {
+                let [.., home, last] = segments.as_slice() else {
+                    return None;
+                };
+                [home, &segments[0]]
+                    .into_iter()
+                    .filter_map(|key| program.modules.get(key.as_str()))
+                    .any(|target| target.error_aliases.contains_key(last))
+                    .then(|| bound.clone())
+            })
+            .collect();
         for unit in &module.units {
             let mut walk = Walk {
                 source: &unit.source,
@@ -191,6 +207,7 @@ pub fn analyze(program: &Program) -> Analysis {
                 fn_names: &fn_names,
                 fn_decls: &fn_decls,
                 row_tags: &module.row_tags,
+                alias_names: &alias_names,
                 findings: &mut findings,
                 statics: &mut statics,
                 allows: &mut allows,
@@ -462,6 +479,12 @@ struct Walk<'a> {
     /// the same fallback the evaluator asks when a scrutinee's own row is
     /// out of sight.
     row_tags: &'a BTreeSet<String>,
+    /// Names a `use` binds to another module's error-set ALIAS
+    /// (`use disk.IoErrors`, `[type.err.alias.qualified]`). A row entry
+    /// spelling one is the alias, not a tag, so the tag lints (W0305's
+    /// collision, W0603's case rule) do not read it — the corpus's own
+    /// `rows/error_alias_qualified/main.lu` pins it warning-clean.
+    alias_names: &'a BTreeSet<String>,
     /// Locals of the enclosing function, innermost last.
     scopes: Vec<Vec<Local>>,
     /// The enclosing function's declared return-row tags — the expected row
@@ -903,7 +926,11 @@ impl Walk<'_> {
             rows.extend(ret_rows.into_iter().map(|(row, _)| (row, true)));
         }
         for (row, in_ret) in rows {
-            if is_pub && in_ret && row.entries.len() >= 2 {
+            // A BARE row (`-> T ! IoErrors`) is an alias's spelling, expanded
+            // before the lints run: its entries are the alias's, never an
+            // inline row the signature wrote, so W0602 does not read it
+            // (`rows/error_alias_qualified/disk/d.lu` is warning-clean).
+            if is_pub && in_ret && !row.bare && row.entries.len() >= 2 {
                 // W0602 — the s15 lean: allowed, linted. The span is the
                 // whole inline row, braces included.
                 self.warn("W0602", row.span);
@@ -911,6 +938,9 @@ impl Walk<'_> {
             for entry in &row.entries {
                 if entry.path.is_single() {
                     let tag = &entry.path.segments[0].name;
+                    if self.alias_names.contains(tag) {
+                        continue;
+                    }
                     let collides = self.fn_names.contains(tag)
                         || self.item_names.contains(tag)
                         || crate::eval::builtin::AMBIENT_NAMES.contains(&tag.as_str());
@@ -1017,7 +1047,9 @@ impl Walk<'_> {
                     continue;
                 }
                 let seg = &entry.path.segments[0];
-                if decl.generics.iter().any(|g| g.name.name == seg.name) {
+                if decl.generics.iter().any(|g| g.name.name == seg.name)
+                    || self.alias_names.contains(&seg.name)
+                {
                     continue;
                 }
                 let cap = seg.name.chars().next().is_some_and(char::is_uppercase);
