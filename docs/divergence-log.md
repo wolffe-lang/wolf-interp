@@ -4113,6 +4113,84 @@ breaks the region forest invariant or leaks, whether it comes from the
 corpus files or from the concurrent multiopen litmuses in
 `tests/explore_machine.rs`.
 
+### The two mirrors III — is55, `[mem.region.edge.elem]` + `[gram.expr.assign]` (wolf-lang#438) and `[os.fs.path.domain]` (wolf-lang#386), rulings at wolf-lang `0468dead`
+
+s182 parked ten witnesses with ruled verdicts per machine under the planning
+repo's `sprints/compiler/88-the-rulings-prose/witnesses/`. This section is
+written in the contract's order: §2 re-derived, §3 committed before the
+first edit, the rest appended as it lands.
+
+#### §2 — inputs, re-derived 2026-09-24 (kasumi, linux x86-64)
+
+| input as written | at origin / measured | drift |
+| --- | --- | --- |
+| trunk `ba357aa` (v0.1.38) | `origin/trunk` = `ba357aa`; branch `is55` cut there, not from `is54` | none |
+| is54 in flight on `is54` | `origin/is54` = `03790e0`. Of the files this lane edits, **in is54's diff**: `src/parse.rs` (is54 at L495; this lane at the assignment statement, ~L2305), `src/eval/mod.rs` (is54 at the `Trap` type and ~L6693; this lane at `exec_assign` and the call-argument `take`), `src/sema.rs` and `src/lint.rs` (only the `Assign` destructures gain a field), `src/main.rs` (the `conform-run` dispatch), `docs/divergence-log.md` (is54 inserts at L110; this section sits at the end of Open findings to stay clear of it). **Not in is54's diff**: `src/ast.rs`, `src/eval/fs.rs`, `src/eval/net.rs`, `tests/fs_family.rs`, `docs/approximation-contract.md`, and the new `tests/rulings/` + `tests/rulings_s182.rs`. `CHANGELOG.md` is left to is54's 0.1.39 cut. | recorded, kept minimal |
+| wolf 0.2.16 archive, lupin 0.1.38 archive | copied (not moved) from `~/lanes/s178/archives/`: `84e30c05…` and `828b5c55…`, s182's shas | none |
+| s182's `[trunk]` table (10 × 3) | re-measured with the **published** wolf 0.2.16 in place of s182's wolf-lang debug build at `a565d4b9`, and with lupin 0.1.38 and a trunk `ba357aa` release build: every cell equal (`~/lanes/is55/evidence/published-0.2.16-0.1.38-witnesses.log`, `trunk-ba357aa-witnesses.log`) | none |
+| #438: plain store traps `use-after-move`, `take` store E0201 | measured as written on both lupin builds | none |
+| #386: lupin refuses `sub/../x` lexically | measured: `unsupported` "names a path outside the working directory" on `target/s182_sub/../s182_inner.txt` | none |
+| #386: lupin "answers a write through ANY symlinked directory with a `not_found` ROW … a symlink defect" | the row is measured, **the cause is not symlinks**. `lupin run` (the live door) serves BOTH symlink witnesses, `exit 0`, `sym=sym gone=true`; and `lupin conform-run` of a program reading a pre-existing REGULAR file in its cwd (no symlink anywhere) answers the same `exit(1)` `error: not_found` (`~/lanes/is55/evidence/probe-cause-0.1.38.log`) | **corrected**: s182 §2 row 5 and `[os.fs.path.domain]`'s "a `not_found` row through a symlinked directory" name the symptom; the cause is §3's third bullet |
+| "the five that must change" | the ruled lupin cells differ from today's on **seven** witnesses: the five named plus `fs_path_symlink_in` (`exit(1)` row → `exit(0)`, ruled) and `fs_path_symlink_out` (`exit(1)` row → `exit(0)` or `unsupported`, "never a row") | seven, not five |
+| "the ten witnesses in lupin's corpus" | lupin has no corpus of its own: `vendor/upstream/corpus` is the pinned wolf-lang corpus and is read-only (CONTRIBUTING, "The corpus is read-only"). The in-repo witness convention is a `tests/<dir>/` of programs plus a test file (`tests/d62/` + `tests/str_append_d62.rs`) | they land at `tests/rulings/`, one directory each, verbatim, run through the built binary's `conform-run --json` from their own directory as s182's runner does |
+
+#### §3 — prediction, committed before the first edit
+
+- **Where an index store's mode is decided.** Parse: `src/parse.rs:2305-2307`
+  — `assign_op`, then `parse_expr`; `take` is a keyword and no expression
+  starts with it, so `outs[0] = take xs` is E0201 there. Run:
+  `src/eval/mod.rs:3902`, `exec_assign`'s plain `=` arm calls
+  `eval_for_init` (`:3705`), whose `consume_place` (`:3714`) MOVES any
+  non-`Copy` place — the later `(mut xs).push(4)` is the trap.
+- **Where paths are confined.** `src/eval/fs.rs:527` `contained`, lexical
+  (`:529-536`: any `ParentDir`, `RootDir` or `Prefix` component, or
+  `is_absolute`), reached from `fs_contained` (`:1047`) by every path call;
+  `src/eval/net.rs:771` `socket_path` repeats it for unix socket paths,
+  which `[os.fs.path]` says take the same answer.
+- **The `not_found` row's cause, named.** `src/eval/fs.rs:224`
+  `FsTable::resolve` joins every relative path onto the PRIVATE
+  observation root minted at `:168` (`observation_root`: `$TMPDIR/wolf-obs/<id>/`
+  holding only an empty `target/`) whenever `Machine::is_live`
+  (`src/eval/mod.rs:767`) is false — which it is for every
+  `lupin conform-run`. `setup.sh` makes its link in the cwd, a directory
+  an observed program never sees, so the write's parent is missing and the
+  host says `ENOENT`. `[os.fs.path]` has said since s163 that "a relative
+  path resolves against the process's working directory, on every tier";
+  the fix is the `conform-run` door resolving there, as `lupin run` does,
+  while in-process observations (the corpus walk, `diff-run`, export,
+  explore, fuzz — the concurrency is48's root exists for) keep the root.
+- **Which witnesses flip, and to what** (lupin, `conform-run --json`, from
+  the witness's own directory): `index_store_copies_list` `trap` → `exit(0)`
+  `outs0=1 xs=2`; `index_store_copies_map` `trap` → `exit(0)` `m0=1 xs=2`;
+  `index_store_take_list` and `index_store_take_map` `fail(E0201)` →
+  `trap(use-after-move)` (dynamic, not a static E1001: the resolve-rung
+  `move_check` keys on call-site markers and is not widened);
+  `fs_path_inside_after_dotdot` `unsupported` → `exit(0)`;
+  `fs_path_symlink_in` `exit(1)` row → `exit(0)`; `fs_path_symlink_out`
+  `exit(1)` row → **`unsupported`** (it resolves outside the served tree,
+  and the boundary is resolved now). **Hold:** `index_store_read_param`
+  `exit(0)`; `fs_path_absolute` and `fs_path_climbs_out` `unsupported`
+  (conformant; this lane narrows no scope it does not have to).
+  **Seven flip, three hold.** Falsified by any cell otherwise.
+- **Corpus rows that change verdict: zero.** Over `vendor/upstream/corpus`
+  at pin `2e4ca769`, 56 lines carry `] =`; the index stores whose right-hand
+  side is a bare non-literal name are three — `memory/map_remove.lu:40`
+  (`ids[4] = xs`, `xs` never read after), `memory/map_set_generic.lu:24`
+  (`m[k] = v`, `v` a `take` parameter, never read after) and
+  `typecheck/map_struct_key.lu:24` (`= true`); `memory/list_session_struct.lu:34`
+  stores a literal. None of the 11 fs / unix-socket corpus files names a
+  `..` or an absolute path. So `lupin corpus` and `tests/run_corpus.rs`
+  move no row, and the whole-corpus differential against wolf 0.2.16
+  moves no entry on `checked` or `native` against the trunk baseline.
+  Falsified by any row or entry moving.
+- **Tests that must change with the door, predicted red first:** three in
+  `tests/fs_family.rs` pin is48's private root at the CLI —
+  `a_live_run_writes_in_the_users_directory_and_an_observed_one_does_not`,
+  `two_concurrent_observations_of_one_program_do_not_interfere` and
+  `an_observed_programs_socket_lands_beside_its_files_and_not_in_the_users_directory`
+  (its planted stale socket becomes visible). Each is rewritten to the
+  in-process door the property belongs to; no other test moves.
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
