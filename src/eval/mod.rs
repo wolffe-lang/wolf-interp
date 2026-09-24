@@ -3010,42 +3010,7 @@ impl Machine {
                 Some(ParamMode::Take) => {
                     // `take` consumes: the argument moves at the call site
                     // (`[mem.tier0.mode.take]` → `[mem.tier0.move.1]`).
-                    let value = match self.live_place(&arg.expr)? {
-                        Some(path) => {
-                            // `[mem.tier0.mode.read]` (s157, wolf-lang#60):
-                            // "a `read` parameter cannot be given away either,
-                            // so spelling `take` on it at an inner call site
-                            // is refused with the same code as a write
-                            // (E1014)". The dynamic row is the write's —
-                            // `exclusivity` — and the barrier is the write's
-                            // too: the innermost binding of the base decides,
-                            // so `var b = copy b` then `take b` gives away a
-                            // local and passes, as it does on the compiler.
-                            if let Some(param_span) = self.read_param_write(&path) {
-                                return self.trap(
-                                    TrapKind::Exclusivity,
-                                    Rule::ModeRead,
-                                    arg.span,
-                                    format!(
-                                        "`take {path}` gives away the read-mode parameter \
-                                         `{}`: the default (unwritten) mode reads a value the \
-                                         caller retains, so it cannot be moved out any more \
-                                         than written through (`[mem.tier0.mode.read]`, \
-                                         wolf-lang#60) — `copy` it and hand the duplicate on, \
-                                         or declare the parameter `take`",
-                                        path.base
-                                    ),
-                                    Some((
-                                        param_span,
-                                        format!("`{}` bound in read mode here", path.base),
-                                    )),
-                                );
-                            }
-                            self.fire(Rule::ModeTake, arg.span, &format!("`take {path}`"));
-                            self.move_path(&path, arg.span)?
-                        }
-                        None => self.eval(&arg.expr)?,
-                    };
+                    let value = self.take_operand(&arg.expr, arg.span)?;
                     values.push(value);
                 }
                 None => {
@@ -3348,8 +3313,11 @@ impl Machine {
         match &stmt.kind {
             StmtKind::Binding(binding) => self.exec_binding(binding),
             StmtKind::Assign {
-                place, op, value, ..
-            } => self.exec_assign(place, *op, value, stmt.span),
+                place,
+                op,
+                value,
+                take,
+            } => self.exec_assign(place, *op, value, *take, stmt.span),
             StmtKind::Defer { on_error, expr } => {
                 if let Some(frame) = self.frames.last_mut()
                     && let Some(scope) = frame.scopes.last_mut()
@@ -3904,11 +3872,78 @@ impl Machine {
         }
     }
 
-    fn exec_assign(&mut self, place: &Expr, op: AssignOp, value: &Expr, span: Span) -> EResult<()> {
+    /// One `take` operand: a live place MOVES out (`[mem.tier0.mode.take]` →
+    /// `[mem.tier0.move.1]`), anything else is evaluated. Shared by a `take`
+    /// call argument and the one moded store, `xs[i] = take v`
+    /// (`[gram.expr.assign]`, wolf-lang#438), which means what `push(take v)`
+    /// means — so both give the same answer on a `read` parameter too.
+    fn take_operand(&mut self, expr: &Expr, span: Span) -> EResult<Value> {
+        let Some(path) = self.live_place(expr)? else {
+            return self.eval(expr);
+        };
+        // `[mem.tier0.mode.read]` (s157, wolf-lang#60): "a `read` parameter
+        // cannot be given away either, so spelling `take` on it at an inner
+        // call site is refused with the same code as a write (E1014)". The
+        // dynamic row is the write's — `exclusivity` — and the barrier is the
+        // write's too: the innermost binding of the base decides, so `var b =
+        // copy b` then `take b` gives away a local and passes, as it does on
+        // the compiler.
+        if let Some(param_span) = self.read_param_write(&path) {
+            return self.trap(
+                TrapKind::Exclusivity,
+                Rule::ModeRead,
+                span,
+                format!(
+                    "`take {path}` gives away the read-mode parameter `{}`: the default \
+                     (unwritten) mode reads a value the caller retains, so it cannot be moved \
+                     out any more than written through (`[mem.tier0.mode.read]`, wolf-lang#60) \
+                     — `copy` it and hand the duplicate on, or declare the parameter `take`",
+                    path.base
+                ),
+                Some((
+                    param_span,
+                    format!("`{}` bound in read mode here", path.base),
+                )),
+            );
+        }
+        self.fire(Rule::ModeTake, span, &format!("`take {path}`"));
+        self.move_path(&path, span)
+    }
+
+    /// The right-hand side of a plain `=`, consumed the way its place says.
+    ///
+    /// An INDEX store follows `push` (`[mem.region.edge.elem]`, wolf-lang#438,
+    /// ruled 2026-09-24): spelled plainly it COPIES the value in — the
+    /// operand is read, never moved, so the binding it came from stays live
+    /// and independent — and spelled `take` it MOVES. Every other place
+    /// (`x = v`, `s.f = v`) is an initializer and consumes its operand as one
+    /// (`[mem.tier0.move.1]`), exactly as before.
+    fn store_operand(&mut self, place: &Expr, value: &Expr, take: bool) -> EResult<Value> {
+        if take {
+            return self.take_operand(value, value.span);
+        }
+        if place.is_index_place() {
+            return self.eval(value);
+        }
+        self.eval_for_init(value)
+    }
+
+    fn exec_assign(
+        &mut self,
+        place: &Expr,
+        op: AssignOp,
+        value: &Expr,
+        take: bool,
+        span: Span,
+    ) -> EResult<()> {
         // `p[0] = 1` / `*p = 1`: the destination is bytes in an allocation, not
         // a slot in the value tree, so the provenance machine takes it.
         if let Some(ptr) = self.raw_target(place)? {
-            let rhs = self.eval(value)?;
+            let rhs = if take {
+                self.take_operand(value, value.span)?
+            } else {
+                self.eval(value)?
+            };
             let rhs = if op == AssignOp::Assign {
                 rhs
             } else {
@@ -3920,7 +3955,7 @@ impl Machine {
         }
         let path = self.place_of(place)?;
         if op == AssignOp::Assign {
-            let value = self.eval_for_init(value)?;
+            let value = self.store_operand(place, value, take)?;
             // Keep the place's integer type: `x += 1` and `x = x + 1` agree.
             let value = match (self.slot_mut(&path).map(|s| s.value.clone()), value) {
                 (Some(Value::Int(_, ty)), Value::Int(v, lit)) if lit.literal => {
