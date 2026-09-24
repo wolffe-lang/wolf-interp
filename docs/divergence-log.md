@@ -4191,6 +4191,59 @@ first edit, the rest appended as it lands.
   (its planted stale socket becomes visible). Each is rewritten to the
   in-process door the property belongs to; no other test moves.
 
+#### §3a — the prediction, scored
+
+- **Seven flip, three hold — held, every cell.** At the head, lupin's cell
+  on each witness is its ruled one (`~/lanes/is55/evidence/head-53de98f-witnesses.log`,
+  three machines, wolf 0.2.16 published): `index_store_copies_{list,map}`
+  `exit(0)` `outs0=1 xs=2` / `m0=1 xs=2`; `index_store_take_{list,map}`
+  `trap(use-after-move)`; `index_store_read_param` `exit(0)`;
+  `fs_path_inside_after_dotdot` `exit(0)` `inner=in gone=true`;
+  `fs_path_symlink_in` `exit(0)` `sym=sym gone=true`; `fs_path_symlink_out`
+  `unsupported` ("resolves outside the working directory"); `fs_path_absolute`
+  and `fs_path_climbs_out` `unsupported`. wolf 0.2.16 answers its `[trunk]`
+  cells unchanged (the #438 side is s180's).
+- **Red at the witnesses' commit, cited:** `tests/rulings_s182.rs` at
+  `dc0e989` (no code change yet) — 7 failed, 4 passed, exactly the seven
+  (`~/lanes/is55/evidence/red-dc0e989-rulings.log`, `EXIT=101`); and
+  `tests/index_store.rs` run against the same `dc0e989` sources — 5 failed,
+  2 passed, the two passing being the non-regression pins (`take` refused
+  elsewhere, a field store still moves) (`red-dc0e989-index_store.log`).
+- **Where the mode and the confinement live — held.** The store's mode was
+  `exec_assign` → `eval_for_init` → `consume_place`; the confinement was
+  `contained`'s lexical test, repeated in `net::socket_path`.
+- **The `not_found` row's cause — held**, and the fix is the one named: the
+  `conform-run` door resolves against the process cwd
+  (`33d1c9e`); `fs_path_symlink_in` is `exit(0)` and a regular file the
+  harness planted is read (`tests/fs_family.rs::a_conform_run_reads_what_its_harness_put_in_the_cwd`).
+- **Zero corpus rows move — held.** `lupin corpus` (release) at trunk
+  `ba357aa` and at the head: byte-identical 673-line reports, 491 match /
+  26 dynamic-counterpart / 48 conservatism / 59 out of scope / 1 mismatch
+  (the pre-existing `resolve/broken_sibling`) (`corpus-trunk-release.log`,
+  `corpus-head-release.log`).
+- **The differential moves no lupin answer — held.** `lupin diff-run`
+  against the published wolf 0.2.16 on all four counterparty tiers, trunk
+  release build vs head release build, same corpus (pin `2e4ca769`, 625
+  entries, 41 members): divergences 6 / 6 / 8 / 8 (default / checked /
+  native / release) on both sides; every report and every conservatism
+  ledger byte-identical except one field of one line — the native tier's
+  `memory/unsafe_ub_uaf.lu` row, where the COUNTERPARTY's exit status after
+  its use-after-free read `exit(73)` on the trunk run and `exit(72)` on the
+  head run; lupin's side is `ub(mem.ub)` in both. That is the program's UB
+  read on the compiled lane, not this change (`~/lanes/is55/evidence/diffrun/`).
+  **New divergences: zero.** The ruled ones are outside the corpus (the
+  witnesses stay parked upstream) and are listed in the bullet above.
+- **Three tests move with the door — held, the three named.** At the door
+  commit, `tests/fs_family.rs` went red on exactly
+  `a_live_run_writes_…`, `two_concurrent_observations_…` and
+  `an_observed_programs_socket_…` (`dev-386-door-targeted.log`: 21 passed,
+  3 failed); they are rewritten onto the embedded door (`ef84f18`), where
+  the private root's two properties — no interference, fs and net agree —
+  still hold and are still asserted, and a fourth pins the cwd read.
+- **Not predicted:** `tests/rulings_s182.rs` and `tests/net_unix.rs` did
+  not run in that first targeted pass, because cargo stops at the first
+  failed test binary; the second pass ran with `--no-fail-fast`.
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
