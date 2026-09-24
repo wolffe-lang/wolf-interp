@@ -495,6 +495,25 @@ impl<'a> Parser<'a> {
     fn expected_type(&self, anchor: &'static str) -> Diag {
         match self.tok() {
             None => self.unexpected(anchor, "a type"),
+            // `[conc.proc.handle]` (s170, wolf-interp#130): the lowercase
+            // `scope`/`proc` are the block and spawn KEYWORDS, never types,
+            // and the refusal's help names the capitalised spelling.
+            Some(Tok::Kw("scope")) => Diag::new(
+                diag::E_EXPECTED_TYPE,
+                self.span(),
+                anchor,
+                "expected a type, found keyword `scope` — a scope handle's type is `Scope` \
+                 (`[conc.proc.handle]`); `scope` opens the block"
+                    .to_owned(),
+            ),
+            Some(Tok::Kw("proc")) => Diag::new(
+                diag::E_EXPECTED_TYPE,
+                self.span(),
+                anchor,
+                "expected a type, found keyword `proc` — a proc handle's type is `Proc[T]`, `T` \
+                 the value its join collects (`[conc.proc.handle]`); `proc` spells the spawn"
+                    .to_owned(),
+            ),
             Some(tok) => Diag::new(
                 diag::E_EXPECTED_TYPE,
                 self.span(),

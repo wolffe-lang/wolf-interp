@@ -7728,6 +7728,9 @@ fn annotation_check(program: &Program) -> Option<Diag> {
                 })
                 .chain(decl.ret.as_ref().map(|ret| &ret.ty));
             for ty in annotated {
+                if let Some(diag) = handle_arity(ty) {
+                    return Some(diag);
+                }
                 if let Some((name, span)) = unresolved_type_name(ty, &scope) {
                     return Some(Diag::new(
                         "E0301",
@@ -7875,7 +7878,74 @@ fn unresolved_expr_type_name<'a>(
 /// only** — there is no `range(…)` constructor, a range value being spelled
 /// `a..b` — so it lives here and NOT in `builtin::AMBIENT_NAMES`, which is
 /// what keeps `var range = true` off W0304's list of shadowed prelude names.
-const PRELUDE_TYPE_NAMES: &[&str] = &["List", "Map", "Option", "Self", "Set", "range", "wrapping"];
+///
+/// `Scope` and `Proc` (s170, `[conc.proc.handle]` — BACKLOG B21's ruling on
+/// wolf-lang#316, wolf-interp#130): the two concurrency handles' TYPE NAMES,
+/// prelude names rather than keywords in type position. A scope handle is
+/// `Scope` and takes no argument; a proc handle is `Proc[T]`, `T` the value
+/// its join collects. Their arity is [`handle_arity_check`]'s.
+const PRELUDE_TYPE_NAMES: &[&str] = &[
+    "List", "Map", "Option", "Proc", "Scope", "Self", "Set", "range", "wrapping",
+];
+
+/// `[conc.proc.handle]`'s arity, which is the ruling's substance: `Scope`
+/// takes NO type argument and `Proc` takes exactly one — "a handle you cannot
+/// join is not a handle". E0401 at the whole written type, the counterparty's
+/// code and span (wolf 0.2.16 `conform-run --json --checked`: `Scope[int]`,
+/// `Proc` and `Proc[int, int]` each E0401 spanning the type as written).
+/// Checked where [`annotation_check`] reads types — parameter and return
+/// annotations — and recursively inside them.
+fn handle_arity(ty: &Type) -> Option<Diag> {
+    match &*ty.kind {
+        TypeKind::Path { path, args } => {
+            if path.is_single() {
+                match (path.segments[0].name.as_str(), args.len()) {
+                    ("Scope", n) if n != 0 => {
+                        return Some(Diag::new(
+                            "E0401",
+                            ty.span,
+                            "conc.proc.handle",
+                            "`Scope` does not take type arguments: a scope handle names the \
+                             block it spawns into, and its tasks' values come back through the \
+                             scope's own join, not through the handle's type \
+                             (`[conc.proc.handle]`)"
+                                .to_owned(),
+                        ));
+                    }
+                    ("Proc", n) if n != 1 => {
+                        return Some(Diag::new(
+                            "E0401",
+                            ty.span,
+                            "conc.proc.handle",
+                            format!(
+                                "`Proc` needs the type its `join` collects, exactly one \
+                                 argument — `Proc[T]` — and {n} {} written here: a proc \
+                                 handle you cannot join for a value is not a handle \
+                                 (`[conc.proc.handle]`, `[conc.proc.join]`)",
+                                if n == 1 { "is" } else { "are" }
+                            ),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            args.iter().find_map(|arg| match arg {
+                TypeArg::Type(inner) => handle_arity(inner),
+                TypeArg::Expr(_) => None,
+            })
+        }
+        TypeKind::ErrorUnion(inner)
+        | TypeKind::Fallible { ty: inner, .. }
+        | TypeKind::Prefixed { ty: inner, .. }
+        | TypeKind::RawPointer(inner) => handle_arity(inner),
+        TypeKind::Tuple(parts) => parts.iter().find_map(handle_arity),
+        TypeKind::Fn { params, ret } => params
+            .iter()
+            .find_map(handle_arity)
+            .or_else(|| ret.as_ref().and_then(|ret| handle_arity(&ret.ty))),
+        TypeKind::Dyn(_) | TypeKind::TypeOfTypes | TypeKind::Region => None,
+    }
+}
 
 /// The first head name in `ty` that `scope` does not contain, with the span of
 /// the name token — the counterparty's span for E0301 at a type position.
@@ -9130,7 +9200,11 @@ mod tests {
             ),
             ("    var m = Map[str, Nonesuch]()\n    0\n", "Nonesuch"),
             ("    var xs = List[List[Nonesuch]]()\n    0\n", "Nonesuch"),
-            ("    var xs = List[Proc]()\n    0\n", "Proc"),
+            // `List[Proc]()` stood here until 0.1.39. `Proc` is a prelude
+            // TYPE NAME since s170 (`[conc.proc.handle]`, wolf-interp#130),
+            // so it no longer names nothing; wolf 0.2.16 answers this
+            // expression `unsupported` (generic prelude data), not E0301.
+            ("    var xs = List[Procs]()\n    0\n", "Procs"),
         ] {
             let source = format!("fn main() -> !int {{\n{body}}}\n");
             let diag = resolve(&source).expect("rejected");
