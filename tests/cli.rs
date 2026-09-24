@@ -988,3 +988,108 @@ fn version_names_the_binary_the_package_and_the_pairing() {
     let short = lupin(&["-V"]);
     assert_eq!(stdout_of(&short), stdout_of(&output));
 }
+
+/// `[proto.record.trap]` (wolf-lang s169; wolf-interp#129 item 2): the record
+/// carries `trap_message` — the program's own words for its fault, the second
+/// argument of a failing `assert(cond, msg)` — and carries it ONLY there.
+/// A trap with no program-supplied text (an `assert` without a message, a
+/// division by zero) leaves the key out (honest-absent), and every record
+/// lupin writes still passes lupin's own validator. The field is never
+/// compared (`[proto.cmp.defined-divergence]`), so this pins the emission,
+/// not an agreement.
+#[test]
+fn a_failing_assert_s_message_rides_the_record_and_nothing_else_carries_one() {
+    let dir = std::env::temp_dir().join("lupin-is54-trap-message");
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let cases: [(&str, &str, Option<&str>); 4] = [
+        (
+            "with_message.lu",
+            "fn main() -> !int {\n    assert(1 == 2, \"one is not two\")\n    0\n}\n",
+            Some("one is not two"),
+        ),
+        (
+            "interpolated.lu",
+            "fn main() -> !int {\n    let n = 3\n    assert(n < 0, \"n was {n}\")\n    0\n}\n",
+            Some("n was 3"),
+        ),
+        (
+            "bare_assert.lu",
+            "fn main() -> !int {\n    assert(1 == 2)\n    0\n}\n",
+            None,
+        ),
+        (
+            "div_zero.lu",
+            "fn main() -> !int {\n    let z = 0\n    print(\"{7 / z}\")\n    0\n}\n",
+            None,
+        ),
+    ];
+    for (name, source, want) in cases {
+        let path = dir.join(name);
+        std::fs::write(&path, source).expect("writable");
+        let output = lupin(&["conform-run", path.to_str().expect("utf-8"), "--json"]);
+        assert_eq!(output.status.code(), Some(0), "{name}");
+        let text = stdout_of(&output).trim().to_owned();
+        let value: serde_json::Value = serde_json::from_str(&text).expect("one JSON object");
+        assert!(
+            value["verdict"].as_str().is_some_and(|v| v.starts_with("trap(")),
+            "{name}: {value}"
+        );
+        match want {
+            Some(message) => assert_eq!(value["trap_message"], message, "{name}: {value}"),
+            None => assert!(
+                value.get("trap_message").is_none(),
+                "{name}: no program text, no key: {value}"
+            ),
+        }
+        wolf_interp::schema::validate(&value)
+            .unwrap_or_else(|e| panic!("{name}: lupin's own record must validate: {e:?}"));
+    }
+
+    // A passing assert traps nothing and carries nothing.
+    let path = dir.join("holds.lu");
+    std::fs::write(
+        &path,
+        "fn main() -> !int {\n    assert(1 == 1, \"never read\")\n    0\n}\n",
+    )
+    .expect("writable");
+    let output = lupin(&["conform-run", path.to_str().expect("utf-8"), "--json"]);
+    let value: serde_json::Value =
+        serde_json::from_str(stdout_of(&output).trim()).expect("one JSON object");
+    assert_eq!(value["verdict"], "exit(0)", "{value}");
+    assert!(value.get("trap_message").is_none(), "{value}");
+}
+
+/// `[proto.record.pass]` (wolf-lang s169; wolf-interp#129 item 3): a stop at
+/// an explicit `--phase` answers `pass` — the ladder's clean stop — and never
+/// `unsupported` for a program this machine has no complaint about THROUGH
+/// the stop rung, even when a construct it cannot follow sits deeper.
+/// `comptime/assert_static.lu` is `unsupported@resolve` on the full ladder;
+/// stopped at `parse` it is a clean program and says so.
+#[test]
+fn an_explicit_phase_stop_is_pass_and_never_unsupported_before_the_refusal() {
+    let comptime = format!(
+        "{}/corpus/comptime/assert_static.lu",
+        wolf_interp::upstream_root()
+    );
+    let full = lupin(&["conform-run", &comptime, "--json"]);
+    let value: serde_json::Value =
+        serde_json::from_str(stdout_of(&full).trim()).expect("one JSON object");
+    assert_eq!(value["verdict"], "unsupported", "{value}");
+    assert_eq!(value["phase_reached"], "resolve", "{value}");
+
+    for phase in ["lex", "parse"] {
+        let stopped = lupin(&["conform-run", &comptime, &format!("--phase={phase}"), "--json"]);
+        let value: serde_json::Value =
+            serde_json::from_str(stdout_of(&stopped).trim()).expect("one JSON object");
+        assert_eq!(value["verdict"], "pass", "{phase}: {value}");
+        assert_eq!(value["phase_reached"], phase, "{phase}: {value}");
+    }
+
+    let hello = format!("{}/corpus/hello.lu", wolf_interp::upstream_root());
+    let stopped = lupin(&["conform-run", &hello, "--phase=resolve", "--json"]);
+    let value: serde_json::Value =
+        serde_json::from_str(stdout_of(&stopped).trim()).expect("one JSON object");
+    assert_eq!(value["verdict"], "pass", "{value}");
+    assert_eq!(value["phase_reached"], "resolve", "{value}");
+    assert!(value["stdout_sha256"].is_null(), "pass carries no stdout: {value}");
+}
