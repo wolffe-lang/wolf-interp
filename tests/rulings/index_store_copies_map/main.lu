@@ -1,0 +1,22 @@
+//! check: run(exit=0, stdout="m0=1 xs=2\n")
+//! phase: run
+//! conforms: mem.region.edge.elem, mem.tier0.move.3, type.map
+//!
+//! s182 (wolf-lang#438, ruled "align" 2026-09-24; RULED, NOT YET BUILT —
+//! parked for s180/is55) — the `Map` twin of `index_store_copies_list`:
+//! `m["k"] = xs` copies, `xs` stays live. Today: `fail(E1001)` on both
+//! wolfgang lanes, `trap(use-after-move)` on lupin 0.1.38. Note for
+//! s180: the copy of a `Map` VALUE that reaches the heap is a shape
+//! `[mem.tier0.move.3]` says the native tiers may refuse by name; the
+//! ruled answer here is the run, and a by-name decline is the interim.
+
+fn main() -> !int {
+    var xs = List[int]()
+    (mut xs).push(1)
+    var m = Map[str, List[int]]()
+    m["k"] = xs
+    (mut xs).push(4)
+    let got = m["k"] else List[int]()
+    print("m0={got.len} xs={xs.len}")
+    0
+}

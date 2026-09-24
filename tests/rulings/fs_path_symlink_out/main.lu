@@ -1,0 +1,22 @@
+//! check: run(exit=0, stdout="sym=sym gone=true\n")
+//! phase: run
+//! conforms: os.fs.path.domain
+//!
+//! s182 (wolf-lang#386, ruled 2026-09-24) — a relative path with no
+//! `..` through a symlinked directory that RESOLVES outside the tree
+//! (`setup.sh` makes `target/s182_link -> /tmp/s182_out`). The boundary
+//! a confining implementation declines at is resolved, not lexical, so
+//! lupin may decline this by name; it may not answer a row. wolf serves
+//! it on both tiers. lupin 0.1.38 today: `exit(1)` printing
+//! `error: not_found` — a ROW, and the same row for a symlink that
+//! stays inside the tree (`fs_path_symlink_in`), so this is a symlink
+//! defect in lupin's fs tier, not its confinement. is55's.
+
+fn main() -> !int {
+    let path = "target/s182_link/s182_probe_sym.txt"
+    fs_write_text(path, "sym")?
+    let text = fs_read_text(path)?
+    fs_remove(path)?
+    print("sym={text} gone={!fs_exists(path)}")
+    0
+}

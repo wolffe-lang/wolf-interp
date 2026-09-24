@@ -1,0 +1,21 @@
+//! check: run(exit=0, stdout="inner=in gone=true\n")
+//! phase: run
+//! conforms: os.fs.path.domain
+//!
+//! s182 (wolf-lang#386, ruled 2026-09-24) — the discriminating row: a
+//! `..` that never leaves the tree (`target/s182_sub/../s182_inner.txt`).
+//! "The boundary it declines at is resolved, not lexical", so this path
+//! is INSIDE any served tree and every machine, confining or not, must
+//! serve it. wolf does on both tiers. lupin 0.1.38 refuses it by name
+//! today (a lexical `..` check) — the one #386 row lupin must change.
+//! Ruled: `exit(0)` on all three; `unsupported` is NOT conformant here.
+
+fn main() -> !int {
+    fs_create_dir_all("target/s182_sub")?
+    let path = "target/s182_sub/../s182_inner.txt"
+    fs_write_text(path, "in")?
+    let text = fs_read_text(path)?
+    fs_remove(path)?
+    print("inner={text} gone={!fs_exists(path)}")
+    0
+}

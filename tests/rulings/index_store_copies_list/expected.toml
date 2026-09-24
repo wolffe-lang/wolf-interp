@@ -1,0 +1,18 @@
+# s182 — the ruled verdict per machine (the oracle for s180 / is55), and what
+# each machine measured at trunk on 2026-09-24: wolf-lang a565d4b9 (debug
+# build, `wolf conform-run main.lu --checked|--native --json`), lupin 0.1.38
+# (828b5c55…, `lupin conform-run main.lu --json`), kasumi linux x86-64,
+# run from this directory (evidence: ~/lanes/s182/evidence/trunk-a565d4b9-witnesses.log).
+ruling = "wolf-lang#438 (2026-09-24): align — the index store follows push; a plain non-Copy store copies"
+clause = "mem.region.edge.elem"
+lands_in = "corpus/memory/index_store_copies_list.lu"
+
+[expected]
+checked = { verdict = "exit(0)", stdout = "outs0=1 xs=2\n" }
+native  = { verdict = "exit(0)", stdout = "outs0=1 xs=2\n" }
+lupin   = { verdict = "exit(0)", stdout = "outs0=1 xs=2\n" }
+
+[trunk]
+checked = { verdict = "fail(E1001)", phase = "mem" }
+native  = { verdict = "fail(E1001)", phase = "mem" }
+lupin   = { verdict = "trap(use-after-move)", phase = "run" }

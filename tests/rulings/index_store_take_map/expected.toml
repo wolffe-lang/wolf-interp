@@ -1,0 +1,18 @@
+# s182 — the ruled verdict per machine (the oracle for s180 / is55), and what
+# each machine measured at trunk on 2026-09-24: wolf-lang a565d4b9 (debug
+# build, `wolf conform-run main.lu --checked|--native --json`), lupin 0.1.38
+# (828b5c55…, `lupin conform-run main.lu --json`), kasumi linux x86-64,
+# run from this directory (evidence: ~/lanes/s182/evidence/trunk-a565d4b9-witnesses.log).
+ruling = "wolf-lang#438 (2026-09-24): align — m[k] = take v moves; [gram.expr.assign] admits take there"
+clause = "gram.expr.assign, mem.region.edge.elem"
+lands_in = "corpus/memory/index_store_take_map.lu"
+
+[expected]
+checked = { verdict = "fail(E1001)", phase = "typecheck" }
+native  = { verdict = "fail(E1001)", phase = "typecheck" }
+lupin   = { verdict = "trap(use-after-move)", stdout = "" }
+
+[trunk]
+checked = { verdict = "fail(E0201)", phase = "parse" }
+native  = { verdict = "fail(E0201)", phase = "parse" }
+lupin   = { verdict = "fail(E0201)", phase = "parse" }

@@ -1,0 +1,20 @@
+//! check: fail(E1001)
+//! phase: typecheck
+//! conforms: mem.region.edge.elem, mem.tier0.move.2, gram.expr.assign
+//!
+//! s182 (wolf-lang#438, ruled "align" 2026-09-24; RULED, NOT YET BUILT —
+//! parked for s180/is55) — the `Map` twin of `index_store_take_list`:
+//! `m["k"] = take xs` moves, the later use of `xs` is E1001 on both
+//! wolfgang lanes and `trap(use-after-move)` on lupin. Today
+//! `fail(E0201)` everywhere.
+
+fn main() -> !int {
+    var xs = List[int]()
+    (mut xs).push(1)
+    var m = Map[str, List[int]]()
+    m["k"] = take xs
+    (mut xs).push(4)
+    let got = m["k"] else List[int]()
+    print("m0={got.len} xs={xs.len}")
+    0
+}

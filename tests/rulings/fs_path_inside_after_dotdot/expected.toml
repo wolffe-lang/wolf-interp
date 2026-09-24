@@ -1,0 +1,18 @@
+# s182 — the ruled verdict per machine (the oracle for s180 / is55), and what
+# each machine measured at trunk on 2026-09-24: wolf-lang a565d4b9 (debug
+# build, `wolf conform-run main.lu --checked|--native --json`), lupin 0.1.38
+# (828b5c55…, `lupin conform-run main.lu --json`), kasumi linux x86-64,
+# run from this directory (evidence: ~/lanes/s182/evidence/trunk-a565d4b9-witnesses.log).
+ruling = "wolf-lang#386 (2026-09-24): resolved, not lexical — a path inside the tree after .. is applied is inside it"
+clause = "os.fs.path.domain"
+lands_in = "stays here: a corpus witness names a relative path with no .. (this one has one, deliberately)"
+
+[expected]
+checked = { verdict = "exit(0)", stdout = "inner=in gone=true\n" }
+native  = { verdict = "exit(0)", stdout = "inner=in gone=true\n" }
+lupin   = { verdict = "exit(0)", stdout = "inner=in gone=true\n", note = "the one #386 row lupin MUST change: unsupported is not conformant here" }
+
+[trunk]
+checked = { verdict = "exit(0)", stdout = "inner=in gone=true\n" }
+native  = { verdict = "exit(0)", stdout = "inner=in gone=true\n" }
+lupin   = { verdict = "unsupported", phase = "resolve" }

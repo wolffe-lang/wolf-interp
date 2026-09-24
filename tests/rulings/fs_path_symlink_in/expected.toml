@@ -1,0 +1,19 @@
+# s182 — the ruled verdict per machine (the oracle for s180 / is55), and what
+# each machine measured at trunk on 2026-09-24: wolf-lang a565d4b9 (debug
+# build, `wolf conform-run main.lu --checked|--native --json`), lupin 0.1.38
+# (828b5c55…, `lupin conform-run main.lu --json`), kasumi linux x86-64,
+# run from this directory (evidence: ~/lanes/s182/evidence/trunk-a565d4b9-witnesses.log).
+ruling = "wolf-lang#386 (2026-09-24): a relative path with no .. that resolves INSIDE the tree is inside it — every machine serves it"
+clause = "os.fs.path.domain"
+setup = "setup.sh (target/s182_in_link -> s182_in)"
+lands_in = "stays here: the setup needs a symlink; the CONTROL for fs_path_symlink_out"
+
+[expected]
+checked = { verdict = "exit(0)", stdout = "sym=sym gone=true\n" }
+native  = { verdict = "exit(0)", stdout = "sym=sym gone=true\n" }
+lupin   = { verdict = "exit(0)", stdout = "sym=sym gone=true\n" }
+
+[trunk]
+checked = { verdict = "exit(0)", stdout = "sym=sym gone=true\n" }
+native  = { verdict = "exit(0)", stdout = "sym=sym gone=true\n" }
+lupin   = { verdict = "exit(1)", stdout = "error: not_found\n" }

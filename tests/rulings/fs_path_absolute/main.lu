@@ -1,0 +1,20 @@
+//! check: run(exit=0, stdout="abs=abs gone=true\n")
+//! phase: run
+//! conforms: os.fs.path.domain
+//!
+//! s182 (wolf-lang#386, ruled "the draft as written" 2026-09-24) — an
+//! absolute path. The domain is every path the host lets the process
+//! reach: wolf serves it on both tiers (today and ruled). lupin may
+//! serve it or decline it BY NAME (`unsupported`, a scope statement);
+//! 0.1.38 declines it by name today, which is conformant. Never a row.
+//! Parked, not a corpus row: a corpus witness names a relative path
+//! with no `..` (`[os.fs.path.domain]`, last sentence).
+
+fn main() -> !int {
+    let path = "/tmp/s182_probe_abs.txt"
+    fs_write_text(path, "abs")?
+    let text = fs_read_text(path)?
+    fs_remove(path)?
+    print("abs={text} gone={!fs_exists(path)}")
+    0
+}

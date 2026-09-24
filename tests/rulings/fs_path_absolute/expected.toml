@@ -1,0 +1,18 @@
+# s182 — the ruled verdict per machine (the oracle for s180 / is55), and what
+# each machine measured at trunk on 2026-09-24: wolf-lang a565d4b9 (debug
+# build, `wolf conform-run main.lu --checked|--native --json`), lupin 0.1.38
+# (828b5c55…, `lupin conform-run main.lu --json`), kasumi linux x86-64,
+# run from this directory (evidence: ~/lanes/s182/evidence/trunk-a565d4b9-witnesses.log).
+ruling = "wolf-lang#386 (2026-09-24): every path the host allows; confinement is a scope decline, resolved not lexical"
+clause = "os.fs.path.domain"
+lands_in = "stays here: a corpus witness names a relative path with no .."
+
+[expected]
+checked = { verdict = "exit(0)", stdout = "abs=abs gone=true\n" }
+native  = { verdict = "exit(0)", stdout = "abs=abs gone=true\n" }
+lupin   = { verdict = ["exit(0)", "unsupported"], stdout = "abs=abs gone=true\n", note = "either is conformant: served, or declined BY NAME; never a row" }
+
+[trunk]
+checked = { verdict = "exit(0)", stdout = "abs=abs gone=true\n" }
+native  = { verdict = "exit(0)", stdout = "abs=abs gone=true\n" }
+lupin   = { verdict = "unsupported", phase = "resolve" }

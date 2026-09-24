@@ -1,0 +1,17 @@
+//! check: run(exit=0, stdout="up=up gone=true\n")
+//! phase: run
+//! conforms: os.fs.path.domain
+//!
+//! s182 (wolf-lang#386, ruled 2026-09-24) — a `..` that climbs out of
+//! the working directory. wolf serves it on both tiers; lupin may serve
+//! or decline by name (0.1.38 declines by name today — conformant).
+//! Run from this directory: the file lands one level up and is removed.
+
+fn main() -> !int {
+    let path = "../s182_probe_up.txt"
+    fs_write_text(path, "up")?
+    let text = fs_read_text(path)?
+    fs_remove(path)?
+    print("up={text} gone={!fs_exists(path)}")
+    0
+}
