@@ -67,10 +67,10 @@ set):
 $ lupin corpus
 …
 
-666 file(s) under upstream/corpus: 625 entries, 41 member(s), 0 failure(s)
-358 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
+690 file(s) under upstream/corpus: 646 entries, 44 member(s), 0 failure(s)
+367 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 485 entries reach the `run` rung; 491 match their `check:` expectation, 26 are the dynamic counterpart of the static code the corpus pins, 48 are static-conservatism entries (the compiler rejects statically what this machine never checks), 59 are out of scope, 1 mismatch
+lupin: 504 entries reach the `run` rung; 503 match their `check:` expectation, 28 are the dynamic counterpart of the static code the corpus pins, 53 are static-conservatism entries (the compiler rejects statically what this machine never checks), 61 are out of scope, 1 mismatch
 ```
 
 ## Bumping the pin
