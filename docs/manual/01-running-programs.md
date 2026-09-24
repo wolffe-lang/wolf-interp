@@ -56,8 +56,10 @@ carries the program's outcome. It exits `2` when the tool itself could not
 run (missing file, bad flag). It exits `1` when the work ran and failed its
 own check: a red corpus walk, a rejected record, an unstable exploration.
 
-The `lex` and `parse` doors are ordinary frontends. They exit `65` on a
-rejected program and print the diagnostic to stderr.
+The `lex` and `parse` doors are ordinary frontends. They exit `2` on a
+rejected program, as `run`, `check` and `eval` do, and print the diagnostic
+to stderr. `[conf.exit.static]` names one number for a rejection at every
+front door; through 0.1.38 these two exited `65`.
 
 ## The std root
 
