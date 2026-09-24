@@ -3347,7 +3347,9 @@ impl Machine {
         self.step()?;
         match &stmt.kind {
             StmtKind::Binding(binding) => self.exec_binding(binding),
-            StmtKind::Assign { place, op, value } => self.exec_assign(place, *op, value, stmt.span),
+            StmtKind::Assign {
+                place, op, value, ..
+            } => self.exec_assign(place, *op, value, stmt.span),
             StmtKind::Defer { on_error, expr } => {
                 if let Some(frame) = self.frames.last_mut()
                     && let Some(scope) = frame.scopes.last_mut()

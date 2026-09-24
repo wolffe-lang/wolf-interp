@@ -1181,6 +1181,7 @@ impl Walk<'_> {
                 place,
                 op: _,
                 value,
+                take: _,
             } => {
                 self.assign(place, stmt.span);
                 self.expr(place);

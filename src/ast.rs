@@ -562,10 +562,16 @@ pub enum StmtKind {
     Binding(Box<Binding>),
     /// `place assign_op expr TERM`. Assignment is a **statement**, not an
     /// expression (`[gram.expr.assign]`); "place" is checked in sema, not here.
+    ///
+    /// `take` is the one mode an assignment may spell, and only as
+    /// `index_place '=' 'take' expr` (wolf-lang#438, ruled 2026-09-24): the
+    /// stored value MOVES, where a plain index store COPIES it
+    /// (`[mem.region.edge.elem]`). `take` is `true` for exactly that form.
     Assign {
         place: Expr,
         op: AssignOp,
         value: Expr,
+        take: bool,
     },
     Defer {
         on_error: bool,
@@ -586,6 +592,22 @@ pub struct Expr {
     pub kind: Box<ExprKind>,
     pub span: Span,
     pub anchor: &'static str,
+}
+
+impl Expr {
+    /// `index_place ::= expr '[' expr ']'` (`[gram.expr.assign]`): a
+    /// container element named by one plain subscript — the only place a
+    /// store may spell `take` at, and the place a plain store COPIES into
+    /// (`[mem.region.edge.elem]`, wolf-lang#438). A generic application or a
+    /// moded subscript is not one.
+    #[must_use]
+    pub fn is_index_place(&self) -> bool {
+        matches!(
+            &*self.kind,
+            ExprKind::BracketApply { args, .. }
+                if matches!(args.as_slice(), [IndexArg::Value(arg)] if arg.mode.is_none())
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

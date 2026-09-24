@@ -2323,6 +2323,17 @@ impl<'a> Parser<'a> {
 
         if let Some(op) = self.assign_op() {
             self.advance();
+            // `[gram.expr.assign]` (wolf-lang#438): `index_place '=' 'take'
+            // expr` is the one moded store. Only a plain `=` whose place is a
+            // single-subscript element takes it; anywhere else `take` is left
+            // for `parse_expr`, which refuses it exactly as before (E0201) —
+            // `take` is a call-site mode, not an expression.
+            let take = op == AssignOp::Assign
+                && expr.is_index_place()
+                && matches!(self.tok(), Some(Tok::Kw("take")));
+            if take {
+                self.advance();
+            }
             let value = self.parse_expr()?;
             self.expect_term("gram.expr.assign")?;
             return Ok(Stmt {
@@ -2331,6 +2342,7 @@ impl<'a> Parser<'a> {
                     place: expr,
                     op,
                     value,
+                    take,
                 },
                 span: Span::new(start, self.prev_span().end),
                 anchor: "gram.expr.assign",

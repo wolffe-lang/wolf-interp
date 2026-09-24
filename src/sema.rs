@@ -5498,7 +5498,9 @@ impl ScalarWalk<'_> {
     fn stmt(&mut self, stmt: &Stmt) -> Option<Diag> {
         match &stmt.kind {
             StmtKind::Binding(binding) => self.binding(binding),
-            StmtKind::Assign { place, op, value } => {
+            StmtKind::Assign {
+                place, op, value, ..
+            } => {
                 if let Some(diag) = self.expr(place).or_else(|| self.expr(value)) {
                     return Some(diag);
                 }
@@ -7282,7 +7284,9 @@ impl RowWalk<'_> {
                         declare_pattern_names(&binding.pattern, self);
                     }
                 }
-                StmtKind::Assign { place, op, value } => {
+                StmtKind::Assign {
+                    place, op, value, ..
+                } => {
                     if let Some(diag) = self
                         .str_place(place)
                         .or_else(|| self.map_compound(place, *op))
