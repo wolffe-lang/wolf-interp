@@ -1093,3 +1093,67 @@ fn an_explicit_phase_stop_is_pass_and_never_unsupported_before_the_refusal() {
     assert_eq!(value["phase_reached"], "resolve", "{value}");
     assert!(value["stdout_sha256"].is_null(), "pass carries no stdout: {value}");
 }
+
+/// wolf-lang#437, the lupin half (the shape s181 fixed on the issue): when a
+/// diagnostic's span lies OUTSIDE the entry file, the record carries a
+/// top-level `files` array — package-relative, `/`-separated, the entry at
+/// index 0, then each other file a diagnostic lies in, once, in order of
+/// first appearance — and EVERY diagnostic carries an integer `file`
+/// indexing it. Otherwise both keys are absent: always for a single-file
+/// package, and for a multi-module package whose diagnostics all sit in the
+/// entry. Until 0.1.39 a sibling's span read as an entry-file offset
+/// pointing at the wrong bytes.
+#[test]
+fn a_diagnostic_in_a_sibling_module_names_its_file_and_an_entry_one_does_not() {
+    let package = |name: &str, main: &str, shapes: &str| -> String {
+        let dir = std::env::temp_dir().join(format!("lupin-is54-files-{name}"));
+        std::fs::create_dir_all(dir.join("geometry")).expect("scratch dir");
+        std::fs::write(dir.join("main.lu"), main).expect("writable");
+        std::fs::write(dir.join("geometry/shapes.lu"), shapes).expect("writable");
+        dir.join("main.lu").to_str().expect("utf-8").to_owned()
+    };
+    let observe = |entry: &str| -> serde_json::Value {
+        let output = lupin(&["conform-run", entry, "--json"]);
+        assert_eq!(output.status.code(), Some(0));
+        let value: serde_json::Value =
+            serde_json::from_str(stdout_of(&output).trim()).expect("one JSON object");
+        wolf_interp::schema::validate(&value)
+            .unwrap_or_else(|e| panic!("lupin's own record must validate: {e:?}\n{value}"));
+        value
+    };
+    let main = "use geometry\n\nfn main() -> !int {\n    print(\"{geometry.area(3)}\")\n    0\n}\n";
+
+    // The duplicate is in the SIBLING: E0302 at the second `area`, in
+    // `geometry/shapes.lu`, and the record says so.
+    let shapes_dup = "//! member: true\n\n/// The square's area.\npub fn area(n: int) -> int { n * n }\n\n/// Again.\npub fn area(n: int) -> int { n + n }\n";
+    let value = observe(&package("sibling", main, shapes_dup));
+    assert_eq!(value["verdict"], "fail(E0302)", "{value}");
+    assert_eq!(value["files"], serde_json::json!(["main.lu", "geometry/shapes.lu"]), "{value}");
+    let diagnostics = value["diagnostics"].as_array().expect("an array");
+    assert!(!diagnostics.is_empty(), "{value}");
+    assert_eq!(diagnostics[0]["code"], "E0302", "{value}");
+    assert_eq!(diagnostics[0]["file"], 1, "{value}");
+    let second = shapes_dup.rfind("area").expect("the second definition");
+    assert_eq!(
+        diagnostics[0]["span"],
+        serde_json::json!([second, second + 4]),
+        "the span is an offset into the SIBLING's bytes: {value}"
+    );
+    for diagnostic in diagnostics {
+        assert!(diagnostic["file"].is_u64(), "every diagnostic carries file once files exists: {value}");
+    }
+
+    // The same package with the fault in the ENTRY: every span is in the
+    // entry, so neither key appears.
+    let shapes_ok = "//! member: true\n\n/// The square's area.\npub fn area(n: int) -> int { n * n }\n\n/// The square's perimeter.\npub fn perimeter(n: int) -> int { 4 * n }\n";
+    let main_dup = "use geometry\n\nfn twice() -> int { 2 }\nfn twice() -> int { 3 }\n\nfn main() -> !int {\n    print(\"{geometry.area(3)}\")\n    0\n}\n";
+    let value = observe(&package("entry", main_dup, shapes_ok));
+    assert_eq!(value["verdict"], "fail(E0302)", "{value}");
+    assert!(value.get("files").is_none(), "{value}");
+    assert!(value["diagnostics"][0].get("file").is_none(), "{value}");
+
+    // A single-file program never carries either key.
+    let hello = format!("{}/corpus/hello.lu", wolf_interp::upstream_root());
+    let value = observe(&hello);
+    assert!(value.get("files").is_none(), "{value}");
+}

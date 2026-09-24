@@ -507,6 +507,67 @@ mod tests {
         assert!(message.contains("must begin with `x-`"), "{message}");
     }
 
+    /// wolf-lang#437 (ruled 2026-09-24; the shape s181 fixed on the issue):
+    /// a top-level optional `files` array of package-relative paths, index 0
+    /// the entry, and an optional integer `file` on each diagnostic indexing
+    /// it — both absent for a single-file package, a record without them
+    /// unchanged. Accepted in the shape, refused out of it: a `file` with no
+    /// `files` or out of its range is malformed, `files` must be strings, and
+    /// `warnings` entries carry no `file`. The old seal still closes.
+    #[test]
+    fn a_file_index_on_diagnostics_is_admitted_in_its_shape_and_refused_out_of_it() {
+        let mut record = valid_record();
+        record["verdict"] = json!("fail(E0302)");
+        record["phase_reached"] = json!("resolve");
+        record["files"] = json!(["main.lu", "geometry/shapes.lu"]);
+        record["diagnostics"] =
+            json!([{"code": "E0302", "span": [245, 249], "severity": "error", "file": 1}]);
+        assert_eq!(validate(&record), Ok(()));
+
+        // Index 0 names the entry and is legal; every diagnostic may carry it.
+        record["diagnostics"] = json!([
+            {"code": "E0302", "span": [245, 249], "severity": "error", "file": 1},
+            {"code": "W0313", "span": [0, 3], "severity": "warning", "file": 0}
+        ]);
+        assert_eq!(validate(&record), Ok(()));
+
+        // Without the keys the record is exactly what it always was.
+        assert_eq!(validate(&valid_record()), Ok(()));
+
+        // A `file` with no `files` has nothing to index.
+        let mut orphan = valid_record();
+        orphan["diagnostics"] = json!([{"code": "E0302", "span": [1, 2], "severity": "error", "file": 0}]);
+        let message = reasons(&orphan);
+        assert!(message.contains("/diagnostics/0/file"), "{message}");
+
+        // Out of range.
+        let mut far = record.clone();
+        far["diagnostics"] = json!([{"code": "E0302", "span": [1, 2], "severity": "error", "file": 2}]);
+        assert!(reasons(&far).contains("/diagnostics/0/file"), "{}", reasons(&far));
+
+        // Not an index.
+        let mut named = record.clone();
+        named["diagnostics"] =
+            json!([{"code": "E0302", "span": [1, 2], "severity": "error", "file": "geometry/shapes.lu"}]);
+        assert!(reasons(&named).contains("/diagnostics/0/file"), "{}", reasons(&named));
+
+        // `files` holds paths.
+        let mut bad_files = record.clone();
+        bad_files["files"] = json!(["main.lu", 7]);
+        assert!(reasons(&bad_files).contains("/files/1"), "{}", reasons(&bad_files));
+
+        // `[proto.record.warn]` is unchanged: a warnings entry carries no file.
+        let mut warned = record.clone();
+        warned["warnings"] = json!([{"code": "W0313", "span": [0, 3], "file": 0}]);
+        assert!(reasons(&warned).contains("/warnings/0/file"), "{}", reasons(&warned));
+
+        // And a diagnostic key that is neither of the known four is still refused.
+        let mut stranger = record.clone();
+        stranger["diagnostics"] =
+            json!([{"code": "E0302", "span": [1, 2], "severity": "error", "path": "x.lu"}]);
+        assert!(reasons(&stranger).contains("/diagnostics/0/path"), "{}", reasons(&stranger));
+    }
+
     #[test]
     fn non_extension_strangers_are_rejected_but_x_keys_pass() {
         let mut record = valid_record();
