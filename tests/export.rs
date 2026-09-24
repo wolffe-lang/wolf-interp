@@ -275,7 +275,16 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // (`conc/proc_link_root_death.lu`, the first `exit=nonzero` file) and
 // `type.interp.spec`, which rides on the six `strings/format*` and
 // `strings/float_format.lu` headers rather than on a new file.
-const RATCHET_FLOOR: usize = 256;
+// 256 -> 264 at 93a5fe50 (is54, wolf-lang v0.2.16 — the TAG): EIGHT, each
+// cited only by files the pin adds, computed from the bundle's own
+// `coverage/matrix.jsonl` (every citing file new): `conc.proc.arg`
+// (`conc/freeze_proc_snapshot.lu`), `conc.proc.handle` and `conc.proc.join`
+// (the two `conc/proc_join_*.lu`), `gram.expr.assign`
+// (`memory/mut_place_nested.lu`), `mem.model.place` (the four `memory/mut_*`
+// place witnesses), `type.err.alias.qualified` and
+// `type.err.alias.transparent` (s175's `rows/error_alias_*`), and
+// `type.list.lit.elem` (the two `typecheck/list_lit_elem_*.lu`).
+const RATCHET_FLOOR: usize = 264;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
