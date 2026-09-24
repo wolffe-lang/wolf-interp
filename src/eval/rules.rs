@@ -882,7 +882,7 @@ impl Rule {
     }
 
     /// Every rule, in declaration order. The registry.
-    pub const ALL: [Rule; 117] = [
+    pub const ALL: [Rule; 118] = [
         Rule::ValueSemantics,
         Rule::PlacePath,
         Rule::PathDisjoint,
