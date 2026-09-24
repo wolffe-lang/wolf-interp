@@ -20,9 +20,9 @@
 //! reach, and a corpus row is one program where these are fourteen.
 //!
 //! Every program below runs with its scratch directory as the working
-//! directory, because this machine admits only a RELATIVE socket path that
-//! does not climb out of it — the path-shaped twin of the TCP family's
-//! "loopback + port 0" discipline.
+//! directory, because this machine admits only a socket path that RESOLVES
+//! inside it (`[os.fs.path.domain]`, is55) — the path-shaped twin of the TCP
+//! family's "loopback + port 0" discipline.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -227,6 +227,43 @@ fn a_socket_path_that_climbs_out_of_the_working_directory_is_refused_by_name() {
     assert!(
         stderr.contains("outside the working directory"),
         "the refusal names the shape: {stderr}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_socket_path_is_judged_resolved_not_lexically() {
+    // `[os.fs.path.domain]` (wolf-lang#386): "`[os.net.unix]`'s socket path
+    // is the same object and takes the same answer" — the boundary is
+    // resolved. A `..` that stays inside is served (it was refused by name
+    // until is55), and a link that carries a relative path with no `..`
+    // outside the tree is declined by name (it was served).
+    let dir = scratch("unix-resolved");
+    let outside = scratch("unix-resolved-outside");
+    std::fs::create_dir_all(dir.join("target").join("sub")).expect("a tree");
+    std::os::unix::fs::symlink(&outside, dir.join("target").join("out")).expect("the link");
+    let inside = run_in(
+        &dir,
+        "fn main() -> !int {\n    let s = net_listen_unix(\"target/sub/../in.sock\")?\n    \
+         let there = fs_exists(\"target/in.sock\")\n    net_close(s)?\n    \
+         print(\"there={there} gone={!fs_exists(\"target/in.sock\")}\")\n    0\n}\n",
+    );
+    assert_eq!(inside.status.code(), Some(0), "{inside:?}");
+    assert_eq!(stdout_of(&inside), "there=true gone=true\n");
+
+    let through = run_in(
+        &dir,
+        "fn main() -> !int {\n    let s = net_listen_unix(\"target/out/x.sock\")?\n    print(\"{s}\")\n    0\n}\n",
+    );
+    assert_eq!(through.status.code(), Some(4), "{through:?}");
+    let stderr = String::from_utf8(through.stderr.clone()).expect("utf8 stderr");
+    assert!(
+        stderr.contains("outside the working directory"),
+        "the refusal names the shape: {stderr}"
+    );
+    assert!(
+        !outside.join("x.sock").exists(),
+        "a declined bind made nothing outside the tree"
     );
 }
 
