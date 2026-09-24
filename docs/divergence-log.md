@@ -110,6 +110,168 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### The thirty-ninth — is54, lupin 0.1.39, pin `2e4ca769` -> `93a5fe50` (wolf-lang **v0.2.16**)
+
+Five subjects, one pin move: wolf-interp#134 (a `use m.Alias` whose only
+use is an error row is a use), #130 (`Scope`/`Proc[T]` type names and
+`p.join()`), #129 items 2–5 (`trap_message` emitted, `[proto.record.pass]`,
+`[proto.cmp.pass]`, `[conf.exit]`), wolf-lang#447's lupin half (the linux
+archive's glibc floor), and wolf-lang#437's lupin half (a file index on
+record diagnostics — added to the contract mid-lane, shape pending on
+lane s181's comment on that issue).
+
+#### The ancestry oracle, before the pin moves
+
+Run in wolf-lang at `origin` fetched 2026-09-24:
+
+```
+$ git rev-parse 'v0.2.16^{commit}'
+93a5fe504593ca7642b78ba83b4986e7a03cfe71
+$ git merge-base --is-ancestor 93a5fe50 v0.2.16 ; echo $?
+0
+$ git merge-base --is-ancestor 93a5fe50 origin/trunk ; echo $?     # trunk a565d4b9
+0
+$ git merge-base --is-ancestor 2e4ca769 93a5fe50 ; echo $?         # the old pin is on the line
+0
+```
+
+#### The baseline, measured at `ba357aa` (0.1.38), old pin
+
+`lupin corpus` (release build, kasumi): **666 files, 625 entries, 41
+members, 0 failures, 358 distinct conforms; 485 reach `run`; 491 match,
+26 dynamic counterpart, 48 conservatism, 59 out of scope, 1 mismatch**
+(the filed DIV-2026-019). Identical to is53's measured row.
+
+#### Prediction, before the pin moves
+
+`git diff --name-status 2e4ca769 93a5fe50 -- corpus`: **24 `.lu` files
+added** (21 entries, 3 `member: true` files — `rows/error_alias_qualified/disk/d.lu`,
+`rows/negative/error_alias_private/disk/d.lu`,
+`typecheck/fn_param_shadows_import/cmp/c.lu`), two protocol fixtures
+added (`protocol/clean-stop.json`, `protocol/with-trap-message.json`),
+14 files modified. **Not one `check:` line is edited**: the 21 `check:`
+lines in the diff are all `+` lines of new files, and the modified files
+change `phase:` (`mem` -> `run`/`wir`) and prose only. This machine's
+judgement reads `check:` and never `phase:`, so:
+
+**Claim 1: no pre-existing entry changes class.** Every moved row is a new
+file. Falsifier: any of the 625 rows landing in a different column.
+
+The 21 new entries, predicted at 0.1.38's code (before any fix):
+
+| new entry | `check:` | predicted |
+| --- | --- | --- |
+| `conc/freeze_proc_snapshot.lu` | `run(exit=0, "2 2")` | match |
+| `conc/proc_join_param.lu` | `run(exit=0, "9")` | **MISMATCH** — `fail(E0301)` at `Proc[int]` (#130) |
+| `conc/proc_join_value.lu` | `run(exit=0, "42 7")` | out of scope — no `join` on a proc handle |
+| `memory/move_field_siblings_ok.lu` | `run(exit=0, …)` | match |
+| `memory/move_field_use_after.lu` | `fail(E1001)` | dynamic counterpart (`trap(use-after-move)`) |
+| `memory/mut_arg_element.lu` | `run(exit=0, …)` | match |
+| `memory/mut_elem_excl.lu` | `fail(E1002)` | conservatism (two elements, two places here) |
+| `memory/mut_elem_nested_call.lu` | `fail(E1002)` | dynamic counterpart (`trap(exclusivity)`) |
+| `memory/mut_place_nested.lu` | `run(exit=0, …)` | match |
+| `memory/pool_accessors.lu` | `run(exit=0)` | out of scope — `Pool` has no `is_empty`/`alive`/`has`/`clear` here |
+| `memory/pool_place_write.lu` | `run(exit=0)` | match |
+| `memory/region_str_producers_charged.lu` | `run(exit=0, …)` | match |
+| `memory/region_str_view_inside.lu` | `run(exit=0, …)` | match |
+| `memory/region_str_view_return.lu` | `fail(E1010)` | conservatism (wolf-interp#126) |
+| `rows/error_alias_qualified/main.lu` | `run(exit=0, …)` | **MISMATCH** — `fail(E0305)` (#134) |
+| `rows/negative/error_alias_private/main.lu` | `fail(E0304)` | match |
+| `strings/trim_cutset_refused.lu` | `fail(E0402)` | conservatism (wolf-interp#125) |
+| `typecheck/fn_param_shadows_import/main.lu` | `run(exit=0, …)` | match |
+| `typecheck/fn_param_shadows_item.lu` | `run(exit=0, …)` | match |
+| `typecheck/list_lit_elem_i32.lu` | `run(exit=0, …)` | match |
+| `typecheck/list_lit_elem_unfit.lu` | `fail(E0415)` | conservatism |
+
+11 match, 2 dynamic counterpart, 4 conservatism, 2 out of scope, 2
+mismatch. `distinct conforms` is derived, not guessed: the union of
+`conforms:` tags gains nine and loses none (`conc.proc.arg`,
+`conc.proc.handle`, `conc.proc.join`, `gram.expr.assign`,
+`mem.model.place`, `mem.shared.handle.3`, `type.err.alias.qualified`,
+`type.err.alias.transparent`, `type.list.lit.elem`); the same command at
+`2e4ca769` gives 358, which is the measured baseline. The registry gains
+fifteen anchors and drops none (`spec/anchors.json`, `+` lines only):
+524 -> 539.
+
+| class | `ba357aa` @ `2e4ca769` (measured) | 0.1.38 code @ `93a5fe50` (predicted) | after #134 + #130 (predicted) |
+| --- | --- | --- | --- |
+| files | 666 | 690 | 690 |
+| entries | 625 | 646 | 646 |
+| members | 41 | 44 | 44 |
+| failures | 0 | 0 | 0 |
+| distinct conforms | 358 | 367 | 367 |
+| anchors | 524 | 539 | 539 |
+| match | 491 | 502 | **505** |
+| dynamic counterpart | 26 | 28 | 28 |
+| conservatism | 48 | 52 | 52 |
+| out of scope | 59 | 61 | **60** |
+| mismatch | 1 (filed) | **3** (2 unfiled) | 1 (filed) |
+| reach `run` | 485 | 501 | **504** |
+
+`reach run` at the pin: the ten predicted run matches, the two dynamic
+counterparts and the four conservatism rows (they run here precisely
+because this machine does not refuse them). The flips, by name:
+**#134 flips `rows/error_alias_qualified/main.lu` MISMATCH -> match; #130
+flips `conc/proc_join_param.lu` MISMATCH -> match and
+`conc/proc_join_value.lu` out of scope -> match.** Nothing else moves
+for either fix — falsifier: any other row moving at either fix commit.
+
+#### #447, the glibc floor — the red witness is measured, the floor after is predicted
+
+Measured on the PUBLISHED 0.1.38 archives (kasumi, `gh release download
+v0.1.38`, `objdump -T <binary> | grep -o 'GLIBC_[0-9.]*' | sort -uV`):
+
+- `lupin-0.1.38-x86_64-unknown-linux-gnu.tar.gz` (sha256 `828b5c55…`):
+  highest **`GLIBC_2.39`**, and it is named by exactly two symbols, both
+  weak: `pidfd_spawnp` and `pidfd_getpid` — Rust std's process-spawn fast
+  path, linked against the 24.04 runner's glibc. Everything else is at
+  or below `GLIBC_2.34`.
+- `lupin-0.1.38-aarch64-unknown-linux-gnu.tar.gz` (sha256 `b85ec647…`):
+  the same, highest `GLIBC_2.39`.
+- control: `wolf-0.2.16-x86_64-unknown-linux-gnu.tar.gz` (sha256
+  `84e30c05…`), built on 22.04 by r21: highest `GLIBC_2.34`.
+
+The contract asked for the symbol to be predicted; it was measured
+first, while downloading the witness, so this is recorded as the red
+witness and not as a prediction. **Predicted: an archive built the way
+`release.yml` builds, on `ubuntu-22.04` / `ubuntu-22.04-arm`, names no
+version above `GLIBC_2.34` on either arch**, because the two `pidfd_*`
+symbols are absent from 2.35's libc and a weak reference to a symbol
+the link-time libc lacks carries no version. Falsifier: any
+`GLIBC_2.35`+ line in `objdump -T` of the built binary.
+
+#### #129 items 2–5, predicted
+
+- item 2: lupin's records carry no `trap_message` today; a failing
+  `assert(cond, "msg")` record will gain it and nothing else moves.
+- item 3 (`[proto.record.pass]`): `conform-run --phase=<p>` on a clean
+  program already answers `pass`; predicted that it also answers `pass`
+  (never `unsupported`) when the stop rung is SHALLOWER than the rung
+  where this machine would refuse the program's construct — if not, that
+  is the item's code change.
+- item 4 (`[proto.cmp.pass]`): `differ::claim()` collapses `Pass` and
+  `Unsupported` into one arm. Predicted red on two synthesized pairs at
+  0.1.38: `unsupported@resolve` vs `fail(E0301)@resolve` is reported as a
+  verdict divergence (`[proto.cmp.defined-divergence]` says never), and
+  `pass@run` vs `exit(0)@run` is reported as a divergence
+  (`[proto.cmp.pass]` says never). `pass` vs `fail` is already a
+  divergence at a mutually performed rung, and stays one. The one live
+  corpus row the split moves is predicted to be
+  `rows/negative/tag_undeclared_arg.lu` (`a=unsupported@resolve
+  b=fail(E0301)@resolve`, one of is53's four pre-existing gating
+  findings), from a verdict divergence into the conservatism ledger.
+- item 5 (`[conf.exit]`): `EXIT_REJECTED = 65` is a rejection wearing a
+  second number — `lupin lex`/`lupin parse` take a program and report on
+  it for a person, which is `[conf.exit]`'s definition of a front door,
+  and wolf 0.2.16 has no such commands to disagree with (`wolf lex` and
+  `wolf parse` answer "not a wolf command", exit 2). It becomes 2; the
+  test that pins 65 goes red first.
+
+#### Measured, after the pin moved
+
+*(to be filled at the measurement — this section was committed before the
+pin moved and before the first code change.)*
+
 ### The re-pin on the released line — is53, lupin 0.1.38, pin `41695e7` -> `2e4ca769` (wolf-lang **v0.2.15**)
 
 wolf-interp#127: 0.1.37 declares a pairing pin no downstream can relate to
