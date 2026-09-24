@@ -1045,7 +1045,9 @@ fn a_failing_assert_s_message_rides_the_record_and_nothing_else_carries_one() {
         let text = stdout_of(&output).trim().to_owned();
         let value: serde_json::Value = serde_json::from_str(&text).expect("one JSON object");
         assert!(
-            value["verdict"].as_str().is_some_and(|v| v.starts_with("trap(")),
+            value["verdict"]
+                .as_str()
+                .is_some_and(|v| v.starts_with("trap(")),
             "{name}: {value}"
         );
         match want {
@@ -1090,7 +1092,12 @@ fn an_explicit_phase_stop_is_pass_and_never_unsupported_before_the_refusal() {
     assert_eq!(value["phase_reached"], "resolve", "{value}");
 
     for phase in ["lex", "parse"] {
-        let stopped = lupin(&["conform-run", &comptime, &format!("--phase={phase}"), "--json"]);
+        let stopped = lupin(&[
+            "conform-run",
+            &comptime,
+            &format!("--phase={phase}"),
+            "--json",
+        ]);
         let value: serde_json::Value =
             serde_json::from_str(stdout_of(&stopped).trim()).expect("one JSON object");
         assert_eq!(value["verdict"], "pass", "{phase}: {value}");
@@ -1103,7 +1110,10 @@ fn an_explicit_phase_stop_is_pass_and_never_unsupported_before_the_refusal() {
         serde_json::from_str(stdout_of(&stopped).trim()).expect("one JSON object");
     assert_eq!(value["verdict"], "pass", "{value}");
     assert_eq!(value["phase_reached"], "resolve", "{value}");
-    assert!(value["stdout_sha256"].is_null(), "pass carries no stdout: {value}");
+    assert!(
+        value["stdout_sha256"].is_null(),
+        "pass carries no stdout: {value}"
+    );
 }
 
 /// wolf-lang#437, the lupin half (the shape s181 fixed on the issue): when a
@@ -1140,7 +1150,11 @@ fn a_diagnostic_in_a_sibling_module_names_its_file_and_an_entry_one_does_not() {
     let shapes_dup = "//! member: true\n\n/// The square's area.\npub fn area(n: int) -> int { n * n }\n\n/// Again.\npub fn area(n: int) -> int { n + n }\n";
     let value = observe(&package("sibling", main, shapes_dup));
     assert_eq!(value["verdict"], "fail(E0302)", "{value}");
-    assert_eq!(value["files"], serde_json::json!(["main.lu", "geometry/shapes.lu"]), "{value}");
+    assert_eq!(
+        value["files"],
+        serde_json::json!(["main.lu", "geometry/shapes.lu"]),
+        "{value}"
+    );
     let diagnostics = value["diagnostics"].as_array().expect("an array");
     assert!(!diagnostics.is_empty(), "{value}");
     assert_eq!(diagnostics[0]["code"], "E0302", "{value}");
@@ -1152,7 +1166,10 @@ fn a_diagnostic_in_a_sibling_module_names_its_file_and_an_entry_one_does_not() {
         "the span is an offset into the SIBLING's bytes: {value}"
     );
     for diagnostic in diagnostics {
-        assert!(diagnostic["file"].is_u64(), "every diagnostic carries file once files exists: {value}");
+        assert!(
+            diagnostic["file"].is_u64(),
+            "every diagnostic carries file once files exists: {value}"
+        );
     }
 
     // The same package with the fault in the ENTRY: every span is in the

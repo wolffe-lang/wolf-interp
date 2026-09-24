@@ -1054,11 +1054,41 @@ fn main() -> !int {
 #[test]
 fn the_handle_names_carry_their_arity_and_the_keywords_are_not_types() {
     let cases = [
-        ("scope-arg", "fn f(s: Scope[int]) -> int { 1 }\nfn main() -> !int { 0 }\n", "fail(E0401)", [8, 18], "resolve"),
-        ("proc-bare", "fn f(p: Proc) -> int { 1 }\nfn main() -> !int { 0 }\n", "fail(E0401)", [8, 12], "resolve"),
-        ("proc-two", "fn f(p: Proc[int, int]) -> int { 1 }\nfn main() -> !int { 0 }\n", "fail(E0401)", [8, 22], "resolve"),
-        ("scope-kw", "fn f(s: scope) -> int { 1 }\nfn main() -> !int { 0 }\n", "fail(E0206)", [8, 13], "parse"),
-        ("proc-kw", "fn f(p: proc) -> int { 1 }\nfn main() -> !int { 0 }\n", "fail(E0206)", [8, 12], "parse"),
+        (
+            "scope-arg",
+            "fn f(s: Scope[int]) -> int { 1 }\nfn main() -> !int { 0 }\n",
+            "fail(E0401)",
+            [8, 18],
+            "resolve",
+        ),
+        (
+            "proc-bare",
+            "fn f(p: Proc) -> int { 1 }\nfn main() -> !int { 0 }\n",
+            "fail(E0401)",
+            [8, 12],
+            "resolve",
+        ),
+        (
+            "proc-two",
+            "fn f(p: Proc[int, int]) -> int { 1 }\nfn main() -> !int { 0 }\n",
+            "fail(E0401)",
+            [8, 22],
+            "resolve",
+        ),
+        (
+            "scope-kw",
+            "fn f(s: scope) -> int { 1 }\nfn main() -> !int { 0 }\n",
+            "fail(E0206)",
+            [8, 13],
+            "parse",
+        ),
+        (
+            "proc-kw",
+            "fn f(p: proc) -> int { 1 }\nfn main() -> !int { 0 }\n",
+            "fail(E0206)",
+            [8, 12],
+            "parse",
+        ),
     ];
     for (name, source, verdict, span, phase) in cases {
         let record = record_of(name, source);

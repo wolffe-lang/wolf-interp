@@ -685,7 +685,8 @@ pub fn compare_deep(
                 // two different places.
                 let (in_a, in_b) = (rejection_file(a), rejection_file(b));
                 if code_a != code_b || span_a != span_b || in_a != in_b {
-                    let place = |at: Option<String>| at.map(|f| format!(" in {f}")).unwrap_or_default();
+                    let place =
+                        |at: Option<String>| at.map(|f| format!(" in {f}")).unwrap_or_default();
                     divergence = Some(DeepDivergence {
                         file: file.clone(),
                         class: DeepClass::SpanOrCode,
@@ -1287,8 +1288,16 @@ mod tests {
         let ran = record(Phase::Run, Verdict::Exit(0));
         for stop in [Phase::Wir, Phase::Run] {
             let passed = record(stop, Verdict::Pass);
-            assert_eq!(compare_deep(&ran, &passed, false).divergence, None, "{stop}");
-            assert_eq!(compare_deep(&passed, &ran, false).divergence, None, "{stop}");
+            assert_eq!(
+                compare_deep(&ran, &passed, false).divergence,
+                None,
+                "{stop}"
+            );
+            assert_eq!(
+                compare_deep(&passed, &ran, false).divergence,
+                None,
+                "{stop}"
+            );
         }
         let trapped = record(Phase::Run, Verdict::Trap(TrapKind::Bounds));
         let passed = record(Phase::Run, Verdict::Pass);

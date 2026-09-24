@@ -197,7 +197,11 @@ fn a_pass_meets_each_verdict_as_proto_cmp_pass_rules() {
 
     let mut shallower = stopped.clone();
     shallower.phase_reached = Phase::Resolve;
-    assert_eq!(compare::compare(&shallower, &stopped), None, "pass against pass");
+    assert_eq!(
+        compare::compare(&shallower, &stopped),
+        None,
+        "pass against pass"
+    );
 
     let mut rejects = stopped.clone();
     rejects.verdict = Verdict::Fail("E0301".to_owned());

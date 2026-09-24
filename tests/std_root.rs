@@ -521,7 +521,11 @@ fn an_imported_error_alias_named_only_in_a_row_is_used_and_an_unnamed_one_is_not
     for (label, body) in placements {
         let dir = scratch(&format!("std-root-alias-row-{label}"));
         write(&dir, "disk/d.lu", member);
-        write(&dir, "main.lu", &format!("use disk\nuse disk.IoErrors\n\n{body}"));
+        write(
+            &dir,
+            "main.lu",
+            &format!("use disk\nuse disk.IoErrors\n\n{body}"),
+        );
         let entry = dir.join("main.lu");
         let value = record(&lupin(
             &["conform-run", entry.to_str().expect("utf-8 path"), "--json"],

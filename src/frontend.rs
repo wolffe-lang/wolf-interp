@@ -310,7 +310,10 @@ fn attribute_files(observation: &mut Observation, entry: &Path, std_root: Option
     }
     let package_root = strip_dot(entry.parent().unwrap_or_else(|| Path::new("")));
     let env_root = std::env::var_os("LUPIN_STD").map(PathBuf::from);
-    let std_root = std_root.map(Path::to_path_buf).or(env_root).map(|root| strip_dot(&root));
+    let std_root = std_root
+        .map(Path::to_path_buf)
+        .or(env_root)
+        .map(|root| strip_dot(&root));
     let relative = |raw: &str| -> String {
         let path = strip_dot(Path::new(raw));
         if let Ok(inside) = path.strip_prefix(&package_root) {
@@ -349,10 +352,13 @@ fn attribute_files(observation: &mut Observation, entry: &Path, std_root: Option
     }
     let mut files = vec![entry_path];
     let mut index_of = |path: &String| -> u64 {
-        let at = files.iter().position(|known| known == path).unwrap_or_else(|| {
-            files.push(path.clone());
-            files.len() - 1
-        });
+        let at = files
+            .iter()
+            .position(|known| known == path)
+            .unwrap_or_else(|| {
+                files.push(path.clone());
+                files.len() - 1
+            });
         u64::try_from(at).unwrap_or(u64::MAX)
     };
     let indices: Vec<u64> = order.iter().map(&mut index_of).collect();
@@ -430,7 +436,8 @@ fn observe_with_spans(
                 .and_then(Path::parent)
                 .and_then(|dir| Path::new(&module).strip_prefix(dir).ok())
                 .map_or_else(|| module.clone(), crate::slash_path);
-            let mut observation = Observation::failed(Phase::Parse, (*diag).in_file(module.clone()));
+            let mut observation =
+                Observation::failed(Phase::Parse, (*diag).in_file(module.clone()));
             observation.reason = Some(format!("in module file `{display}`"));
             return observation;
         }

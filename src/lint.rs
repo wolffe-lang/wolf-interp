@@ -263,7 +263,12 @@ pub fn analyze(program: &Program) -> Analysis {
                 .units
                 .iter()
                 .filter(|unit| !unit.from_std)
-                .flat_map(|unit| unit.unit.items.iter().map(|item| (unit.file.as_str(), item)))
+                .flat_map(|unit| {
+                    unit.unit
+                        .items
+                        .iter()
+                        .map(|item| (unit.file.as_str(), item))
+                })
                 .filter(|(_, item)| {
                     !matches!(
                         item.kind,
@@ -365,7 +370,11 @@ pub fn analyze(program: &Program) -> Analysis {
                 && span.end <= region.end
         })
     };
-    debug_assert_eq!(findings.len(), finding_files.len(), "every finding names its file");
+    debug_assert_eq!(
+        findings.len(),
+        finding_files.len(),
+        "every finding names its file"
+    );
     let mut attributed: Vec<(Warning, String)> = findings
         .iter()
         .zip(&finding_files)

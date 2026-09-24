@@ -256,12 +256,18 @@ fn validate_files(checker: &mut Checker, entry: Option<&Value>) -> Option<usize>
     let Some(items) = entry.as_array() else {
         checker.err(
             "/files",
-            format!("expected an array of package-relative paths, found {}", kind_of(entry)),
+            format!(
+                "expected an array of package-relative paths, found {}",
+                kind_of(entry)
+            ),
         );
         return Some(0);
     };
     if items.is_empty() {
-        checker.err("/files", "a file table is present only when it indexes something; the entry is index 0");
+        checker.err(
+            "/files",
+            "a file table is present only when it indexes something; the entry is index 0",
+        );
     }
     for (index, item) in items.iter().enumerate() {
         let pointer = format!("/files/{index}");
@@ -311,7 +317,10 @@ fn validate_diagnostics(checker: &mut Checker, entry: Option<&Value>, files: Opt
             match (file.as_u64(), files) {
                 (None, _) => checker.err(
                     pointer,
-                    format!("expected an integer index into `files`, found {}", kind_of(file)),
+                    format!(
+                        "expected an integer index into `files`, found {}",
+                        kind_of(file)
+                    ),
                 ),
                 (Some(_), None) => checker.err(
                     pointer,
@@ -607,7 +616,8 @@ mod tests {
 
         // A `file` with no `files` has nothing to index.
         let mut orphan = valid_record();
-        orphan["diagnostics"] = json!([{"code": "E0302", "span": [1, 2], "severity": "error", "file": 0}]);
+        orphan["diagnostics"] =
+            json!([{"code": "E0302", "span": [1, 2], "severity": "error", "file": 0}]);
         let message = reasons(&orphan);
         assert!(message.contains("/diagnostics/0/file"), "{message}");
 
@@ -618,34 +628,58 @@ mod tests {
             {"code": "E0302", "span": [245, 249], "severity": "error", "file": 1},
             {"code": "W0313", "span": [0, 3], "severity": "warning"}
         ]);
-        assert!(reasons(&partial).contains("/diagnostics/1/file"), "{}", reasons(&partial));
+        assert!(
+            reasons(&partial).contains("/diagnostics/1/file"),
+            "{}",
+            reasons(&partial)
+        );
 
         // Out of range.
         let mut far = record.clone();
-        far["diagnostics"] = json!([{"code": "E0302", "span": [1, 2], "severity": "error", "file": 2}]);
-        assert!(reasons(&far).contains("/diagnostics/0/file"), "{}", reasons(&far));
+        far["diagnostics"] =
+            json!([{"code": "E0302", "span": [1, 2], "severity": "error", "file": 2}]);
+        assert!(
+            reasons(&far).contains("/diagnostics/0/file"),
+            "{}",
+            reasons(&far)
+        );
 
         // Not an index.
         let mut named = record.clone();
-        named["diagnostics"] =
-            json!([{"code": "E0302", "span": [1, 2], "severity": "error", "file": "geometry/shapes.lu"}]);
-        assert!(reasons(&named).contains("/diagnostics/0/file"), "{}", reasons(&named));
+        named["diagnostics"] = json!([{"code": "E0302", "span": [1, 2], "severity": "error", "file": "geometry/shapes.lu"}]);
+        assert!(
+            reasons(&named).contains("/diagnostics/0/file"),
+            "{}",
+            reasons(&named)
+        );
 
         // `files` holds paths.
         let mut bad_files = record.clone();
         bad_files["files"] = json!(["main.lu", 7]);
-        assert!(reasons(&bad_files).contains("/files/1"), "{}", reasons(&bad_files));
+        assert!(
+            reasons(&bad_files).contains("/files/1"),
+            "{}",
+            reasons(&bad_files)
+        );
 
         // `[proto.record.warn]` is unchanged: a warnings entry carries no file.
         let mut warned = record.clone();
         warned["warnings"] = json!([{"code": "W0313", "span": [0, 3], "file": 0}]);
-        assert!(reasons(&warned).contains("/warnings/0/file"), "{}", reasons(&warned));
+        assert!(
+            reasons(&warned).contains("/warnings/0/file"),
+            "{}",
+            reasons(&warned)
+        );
 
         // And a diagnostic key that is neither of the known four is still refused.
         let mut stranger = record.clone();
         stranger["diagnostics"] =
             json!([{"code": "E0302", "span": [1, 2], "severity": "error", "path": "x.lu"}]);
-        assert!(reasons(&stranger).contains("/diagnostics/0/path"), "{}", reasons(&stranger));
+        assert!(
+            reasons(&stranger).contains("/diagnostics/0/path"),
+            "{}",
+            reasons(&stranger)
+        );
     }
 
     #[test]

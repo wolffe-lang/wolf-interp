@@ -2408,17 +2408,19 @@ fn cycle_check(program: &Program) -> Option<Diag> {
                             .map(|at| format!("`{at}`"))
                             .collect::<Vec<_>>()
                             .join(" → ");
-                        return Some(Diag::new(
-                            "E0303",
-                            used.decl_span,
-                            "mod.cycle",
-                            format!(
-                                "this import completes a cycle: {cycle} → `{}` (in `{}`); \
+                        return Some(
+                            Diag::new(
+                                "E0303",
+                                used.decl_span,
+                                "mod.cycle",
+                                format!(
+                                    "this import completes a cycle: {cycle} → `{}` (in `{}`); \
                                  imports between modules must form a DAG (D32)",
-                                used.name, scope.file
-                            ),
-                        )
-                        .in_file(scope.file.clone()));
+                                    used.name, scope.file
+                                ),
+                            )
+                            .in_file(scope.file.clone()),
+                        );
                     }
                     Mark::Black => {}
                     Mark::White => {
@@ -2443,18 +2445,20 @@ fn cycle_check(program: &Program) -> Option<Diag> {
 fn dup_check(program: &Program) -> Option<Diag> {
     for module in program.modules.values() {
         if let Some(dup) = module.dups.first() {
-            return Some(Diag::new(
-                "E0302",
-                dup.again,
-                "mod.dup",
-                format!(
-                    "the name `{}` is defined twice in this module (defined again in `{}`); \
+            return Some(
+                Diag::new(
+                    "E0302",
+                    dup.again,
+                    "mod.dup",
+                    format!(
+                        "the name `{}` is defined twice in this module (defined again in `{}`); \
                      file boundaries create no scopes (D32) — two separate programs sharing a \
                      directory each mark themselves `//! member: false` (D59)",
-                    dup.name, dup.file
-                ),
-            )
-            .in_file(dup.file.clone()));
+                        dup.name, dup.file
+                    ),
+                )
+                .in_file(dup.file.clone()),
+            );
         }
     }
     None
@@ -2536,17 +2540,19 @@ fn unused_check(program: &Program) -> Option<Diag> {
                     .iter()
                     .any(|reference| reference.head == used.name);
                 if !referenced {
-                    return Some(Diag::new(
-                        "E0305",
-                        used.name_span,
-                        "mod.use.unused",
-                        format!(
-                            "the import `{}` is never used in `{}`; an unused import is a hard \
+                    return Some(
+                        Diag::new(
+                            "E0305",
+                            used.name_span,
+                            "mod.use.unused",
+                            format!(
+                                "the import `{}` is never used in `{}`; an unused import is a hard \
                              error (D32), and deleting the line is machine-applicable",
-                            used.name, scope.file
-                        ),
-                    )
-                    .in_file(scope.file.clone()));
+                                used.name, scope.file
+                            ),
+                        )
+                        .in_file(scope.file.clone()),
+                    );
                 }
             }
         }
