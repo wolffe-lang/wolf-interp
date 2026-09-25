@@ -4204,9 +4204,10 @@ first edit, the rest appended as it lands.
   and `fs_path_climbs_out` `unsupported`. wolf 0.2.16 answers its `[trunk]`
   cells unchanged (the #438 side is s180's).
 - **Red at the witnesses' commit, cited:** `tests/rulings_s182.rs` at
-  `dc0e989` (no code change yet) — 7 failed, 4 passed, exactly the seven
+  `feb7631` (no code change yet; measured before the rebase onto `fa18a92`,
+  when the commit was `dc0e989`) — 7 failed, 4 passed, exactly the seven
   (`~/lanes/is55/evidence/red-dc0e989-rulings.log`, `EXIT=101`); and
-  `tests/index_store.rs` run against the same `dc0e989` sources — 5 failed,
+  `tests/index_store.rs` run against the same sources — 5 failed,
   2 passed, the two passing being the non-regression pins (`take` refused
   elsewhere, a field store still moves) (`red-dc0e989-index_store.log`).
 - **Where the mode and the confinement live — held.** The store's mode was
@@ -4214,7 +4215,7 @@ first edit, the rest appended as it lands.
   `contained`'s lexical test, repeated in `net::socket_path`.
 - **The `not_found` row's cause — held**, and the fix is the one named: the
   `conform-run` door resolves against the process cwd
-  (`33d1c9e`); `fs_path_symlink_in` is `exit(0)` and a regular file the
+  (`4cc7fa4`); `fs_path_symlink_in` is `exit(0)` and a regular file the
   harness planted is read (`tests/fs_family.rs::a_conform_run_reads_what_its_harness_put_in_the_cwd`).
 - **Zero corpus rows move — held.** `lupin corpus` (release) at trunk
   `ba357aa` and at the head: byte-identical 673-line reports, 491 match /
@@ -4237,9 +4238,22 @@ first edit, the rest appended as it lands.
   commit, `tests/fs_family.rs` went red on exactly
   `a_live_run_writes_…`, `two_concurrent_observations_…` and
   `an_observed_programs_socket_…` (`dev-386-door-targeted.log`: 21 passed,
-  3 failed); they are rewritten onto the embedded door (`ef84f18`), where
+  3 failed); they are rewritten onto the embedded door (`72a19ae`), where
   the private root's two properties — no interference, fs and net agree —
   still hold and are still asserted, and a fourth pins the cwd read.
+- **Re-measured after the rebase onto trunk `fa18a92`** (is54 merged, lupin
+  0.1.39, pin `93a5fe50` = v0.2.16). The evidence files named
+  `…-53de98f…` above come from the pre-rebase head. Release builds of trunk
+  `fa18a92` and head `639b00f` (`~/lanes/is55/evidence/rebased/`): lupin's
+  cell is the ruled one on all ten witnesses; `lupin corpus` reports are
+  byte-identical (696 lines); `diff-run` against wolf 0.2.16 over 646
+  entries and 44 members gives 8 / 8 / 10 / 10 divergences on both sides,
+  and every report and ledger is identical except the same native-tier
+  `memory/unsafe_ub_uaf.lu` counterparty exit status (`112` vs `16`: the
+  compiled lane's use-after-free read). At the new pin the index stores of
+  a bare non-literal name are still the two above, and the one new store,
+  `memory/pool_place_write.lu:61`, is a struct literal. **New divergences:
+  zero.**
 - **Not predicted:** `tests/rulings_s182.rs` and `tests/net_unix.rs` did
   not run in that first targeted pass, because cargo stops at the first
   failed test binary; the second pass ran with `--no-fail-fast`.
