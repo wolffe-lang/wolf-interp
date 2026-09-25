@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.1.40 — 2026-09-25
+
+THE FORTIETH (is55). Pin unchanged: **`93a5fe50` (wolf-lang v0.2.16 —
+the TAG)**. Sixteen commits since 0.1.39, one lane, and it mirrors two
+rulings the maintainer took on 2026-09-24 and wolf-lang's s182 wrote into
+the spec (wolf-lang `0468dead`). No corpus row moves and no answer in the
+differential against the published wolf 0.2.16 moves; what moves is
+lupin's answer on seven of s182's ten ruled witnesses, each now the
+ruled cell. Measured on kasumi against trunk and head release builds,
+before and after the rebase onto 0.1.39 (`docs/divergence-log.md`,
+"The two mirrors III").
+
+**The index store follows `push`** (wolf-lang#438,
+`[mem.region.edge.elem]`, `[gram.expr.assign]`). `xs[i] = v` and
+`m[k] = v` copy a non-`Copy` place in and leave `v` live, as a plain
+`push(v)` does; `xs[i] = take v` moves it, the one store position an
+assignment admits a mode in. At 0.1.39 the plain store moved the place
+(a later `(mut xs).push(4)` trapped `use-after-move`) and the `take`
+store was E0201. `take` anywhere else in an assignment is still E0201,
+and a store through a field still moves (`b8e54e0`, `60b37fe`,
+`53ec794`). The compiler half is wolf-lang s180. A use after a `take` store is a
+static E1001 on the compiler and a dynamic `trap(use-after-move)` here,
+each machine's ruled cell — the resolve rung's move check keys on
+call-site markers and is not widened.
+
+**Confinement is resolved, not lexical** (wolf-lang#386,
+`[os.fs.path.domain]`). A path is judged after `..` is applied and
+symlinks are followed: `sub/../x` inside the tree is served (0.1.39
+declined it by name for spelling a `..`), and a symlink that carries a
+path out of the tree is declined by name, `unsupported`, never a row. A
+unix socket path takes the same resolved answer, because
+`[os.fs.path.domain]` makes a socket path and a file path one object
+(`95cc274`, `cfea132`, `c00f6c7`). Absolute paths and paths that climb
+out stay declined by name, as before.
+
+**`lupin conform-run` resolves where it is invoked** (`[os.fs.path]`: "a
+relative path resolves against the process's working directory, on
+every tier"). The door observes ONE program per process, as `wolf
+conform-run` does, and until now took the private observation root that
+exists for walks observing many programs in one process — so a program
+reading a file its harness had put in the cwd, or writing through a link
+its setup made there, answered `not_found` about a directory it was
+never run in. **That is the row s182 read as a symlink defect in 0.1.38**:
+`lupin run` served the same program, and a plain file in the cwd with no
+link anywhere failed the same way. The corpus walk, `diff-run`, the
+conformance export, the explorer, the fuzzer and every in-process test
+keep the private root (`4cc7fa4`, `72a19ae`, `16b7866`); three
+`tests/fs_family.rs` tests that pinned the root at the CLI moved to the
+embedded door, where both of its properties are still asserted, and a
+fourth pins the cwd read.
+
+**The ten ruled witnesses** land verbatim under `tests/rulings/`, each
+in its own directory with its `expected.toml`, and `tests/rulings_s182.rs`
+runs every one through the built binary's `conform-run --json` from its
+own directory and asserts lupin's ruled cell (`cafaba5`, `feb7631`). Red
+at the witnesses' commit on exactly the seven that flip; green at the
+head. Seven flip — `index_store_copies_{list,map}` `trap` → `exit(0)`;
+`index_store_take_{list,map}` `fail(E0201)` → `trap(use-after-move)`;
+`fs_path_inside_after_dotdot` `unsupported` → `exit(0)`;
+`fs_path_symlink_in` row → `exit(0)`; `fs_path_symlink_out` row →
+`unsupported` — and three hold: `index_store_read_param` `exit(0)`,
+`fs_path_absolute` and `fs_path_climbs_out` `unsupported`.
+
+**What did not move.** `lupin corpus` at 0.1.39 and at the head:
+byte-identical reports over the pinned corpus (646 entries, 44 members).
+`diff-run` against the published wolf 0.2.16 on the default, checked,
+native and release counterparties: 8 / 8 / 10 / 10 divergences on both
+sides, every report and conservatism ledger identical except the native
+tier's `memory/unsafe_ub_uaf.lu`, where the COUNTERPARTY's exit status
+after its own use-after-free read differs run to run; lupin's side is
+`ub(mem.ub)` in both. New divergences: zero. The ruled ones sit outside
+the corpus; the wolf-lang corpus carries s180's index-store witnesses
+from 0.2.17, which this release is the first to answer as ruled.
+
 ## 0.1.39 — 2026-09-24
 
 THE THIRTY-NINTH (is54). Pin `2e4ca769` (wolf-lang v0.2.15) ->
