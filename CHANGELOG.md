@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+**A read of a moved element traps** (is56, #141; `[mem.tier0.move.2]`
+under wolf-lang's `[mem.model.place.elem]`, eg00). `move xs[0]` always
+marked that one slot moved, and a place read (`let b = xs[0]`,
+`xs[0].field`) always trapped on it; but every read that picks an element
+out of a container VALUE handed the moved bytes on. `let a = move xs[0];
+print(xs[0])` printed `1 1`. Now each of those reads traps
+`use-after-move`, naming the move site: the index read `xs[i]` and `m[k]`
+(`9bc2f89`); `get`, `first`, `last`, `pop`, `par`, `Map.remove` and
+`Map.pairs` (`39782fe`); a slice covering the element (`08105f4`); and a
+`for` over a list or map, at the iteration that reaches it (`3ce773b`).
+Reads of no element are untouched — `xs.len`, a push, a store, another
+element or key. eg00's fourteen witnesses run against their ruled lupin
+cell in `tests/rulings_eg00.rs`; five flip to the trap, among them
+wolf-lang#460's, where 0.1.40 printed `2 1 1`. Not widened: a read of the
+WHOLE container or struct holding a moved part (`copy xs`, `"{xs}"`,
+`let q = p` after `move p.x`) still does not look inside.
+
+**One corpus row filed, DIV-2026-026.** `memory/list_session_struct.lu`
+moves `tbl[2]` with a plain `let` and iterates `tbl`: it traps here now,
+and its header's `exit(0)` holds on the compiler only through
+wolffe-lang/wolf-lang#460. Filed until the pin carries wolf-lang eg01's
+`copy tbl[2]` (`057c99e`, `b444fd0`).
+
+**`diff-run` retires a waiver only on a full-depth clean compare**
+(`6c22d42`, `ebc65ae`). A counterparty tier that stopped short of the rung
+this machine reached — the `default` tier reaches `run` on no entry — used
+to count as "compared clean", and asked for DIV-2026-026's retirement.
+
 ## 0.1.40 — 2026-09-25
 
 THE FORTIETH (is55). Pin unchanged: **`93a5fe50` (wolf-lang v0.2.16 —
