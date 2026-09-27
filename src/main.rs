@@ -1592,9 +1592,10 @@ struct DiffOutcome {
     ledger: Vec<LedgerEntry>,
     compared: usize,
     skipped_members: usize,
-    /// The corpus files a **foreign** counterparty answered for, which is
-    /// the only evidence a waiver may be retired on (see
-    /// [`retired_waivers`]).
+    /// The corpus files a **foreign** counterparty answered for, as deep as
+    /// this machine went and with no divergence
+    /// (`FileComparison::compared_clean`) — the only evidence a waiver may
+    /// be retired on (see [`retired_waivers`]).
     ///
     /// Empty wherever that evidence does not exist, and both cases are
     /// deliberate: a `--replay` of this machine's own bundle compares it
@@ -1643,9 +1644,13 @@ fn diff_corpus(args: &DiffRunArgs, compiler: &Path) -> Result<DiffOutcome, u8> {
         let comparison = differ::compare_invocations(&file.path, &a, &b, has_unsafe);
         out.compared += 1;
         // Only a FOREIGN record is evidence about a filed divergence: this
-        // binary compared against itself agrees with itself everywhere.
+        // binary compared against itself agrees with itself everywhere. And
+        // only a comparison that reached as far as this machine did: a tier
+        // that stopped short compared nothing at the rung a filing may live
+        // at (`FileComparison::compared_clean`, is56).
         if let differ::Invocation::Record(record) = &b
             && record.impl_name != wolf_interp::IMPL_NAME
+            && comparison.compared_clean()
         {
             out.compared_files.push(file.path.clone());
         }
