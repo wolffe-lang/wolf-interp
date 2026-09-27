@@ -4358,6 +4358,67 @@ Falsified by any other entry appearing, leaving or changing.
 for the one file, and `differ`'s unit tests that count
 `FILED_DIVERGENCES` (one → two). No other test moves.
 
+#### §3a — the prediction, scored
+
+Evidence under `~/lanes/is56/evidence/` on kasumi; release builds of
+trunk `54f85e6` and head `f4c5f00` (the code is `3ce773b`'s plus rustfmt,
+the filing and the waiver rule).
+
+- **The one read path — held.** `builtin::index`'s sequence arm was the
+  point every `xs[e]` value read reaches; the witness, `p01`/`p02`,
+  `p16` (`g[0][1]`, the copy path) and `p26` (run-time index) turn on the
+  one line (`9bc2f89`).
+- **The path table — held, every row.** Head against trunk
+  (`probes-trunk-54f85e6.log`, `probes-head-f4c5f00.log`): exactly the
+  fifteen probes the table marks "no" move to `trap(use-after-move)` —
+  `p01 p02 p05 p06 p07 p08 p09 p11 p12 p14 p16 p22 p23 p24 p26` and the
+  four `w0*` witnesses; the `for` probes keep the output of the iterations
+  before the moved element (`p05` `1\n`, `p14` `a=1\n`). Unchanged: the
+  place reads that already trapped (`p15`, `p27`), another element or key
+  (`p03`, `p13`), the header and writes (`p04`, `p17`, `p18`), a slice
+  beside the moved element (`p10`), and the out-of-scope whole-value reads
+  (`p19`, `p20`, `p21`, `p25`).
+- **Five witnesses flip, nine hold — held.** `tests/rulings_eg00.rs` red
+  at `5970d95` on exactly the five, each `lupin answered exit(0), ruled
+  ["trap(use-after-move)"]` (`red-5970d95-rulings_eg00.log`, 10 passed,
+  5 failed, `EXIT=101`); the path tests red at `4870cad` on exactly the
+  thirteen that assert a trap, each `expected a trap, got Exit(0)` or the
+  `for` stdout (`red-4870cad-paths.log`, 3 passed, 13 failed,
+  `EXIT=101`). With eg00's own runner (`witnesses/run.sh`, `check.py`):
+  trunk 0 of 52 cells differ from `[trunk]` (`parked-trunk.log`); head
+  13 of 13 lupin cells equal `[expected]` (`parked-head.log`,
+  `parked-head-vs-expected.txt`; the 39 wolfgang cells that differ are
+  eg01's). **wolf-lang#460's witness answers `trap(use-after-move)` now;
+  0.1.40's `2 1 1` was the unread mark, not a reading of the clause.**
+- **One corpus row — held.** `lupin corpus` trunk against head
+  (`corpus-trunk-release.log`, `corpus-head-f4c5f00-release.log`): one
+  entry line moves, `memory/list_session_struct.lu` `match` →
+  `MISMATCH expected exit(0), observed trap(use-after-move)`; the census
+  line reads 502 match / 2 mismatch against 503 / 1. Filed as DIV-2026-026
+  (`057c99e`), `RUN_LEDGER` moved with it (`b444fd0`).
+- **The differential — held on three tiers, WRONG on one.** Against the
+  published wolf 0.2.17, 646 entries, 44 members (`diffrun/`):
+  `checked` 5 → 6, `native` 7 → 8, `release` 7 → 8, each the one
+  predicted line `verdict … list_session_struct.lu
+  a=trap(use-after-move)@run b=exit(0)@run run [filed: DIV-2026-026]`,
+  conservatism ledgers byte-identical, and on `native` the known
+  counterparty exit status of `memory/unsafe_ub_uaf.lu` (`137` vs `74`,
+  the compiled lane's use-after-free read, is55's same line). **`default`
+  added no entry**: that tier reaches `run` on no file, so the row is a
+  `run-unmatched` ledger line whose verdict moved (`exit(0)` →
+  `trap(use-after-move)`), not a divergence. My prediction forgot the
+  tier's depth. And the first head run (`head-b444fd0-default.log`)
+  printed `retired-waiver memory/list_session_struct.lu [DIV-2026-026] —
+  the counterparty compared it CLEAN` as a gating finding: the retirement
+  check took any foreign record as evidence, including one that stopped
+  short of the rung the filing lives at. Fixed (`6c22d42`, `ebc65ae`):
+  only a comparison with no divergence and no conservatism entry is
+  evidence; at `f4c5f00` the `default` report is byte-identical to
+  trunk's. **New divergences: one, filed, the predicted one.**
+- **Tests that change — held.** `RUN_LEDGER`'s row and `differ`'s
+  `FILED_DIVERGENCES` count; plus the new waiver-evidence test, which the
+  prediction could not name because the defect was not yet seen.
+
 ### DIV-2026-026 — `memory/list_session_struct.lu` — **OPEN, resolves on the pin that carries wolf-lang eg01's `copy tbl[2]`**
 
 The row (s119's #144 layout witness) builds `tbl: List[Session]`, where
