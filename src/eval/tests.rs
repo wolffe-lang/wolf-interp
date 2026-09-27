@@ -4151,3 +4151,310 @@ fn par_refuses_a_second_argument_by_the_counterpartys_code() {
     };
     assert!(reason.contains("E0402"), "{reason}");
 }
+
+// -- the moved element (is56, wolffe-lang/wolf-interp#141) -----------------
+//
+// `[mem.tier0.move.2]` under `[mem.model.place.elem]`: `move xs[0]` empties
+// that one element, and reading it back traps `use-after-move` on EVERY path
+// that picks the element out — not only through a place path (`resolve`,
+// which always honoured the mark), but out of a value: the index read, the
+// element methods, a slice, a `for`. A path that reads no element (`len`, a
+// push, a store, another element) is untouched.
+
+/// The trap a read of a moved element raises, with the move site reported
+/// before the use site.
+fn moved_element_trap(source: &str) {
+    let trap = trap_of(source);
+    assert_eq!(trap.kind, TrapKind::UseAfterMove, "{trap:?}");
+    assert_eq!(trap.rule.anchor(), "mem.tier0.move.2");
+    let (move_site, _) = trap.secondary.expect("the move site is reported");
+    assert!(
+        move_site.start < trap.span.start,
+        "{move_site} vs {}",
+        trap.span
+    );
+}
+
+#[test]
+fn an_index_read_of_a_moved_element_traps() {
+    moved_element_trap(
+        r#"fn main() -> !int {
+            var xs = [1, 2]
+            let a = move xs[0]
+            print("{a} {xs[0]}")
+            0
+        }"#,
+    );
+}
+
+#[test]
+fn a_member_read_through_a_moved_element_traps() {
+    // eg00's witness, `elem_move_same_const_read`: `xs[0].len` reaches the
+    // element through the index read, not through a place path.
+    moved_element_trap(
+        r#"fn main() -> !int {
+            var xs = List[List[int]]()
+            (mut xs).push([1])
+            (mut xs).push([2, 3])
+            let a = move xs[0]
+            print("{a.len} {xs[0].len}")
+            0
+        }"#,
+    );
+}
+
+#[test]
+fn a_run_time_index_read_of_a_moved_element_traps() {
+    moved_element_trap(
+        r#"fn main() -> !int {
+            var xs = [1, 2]
+            var i = 0
+            let a = move xs[i]
+            print("{a} {xs[i]}")
+            0
+        }"#,
+    );
+}
+
+#[test]
+fn a_nested_index_read_through_a_moved_element_traps() {
+    // `g[0][1]`: the outer index is not a place path, so it reaches
+    // `builtin::index` through the copy path, not the lend.
+    moved_element_trap(
+        r#"fn main() -> !int {
+            var g = List[List[int]]()
+            (mut g).push([1, 2])
+            (mut g).push([3])
+            let a = move g[0]
+            print("{a.len} {g[0][1]}")
+            0
+        }"#,
+    );
+}
+
+#[test]
+fn a_place_read_of_a_moved_element_still_traps() {
+    // The path that always honoured the mark (`read_path` → `resolve`).
+    moved_element_trap(
+        r#"fn main() -> !int {
+            var xs = [1, 2]
+            let a = move xs[0]
+            let b = xs[0]
+            print("{a} {b}")
+            0
+        }"#,
+    );
+}
+
+#[test]
+fn a_map_read_of_a_moved_value_traps() {
+    // The key stays bound, so the read is not the `none` row: the value it
+    // names moved out.
+    moved_element_trap(
+        r#"fn main() -> !int {
+            var m = Map[str, int]()
+            m["a"] = 1
+            let a = move m["a"]
+            let b = m["a"] else 9
+            print("{a} {b}")
+            0
+        }"#,
+    );
+}
+
+#[test]
+fn get_first_and_last_of_a_moved_element_trap() {
+    for call in ["xs.get(0)", "xs.first()"] {
+        moved_element_trap(&format!(
+            "fn main() -> !int {{
+                var xs = [1, 2]
+                let a = move xs[0]
+                let b = {call} else 9
+                print(\"{{a}} {{b}}\")
+                0
+            }}"
+        ));
+    }
+    moved_element_trap(
+        r#"fn main() -> !int {
+            var xs = [1, 2]
+            let a = move xs[1]
+            let b = xs.last() else 9
+            print("{a} {b}")
+            0
+        }"#,
+    );
+}
+
+#[test]
+fn popping_a_moved_last_element_traps() {
+    moved_element_trap(
+        r#"fn main() -> !int {
+            var xs = [1, 2]
+            let a = move xs[1]
+            let b = (mut xs).pop() else 9
+            print("{a} {b}")
+            0
+        }"#,
+    );
+}
+
+#[test]
+fn removing_a_moved_map_value_traps() {
+    moved_element_trap(
+        r#"fn main() -> !int {
+            var m = Map[str, int]()
+            m["a"] = 1
+            let a = move m["a"]
+            let b = (mut m).remove("a") else 9
+            print("{a} {b}")
+            0
+        }"#,
+    );
+}
+
+#[test]
+fn the_pairs_of_a_map_holding_a_moved_value_trap() {
+    // `pairs()` used to rebuild every slot live, laundering the mark.
+    moved_element_trap(
+        r#"fn main() -> !int {
+            var m = Map[str, int]()
+            m["a"] = 1
+            let a = move m["a"]
+            let ps = m.pairs()
+            print("{a} {ps.len}")
+            0
+        }"#,
+    );
+}
+
+#[test]
+fn par_over_a_moved_element_traps() {
+    moved_element_trap(
+        r#"fn dbl(v: int) -> int { v * 2 }
+        fn main() -> !int {
+            var xs = [1, 2]
+            let a = move xs[0]
+            let b = xs.par(dbl)
+            print("{a} {b.len}")
+            0
+        }"#,
+    );
+}
+
+#[test]
+fn a_slice_covering_a_moved_element_traps_and_one_beside_it_does_not() {
+    moved_element_trap(
+        r#"fn main() -> !int {
+            var xs = [1, 2, 3]
+            let a = move xs[1]
+            let ys = xs[0..2]
+            print("{a} {ys.len}")
+            0
+        }"#,
+    );
+    assert_eq!(
+        stdout(
+            r#"fn main() -> !int {
+                var xs = [1, 2, 3]
+                let a = move xs[0]
+                let ys = xs[1..3]
+                print("{a} {ys[0]} {ys[1]}")
+                0
+            }"#
+        ),
+        "1 2 3\n"
+    );
+}
+
+#[test]
+fn a_for_over_a_list_traps_when_it_reaches_the_moved_element() {
+    // The walk reads each element as it reaches it: the first iteration ran
+    // and printed, the second is the read of the moved element.
+    let run = run(r#"fn main() -> !int {
+            var xs = List[List[int]]()
+            (mut xs).push([1])
+            (mut xs).push([2, 3])
+            let a = move xs[1]
+            for v in xs {
+                print("{v.len}")
+            }
+            print("{a.len}")
+            0
+        }"#);
+    assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "1\n");
+    let Outcome::Trap(trap) = run.outcome else {
+        panic!("expected a trap, got {:?}", run.outcome);
+    };
+    assert_eq!(trap.kind, TrapKind::UseAfterMove);
+    assert!(trap.secondary.is_some(), "the move site is reported");
+}
+
+#[test]
+fn a_for_that_breaks_before_the_moved_element_reads_nothing_moved() {
+    assert_eq!(
+        stdout(
+            r#"fn main() -> !int {
+                var xs = [1, 2]
+                let a = move xs[1]
+                for v in xs {
+                    print("{v}")
+                    break
+                }
+                print("{a}")
+                0
+            }"#
+        ),
+        "1\n2\n"
+    );
+}
+
+#[test]
+fn a_for_over_a_map_traps_when_it_reaches_the_moved_value() {
+    let run = run(r#"fn main() -> !int {
+            var m = Map[str, int]()
+            m["a"] = 1
+            m["b"] = 2
+            let a = move m["b"]
+            for (k, v) in m {
+                print("{k}={v}")
+            }
+            print("{a}")
+            0
+        }"#);
+    assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "a=1\n");
+    let Outcome::Trap(trap) = run.outcome else {
+        panic!("expected a trap, got {:?}", run.outcome);
+    };
+    assert_eq!(trap.kind, TrapKind::UseAfterMove);
+}
+
+#[test]
+fn what_reads_no_moved_element_is_untouched() {
+    // Another element, another key, the header, a push, a store that
+    // revives the moved element, and `get` of a live index: all run.
+    assert_eq!(
+        stdout(
+            r#"fn main() -> !int {
+                var xs = List[List[int]]()
+                (mut xs).push([1])
+                (mut xs).push([2, 3])
+                let a = move xs[0]
+                (mut xs).push([4])
+                print("{a.len} {xs[1].len} {xs.len} {xs.is_empty()}")
+                let b = xs.get(2) else [9, 9]
+                print("{b.len}")
+                xs[0] = [7, 7, 7]
+                print("{xs[0].len}")
+                var m = Map[str, int]()
+                m["a"] = 1
+                m["b"] = 2
+                let c = move m["a"]
+                let d = m["b"] else 9
+                print("{c} {d} {m.len}")
+                0
+            }"#
+        ),
+        "1 2 3 false\n1\n3\n1 2 2\n"
+    );
+}
