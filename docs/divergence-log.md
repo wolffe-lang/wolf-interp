@@ -4358,6 +4358,40 @@ Falsified by any other entry appearing, leaving or changing.
 for the one file, and `differ`'s unit tests that count
 `FILED_DIVERGENCES` (one → two). No other test moves.
 
+### DIV-2026-026 — `memory/list_session_struct.lu` — **OPEN, resolves on the pin that carries wolf-lang eg01's `copy tbl[2]`**
+
+The row (s119's #144 layout witness) builds `tbl: List[Session]`, where
+`Session` carries a `List[int]`, then `let s2 = tbl[2]` — a plain `let` of
+a non-`Copy` value, so a MOVE (`[mem.tier0.move.1]`) — stores `tbl[1]`, and
+iterates `tbl`. The walk reads `tbl[2]`. Its header pins `exit(0)`
+`102 1 1408 4 184`.
+
+| machine | answer |
+| --- | --- |
+| lupin at is56 | `trap(use-after-move)` when the `for` reaches `tbl[2]`; nothing printed (the one `print` follows the loop) |
+| lupin 0.1.40, wolf 0.2.17 checked / native / release | `exit(0)` `102 1 1408 4 184` |
+
+Triage (`[proto.cmp.triage]`): the spec is clear —
+`[mem.tier0.move.2]`: "Use of an uninitialized or moved-from place is …
+E1001 … the read traps with kind `use-after-move`", and
+`[mem.model.place.elem]` item 3 says the store to `tbl[1]` revives nothing
+about `tbl[2]`. **This machine matches the clause; the row is the
+defendant.** The compiler accepts it only through wolffe-lang/wolf-lang#460
+(an index store revives the collapsed `tbl[_]`), and all four machines
+read the moved element silently until #141's fix taught this one's `for`
+to look. eg00 found the row prototyping the must-revival and recorded it
+on wolffe-lang/wolf-lang#460 (comment 5851212791); wolf-lang's eg01 takes
+the fix, `let s2 = copy tbl[2]`, which keeps the row's point (the element
+stride) and its bytes on every machine. is46's DIV-2026-022/023 are the
+precedent: headers a clause made stale, filed for the releases until the
+pin carried the re-spelled row.
+
+**In `differ::FILED_DIVERGENCES`**, unlike DIV-2026-025: this file
+DISAGREES with the corpus (025's three agree), so `tests/run_corpus.rs`
+and `tests/conformance.rs` must stop asserting its header, and its
+`RUN_LEDGER` row records `trap(use-after-move)`. It retires the round a
+differential compares it clean.
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first

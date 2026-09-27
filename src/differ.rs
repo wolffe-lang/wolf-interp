@@ -176,15 +176,27 @@ use crate::schema;
 /// seven of its eight files are byte-identical and the eighth was never a
 /// width question — it is DIV-2026-021 now, and it is about where a D63
 /// let-group refusal points rather than how wide the pointing is.
-pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[(
-    "resolve/broken_sibling/entry.lu",
-    "DIV-2026-019",
-    "which parse error fires on the unparseable module sibling: the \
+pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
+    (
+        "resolve/broken_sibling/entry.lu",
+        "DIV-2026-019",
+        "which parse error fires on the unparseable module sibling: the \
          corpus pins the counterparty's fail(E0202) (EOF inside the mangled \
          item) where this machine stops at the first bad token, fail(E0201) \
          at `{` in the parameter list; same rung, span-or-code class — the \
          spec assigns neither code to junk recovery",
-)];
+    ),
+    (
+        "memory/list_session_struct.lu",
+        "DIV-2026-026",
+        "the row moves `tbl[2]` with a plain `let` of a non-Copy `Session` \
+         and then iterates `tbl`, reading the moved element: \
+         `[mem.tier0.move.2]` makes that read trap use-after-move, which \
+         this machine does since #141; the header's exit(0) holds on the \
+         compiler only through wolffe-lang/wolf-lang#460's revival, and \
+         wolf-lang's eg01 re-spells the row `copy tbl[2]`",
+    ),
+];
 
 // DIV-2026-022 (`wordcount.lu`) and DIV-2026-023
 // (`grammar/structlit_paren.lu`) stood here for exactly one release. is46
@@ -1696,7 +1708,15 @@ mod tests {
         // two loci left. Measured with the pinned counterparty before the
         // entry came out, not inferred from the corpus header that announces
         // it. Two became one.
-        assert_eq!(FILED_DIVERGENCES.len(), 1);
+        // DIV-2026-026 FILED at is56 (unreleased, pin `93a5fe50`): the moved
+        // element read back by `memory/list_session_struct.lu`'s `for` traps
+        // here since #141, and the header's `exit(0)` is the compiler's
+        // wolffe-lang/wolf-lang#460. One became two; it retires on the pin
+        // that carries eg01's `copy tbl[2]`.
+        assert_eq!(FILED_DIVERGENCES.len(), 2);
+        let (id, _) = filed("upstream/corpus/memory/list_session_struct.lu")
+            .expect("DIV-2026-026 is filed against the #144 layout witness");
+        assert_eq!(id, "DIV-2026-026");
         assert_eq!(
             filed("upstream/corpus/grammar/match_nullary_variant.lu"),
             None
