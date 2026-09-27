@@ -465,6 +465,23 @@ pub struct FileComparison {
     pub ledger: Vec<LedgerEntry>,
 }
 
+impl FileComparison {
+    /// Whether this comparison is evidence that the file compares CLEAN — the
+    /// only evidence [`retired_waivers`] may retire a filed divergence on.
+    ///
+    /// No divergence is not enough: a counterparty that stopped short of a
+    /// rung this machine completed (`unsupported`, a rejection only one side
+    /// performs, a run outcome it never checked) compared nothing there, and
+    /// a divergence filed AT that rung is not absent, only unseen. is56 met
+    /// the shape: DIV-2026-026 lives at `run`, and the `default` tier, which
+    /// reaches `run` on no entry, reported it retired. A conservatism entry
+    /// on the file therefore disqualifies it.
+    #[must_use]
+    pub fn compared_clean(&self) -> bool {
+        self.divergence.is_none() && self.ledger.is_empty()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Rung-by-rung claims
 // ---------------------------------------------------------------------------
@@ -1758,6 +1775,34 @@ mod tests {
         assert_eq!(filed("upstream/corpus/memory/mode_missing_mut.lu"), None);
         assert_eq!(filed("upstream/corpus/typecheck/cast_bad.lu"), None);
         assert_eq!(filed("upstream/corpus/hello.lu"), None);
+    }
+
+    #[test]
+    fn a_counterparty_that_stopped_short_is_no_evidence_of_a_clean_compare() {
+        // The pre-M1 shape (the `default` tier on every run entry): no
+        // divergence, and nothing compared at `run` — a filed divergence that
+        // lives there is unseen, not gone (is56, DIV-2026-026).
+        let short = compare_deep(
+            &record(Phase::Run, Verdict::Trap(TrapKind::UseAfterMove)),
+            &record(Phase::Typecheck, Verdict::Unsupported),
+            false,
+        );
+        assert_eq!(short.divergence, None);
+        assert!(!short.compared_clean(), "{short:?}");
+        // Both sides ran to the same answer: that is a clean compare.
+        let both = compare_deep(
+            &record(Phase::Run, Verdict::Exit(0)),
+            &record(Phase::Run, Verdict::Exit(0)),
+            false,
+        );
+        assert!(both.compared_clean(), "{both:?}");
+        // And a divergence is never a clean compare.
+        let diverged = compare_deep(
+            &record(Phase::Run, Verdict::Trap(TrapKind::UseAfterMove)),
+            &record(Phase::Run, Verdict::Exit(0)),
+            false,
+        );
+        assert!(!diverged.compared_clean(), "{diverged:?}");
     }
 
     #[test]
