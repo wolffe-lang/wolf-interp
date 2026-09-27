@@ -5699,7 +5699,7 @@ impl Machine {
             let last = if *inclusive { b } else { b - 1 };
             self.fire(Rule::Flow, span, "for over a range header");
             return self.eval_for_items(
-                Self::range_iter(elem, a, last),
+                Self::range_iter(elem, a, last).map(Slot::live),
                 false,
                 pattern,
                 iter,
@@ -5722,7 +5722,7 @@ impl Machine {
         let iterable = match iterable {
             Value::Range { start, end, elem } => {
                 return self.eval_for_items(
-                    Self::range_iter(elem, start, end - 1),
+                    Self::range_iter(elem, start, end - 1).map(Slot::live),
                     false,
                     pattern,
                     iter,
@@ -5732,14 +5732,18 @@ impl Machine {
             other => other,
         };
         let is_container = matches!(&iterable, Value::List(..) | Value::Map(..));
-        let items: Vec<Value> = match iterable {
-            Value::List(slots, _, _) => std::sync::Arc::unwrap_or_clone(slots)
-                .into_iter()
-                .map(|s| s.value)
-                .collect(),
+        // The walk keeps each element's slot, state and all: it reads the
+        // elements one at a time as it reaches them, and a moved one is a
+        // read of a moved element (#141) — at that iteration, after the
+        // earlier ones ran, which is where the read happens.
+        let items: Vec<Slot> = match iterable {
+            Value::List(slots, _, _) => std::sync::Arc::unwrap_or_clone(slots),
             Value::Map(pairs) => pairs
                 .into_iter()
-                .map(|(key, slot)| Value::Tuple(vec![Slot::live(key), slot]))
+                .map(|(key, slot)| Slot {
+                    state: slot.state,
+                    value: Value::Tuple(vec![Slot::live(key), Slot::live(slot.value)]),
+                })
                 .collect(),
             other => {
                 return self.eval_for_iter(other, pattern, body, span);
@@ -5841,7 +5845,7 @@ impl Machine {
 
     /// The loop proper over materialized items, shared by the range header,
     /// the range value and the containers.
-    fn eval_for_items<I: IntoIterator<Item = Value>>(
+    fn eval_for_items<I: IntoIterator<Item = Slot>>(
         &mut self,
         items: I,
         is_container: bool,
@@ -5877,6 +5881,13 @@ impl Machine {
                 outcome = Err(signal);
                 break;
             }
+            let item = match item.state {
+                SlotState::Live => item.value,
+                SlotState::Moved(at) => {
+                    outcome = self.moved_element("the element this `for` reached", at, iter.span);
+                    break;
+                }
+            };
             self.push_scope();
             let bound = self.bind_pattern(pattern, item);
             let result = match bound {
