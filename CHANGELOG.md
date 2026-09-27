@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.1.41 — 2026-09-27
+
+THE FORTY-FIRST (is56), the lupin half of wolf 0.2.18's point release.
+Pin unchanged: **`93a5fe50` (wolf-lang v0.2.16 — the TAG)**. Eighteen
+commits since 0.1.40, one lane. It mirrors the read half of wolf-lang's
+`[mem.model.place.elem]` (eg00): a moved element is moved on every read
+path, which is the answer wolffe-lang/wolf-lang#460's witness needed
+from this machine. **Not carried, and still open:** a whole read of a
+container holding a moved part (#143), a `Map` read that copies a
+non-`Copy` value out (#144), a nested index store that evaluates its
+outer operands twice (#145) and a caller's read of a whole `mut`
+parameter its callee moved out (#146). wolf 0.2.18's gates pin 0.1.41's
+answers on #144, #145 and #146 by version, so the release that mirrors
+each one turns its row red by name.
 
 **A read of a moved element traps** (is56, #141; `[mem.tier0.move.2]`
 under wolf-lang's `[mem.model.place.elem]`, eg00). `move xs[0]` always
@@ -12,7 +25,10 @@ print(xs[0])` printed `1 1`. Now each of those reads traps
 (`9bc2f89`); `get`, `first`, `last`, `pop`, `par`, `Map.remove` and
 `Map.pairs` (`39782fe`); a slice covering the element (`08105f4`); and a
 `for` over a list or map, at the iteration that reaches it (`3ce773b`).
-Reads of no element are untouched — `xs.len`, a push, a store, another
+The slice and `par` trap lines name no element number (`bda3ed7`, D61):
+a 0-based position is not the number an origin-1 writer reads, and the
+move site already says which element it was. Reads of no element are
+untouched — `xs.len`, a push, a store, another
 element or key. eg00's fourteen witnesses run against their ruled lupin
 cell in `tests/rulings_eg00.rs`; five flip to the trap, among them
 wolf-lang#460's, where 0.1.40 printed `2 1 1`. Not widened: a read of the
