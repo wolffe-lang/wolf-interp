@@ -1,0 +1,25 @@
+//! check: run(exit=0, stdout="1 2\n")
+//! phase: run
+//! conforms: mem.model.place.elem, mem.tier0.move.2
+//!
+//! eg00 (EGC; RULED, NOT YET BUILT — parked for EG1 (eg01)) —
+//! `[mem.model.place.elem]` item 1(b): `Map[str, List[int]]`: the value
+//! at `m["a"]` read out (a move, the value is not `Copy`), then
+//! `m["b"]` read. Two literal keys with different values are distinct
+//! places. Today the `m["a"]` read moves the collapsed `m[_]` (s152: a
+//! map read copies exactly when `V` does) and the `m["b"]` read is
+//! E1001. lupin's map read clones and never moves, so it runs; the
+//! ruled answer is the same bytes. Today: checked `fail(E1001)`; native
+//! `fail(E1001)`; release `fail(E1001)`; lupin 0.1.40 `exit(0)` `1 2`.
+//! Moves to `corpus/memory/elem_key_move_map.lu` with the
+//! implementation.
+
+fn main() -> !int {
+    var m = Map[str, List[int]]()
+    m["a"] = [1]
+    m["b"] = [2, 3]
+    let a = m["a"] else List[int]()
+    let b = m["b"] else List[int]()
+    print("{a.len} {b.len}")
+    0
+}

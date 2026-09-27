@@ -1,0 +1,27 @@
+//! check: run(exit=0, stdout="2 12\n")
+//! phase: run
+//! conforms: mem.model.place.elem, mem.tier0.excl.1
+//!
+//! eg00 (EGC; RULED, NOT YET BUILT — parked for EG3 (eg03), R1 — NOT
+//! YET IMPLEMENTED) — `[mem.model.place.elem]` item 4, R1: `add2(mut
+//! xs[i], mut xs[i + 1])`, `i` unassigned between. R1: two offsets from
+//! one unassigned local with different literal offsets are distinct.
+//! Until R1 lands the shape is one place (item 2) and E1002 is the
+//! conformant answer; its failing twin is
+//! `corpus/memory/elem_offset_other_local.lu`. Today: checked
+//! `fail(E1002)`; native `fail(E1002)`; release `fail(E1002)`; lupin
+//! 0.1.40 `exit(0)` `2 12`. Moves to
+//! `corpus/memory/elem_offset_mut_pair.lu` with the implementation.
+
+fn add2(mut a: int, mut b: int) {
+    a = a + 1
+    b = b + 10
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    var i = 0
+    add2(mut xs[i], mut xs[i + 1])
+    print("{xs[0]} {xs[1]}")
+    0
+}

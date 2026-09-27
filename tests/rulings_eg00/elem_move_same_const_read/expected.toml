@@ -1,0 +1,24 @@
+# is56 — wolf-lang `corpus/memory/elem_move_same_const_read.lu` at `38d5eeab`
+# (eg00), copied verbatim as main.lu. It is a corpus row upstream, not a parked
+# witness, so it has no expected.toml there: the ruled cells below are eg00's —
+# the header's `fail(E1001)` for wolfgang, and for lupin the ruled arm of
+# `the_moved_element_itself_stays_unreadable` in
+# `crates/wolf_driver/tests/element_places_lanes.rs` (wolffe-lang/wolf-interp#141).
+# `[trunk]` is what each machine answered on kasumi, wolf 0.2.17 archive
+# a95d0f0f… and lupin 0.1.40 archive 509929e6… (~/lanes/is56/evidence/probes-archive-0.1.40.log, `w01_witness`).
+clause = "mem.model.place.elem"
+item = "2"
+milestone = "wolffe-lang/wolf-interp#141"
+lands_in = "corpus/memory/elem_move_same_const_read.lu"
+
+[expected]
+checked = { verdict = "fail(E1001)" }
+native  = { verdict = "fail(E1001)" }
+release = { verdict = "fail(E1001)" }
+lupin   = { verdict = "trap(use-after-move)" }
+
+[trunk]
+checked = { verdict = "fail(E1001)" }
+native  = { verdict = "fail(E1001)" }
+release = { verdict = "fail(E1001)" }
+lupin   = { verdict = "exit(0)", stdout = "1 1\n" }

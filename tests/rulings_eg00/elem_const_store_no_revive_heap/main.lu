@@ -1,0 +1,27 @@
+//! check: fail(E1001)
+//! phase: typecheck
+//! conforms: mem.model.place.elem, mem.tier0.move.2, mem.tier0.move.4
+//!
+//! eg00 (EGC; RULED, NOT YET BUILT — parked for eg01 (wolffe-lang/wolf-lang#460),
+//! with wolffe-lang/wolf-interp#141 for lupin) — `[mem.model.place.elem]` item 3:
+//! the `List[List[int]]` twin: `var a = move xs[0]; xs[1] = [5]; (mut
+//! a).push(7)`, then `xs[0].len`. The silent wrong answer
+//! (wolffe-lang/wolf-lang#460): the static tier accepts; the checked machine traps
+//! at the read; native and release print `2 2 1` — the moved list and
+//! `xs[0]` are one buffer, so the push through `a` shows in `xs[0]`;
+//! lupin prints `2 1 1` (wolffe-lang/wolf-interp#141). Today: checked
+//! `trap(use-after-move)`; native `exit(0)` `2 2 1`; release `exit(0)`
+//! `2 2 1`; lupin 0.1.40 `exit(0)` `2 1 1`. Moves to
+//! `corpus/memory/elem_const_store_no_revive_heap.lu` with the
+//! implementation.
+
+fn main() -> !int {
+    var xs = List[List[int]]()
+    (mut xs).push([1])
+    (mut xs).push([2])
+    var a = move xs[0]
+    xs[1] = [5]
+    (mut a).push(7)
+    print("{a.len} {xs[0].len} {xs[1].len}")
+    0
+}

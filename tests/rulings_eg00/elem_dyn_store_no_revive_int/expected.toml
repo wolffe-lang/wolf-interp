@@ -1,0 +1,19 @@
+# eg00 — the ruled verdict per machine under `[mem.model.place.elem]`
+# (the oracle for eg01 (wolffe-lang/wolf-lang#460), with wolffe-lang/wolf-interp#141 for lupin), and what each machine
+# measured 2026-09-27 00:02Z on kasumi (linux x86-64): wolf 0.2.17 archive a95d0f0f… (`wolf conform-run main.lu --checked|--native|--release --json`), lupin 0.1.40 archive 509929e6… (`lupin conform-run main.lu --json`), run from this directory; log ~/lanes/eg00/evidence/trunk-witnesses-v1.log, copied to evidence/trunk-witnesses-v1.log beside this directory.
+clause = "mem.model.place.elem"
+item = "3"
+milestone = "eg01 (wolffe-lang/wolf-lang#460), with wolffe-lang/wolf-interp#141 for lupin"
+lands_in = "corpus/memory/elem_dyn_store_no_revive_int.lu"
+
+[expected]
+checked = { verdict = "fail(E1001)" }
+native  = { verdict = "fail(E1001)" }
+release = { verdict = "fail(E1001)" }
+lupin   = { verdict = "trap(use-after-move)" }
+
+[trunk]
+checked = { verdict = "exit(0)", stdout = "1 1 9\n" }
+native  = { verdict = "exit(0)", stdout = "1 1 9\n" }
+release = { verdict = "exit(0)", stdout = "1 1 9\n" }
+lupin   = { verdict = "exit(0)", stdout = "1 1 9\n" }

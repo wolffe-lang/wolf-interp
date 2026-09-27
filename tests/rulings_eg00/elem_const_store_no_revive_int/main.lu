@@ -1,0 +1,25 @@
+//! check: fail(E1001)
+//! phase: typecheck
+//! conforms: mem.model.place.elem, mem.tier0.move.2, mem.tier0.move.4
+//!
+//! eg00 (EGC; RULED, NOT YET BUILT — parked for eg01 (wolffe-lang/wolf-lang#460),
+//! with wolffe-lang/wolf-interp#141 for lupin) — `[mem.model.place.elem]` item 3:
+//! `move xs[0]; xs[1] = 9`, then a read of `xs[0]` (`List[int]`).
+//! Re-initialization is a must: a store at a different literal revives
+//! nothing, so `xs[0]` is still moved. Today every wolfgang lane
+//! accepts it (any index store revives the collapsed place) and the
+//! checked machine does not trap (B126: `Machine::take_value` skips
+//! `Moved` for a `Copy` value); lupin does not trap because its index
+//! read ignores the moved mark (wolffe-lang/wolf-interp#141). Today:
+//! checked `exit(0)` `1 1 9`; native `exit(0)` `1 1 9`; release
+//! `exit(0)` `1 1 9`; lupin 0.1.40 `exit(0)` `1 1 9`. Moves to
+//! `corpus/memory/elem_const_store_no_revive_int.lu` with the
+//! implementation.
+
+fn main() -> !int {
+    var xs = [1, 2]
+    let a = move xs[0]
+    xs[1] = 9
+    print("{a} {xs[0]} {xs[1]}")
+    0
+}

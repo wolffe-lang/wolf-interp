@@ -1,0 +1,25 @@
+//! check: run(exit=0, stdout="1 2\n")
+//! phase: run
+//! conforms: mem.model.place.elem, mem.tier0.move.2
+//!
+//! eg00 (EGC; RULED, NOT YET BUILT — parked for EG1 (eg01)) —
+//! `[mem.model.place.elem]` item 1(a): wolffe-lang/wolf-lang#446's row: `move
+//! xs[0]` on a `List[int]`, then a read of `xs[1]`. Two integer
+//! literals with different values are distinct places, so the move of
+//! `xs[0]` leaves `xs[1]` readable. Today the collapsed place makes the
+//! read E1001 on every wolfgang lane; lupin already runs it. The corpus
+//! row `corpus/memory/elem_move_one_place.lu` carries today's
+//! `fail(E1001)` and flips with eg01, as does its gate
+//! `element_move_conservatism_lanes.rs`. Today: checked `fail(E1001)`;
+//! native `fail(E1001)`; release `fail(E1001)`; lupin 0.1.40 `exit(0)`
+//! `1 2`. Moves to `corpus/memory/elem_move_one_place.lu` with the
+//! implementation.
+
+fn main() -> !int {
+    var xs = List[int]()
+    (mut xs).push(1)
+    (mut xs).push(2)
+    let a = move xs[0]
+    print("{a} {xs[1]}")
+    0
+}

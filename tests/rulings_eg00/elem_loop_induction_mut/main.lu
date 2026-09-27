@@ -1,0 +1,27 @@
+//! check: run(exit=0, stdout="3 12 13\n")
+//! phase: run
+//! conforms: mem.model.place.elem, mem.tier0.excl.1
+//!
+//! eg00 (EGC; RULED, NOT YET BUILT — parked for EG3 (eg03), R2 — NOT
+//! YET IMPLEMENTED) — `[mem.model.place.elem]` item 4, R2: `for i in
+//! 1..3 { add2(mut xs[0], mut xs[i]) }`. R2: a loop index over literal
+//! bounds `1..3` never equals the literal `0`. Until R2 lands the shape
+//! is one place; its failing twin is
+//! `corpus/memory/elem_loop_covers_const.lu` (`0..3`). Today: checked
+//! `fail(E1002)`; native `fail(E1002)`; release `fail(E1002)`; lupin
+//! 0.1.40 `exit(0)` `3 12 13`. Moves to
+//! `corpus/memory/elem_loop_induction_mut.lu` with the implementation.
+
+fn add2(mut a: int, mut b: int) {
+    a = a + 1
+    b = b + 10
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    for i in 1..3 {
+        add2(mut xs[0], mut xs[i])
+    }
+    print("{xs[0]} {xs[1]} {xs[2]}")
+    0
+}

@@ -1,0 +1,26 @@
+//! check: run(exit=0, stdout="3 13\n")
+//! phase: run
+//! conforms: mem.model.place.elem, mem.tier0.excl.1
+//!
+//! eg00 (EGC; RULED, NOT YET BUILT — parked for EG2 (eg02)) —
+//! `[mem.model.place.elem]` item 1(a), the path rule: `add2(mut
+//! g[0][1], mut g[1][0])` on a `List[List[int]]`. The paths first
+//! differ at the outer index step (`0` against `1`), so they are
+//! distinct whatever follows. Today: checked `fail(E1002)`; native
+//! `fail(E1002)`; release `fail(E1002)`; lupin 0.1.40 `exit(0)` `3 13`.
+//! Moves to `corpus/memory/elem_const_nested_mut.lu` with the
+//! implementation.
+
+fn add2(mut a: int, mut b: int) {
+    a = a + 1
+    b = b + 10
+}
+
+fn main() -> !int {
+    var g = List[List[int]]()
+    (mut g).push([1, 2])
+    (mut g).push([3, 4])
+    add2(mut g[0][1], mut g[1][0])
+    print("{g[0][1]} {g[1][0]}")
+    0
+}
