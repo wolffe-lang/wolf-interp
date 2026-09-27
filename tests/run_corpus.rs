@@ -954,7 +954,10 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/carried_quotient_pair.lu", "exit(0)"),
     ("memory/closure_cluster_split.lu", "exit(0)"),
     ("memory/list_mixed_width_struct.lu", "exit(0)"),
-    ("memory/list_session_struct.lu", "exit(0)"),
+    // is56 (#141): the `for` reads `tbl[2]`, which the row's plain `let`
+    // moved, and traps — DIV-2026-026, filed until the pin carries
+    // wolf-lang eg01's `copy tbl[2]` (wolffe-lang/wolf-lang#460).
+    ("memory/list_session_struct.lu", "trap(use-after-move)"),
     ("strings/boundary_battery.lu", "exit(0)"),
     ("strings/char_battery.lu", "exit(0)"),
     ("strings/char_interp.lu", "exit(0)"),
