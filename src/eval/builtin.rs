@@ -2101,10 +2101,13 @@ fn element_value(
 /// The first slot of `slots` that was moved out, with its position and move
 /// site — the element a read of every slot in turn would trap on first.
 pub(crate) fn first_moved(slots: &[Slot]) -> Option<(usize, Span)> {
-    slots.iter().enumerate().find_map(|(i, slot)| match slot.state {
-        SlotState::Moved(at) => Some((i, at)),
-        SlotState::Live => None,
-    })
+    slots
+        .iter()
+        .enumerate()
+        .find_map(|(i, slot)| match slot.state {
+            SlotState::Moved(at) => Some((i, at)),
+            SlotState::Live => None,
+        })
 }
 
 /// `e[i]` where `e` turned out to be a collection.
@@ -2170,7 +2173,9 @@ pub fn index(
         // the value for `int`/`char`/`bool`; an `int` key's width is not
         // part of the key).
         (Value::Map(pairs), key) => match pairs.iter().find(|(k, _)| super::value_eq(k, key)) {
-            Some((k, slot)) => element_value(machine, slot, || format!("the value at key {k}"), span),
+            Some((k, slot)) => {
+                element_value(machine, slot, || format!("the value at key {k}"), span)
+            }
             None => {
                 machine.note(Rule::ErrUnion, span, MAP_NONE_ROW);
                 Ok(error("none"))

@@ -8372,7 +8372,12 @@ impl Machine {
     /// they already hold — `xs[i]`, `get`/`first`/`last`, `pop`, `m[k]`,
     /// `remove`, `pairs`, `par`, a slice, a `for` — have no path to walk, so
     /// they ask the slot. `what` names the element as the read sees it.
-    pub(crate) fn moved_element<T>(&mut self, what: &str, moved_at: Span, span: Span) -> EResult<T> {
+    pub(crate) fn moved_element<T>(
+        &mut self,
+        what: &str,
+        moved_at: Span,
+        span: Span,
+    ) -> EResult<T> {
         self.trap(
             TrapKind::UseAfterMove,
             Rule::UseAfterMove,
