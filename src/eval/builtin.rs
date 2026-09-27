@@ -1380,8 +1380,8 @@ pub fn method(
         // moved; the chunked desugar lives with the rest of the task tier.
         (Value::List(items, _, _), "par") => {
             // Every element goes to a task, so each is read (#141).
-            if let Some((i, at)) = first_moved(items) {
-                return machine.moved_element(&format!("element {i}"), at, span);
+            if let Some((_, at)) = first_moved(items) {
+                return machine.moved_element("an element `par` hands to a task", at, span);
             }
             let items: Vec<Value> = items.iter().map(|slot| slot.value.clone()).collect();
             machine.eval_par(items, args, span)
@@ -2257,8 +2257,10 @@ pub fn slice(
             // moved one is a read of a moved element (#141) — the mark is not
             // carried into the copy for some later read to find.
             let (from, to) = (from as usize, to as usize);
-            if let Some((i, at)) = first_moved(&items[from..to]) {
-                return machine.moved_element(&format!("element {}", from + i), at, span);
+            // The trap names no position: under origin 1 the writer's number
+            // is not this 0-based one (D61), and the move site says which.
+            if let Some((_, at)) = first_moved(&items[from..to]) {
+                return machine.moved_element("an element in the sliced range", at, span);
             }
             // The slice is a NEW list minted at this expression, so its home
             // is the ambient region here — not the receiver's (#25).
