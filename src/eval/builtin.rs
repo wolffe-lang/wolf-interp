@@ -25,7 +25,7 @@ use crate::trap::TrapKind;
 use super::prov::UbRow;
 use super::region::{SlotLife, ledger};
 use super::rules::Rule;
-use super::value::{ElemTy, HandleValue, IntTy, Slot, Value};
+use super::value::{ElemTy, HandleValue, IntTy, Slot, SlotState, Value};
 use super::{Machine, Signal};
 
 type BResult = Result<Value, Signal>;
@@ -2047,6 +2047,25 @@ pub fn method(
     }
 }
 
+/// An element's value, read out of its slot — or `[mem.tier0.move.2]`'s
+/// `use-after-move` when the slot was moved out (wolffe-lang/wolf-interp#141).
+///
+/// `Slot::take_value` marks a moved element and leaves its bytes behind; every
+/// read that picks an element out of a container VALUE comes through here, so
+/// none of them can hand those bytes on. `what` renders the element for the
+/// trap line and is only built on the fault path.
+fn element_value(
+    machine: &mut Machine,
+    slot: &Slot,
+    what: impl FnOnce() -> String,
+    span: Span,
+) -> BResult {
+    match slot.state {
+        SlotState::Live => Ok(slot.value.clone()),
+        SlotState::Moved(at) => machine.moved_element(&what(), at, span),
+    }
+}
+
 /// `e[i]` where `e` turned out to be a collection.
 ///
 /// # Errors
@@ -2077,7 +2096,7 @@ pub fn index(
             };
             let items = target.seq_slots().expect("sequence arm");
             match usize::try_from(effective).ok().and_then(|e| items.get(e)) {
-                Some(slot) => Ok(slot.value.clone()),
+                Some(slot) => element_value(machine, slot, || format!("element {i}"), span),
                 None => machine.fault(
                     TrapKind::Bounds,
                     Rule::Bounds,
@@ -2110,7 +2129,7 @@ pub fn index(
         // the value for `int`/`char`/`bool`; an `int` key's width is not
         // part of the key).
         (Value::Map(pairs), key) => match pairs.iter().find(|(k, _)| super::value_eq(k, key)) {
-            Some((_, slot)) => Ok(slot.value.clone()),
+            Some((k, slot)) => element_value(machine, slot, || format!("the value at key {k}"), span),
             None => {
                 machine.note(Rule::ErrUnion, span, MAP_NONE_ROW);
                 Ok(error("none"))

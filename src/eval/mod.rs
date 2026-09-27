@@ -8352,6 +8352,25 @@ impl Machine {
         self.trap(kind, rule, span, message, None)
     }
 
+    /// `[mem.tier0.move.2]` for an element picked out of a VALUE: the slot's
+    /// own state says it moved, and reading it traps `use-after-move` with the
+    /// move site beside the use site (wolffe-lang/wolf-interp#141).
+    ///
+    /// A place read reaches the same trap through `resolve`, which walks the
+    /// path's projections; the element reads that pick a slot out of a value
+    /// they already hold — `xs[i]`, `get`/`first`/`last`, `pop`, `m[k]`,
+    /// `remove`, `pairs`, `par`, a slice, a `for` — have no path to walk, so
+    /// they ask the slot. `what` names the element as the read sees it.
+    pub(crate) fn moved_element<T>(&mut self, what: &str, moved_at: Span, span: Span) -> EResult<T> {
+        self.trap(
+            TrapKind::UseAfterMove,
+            Rule::UseAfterMove,
+            span,
+            format!("{what} was moved out and is uninitialized here"),
+            Some((moved_at, format!("{what} moved here"))),
+        )
+    }
+
     pub(crate) fn note(&mut self, rule: Rule, span: Span, detail: &str) {
         self.fire(rule, span, detail);
     }
