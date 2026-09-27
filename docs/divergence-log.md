@@ -4258,6 +4258,106 @@ first edit, the rest appended as it lands.
   not run in that first targeted pass, because cargo stops at the first
   failed test binary; the second pass ran with `--no-fail-fast`.
 
+### The moved element — is56, wolf-interp#141, `[mem.tier0.move.2]` under `[mem.model.place.elem]` (wolf-lang `38d5eeab`)
+
+eg00 (wolf-lang PR wolffe-lang/wolf-lang#461, merged at `38d5eeab`) wrote
+the element clause and found that lupin marks a moved element's slot and
+then reads it anyway. This section is written in the contract's order:
+§2 re-derived, §3 committed before the first edit under `src/` or
+`tests/`, the rest appended as it lands. Measurements on kasumi (linux
+x86-64): published wolf 0.2.17 `a95d0f0f…` and lupin 0.1.40 `509929e6…`
+(digests equal to the release pages'), and a release build of trunk
+`54f85e6`; probe log `~/lanes/is56/evidence/probes-archive-0.1.40.log`
+(lupin, `wolf --checked`, `wolf --native`), with the trunk build's
+lupin column byte-identical (`probes-trunk-54f85e6.log`).
+
+#### §2 — inputs, re-derived 2026-09-26
+
+| input as written | at origin / measured | drift |
+| --- | --- | --- |
+| trunk `54f85e6` (0.1.40) | `origin/trunk` = `54f85e6` "release: lupin 0.1.40"; pin `93a5fe50` (v0.2.16); branch `is56` cut there | none |
+| lupin marks a moved element's slot (`src/eval/value.rs:71-74`, `mod.rs:1638-1672`) | `Slot::take_value` at `value.rs:71-74` sets `SlotState::Moved(at)`; `move_path` at `mod.rs:1638-1672` reaches it | none |
+| the index read ignores the mark (`builtin.rs:2080`), reached from `mod.rs:7610` | `builtin::index`'s sequence arm answers `Some(slot) => Ok(slot.value.clone())` at `builtin.rs:2080`. **The witness does not reach it from `:7610`**: `xs` is a local, so `eval_bracket` takes the index-read lend (#28) and calls `builtin::index` at **`mod.rs:7518`**; `:7610` is the copy path, taken when the base is not a place path (`g[0][1]`'s outer index) | the call site is `:7518` for every local base; both reach the one arm |
+| `let a = move xs[0]; print(xs[0])` prints `1 1` | measured: `List[int]` `exit(0)` `1 1` (probe `p01_idx_int`); `List[List[int]]` through `.len` `exit(0)` `1 1` (`p02_idx_heap_member`, and the witness) | none |
+| the witness `witnesses/elem_move_same_const_read/` | **not parked**: it is a corpus row in wolf-lang, `corpus/memory/elem_move_same_const_read.lu` at `38d5eeab`, header `fail(E1001)` / `phase: typecheck`; the ruled lupin cell `trap(use-after-move)` is in its header prose and in eg00's gate (`element_places_lanes.rs`, `the_moved_element_itself_stays_unreadable`). The planning repo parks thirteen others; the four `elem_{const,dyn}_store_no_revive_{int,heap}` carry `lupin = trap(use-after-move)` in `[expected]` | the witness lands here with an `expected.toml` written from the gate's ruled cell |
+| eg00's gate pins lupin by version: `PRE_MIRROR_LUPIN` | `const PRE_MIRROR_LUPIN: &[&str] = &["0.1.40"]` (`crates/wolf_driver/tests/element_places_lanes.rs:31` at `38d5eeab`); any other version takes the ruled arm | none |
+| lupin prints `2 1 1` on wolf-lang#460's witness | measured `exit(0)` `2 1 1` (`w02_460_heap`); the `Copy` twin `1 1 9` (`w03_460_int`); wolf 0.2.17 checked `trap(use-after-move)`, native `2 2 1` / `1 1 9` | none |
+| (not an input) whether the moved element is unreadable anywhere | **yes, through a place path**: `resolve` (`mod.rs:1435-1486`) walks every projection and reports the earliest `Moved`, so `let b = xs[0]` (`p15`) and `xs[0].0` (`p27`) already trap `use-after-move`. Only reads that pick the element out of a *value* skip the state | the defect is the value-level element reads, not "the index read" alone — §3 enumerates them |
+
+wolf-lang#460's comment on `corpus/memory/list_session_struct.lu` (eg00):
+the row moves `tbl[2]` with a plain `let` of a non-`Copy` `Session`, then
+iterates `tbl`. lupin 0.1.40 marks `tbl[2]` moved (the `let` reaches
+`consume_place` → `move_path`) and prints `102 1 1408 4 184` because its
+`for` never looks at the state (measured, `w04_list_session_struct`).
+
+#### §3 — prediction, committed before the first edit
+
+**The one read path that must consult the mark:** `builtin::index`'s
+sequence arm (`builtin.rs:2080`), for `List` and `Tuple` values. It is the
+single point every `xs[e]` value read reaches, from the lend (`mod.rs:7518`)
+and the copy path (`:7610`) alike, so the witness, `p01`/`p02`, `p16`
+(`g[0][1]` after `move g[0]`), `p26` (run-time index) and #460's two
+witnesses all turn on that one line.
+
+**Every other path that reaches an element, and whether it honours the
+mark at trunk:**
+
+| path | where | honours at trunk | after |
+| --- | --- | --- | --- |
+| a place read of the element (`let b = xs[0]`, `f(xs[0])`, `xs[0].field`) | `read_path` → `resolve` | **yes** (`p15`, `p27` trap) | unchanged |
+| `move`/`take` of an already-moved element | `move_path` → `resolve` | **yes** | unchanged |
+| `xs[e]` as a value, list or tuple | `builtin::index` `:2080` | no | trap |
+| `m[k]` as a value | `builtin::index` map arm `:2113` | no (`p12` `1 1`) | trap |
+| `xs.get(i)`, `xs.first()`, `xs.last()` | `builtin::method` `:1384-1418` | no (`p06`-`p08`) | trap when the chosen slot is moved; `none` rows unchanged |
+| `(mut xs).pop()` of a moved last element | `:1345` | no (`p11`) | trap |
+| `(mut m).remove(k)` of a moved value | `:1447` | no (`p23`) | trap |
+| `m.pairs()` | `:1462` — rebuilds every slot `Slot::live`, laundering the state | no (`p22`) | trap |
+| `xs.par(f)` | `:1376` | no (`p24_par` `1 2 2`) | trap |
+| a slice `xs[a..b]` covering a moved element | `builtin::slice` `:2199` — copies the slots, state and all | no (`p09`) | trap; a slice that misses it (`p10`) unchanged |
+| `for v in xs`, `for (k, v) in m` | `eval_for` `mod.rs:5736-5742` — keeps `s.value`, drops the state | no (`p05`, `p14`) | trap when the walk reaches the moved element, after the earlier iterations ran |
+| `xs.len`, `xs.is_empty()`, `m.len`, a push, a store | header and writes | not reads of an element | unchanged: `exit(0)` (`p04`, `p17`, `p18`), as `[mem.model.place.elem]` 1(c) rules `xs.len` |
+| another element / another key | — | yes (`p03` `1 2`, `p13` `1 2`) | unchanged |
+
+**Out of scope, named:** a read of the WHOLE container or aggregate that
+holds a moved part — `copy xs` (`p19`), `"{xs}"` (`p20` prints `[1, 2]`),
+`xs == ys`, passing `xs` to a builtin that walks it, and the same for a
+struct after `move p.x` (`p21`: `let q = p` runs). That is not an element
+path: `resolve` answers only for the path's own prefix chain, never its
+descendants, for structs as for lists. Filed as a follow-up, not widened
+here.
+
+**Witnesses** (lupin, `conform-run --json`, from each witness's
+directory): `elem_move_same_const_read` `exit(0)` `1 1` → `trap(use-after-move)`;
+`elem_{const,dyn}_store_no_revive_{int,heap}` `exit(0)` `1 1 9` / `2 1 1`
+→ `trap(use-after-move)` — **so lupin's `2 1 1` on #460's witness is
+wrong under the clause, and the head answers the trap** (item 3: the
+store to `xs[1]` revives nothing, and lupin never revived it — the read
+simply never looked). The other nine parked witnesses hold their `[trunk]`
+lupin cell, which is their `[expected]` one. Five flip, nine hold.
+
+**Corpus rows that change verdict: one, not zero** —
+`memory/list_session_struct.lu`, `exit(0)` `102 1 1408 4 184` →
+`trap(use-after-move)` when the `for` reaches `tbl[2]`. It is the row
+eg00 found reading a moved element on all four machines; wolf-lang's
+eg01 re-spells it `let s2 = copy tbl[2]` (eg01's contract, item 2). The
+spec is clear and the row is the defendant, so it is filed here as
+DIV-2026-026 until the pin carries eg01's spelling — is46's precedent for
+DIV-2026-022/023, headers a clause made stale. No other row moves: the
+corpus rows that move an element and read it again through a value path
+are that one. Falsified by any other row moving in `lupin corpus` or
+`tests/run_corpus.rs`.
+
+**The differential against wolf 0.2.17** (all 646 entries at pin
+`93a5fe50`, four counterparty tiers, trunk release build against head
+release build): exactly one entry added on each tier,
+`memory/list_session_struct.lu` `a=trap(use-after-move)` `b=exit(0)`,
+class `verdict`, `[filed: DIV-2026-026]`; every other line identical.
+Falsified by any other entry appearing, leaving or changing.
+
+**Existing tests that change:** `tests/run_corpus.rs`'s `RUN_LEDGER` row
+for the one file, and `differ`'s unit tests that count
+`FILED_DIVERGENCES` (one → two). No other test moves.
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
