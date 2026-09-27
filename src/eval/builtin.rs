@@ -2253,10 +2253,17 @@ pub fn slice(
                     format!("range {range} is outside a {len}-element List"),
                 );
             }
+            // Every element in the range is read into the new list, so a
+            // moved one is a read of a moved element (#141) — the mark is not
+            // carried into the copy for some later read to find.
+            let (from, to) = (from as usize, to as usize);
+            if let Some((i, at)) = first_moved(&items[from..to]) {
+                return machine.moved_element(&format!("element {}", from + i), at, span);
+            }
             // The slice is a NEW list minted at this expression, so its home
             // is the ambient region here — not the receiver's (#25).
             Ok(Value::list(
-                items[from as usize..to as usize].to_vec(),
+                items[from..to].to_vec(),
                 *elem,
                 Some(machine.current_region()),
             ))
