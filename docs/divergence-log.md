@@ -4418,6 +4418,12 @@ the filing and the waiver rule).
 - **Tests that change — held.** `RUN_LEDGER`'s row and `differ`'s
   `FILED_DIVERGENCES` count; plus the new waiver-evidence test, which the
   prediction could not name because the defect was not yet seen.
+- **Not predicted: the manual.** `docs/manual/00-building.md` quotes the
+  `lupin corpus` census line, and `tests/doc_truth.rs` holds it to the
+  binary: red in the kasumi gauntlet at `f4c5f00` (`gauntlet-f4c5f00.log`,
+  "1 of 20 documented pair(s) drifted", 503/1 against 502/2). The
+  manual now counts DIV-2026-026 (`c8527bc`). A corpus row that
+  moves moves every document that prints the census.
 
 ### DIV-2026-026 — `memory/list_session_struct.lu` — **OPEN, resolves on the pin that carries wolf-lang eg01's `copy tbl[2]`**
 
