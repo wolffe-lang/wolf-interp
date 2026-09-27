@@ -1346,6 +1346,11 @@ pub fn method(
             // The other CoW divergence point — the same #25 consult as
             // `push`, before `Arc::make_mut` diverges anything.
             machine.check_home_write(*home, "this `pop`", span)?;
+            // `pop` answers the last element, so a moved one is a read of a
+            // moved element (#141) — asked before the list shrinks.
+            if let Some(SlotState::Moved(at)) = items.last().map(|slot| slot.state) {
+                return machine.moved_element("the last element", at, span);
+            }
             match std::sync::Arc::make_mut(items).pop() {
                 Some(slot) => Ok(slot.value),
                 // `[mem.list.pop]` (wolf-lang#274, s144): `pop` on an empty
@@ -1374,6 +1379,10 @@ pub fn method(
         // found at step (1) and needing no std root. `xs` is read, never
         // moved; the chunked desugar lives with the rest of the task tier.
         (Value::List(items, _, _), "par") => {
+            // Every element goes to a task, so each is read (#141).
+            if let Some((i, at)) = first_moved(items) {
+                return machine.moved_element(&format!("element {i}"), at, span);
+            }
             let items: Vec<Value> = items.iter().map(|slot| slot.value.clone()).collect();
             machine.eval_par(items, args, span)
         }
@@ -1388,7 +1397,7 @@ pub fn method(
             // `get` is origin-free — the origin marker shifts subscripts only
             // (W0317) — so the index is 0-based whatever `xs[i]` reads as.
             match usize::try_from(*index).ok().and_then(|i| items.get(i)) {
-                Some(slot) => Ok(slot.value.clone()),
+                Some(slot) => element_value(machine, slot, || format!("element {index}"), span),
                 // `none`, not the `OutOfBounds` this machine minted before
                 // `[mem.list.pop]`: one mark per condition, lowercase for a
                 // payload-free mark (W0603, `[mem.str.parse]`'s pact), and
@@ -1409,7 +1418,7 @@ pub fn method(
                 items.last()
             };
             match hit {
-                Some(slot) => Ok(slot.value.clone()),
+                Some(slot) => element_value(machine, slot, || format!("the {name} element"), span),
                 None => {
                     machine.note(Rule::ErrUnion, span, LIST_NONE_ROW);
                     Ok(error("none"))
@@ -1452,12 +1461,35 @@ pub fn method(
                 ));
             };
             match pairs.iter().position(|(k, _)| super::value_eq(k, key)) {
-                Some(at) => Ok(pairs.remove(at).1.value),
+                // The erased value is answered, so a moved one is a read of
+                // a moved element (#141) — asked before the entry goes.
+                Some(at) => {
+                    if let SlotState::Moved(moved_at) = pairs[at].1.state {
+                        return machine.moved_element(
+                            &format!("the value at key {key}"),
+                            moved_at,
+                            span,
+                        );
+                    }
+                    Ok(pairs.remove(at).1.value)
+                }
                 None => {
                     machine.note(Rule::ErrUnion, span, MAP_NONE_ROW);
                     Ok(error("none"))
                 }
             }
+        }
+        // Every value is read into a fresh live slot, so a moved one would
+        // come back out laundered: it is a read of a moved element (#141).
+        (Value::Map(pairs), "pairs") if pairs.iter().any(|(_, slot)| !slot.is_live()) => {
+            let (key, moved_at) = pairs
+                .iter()
+                .find_map(|(key, slot)| match slot.state {
+                    SlotState::Moved(at) => Some((key, at)),
+                    SlotState::Live => None,
+                })
+                .expect("a slot that is not live is moved");
+            machine.moved_element(&format!("the value at key {key}"), moved_at, span)
         }
         (Value::Map(pairs), "pairs") => Ok(Value::list(
             pairs
@@ -2064,6 +2096,15 @@ fn element_value(
         SlotState::Live => Ok(slot.value.clone()),
         SlotState::Moved(at) => machine.moved_element(&what(), at, span),
     }
+}
+
+/// The first slot of `slots` that was moved out, with its position and move
+/// site — the element a read of every slot in turn would trap on first.
+pub(crate) fn first_moved(slots: &[Slot]) -> Option<(usize, Span)> {
+    slots.iter().enumerate().find_map(|(i, slot)| match slot.state {
+        SlotState::Moved(at) => Some((i, at)),
+        SlotState::Live => None,
+    })
 }
 
 /// `e[i]` where `e` turned out to be a collection.
