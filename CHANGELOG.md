@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+**A member read under an element claim reads the member** (is59,
+wolffe-lang/wolf-lang#472, ruled A; `[mem.model.place.elem]` 1(c) at
+wolf-lang `d3bd49cc`: "an element is never the container's header").
+`bump(mut xs[0], xs.len)` trapped `exclusivity`: a member that is not a
+stored field (`xs.len`, `m.len`) was read by reading its container, and
+the container met the claimed `xs[0]` as a prefix. Now, while a claim is
+held under the container's binding, the check is made on the member's own
+path (`xs.len`), which no element or key claim reaches; the rest of the
+read (the `Moved` trap, a freed region, provenance) is the container's as
+before. Both routes a member is read by take it — a dotted path (`xs.len`,
+`b.xs.len`) and a projected base (`g[0].len`, `(xs).len`) — on a `List`
+and a `Map`, under a call's claim or a borrow's (`1709aec`). A claim on the
+whole container, a prefix of it, or the element whose member is read still
+traps with the same record, clause and span as before, and a program with
+no claim on the binding reads exactly as it did. Witnesses:
+`tests/rulings_is59/` (18, `0d45a6a`; eg02's
+`elem_member_read_after_mut.lu` among them). Not carried: `xs.count()`
+and `xs.is_empty()` are method calls and still read the receiver whole
+(wolffe-lang/wolf-lang#474 asks for a ruling); an element read inside an
+expression still checks the whole container (#152); a member read's base
+operand runs three times (#151). wolf-lang's
+`a_member_read_under_an_element_claim_stays_refused` (at `d3bd49cc`)
+expects this machine's old trap for any lupin version, so it goes red on
+this change until eg02b pins 0.1.41 as pre-mirror.
+
 ## 0.1.41 — 2026-09-27
 
 THE FORTY-FIRST (is56), the lupin half of wolf 0.2.18's point release.
