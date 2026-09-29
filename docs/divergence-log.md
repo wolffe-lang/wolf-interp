@@ -4753,22 +4753,98 @@ line added, or any ledger line added.
 `what_reads_no_moved_element_is_untouched` keeps its push, `is_empty`,
 `get` of a live index and header reads.
 
+#### §3a — the prediction, scored
+
+Evidence under `~/lanes/is58/evidence/` on kasumi; release builds of trunk
+`0cfc0cf` and head `a018207` (`lupin 0.1.41+dev.a018207`), whose code is the
+four fixes `b134917`, `77147db`, `307b525`, `a018207`.
+
+- **The fixes, one mechanism each — held.** Each landed as its own commit
+  and each stage compiles on its own (`cargo check --all-targets`, no
+  warning). #145 needed no new evaluation order, only the kept base place
+  (`project_index`, split out of `place_of`); #146 carries the slot state
+  in `Applied::moved` through the three writebacks; #144 is one function,
+  `eval_read_out`, under `else` and `?`; #143 is `check_whole` behind the
+  `parts_moved` flag, and `ReadAs` telling a whole read from a projection
+  base.
+- **The probe table — held, every row.** Trunk against head
+  (`probes-trunk-0cfc0cf.log`, `probes-head-a018207.log`), 84 probes: each
+  row moved exactly as the table says and no other — the `w`, `m` and `p`
+  traps with the lines printed before them as predicted (`w09` `1`, `w24`
+  `1 2 3`, `m13` `1`, `a=1`, `p10` `2`, `p12` `1`, …), the eight `s` stores
+  to wolf's bytes, and every "unchanged" row byte-identical.
+- **The gates' rows — held.** `gates-archive-0.1.41.log` against
+  `gates-head-a018207.log`: the five pinned rows move to the ruled answer
+  and the other 35 are byte-identical; all 40 are at the lupin cell their
+  gate asserts for an unpinned version. §2's claim that the 35 already sat
+  there was read off the gate source row by row after the run, not before —
+  it held.
+- **Zero corpus rows — held.** `lupin corpus` trunk against head
+  (`corpus-trunk-0cfc0cf-release.log`, `corpus-head-a018207-release.log`):
+  698 lines each, identical; census 502 match, 2 mismatch, as before. So
+  `docs/manual/00-building.md`'s census does not move either (is56's third
+  place).
+- **The differential — held, and stronger than predicted.** Against the
+  published wolf 0.2.18, 646 entries, 44 members (`diffrun/`): `default`,
+  `checked` and `release` logs byte-identical trunk to head (5, 5 and 7
+  divergences, all trunk's); `native` differs on one line, the counterparty
+  exit status of `memory/unsafe_ub_uaf.lu` (`114` at trunk, `224` at head)
+  — the compiled lane's use-after-free read, which is55 and is56 saw move
+  run to run. Every conservatism ledger is byte-identical (313, 623, 223,
+  225 lines); none left, where the prediction allowed some to.
+  **New divergences: none.**
+- **Existing tests that change: none — held.** `cargo test --lib` 719
+  passed on the working tree before the commits were cut (`dev-a.log`);
+  is56's `what_reads_no_moved_element_is_untouched` unchanged.
+- **Not predicted:** the path-test commit `f63fea0` was not rustfmt-clean
+  (`red-f63fea0.log`, `fmt` rc 1), fixed by `976bff2` before any fix
+  landed. And the receivers: wolf 0.2.18 refuses a method called on a
+  partly-moved container (`(mut xs).push`, `get`, `is_empty`, `pop`, a
+  slice beside the moved element, an impl method's `self`) with E1001,
+  where §3 kept them projection bases — measured in
+  `probes2-head-a018207.log` and filed as wolffe-lang/wolf-interp#149, a
+  ruling for the clause rather than a change here (is56's test pins the
+  current reading).
+
 #### §4 — evidence index
 
-Appended as each artifact exists: the red at trunk for each issue (a
-committed test run red at its commit, the log under
-`~/lanes/is58/evidence/`), the green at head, the probe and gate-row logs
-at head, `lupin corpus` trunk against head, the four-tier differential
-trunk against head, the gauntlet, and the CI run at the head sha.
+Commits:
+- `5ac112e` §1–§5, §2 re-derived and §3 predicted before any edit
+- `4fdb5a5` the nineteen gate rows under `tests/rulings_is58/`; `0831109` their runner `tests/rulings_is58.rs`
+- `f63fea0` 30 path tests in `src/eval/tests.rs`; `976bff2` rustfmt of them
+- `b134917` #145; `77147db` #143; `307b525` #146; `a018207` #144
+- `c2badaf` CHANGELOG `Unreleased`; this section
+
+Artifacts (kasumi `~/lanes/is58/evidence/`; wolf 0.2.18 `da027bf9…`,
+lupin 0.1.41 `18848901…`, digests = release pages):
+- red at trunk, for the named reason: `red-f63fea0.log` — paths 24 failed
+  / 6 passed (the six are the controls: what stays readable, what was
+  already evaluated once, the out-of-bounds store), each failure a program
+  that ran on past its trap or ran an operand twice; `rulings_is58` 5 failed /
+  15 passed, exactly the five pinned rows, each `lupin answered exit(0),
+  ruled ["trap(use-after-move)"]` or the doubled stdout; `rulings_eg00`
+  15/15 and `rulings_s182` 11/11 green at trunk
+- green on the working tree that became `a018207`: `dev-a.log` — fmt 0,
+  clippy 0, `--lib` 719 passed, `rulings_is58` 20/20, `rulings_eg00`
+  15/15, `rulings_s182` 11/11, `index_store` 7/7
+- probes: `probes-archive-0.1.41.log`, `probes-trunk-0cfc0cf.log`,
+  `probes-head-a018207.log`; receivers `probes2-head-a018207.log`
+- gate rows: `gates-archive-0.1.41.log`, `gates-head-a018207.log`
+- wolf-lang's own gates at `ec56a08f` with `LUPIN` set:
+  `wolfgates-head-a018207.log`, `wolfgates-red-f63fea0.log`,
+  `wolfgates-archive-0.1.41.log` (results in the PR body)
+- corpus: `corpus-trunk-0cfc0cf-release.log`, `corpus-head-a018207-release.log`
+- differential: `diffrun/trunk-0cfc0cf-*` against `diffrun/head-a018207-*`
+- gauntlet at `a018207`: `gauntlet-a018207.log`; CI at the head sha: the PR body
 
 #### §5 — done-when
 
-- [ ] branch `is58` on origin; PR open, unmerged, with these five sections
-- [ ] §2 re-derived, §3 committed before the first `src/`/`tests/` edit, §3a scored
-- [ ] each of #143, #144, #145, #146: a test red at trunk for its named reason, green at head
-- [ ] every read or store path each fix reaches has a test
-- [ ] whole-corpus differential against wolf 0.2.18: no new divergence, or each one filed
-- [ ] CHANGELOG `Unreleased`
+- [x] branch `is58` on origin; PR open, unmerged, with these five sections
+- [x] §2 re-derived, §3 committed before the first `src/`/`tests/` edit, §3a scored
+- [x] each of #143, #144, #145, #146: a test red at trunk for its named reason, green at head
+- [x] every read or store path each fix reaches has a test
+- [x] whole-corpus differential against wolf 0.2.18: no new divergence
+- [x] CHANGELOG `Unreleased`
 - [ ] the gates' pinned lupin cases this head satisfies, listed by test name
 - [ ] CI green at the head sha
 - [ ] kasumi build dirs pruned once evidence is written; worktree removed
