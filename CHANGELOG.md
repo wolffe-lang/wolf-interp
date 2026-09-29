@@ -28,6 +28,52 @@ expects this machine's old trap for any lupin version, so it goes red
 against any lupin carrying this change until eg02b pins 0.1.41 as
 pre-mirror.
 
+**The four mirrors** (is58; wolf 0.2.18's gates pin lupin 0.1.41's answer on
+three of them by version, so the release that carries this turns those rows
+to the ruled answer). Pin unchanged: `93a5fe50`.
+
+**A nested index store evaluates each operand once** (#145, `b134917`;
+`[mem.model.place.rhs]`, `[mem.model.order]`). `g[i()][j()] = v` ran `i()`
+twice, and a three-level store its first two operands twice: the store asked
+whether its base was a raw pointer by evaluating the base, then evaluated the
+base's operands again to find the place. The place is now found once and
+kept. Compound, `take`, a field between the indices, a map inside a list and
+a list inside a map all run each operand once, outermost first, then the
+value — wolf 0.2.18's bytes on `ctl_store_order_nested_index`.
+
+**A whole read of a place holding a moved part traps** (#143, `77147db`;
+`[mem.tier0.move.2]` under `[mem.model.place.elem]`). After `move xs[0]`,
+`copy xs`, `"{xs}"`, `xs == …`, `let ys = xs`, an argument in any mode, a
+`return`, a literal's field or element, and a `match` on it all handed the
+moved part on; after `move p.x`, so did `let q = p`. Each now traps
+`use-after-move`, naming the part and its move site; so does a `for` that
+binds an element holding a moved part, and a whole move. The base of a
+projection is not a whole read: `xs.len`, `xs[1]`, `p.y`, a method receiver
+and a `for` head read only what they pick. The walk costs nothing until a
+program first moves a part.
+
+**A `mut` parameter left moved-out is moved-out in the caller** (#146,
+`307b525`; `[mem.tier0.mode.mut]`, wolf-lang s184). The writeback carried
+the parameter's value and always marked the caller's place live, so
+`var t = move xs` in the callee left the caller reading its original
+`[1]`. The parameter slot's state now travels back with its value — through
+a free call, a trait-qualified call and an impl method's `mut self` — and the
+caller's read traps at the callee's move site. A parameter stored back, on
+the path the call took, runs as before.
+
+**`else` and `?` read a `Map` value out** (#144, `a018207`;
+`[mem.map.absent]`: "A `Map` index READ copies exactly when `V` copies").
+`var v = m[k] else …` copied a non-`Copy` value and left the entry live, so
+a later read of `m[k]` saw it. Under `else` and `?` the read now consumes the
+entry as `let r = m[k]` always did — a `Copy` value is copied, anything else
+moves until a store through the key revives it — through a local, a field, an
+element of a list, or a `mut` parameter. An absent key moves nothing. An
+interpolation hole (`"{m[k]}"`) still reads without moving, as the compiler
+reads it.
+
+The nineteen corpus rows wolf 0.2.18's three gates name for these clauses
+run against their ruled lupin cell in `tests/rulings_is58.rs`; five flip.
+
 ## 0.1.41 — 2026-09-27
 
 THE FORTY-FIRST (is56), the lupin half of wolf 0.2.18's point release.
