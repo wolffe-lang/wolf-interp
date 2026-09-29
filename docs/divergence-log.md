@@ -4459,6 +4459,125 @@ and `tests/conformance.rs` must stop asserting its header, and its
 `RUN_LEDGER` row records `trap(use-after-move)`. It retires the round a
 differential compares it clean.
 
+### The member read — is59, wolf-lang#472 ruled A, `[mem.model.place.elem]` 1(c) under a claim (wolf-lang `d3bd49cc`)
+
+Wave 50's row (added 2026-09-29): the maintainer ruled **A** on
+wolffe-lang/wolf-lang#472 — "Clause 1(c) stands as written. lupin reads a
+container member as the member". The clause, at wolf-lang `d3bd49cc`
+(`spec/02-memory-model.md`, `[mem.model.place.elem]` item 1(c)): "An index
+step and a member step on the same container: `xs[i]` and `xs.len`,
+whatever `i` is — an element is never the container's header." The
+contract is is56's, in five sections; §1–§3 are committed before the first
+edit under `src/` or `tests/`, the rest is appended as it lands.
+Measurements on kasumi (linux x86-64) under `~/lanes/is59/`: the published
+wolf 0.2.18 (`da027bf9…6bd4`) and lupin 0.1.41 (`18848901…e8d4`), both
+digests equal to the release pages', and a release build of trunk
+`0cfc0cf` (`lupin-trunk-0cfc0cf`, `42b13d1e…`). Probes: 21 one-directory
+programs under `~/lanes/is59/probes/` (`q*` a member read under an element
+claim, `t*` twins that must still trap, `o*` neighbours out of scope, `c01`
+an operand count); runner `~/lanes/is59/scripts/run-probes.sh`
+(`lupin conform-run main.lu --json`, and `wolf conform-run main.lu
+--checked --json` beside it).
+
+#### §1 — forbidden, absolutely
+
+No `rm` outside `~/lanes/is59/` (kasumi) and `/private/tmp/is59`; no
+deletion in any tree this lane did not create; no `git add -A`; no edit to
+another lane's file (is58 owns its four mirrors, is57 owns
+`.github/workflows/`); no `~/.claude`; no build on nomad-1; no tag; no pin
+move (pin stays `93a5fe50`); no merge, no rebase-merge; no `2>/dev/null` on
+a checkout; kill only my own pids, never a pattern or a group; no claim of
+"seen red" without the log it is in.
+
+#### §2 — inputs, re-derived 2026-09-29
+
+| input as written | at origin / measured | drift |
+| --- | --- | --- |
+| wolf-interp trunk | `origin/trunk` = `0cfc0cf` "release: lupin 0.1.41"; pin `93a5fe50` (wolf-lang v0.2.16); branch `is59` cut there | none |
+| wolf 0.2.18, lupin 0.1.41 from the published archives | `wolf 0.2.18 (wolfgang, pin ec56a08)`, `lupin 0.1.41 … pin 93a5fe5`; the archive's lupin column on all 21 probes equals the trunk build's (`probes-archive-0.1.41.log`, `probes-trunk-0cfc0cf.log`); the trunk build's sha equals is58's trunk build (`42b13d1e…`) | none |
+| the ruling | wolf-lang#472's last comment: "**Ruled by the maintainer 2026-09-29: A.** … lupin reads a container member as the member (is59, wolf-interp); the compiler then accepts `bump(mut xs[0], xs.len)` (eg02b), pinning lupin ≤ 0.1.41 as pre-mirror until is59's release." | none |
+| lupin traps `bump(mut xs[0], xs.len)` | `q01`: 0.1.41 `trap(exclusivity)`, clause `mem.model.path.disjoint`; wolf 0.2.18 checked `fail(E1002)` | none |
+| the mechanism (eg02's words: "it reads `.len` as the whole container") | two routes read a member that is not a stored field, and both read the PARENT as a whole place first: `eval_path_expr` (`src/eval/mod.rs:4717-4723`, a dotted path `xs.len`, `b.xs.len`) calls `read_path(parent)`, and `eval_member` (`mod.rs:7450`, a projected base `g[0].len`, `(xs).len`) calls `eval_consumed(base)`, which reads the base's container through `read_claim` (the index-read lend, `eval_bracket`). `read_claim` → `check_access(parent, Shared)` (`mod.rs:1491`, `:1556`) meets the held `xs[0]` as a prefix. The path model already separates the two: `Proj::may_equal` (`src/eval/place.rs:115`) answers `false` for a `Field` against an `Index`/`Key` — so the member's OWN path, `xs.len`, is disjoint from `xs[0]` today; nothing asks it | none; the fix is where the check is made, not what the path model says |
+| "`xs.len` and every other member read" | lupin's non-stored members (`builtin::property`, `src/eval/builtin.rs:1045`): `List.len`, `Map.len`, `str.len`, a range's `start`/`end`, the duration suffixes on an int, and a field through a `shared` cell. An element claim exists only on a `List` or a `Map` (`Pool` is declined by name), so the claim-reachable members are `List.len` and `Map.len`, reached through either route | the row's "…" is these two members, over two routes |
+| methods | `xs.count()` and `xs.is_empty()` are METHOD calls (`eval_method`), not member reads; 0.1.41 traps both under `mut xs[0]` (`o01`, `o02`) | **drift: wolf 0.2.18 checked RUNS both (`4`, `2`)** — see below |
+| the compiler is "never looser than the oracle" (eg02, wolf-lang#472) | wolf 0.2.18 checked, which predates EG2, runs four probe shapes lupin 0.1.41 traps: a member read inside a larger argument expression (`q09` `xs.len * 10 + xs.len` → `34`; `q11` `"{xs.len}{xs.len}"` → `3`) and the two methods (`o01`, `o02`). Its E1002 sees a member read only as a bare argument | **drift**: 0.2.18 is already looser than 0.1.41 on these; after this lane `q09`/`q11` agree (ruling A); `o01`/`o02` stay parted — to be filed on wolf-lang, not fixed here |
+| wolf-lang's gate at `d3bd49cc` | `element_places_lanes.rs::a_member_read_under_an_element_claim_stays_refused` asserts lupin `trap(exclusivity)` for ANY version; eg02b is to pin ≤ 0.1.41 as pre-mirror | this lane's lupin turns that case red until eg02b lands — the pairing order the ruling names |
+| is58 in the same repo | `origin/is58` (`0718691`) edits `eval_path_expr` and `eval_member` (a new `ReadAs` parameter; `eval_consumed(base)` → `eval_projected(base)` on the member route), `CHANGELOG.md`, `docs/divergence-log.md` (a section at this same spot) | overlap in three files, named; the second to finish rebases |
+| found: an operand count | `c01`: `let n = g[f()].len` prints `f` **three times** on 0.1.41 (and on is58's head `a018207`), once on wolf 0.2.18: `live_place` at the `let`, `place_of(base)` in `eval_member`, and `eval_consumed(base)` each evaluate `f()` | not in the row; filed separately, and see §3 |
+
+#### §3 — prediction, committed before the first edit
+
+**The fix, one mechanism.** A member read that is not a stored field
+checks exclusivity on the member's own path — the parent projected by a
+`Field(member)` step — instead of on the parent. Everything else a read of
+the parent does stays where it was: the `Moved` trap on the parent, the
+freed-region fault, the `PlacePath` rule fire, the provenance read of the
+parent. Both routes take it: `eval_path_expr`'s dotted tail, and
+`eval_member` when the base is a place that resolves (the member is then
+read off that place, not by evaluating the base a second time). The member
+path has the parent as its prefix, so any claim on the parent or on one of
+its prefixes conflicts exactly as before, and **when it conflicts the trap
+is reported against the parent, byte for byte as trunk reports it**
+(message, clause, span): no twin's record moves. Only a claim on an
+element (an `Index`/`Key` step below the parent) stops conflicting.
+
+**The probe table** (lupin at head against 0.1.41; wolf 0.2.18 checked in
+brackets):
+
+| probe | shape | 0.1.41 | head | [0.2.18] |
+| --- | --- | --- | --- | --- |
+| `q01` | `bump(mut xs[0], xs.len)` (wolf-lang#472's witness) | `trap(exclusivity)` | `exit(0)` `4 3` | [E1002] |
+| `q02` | `bump(mut m["a"], m.len)` | trap | `exit(0)` `3 2` | [E0401] |
+| `q03` | `bump(mut g[0][1], g[0].len)`, `bump(mut g[1][0], g[1].len)` (member route) | trap | `exit(0)` `4 6` | [E1002] |
+| `q04` | `bump(mut g[1][2], g.len)` | trap | `exit(0)` `7 2` | [E1002] |
+| `q05` | `bump(mut b.xs[2], b.xs.len)` (a field's list) | trap | `exit(0)` `7 4 7` | [E1002] |
+| `q06` | `bump(mut xs[i], xs.len)` (run-time index; 1(c) "whatever `i` is") | trap | `exit(0)` `6 3` | [E1002] |
+| `q08` | `add2(mut xs[0], mut xs[1], xs.len)` | trap at `xs.len` | `exit(0)` `4 5 3` | [E1002, pre-EG2] |
+| `q09` | `bump(mut xs[0], xs.len * 10 + xs.len)` | trap | `exit(0)` `34` | [`34`] |
+| `q10` | `bump(mut xs[0], (xs).len)` (member route, grouped base) | trap | `exit(0)` `4` | [E1002] |
+| `q11` | `note(mut xs[0], "{xs.len}{xs.len}")` | trap | `exit(0)` `3` | [`3`] |
+| `q12` | `let r = &mut xs[0]` then `xs.len` (a borrow's claim) | trap | `exit(0)` `3` | [unsupported] |
+| `q07`, `o03` | `xs.len` before the claim; another container's `len` | `exit(0)` | unchanged | [same] |
+| `t01` | `grow(mut xs, xs.len)` | `trap(exclusivity)` `mem.tier0.excl.1` | unchanged, same record | [E1002] |
+| `t02`, `t03` | `trim(mut g[0], g[0].len)`, `grow(mut b.xs, b.xs.len)` | trap `mem.model.path.disjoint` | unchanged, same record | [E1002] |
+| `t04`, `t05` | `bump(mut xs[0], xs[0])`, `sum(mut xs[0], xs)` (no member) | trap | unchanged | [E1002] |
+| `o01`, `o02` | `xs.count()`, `xs.is_empty()` under `mut xs[0]` | trap | **unchanged — out of scope, named** (a method, not a member read) | [`4`, `2`] |
+| `c01` | `let n = g[f()].len` | `f` ×3 | `f` ×2 — the member route stops evaluating its base twice; the `let`'s own `place_of` stays (filed) | [`f` ×1] |
+
+**Corpus rows that change verdict: zero.** No row at the pin passes a
+member of a container while an element of it is claimed (a grep of
+`vendor/upstream/corpus` for a `mut x[…]` argument beside a `.len` in one
+call finds none). Falsified by any line moving in `lupin corpus`.
+
+**The differential against wolf 0.2.18** (all entries at pin `93a5fe50`,
+four counterparty tiers, trunk release build against head release build):
+**no entry added or removed on any tier, and no ledger line added.**
+Falsified by any divergence or ledger line that differs.
+
+**Existing tests that change: none.** Falsified by any test red at head
+that was green at trunk (`a_two_phase_receiver_still_reads_itself_through_the_parent`
+and `tests/snapshots/exclusivity_nested_path.snap` are the closest).
+
+#### §4 — evidence index
+
+Appended as each artifact exists: the witnesses red at trunk (a committed
+test run red at its commit, the log under `~/lanes/is59/evidence/`), the
+green at head, the probe log at head, `lupin corpus` trunk against head,
+the four-tier differential trunk against head, the gauntlet, and the CI
+run at the head sha.
+
+#### §5 — done-when
+
+- [ ] branch `is59` on origin; PR open, unmerged, with these five sections
+- [ ] §2 re-derived, §3 committed before the first `src/`/`tests/` edit, §3a scored
+- [ ] wolf-lang#472's witness: a test red at trunk for the named reason, green at head
+- [ ] every member read path under a live element claim has a test (both routes, `List` and `Map`, a call claim and a borrow claim), and every twin still traps with trunk's record
+- [ ] whole-corpus differential against wolf 0.2.18: no new divergence
+- [ ] CHANGELOG `Unreleased`
+- [ ] the operand-count finding (`c01`) and the method parting (`o01`, `o02`) filed
+- [ ] CI green at the head sha
+- [ ] kasumi build dirs pruned once evidence is written; worktree removed
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
