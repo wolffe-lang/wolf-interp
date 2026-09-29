@@ -206,6 +206,20 @@ struct Args {
     protectors: Vec<prov::TagId>,
 }
 
+/// How a place-shaped expression's value is about to be used
+/// (wolf-interp#143).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReadAs {
+    /// Handed on as a value — bound, passed, copied, printed, compared,
+    /// returned. A value holding a moved part is a read of that part
+    /// (`[mem.tier0.move.2]`), so it traps.
+    Whole,
+    /// The base of a projection — `e.f`, `e[i]`, `e.len`, a method receiver,
+    /// a `for` head. The projection reads what it picks, and that read
+    /// answers for its own part; the base itself hands nothing on.
+    Projected,
+}
+
 /// What the destination of a store turned out to be (`Machine::raw_target`).
 enum RawTarget {
     /// Bytes in an allocation, through a raw pointer: the provenance machine
@@ -465,6 +479,12 @@ struct Shared {
     /// entirely — a program that never frees or freezes a region pays one
     /// atomic load per access, not a path walk.
     region_teeth: Arc<std::sync::atomic::AtomicBool>,
+    /// Set the first time any PART of a value — a field, an element, a map
+    /// value — is left moved-out (a `move` through a projection, or a `mut`
+    /// argument place the callee moved). Until then no value can hold a
+    /// moved part, so a whole read skips its walk (wolf-interp#143) — the
+    /// `region_teeth` pattern: one atomic load per whole read.
+    parts_moved: Arc<std::sync::atomic::AtomicBool>,
     /// `[mem.model.machine]` component 2: the provenance forest (is04).
     prov: Arc<Mutex<Provenance>>,
     stdout: Arc<Mutex<Vec<u8>>>,
@@ -675,6 +695,7 @@ impl Machine {
             program: Arc::new(program.clone()),
             store: Arc::new(Mutex::new(store)),
             region_teeth,
+            parts_moved: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             prov: Arc::new(Mutex::new(Provenance::new())),
             stdout: Arc::new(Mutex::new(Vec::new())),
             trace: Arc::new(Mutex::new(Vec::new())),
@@ -1722,14 +1743,108 @@ impl Machine {
         if let Some(freed) = self.freed_region_on_read(path) {
             return self.region_freed_fault(&format!("`{display}`"), freed, span);
         }
+        // A move hands the whole value on: one holding a moved part is a
+        // read of that part (wolf-interp#143).
+        if self.parts_moved() {
+            let found = self
+                .resolve(path)
+                .and_then(|(slot, _)| moved_part(&slot.value));
+            self.moved_part_trap(found, Some(path), span)?;
+        }
         let Some((slot, _)) = self.resolve(path) else {
             return unsupported(format!("`{display}` does not denote a place at run time"));
         };
         let value = slot.take_value(span);
+        self.note_part_moved(path);
         self.fire(Rule::Move, span, &format!("move out of `{display}`"));
         // A move ends the captured place's life as surely as a write ends
         // its loan (#36): the generation advances either way.
         self.note_captured_write(path, span);
+        Ok(value)
+    }
+
+    /// Records that `path`, when it names a PART of a value, has been left
+    /// moved-out — from here on a whole read must walk what it reads.
+    fn note_part_moved(&self, path: &Path) {
+        if !path.projections.is_empty() {
+            self.shared
+                .parts_moved
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    /// `[mem.tier0.move.2]` for a WHOLE read (wolf-interp#143): a value that
+    /// holds a moved part — an element, a field, a map value — hands that
+    /// part on with it, so reading the value whole is a read of the moved
+    /// part and traps `use-after-move` at the whole read, naming the part
+    /// and its move site. `whole` names the value read (`None` for a value
+    /// picked out of another value, which has no path of its own).
+    ///
+    /// Cost: nothing until the program first leaves a part moved-out (one
+    /// atomic load); after that a walk of the value's slots, the price of the
+    /// check `resolve` already makes for a place's own prefix chain.
+    fn check_whole(&mut self, value: &Value, whole: Option<&Path>, span: Span) -> EResult<()> {
+        if !self.parts_moved() {
+            return Ok(());
+        }
+        let found = moved_part(value);
+        self.moved_part_trap(found, whole, span)
+    }
+
+    fn parts_moved(&self) -> bool {
+        self.shared
+            .parts_moved
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// The trap [`check_whole`](Machine::check_whole) raises for the part it
+    /// found, if it found one.
+    fn moved_part_trap(
+        &mut self,
+        found: Option<(Vec<Proj>, Span)>,
+        whole: Option<&Path>,
+        span: Span,
+    ) -> EResult<()> {
+        let Some((steps, moved_at)) = found else {
+            return Ok(());
+        };
+        let (message, label) = match whole {
+            Some(whole) => {
+                let mut part = whole.clone();
+                part.projections.extend(steps);
+                (
+                    format!(
+                        "`{whole}` is read whole, and `{part}` was moved out of it and is \
+                         uninitialized here"
+                    ),
+                    format!("`{part}` moved here"),
+                )
+            }
+            None => {
+                let steps: String = steps.iter().map(ToString::to_string).collect();
+                (
+                    format!(
+                        "this value is read whole, and its part `{steps}` was moved out and is \
+                         uninitialized here"
+                    ),
+                    format!("`{steps}` moved here"),
+                )
+            }
+        };
+        self.trap(
+            TrapKind::UseAfterMove,
+            Rule::UseAfterMove,
+            span,
+            message,
+            Some((moved_at, label)),
+        )
+    }
+
+    /// A whole read through a path: [`read_path`](Machine::read_path), then
+    /// [`check_whole`](Machine::check_whole) on what it read.
+    fn read_whole(&mut self, path: &Path, span: Span) -> EResult<Value> {
+        let value = self.read_path(path, span)?;
+        self.check_whole(&value, Some(path), span)?;
         Ok(value)
     }
 
@@ -3040,7 +3155,7 @@ impl Machine {
                 Some(ParamMode::Mut) => {
                     let path = self.place_of(&arg.expr)?;
                     self.check_access(&path, Access::Exclusive, arg.span)?;
-                    let value = self.read_path(&path, arg.span)?;
+                    let value = self.read_whole(&path, arg.span)?;
                     self.fire(
                         Rule::ModeMut,
                         arg.span,
@@ -3102,7 +3217,7 @@ impl Machine {
                     let value: Value = match self.live_place(&arg.expr)? {
                         Some(path) => {
                             self.check_access(&path, Access::Shared, arg.span)?;
-                            let value = self.read_path(&path, arg.span)?;
+                            let value = self.read_whole(&path, arg.span)?;
                             self.fire(Rule::ModeRead, arg.span, &format!("`read {path}`"));
                             held += 1;
                             // `read` parameter entry retags too, with a Frozen
@@ -3773,7 +3888,7 @@ impl Machine {
     /// Consumes one place as an initializer does: a `Copy`-shaped value is
     /// copied, anything else moves out (`[mem.tier0.move.1]`/`.3`).
     fn consume_place(&mut self, path: &Path, span: Span) -> EResult<Value> {
-        let value = self.read_path(path, span)?;
+        let value = self.read_whole(path, span)?;
         if is_copy(&value) {
             self.fire(Rule::ValueSemantics, span, "copy (Copy-shaped value)");
             Ok(value)
@@ -4292,7 +4407,7 @@ impl Machine {
             ExprKind::Wildcard => {
                 unsupported("`_` is never a value you can read (`[gram.lex.ident]`)".to_owned())
             }
-            ExprKind::Path(_) => self.eval_path_expr(expr),
+            ExprKind::Path(_) => self.eval_path_expr(expr, ReadAs::Whole),
             ExprKind::Group(inner) => self.eval(inner),
             ExprKind::Block(block) => self.eval_block(block),
             ExprKind::Tuple(items) => {
@@ -4365,7 +4480,7 @@ impl Machine {
                         // `Point { x }` binds the field from the identifier.
                         None => {
                             let path = Path::local(self.frame(), field.name.name.clone());
-                            self.read_path(&path, field.span)?
+                            self.read_whole(&path, field.span)?
                         }
                     };
                     built.push((field.name.name.clone(), Slot::live(value)));
@@ -4437,9 +4552,11 @@ impl Machine {
             }
             ExprKind::Call { callee, args } => self.eval_call(callee, args, expr.span),
             ExprKind::BracketApply { base, args, origin } => {
-                self.eval_bracket(base, args, *origin, expr.span)
+                self.eval_bracket(base, args, *origin, expr.span, ReadAs::Whole)
             }
-            ExprKind::Member { base, member } => self.eval_member(base, member, expr.span),
+            ExprKind::Member { base, member } => {
+                self.eval_member(base, member, expr.span, ReadAs::Whole)
+            }
             // A moded receiver evaluates as its place; the mode is consumed by
             // `method_split` when the member access is a call, and marks
             // nothing on a bare member read (`(mut p).x` — the grammar admits
@@ -4536,7 +4653,7 @@ impl Machine {
                 // exactly as `consume_place` copies rather than moves.
                 let place = self.live_place(scrutinee)?;
                 let value = match &place {
-                    Some(path) => self.read_path(path, scrutinee.span)?,
+                    Some(path) => self.read_whole(path, scrutinee.span)?,
                     None => self.eval(scrutinee)?,
                 };
                 for arm in arms {
@@ -4787,7 +4904,7 @@ impl Machine {
         }
     }
 
-    fn eval_path_expr(&mut self, expr: &Expr) -> EResult<Value> {
+    fn eval_path_expr(&mut self, expr: &Expr, how: ReadAs) -> EResult<Value> {
         let ExprKind::Path(path) = &*expr.kind else {
             unreachable!("caller checked")
         };
@@ -4795,7 +4912,10 @@ impl Machine {
         if self.local_exists(head) || self.globals.contains_key(head) {
             let place = self.place_of(expr)?;
             if self.slot_mut(&place).is_some() {
-                return self.read_path(&place, expr.span);
+                return match how {
+                    ReadAs::Whole => self.read_whole(&place, expr.span),
+                    ReadAs::Projected => self.read_path(&place, expr.span),
+                };
             }
             // A dotted tail that is not a stored field: `xs.len`, `s.len`.
             let mut parent = place.clone();
@@ -5147,7 +5267,7 @@ impl Machine {
                 // `copy x` produces an independent value from any type
                 // (`[mem.tier0.move.3]`) — and does NOT move the source.
                 let value = match self.live_place(operand)? {
-                    Some(path) => self.read_path(&path, span)?,
+                    Some(path) => self.read_whole(&path, span)?,
                     None => self.eval(operand)?,
                 };
                 self.fire(Rule::Copy, span, "explicit copy");
@@ -5793,7 +5913,9 @@ impl Machine {
             );
         }
         // The `for` head is `[mem.str.view]`'s first consumed position.
-        let iterable = self.eval_consumed(iter)?;
+        // It reads the container element by element (#141), so the head is
+        // a projection base, not a whole read (#143).
+        let iterable = self.eval_projected(iter)?;
         // `for v in ch` iterates a channel lazily until drained-close
         // ([conc.chan.close]) — each iteration is a blocking point.
         if let Value::Chan(chan) = iterable {
@@ -5974,6 +6096,12 @@ impl Machine {
                     break;
                 }
             };
+            // The loop binds the element whole: one holding a moved part
+            // hands that part on (wolf-interp#143).
+            if let Err(signal) = self.check_whole(&item, None, iter.span) {
+                outcome = Err(signal);
+                break;
+            }
             self.push_scope();
             let bound = self.bind_pattern(pattern, item);
             let result = match bound {
@@ -6615,6 +6743,42 @@ impl Machine {
     /// for a payload the program never took — 16× on a 64 KiB `str` — which is
     /// why a `region r(cap: n)` derived on one tier mis-fired by an order of
     /// magnitude on the other, on the exact idiom `std.bytes` teaches.
+    /// Evaluates the BASE of a projection (wolf-interp#143): a place-shaped
+    /// base is read without the whole-read check, since what the projection
+    /// picks out answers for itself; anything else evaluates as
+    /// [`eval_consumed`](Machine::eval_consumed) does. One evaluation step per
+    /// node, exactly as `eval` charges it.
+    fn eval_projected(&mut self, expr: &Expr) -> EResult<Value> {
+        match &*expr.kind {
+            ExprKind::Path(_) => {
+                self.step()?;
+                self.eval_path_expr(expr, ReadAs::Projected)
+            }
+            // A parenthesized base keeps `eval`'s reading of what it wraps:
+            // only a place-shaped one is a projection base, so `(s.bytes())`
+            // stays an ordinary (materialized) value, as it always was.
+            ExprKind::Group(inner) => {
+                self.step()?;
+                match &*inner.kind {
+                    ExprKind::Path(_)
+                    | ExprKind::Group(_)
+                    | ExprKind::BracketApply { .. }
+                    | ExprKind::Member { .. } => self.eval_projected(inner),
+                    _ => self.eval(inner),
+                }
+            }
+            ExprKind::BracketApply { base, args, origin } => {
+                self.step()?;
+                self.eval_bracket(base, args, *origin, expr.span, ReadAs::Projected)
+            }
+            ExprKind::Member { base, member } => {
+                self.step()?;
+                self.eval_member(base, member, expr.span, ReadAs::Projected)
+            }
+            _ => self.eval_consumed(expr),
+        }
+    }
+
     fn eval_consumed(&mut self, expr: &Expr) -> EResult<Value> {
         if !is_byte_view_call(expr) {
             return self.eval(expr);
@@ -7279,7 +7443,7 @@ impl Machine {
                 let display = path.to_string();
                 return unsupported(format!("`{display}` does not denote a place at run time"));
             }
-            Receiver::Expr(expr) => (None, Some(self.eval(expr)?)),
+            Receiver::Expr(expr) => (None, Some(self.eval_projected(expr)?)),
         };
         // `[mem.str.get]`: the boundary primitive's argument is a RANGE
         // whose endpoints may be open (`s.get(..2)`) or `^n` end-relative —
@@ -7500,7 +7664,13 @@ impl Machine {
         result
     }
 
-    fn eval_member(&mut self, base: &Expr, member: &Member, span: Span) -> EResult<Value> {
+    fn eval_member(
+        &mut self,
+        base: &Expr,
+        member: &Member,
+        span: Span,
+        how: ReadAs,
+    ) -> EResult<Value> {
         if self.is_module_expr(base)
             && let (ExprKind::Path(path), Member::Named(name)) = (&*base.kind, member)
         {
@@ -7525,7 +7695,10 @@ impl Machine {
                 Member::Index(index, _) => path.clone().project(Proj::Index(i128::from(*index))),
             };
             if self.slot_mut(&projected).is_some() {
-                return self.read_path(&projected, span);
+                return match how {
+                    ReadAs::Whole => self.read_whole(&projected, span),
+                    ReadAs::Projected => self.read_path(&projected, span),
+                };
             }
             // `(xs).len`, `g[0].len` under a claim on an element: the member
             // is read off the base's place (1(c), `read_header`), without
@@ -7544,7 +7717,7 @@ impl Machine {
         // `s.bytes().len` asks the receiver its byte length and materializes
         // nothing. The clause's `count`/`is_empty`/`get`/`first`/`last` arrive
         // as METHOD calls, whose receiver is evaluated in `eval_method`.
-        let value = self.eval_consumed(base)?;
+        let value = self.eval_projected(base)?;
         match member {
             Member::Named(ident) => builtin::property(self, &value, &ident.name, span),
             Member::Index(index, _) => match &value {
@@ -7593,6 +7766,7 @@ impl Machine {
         args: &[IndexArg],
         origin: u8,
         span: Span,
+        how: ReadAs,
     ) -> EResult<Value> {
         // The index-read lend (issue #28, wolf-std F-0078) — the other half of
         // #24's shape. `xs[i]` evaluated `xs` in order to pick one element out
@@ -7625,12 +7799,16 @@ impl Machine {
             let value = self.lend_path(&place);
             let element = builtin::index(self, &value, &index, origin, span);
             self.restore_lent(&place, value);
-            return element;
+            let element = element?;
+            if how == ReadAs::Whole {
+                self.check_whole(&element, None, span)?;
+            }
+            return Ok(element);
         }
         // The index base is `[mem.str.view]`'s second consumed position:
         // `s.bytes()[i]` picks one octet out of the receiver's own storage and
         // materializes nothing.
-        let target = self.eval_consumed(base)?;
+        let target = self.eval_projected(base)?;
 
         // `e[…]` is one production (`[gram.amb.brackets]`): generic application
         // or indexing, told apart here by what the base turned out to be.
@@ -7715,7 +7893,11 @@ impl Machine {
             };
             return self.raw_load(ptr.offset_by(i), span);
         }
-        builtin::index(self, &target, &index, origin, span)
+        let element = builtin::index(self, &target, &index, origin, span)?;
+        if how == ReadAs::Whole {
+            self.check_whole(&element, None, span)?;
+        }
+        Ok(element)
     }
 
     /// The origin-1 checked shift (`[gram.expr.index.origin]`, D61): a
@@ -8722,6 +8904,42 @@ fn prim_type_names(value: &Value) -> Vec<String> {
 /// annotates `var cur = hs[0]` with `[mem.tier0.move.3]` — while region values
 /// are affine by `[mem.region.create.2]`, and `shared`/`weak`/pool references
 /// carry ownership that a silent duplicate would forge.
+/// The first slot under `value` that was moved out, depth first in storage
+/// order: its steps below `value` and its move site (wolf-interp#143). A
+/// moved slot's own contents are not searched — the slot is the part.
+fn moved_part(value: &Value) -> Option<(Vec<Proj>, Span)> {
+    fn visit(step: Proj, slot: &Slot, steps: &mut Vec<Proj>) -> Option<Span> {
+        steps.push(step);
+        let found = match slot.state {
+            SlotState::Moved(at) => Some(at),
+            SlotState::Live => walk(&slot.value, steps),
+        };
+        if found.is_none() {
+            steps.pop();
+        }
+        found
+    }
+    fn walk(value: &Value, steps: &mut Vec<Proj>) -> Option<Span> {
+        if let Some(slots) = value.seq_slots() {
+            return slots.iter().enumerate().find_map(|(i, slot)| {
+                let index = i128::try_from(i).unwrap_or(i128::MAX);
+                visit(Proj::Index(index), slot, steps)
+            });
+        }
+        match value {
+            Value::Struct { fields, .. } => fields
+                .iter()
+                .find_map(|(name, slot)| visit(Proj::Field(name.clone()), slot, steps)),
+            Value::Map(pairs) => pairs
+                .iter()
+                .find_map(|(key, slot)| visit(Proj::Key(MapKey::of(key)?), slot, steps)),
+            _ => None,
+        }
+    }
+    let mut steps = Vec::new();
+    walk(value, &mut steps).map(|at| (steps, at))
+}
+
 fn is_copy(value: &Value) -> bool {
     matches!(
         value,
