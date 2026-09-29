@@ -58,7 +58,9 @@ fn ruled(name: &str) -> Ruled {
         }
         let span = line.split("span = [").nth(1).map(|rest| {
             let list = rest.split(']').next().expect("a closed span");
-            let mut ends = list.split(',').map(|n| n.trim().parse::<u64>().expect("an offset"));
+            let mut ends = list
+                .split(',')
+                .map(|n| n.trim().parse::<u64>().expect("an offset"));
             [ends.next().expect("a start"), ends.next().expect("an end")]
         });
         return Ruled {
