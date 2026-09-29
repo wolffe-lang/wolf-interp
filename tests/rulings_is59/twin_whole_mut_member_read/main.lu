@@ -1,0 +1,13 @@
+//! is59 — twin, still a trap: `xs.len` while the WHOLE `xs` is claimed. The
+//! member's path has `xs` as its prefix (`[mem.model.path.disjoint]`); trunk's record, byte for byte.
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, xs.len)
+    print("{xs.len}")
+    0
+}

@@ -1,0 +1,13 @@
+//! is59 — 1(c) inside an interpolation argument: `"{xs.len}{xs.len}"` while
+//! `xs[0]` is claimed. wolf 0.2.18 already ran this one (`3`).
+
+fn note(mut a: int, s: str) {
+    a = a + s.len
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    note(mut xs[0], "{xs.len}{xs.len}")
+    print("{xs[0]}")
+    0
+}

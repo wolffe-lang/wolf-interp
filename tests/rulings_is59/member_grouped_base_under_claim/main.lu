@@ -1,0 +1,12 @@
+//! is59 — 1(c) through the member route with a grouped base: `(xs).len`.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    bump(mut xs[0], (xs).len)
+    print("{xs[0]}")
+    0
+}

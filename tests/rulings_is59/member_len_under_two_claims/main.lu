@@ -1,0 +1,13 @@
+//! is59 — 1(c) under EG2's pair: `xs.len` while `xs[0]` and `xs[1]` are both claimed.
+
+fn add2(mut a: int, mut b: int, n: int) {
+    a = a + n
+    b = b + n
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    add2(mut xs[0], mut xs[1], xs.len)
+    print("{xs[0]} {xs[1]} {xs.len}")
+    0
+}

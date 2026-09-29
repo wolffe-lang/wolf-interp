@@ -1,0 +1,12 @@
+//! is59 — 1(c) one level up: `g.len` while `g[1][2]` is claimed.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var g = [[1, 2], [3, 4, 5]]
+    bump(mut g[1][2], g.len)
+    print("{g[1][2]} {g.len}")
+    0
+}

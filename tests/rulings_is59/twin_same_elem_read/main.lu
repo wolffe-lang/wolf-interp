@@ -1,0 +1,12 @@
+//! is59 — twin, still a trap: `xs[0]` read while `xs[0]` is claimed (no member).
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    bump(mut xs[0], xs[0])
+    print("{xs[0]}")
+    0
+}

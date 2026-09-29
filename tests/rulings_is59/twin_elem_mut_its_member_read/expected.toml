@@ -1,0 +1,17 @@
+# is59 — wolf-lang#472, ruled A (2026-09-29): `[mem.model.place.elem]` 1(c) at
+# wolf-lang `d3bd49cc` — "an index step and a member step on the same container:
+# `xs[i]` and `xs.len`, whatever `i` is — an element is never the container's
+# header" — holds under a claim too. `[expected]` is the ruled lupin cell;
+# `[trunk]` is what lupin 0.1.41 (archive 18848901…, equal to a trunk `0cfc0cf`
+# build) and wolf 0.2.18 `conform-run --checked` (archive da027bf9…) answered on
+# kasumi, ~/lanes/is59/evidence/witnesses-trunk-0cfc0cf.log.
+clause = "mem.model.place.elem"
+item = "the path rule (twin)"
+ruling = "wolffe-lang/wolf-lang#472"
+
+[expected]
+lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [203, 204] }
+
+[trunk]
+checked = { verdict = "fail(E1002)" }
+lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [203, 204] }

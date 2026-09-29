@@ -1,0 +1,14 @@
+//! is59 — 1(c) through the member route (`eval_member`): `g[0].len` while
+//! `g[0][1]` is claimed. The base `g[0]` is a place; its header is not `g[0][1]`.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var g = [[1, 2], [3, 4, 5]]
+    bump(mut g[0][1], g[0].len)
+    bump(mut g[1][0], g[1].len)
+    print("{g[0][1]} {g[1][0]}")
+    0
+}

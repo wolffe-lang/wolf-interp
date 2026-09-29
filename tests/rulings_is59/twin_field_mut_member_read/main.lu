@@ -1,0 +1,14 @@
+//! is59 — twin, still a trap: `b.xs.len` while `b.xs` is claimed.
+
+struct Bag { xs: List[int] }
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn main() -> !int {
+    var b = Bag { xs: [1, 2] }
+    grow(mut b.xs, b.xs.len)
+    print("{b.xs.len}")
+    0
+}

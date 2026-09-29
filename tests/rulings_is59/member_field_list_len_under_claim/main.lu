@@ -1,0 +1,14 @@
+//! is59 — 1(c) under a field: `b.xs.len` while `b.xs[2]` is claimed.
+
+struct Bag { xs: List[int], tag: int }
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var b = Bag { xs: [1, 2, 3, 4], tag: 7 }
+    bump(mut b.xs[2], b.xs.len)
+    print("{b.xs[2]} {b.xs.len} {b.tag}")
+    0
+}

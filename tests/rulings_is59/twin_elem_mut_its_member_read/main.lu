@@ -1,0 +1,12 @@
+//! is59 — twin, still a trap: `g[0].len` while `g[0]` itself is claimed.
+
+fn trim(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn main() -> !int {
+    var g = [[1, 2], [3]]
+    trim(mut g[0], g[0].len)
+    print("{g[0].len}")
+    0
+}

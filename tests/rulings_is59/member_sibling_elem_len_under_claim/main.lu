@@ -1,0 +1,13 @@
+//! is59 — 1(c) with 1(a), through the member route: `g[0].len` while the
+//! SIBLING `g[1][0]` is claimed.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var g = [[1, 2], [3, 4, 5]]
+    bump(mut g[1][0], g[0].len)
+    print("{g[1][0]} {g[0].len}")
+    0
+}

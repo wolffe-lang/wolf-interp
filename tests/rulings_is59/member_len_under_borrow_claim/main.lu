@@ -1,0 +1,9 @@
+//! is59 — 1(c) under a borrow's claim, not a call's: `let r = &mut xs[0]`, then
+//! `xs.len` while `r` is live.
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    let r = &mut xs[0]
+    print("{xs.len}")
+    0
+}

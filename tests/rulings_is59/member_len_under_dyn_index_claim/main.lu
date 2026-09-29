@@ -1,0 +1,13 @@
+//! is59 — 1(c) "whatever `i` is": `xs.len` while `xs[i]` is claimed.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    var i = 2
+    bump(mut xs[i], xs.len)
+    print("{xs[2]} {xs.len}")
+    0
+}

@@ -1,0 +1,13 @@
+//! is59 — control: `xs.len` is read before `xs[0]` is claimed. Ran before
+//! the ruling too; pins that the fix does not change the read that precedes a claim.
+
+fn bump(n: int, mut a: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    bump(xs.len, mut xs[0])
+    print("{xs[0]} {xs.len}")
+    0
+}

@@ -1,0 +1,13 @@
+//! is59 — 1(c) inside an argument expression: `xs.len * 10 + xs.len` while
+//! `xs[0]` is claimed. wolf 0.2.18 already ran this one (`34`).
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    bump(mut xs[0], xs.len * 10 + xs.len)
+    print("{xs[0]}")
+    0
+}

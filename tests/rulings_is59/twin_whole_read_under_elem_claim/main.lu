@@ -1,0 +1,13 @@
+//! is59 — twin, still a trap: the whole `xs` read while `xs[0]` is claimed
+//! (item 2: "the whole container against any of its elements is a prefix").
+
+fn sum(mut a: int, ys: List[int]) {
+    a = a + ys.len
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    sum(mut xs[0], xs)
+    print("{xs[0]}")
+    0
+}
