@@ -187,6 +187,11 @@ struct Applied {
     /// "result" half of call-by-value-result, which is how `mut` is inout
     /// under value semantics (`[mem.tier0.mode.mut]`).
     params: Vec<Value>,
+    /// For each parameter, the move site when its slot was left moved-out at
+    /// the return — `None` when it was live, and empty for a callable with
+    /// no parameter slots (a builtin, a closure). A `mut` argument's place
+    /// takes this state back with the value (wolf-interp#146).
+    moved: Vec<Option<Span>>,
 }
 
 /// The evaluated arguments of one call.
@@ -3026,30 +3031,35 @@ impl Machine {
         let frame = self.frame();
         self.access.release_frame(frame);
         // The parameters' final values, read out before the frame dies — this
-        // is the "result" half of call-by-value-result.
-        let params = decl
-            .params
-            .iter()
-            .map(|param| {
-                let name = match &param.kind {
-                    ParamKind::Named { name, .. } => name.name.as_str(),
-                    ParamKind::SelfParam { .. } => "self",
-                };
-                self.frames
-                    .last()
-                    .and_then(|frame| {
-                        frame.scopes.iter().rev().find_map(|scope| {
-                            scope
-                                .locals
-                                .iter()
-                                .rev()
-                                .find(|(n, _)| n == name)
-                                .map(|(_, slot)| slot.value.clone())
+        // is the "result" half of call-by-value-result. The slot's state comes
+        // with it: a parameter the callee moved out and never stored back is
+        // moved-out in the caller too (`[mem.tier0.mode.mut]`, wolf-interp#146).
+        let (params, moved): (Vec<Value>, Vec<Option<Span>>) =
+            decl.params
+                .iter()
+                .map(|param| {
+                    let name = match &param.kind {
+                        ParamKind::Named { name, .. } => name.name.as_str(),
+                        ParamKind::SelfParam { .. } => "self",
+                    };
+                    self.frames
+                        .last()
+                        .and_then(|frame| {
+                            frame.scopes.iter().rev().find_map(|scope| {
+                                scope.locals.iter().rev().find(|(n, _)| n == name).map(
+                                    |(_, slot)| {
+                                        let moved = match slot.state {
+                                            SlotState::Moved(at) => Some(at),
+                                            SlotState::Live => None,
+                                        };
+                                        (slot.value.clone(), moved)
+                                    },
+                                )
+                            })
                         })
-                    })
-                    .unwrap_or(Value::Unit)
-            })
-            .collect();
+                        .unwrap_or((Value::Unit, None))
+                })
+                .unzip();
         self.frames.pop();
         let task = self.task;
         self.prov().drop_frame(task, frame);
@@ -3067,7 +3077,11 @@ impl Machine {
             Some(ret) => coerce(value, Some(&ret.ty)),
             None => value,
         };
-        Ok(Applied { value, params })
+        Ok(Applied {
+            value,
+            params,
+            moved,
+        })
     }
 
     /// Evaluates the arguments of a call, applying call-site modes (X1).
@@ -3368,6 +3382,7 @@ impl Machine {
         &mut self,
         writebacks: &[(usize, Path)],
         final_values: &[Value],
+        final_moved: &[Option<Span>],
         held: usize,
         protectors: &[prov::TagId],
         span: Span,
@@ -3385,9 +3400,13 @@ impl Machine {
             let Some(value) = final_values.get(*index) else {
                 continue;
             };
+            let moved = final_moved.get(*index).copied().flatten();
             if let Some(slot) = self.slot_mut(path) {
-                slot.state = SlotState::Live;
+                slot.state = moved.map_or(SlotState::Live, SlotState::Moved);
                 slot.value = value.clone();
+            }
+            if moved.is_some() {
+                self.note_part_moved(path);
             }
         }
         if !writebacks.is_empty() {
@@ -6901,13 +6920,14 @@ impl Machine {
                         first.kind()
                     )),
                 };
-                let finals = match &dispatched {
-                    Ok(applied) => applied.params.clone(),
-                    Err(_) => evaluated.values,
+                let (finals, moved) = match &dispatched {
+                    Ok(applied) => (applied.params.clone(), applied.moved.clone()),
+                    Err(_) => (evaluated.values, Vec::new()),
                 };
                 self.finish_args(
                     &evaluated.writebacks,
                     &finals,
+                    &moved,
                     evaluated.held,
                     &evaluated.protectors,
                     span,
@@ -6968,13 +6988,14 @@ impl Machine {
             }
         }
         let result = self.apply(target, evaluated.values.clone(), span);
-        let finals = match &result {
-            Ok(applied) => applied.params.clone(),
-            Err(_) => evaluated.values,
+        let (finals, moved) = match &result {
+            Ok(applied) => (applied.params.clone(), applied.moved.clone()),
+            Err(_) => (evaluated.values, Vec::new()),
         };
         self.finish_args(
             &evaluated.writebacks,
             &finals,
+            &moved,
             evaluated.held,
             &evaluated.protectors,
             span,
@@ -7087,6 +7108,7 @@ impl Machine {
         let plain = move |value: Value| Applied {
             value,
             params: unchanged,
+            moved: Vec::new(),
         };
         match target {
             Value::Fn(qualified) => {
@@ -7543,6 +7565,10 @@ impl Machine {
             receiver_value.clone()
         };
         let mut final_args = evaluated.values.clone();
+        let mut final_moved: Vec<Option<Span>> = Vec::new();
+        // The receiver's own `self` slot, when the impl method left it
+        // moved-out (wolf-interp#146's receiver half).
+        let mut self_moved: Option<Span> = None;
         // An impl-block method wins over the builtin surface for the types
         // that have one (user structs); the receiver is `self`, and its
         // post-call value is the writeback — call-by-value-result, the same
@@ -7560,6 +7586,9 @@ impl Machine {
                             receiver_value = next_self;
                         }
                         final_args = params.collect();
+                        let mut moved = applied.moved.into_iter();
+                        self_moved = moved.next().flatten();
+                        final_moved = moved.collect();
                         applied.value
                     })
             }
@@ -7582,6 +7611,9 @@ impl Machine {
                                     receiver_value = next_self;
                                 }
                                 final_args = params.collect();
+                                let mut moved = applied.moved.into_iter();
+                                self_moved = moved.next().flatten();
+                                final_moved = moved.collect();
                                 applied.value
                             })
                     }
@@ -7598,6 +7630,7 @@ impl Machine {
         self.finish_args(
             &evaluated.writebacks,
             &final_args,
+            &final_moved,
             evaluated.held,
             &evaluated.protectors,
             span,
@@ -7653,6 +7686,18 @@ impl Machine {
             }
             _ => Ok(()),
         };
+        // `[mem.tier0.mode.mut]` for `mut self`: a method that moved its
+        // receiver out and never stored it back leaves the receiver's place
+        // moved-out, exactly as a `mut` argument's writeback does
+        // (wolf-interp#146).
+        if let (Some(path), Ok(_), Some(at), Ok(())) = (&path, &result, self_moved, &written)
+            && mode == Some(ParamMode::Mut)
+        {
+            if let Some(slot) = self.slot_mut(path) {
+                slot.state = SlotState::Moved(at);
+            }
+            self.note_part_moved(path);
+        }
         if let Some((key, _, child)) = receiver_tag {
             self.prov().unprotect(child, span);
             self.prov()

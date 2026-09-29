@@ -614,7 +614,14 @@ impl Machine {
         };
         let evaluated = self.eval_args(args)?;
         let values = evaluated.values.clone();
-        self.finish_args(&[], &values, evaluated.held, &evaluated.protectors, span);
+        self.finish_args(
+            &[],
+            &values,
+            &[],
+            evaluated.held,
+            &evaluated.protectors,
+            span,
+        );
 
         // A proc's own region carries no cap: `[mem.region.cap.1]` puts the
         // budget where a program writes one, and the proc region is the
