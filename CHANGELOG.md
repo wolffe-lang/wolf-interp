@@ -24,8 +24,9 @@ and `xs.is_empty()` are method calls and still read the receiver whole
 expression still checks the whole container (#152); a member read's base
 operand runs three times (#151). wolf-lang's
 `a_member_read_under_an_element_claim_stays_refused` (at `d3bd49cc`)
-expects this machine's old trap for any lupin version, so it goes red on
-this change until eg02b pins 0.1.41 as pre-mirror.
+expects this machine's old trap for any lupin version, so it goes red
+against any lupin carrying this change until eg02b pins 0.1.41 as
+pre-mirror.
 
 ## 0.1.41 — 2026-09-27
 
