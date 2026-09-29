@@ -206,6 +206,17 @@ struct Args {
     protectors: Vec<prov::TagId>,
 }
 
+/// What the destination of a store turned out to be (`Machine::raw_target`).
+enum RawTarget {
+    /// Bytes in an allocation, through a raw pointer: the provenance machine
+    /// takes the store.
+    Raw(RawPtr),
+    /// A slot in the value tree. For `e[k] = v` whose base `e` is a live
+    /// place, that place — its operands already evaluated once
+    /// (wolf-interp#145); otherwise `None`, and the store asks `place_of`.
+    Place(Option<Path>),
+}
+
 /// Which side of the C membrane a call lands on (`[mem.boundary.ffi]`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Callee {
@@ -3999,22 +4010,30 @@ impl Machine {
     ) -> EResult<()> {
         // `p[0] = 1` / `*p = 1`: the destination is bytes in an allocation, not
         // a slot in the value tree, so the provenance machine takes it.
-        if let Some(ptr) = self.raw_target(place)? {
-            let rhs = if take {
-                self.take_operand(value, value.span)?
-            } else {
-                self.eval(value)?
-            };
-            let rhs = if op == AssignOp::Assign {
-                rhs
-            } else {
-                let current = self.raw_load(ptr, place.span)?;
-                let binop = assign_binop(op);
-                self.binary(binop, current, rhs, span)?
-            };
-            return self.raw_store(ptr, &rhs, span);
-        }
-        let path = self.place_of(place)?;
+        let raw_base = match self.raw_target(place)? {
+            RawTarget::Raw(ptr) => {
+                let rhs = if take {
+                    self.take_operand(value, value.span)?
+                } else {
+                    self.eval(value)?
+                };
+                let rhs = if op == AssignOp::Assign {
+                    rhs
+                } else {
+                    let current = self.raw_load(ptr, place.span)?;
+                    let binop = assign_binop(op);
+                    self.binary(binop, current, rhs, span)?
+                };
+                return self.raw_store(ptr, &rhs, span);
+            }
+            RawTarget::Place(base) => base,
+        };
+        let path = match (raw_base, &*place.kind) {
+            (Some(base), ExprKind::BracketApply { args, origin, .. }) => {
+                self.project_index(base, args, *origin, place.span)?
+            }
+            _ => self.place_of(place)?,
+        };
         if op == AssignOp::Assign {
             let value = self.store_operand(place, value, take)?;
             // Keep the place's integer type: `x += 1` and `x = x + 1` agree.
@@ -4162,66 +4181,79 @@ impl Machine {
                 })
             }
             ExprKind::BracketApply { base, args, origin } => {
-                let origin = *origin;
                 let path = self.place_of(base)?;
-                let [IndexArg::Value(arg)] = args.as_slice() else {
-                    return unsupported("only a single-argument index denotes a place".to_owned());
-                };
-                let key = self.eval(&arg.expr)?;
-                // A map indexed by an int is a KEY, not a position, and
-                // never shifts under origin 1 — the base's current value
-                // tells the two apart, which is the same "after the brackets
-                // resolve as ordinal indexing" moment the read path uses.
-                // (`squares[i] = i * i` used to project an ordinal `Index`
-                // here and "did not denote a place" — wolf-interp#91.)
-                let map_base = matches!(
-                    self.resolve(&path),
-                    Some((slot, _)) if matches!(slot.value, Value::Map(_))
-                );
-                Ok(match key {
-                    Value::Int(i, _) if !map_base => {
-                        // An ordinal WRITE place shifts under origin 1
-                        // exactly as the read does (`xs[1] = v` stores the
-                        // first element).
-                        let ordinal = matches!(
-                            self.resolve(&path),
-                            Some((slot, _)) if matches!(slot.value, Value::List(..) | Value::Tuple(_))
-                        );
-                        let effective = if origin == 1 && ordinal {
-                            self.origin_shift(i, expr.span)?
-                        } else {
-                            i
-                        };
-                        path.project(Proj::Index(effective))
-                    }
-                    // A slice expression is a *value*, not a place (issue
-                    // #10, wolf-std F-0021): refusing here sends
-                    // `d[0..1].upper()` down the by-value receiver path,
-                    // exactly where `"abc"[0..1].upper()` already runs.
-                    Value::Range { .. } => {
-                        return unsupported(
-                            "a slice expression denotes a value, not a place".to_owned(),
-                        );
-                    }
-                    // `[type.map.key]`: the four keys, by value. Anything
-                    // else is the checker's E0418 where the key type is
-                    // spelled; a value of another kind reaching a key
-                    // position here is refused, never rendered into one.
-                    other => match MapKey::of(&other) {
-                        Some(key) => path.project(Proj::Key(key)),
-                        None => {
-                            return unsupported(format!(
-                                "{} is not a `Map` key — a key is `str`, `int`, `char` or \
-                                 `bool` ([type.map.key]; the compiler's E0418 where the key \
-                                 type is spelled)",
-                                other.kind()
-                            ));
-                        }
-                    },
-                })
+                self.project_index(path, args, *origin, expr.span)
             }
             _ => unsupported("this expression denotes no place".to_owned()),
         }
+    }
+
+    /// The last step of an index place: `path` is the base's place, already
+    /// evaluated; the one index operand is evaluated here, once, and projected.
+    ///
+    /// `place_of` reaches it for `e[k]`, and so does a store whose base
+    /// `raw_target` already evaluated (wolf-interp#145): each operand of a
+    /// place is evaluated exactly once, as `[mem.model.order]` reads.
+    fn project_index(
+        &mut self,
+        path: Path,
+        args: &[IndexArg],
+        origin: u8,
+        span: Span,
+    ) -> EResult<Path> {
+        let [IndexArg::Value(arg)] = args else {
+            return unsupported("only a single-argument index denotes a place".to_owned());
+        };
+        let key = self.eval(&arg.expr)?;
+        // A map indexed by an int is a KEY, not a position, and
+        // never shifts under origin 1 — the base's current value
+        // tells the two apart, which is the same "after the brackets
+        // resolve as ordinal indexing" moment the read path uses.
+        // (`squares[i] = i * i` used to project an ordinal `Index`
+        // here and "did not denote a place" — wolf-interp#91.)
+        let map_base = matches!(
+            self.resolve(&path),
+            Some((slot, _)) if matches!(slot.value, Value::Map(_))
+        );
+        Ok(match key {
+            Value::Int(i, _) if !map_base => {
+                // An ordinal WRITE place shifts under origin 1
+                // exactly as the read does (`xs[1] = v` stores the
+                // first element).
+                let ordinal = matches!(
+                    self.resolve(&path),
+                    Some((slot, _)) if matches!(slot.value, Value::List(..) | Value::Tuple(_))
+                );
+                let effective = if origin == 1 && ordinal {
+                    self.origin_shift(i, span)?
+                } else {
+                    i
+                };
+                path.project(Proj::Index(effective))
+            }
+            // A slice expression is a *value*, not a place (issue
+            // #10, wolf-std F-0021): refusing here sends
+            // `d[0..1].upper()` down the by-value receiver path,
+            // exactly where `"abc"[0..1].upper()` already runs.
+            Value::Range { .. } => {
+                return unsupported("a slice expression denotes a value, not a place".to_owned());
+            }
+            // `[type.map.key]`: the four keys, by value. Anything
+            // else is the checker's E0418 where the key type is
+            // spelled; a value of another kind reaching a key
+            // position here is refused, never rendered into one.
+            other => match MapKey::of(&other) {
+                Some(key) => path.project(Proj::Key(key)),
+                None => {
+                    return unsupported(format!(
+                        "{} is not a `Map` key — a key is `str`, `int`, `char` or \
+                         `bool` ([type.map.key]; the compiler's E0418 where the key \
+                         type is spelled)",
+                        other.kind()
+                    ));
+                }
+            },
+        })
     }
 
     // -- expressions -------------------------------------------------------
@@ -8360,11 +8392,11 @@ impl Machine {
     /// `p[0] = 1` and `*p = 1` are not paths into this machine's slot tree —
     /// they name bytes in the provenance machine's allocations — so the
     /// assignment path asks here first and only falls back to [`Path`].
-    fn raw_target(&mut self, expr: &Expr) -> EResult<Option<RawPtr>> {
+    fn raw_target(&mut self, expr: &Expr) -> EResult<RawTarget> {
         let (base, index) = match &*expr.kind {
             ExprKind::BracketApply { base, args, .. } => {
                 let [IndexArg::Value(arg)] = args.as_slice() else {
-                    return Ok(None);
+                    return Ok(RawTarget::Place(None));
                 };
                 (base, Some(arg.expr.clone()))
             }
@@ -8372,24 +8404,32 @@ impl Machine {
                 op: UnOp::Deref,
                 operand,
             } => (operand, None),
-            _ => return Ok(None),
+            _ => return Ok(RawTarget::Place(None)),
         };
-        let value = match self.live_place(base)? {
-            Some(path) => self.read_path(&path, base.span)?,
+        // The base's place, when it is one, is kept: its operands are
+        // evaluated here, and a store that turns out not to be raw projects
+        // its last index onto this path rather than evaluating them again
+        // (wolf-interp#145).
+        let (value, base_path) = match self.live_place(base)? {
+            Some(path) => (self.read_path(&path, base.span)?, Some(path)),
             None => match self.eval(base) {
-                Ok(value) => value,
-                Err(Signal::Unsupported(_)) => return Ok(None),
+                Ok(value) => (value, None),
+                Err(Signal::Unsupported(_)) => return Ok(RawTarget::Place(None)),
                 Err(other) => return Err(other),
             },
         };
         let Value::Raw(ptr) = value else {
-            return Ok(None);
+            return Ok(RawTarget::Place(if index.is_some() {
+                base_path
+            } else {
+                None
+            }));
         };
         let Some(index) = index else {
-            return Ok(Some(ptr));
+            return Ok(RawTarget::Raw(ptr));
         };
         match self.eval(&index)? {
-            Value::Int(i, _) => Ok(Some(ptr.offset_by(i))),
+            Value::Int(i, _) => Ok(RawTarget::Raw(ptr.offset_by(i))),
             other => unsupported(format!(
                 "a raw pointer is indexed by an integer, got {}",
                 other.kind()
