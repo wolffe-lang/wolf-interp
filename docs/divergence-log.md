@@ -4639,6 +4639,137 @@ lupin 0.1.41 `18848901…`, trunk build `42b13d1e…`, head build
 - [ ] whole-corpus differential against wolf 0.2.18: no new divergence
 - [ ] CHANGELOG `Unreleased`
 - [ ] the operand-count finding (`c01`) and the method parting (`o01`, `o02`) filed
+
+### The four mirrors — is58, wolf-interp#143, #144, #145, #146 (wolf-lang `ec56a08f`, wolf 0.2.18)
+
+Wave 50's row: lupin mirrors the four lupin issues wolf 0.2.18's gates pin
+by version. The contract is is56's, in five sections; §2 and §3 are written
+and committed before the first edit under `src/` or `tests/`, the rest is
+appended as it lands. Measurements on kasumi (linux x86-64) under
+`~/lanes/is58/`: the published wolf 0.2.18 (`da027bf9…`) and lupin 0.1.41
+(`18848901…`), digests equal to the release pages', and a release build of
+trunk `0cfc0cf` (`lupin 0.1.41`, `42b13d1e…`). Probes: 84 one-directory
+programs under `~/lanes/is58/probes/` (`w*` #143, `m*` #144, `s*` #145, `p*`
+#146) and the 40 corpus rows the three wolf-lang gates name, copied from
+wolf-lang `ec56a08f` into `~/lanes/is58/gates/`; runner
+`~/lanes/is58/scripts/run-probes.sh` (`lupin conform-run main.lu --json`,
+and `wolf conform-run main.lu --checked --json` beside it).
+
+#### §1 — forbidden, absolutely
+
+No `rm` outside `~/lanes/is58/` (kasumi) and `/private/tmp/is58`; no
+deletion in any tree this lane did not create; no `git add -A`; no edit to
+another lane's file (is57 owns `.github/workflows/`); no `~/.claude`; no
+build on nomad-1; no tag; no pin move (pin stays `93a5fe50`); no merge, no
+rebase-merge; no `2>/dev/null` on a checkout; kill only my own pids, never
+a pattern or a group; no claim of "seen red" without the log it is in.
+
+#### §2 — inputs, re-derived 2026-09-28
+
+| input as written | at origin / measured | drift |
+| --- | --- | --- |
+| wolf-interp trunk `0cfc0cf` | `origin/trunk` = `0cfc0cf` "release: lupin 0.1.41"; pin `93a5fe50` (wolf-lang v0.2.16); branch `is58` cut there | none |
+| wolf 0.2.18 from the published archive | release v0.2.18, `wolf-0.2.18-x86_64-unknown-linux-gnu.tar.gz` sha256 `da027bf9…6bd4` downloaded and checked; `wolf --version` "0.2.18 (wolfgang, pin ec56a08) paired with lupin 0.1.41" | none |
+| lupin 0.1.41 | release v0.1.41 archive sha256 `18848901…e8d4`; its lupin column on all 124 probes and rows equals the trunk build's (`probes-archive-0.1.41.log`, `probes-trunk-0cfc0cf.log`; whitespace-only difference in the runner's line ends) | none |
+| #143: `copy xs`, `"{xs}"`, `xs == [1, 2]`, `let q = p` run after a part moved | measured `exit(0)` on 0.1.41 (`w01` `1 2`, `w02` `1 [1, 2]`, `w03` `1 true`, `w04` `1 2`); wolf 0.2.18 checked `fail(E1001)` on `w01`, `w02`, `w04`, `unsupported` on `w03` | none |
+| #143's mechanism: `resolve` answers only the prefix chain | `resolve` (`src/eval/mod.rs:1435-1486`) walks the path's own projections; nothing asks a value's descendants | none |
+| #144: `m[k] else …` of a non-`Copy` value copies out | measured on the witness (`m01`): 0.1.41 `exit(0)` `1`, wolf 0.2.18 `fail(E1001)`. **Narrower than the title**: a `let r = m["a"]` (`m07`), a `match` (`m20`) and an explicit `move m["a"]` (`m24`) already move — `consume_place` reaches the entry's slot. The copy is the `else` operand (`eval_else`, `mod.rs:5636`, evaluates the index read as a value) and `?` (`mod.rs:4365`) | the defect is the read-out under `else`/`?`, not every `Map` read |
+| #144's clause: "A `Map` index READ copies exactly when `V` copies" | present at the pin, `vendor/upstream/spec/02-memory-model.md:956` (`[mem.map.absent]`, s152) | none |
+| #145: a store evaluates every index operand but the last twice | measured `s01` `r1 r2 0 s1 s1 s2 a b a b c 7 9`; wolf 0.2.18 checked `r1 r2 0 s1 s2 a b c 7 9`. Cause: `exec_assign` asks `raw_target(place)` first, which evaluates the base place (`live_place(base)`, `mod.rs:8312`) to see whether it is a raw pointer, and then `place_of(place)` evaluates the same base operands again | none |
+| #146: a whole `mut` parameter moved out is not seen by the caller | measured `p01` (`mut_param_moveout_whole`) `exit(0)` `1`. Cause: `call_fn` reads each parameter's final VALUE (`mod.rs:2851-2872`) and `finish_args` writes it back with `slot.state = SlotState::Live` (`mod.rs:3207-3214`); the parameter slot's own `Moved` state never leaves the callee. The field shape traps because its mark rides inside the value | none |
+| the gates pin lupin by version at `ec56a08f` | `element_places_lanes.rs`: `PRE_MIRROR_LUPIN = ["0.1.40"]`, `PRE_MAP_MOVE_LUPIN = ["0.1.40", "0.1.41"]`; `mut_param_return_lanes.rs`: `PRE_MIRROR_LUPIN = ["0.1.40", "0.1.41"]`, `PRE_ELEM_TRAP_LUPIN = ["0.1.40"]`, `PRE_MAP_MOVE_LUPIN = ["0.1.40", "0.1.41"]`; `store_order_lanes.rs`: `LUPIN_145` for `0.1.40` and `0.1.41`. A branch build reports `0.1.41+dev.<sha>` (`build.rs`, D57), which no list names, so each gate's ruled arm applies to it | none |
+| the 40 rows' lupin cells at 0.1.41 | `gates-archive-0.1.41.log`: the pinned pre-mirror answer on the five pinned rows (`elem_key_reassigned_no_revive` `1`, `mut_param_moveout_whole` `1`, `mut_param_moveout_one_path` `1`, `mut_param_moveout_map` `1`, `ctl_store_order_nested_index` doubled); every other row at its ruled cell | none |
+
+#### §3 — prediction, committed before the first edit
+
+**The fixes, one mechanism each.**
+
+- **#146:** the callee's parameter slot state travels back with its value;
+  a `Moved` parameter makes the caller's argument place `Moved` at the
+  callee's move site. Every writeback path carries it: a free call, a
+  trait-qualified call, an impl or home-module method's `mut self`.
+- **#145:** `raw_target` hands back the base place it already evaluated,
+  and the store projects its last index onto that path instead of calling
+  `place_of` again. A base that does not resolve keeps today's route.
+- **#144:** `else` and `?` over an index read of a `Map` entry read the
+  entry OUT: a `Copy` value is copied, anything else moves
+  (`consume_place`, as `let r = m[k]` already does). The key is evaluated
+  once; an absent key answers the `none` row as today.
+- **#143:** a WHOLE read of a place holding a moved part traps
+  `use-after-move`, naming the moved part and its move site. Whole: a
+  value read that hands the value on (a binding, an argument in any mode,
+  `copy`, `move`/`take`, an interpolation hole, an operand, a return, a
+  literal's field or element, a `match` scrutinee, an element a `for`
+  binds). Not whole — the base of a projection: `xs.len`, `xs[i]`, `p.f`,
+  a method receiver, a `for` head (which reads element by element, #141).
+  The walk is skipped until the program first moves a part (one flag, the
+  `region_teeth` pattern), so a program that never moves a part pays one
+  load per whole read.
+
+**The probe table** (lupin at head; wolf 0.2.18 checked in brackets):
+
+| probe | 0.1.41 | head | |
+| --- | --- | --- | --- |
+| `w01`–`w14`, `w19`, `w20`, `w21`, `w34` (whole reads) | `exit(0)` | `trap(use-after-move)` (`w09` after printing `1`) | [E1001] |
+| `w24`, `w27`, `w36` | `exit(0)` | `trap` after the part-wise prints | [E1001] |
+| `w25` (`for row in g`, `g[0]` holds a moved part) | `exit(0)` | `trap` at the first iteration | [E1001] |
+| `w03` (`==`), `w33` (`copy m` after `move m["a"]`) | `exit(0)` | `trap` | [unsupported] |
+| `w15`, `w16`, `w22`, `w23`, `w35` (header, another element) | `exit(0)` | unchanged | [same] |
+| `w31`, `w32` (revived by a store) | `exit(0)` | unchanged | [same] |
+| `w17` (`(mut xs).push`), `w18` | `exit(0)` / `unsupported` | **unchanged — out of scope, named**: a method receiver is a projection base here; the compiler refuses `w17` (E1001) | [E1001] / [E0301] |
+| `m01`, `m02`, `m09`, `m10`, `m19`, `m21`, `m25`–`m28` | `exit(0)` | `trap(use-after-move)` | [E1001] |
+| `m13` (`for` after reading `m["b"]` out) | `exit(0)` | `trap` at `b`, after `1`, `a=1` | [unsupported] |
+| `m22` (`pairs` after a read-out) | `exit(0)` | `trap` (#141's `pairs`) | [E1001] |
+| `m23` (`"{m}"` after a read-out) | `exit(0)` | `trap` after `1` (#143) | [unsupported] |
+| `m03`, `m18` (`Copy` values), `m04`, `m05` (stored back), `m06` (interpolation reads, no read-out), `m11`, `m12` | `exit(0)` | unchanged | [same] |
+| `m15` (absent key) | `exit(0)` `0 2` | unchanged — nothing moved at run time | [E1001: the compiler cannot see the absence] |
+| `m07`, `m20`, `m24` | `trap` | unchanged | |
+| `s01`–`s06`, `s10`, `s11` | an outer operand twice | every operand once, equal to wolf's bytes | [the single order] |
+| `s07`, `s08`, `s09`, `s12`, `s13`, `s14` (argument, read, move, receiver, `take`, `copy`) | once | unchanged | [same] |
+| `p01`, `p02`, `p07`, `p11`, `p13` | `exit(0)` | `trap(use-after-move)` | [E1001] |
+| `p05`, `p06`, `p10`, `p12`, `p14` | `exit(0)` | `trap` after the lines before the read | [E1001] |
+| `p03`, `p04`, `p08`, `p09` (stored back, or revived by the caller) | `exit(0)` | unchanged | [E1001 on `p03`, `p08`, `p09`: the callee's may-path, static] |
+
+**The gates' rows** (lupin leg, head against the ruled cell): the five
+pinned rows flip to the ruled answer — `elem_key_reassigned_no_revive`,
+`mut_param_moveout_whole`, `mut_param_moveout_one_path`,
+`mut_param_moveout_map` → `trap(use-after-move)`;
+`ctl_store_order_nested_index` → `i j val 7 a b c val 9`. The other 35
+hold their cells. Falsified by any of the 40 off its ruled cell.
+
+**Corpus rows that change verdict: zero.** Every shape above is E1001 on
+the compiler, so no `exit(0)` row at the pin should reach one; the corpus
+rows that read a map value out do so once per key or store it back.
+Falsified by any line moving in `lupin corpus` or `tests/run_corpus.rs`.
+
+**The differential against wolf 0.2.18** (all entries at pin `93a5fe50`,
+four counterparty tiers, trunk release build against head release build):
+**no entry added on any tier.** Conservatism-ledger lines may leave (a
+negative `fail(E1001)` row whose lupin run now traps agrees with the
+compiler's dynamic meaning) — none added. Falsified by any divergence
+line added, or any ledger line added.
+
+**Existing tests that change: none** — is56's
+`what_reads_no_moved_element_is_untouched` keeps its push, `is_empty`,
+`get` of a live index and header reads.
+
+#### §4 — evidence index
+
+Appended as each artifact exists: the red at trunk for each issue (a
+committed test run red at its commit, the log under
+`~/lanes/is58/evidence/`), the green at head, the probe and gate-row logs
+at head, `lupin corpus` trunk against head, the four-tier differential
+trunk against head, the gauntlet, and the CI run at the head sha.
+
+#### §5 — done-when
+
+- [ ] branch `is58` on origin; PR open, unmerged, with these five sections
+- [ ] §2 re-derived, §3 committed before the first `src/`/`tests/` edit, §3a scored
+- [ ] each of #143, #144, #145, #146: a test red at trunk for its named reason, green at head
+- [ ] every read or store path each fix reaches has a test
+- [ ] whole-corpus differential against wolf 0.2.18: no new divergence, or each one filed
+- [ ] CHANGELOG `Unreleased`
+- [ ] the gates' pinned lupin cases this head satisfies, listed by test name
 - [ ] CI green at the head sha
 - [ ] kasumi build dirs pruned once evidence is written; worktree removed
 
