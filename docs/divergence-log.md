@@ -4544,6 +4544,14 @@ brackets):
 | `o01`, `o02` | `xs.count()`, `xs.is_empty()` under `mut xs[0]` | trap | **unchanged — out of scope, named** (a method, not a member read) | [`4`, `2`] |
 | `c01` | `let n = g[f()].len` | `f` ×3 | `f` ×2 — the member route stops evaluating its base twice; the `let`'s own `place_of` stays (filed) | [`f` ×1] |
 
+**Addendum, before the first edit (two probes added after the table):**
+`q13`, `bump(mut g[1][0], g[0].len)` (the member route with the SIBLING
+claimed): 0.1.41 `trap`, head `exit(0)` `5 2` [E1002]. `o04`,
+`bump(mut xs[1], xs[0] + 1)` (an element read inside an expression, no
+member): 0.1.41 `trap` — the index-read lend reads `xs` whole — head
+**unchanged, out of scope** [wolf 0.2.18 checked RUNS it, `4`]: a third
+shape where 0.2.18 is looser than 0.1.41, to be filed with `o01`/`o02`.
+
 **Corpus rows that change verdict: zero.** No row at the pin passes a
 member of a container while an element of it is claimed (a grep of
 `vendor/upstream/corpus` for a `mut x[…]` argument beside a `.len` in one
