@@ -4502,8 +4502,8 @@ a checkout; kill only my own pids, never a pattern or a group; no claim of
 | methods | `xs.count()` and `xs.is_empty()` are METHOD calls (`eval_method`), not member reads; 0.1.41 traps both under `mut xs[0]` (`o01`, `o02`) | **drift: wolf 0.2.18 checked RUNS both (`4`, `2`)** — see below |
 | the compiler is "never looser than the oracle" (eg02, wolf-lang#472) | wolf 0.2.18 checked, which predates EG2, runs four probe shapes lupin 0.1.41 traps: a member read inside a larger argument expression (`q09` `xs.len * 10 + xs.len` → `34`; `q11` `"{xs.len}{xs.len}"` → `3`) and the two methods (`o01`, `o02`). Its E1002 sees a member read only as a bare argument | **drift**: 0.2.18 is already looser than 0.1.41 on these; after this lane `q09`/`q11` agree (ruling A); `o01`/`o02` stay parted — to be filed on wolf-lang, not fixed here |
 | wolf-lang's gate at `d3bd49cc` | `element_places_lanes.rs::a_member_read_under_an_element_claim_stays_refused` asserts lupin `trap(exclusivity)` for ANY version; eg02b is to pin ≤ 0.1.41 as pre-mirror | this lane's lupin turns that case red until eg02b lands — the pairing order the ruling names |
-| is58 in the same repo | `origin/is58` (`0718691`) edits `eval_path_expr` and `eval_member` (a new `ReadAs` parameter; `eval_consumed(base)` → `eval_projected(base)` on the member route), `CHANGELOG.md`, `docs/divergence-log.md` (a section at this same spot) | overlap in three files, named; the second to finish rebases |
-| found: an operand count | `c01`: `let n = g[f()].len` prints `f` **three times** on 0.1.41 (and on is58's head `a018207`), once on wolf 0.2.18: `live_place` at the `let`, `place_of(base)` in `eval_member`, and `eval_consumed(base)` each evaluate `f()` | not in the row; filed separately, and see §3 |
+| is58 in the same repo | `origin/is58` (`c6a4859`) edits `eval_path_expr` and `eval_member` (a new `ReadAs` parameter; `eval_consumed(base)` → `eval_projected(base)` on the member route), `CHANGELOG.md`, `docs/divergence-log.md` (a section at this same spot) | overlap in three files, named; the second to finish rebases |
+| found: an operand count | `c01`: `let n = g[f()].len` prints `f` **three times** on 0.1.41 (and on is58's head `e965adb`), once on wolf 0.2.18: `live_place` at the `let`, `place_of(base)` in `eval_member`, and `eval_consumed(base)` each evaluate `f()` | not in the row; filed separately, and see §3 |
 
 #### §3 — prediction, committed before the first edit
 
@@ -4756,8 +4756,8 @@ line added, or any ledger line added.
 #### §3a — the prediction, scored
 
 Evidence under `~/lanes/is58/evidence/` on kasumi; release builds of trunk
-`0cfc0cf` and head `a018207` (`lupin 0.1.41+dev.a018207`), whose code is the
-four fixes `b134917`, `77147db`, `307b525`, `a018207`.
+`0cfc0cf` and head `e965adb` (`lupin 0.1.41+dev.e965adb`), whose code is the
+four fixes `f44b975`, `be3d4b5`, `c3af852`, `e965adb`.
 
 - **The fixes, one mechanism each — held.** Each landed as its own commit
   and each stage compiles on its own (`cargo check --all-targets`, no
@@ -4768,19 +4768,19 @@ four fixes `b134917`, `77147db`, `307b525`, `a018207`.
   `parts_moved` flag, and `ReadAs` telling a whole read from a projection
   base.
 - **The probe table — held, every row.** Trunk against head
-  (`probes-trunk-0cfc0cf.log`, `probes-head-a018207.log`), 84 probes: each
+  (`probes-trunk-0cfc0cf.log`, `probes-head-e965adb.log`), 84 probes: each
   row moved exactly as the table says and no other — the `w`, `m` and `p`
   traps with the lines printed before them as predicted (`w09` `1`, `w24`
   `1 2 3`, `m13` `1`, `a=1`, `p10` `2`, `p12` `1`, …), the eight `s` stores
   to wolf's bytes, and every "unchanged" row byte-identical.
 - **The gates' rows — held.** `gates-archive-0.1.41.log` against
-  `gates-head-a018207.log`: the five pinned rows move to the ruled answer
+  `gates-head-e965adb.log`: the five pinned rows move to the ruled answer
   and the other 35 are byte-identical; all 40 are at the lupin cell their
   gate asserts for an unpinned version. §2's claim that the 35 already sat
   there was read off the gate source row by row after the run, not before —
   it held.
 - **Zero corpus rows — held.** `lupin corpus` trunk against head
-  (`corpus-trunk-0cfc0cf-release.log`, `corpus-head-a018207-release.log`):
+  (`corpus-trunk-0cfc0cf-release.log`, `corpus-head-e965adb-release.log`):
   698 lines each, identical; census 502 match, 2 mismatch, as before. So
   `docs/manual/00-building.md`'s census does not move either (is56's third
   place).
@@ -4796,46 +4796,46 @@ four fixes `b134917`, `77147db`, `307b525`, `a018207`.
 - **Existing tests that change: none — held.** `cargo test --lib` 719
   passed on the working tree before the commits were cut (`dev-a.log`);
   is56's `what_reads_no_moved_element_is_untouched` unchanged.
-- **Not predicted:** the path-test commit `f63fea0` was not rustfmt-clean
-  (`red-f63fea0.log`, `fmt` rc 1), fixed by `976bff2` before any fix
+- **Not predicted:** the path-test commit `aa2b673` was not rustfmt-clean
+  (`red-aa2b673.log`, `fmt` rc 1), fixed by `9c44904` before any fix
   landed. And the receivers: wolf 0.2.18 refuses a method called on a
   partly-moved container (`(mut xs).push`, `get`, `is_empty`, `pop`, a
   slice beside the moved element, an impl method's `self`) with E1001,
   where §3 kept them projection bases — measured in
-  `probes2-head-a018207.log` and filed as wolffe-lang/wolf-interp#149, a
+  `probes2-head-e965adb.log` and filed as wolffe-lang/wolf-interp#149, a
   ruling for the clause rather than a change here (is56's test pins the
   current reading).
 
 #### §4 — evidence index
 
 Commits:
-- `5ac112e` §1–§5, §2 re-derived and §3 predicted before any edit
-- `4fdb5a5` the nineteen gate rows under `tests/rulings_is58/`; `0831109` their runner `tests/rulings_is58.rs`
-- `f63fea0` 30 path tests in `src/eval/tests.rs`; `976bff2` rustfmt of them
-- `b134917` #145; `77147db` #143; `307b525` #146; `a018207` #144
-- `c2badaf` CHANGELOG `Unreleased`; this section
+- `117128d` §1–§5, §2 re-derived and §3 predicted before any edit
+- `6ecc3b1` the nineteen gate rows under `tests/rulings_is58/`; `f5206dd` their runner `tests/rulings_is58.rs`
+- `aa2b673` 30 path tests in `src/eval/tests.rs`; `9c44904` rustfmt of them
+- `f44b975` #145; `be3d4b5` #143; `c3af852` #146; `e965adb` #144
+- `b8e4e60` CHANGELOG `Unreleased`; this section
 
 Artifacts (kasumi `~/lanes/is58/evidence/`; wolf 0.2.18 `da027bf9…`,
 lupin 0.1.41 `18848901…`, digests = release pages):
-- red at trunk, for the named reason: `red-f63fea0.log` — paths 24 failed
+- red at trunk, for the named reason: `red-aa2b673.log` — paths 24 failed
   / 6 passed (the six are the controls: what stays readable, what was
   already evaluated once, the out-of-bounds store), each failure a program
   that ran on past its trap or ran an operand twice; `rulings_is58` 5 failed /
   15 passed, exactly the five pinned rows, each `lupin answered exit(0),
   ruled ["trap(use-after-move)"]` or the doubled stdout; `rulings_eg00`
   15/15 and `rulings_s182` 11/11 green at trunk
-- green on the working tree that became `a018207`: `dev-a.log` — fmt 0,
+- green on the working tree that became `e965adb`: `dev-a.log` — fmt 0,
   clippy 0, `--lib` 719 passed, `rulings_is58` 20/20, `rulings_eg00`
   15/15, `rulings_s182` 11/11, `index_store` 7/7
 - probes: `probes-archive-0.1.41.log`, `probes-trunk-0cfc0cf.log`,
-  `probes-head-a018207.log`; receivers `probes2-head-a018207.log`
-- gate rows: `gates-archive-0.1.41.log`, `gates-head-a018207.log`
+  `probes-head-e965adb.log`; receivers `probes2-head-e965adb.log`
+- gate rows: `gates-archive-0.1.41.log`, `gates-head-e965adb.log`
 - wolf-lang's own gates at `ec56a08f` with `LUPIN` set:
-  `wolfgates-head-a018207.log`, `wolfgates-red-f63fea0.log`,
+  `wolfgates-head-e965adb.log`, `wolfgates-red-aa2b673.log`,
   `wolfgates-archive-0.1.41.log` (results in the PR body)
-- corpus: `corpus-trunk-0cfc0cf-release.log`, `corpus-head-a018207-release.log`
-- differential: `diffrun/trunk-0cfc0cf-*` against `diffrun/head-a018207-*`
-- gauntlet at `a018207`: `gauntlet-a018207.log`; CI at the head sha: the PR body
+- corpus: `corpus-trunk-0cfc0cf-release.log`, `corpus-head-e965adb-release.log`
+- differential: `diffrun/trunk-0cfc0cf-*` against `diffrun/head-e965adb-*`
+- gauntlet at `e965adb`: `gauntlet-e965adb.log`; CI at the head sha: the PR body
 
 #### §5 — done-when
 
