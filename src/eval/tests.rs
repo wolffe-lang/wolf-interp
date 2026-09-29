@@ -4458,3 +4458,778 @@ fn what_reads_no_moved_element_is_untouched() {
         "1 2 3 false\n1\n3\n1 2 2\n"
     );
 }
+
+// -- the four mirrors (is58, wolffe-lang/wolf-interp#143 #144 #145 #146) ----
+//
+// wolf 0.2.18's gates pin lupin 0.1.41's answers on these by version; each
+// test below is one read or store path a fix reaches, red at trunk `0cfc0cf`
+// for the reason it names.
+
+/// `[mem.tier0.move.2]`'s trap, with the move site reported before the use,
+/// and the output the program printed before it.
+fn use_after_move_after(source: &str, printed: &str) {
+    let run = run(source);
+    assert_eq!(
+        String::from_utf8(run.stdout).expect("utf-8"),
+        printed,
+        "the lines before the trap"
+    );
+    let Outcome::Trap(trap) = run.outcome else {
+        panic!("expected a trap, got {:?}", run.outcome);
+    };
+    assert_eq!(trap.kind, TrapKind::UseAfterMove, "{trap:?}");
+    assert_eq!(trap.rule.anchor(), "mem.tier0.move.2");
+    let (move_site, _) = trap.secondary.expect("the move site is reported");
+    assert!(
+        move_site.start < trap.span.start,
+        "{move_site} vs {}",
+        trap.span
+    );
+}
+
+// #143 — a WHOLE read of a place holding a moved part traps.
+
+#[test]
+fn a_copy_of_a_list_holding_a_moved_element_traps() {
+    use_after_move_after(
+        r#"fn main() -> !int {
+            var xs = [1, 2]
+            let a = move xs[0]
+            let ys = copy xs
+            print("{a} {ys.len}")
+            0
+        }"#,
+        "",
+    );
+}
+
+#[test]
+fn an_interpolation_of_a_list_holding_a_moved_element_traps() {
+    use_after_move_after(
+        r#"fn main() -> !int {
+            var xs = [1, 2]
+            let a = move xs[0]
+            print("{a} {xs}")
+            0
+        }"#,
+        "",
+    );
+}
+
+#[test]
+fn an_operand_holding_a_moved_element_traps() {
+    use_after_move_after(
+        r#"fn main() -> !int {
+            var xs = [1, 2]
+            let a = move xs[0]
+            print("{a} {xs == [1, 2]}")
+            0
+        }"#,
+        "",
+    );
+}
+
+#[test]
+fn a_binding_of_a_struct_with_a_moved_field_traps() {
+    use_after_move_after(
+        r#"struct P { x: List[int], y: int }
+
+        fn main() -> !int {
+            var p = P { x: [1], y: 2 }
+            let a = move p.x
+            print("{a.len} {p.y}")
+            let q = p
+            print("{q.y}")
+            0
+        }"#,
+        "1 2\n",
+    );
+}
+
+#[test]
+fn a_binding_or_assignment_of_a_partly_moved_list_traps() {
+    for stmt in ["let ys = xs", "ys = xs", "let t = (xs, 1)", "let l = [xs]"] {
+        use_after_move_after(
+            &format!(
+                r#"fn main() -> !int {{
+                    var xs = [[1], [2]]
+                    var ys = [[5]]
+                    let a = move xs[0]
+                    print("{{a.len}}")
+                    {stmt}
+                    print("{{ys.len}}")
+                    0
+                }}"#
+            ),
+            "1\n",
+        );
+    }
+}
+
+#[test]
+fn an_argument_holding_a_moved_element_traps_in_every_mode() {
+    for (sig, call) in [
+        ("v: List[List[int]]", "n(xs)"),
+        ("mut v: List[List[int]]", "n(mut xs)"),
+        ("take v: List[List[int]]", "n(take xs)"),
+    ] {
+        use_after_move_after(
+            &format!(
+                r#"fn n({sig}) -> int {{
+                    v.len
+                }}
+
+                fn main() -> !int {{
+                    var xs = [[1], [2]]
+                    let a = move xs[0]
+                    print("{{a.len}}")
+                    let c = {call}
+                    print("{{c}}")
+                    0
+                }}"#
+            ),
+            "1\n",
+        );
+    }
+}
+
+#[test]
+fn a_push_argument_and_a_struct_literal_field_holding_a_moved_element_trap() {
+    for stmt in [
+        "(mut zs).push(xs)",
+        "let s = S { v: xs }",
+        "let s = S { v: copy xs }",
+    ] {
+        use_after_move_after(
+            &format!(
+                r#"struct S {{ v: List[List[int]] }}
+
+                fn main() -> !int {{
+                    var xs = [[1], [2]]
+                    var zs = List[List[List[int]]]()
+                    let a = move xs[0]
+                    print("{{a.len}}")
+                    {stmt}
+                    0
+                }}"#
+            ),
+            "1\n",
+        );
+    }
+}
+
+#[test]
+fn a_returned_list_holding_a_moved_element_traps() {
+    use_after_move_after(
+        r#"fn g() -> List[List[int]] {
+            var xs = [[1], [2]]
+            let a = move xs[0]
+            print("{a.len}")
+            xs
+        }
+
+        fn main() -> !int {
+            let ys = g()
+            print("{ys.len}")
+            0
+        }"#,
+        "1\n",
+    );
+}
+
+#[test]
+fn a_match_on_a_struct_with_a_moved_field_traps() {
+    use_after_move_after(
+        r#"struct P { x: List[int], y: int }
+
+        fn main() -> !int {
+            var p = P { x: [1], y: 2 }
+            let a = move p.x
+            print("{a.len}")
+            let n = match p {
+                P { y, .. } => y,
+            }
+            print("{n}")
+            0
+        }"#,
+        "1\n",
+    );
+}
+
+#[test]
+fn a_whole_element_holding_a_moved_part_traps_on_every_read() {
+    // `g[0]` is live, `g[0][1]` moved: binding it, printing it, and a
+    // `for` that binds it are whole reads of `g[0]`; a `mut` lend of it too.
+    for (stmt, printed) in [
+        ("let row = g[0]\n print(\"{row.len}\")", "1\n"),
+        ("print(\"{g[0]}\")", "1\n"),
+        ("for row in g {\n print(\"{row.len}\")\n }", "1\n"),
+        ("grow(mut g[0])", "1\n"),
+    ] {
+        use_after_move_after(
+            &format!(
+                r#"fn grow(mut v: List[List[int]]) {{
+                    (mut v).push([3])
+                }}
+
+                fn main() -> !int {{
+                    var g = [[[1], [2]], [[3]]]
+                    let a = move g[0][1]
+                    print("{{a.len}}")
+                    {stmt}
+                    0
+                }}"#
+            ),
+            printed,
+        );
+    }
+}
+
+#[test]
+fn a_whole_field_holding_a_moved_part_traps() {
+    use_after_move_after(
+        r#"struct Q { a: List[int], b: int }
+        struct P { q: Q, z: int }
+
+        fn main() -> !int {
+            var p = P { q: Q { a: [1], b: 2 }, z: 3 }
+            let t = move p.q.a
+            print("{t.len} {p.q.b} {p.z}")
+            let r = p.q
+            print("{r.b}")
+            0
+        }"#,
+        "1 2 3\n",
+    );
+}
+
+#[test]
+fn a_tuple_with_a_moved_position_traps_whole() {
+    use_after_move_after(
+        r#"fn main() -> !int {
+            var t = ([1], 2)
+            let a = move t.0
+            print("{a.len} {t.1}")
+            let u = t
+            print("{u.1}")
+            0
+        }"#,
+        "1 2\n",
+    );
+}
+
+#[test]
+fn a_map_with_a_moved_value_traps_whole() {
+    use_after_move_after(
+        r#"fn main() -> !int {
+            var m = Map[str, List[int]]()
+            m["a"] = [1]
+            m["b"] = [2]
+            let a = move m["a"]
+            print("{a.len}")
+            let c = copy m
+            print("{c.len}")
+            0
+        }"#,
+        "1\n",
+    );
+}
+
+#[test]
+fn what_projects_through_a_partly_moved_place_is_untouched() {
+    // The header, another element, a field beside the moved one, a `mut`
+    // lend of another element, a method receiver (is56's push and `get`),
+    // and a place revived whole or at the moved element: all run.
+    assert_eq!(
+        stdout(
+            r#"struct P { x: List[int], y: int }
+
+            fn grow(mut v: List[int]) {
+                (mut v).push(3)
+            }
+
+            fn main() -> !int {
+                var g = [[1, 2], [3]]
+                let a = move g[0][1]
+                grow(mut g[1])
+                print("{a} {g.len} {g[0].len} {g[0][0]} {g[1].len}")
+                var xs = [[1], [2, 3]]
+                let b = move xs[0]
+                (mut xs).push([4])
+                let c = xs.get(1) else [9]
+                print("{b.len} {xs.len} {xs[1].len} {c.len}")
+                var p = P { x: [1], y: 2 }
+                let d = move p.x
+                print("{d.len} {p.y}")
+                xs[0] = [7]
+                p = P { x: [5, 5], y: 6 }
+                let ys = copy xs
+                let q = p
+                print("{ys.len} {q.x.len} {xs}")
+                0
+            }"#
+        ),
+        "2 2 2 1 2\n1 3 2 2\n1 2\n3 2 [[7], [2, 3], [4]]\n"
+    );
+}
+
+#[test]
+fn a_program_that_moves_no_part_reads_whole_values_as_before() {
+    assert_eq!(
+        stdout(
+            r#"fn main() -> !int {
+                var xs = [[1], [2]]
+                let ys = copy xs
+                let a = move xs
+                print("{ys} {a}")
+                0
+            }"#
+        ),
+        "[[1], [2]] [[1], [2]]\n"
+    );
+}
+
+// #144 — `else`/`?` over a `Map` read reads the value OUT.
+
+#[test]
+fn a_map_value_read_out_under_else_is_moved() {
+    use_after_move_after(
+        r#"fn main() -> !int {
+            var m = Map[str, List[int]]()
+            m["a"] = [1]
+            var v = m["a"] else List[int]()
+            print("{v.len}")
+            let b = m["a"] else List[int]()
+            print("{b.len}")
+            0
+        }"#,
+        "1\n",
+    );
+}
+
+#[test]
+fn the_reassigned_key_revives_nothing() {
+    // wolf-lang `corpus/memory/elem_key_reassigned_no_revive.lu`, verbatim.
+    use_after_move_after(
+        r#"fn main() -> !int {
+            var m = Map[str, List[int]]()
+            m["a"] = [1]
+            var k = "a"
+            var v = m[k] else List[int]()
+            (mut v).push(7)
+            k = "b"
+            m[k] = take v
+            let a = m["a"] else List[int]()
+            print("{a.len}")
+            0
+        }"#,
+        "",
+    );
+}
+
+#[test]
+fn every_read_out_of_a_map_value_moves_it() {
+    // The operand of `else` wherever the `else` stands, a block handler, an
+    // `int` key, a map reached through a field or an element, and `?`.
+    for (setup, read) in [
+        ("", "let n = (m[\"a\"] else List[int]()).len"),
+        ("", "let n = len_of(m[\"a\"] else List[int]())"),
+        ("", "var n = List[int]()\n n = m[\"a\"] else List[int]()"),
+        ("", "let n = m[\"a\"] else { List[int]() }"),
+        ("", "let n = first(mut m)"),
+        (
+            "var s = S { m: copy m }",
+            "let n = s.m[\"a\"] else List[int]()\n let o = s.m[\"a\"] else List[int]()",
+        ),
+        (
+            "var ms = List[Map[str, List[int]]]()\n (mut ms).push(copy m)",
+            "let n = ms[0][\"a\"] else List[int]()\n let o = ms[0][\"a\"] else List[int]()",
+        ),
+    ] {
+        use_after_move_after(
+            &format!(
+                r#"struct S {{ m: Map[str, List[int]] }}
+
+                fn len_of(v: List[int]) -> int {{
+                    v.len
+                }}
+
+                fn first(mut m: Map[str, List[int]]) -> int ! {{none}} {{
+                    let v = m["a"]?
+                    let w = m["a"]?
+                    v.len + w.len
+                }}
+
+                fn main() -> !int {{
+                    var m = Map[str, List[int]]()
+                    m["a"] = [1]
+                    {setup}
+                    print("go")
+                    {read}
+                    let b = m["a"] else List[int]()
+                    print("{{b.len}}")
+                    0
+                }}"#
+            ),
+            "go\n",
+        );
+    }
+}
+
+#[test]
+fn an_int_keyed_map_value_read_out_is_moved() {
+    use_after_move_after(
+        r#"fn main() -> !int {
+            var m = Map[int, List[int]]()
+            m[1] = [1]
+            var v = m[1] else List[int]()
+            let b = m[1] else List[int]()
+            print("{v.len} {b.len}")
+            0
+        }"#,
+        "",
+    );
+}
+
+#[test]
+fn a_map_value_read_out_then_walked_traps_at_it() {
+    let run = run(r#"fn main() -> !int {
+            var m = Map[str, List[int]]()
+            m["a"] = [1]
+            m["b"] = [2]
+            let v = m["b"] else List[int]()
+            print("{v.len}")
+            for (k, x) in m {
+                print("{k}={x.len}")
+            }
+            0
+        }"#);
+    assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "1\na=1\n");
+    let Outcome::Trap(trap) = run.outcome else {
+        panic!("expected a trap, got {:?}", run.outcome);
+    };
+    assert_eq!(trap.kind, TrapKind::UseAfterMove);
+}
+
+#[test]
+fn what_a_map_read_out_leaves_readable() {
+    // A `Copy` value (`int`, `str`) is copied; a store back — `take` or a
+    // fresh value — revives the key; another key, the header and an
+    // interpolation hole read nothing out; an absent key moves nothing and
+    // answers `none` once per evaluation of its key.
+    assert_eq!(
+        stdout(
+            r#"fn key(k: str) -> str {
+                print("key")
+                k
+            }
+
+            fn main() -> !int {
+                var n = Map[str, int]()
+                n["a"] = 1
+                let x = n["a"] else 0
+                let y = n["a"] else 0
+                var s = Map[str, str]()
+                s["a"] = "p"
+                let u = s["a"] else ""
+                let w = s["a"] else ""
+                print("{x} {y} {u} {w}")
+                var m = Map[str, List[int]]()
+                m["a"] = [1]
+                m["b"] = [2, 3]
+                print("{m["a"]} {m["a"]}")
+                var v = m["a"] else List[int]()
+                (mut v).push(7)
+                m["a"] = take v
+                let b = m["a"] else List[int]()
+                m["a"] = [4, 4, 4]
+                let c = m["a"] else List[int]()
+                let d = m["b"] else List[int]()
+                let e = m[key("z")] else [5]
+                let f = m[key("z")] else [6, 6]
+                print("{b.len} {c.len} {d.len} {m.len} {e.len} {f.len}")
+                0
+            }"#
+        ),
+        "1 1 p p\n[1] [1]\nkey\nkey\n2 3 2 2 1 2\n"
+    );
+}
+
+// #145 — every operand of a store's place is evaluated once.
+
+const AT: &str = r#"fn at(tag: str, i: int) -> int {
+    print(tag)
+    i
+}
+
+fn key(tag: str, k: str) -> str {
+    print(tag)
+    k
+}
+"#;
+
+fn at_program(body: &str) -> String {
+    format!("{AT}\nfn main() -> !int {{\n{body}\n0\n}}\n")
+}
+
+#[test]
+fn a_nested_index_store_evaluates_each_operand_once() {
+    // wolf-interp#145's program: the read was always once.
+    assert_eq!(
+        stdout(&at_program(
+            r#"var g = [[0, 0], [0, 0]]
+            let t = g[at("r1", 1)][at("r2", 0)]
+            print("{t}")
+            g[at("s1", 1)][at("s2", 0)] = 7
+            var h = [[[0]]]
+            h[at("a", 0)][at("b", 0)][at("c", 0)] = 9
+            print("{g[1][0]} {h[0][0][0]}")"#
+        )),
+        "r1\nr2\n0\ns1\ns2\na\nb\nc\n7 9\n"
+    );
+}
+
+#[test]
+fn every_nested_store_shape_evaluates_each_operand_once() {
+    for (body, want) in [
+        // compound
+        (
+            "var g = [[0, 0], [0, 5]]\n g[at(\"i\", 1)][at(\"j\", 1)] += 2\n print(\"{g[1][1]}\")",
+            "i\nj\n7\n",
+        ),
+        // `take`
+        (
+            "var g = [[[0]], [[0], [0]]]\n var v = [4, 4]\n g[at(\"i\", 1)][at(\"j\", 0)] = take v\n print(\"{g[1][0].len}\")",
+            "i\nj\n2\n",
+        ),
+        // a field between the indices
+        (
+            "var rs = [R { xs: [0, 0] }, R { xs: [0, 0] }]\n rs[at(\"i\", 1)].xs[at(\"j\", 0)] = 7\n print(\"{rs[1].xs[0]}\")",
+            "i\nj\n7\n",
+        ),
+        // a map inside a list
+        (
+            "var ms = List[Map[str, int]]()\n (mut ms).push(Map[str, int]())\n ms[at(\"i\", 0)][key(\"k\", \"a\")] = 3\n print(\"{ms[0][\"a\"] else 0}\")",
+            "i\nk\n3\n",
+        ),
+        // a list inside a map
+        (
+            "var m = Map[str, List[int]]()\n m[\"a\"] = [0, 0]\n m[key(\"k\", \"a\")][at(\"i\", 1)] = 3\n print(\"{m[\"a\"]}\")",
+            "k\ni\n[0, 3]\n",
+        ),
+        // four levels, and a right-hand side that is itself a nested read
+        (
+            "var h = [[[[0]]]]\n h[at(\"a\", 0)][at(\"b\", 0)][at(\"c\", 0)][at(\"d\", 0)] = 4\n print(\"{h[0][0][0][0]}\")",
+            "a\nb\nc\nd\n4\n",
+        ),
+        (
+            "var g = [[0, 0], [0, 8]]\n g[at(\"i\", 0)][at(\"j\", 0)] = g[at(\"k\", 1)][at(\"l\", 1)]\n print(\"{g[0][0]}\")",
+            "i\nj\nk\nl\n8\n",
+        ),
+    ] {
+        let program = format!("struct R {{ xs: List[int] }}\n{}", at_program(body));
+        assert_eq!(stdout(&program), want, "{body}");
+    }
+}
+
+#[test]
+fn a_nested_place_outside_a_store_was_already_evaluated_once() {
+    // A `mut` argument, a `mut` receiver, `move`, `take`, `copy`: each
+    // reaches `place_of` once and never went through the raw-pointer probe.
+    for (body, want) in [
+        (
+            "var g = [[0, 0], [0, 0]]\n bump(mut g[at(\"i\", 1)][at(\"j\", 0)])\n print(\"{g[1][0]}\")",
+            "i\nj\n1\n",
+        ),
+        (
+            "var g = [[[0]], [[1], [2]]]\n (mut g[at(\"i\", 1)][at(\"j\", 1)]).push(5)\n print(\"{g[1][1].len}\")",
+            "i\nj\n2\n",
+        ),
+        (
+            "var g = [[[0]], [[1], [2, 2]]]\n let a = move g[at(\"i\", 1)][at(\"j\", 1)]\n print(\"{a.len}\")",
+            "i\nj\n2\n",
+        ),
+        (
+            "var g = [[[0]], [[1], [2, 2]]]\n let c = n(take g[at(\"i\", 1)][at(\"j\", 1)])\n print(\"{c}\")",
+            "i\nj\n2\n",
+        ),
+        (
+            "var g = [[[0]], [[1], [2, 2]]]\n let c = copy g[at(\"i\", 1)][at(\"j\", 1)]\n print(\"{c.len}\")",
+            "i\nj\n2\n",
+        ),
+    ] {
+        let program = format!(
+            "fn bump(mut x: int) {{\n x = x + 1\n}}\nfn n(take v: List[int]) -> int {{\n v.len\n}}\n{}",
+            at_program(body)
+        );
+        assert_eq!(stdout(&program), want, "{body}");
+    }
+}
+
+#[test]
+fn a_nested_store_out_of_bounds_still_traps_bounds() {
+    assert_eq!(
+        trap_kind(&at_program(
+            "var g = [[0, 0], [0, 0]]\n g[at(\"i\", 5)][at(\"j\", 0)] = 7"
+        )),
+        TrapKind::Bounds
+    );
+}
+
+// #146 — a `mut` parameter left moved-out is moved-out in the caller.
+
+#[test]
+fn a_whole_mut_parameter_moved_out_is_moved_out_in_the_caller() {
+    use_after_move_after(
+        r#"fn f(mut xs: List[int]) {
+            var t = move xs
+            (mut t).push(9)
+        }
+
+        fn main() -> !int {
+            var xs = [1]
+            f(mut xs)
+            print("{xs.len}")
+            0
+        }"#,
+        "",
+    );
+}
+
+#[test]
+fn a_mut_parameter_stored_back_on_another_path_is_moved_out() {
+    use_after_move_after(
+        r#"fn f(mut xs: List[int], c: bool) {
+            var t = move xs
+            (mut t).push(9)
+            if c {
+                xs = t
+            }
+        }
+
+        fn main() -> !int {
+            var xs = [1]
+            f(mut xs, false)
+            print("{xs.len}")
+            0
+        }"#,
+        "",
+    );
+}
+
+#[test]
+fn every_writeback_carries_the_moved_state() {
+    // An early return, a second parameter, a struct parameter, a parameter
+    // passed on to another callee that moved it, an `int` moved explicitly,
+    // an argument that is a field or an element (a part: the whole read of
+    // the container traps too), and an impl method's `mut self`.
+    for (callee, main, printed) in [
+        (
+            "fn f(mut xs: List[int], c: bool) -> int {\n var t = move xs\n if c {\n return 1\n }\n xs = t\n 2\n}",
+            "var xs = [1]\n let r = f(mut xs, true)\n print(\"{r}\")\n print(\"{xs.len}\")",
+            "1\n",
+        ),
+        (
+            "fn f(a: int, mut xs: List[int]) {\n var t = move xs\n (mut t).push(a)\n}",
+            "var xs = [1]\n f(3, mut xs)\n print(\"{xs.len}\")",
+            "",
+        ),
+        (
+            "struct S { tags: List[int] }\nfn f(mut s: S) {\n var t = move s\n (mut t.tags).push(9)\n}",
+            "var s = S { tags: [1] }\n f(mut s)\n print(\"{s.tags.len}\")",
+            "",
+        ),
+        (
+            "fn f(mut xs: List[int]) {\n var t = move xs\n (mut t).push(9)\n}\nfn g(mut xs: List[int]) {\n f(mut xs)\n}",
+            "var xs = [1]\n g(mut xs)\n print(\"{xs.len}\")",
+            "",
+        ),
+        (
+            "fn f(mut n: int) {\n let t = move n\n print(\"{t}\")\n}",
+            "var n = 1\n f(mut n)\n print(\"{n}\")",
+            "1\n",
+        ),
+        (
+            "struct P { xs: List[int], y: int }\nfn f(mut xs: List[int]) {\n var t = move xs\n (mut t).push(9)\n}",
+            "var p = P { xs: [1], y: 2 }\n f(mut p.xs)\n print(\"{p.y}\")\n print(\"{p.xs.len}\")",
+            "2\n",
+        ),
+        (
+            "struct P { xs: List[int], y: int }\nfn f(mut xs: List[int]) {\n var t = move xs\n (mut t).push(9)\n}",
+            "var p = P { xs: [1], y: 2 }\n f(mut p.xs)\n print(\"{p.y}\")\n let q = p",
+            "2\n",
+        ),
+        (
+            "fn f(mut xs: List[int]) {\n var t = move xs\n (mut t).push(9)\n}",
+            "var g = [[1], [2]]\n f(mut g[0])\n print(\"{g[1].len}\")\n print(\"{g[0].len}\")",
+            "1\n",
+        ),
+        (
+            "struct S { v: List[int] }\nimpl S {\n fn drain(mut self) -> int {\n let t = move self\n t.v.len\n }\n}",
+            "var s = S { v: [1, 2] }\n let n = (mut s).drain()\n print(\"{n}\")\n print(\"{s.v.len}\")",
+            "2\n",
+        ),
+    ] {
+        use_after_move_after(
+            &format!("{callee}\n\nfn main() -> !int {{\n{main}\n0\n}}\n"),
+            printed,
+        );
+    }
+}
+
+#[test]
+fn a_mut_parameter_stored_back_or_revived_by_the_caller_runs() {
+    for (callee, main, want) in [
+        (
+            "fn f(mut xs: List[int]) {\n var t = move xs\n (mut t).push(9)\n xs = t\n}",
+            "var xs = [1]\n f(mut xs)\n print(\"{xs.len}\")",
+            "2\n",
+        ),
+        (
+            "fn f(mut xs: List[int], c: bool) {\n var t = move xs\n (mut t).push(9)\n if c {\n xs = t\n }\n}",
+            "var xs = [1]\n f(mut xs, true)\n print(\"{xs.len}\")",
+            "2\n",
+        ),
+        (
+            "fn f(mut xs: List[int]) {\n var t = move xs\n (mut t).push(9)\n}\nfn g(mut xs: List[int]) {\n f(mut xs)\n xs = [4, 4, 4]\n}",
+            "var xs = [1]\n g(mut xs)\n print(\"{xs.len}\")",
+            "3\n",
+        ),
+        (
+            "fn f(mut xs: List[int]) {\n var t = move xs\n (mut t).push(9)\n}",
+            "var xs = [1]\n f(mut xs)\n xs = [5, 5]\n print(\"{xs.len}\")",
+            "2\n",
+        ),
+        (
+            "fn f(mut m: Map[str, List[int]], k: str) {\n var v = m[k] else List[int]()\n (mut v).push(9)\n m[k] = take v\n}",
+            "var m = Map[str, List[int]]()\n m[\"a\"] = [1]\n f(mut m, \"a\")\n let a = m[\"a\"] else List[int]()\n print(\"{a.len}\")",
+            "2\n",
+        ),
+    ] {
+        assert_eq!(
+            stdout(&format!("{callee}\n\nfn main() -> !int {{\n{main}\n0\n}}\n")),
+            want,
+            "{callee}"
+        );
+    }
+}
+
+#[test]
+fn a_map_value_of_a_mut_parameter_read_out_is_moved_in_the_caller() {
+    use_after_move_after(
+        r#"fn f(mut m: Map[str, List[int]], k: str) {
+            var v = m[k] else List[int]()
+            (mut v).push(9)
+        }
+
+        fn main() -> !int {
+            var m = Map[str, List[int]]()
+            m["a"] = [1]
+            f(mut m, "a")
+            let a = m["a"] else List[int]()
+            print("{a.len}")
+            0
+        }"#,
+        "",
+    );
+}
