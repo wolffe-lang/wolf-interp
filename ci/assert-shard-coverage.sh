@@ -135,6 +135,15 @@ check() {
   done
 }
 
+# The plants' refusals are printed with the `::error::` prefix defused: on a
+# runner that prefix is a workflow command, and a green job carrying failure
+# annotations is exactly what a swallowed red looks like (lane-audit.sh
+# reads annotations, not logs). A self-test that FAILS prints its evidence
+# raw, so a real red still annotates.
+planted() {
+  sed 's/::error::/(planted, refused as expected) /'
+}
+
 self_test() {
   local dir="$1" p out f victim test1
   p="$(mktemp -d "$base/self.XXXXXX")"
@@ -159,7 +168,7 @@ self_test() {
     printf '%s\n' "$out"; echo "::error::self-test: the hole was refused without naming $victim"; return 1
   fi
   echo "self-test: planted hole '$victim' (ubuntu shard 2) refused by name:"
-  printf '%s\n' "$out" | grep -A1 'NOT run' | sed 's/^/    /'
+  printf '%s\n' "$out" | grep -A1 'NOT run' | planted | sed 's/^/    /'
 
   # Plant 2, a double: macOS shard 1's first test also listed by shard 3.
   cp -R "$dir" "$p/double"
@@ -173,7 +182,7 @@ self_test() {
     printf '%s\n' "$out"; echo "::error::self-test: the double was refused for another reason"; return 1
   fi
   echo "self-test: planted double (macOS shards 1 and 3) refused:"
-  printf '%s\n' "$out" | grep -A1 'more than one shard' | sed 's/^/    /'
+  printf '%s\n' "$out" | grep -A1 'more than one shard' | planted | sed 's/^/    /'
   echo "self-test: the clean set is green and both plants are red."
 }
 
