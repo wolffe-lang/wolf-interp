@@ -16,30 +16,31 @@ jobs:
   # Primary gate: linux/x86-64 runs the whole ladder, including the corpus walk.
   # macOS/aarch64 and windows/x86-64 build and test (D35 posture).
   #
-  # WINDOWS IS SHARDED (wolf-interp#121). `cargo test` on windows-latest is
-  # 29,267 s — 8 h 08 m, measured at 552786e — against GitHub's 6 h job cap,
-  # which `timeout-minutes` can lower but never raise. So the leg was
-  # *cancelled* on every head carrying is50's and is51's corpus growth, steps
-  # 8-15 never ran at all, and wolf-interp had NO windows coverage: not the
-  # test suite, not the ladder, and not the bundle (which is why
-  # `bundle identical across OSes` has been skipping).
+  # EVERY OS IS SHARDED. Windows first (wolf-interp#121): `cargo test` on
+  # windows-latest is 29,267 s — 8 h 08 m, measured at 552786e — against
+  # GitHub's 6 h job cap, which `timeout-minutes` can lower but never raise,
+  # so the leg was *cancelled* and wolf-interp had no windows coverage at all.
+  # Then linux and macOS (wolf-interp#123, is57): at 0cfc0cf the unsharded
+  # linux job was cancelled at its 355-minute timeout on BOTH attempts of the
+  # trunk push (jobs 108652393221, 108714531246, 355.3 min each), and macOS
+  # took 341.3 of 355 minutes on the PR run of the same tree (job
+  # 108596027284). Each OS now runs three test shards plus one job for the
+  # process-level ladder and the bundle; at 0cfc0cf the widest shard is 95
+  # min of test time on linux and 107 on macOS, the ladder 76 and 66.
   #
-  # The matrix is therefore an `include` list rather than an `os` list. Linux
-  # and macOS still run the whole thing in one job; windows runs it as three
-  # test shards plus one job for the process-level ladder and the bundle. The
-  # step bodies below are shared by every entry — one copy, selected with
-  # `if:` — so a shard can never drift from what linux runs.
+  # The step bodies below are shared by every entry — one copy, selected with
+  # `if:` — so a shard can never drift from another OS's.
   #
   # The shard key lives in `ci/test-shards.sh` and is a function of the target
   # NAME alone, so a failure names the same shard twice. Coverage is not
-  # asserted here: `windows shards cover the suite`, below, proves from
-  # cargo's own output that the shards ran exactly the set macOS ran.
+  # asserted here: `shards cover the suite`, below, proves from cargo's own
+  # output that each OS's shards ran every declared target exactly once, and
+  # no test twice.
   #
-  # EVERY JOB HAS `timeout-minutes`, including the unsharded ones. A cancelled
-  # job reads as infrastructure; a failed one reads as "this leg does not
-  # fit", which is the thing a reader needs to know. 355 is under the 6 h
-  # ceiling and above what linux takes today (341 min at this head — see
-  # wolf-interp#123: linux has 18m48s of headroom left and is next).
+  # EVERY JOB HAS `timeout-minutes`. A cancelled job reads as infrastructure;
+  # a failed one reads as "this leg does not fit", which is the thing a
+  # reader needs to know. 330 is under the 6 h ceiling and about three times
+  # the widest shard.
   test:
     name: test (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
@@ -48,38 +49,70 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # linux at 0cfc0cf (job 108596027245): 5,691 / 5,654 / 5,137 s of
+          # test time for shards 1 / 2 / 3; 4,578 s of ladder steps.
           - os: ubuntu-latest
-            label: ubuntu-latest
-            id: ubuntu-latest
-            shard: all
-            timeout: 355
+            label: ubuntu-latest, test shard 1 of 3
+            id: ubuntu-shard-1
+            shard: 1
+            timeout: 330
+          - os: ubuntu-latest
+            label: ubuntu-latest, test shard 2 of 3
+            id: ubuntu-shard-2
+            shard: 2
+            timeout: 330
+          - os: ubuntu-latest
+            label: ubuntu-latest, test shard 3 of 3
+            id: ubuntu-shard-3
+            shard: 3
+            timeout: 330
+          - os: ubuntu-latest
+            label: ubuntu-latest, the ladder and the bundle
+            id: ubuntu-ladder
+            shard: ladder
+            timeout: 330
+          # macOS at 0cfc0cf (job 108596027284): 6,405 / 4,892 / 5,161 s;
+          # 3,941 s of ladder steps.
           - os: macos-latest
-            label: macos-latest
-            id: macos-latest
-            shard: all
-            timeout: 355
-          # 10,145 s of windows test time at this head, the widest shard.
+            label: macos-latest, test shard 1 of 3
+            id: macos-shard-1
+            shard: 1
+            timeout: 330
+          - os: macos-latest
+            label: macos-latest, test shard 2 of 3
+            id: macos-shard-2
+            shard: 2
+            timeout: 330
+          - os: macos-latest
+            label: macos-latest, test shard 3 of 3
+            id: macos-shard-3
+            shard: 3
+            timeout: 330
+          - os: macos-latest
+            label: macos-latest, the ladder and the bundle
+            id: macos-ladder
+            shard: ladder
+            timeout: 330
+          # windows at 0cfc0cf (run 36310738129): 170.7 / 113.7 / 155.1 min
+          # whole-job for shards 1 / 2 / 3 and 135.6 min for the ladder.
           - os: windows-latest
             label: windows-latest, test shard 1 of 3
             id: windows-shard-1
             shard: 1
             timeout: 330
-          # 10,015 s.
           - os: windows-latest
             label: windows-latest, test shard 2 of 3
             id: windows-shard-2
             shard: 2
             timeout: 330
-          # 9,074 s.
           - os: windows-latest
             label: windows-latest, test shard 3 of 3
             id: windows-shard-3
             shard: 3
             timeout: 330
-          # The steps after `cargo test`, which windows has never reached:
-          # the corpus walk, the conform-run rungs, the explorer, the
-          # fixtures, the differential lane, the fuzz smoke and the bundle.
-          # 3,331 s on macOS at this head, so ~1 h 45 m expected here.
+          # The steps after `cargo test`: the corpus walk, the conform-run
+          # rungs, the explorer, the fixtures, the differential lane, the fuzz
+          # smoke and the bundle.
           - os: windows-latest
             label: windows-latest, the ladder and the bundle
             id: windows-ladder
@@ -114,46 +147,52 @@ jobs:
       - name: clippy
         run: cargo clippy --all-targets -- -D warnings
 
-      # `shard: all` is the whole suite in one invocation, exactly as before.
       # A numbered shard passes the argument list `ci/test-shards.sh` derives
       # from its stable key; that script refuses to emit an EMPTY list, since
       # an empty one would make `cargo test` silently run everything — a shard
       # that looks like a fast pass while being the thing we are sharding.
+      # `--doc` cannot share an invocation with a target flag, so the shard
+      # that owns the doc-tests runs them second, into the same log.
       #
-      # The log is `tee`d (not `| grep`ed — that is the EPIPE trap) so the next
-      # step can read back WHICH binaries ran from cargo's own `Running`
-      # lines. That measurement, not the table in the script, is what the
-      # coverage job compares.
+      # The log is `tee`d (not `| grep`ed — that is the EPIPE trap) so the
+      # step can read back WHICH binaries and WHICH tests ran from cargo's own
+      # output. That measurement, not the table in the script, is what the
+      # coverage job compares; the per-test count is reconciled against
+      # cargo's `test result:` totals before it is uploaded.
       - name: test
         if: matrix.shard != 'ladder'
         shell: bash
         run: |
           set -euo pipefail
-          if [ '${{ matrix.shard }}' = all ]; then
-            args=""
-          else
-            echo "the shard key, for the whole crate:"
-            ci/test-shards.sh plan
-            args=$(ci/test-shards.sh args '${{ matrix.shard }}')
-            echo "shard ${{ matrix.shard }} runs: $args"
-          fi
+          echo "the shard key, for the whole crate:"
+          ci/test-shards.sh plan
+          args=$(ci/test-shards.sh args '${{ matrix.shard }}')
+          echo "shard ${{ matrix.shard }} runs: $args"
           cargo test $args 2>&1 | tee test-output.log
+          if ci/test-shards.sh has-doc '${{ matrix.shard }}'; then
+            echo "shard ${{ matrix.shard }} runs the doc-tests: cargo test --doc"
+            cargo test --doc 2>&1 | tee -a test-output.log
+          fi
           ci/test-shards.sh ran test-output.log > test-binaries.txt
+          ci/test-shards.sh tests test-output.log > test-names.txt
+          ci/test-shards.sh tests-check test-output.log
           echo "this job ran $(wc -l < test-binaries.txt) test binaries:"
           cat test-binaries.txt
 
-      - name: upload the test binaries this job ran
+      - name: upload the test binaries and tests this job ran
         if: matrix.shard != 'ladder'
         uses: actions/upload-artifact@v4
         with:
           name: test-binaries-${{ matrix.id }}
-          path: test-binaries.txt
+          path: |
+            test-binaries.txt
+            test-names.txt
           if-no-files-found: error
 
       # A green walk means every corpus directive header is legible to our own
       # directive parser.
       - name: corpus harness
-        if: matrix.shard == 'all' || matrix.shard == 'ladder'
+        if: matrix.shard == 'ladder'
         run: cargo run -- corpus
 
       # The ladder, end to end through the real binary rather than the library:
@@ -175,7 +214,7 @@ jobs:
       # writer's flush then races the close and aborts with EPIPE. Every check
       # below assigns to a variable first.
       - name: conform-run rungs
-        if: matrix.shard == 'all' || matrix.shard == 'ladder'
+        if: matrix.shard == 'ladder'
         shell: bash
         run: |
           set -euxo pipefail
@@ -365,7 +404,7 @@ jobs:
       # library tests pin the exact schedule counts); here the process-level
       # half: green exit, a stable report, and the replay doors.
       - name: schedule explorer (bounded)
-        if: matrix.shard == 'all' || matrix.shard == 'ladder'
+        if: matrix.shard == 'ladder'
         shell: bash
         run: |
           set -euxo pipefail
@@ -408,7 +447,7 @@ jobs:
 
       # The fixtures are the protocol's own tests ([proto.harness.fixtures]).
       - name: protocol fixtures
-        if: matrix.shard == 'all' || matrix.shard == 'ladder'
+        if: matrix.shard == 'ladder'
         run: |
           cargo run -- protocol validate vendor/upstream/corpus/protocol/valid.json vendor/upstream/corpus/protocol/with-extensions.json
 
@@ -420,7 +459,7 @@ jobs:
       # that promise a compiler (nightly local runs; the wolf-lang side from
       # s23). Both behaviors are asserted, not assumed.
       - name: differential lane (SKIP without a counterparty)
-        if: matrix.shard == 'all' || matrix.shard == 'ladder'
+        if: matrix.shard == 'ladder'
         shell: bash
         run: |
           set -euxo pipefail
@@ -438,7 +477,7 @@ jobs:
       # ub. The full campaign (10k+, against a built counterparty) is a
       # local/nightly affair — its record lives in docs/divergence-log.md.
       - name: fuzz smoke (self-oracle)
-        if: matrix.shard == 'all' || matrix.shard == 'ladder'
+        if: matrix.shard == 'ladder'
         shell: bash
         run: |
           set -euxo pipefail
@@ -455,7 +494,7 @@ jobs:
       # listing is printed here so a cross-OS mismatch is diagnosable from
       # the logs alone.
       - name: conformance bundle (determinism + dry run)
-        if: matrix.shard == 'all' || matrix.shard == 'ladder'
+        if: matrix.shard == 'ladder'
         shell: bash
         run: |
           set -euxo pipefail
@@ -474,24 +513,25 @@ jobs:
           cat target/bundle-a/MANIFEST.json
 
       - name: upload bundle manifest
-        if: matrix.shard == 'all' || matrix.shard == 'ladder'
+        if: matrix.shard == 'ladder'
         uses: actions/upload-artifact@v4
         with:
           name: bundle-manifest-${{ matrix.os }}
           path: target/bundle-a/MANIFEST.json
           if-no-files-found: error
 
-  # The proof that sharding the windows leg did not quietly drop a target.
+  # The proof that sharding did not quietly drop a target or a test.
   #
   # Three green shards are exactly what a hole looks like, so this job does
-  # not read the shard table: it compares what the shards' `cargo test` runs
-  # REPORTED running against what the macOS and ubuntu jobs reported running
-  # on the same head, and against the crate's own target list. Three
-  # independent sources, set equality in both directions, and the offending
-  # names printed when they disagree. It is r20's hand count — 1 + 2 + 47 = 50
-  # — made automatic and made stronger.
-  windows-shard-coverage:
-    name: windows shards cover the suite
+  # not read the shard table: it compares what each OS's shards' `cargo test`
+  # runs REPORTED running against the crate's own target list — set equality
+  # in both directions, no binary in two shards, no test in two shards — and
+  # names the offenders when they disagree. It is r20's hand count, 1 + 2 +
+  # 47 = 50, made automatic for every OS. The self-test plants a hole and a
+  # double in a copy of the artifacts and passes only if both are refused by
+  # name, so this gate is seen red on every run.
+  shard-coverage:
+    name: shards cover the suite
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: test
@@ -501,8 +541,10 @@ jobs:
         with:
           pattern: test-binaries-*
           path: artifacts
-      - name: the three shards are a partition of the whole suite
+      - name: each OS's three shards are a partition of the whole suite
         run: ci/assert-shard-coverage.sh artifacts
+      - name: the assertion refuses a planted hole and a planted double
+        run: ci/assert-shard-coverage.sh self-test artifacts
 
   # is09: the three OSes must export the SAME bundle — every normalization
   # lesson (LF-before-observation, slash paths, sorted walks) cashed in as
