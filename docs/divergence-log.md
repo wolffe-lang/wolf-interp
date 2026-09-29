@@ -4566,13 +4566,69 @@ Falsified by any divergence or ledger line that differs.
 that was green at trunk (`a_two_phase_receiver_still_reads_itself_through_the_parent`
 and `tests/snapshots/exclusivity_nested_path.snap` are the closest).
 
+#### §3a — the prediction, scored (head `e64371b`)
+
+- **The fix — held, with one design change named.** One mechanism, both
+  routes (`1709aec`). What §3 did not say: the member's path is consulted
+  only while some claim is held under the container's binding
+  (`read_header`); with no claim, and whenever the member meets a claim
+  too, the read is trunk's own code path, which is what makes "the twins
+  keep their record byte for byte" true by construction rather than by
+  re-deriving each message.
+- **The probe table — 20 of 21 held.** `q01`–`q06`, `q08`–`q13` run at the
+  predicted bytes; `q07`, `o03` unchanged; `t01`–`t05` keep trunk's verdict,
+  clause and span (`probes-head-e64371b.log` against
+  `probes-archive-0.1.41.log`); `o01`, `o02`, `o04` still trap, as
+  predicted. **Missed: `c01`** — predicted `f` ×2, measured `f` ×3,
+  unchanged. The prediction assumed the member route would always read off
+  the evaluated place; the design above takes it only under a claim, so a
+  program with no claim reads exactly as trunk — including
+  wolffe-lang/wolf-interp#151's triple evaluation, which stands filed.
+- **Corpus — held.** `lupin corpus` at head equals trunk line for line
+  (`corpus-trunk-0cfc0cf-release.log`, `corpus-head-e64371b-release.log`):
+  502 match, 2 mismatch, both runs.
+- **Differential — held.** All four tiers against wolf 0.2.18 at pin
+  `93a5fe50`: every ledger byte-identical (default 623, checked 313, native
+  223, release 225 lines); findings 5/5/7/7 lines, the same entries. One
+  line differs, on native, and it is the COMPILER's side: `a=ub(mem.ub)`
+  both runs, `b=exit(151)` at trunk and `b=exit(130)` at head for
+  `memory/unsafe_ub_uaf.lu` — wolf 0.2.18's native binary exits with noise
+  on that UB program (four reruns: 90, 248, 251, 168,
+  `unsafe_ub_uaf-native-reruns.log`), as eg02 recorded.
+- **Existing tests — held so far:** `rulings_eg00` 15/15, `rulings_s182`
+  11/11, `index_store` 7/7 at `1709aec` (`green-1709aec-rulings.log`); the
+  whole suite is the gauntlet's, below.
+- **Filed, not fixed:** wolffe-lang/wolf-interp#151 (`c01`),
+  wolffe-lang/wolf-interp#152 (`o04`: an element read inside an
+  expression checks the whole container, while a bare one does not), and
+  wolffe-lang/wolf-lang#474 (wolf 0.2.18 runs `o01`, `o02`, `o04`, which
+  lupin traps — the compiler looser than the oracle — and a ruling on
+  whether `count()`/`is_empty()` are header reads under 1(c)).
+
 #### §4 — evidence index
 
-Appended as each artifact exists: the witnesses red at trunk (a committed
-test run red at its commit, the log under `~/lanes/is59/evidence/`), the
-green at head, the probe log at head, `lupin corpus` trunk against head,
-the four-tier differential trunk against head, the gauntlet, and the CI
-run at the head sha.
+Commits: `19ed462` contract; `1bc1f72` §3 addendum; `0d45a6a` the 18
+witnesses and their runner (`tests/rulings_is59/`,
+`tests/rulings_is59.rs`), red at trunk; `1709aec` the fix; `3421ff8`
+rustfmt; `885ac91`, `e64371b` CHANGELOG `Unreleased`.
+
+Artifacts (kasumi `~/lanes/is59/evidence/`; wolf 0.2.18 `da027bf9…`,
+lupin 0.1.41 `18848901…`, trunk build `42b13d1e…`, head build
+`lupin-head-e64371b` `0308cfb9…`):
+- inputs: `probes-archive-0.1.41.log`, `probes-trunk-0cfc0cf.log`,
+  `probes-extra-trunk-0cfc0cf.log`, `witnesses-trunk-0cfc0cf.log`
+- red at trunk, for the named reason: `red-0d45a6a-rulings_is59.log` —
+  12 failed, each "lupin answered `trap(exclusivity)`, ruled `exit(0)`";
+  6 passed (the control and the five twins); `EXIT=101`
+- green: `green-1709aec-rulings.log` — `rulings_is59` 18/18,
+  `rulings_eg00` 15/15, `rulings_s182` 11/11, `index_store` 7/7; `EXIT=0`
+- probes at head: `probes-head-e64371b.log`
+- corpus: `corpus-trunk-0cfc0cf-release.log`,
+  `corpus-head-e64371b-release.log`
+- differential: `diffrun/trunk-0cfc0cf-*.{log,jsonl,ledger.jsonl}` against
+  `diffrun/head-e64371b-*`; `unsafe_ub_uaf-native-reruns.log`
+- gauntlet (fmt, clippy, test, corpus) and GitHub CI at the head: in the
+  PR body, which is written after they finish.
 
 #### §5 — done-when
 
