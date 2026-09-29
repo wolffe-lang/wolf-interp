@@ -1544,6 +1544,49 @@ impl Machine {
         }
     }
 
+    /// `[mem.model.place.elem]` 1(c) (wolffe-lang/wolf-lang#472, ruled A):
+    /// "an index step and a member step on the same container: `xs[i]` and
+    /// `xs.len`, whatever `i` is — an element is never the container's
+    /// header." A member that is not a stored field (`xs.len`, `m.len`) is
+    /// read off its container, and through 0.1.41 that read checked the
+    /// CONTAINER against what was held, so `bump(mut xs[0], xs.len)` met
+    /// `xs[0]` as a prefix and trapped. The member's own path — the parent
+    /// with a `Field` step — is what the read touches, and `Proj::may_equal`
+    /// (`place.rs`) already keeps a field step apart from an index or key
+    /// step.
+    ///
+    /// `Some(value)` when a claim is held somewhere under `parent`'s binding
+    /// and none of them conflicts with the member: the parent's value, read
+    /// with every other part of a read (the `Moved` trap, the freed-region
+    /// fault, the rule fire, the provenance read) exactly as before. `None`
+    /// everywhere else — no claim on the binding, or one the member meets
+    /// too (the whole container, a prefix, the element whose member it is)
+    /// — and the caller reads the parent as it always did, so every trap
+    /// that stays a trap keeps its record byte for byte.
+    fn read_header(&mut self, parent: &Path, member: &str, span: Span) -> EResult<Option<Value>> {
+        let binding = Path::local(parent.frame, parent.base.clone());
+        if self.access.conflict(&binding, Access::Shared).is_none() {
+            return Ok(None);
+        }
+        let header = parent.clone().project(Proj::Field(member.to_owned()));
+        if self.access.conflict(&header, Access::Shared).is_some() {
+            return Ok(None);
+        }
+        if let Some(sibling) = self.access.disjoint_sibling(&header) {
+            let detail = format!(
+                "`{header}` and `{}` are disjoint places: an element is never the \
+                 container's header",
+                sibling.path
+            );
+            self.fire(Rule::ExclusivityDisjoint, span, &detail);
+        }
+        self.read_claim_checked(parent, span)?;
+        match self.resolve(parent) {
+            Some((slot, _)) => Ok(Some(slot.value.clone())),
+            None => unsupported(format!("`{parent}` does not denote a place at run time")),
+        }
+    }
+
     /// Everything a read of `path` *does* — the exclusivity check, the
     /// `Moved` trap, the rule fire, the provenance access — with the copy of
     /// the value left out.
@@ -1555,6 +1598,14 @@ impl Machine {
     /// `List.push`. See [`Machine::lend_path`].
     fn read_claim(&mut self, path: &Path, span: Span) -> EResult<()> {
         self.check_access(path, Access::Shared, span)?;
+        self.read_claim_checked(path, span)
+    }
+
+    /// [`read_claim`](Machine::read_claim) after its exclusivity check: the
+    /// `Moved` trap, the freed-region fault, the rule fire and the provenance
+    /// read. A member read ([`Machine::read_header`]) makes its exclusivity
+    /// check on the member's own path and the rest of the read here.
+    fn read_claim_checked(&mut self, path: &Path, span: Span) -> EResult<()> {
         let display = path.to_string();
         match self.resolve(path) {
             None => unsupported(format!("`{display}` does not denote a place at run time")),
@@ -4719,7 +4770,10 @@ impl Machine {
             let Some(Proj::Field(member)) = parent.projections.pop() else {
                 return self.read_path(&place, expr.span);
             };
-            let value = self.read_path(&parent, expr.span)?;
+            let value = match self.read_header(&parent, &member, expr.span)? {
+                Some(value) => value,
+                None => self.read_path(&parent, expr.span)?,
+            };
             return builtin::property(self, &value, &member, expr.span);
         }
 
@@ -7440,6 +7494,17 @@ impl Machine {
             };
             if self.slot_mut(&projected).is_some() {
                 return self.read_path(&projected, span);
+            }
+            // `(xs).len`, `g[0].len` under a claim on an element: the member
+            // is read off the base's place (1(c), `read_header`), without
+            // evaluating the base a second time. One step for the base, as
+            // its evaluation below would have charged it first.
+            if let Member::Named(ident) = member
+                && self.slot_mut(&path).is_some()
+                && let Some(value) = self.read_header(&path, &ident.name, base.span)?
+            {
+                self.step()?;
+                return builtin::property(self, &value, &ident.name, span);
             }
         }
 
