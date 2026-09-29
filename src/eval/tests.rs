@@ -5207,7 +5207,9 @@ fn a_mut_parameter_stored_back_or_revived_by_the_caller_runs() {
         ),
     ] {
         assert_eq!(
-            stdout(&format!("{callee}\n\nfn main() -> !int {{\n{main}\n0\n}}\n")),
+            stdout(&format!(
+                "{callee}\n\nfn main() -> !int {{\n{main}\n0\n}}\n"
+            )),
             want,
             "{callee}"
         );
