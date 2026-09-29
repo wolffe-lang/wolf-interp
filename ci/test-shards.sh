@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
-# ci/test-shards.sh — the windows test leg, sharded, with a stable key.
+# ci/test-shards.sh — the test legs, sharded, with a stable key.
+#
+# Every OS runs `cargo test` as three shards plus a ladder job. Windows was
+# sharded first (wolf-interp#121); linux and macOS followed (wolf-interp#123,
+# is57) when the unsharded linux job was cancelled at the 355-minute timeout
+# twice on the trunk push of 0cfc0cf (jobs 108652393221, 108714531246) and
+# macOS ran 341.3 of 355 on the PR run of the same tree (job 108596027284).
+# The same key serves all three: at 0cfc0cf it gives linux 5,691 / 5,654 /
+# 5,137 s and macOS 6,405 / 4,892 / 5,161 s of test time per shard.
 #
 # WHY THIS EXISTS (wolf-interp#121). `cargo test` on `windows-latest` is
 # 29,267 s — 8 h 08 m, measured at 552786e — against GitHub's 6 h job cap,
@@ -30,7 +38,10 @@
 #   shard-of NAME      the shard NAME belongs to
 #   args N             the `cargo test` arguments for shard N
 #   plan               the whole assignment as a table (printed into the log)
+#   has-doc N          exit 0 when shard N runs the doc-tests
 #   ran LOGFILE        the test binaries a `cargo test` log says actually RAN
+#   tests LOGFILE      every test that log says ran: binary, test, outcome
+#   tests-check LOGFILE  the per-test count reconciled with cargo's totals
 set -euo pipefail
 
 SHARDS=3
@@ -62,6 +73,12 @@ shard_of() {
     export)         echo 3 ;;
     cli)            echo 3 ;;
     fuzz_smoke)     echo 3 ;;
+    # The doc-tests. `cargo test` with no target flag runs them; a shard's
+    # `--lib --test …` never does, and `--doc` cannot share an invocation
+    # with any other target flag, so the shard that owns `doc` runs a second
+    # `cargo test --doc`. Before is57 no shard ran them at all (0 doc-tests
+    # at 0cfc0cf, so nothing was lost yet — a hole with nothing in it).
+    doc)            echo 3 ;;
     # `cksum` is POSIX and its CRC is the same number on every host we run
     # on (verified: macOS, linux and Git Bash agree), and it depends on the
     # name alone.
@@ -69,13 +86,15 @@ shard_of() {
   esac
 }
 
-# The crate's test binaries: the lib unit tests, the bin unit tests, and one
-# per `tests/*.rs`. `autotests` is on and Cargo.toml declares no `[[test]]`,
-# so the directory IS the set — and `assert-shard-coverage.sh` checks that
-# claim against what cargo itself reported running, from a different source.
+# The crate's test binaries: the lib unit tests, the bin unit tests, the
+# lib's doc-tests, and one per `tests/*.rs`. `autotests` is on and Cargo.toml
+# declares no `[[test]]`, so the directory IS the set — and
+# `assert-shard-coverage.sh` checks that claim against what cargo itself
+# reported running, from a different source.
 targets() {
   echo lib
   echo bins
+  echo doc
   local f
   for f in tests/*.rs; do
     [ -e "$f" ] || continue
@@ -89,6 +108,7 @@ args() {
   for t in $(targets); do
     [ "$(shard_of "$t")" = "$n" ] || continue
     case "$t" in
+      doc)  continue ;;  # its own invocation: see `has-doc`
       lib)  out="$out --lib" ;;
       bins) out="$out --bins" ;;
       *)    out="$out --test $t" ;;
@@ -102,6 +122,11 @@ args() {
     exit 1
   fi
   printf '%s\n' "${out# }"
+}
+
+# Exit 0 when shard N owns the doc-tests (and must run `cargo test --doc`).
+has_doc() {
+  [ "$(shard_of doc)" = "$1" ]
 }
 
 plan() {
@@ -127,7 +152,46 @@ ran() {
         -e 's#^[[:space:]]*Running unittests src[\\/]lib\.rs .*#lib#p' \
         -e 's#^[[:space:]]*Running unittests src[\\/]main\.rs .*#bins#p' \
         -e 's#^[[:space:]]*Running tests[\\/]([A-Za-z0-9_]+)\.rs .*#\1#p' \
+        -e 's#^[[:space:]]*Doc-tests [A-Za-z0-9_]+[[:space:]]*$#doc#p' \
     | sort -u
+}
+
+# Every TEST a `cargo test` log says ran, as `binary<TAB>test<TAB>outcome`,
+# sorted. The binary is the last `Running`/`Doc-tests` line above the test.
+# This is the per-test list is57 diffed against the unsharded job, and what
+# the coverage job checks for a test counted by two shards. The count is
+# reconciled against cargo's own `test result:` totals by `tests-check`.
+tests() {
+  local esc
+  esc=$(printf '\033')
+  sed -e "s/${esc}\[[0-9;]*m//g" -e 's/\r$//' "$1" | awk '
+    /^[[:space:]]*Running unittests src[\\\/]lib\.rs /  { b = "lib"; next }
+    /^[[:space:]]*Running unittests src[\\\/]main\.rs / { b = "bins"; next }
+    /^[[:space:]]*Running tests[\\\/][A-Za-z0-9_]+\.rs / {
+      b = $2; sub(/^tests[\\\/]/, "", b); sub(/\.rs$/, "", b); next }
+    /^[[:space:]]*Doc-tests [A-Za-z0-9_]+[[:space:]]*$/ { b = "doc"; next }
+    b != "" && /^test .* \.\.\. (ok|ignored|FAILED)/ {
+      line = $0; sub(/^test /, "", line)
+      i = index(line, " ... "); name = substr(line, 1, i - 1)
+      rest = substr(line, i + 5); split(rest, o, /[ ,]/)
+      print b "\t" name "\t" o[1] }' | LC_ALL=C sort
+}
+
+# The per-test list's length must equal the sum of passed + failed + ignored
+# over the log's `test result:` lines: two readings of the same run that do
+# not share a parser. Prints both; exits 1 when they differ or are zero.
+tests_check() {
+  local esc listed summed
+  esc=$(printf '\033')
+  listed=$(tests "$1" | wc -l | tr -d ' ')
+  summed=$(sed -e "s/${esc}\[[0-9;]*m//g" -e 's/\r$//' "$1" \
+    | sed -n -E 's/^test result: [A-Za-z]+\. ([0-9]+) passed; ([0-9]+) failed; ([0-9]+) ignored.*/\1 \2 \3/p' \
+    | awk '{ n += $1 + $2 + $3 } END { print n + 0 }')
+  echo "per-test lines: $listed; cargo's test result totals: $summed"
+  if [ "$listed" -eq 0 ] || [ "$listed" -ne "$summed" ]; then
+    echo "::error::the per-test list ($listed) does not reconcile with cargo's totals ($summed)"
+    return 1
+  fi
 }
 
 case "${1:-}" in
@@ -135,6 +199,9 @@ case "${1:-}" in
   shard-of) shard_of "$2" ;;
   args)     args "$2" ;;
   plan)     plan ;;
+  has-doc)  has_doc "$2" ;;
   ran)      ran "$2" ;;
-  *) echo "usage: $0 {targets|shard-of NAME|args N|plan|ran LOGFILE}" >&2; exit 2 ;;
+  tests)    tests "$2" ;;
+  tests-check) tests_check "$2" ;;
+  *) echo "usage: $0 {targets|shard-of NAME|args N|has-doc N|plan|ran LOGFILE|tests LOGFILE|tests-check LOGFILE}" >&2; exit 2 ;;
 esac
