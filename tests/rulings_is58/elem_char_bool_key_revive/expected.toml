@@ -1,0 +1,22 @@
+# is58 — wolf-lang `corpus/memory/elem_char_bool_key_revive.lu` at `ec56a08f` (wolf 0.2.18),
+# copied verbatim as main.lu. The ruled cells are the gate's:
+# `a_store_through_the_same_char_or_bool_key_revives_the_value` in `crates/wolf_driver/tests/element_places_lanes.rs`
+# (wolffe-lang/wolf-interp#144). `[trunk]` is what lupin 0.1.41 (archive 18848901…) and wolf 0.2.18
+# `--checked` (archive da027bf9…) answered on kasumi
+# (~/lanes/is58/evidence/gates-archive-0.1.41.log); native and release are the
+# gate's own assertion, green at 0.2.18.
+clause = "mem.model.place.elem"
+milestone = "wolffe-lang/wolf-interp#144"
+lands_in = "corpus/memory/elem_char_bool_key_revive.lu"
+
+[expected]
+checked = { verdict = "exit(0)", stdout = "2 2 2 4\n" }
+native  = { verdict = "exit(0)", stdout = "2 2 2 4\n" }
+release = { verdict = "exit(0)", stdout = "2 2 2 4\n" }
+lupin   = { verdict = "exit(0)", stdout = "2 2 2 4\n" }
+
+[trunk]
+checked = { verdict = "exit(0)", stdout = "2 2 2 4\n" }
+native  = { verdict = "exit(0)", stdout = "2 2 2 4\n" }
+release = { verdict = "exit(0)", stdout = "2 2 2 4\n" }
+lupin   = { verdict = "exit(0)", stdout = "2 2 2 4\n" }
