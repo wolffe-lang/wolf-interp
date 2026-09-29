@@ -4582,7 +4582,7 @@ impl Machine {
             // it, and no pinned clause gives the mode a meaning there).
             ExprKind::ModedReceiver { place, .. } => self.eval(place),
             ExprKind::Try(inner) => {
-                let mut value = self.eval(inner)?;
+                let mut value = self.eval_read_out(inner)?;
                 if value.is_error() {
                     // `?` returns the error to the caller, widening the row by
                     // union (`[err.propagate]`). A return, not an unwind.
@@ -5859,7 +5859,7 @@ impl Machine {
     }
 
     fn eval_else(&mut self, inner: &Expr, handler: &ElseHandler, span: Span) -> EResult<Value> {
-        let value = self.eval(inner)?;
+        let value = self.eval_read_out(inner)?;
         if !value.is_error() {
             return Ok(value);
         }
@@ -5881,6 +5881,107 @@ impl Machine {
                 result
             }
         }
+    }
+
+    /// The operand of `else` or `?` (wolf-interp#144). `[mem.map.absent]`:
+    /// "A `Map` index READ copies exactly when `V` copies" — so `m[k]` under
+    /// `else` or `?`, which hands the looked-up value on, reads a bound value
+    /// OUT: a `Copy` value is copied, anything else moves, leaving the entry
+    /// moved-out until a store through the key revives it
+    /// (`[mem.tier0.move.4]`), exactly as `let r = m[k]` always did. An absent
+    /// key moves nothing and answers the `none` row. Every other operand
+    /// evaluates as it always did.
+    ///
+    /// Each operand of the index is evaluated once: the base's place is
+    /// found first (its own operands evaluated there), and only then the key
+    /// — the order `eval_bracket` reads them in.
+    fn eval_read_out(&mut self, expr: &Expr) -> EResult<Value> {
+        let ExprKind::BracketApply { base, args, origin } = &*expr.kind else {
+            return self.eval(expr);
+        };
+        let [IndexArg::Value(arg)] = args.as_slice() else {
+            return self.eval(expr);
+        };
+        if matches!(&*arg.expr.kind, ExprKind::Range { .. }) {
+            return self.eval(expr);
+        }
+        let base_path = match self.place_of(base) {
+            Ok(path) => path,
+            // Not a place (a call, a literal): nothing to read out of.
+            Err(Signal::Unsupported(_)) => return self.eval(expr),
+            Err(other) => return Err(other),
+        };
+        // The two evaluation steps `eval` charges the index expression and
+        // its base.
+        self.step()?;
+        self.step()?;
+        let map_base = matches!(
+            self.resolve(&base_path),
+            Some((slot, _)) if matches!(slot.value, Value::Map(_))
+        );
+        if !map_base {
+            // A read of an element of anything else: the ordinary value
+            // read, from the base already evaluated.
+            let target = match self.resolve(&base_path) {
+                Some(_) => self.read_path(&base_path, base.span)?,
+                None => self.read_unresolved(&base_path, base.span)?,
+            };
+            let index = self.eval(&arg.expr)?;
+            let element = builtin::index(self, &target, &index, *origin, expr.span)?;
+            self.check_whole(&element, None, expr.span)?;
+            return Ok(element);
+        }
+        let path = self.project_index(base_path.clone(), args, *origin, expr.span)?;
+        if self.slot_mut(&path).is_some() {
+            return self.consume_place(&path, expr.span);
+        }
+        // An absent key: the lookup's own answer, the `none` row. The map is
+        // lent to it rather than copied, as the index read lends it.
+        let Some(Proj::Key(key)) = path.projections.last() else {
+            return unsupported(format!("`{path}` does not denote a place at run time"));
+        };
+        let key = key.to_value();
+        self.read_claim(&base_path, base.span)?;
+        let map = self.lend_path(&base_path);
+        let answer = builtin::index(self, &map, &key, *origin, expr.span);
+        self.restore_lent(&base_path, map);
+        answer
+    }
+
+    /// The value a place read would produce when the place does not denote a
+    /// slot — an index past the end, an absent key — computed from the
+    /// deepest prefix that does, with the operands already evaluated: the
+    /// same `bounds` trap or `none` row the value read answers, without
+    /// evaluating any index a second time.
+    fn read_unresolved(&mut self, path: &Path, span: Span) -> EResult<Value> {
+        let mut depth = path.projections.len();
+        while depth > 0 && self.resolve(&prefix(path, depth)).is_none() {
+            depth -= 1;
+        }
+        let mut value = self.read_path(&prefix(path, depth), span)?;
+        for step in &path.projections[depth..] {
+            value = match step {
+                Proj::Index(i) => {
+                    builtin::index(self, &value, &Value::Int(*i, IntTy::INT), 0, span)?
+                }
+                Proj::Key(key) => builtin::index(self, &value, &key.to_value(), 0, span)?,
+                Proj::Field(name) => match &value {
+                    Value::Struct { fields, .. } => {
+                        match fields.iter().find(|(field, _)| field == name) {
+                            Some((_, slot)) => slot.value.clone(),
+                            None => {
+                                return unsupported(format!("no field `{name}` at run time"));
+                            }
+                        }
+                    }
+                    other => builtin::property(self, other, name, span)?,
+                },
+                Proj::UnknownIndex => {
+                    return unsupported(format!("`{path}` does not denote a place at run time"));
+                }
+            };
+        }
+        Ok(value)
     }
 
     fn eval_for(
