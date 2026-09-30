@@ -1863,6 +1863,23 @@ fn main() -> !int { work.n() - 7 }
     assert_eq!(warnings[0].span, [92, 97]);
 }
 
+/// Rows whose `warns:` ledger this machine's lint is KNOWN to disagree with,
+/// by exactly one code, each with its filing. A waived row must still
+/// disagree by that code and nothing else — a fixed lint
+/// that leaves its waiver behind fails the test below, so the waiver retires
+/// the round it stops being true (the wolf-lang#177 lesson in this shape).
+///
+/// The ec56a08f pin (r24) brings s184's `mut_param_moveout_*` rows: the
+/// body moves the `mut` parameter out and the compiler reports E1001 with
+/// W1002 stood down beside it; this machine traps at run and its lint still
+/// says W1002, "never written" (wolffe-lang/wolf-interp#155).
+const WARNS_FILED: &[(&str, &str, &str)] = &[
+    ("memory/mut_param_moveout_elem.lu", "W1002", "wolffe-lang/wolf-interp#155"),
+    ("memory/mut_param_moveout_field.lu", "W1002", "wolffe-lang/wolf-interp#155"),
+    ("memory/mut_param_moveout_map.lu", "W1002", "wolffe-lang/wolf-interp#155"),
+    ("memory/mut_param_moveout_whole.lu", "W1002", "wolffe-lang/wolf-interp#155"),
+];
+
 #[test]
 fn the_warns_ledger_is_enforced_for_the_analyses_this_machine_runs() {
     // `warns:` is the exact set of warning codes an entry is expected to
@@ -1874,7 +1891,8 @@ fn the_warns_ledger_is_enforced_for_the_analyses_this_machine_runs() {
     let implemented: std::collections::BTreeSet<&str> =
         wolf_interp::lint::IMPLEMENTED.iter().copied().collect();
     let mut problems = Vec::new();
-    for entry in entries() {
+    let entries = entries();
+    for entry in &entries {
         let Some(warnings) = &entry.warnings else {
             // The analyses never ran (the program did not load) — nothing
             // to enforce, honestly.
@@ -1892,12 +1910,29 @@ fn the_warns_ledger_is_enforced_for_the_analyses_this_machine_runs() {
             .map(|warning| warning.code.as_str())
             .filter(|code| implemented.contains(code))
             .collect();
-        if expected != observed {
-            problems.push(format!(
+        let differs: std::collections::BTreeSet<&str> =
+            expected.symmetric_difference(&observed).copied().collect();
+        match WARNS_FILED.iter().find(|(path, ..)| *path == entry.path) {
+            None if !differs.is_empty() => problems.push(format!(
                 "  {}: warns ledger {expected:?}, observed {observed:?}",
                 entry.path
-            ));
+            )),
+            Some((_, code, issue)) if differs != std::collections::BTreeSet::from([*code]) => {
+                problems.push(format!(
+                    "  {}: waived for {code} ({issue}), but the ledger {expected:?} and \
+                     the lint {observed:?} no longer differ by exactly that — retire or \
+                     re-file the waiver",
+                    entry.path
+                ))
+            }
+            _ => {}
         }
+    }
+    for (path, _, issue) in WARNS_FILED {
+        assert!(
+            entries.iter().any(|entry| entry.path == *path),
+            "{path} is waived for {issue} and is not in the corpus"
+        );
     }
     assert!(
         problems.is_empty(),
