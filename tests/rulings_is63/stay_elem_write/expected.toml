@@ -5,8 +5,12 @@
 # kasumi, ~/lanes/is63/evidence/witnesses-archive-0.1.42-wolf-0.2.19.log.
 ruling = "STATUS #17"
 
+# is63 §3 said this trap keeps trunk's span; it does not. Trunk trapped at the
+# store's target base `xs` (a read, [242, 244]); under #17 that read runs and
+# the store itself meets the claim ([242, 259], `xs[0] = xs[0] + 1`). Same
+# verdict and clause; the trap moves from the read to the write.
 [expected]
-lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [242, 244] }
+lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [242, 259] }
 
 [trunk]
 lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [242, 244] }
