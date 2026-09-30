@@ -4191,6 +4191,51 @@ first edit, the rest appended as it lands.
   (its planted stale socket becomes visible). Each is rewritten to the
   in-process door the property belongs to; no other test moves.
 
+#### §3 addendum 2: the clause merged; a closure lend; committed before the edit it drives
+
+The orchestrator reported at 20:50Z that s186 merged to wolf-lang trunk as
+`e3ae62b5`. `[mem.tier0.excl.4]` "Arguments are two-phase" is now the
+clause at trunk, and `anchors.json` goes from 542 to 543. The sentence
+this addendum acts on is "A later argument may **not** [...] lend it into
+the same call (a non-`Copy` place passed `read`, `both(mut xs[0], xs)`,
+or a closure or `dyn` value that borrows it)". lupin 0.1.42 runs the
+closure case. Its closure copies its captures where it is written, and
+creating one checks nothing against the call's held claims (filed as
+wolffe-lang/wolf-interp#160 before this addendum). Measured before the
+edit, head `036b2f1` against the merged compiler's checked machine
+(`e3ae62b5` debug build, `~/lanes/is63/probes/p0{2,3,6,7,8,9}_*`):
+
+| probe | lupin head | wolf `e3ae62b5` checked |
+| --- | --- | --- |
+| a closure capturing the claimed `xs`, the call's own argument (`p02`) | `exit(0)` `4 3` | E1002 |
+| a closure reading only the claimed struct's `Copy` field `r.n` (`p08`) | `exit(0)` `4` | E1002 |
+| a closure created and called inside a nested call (`p03`) | `4 3` | `unsupported` (native `4 3` on 0.2.19) |
+| a closure bound before the claim, passed by name (`p06`) | `4 3` | `unsupported`, no E1002 |
+| a closure capturing no claimed place (`p07`, `p09`) | runs | `unsupported`, no E1002 |
+
+Predicted, before the edit:
+
+- **The mechanism, one more arm.** A closure literal written as a
+  bare argument lends every local it names, whether or not that local is
+  `Copy`, into the call being evaluated. When such a local meets a claim
+  that this same call holds pending, the argument traps `exclusivity` at
+  the closure, with `check_access`'s record. A closure passed by name, or
+  created inside a nested call, lends nothing to this call and keeps
+  running.
+- **Witnesses:**
+  - `stay_closure_lend` (`p02`) and `stay_closure_lend_copy_field` (`p08`)
+    trap. Both are seen red against the code of `036b2f1` first.
+  - `read_closure_nested`, `read_closure_bound_before` and
+    `read_closure_other` keep running with the bytes above.
+  - s186's thirteen changed or new corpus rows, copied verbatim from
+    `e3ae62b5` as `s186_*`, answer their `check:` lines: 11 run (among
+    them `mut_claim_two_phase_reads.lu`, `2 4 23 1 3 5 2 3`), and
+    `mut_claim_arg_block_{write,move}.lu` trap `exclusivity`. None of the
+    13 needs this arm.
+- **No other test changes**, and the pinned corpus and the differential
+  do not move. No pinned row passes a capturing closure beside a `mut`
+  argument of the same call.
+
 #### §3a — the prediction, scored
 
 - **Seven flip, three hold — held, every cell.** At the head, lupin's cell
