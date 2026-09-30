@@ -1,0 +1,20 @@
+//! is63 (ruling #17) — still refused: a later argument moves a FIELD of the claimed struct into a nested call.
+
+struct Fl {
+    store: List[int],
+    n: int,
+}
+
+fn fail(mut fl: Fl, k: int) {
+    fl.n = k
+}
+
+fn eat(take zs: List[int]) -> int {
+    zs.len
+}
+
+fn main() -> !int {
+    var fl = Fl { store: [1, 2], n: 0 }
+    fail(mut fl, eat(take fl.store))
+    0
+}

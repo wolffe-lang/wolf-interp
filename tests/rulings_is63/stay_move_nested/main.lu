@@ -1,0 +1,16 @@
+//! is63 (ruling #17) — still a trap: a later argument moves the claimed place into a nested call.
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn eat(take zs: List[int]) -> int {
+    zs.len
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, eat(take xs))
+    print("{xs.len}")
+    0
+}

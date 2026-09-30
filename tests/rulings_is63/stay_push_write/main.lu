@@ -1,0 +1,15 @@
+//! is63 (ruling #17) — still a trap: a later argument mutates the claimed container through a `mut` receiver.
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, {
+        (mut xs).push(9)
+        1
+    })
+    print("{xs.len}")
+    0
+}

@@ -1,0 +1,16 @@
+//! is63 (ruling #17) — wolf-lang#476's second shape: `grow(mut xs, total(xs))`.
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn total(ys: List[int]) -> int {
+    ys.len
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, total(xs))
+    print("{xs[0]} {xs.len}")
+    0
+}

@@ -1,0 +1,22 @@
+//! is63 (ruling #17) — lobo's `ev_log(mut el, level, shell.ev_seq(body, el.seq))`: a field of the claimed struct read one call down.
+
+struct El {
+    seq: int,
+    lines: List[str],
+}
+
+fn ev_seq(body: str, seq: int) -> int {
+    seq + body.len
+}
+
+fn ev_log(mut el: El, level: int, seq: int) {
+    el.seq = seq
+    (mut el.lines).push("{level}")
+}
+
+fn main() -> !int {
+    var el = El { seq: 10, lines: [] }
+    ev_log(mut el, 3, ev_seq("abc", el.seq))
+    print("{el.seq} {el.lines.len}")
+    0
+}

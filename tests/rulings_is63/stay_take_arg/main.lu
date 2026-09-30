@@ -1,0 +1,12 @@
+//! is63 (ruling #17) — still a trap: a later `take` argument moves the claimed place (`take` arguments are unchanged).
+
+fn keep(mut ys: List[int], take zs: List[int]) {
+    (mut ys).push(zs.len)
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    keep(mut xs, take xs)
+    print("{xs.len}")
+    0
+}

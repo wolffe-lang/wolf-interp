@@ -1,0 +1,17 @@
+//! is63 (ruling #17) — still a trap: a nested call claims the WHOLE container while its element is claimed.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn clear_len(mut ys: List[int]) -> int {
+    (mut ys).push(0)
+    ys.len
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    bump(mut xs[0], clear_len(mut xs))
+    print("{xs[0]}")
+    0
+}

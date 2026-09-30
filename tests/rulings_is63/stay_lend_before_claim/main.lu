@@ -1,0 +1,12 @@
+//! is63 (ruling #17) — still a trap: a lend into the call BEFORE the claim, `second(xs, mut xs)` — the read lend is held for the whole call.
+
+fn second(ys: List[int], mut zs: List[int]) {
+    (mut zs).push(ys.len)
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    second(xs, mut xs)
+    print("{xs.len}")
+    0
+}

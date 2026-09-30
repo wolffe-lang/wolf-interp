@@ -1,0 +1,16 @@
+//! is63 (ruling #17) — a nested method call on ANOTHER place reads the claimed place in its argument: `bump(mut a, (mut ys).pop_or(a))`-style, via push.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var a = 2
+    var ys = [7]
+    bump(mut a, {
+        (mut ys).push(a)
+        ys.len
+    })
+    print("{a} {ys[1]}")
+    0
+}

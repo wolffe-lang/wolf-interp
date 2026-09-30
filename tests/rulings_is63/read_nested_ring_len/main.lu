@@ -1,0 +1,21 @@
+//! is63 (ruling #17) — boreutils' `bore.ring_drop(mut r, bore.ring_len(r))`: a nested call reads the whole claimed struct.
+
+struct Ring {
+    items: List[int],
+    head: int,
+}
+
+fn ring_len(r: Ring) -> int {
+    r.items.len - r.head
+}
+
+fn ring_drop(mut r: Ring, n: int) {
+    r.head = r.head + n
+}
+
+fn main() -> !int {
+    var r = Ring { items: [1, 2, 3, 4], head: 1 }
+    ring_drop(mut r, ring_len(r))
+    print("{r.head} {ring_len(r)}")
+    0
+}

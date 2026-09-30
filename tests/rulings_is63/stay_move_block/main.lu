@@ -1,0 +1,14 @@
+//! is63 (ruling #17) — still refused: a later argument's block moves the claimed place out (`move`).
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, {
+        let zs = move xs
+        zs.len
+    })
+    0
+}

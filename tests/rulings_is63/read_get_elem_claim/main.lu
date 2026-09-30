@@ -1,0 +1,12 @@
+//! is63 (ruling #17) — `get` reads the whole container beside `mut xs[0]`: s186's `mut_claim_nested_get.lu`.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    bump(mut xs[0], xs.get(1) else 9)
+    print("{xs[0]}")
+    0
+}

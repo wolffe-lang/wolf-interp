@@ -1,0 +1,17 @@
+//! is63 (ruling #17) — lobo's `fail(mut fl, "{fl.store}")`: string interpolation reads the claimed place whole.
+
+struct Fl {
+    store: List[int],
+    msg: str,
+}
+
+fn fail(mut fl: Fl, text: str) {
+    fl.msg = text
+}
+
+fn main() -> !int {
+    var fl = Fl { store: [1, 2], msg: "" }
+    fail(mut fl, "bad {fl.store} and {fl}")
+    print(fl.msg)
+    0
+}

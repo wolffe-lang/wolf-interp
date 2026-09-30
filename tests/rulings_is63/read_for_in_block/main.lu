@@ -1,0 +1,18 @@
+//! is63 (ruling #17) — a `for` loop over the claimed container inside a later argument's block: its read claim ends with the loop, before the call.
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, {
+        var s = 0
+        for x in xs {
+            s = s + x
+        }
+        s
+    })
+    print("{xs[3]} {xs.len}")
+    0
+}

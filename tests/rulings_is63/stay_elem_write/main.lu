@@ -1,0 +1,15 @@
+//! is63 (ruling #17) — still a trap: a later argument writes the claimed element through the container, `xs[0] += 1`.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    bump(mut xs[0], {
+        xs[0] = xs[0] + 1
+        1
+    })
+    print("{xs[0]}")
+    0
+}

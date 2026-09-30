@@ -1,0 +1,20 @@
+//! is63 (ruling #17) — a slice of the claimed container read one call down: `grow(mut xs, total(xs[0..2]))`.
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn total(ys: List[int]) -> int {
+    var s = 0
+    for y in ys {
+        s = s + y
+    }
+    s
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, total(xs[0..2]))
+    print("{xs[3]} {xs.len}")
+    0
+}

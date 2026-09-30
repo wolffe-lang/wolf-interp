@@ -1,0 +1,18 @@
+//! is63 (ruling #17) — the `Map` twin: `mput(mut m, msize(m))`, s186's `mut_claim_nested_map.lu`.
+
+fn msize(m: Map[str, int]) -> int {
+    m.len
+}
+
+fn mput(mut m: Map[str, int], n: int) {
+    m["z"] = n
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 1
+    mput(mut m, msize(m))
+    let z = m["z"] else 0
+    print("{m.len} {z}")
+    0
+}

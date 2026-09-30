@@ -1,0 +1,17 @@
+//! is63 (ruling #17) — still a trap: a field of the claimed struct lent into the same call, `ring_drop(mut r, r.head)`.
+
+struct Ring {
+    items: List[int],
+    head: int,
+}
+
+fn ring_drop(mut r: Ring, n: int) {
+    r.head = r.head + n
+}
+
+fn main() -> !int {
+    var r = Ring { items: [1, 2, 3, 4], head: 1 }
+    ring_drop(mut r, r.head)
+    print("{r.head}")
+    0
+}

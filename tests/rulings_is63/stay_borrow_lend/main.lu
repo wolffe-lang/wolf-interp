@@ -1,0 +1,15 @@
+//! is63 (ruling #17) — still a trap: a borrow of the claimed place inside a later argument is a lend held past the argument.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var a = 1
+    bump(mut a, {
+        let r = &a
+        1
+    })
+    print("{a}")
+    0
+}

@@ -1,0 +1,20 @@
+//! is63 (ruling #17) — boreutils' `ensure(mut f, f.len + n)`: a member read of the claimed struct in an operand.
+
+struct Buf {
+    data: List[int],
+    len: int,
+}
+
+fn ensure(mut f: Buf, want: int) {
+    while f.data.len < want {
+        (mut f.data).push(0)
+    }
+    f.len = want
+}
+
+fn main() -> !int {
+    var f = Buf { data: [7], len: 1 }
+    ensure(mut f, f.len + 2)
+    print("{f.len} {f.data.len}")
+    0
+}

@@ -1,0 +1,13 @@
+//! is63 (ruling #17) — under two earlier claims (EG2's pair), a later operand reads both claimed elements.
+
+fn add2(mut a: int, mut b: int, n: int) {
+    a = a + n
+    b = b + n
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    add2(mut xs[0], mut xs[1], xs[0] * 10 + xs[1])
+    print("{xs[0]} {xs[1]} {xs[2]}")
+    0
+}

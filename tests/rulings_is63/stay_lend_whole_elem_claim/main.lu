@@ -1,0 +1,12 @@
+//! is63 (ruling #17) — still a trap: the whole container lent into the same call as its claimed element, `both(mut xs[0], xs)`.
+
+fn both(mut a: int, ys: List[int]) {
+    a = a + ys.len
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    both(mut xs[0], xs)
+    print("{xs[0]}")
+    0
+}

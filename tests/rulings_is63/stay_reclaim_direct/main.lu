@@ -1,0 +1,13 @@
+//! is63 (ruling #17) — still a trap: the same place claimed `mut` twice in one call.
+
+fn pair(mut a: int, mut b: int) {
+    a = a + 1
+    b = b + 1
+}
+
+fn main() -> !int {
+    var a = 1
+    pair(mut a, mut a)
+    print("{a}")
+    0
+}

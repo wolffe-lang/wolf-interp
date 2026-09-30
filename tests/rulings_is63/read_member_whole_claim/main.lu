@@ -1,0 +1,12 @@
+//! is63 (ruling #17) — a header member read under a claim on the WHOLE container: `grow(mut xs, xs.len)`.
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, xs.len)
+    print("{xs[3]} {xs.len}")
+    0
+}

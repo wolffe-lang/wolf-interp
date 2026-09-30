@@ -1,0 +1,21 @@
+//! is63 (ruling #17) — still a trap: inside an inner call's argument, a write of the OUTER call's claimed place.
+
+fn inner(mut b: int, n: int) -> int {
+    b = b + n
+    b
+}
+
+fn outer(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var a = 1
+    var b = 10
+    outer(mut a, inner(mut b, {
+        a = 7
+        1
+    }))
+    print("{a} {b}")
+    0
+}

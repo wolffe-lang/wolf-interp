@@ -1,0 +1,12 @@
+//! is63 (ruling #17) — still a trap: the claimed place lent into the same call, `bump(mut a, a)` (D39).
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var a = 1
+    bump(mut a, a)
+    print("{a}")
+    0
+}

@@ -1,0 +1,12 @@
+//! is63 (ruling #17) — the claimed place read in an `if` condition and arm of a later argument.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var a = 4
+    bump(mut a, if a > 3 { a * 10 } else { 1 })
+    print("{a}")
+    0
+}

@@ -1,0 +1,18 @@
+//! is63 (ruling #17) — left to right: the later argument reads the value the place holds BEFORE the call, and runs once.
+
+fn bump(mut a: int, n: int) {
+    print("in {a} {n}")
+    a = a + n
+}
+
+fn twice(n: int) -> int {
+    print("twice {n}")
+    n * 2
+}
+
+fn main() -> !int {
+    var a = 5
+    bump(mut a, twice(a))
+    print("{a}")
+    0
+}

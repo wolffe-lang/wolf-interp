@@ -1,0 +1,16 @@
+//! is63 (ruling #17) — a `Copy` read of the claimed element one call down: `bump(mut xs[0], id(xs[0]))`.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn id(n: int) -> int {
+    n
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    bump(mut xs[0], id(xs[0]))
+    print("{xs[0]}")
+    0
+}

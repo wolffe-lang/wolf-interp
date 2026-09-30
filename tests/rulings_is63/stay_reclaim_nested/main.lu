@@ -1,0 +1,17 @@
+//! is63 (ruling #17) — still a trap: a nested call claims the outer call's claimed place again, `bump(mut a, inc(mut a))`.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn inc(mut a: int) -> int {
+    a = a + 1
+    a
+}
+
+fn main() -> !int {
+    var a = 1
+    bump(mut a, inc(mut a))
+    print("{a}")
+    0
+}
