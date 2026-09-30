@@ -181,17 +181,15 @@ use crate::schema;
 /// `memory/list_session_struct.lu` carries wolf-lang eg01's `copy tbl[2]`,
 /// so the `for` reads a live element and the row answers `exit(0)` printing
 /// `102 1 1408 4 184` here and on all three counterparty tiers.
-pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
-    (
-        "resolve/broken_sibling/entry.lu",
-        "DIV-2026-019",
-        "which parse error fires on the unparseable module sibling: the \
+pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[(
+    "resolve/broken_sibling/entry.lu",
+    "DIV-2026-019",
+    "which parse error fires on the unparseable module sibling: the \
          corpus pins the counterparty's fail(E0202) (EOF inside the mangled \
          item) where this machine stops at the first bad token, fail(E0201) \
          at `{` in the parameter list; same rung, span-or-code class — the \
          spec assigns neither code to junk recovery",
-    ),
-];
+)];
 
 // DIV-2026-022 (`wordcount.lu`) and DIV-2026-023
 // (`grammar/structlit_paren.lu`) stood here for exactly one release. is46

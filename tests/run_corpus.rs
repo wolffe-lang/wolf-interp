@@ -1744,24 +1744,45 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/elem_char_bool_key_revive.lu", "exit(0)"),
     ("memory/elem_const_field_of_elem.lu", "exit(0)"),
     ("memory/elem_const_move_heap.lu", "exit(0)"),
-    ("memory/elem_const_store_no_revive_heap.lu", "trap(use-after-move)"),
-    ("memory/elem_const_store_no_revive_int.lu", "trap(use-after-move)"),
+    (
+        "memory/elem_const_store_no_revive_heap.lu",
+        "trap(use-after-move)",
+    ),
+    (
+        "memory/elem_const_store_no_revive_int.lu",
+        "trap(use-after-move)",
+    ),
     ("memory/elem_const_store_revives.lu", "exit(0)"),
     ("memory/elem_dyn_move_const_read.lu", "exit(0)"),
     ("memory/elem_dyn_mut_pair.lu", "exit(0)"),
-    ("memory/elem_dyn_store_no_revive_heap.lu", "trap(use-after-move)"),
-    ("memory/elem_dyn_store_no_revive_int.lu", "trap(use-after-move)"),
+    (
+        "memory/elem_dyn_store_no_revive_heap.lu",
+        "trap(use-after-move)",
+    ),
+    (
+        "memory/elem_dyn_store_no_revive_int.lu",
+        "trap(use-after-move)",
+    ),
     ("memory/elem_key_move_map.lu", "exit(0)"),
-    ("memory/elem_key_reassigned_no_revive.lu", "trap(use-after-move)"),
+    (
+        "memory/elem_key_reassigned_no_revive.lu",
+        "trap(use-after-move)",
+    ),
     ("memory/elem_len_after_move.lu", "exit(0)"),
     ("memory/elem_loop_covers_const.lu", "trap(exclusivity)"),
     ("memory/elem_move_one_place.lu", "exit(0)"),
-    ("memory/elem_move_same_const_read.lu", "trap(use-after-move)"),
+    (
+        "memory/elem_move_same_const_read.lu",
+        "trap(use-after-move)",
+    ),
     ("memory/elem_offset_other_local.lu", "trap(exclusivity)"),
     ("memory/elem_same_const_mut.lu", "trap(exclusivity)"),
     ("memory/elem_same_index_revive.lu", "exit(0)"),
     ("memory/elem_str_key_revive.lu", "exit(0)"),
-    ("memory/elem_sym_reassigned_no_revive.lu", "trap(use-after-move)"),
+    (
+        "memory/elem_sym_reassigned_no_revive.lu",
+        "trap(use-after-move)",
+    ),
     ("memory/elem_tuple_pos_move.lu", "exit(0)"),
     ("memory/elem_tuple_pos_mut.lu", "exit(0)"),
     ("memory/index_store_copies_list.lu", "exit(0)"),
@@ -1778,7 +1799,10 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/mut_param_moveout_elem.lu", "trap(use-after-move)"),
     ("memory/mut_param_moveout_field.lu", "trap(use-after-move)"),
     ("memory/mut_param_moveout_map.lu", "trap(use-after-move)"),
-    ("memory/mut_param_moveout_one_path.lu", "trap(use-after-move)"),
+    (
+        "memory/mut_param_moveout_one_path.lu",
+        "trap(use-after-move)",
+    ),
     ("memory/mut_param_moveout_whole.lu", "trap(use-after-move)"),
     ("memory/mut_param_restore_elem.lu", "exit(0)"),
     ("memory/mut_param_restore_field.lu", "exit(0)"),
@@ -1874,10 +1898,26 @@ fn main() -> !int { work.n() - 7 }
 /// W1002 stood down beside it; this machine traps at run and its lint still
 /// says W1002, "never written" (wolffe-lang/wolf-interp#155).
 const WARNS_FILED: &[(&str, &str, &str)] = &[
-    ("memory/mut_param_moveout_elem.lu", "W1002", "wolffe-lang/wolf-interp#155"),
-    ("memory/mut_param_moveout_field.lu", "W1002", "wolffe-lang/wolf-interp#155"),
-    ("memory/mut_param_moveout_map.lu", "W1002", "wolffe-lang/wolf-interp#155"),
-    ("memory/mut_param_moveout_whole.lu", "W1002", "wolffe-lang/wolf-interp#155"),
+    (
+        "memory/mut_param_moveout_elem.lu",
+        "W1002",
+        "wolffe-lang/wolf-interp#155",
+    ),
+    (
+        "memory/mut_param_moveout_field.lu",
+        "W1002",
+        "wolffe-lang/wolf-interp#155",
+    ),
+    (
+        "memory/mut_param_moveout_map.lu",
+        "W1002",
+        "wolffe-lang/wolf-interp#155",
+    ),
+    (
+        "memory/mut_param_moveout_whole.lu",
+        "W1002",
+        "wolffe-lang/wolf-interp#155",
+    ),
 ];
 
 #[test]
