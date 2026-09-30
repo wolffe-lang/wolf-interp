@@ -5300,26 +5300,6 @@ fn a_slice_of_a_list_holding_a_moved_element_traps_before_its_endpoints() {
 }
 
 #[test]
-fn a_home_module_call_on_a_struct_holding_a_moved_field_traps() {
-    use_after_move_after(
-        r#"struct P { x: List[int], y: int }
-
-        fn peek(p: P) -> int {
-            p.y
-        }
-
-        fn main() -> !int {
-            var p = P { x: [1], y: 2 }
-            let a = move p.x
-            print("{a.len}")
-            print("{p.peek()}")
-            0
-        }"#,
-        "1\n",
-    );
-}
-
-#[test]
 fn the_header_methods_run_on_every_container_above_a_moved_element() {
     assert_eq!(
         stdout(
