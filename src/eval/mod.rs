@@ -221,7 +221,9 @@ enum ReadAs {
     Whole,
     /// The base of a projection — `e.f`, `e[i]`, `e.len`, a method receiver,
     /// a `for` head. The projection reads what it picks, and that read
-    /// answers for its own part; the base itself hands nothing on.
+    /// answers for its own part; the base itself hands nothing on. (A method
+    /// receiver other than the header reads `len`/`count`/`is_empty` is then
+    /// checked whole by `eval_method` — wolf-interp#149, ruled 2026-09-30.)
     Projected,
 }
 
@@ -7604,6 +7606,22 @@ impl Machine {
             }
             Receiver::Expr(expr) => (None, Some(self.eval_projected(expr)?)),
         };
+        // Every method but the header reads takes its receiver WHOLE (the
+        // maintainer's ruling of 2026-09-30, wolffe-lang/wolf-interp#149):
+        // `push`, `get`, `pop`, an impl or home-module method's `self`, in any
+        // mode. On a receiver holding a moved part that is a read of the part
+        // (`[mem.tier0.move.2]`), so it traps here, at the receiver, before
+        // any argument runs — is58's whole-read trap (#143), which kept a
+        // receiver a projection base until the ruling.
+        if let Some(path) = &path
+            && self.parts_moved()
+            && !self.header_read(path, method, mode, args)
+        {
+            let found = self
+                .resolve(path)
+                .and_then(|(slot, _)| moved_part(&slot.value));
+            self.moved_part_trap(found, Some(path), span)?;
+        }
         // `[mem.str.get]`: the boundary primitive's argument is a RANGE
         // whose endpoints may be open (`s.get(..2)`) or `^n` end-relative —
         // shapes no `Value` carries — so, exactly as `eval_bracket` does for
@@ -8108,6 +8126,18 @@ impl Machine {
             inclusive,
         } = &*arg.expr.kind
         {
+            // A slice reads the whole container, whatever range it names
+            // (the maintainer's ruling of 2026-09-30,
+            // wolffe-lang/wolf-interp#149): one holding a moved part traps
+            // here, before either endpoint runs. `builtin::slice` still
+            // answers for a moved element inside the range (#141).
+            if self.parts_moved() {
+                let whole = match &*base.kind {
+                    ExprKind::Path(_) => self.place_of(base).ok(),
+                    _ => None,
+                };
+                self.check_whole(&target, whole.as_ref(), span)?;
+            }
             let len = slice_len_of(&target);
             let start_ep = match start {
                 Some(expr) => Some(self.eval_index_endpoint(expr, len)?),
