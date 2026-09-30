@@ -5226,9 +5226,89 @@ anywhere draws neither W1002 nor W1003, as on the compiler.
 
 #### §3a — scored (appended after the measurement)
 
+- **held** — one mechanism: `consumed_mut_params` and `rebound_names`
+  in `src/lint.rs` (`62cfe67`), asked only for a `mut` parameter the
+  existing scan finds unwritten.
+- **held** — the 62 parting probes agree at head; `u11` keeps W1002 on
+  `xs` only. **Widened before the fix**: sixteen more shapes (`v01`–`v16`:
+  nested loops, `continue`, a `defer` after the move, a `?` before it,
+  `self` whole, a loop condition reading the moved place, two moves and one
+  whole read, a move after an infinite `loop`, a `return` inside a loop, an
+  `else` block reading the map's header, sibling field moves, a `for` left
+  by `break`, a generic parameter, a `str` element, a `take` store into a
+  map), probed before `62cfe67` was written: 10 parted at trunk, 6 agreed,
+  all 16 agree at head. **Totals: 120 probes; at trunk 72 part, at head 1**
+  (`t01`).
+- **held** — `t01` is the one parting, as predicted (wolf keeps W1002
+  because E0401 stops it before mem; lupin has no typecheck refusal there).
+- **held** — no verdict or stdout moves on any of the 120 probes, trunk vs
+  head; wolf's column is byte-identical between the two runs.
+- **held** — exactly 4 corpus records move: every corpus file's lupin
+  `warnings`, trunk vs head, differ on `memory/mut_param_moveout_{elem,field,map,whole}.lu`
+  alone, each `[W1002]` → `[]`; 743 of 747 identical.
+- **held** — `lupin corpus` identical trunk vs head (747 files, 702
+  entries, 0 failures; 556 at run, 536 match, 1 mismatch).
+- **held** — the differential against wolf 0.2.19 on four tiers: ledgers
+  byte-identical trunk vs head on all four; reports identical on default,
+  checked and release; native differs only in the compiled lane's own exit on
+  `memory/unsafe_ub_uaf.lu` (218 vs 19, UB noise, as at r24 and is60). Both
+  trunk and head carry the same four gating findings against 0.2.19 (among
+  them DIV-2026-019, `push_take_moves.lu`'s rung, `method_is_free_call.lu`),
+  so **no new divergence**.
+- **held** — coverage ratchet 268 (`coverage_is_ratcheted` green; the lint
+  does not enter it).
+- **drift in my own inputs**: §2 cited the probe log at `8af9d0ae…`
+  (104 probes); the log was rewritten when `v*` joined it and is
+  `bfa08c85…` (120 probes) — the 104 rows are unchanged in it.
+- **found, filed**: `t16`'s struct shorthand is a soundness gap on the
+  compiler — `var w = W { xs }; (mut w.xs).push(9)` then `xs.len` prints
+  `2 2` on native and release (an undeclared alias) where `W { xs: xs }` is
+  E1001; lupin copies (`1 2`) →
+  wolffe-lang/wolf-lang#486, and the lupin mirror
+  wolffe-lang/wolf-interp#159. The lint reads the shorthand as not moving,
+  agreeing with 0.2.19 until the ruling.
+
 #### §4 — evidence index
 
+Commits:
+- `17d5a34` §1–§3 (before any `src/`/`tests/` edit)
+- `44a5a23` `tests/lint_is61.rs`, 102 shapes against wolf 0.2.19 (red)
+- `8aa78d2` r24's #155 waiver retired from `WARNS_FILED` (red)
+- `c3efd66` sixteen more shapes (red)
+- `62cfe67` the fix (`src/lint.rs`; `sema::BUILTIN_SCALAR_TYPES` made `pub(crate)`)
+- `6987a56` CHANGELOG `Unreleased`; this section
+
+Artifacts (kasumi `~/lanes/is61/evidence/`; wolf 0.2.19 archive
+`9f3873d8…`, lupin 0.1.42 archive `9856335a…`, digests = release pages;
+trunk build `lupin-trunk-8e2516d` `4b116c4e…`, head build
+`lupin-head-62cfe67` `e38dd70f…`, `lupin 0.1.42+dev.62cfe67`):
+- inputs: `probes-lupin-0.1.42.log` (`bfa08c85…`, 120 probes, lupin 0.1.42 and wolf 0.2.19 `--checked`)
+- red, each for its named reason:
+  - `red-44a5a23-lint_is61.log`: 63 failed, each "lupin warned […], wolf 0.2.19 warns […]" (the 62 parting and `t01`), 0 "verdict moved"; 39 passed; `EXIT=101`
+  - `red-8aa78d2-warns-ledger.log`: `the_warns_ledger_…` fails on exactly the four rows, each "warns ledger {}, observed {"W1002"}"; `EXIT=101`
+  - `red-c3efd66-lint_is61.log`: 73 failed (the 63 and the 10 `v*` that part at trunk), each "lupin warned"; 45 passed; `EXIT=101`
+- green: `green-62cfe67-tests.log` — `lint_is61` 118/118, the warns ledger 1/1, each `EXIT=0`
+- probes at head: `probes-head-62cfe67.log` (`af8e9b02…`): 119 of 120 agree, `t01` parts
+- corpus warnings: `corpus-warnings-trunk-62cfe67.txt` vs `corpus-warnings-head-62cfe67.txt` (747 lines each, trunk and head binaries): the four rows differ, nothing else
+- corpus: `corpus-trunk-8e2516d-release.log` = `corpus-head-62cfe67-release.log`
+- differential: `diffrun/trunk-8e2516d-*` vs `diffrun/head-62cfe67-*` (`.log`, `.jsonl`, `.ledger.jsonl`, four tiers each)
+- gauntlet at `62cfe67` (the code head): `gauntlet-62cfe67.log` — `dirty: 0`; fmt 0, clippy 0, `cargo test --release --no-fail-fast` 58 binaries, 1,534 passed, 2 failed — `differ_cli`'s `a_debug_harness_is_refused_…` and `the_door_is_loud_…`, which assert a debug harness (as at r24) — then `cargo test --test differ_cli` (debug) 8/8, corpus 0 failures
+- the shorthand finding: `shorthand-alias.log` (wolf 0.2.19 three tiers, lupin 0.1.42)
+- GitHub CI: the head's run in the PR body
+
+Filed: wolffe-lang/wolf-lang#486, wolffe-lang/wolf-interp#159.
+
 #### §5 — done-when
+
+- [x] branch `is61` on origin; PR open, unmerged, with these five sections (wolffe-lang/wolf-interp#158)
+- [x] §2 re-derived, §3 committed before the first `src/`/`tests/` edit, §3a scored
+- [x] s184's four rows and every nearby shape found agree with wolf 0.2.19 (117 of 118 tested shapes; the one parting named and pinned), each seen red at trunk
+- [x] r24's waiver for #155 retired by name, red at trunk without it
+- [x] whole-corpus differential against wolf 0.2.19: no new divergence
+- [x] coverage ratchet holds (268)
+- [x] CHANGELOG `Unreleased`
+- [ ] CI green at the head sha (the PR body)
+- [ ] kasumi build dirs pruned once evidence is written; worktree removed
 
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
