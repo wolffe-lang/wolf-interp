@@ -1,0 +1,15 @@
+//! is60 (wolffe-lang/wolf-interp#151) — a `Map` value's member: `m[k()].len`.
+
+fn k() -> str {
+    print("k")
+    "b"
+}
+
+fn main() -> !int {
+    var m = Map[str, List[int]]()
+    m["a"] = [1]
+    m["b"] = [2, 3]
+    let n = m[k()].len
+    print("{n}")
+    0
+}

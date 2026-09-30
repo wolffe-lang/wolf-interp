@@ -1,0 +1,12 @@
+//! is60 (wolffe-lang/wolf-interp#151) — an interpolation hole: `"{g[f()].len}"`.
+
+fn f() -> int {
+    print("f")
+    1
+}
+
+fn main() -> !int {
+    var g = [[1, 2], [3, 4, 5]]
+    print("{g[f()].len}")
+    0
+}

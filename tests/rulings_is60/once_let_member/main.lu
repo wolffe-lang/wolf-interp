@@ -1,0 +1,13 @@
+//! is60 (wolffe-lang/wolf-interp#151) — `let n = g[f()].len` — wolf-interp#151's witness.
+
+fn f() -> int {
+    print("f")
+    1
+}
+
+fn main() -> !int {
+    var g = [[1, 2], [3, 4, 5]]
+    let n = g[f()].len
+    print("{n}")
+    0
+}

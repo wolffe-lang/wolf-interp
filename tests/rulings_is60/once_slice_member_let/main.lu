@@ -1,0 +1,13 @@
+//! is60 (wolffe-lang/wolf-interp#151) — a slice's member: `let n = xs[a()..2].len`.
+
+fn a() -> int {
+    print("a")
+    0
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    let n = xs[a()..2].len
+    print("{n}")
+    0
+}

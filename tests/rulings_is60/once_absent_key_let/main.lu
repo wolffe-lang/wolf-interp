@@ -1,0 +1,15 @@
+//! is60 (wolffe-lang/wolf-interp#151) — an absent key: `let v = m[k()]`.
+
+fn k() -> str {
+    print("k")
+    "zz"
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 1
+    let v = m[k()]
+    let w = v else 7
+    print("{w}")
+    0
+}

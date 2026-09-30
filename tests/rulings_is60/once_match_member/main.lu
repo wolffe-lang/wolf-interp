@@ -1,0 +1,15 @@
+//! is60 (wolffe-lang/wolf-interp#151) — a `match` scrutinee: `match g[f()].len`.
+
+fn f() -> int {
+    print("f")
+    1
+}
+
+fn main() -> !int {
+    var g = [[1, 2], [3, 4, 5]]
+    match g[f()].len {
+        3 => print("three"),
+        _ => print("other"),
+    }
+    0
+}

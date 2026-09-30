@@ -504,3 +504,131 @@ fn sibling_row_methods_after_move() {
 fn revived_push_after_move() {
     run("revived_push_after_move");
 }
+
+// -- C: a member read's base operand runs once (wolf-interp#151) -------
+
+/// `let n = g[f()].len` — wolf-interp#151's witness.
+#[test]
+fn once_let_member() {
+    run("once_let_member");
+}
+
+/// an interpolation hole: `"{g[f()].len}"`.
+#[test]
+fn once_interp_member() {
+    run("once_interp_member");
+}
+
+/// an operand: `g[f()].len + 10`.
+#[test]
+fn once_member_in_expr() {
+    run("once_member_in_expr");
+}
+
+/// an argument: `show(g[f()].len)`.
+#[test]
+fn once_arg_member() {
+    run("once_arg_member");
+}
+
+/// a `Map` value's member: `m[k()].len`.
+#[test]
+fn once_map_member() {
+    run("once_map_member");
+}
+
+/// a nested base: `g[f()][h()].len`.
+#[test]
+fn once_nested_member() {
+    run("once_nested_member");
+}
+
+/// through a field: `b.rows[f()].len`.
+#[test]
+fn once_field_member() {
+    run("once_field_member");
+}
+
+/// `copy g[f()].len`.
+#[test]
+fn once_copy_member() {
+    run("once_copy_member");
+}
+
+/// a `match` scrutinee: `match g[f()].len`.
+#[test]
+fn once_match_member() {
+    run("once_match_member");
+}
+
+/// a grouped base: `(g[f()]).len`.
+#[test]
+fn once_group_member() {
+    run("once_group_member");
+}
+
+/// a `str` element's member: `ws[f()].len`.
+#[test]
+fn once_str_elem_member() {
+    run("once_str_elem_member");
+}
+
+/// under a claim (is59's route): `bump(mut g[0][0], g[f()].len)`.
+#[test]
+fn once_claimed_member() {
+    run("once_claimed_member");
+}
+
+/// the trap on a moved element, after `f` once.
+#[test]
+fn once_moved_elem_member() {
+    run("once_moved_elem_member");
+}
+
+/// control, once at trunk: `g[f()].count()`.
+#[test]
+fn once_method_receiver_control() {
+    run("once_method_receiver_control");
+}
+
+/// `let n = g[f()]` out of range: `f` once, then the bounds trap.
+#[test]
+fn once_oob_let() {
+    run("once_oob_let");
+}
+
+/// a slice: `let s = xs[a()..2]`.
+#[test]
+fn once_slice_let() {
+    run("once_slice_let");
+}
+
+/// a slice's member: `let n = xs[a()..2].len`.
+#[test]
+fn once_slice_member_let() {
+    run("once_slice_member_let");
+}
+
+/// a slice's member in a hole: `"{xs[a()..2].len}"`.
+#[test]
+fn once_slice_member_interp() {
+    run("once_slice_member_interp");
+}
+
+/// an absent key: `let v = m[k()]`.
+#[test]
+fn once_absent_key_let() {
+    run("once_absent_key_let");
+}
+
+/// a member of an out-of-range element: `"{g[f()].len}"`.
+#[test]
+fn once_oob_member_base() {
+    run("once_oob_member_base");
+}
+
+/// out of range under `#![index(1)]`: the trap line keeps the writer's index.
+#[test]
+fn once_origin1_oob() {
+    run("once_origin1_oob");
+}

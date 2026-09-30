@@ -1,0 +1,13 @@
+//! is60 (wolffe-lang/wolf-interp#151) — a `str` element's member: `ws[f()].len`.
+
+fn f() -> int {
+    print("f")
+    1
+}
+
+fn main() -> !int {
+    var ws = ["ab", "cde"]
+    let n = ws[f()].len
+    print("{n}")
+    0
+}

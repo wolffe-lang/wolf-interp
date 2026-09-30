@@ -1,0 +1,14 @@
+# is60 — wolffe-lang/wolf-interp#151, `[mem.model.order]`: every operand is evaluated once, so a member
+# read's base index operand runs once.
+# `[expected]` is the ruled lupin cell; `[trunk]` is what lupin at trunk `c68c4d3`
+# (0.1.41 plus is58 and is59) and wolf 0.2.18 `conform-run --checked` (archive
+# da027bf9…) answered on kasumi, ~/lanes/is60/evidence/witnesses-trunk-c68c4d3.log.
+ruling = "wolffe-lang/wolf-interp#151"
+part = "C"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "f\n3\n" }
+
+[trunk]
+checked = { verdict = "exit(0)" }
+lupin   = { verdict = "exit(0)", stdout = "f\nf\nf\n3\n" }

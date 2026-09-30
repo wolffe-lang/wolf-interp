@@ -1,0 +1,15 @@
+//! is60 (wolffe-lang/wolf-interp#151) — out of range under `#![index(1)]`: the trap line keeps the writer's index.
+
+#![index(1)]
+
+fn f() -> int {
+    print("f")
+    4
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    let n = xs[f()]
+    print("{n}")
+    0
+}

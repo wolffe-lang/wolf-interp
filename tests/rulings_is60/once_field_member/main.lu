@@ -1,0 +1,15 @@
+//! is60 (wolffe-lang/wolf-interp#151) — through a field: `b.rows[f()].len`.
+
+struct Bag { rows: List[List[int]] }
+
+fn f() -> int {
+    print("f")
+    1
+}
+
+fn main() -> !int {
+    var b = Bag { rows: [[1], [2, 3]] }
+    let n = b.rows[f()].len
+    print("{n}")
+    0
+}

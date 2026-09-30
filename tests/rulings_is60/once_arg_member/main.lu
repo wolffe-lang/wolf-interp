@@ -1,0 +1,16 @@
+//! is60 (wolffe-lang/wolf-interp#151) — an argument: `show(g[f()].len)`.
+
+fn f() -> int {
+    print("f")
+    1
+}
+
+fn show(n: int) {
+    print("{n}")
+}
+
+fn main() -> !int {
+    var g = [[1, 2], [3, 4, 5]]
+    show(g[f()].len)
+    0
+}

@@ -1,0 +1,12 @@
+//! is60 (wolffe-lang/wolf-interp#151) — a member of an out-of-range element: `"{g[f()].len}"`.
+
+fn f() -> int {
+    print("f")
+    5
+}
+
+fn main() -> !int {
+    var g = [[1, 2], [3, 4, 5]]
+    print("{g[f()].len}")
+    0
+}

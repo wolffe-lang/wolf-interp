@@ -1,0 +1,14 @@
+//! is60 (wolffe-lang/wolf-interp#151) — the trap on a moved element, after `f` once.
+
+fn f() -> int {
+    print("f")
+    1
+}
+
+fn main() -> !int {
+    var g = [[1, 2], [3, 4, 5]]
+    let a = move g[1]
+    let n = g[f()].len
+    print("{a.len} {n}")
+    0
+}
