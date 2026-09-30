@@ -5016,23 +5016,108 @@ of the table above. The wolf 0.2.18 checked machine's own duplication on
 
 #### §3a — the prediction, scored
 
-*(appended when measured)*
+Release builds of trunk `c68c4d3` (`91839eb9…`) and head `4a8c506`
+(`lupin 0.1.41+dev.4a8c506`, `10df69ba…`), whose code is the four fixes
+`4708106` (H), `e675c2f` (E), `e78c40a` (R), `4a8c506` (C); later commits
+touch only `CHANGELOG.md` and this log.
+
+- **The fixes, one mechanism each — held.** H is `header_read` plus
+  is59's `read_header` asked with the method's name; E is
+  `read_elem_under_claim` in front of the index-read lend, with
+  `AccessSet::conflicts_only_below` (`place.rs`) deciding when it applies;
+  R is one whole-read check at the receiver in `eval_method` and one before
+  a slice's endpoints, both behind is58's `parts_moved` flag; C is
+  `Machine::evaluated_place` (left by `live_place`, taken by the very next
+  `eval`), the member route reading its base's evaluated place, and
+  `read_missing_element` for an index out of range or an absent key, with
+  `project_index` refusing a spelled range before its endpoints run.
+- **The probe table — held, every row** (`probes-trunk-c68c4d3.log`
+  against `probes-head-4a8c506.log`, 89 probes): the `h*`, `e*`, `r*`, `c*`
+  and `s_*` rows moved exactly as §3 and its addendum said, the twins kept
+  verdict, clause and span, `et02` gained its `f`, and every "unchanged" row
+  is byte-identical. **Drift:** the table ran on 89 probes, not §2's 82 —
+  `ht05` (an impl method named `count` under a field claim), `e14` (a
+  `Map` element in a hole) and the addendum's five `c*` were added before
+  their parts' edits.
+- **Existing tests that change — missed: three, not one.** §3 named is56's
+  `what_reads_no_moved_element_is_untouched`; the ruling also moved is56's
+  `a_slice_covering_a_moved_element_traps_and_one_beside_it_does_not` (its
+  second half sliced beside the moved element; renamed
+  `…_and_so_does_one_beside_it`) and is58's
+  `what_projects_through_a_partly_moved_place_is_untouched` (its `push` and
+  `get` beside `move xs[0]`). All three were rewritten to the ruling in
+  `80434ba`/`ea7e403`; the lib run at `e78c40a` (`lib-e78c40a.log`, 3
+  failed) is where they surfaced. My search for affected tests grepped the
+  corpus, not `src/eval/tests.rs`.
+- **Two of my own tests were red for the wrong reason**, caught before
+  they counted: a home-module receiver test (`80434ba`) failed on
+  `unsupported` (a one-file program has no home module) — dropped in
+  `e082d09`; and the slice test first read its endpoint in a `let` and then
+  as a member base, where #151's double evaluation printed the endpoint
+  before the trap (`lib-ea7e403.log`) — it reads the slice whole since
+  `9043eeb`.
+- **Corpus rows that change verdict: zero — held.** `lupin corpus` at head
+  equals trunk line for line (`corpus-trunk-c68c4d3-release.log`,
+  `corpus-head-4a8c506-release.log`, 698 lines, 502 match, 2 mismatch).
+- **The differential — held.** Against the published wolf 0.2.18, 646
+  entries, 44 members, four tiers (`diffrun/trunk-c68c4d3-*` against
+  `diffrun/head-4a8c506-*`): every ledger byte-identical (default 623,
+  checked 313, native 223, release 225 lines); the default, checked and
+  release reports byte-identical (5, 5, 7 divergences, all trunk's); native
+  differs on one line, the compiled lane's own exit status on
+  `memory/unsafe_ub_uaf.lu` (`b=exit(213)` at trunk, `b=exit(203)` at
+  head), the UB program whose native exit is noise run to run (is55, is58,
+  is59). **New divergences: none.**
+- **Found, filed:** the wolf 0.2.18 checked machine runs a slice's
+  endpoints twice (`let n = xs[a()..2].len`) or three times
+  (`"{xs[a()..2].len}"`) when the slice is a member base; native and release
+  run them once — wolffe-lang/wolf-lang#479. The compiler-side looseness on
+  the twins (`et01`, `et03`, `et04`, `ht01`–`ht05` run on 0.2.18) is its
+  bare-argument E1002 (wolffe-lang/wolf-lang#474's body,
+  wolffe-lang/wolf-lang#476), already on file.
 
 #### §4 — evidence index
 
-*(appended as it lands)*
+Commits:
+- `1659ae2` §1–§3; `f941e5d` §3 addendum (before the first C edit)
+- H: `ecda713` 17 witnesses (red), `4708106` the fix
+- E: `3533b0e` 16 witnesses (red), `e675c2f` the fix and `conflicts_only_below`'s unit test
+- R: `f7cfa61` 28 witnesses (red), `80434ba` path tests (red) and is56's test to the ruling, `e082d09` the wrong-reason test dropped, `e78c40a` the fix, `ea7e403`/`9043eeb` is56's and is58's rows to the ruling and the slice test's operand
+- C: `bd287d1` 21 witnesses (red), `4a8c506` the fix
+- `bf10a67` CHANGELOG `Unreleased`; this section
+
+Artifacts (kasumi `~/lanes/is60/evidence/`; wolf 0.2.18 `da027bf9…`,
+lupin 0.1.41 `18848901…`, digests = release pages; trunk build
+`91839eb9…`, head build `10df69ba…`):
+- inputs: `probes-archive-0.1.41.log`, `probes-trunk-c68c4d3.log`, `witnesses-trunk-c68c4d3.log`
+- red, each for its named reason:
+  - H `red-ecda713-H.log`: 11 failed, each "lupin answered `trap(exclusivity)`, ruled `exit(0)`"; 6 passed (the control, five twins); `EXIT=101`
+  - E `red-3533b0e-E.log`: 13 failed — 12 "answered `trap(exclusivity)`, ruled `exit(0)`", and `twin_effect_index_same_elem` on its stdout (`f` before the trap); `EXIT=101`
+  - R `red-80434ba-R.log`: 20 failed, each "answered `exit(0)`, ruled `trap(use-after-move)`"; the 8 keep-running rows pass; `EXIT=101`. Path tests `red-80434ba-R-lib.log` and, for the rows rewritten after the fix, `red-overlay-e082d09-tests-9043eeb.log` (the pre-fix tree with `9043eeb`'s `tests.rs`: 4 failed, each a program that ran past its whole read; `EXIT=101`)
+  - C `red-bd287d1-C.log`: 20 failed, each on "the ruled stdout" (an operand run twice or three times); `EXIT=101`
+- green: `green-4708106-H.log`, `green-e675c2f-E.log`, `green-e78c40a-R.log`, `green-4a8c506-C.log` (`rulings_is60` 17 → 33 → 61 → 82, with `rulings_is59` 18, `rulings_is58` 20, `rulings_eg00` 15, `rulings_s182` 11, `index_store` 7, each `EXIT=0`); `green-9043eeb-lib.log`, `green-4a8c506-lib.log` (725 passed)
+- probes at head: `probes-head-4a8c506.log`; witnesses `witnesses-head-4a8c506.log`
+- corpus: `corpus-trunk-c68c4d3-release.log`, `corpus-head-4a8c506-release.log`
+- differential: `diffrun/trunk-c68c4d3-*.{log,jsonl,ledger.jsonl}` against `diffrun/head-4a8c506-*`
+- gauntlet at `4a8c506` (the code head): `gauntlet-4a8c506.log` — `dirty: 0`; fmt 0, clippy 0, test 0, corpus 0; `GAUNTLET_FAILS=0`; 57 test binaries, 1417 passed, 0 failed; corpus 646 entries, 0 failures; 01:18:30Z–05:05:49Z
+- wolf-lang's ten lupin-reading gates at `d11c03b7` (`scripts/gates.sh`: `element_places_lanes`, `mut_param_return_lanes`, `store_order_lanes`, `index_store_lanes`, `element_move_conservatism_lanes`, `move_expression_lanes`, `mut_claim_extent`, `pairing`, `record_file_index`, `store_rhs_first_lanes`; `WOLF_PAIRING_REQUIRE_SIBLING=1`; checked lane and lupin run, no SKIP):
+  - `wolfgates-archive-0.1.41.log`: the published 0.1.41 takes the pinned arms, 102/102, `EXIT=0`
+  - `wolfgates-head-4a8c506-as-next.log`: head, its record claiming `0.1.42-is60` (`scripts/lupin-as-next.sh`; `--version` already `0.1.41+dev.4a8c506`), takes every ruled arm, 102/102, `EXIT=0`
+  - `wolfgates-plant-0.1.41-as-next.log`: the plant — the 0.1.41 archive presented as `0.1.42-plant` — goes red on exactly the seven pinned cases (below) and on `pairing` (the planted version is not `PAIRING`'s), `EXIT=101`: the gates can see the difference
+  - the pinned cases head satisfies, for the next pairing bump: `element_places_lanes` `a_member_read_under_an_element_claim_runs` and `a_member_read_beside_an_element_claim_runs_on_every_leg` (`PRE_MEMBER_LUPIN`), `a_store_through_a_reassigned_key_revives_nothing` (`PRE_MAP_MOVE_LUPIN`); `mut_param_return_lanes` `a_whole_mut_parameter_left_moved_out_is_refused` and `a_mut_parameter_stored_back_on_one_path_only_is_refused` (`PRE_MIRROR_LUPIN`), `a_map_value_of_a_mut_parameter_left_read_out_is_refused` (`PRE_MAP_MOVE_LUPIN`); `store_order_lanes` `every_index_operand_runs_once_outermost_first_before_the_value` (the `0.1.41` row of `LUPIN_145`). These carry is58 and is59; no gate case at `d11c03b7` names #149, #151, #152 or the header methods — s185's rows for them (branch `ecaf655a`) are corpus files, and head answers all nine at their ruled cell (`tests/rulings_is60/*_s185`)
+- GitHub CI: run 36654452989 at `bf10a67` (code equal to `4a8c506`), `completed success`; the head's run in the PR body
 
 #### §5 — done-when
 
-- [ ] branch `is60` on origin; PR open, unmerged, with these five sections
-- [ ] §2 re-derived, §3 committed before the first `src/`/`tests/` edit, §3a scored
-- [ ] H, E, R, C: each a test red at trunk for its named reason, green at head, in its own commit chain
-- [ ] every read path each part reaches has a test (H: `List`/`Map`, dotted and projected receivers, call and borrow claims; E: flat, nested, field, map, dynamic, origin-1, interpolation; R: every method family, impl and `mut self`, slices, the header reads that keep running; C: every caller of `live_place` a member reaches, and the member route)
-- [ ] whole-corpus differential against wolf 0.2.18: no new divergence (or each filed)
-- [ ] CHANGELOG `Unreleased`
-- [ ] the pinned lupin cases in wolf-lang's gates this head satisfies, by test name
-- [ ] the neighbours `c13`/`c14` filed
-- [ ] CI green at the head sha
+- [x] branch `is60` on origin; PR open, unmerged, with these five sections (wolffe-lang/wolf-interp#154)
+- [x] §2 re-derived, §3 committed before the first `src/`/`tests/` edit (and its addendum before C's), §3a scored
+- [x] H, E, R, C: each a test red at trunk for its named reason, green at head, in its own commit chain
+- [x] every read path each part reaches has a test (H: `List`/`Map`, dotted and projected receivers, call and borrow claims; E: flat, nested, field, map, dynamic, origin-1, interpolation; R: every method family, impl and `mut self`, slices, the header reads that keep running; C: every caller of `live_place` a member reaches, the member route, out of range, an absent key, a slice)
+- [x] whole-corpus differential against wolf 0.2.18: no new divergence
+- [x] CHANGELOG `Unreleased`
+- [x] the pinned lupin cases in wolf-lang's gates this head satisfies, by test name (§4)
+- [x] the neighbours `c13`/`c14`: fixed under C's addendum rather than filed; the checked machine's own slice double evaluation filed as wolffe-lang/wolf-lang#479
+- [ ] CI green at the head sha (the PR body)
 - [ ] kasumi build dirs pruned once evidence is written; worktree removed
 
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
