@@ -4425,7 +4425,7 @@ the filing and the waiver rule).
   manual now counts DIV-2026-026 (`c8527bc`). A corpus row that
   moves moves every document that prints the census.
 
-### DIV-2026-026 — `memory/list_session_struct.lu` — **OPEN, resolves on the pin that carries wolf-lang eg01's `copy tbl[2]`**
+### DIV-2026-026 — `memory/list_session_struct.lu` — **RETIRED at pin `ec56a08f` (0.1.42, r24)**
 
 The row (s119's #144 layout witness) builds `tbl: List[Session]`, where
 `Session` carries a `List[int]`, then `let s2 = tbl[2]` — a plain `let` of
@@ -4458,6 +4458,16 @@ DISAGREES with the corpus (025's three agree), so `tests/run_corpus.rs`
 and `tests/conformance.rs` must stop asserting its header, and its
 `RUN_LEDGER` row records `trap(use-after-move)`. It retires the round a
 differential compares it clean.
+
+**Retired at the `ec56a08f` pin (r24, wolf-lang v0.2.18 — the TAG).** The
+re-vendored row reads `let s2 = copy tbl[2]` (eg01), so no element is
+moved and the `for` reads live ones. Measured before the entry came out
+(kasumi `~/lanes/r24/logs/div026-retire.log`): the published wolf 0.2.18
+(`da027bf9…6bd4`) answers `wolf conform-run …/list_session_struct.lu
+--json` with `exit(0)` at `run` printing `102 1 1408 4 184` on `--checked`,
+`--native` and `--release`, and this machine at the new pin answers the
+same. Out of `differ::FILED_DIVERGENCES` (one entry left, DIV-2026-019);
+its `RUN_LEDGER` row is `exit(0)` again.
 
 ### The member read — is59, wolf-lang#472 ruled A, `[mem.model.place.elem]` 1(c) under a claim (wolf-lang `d3bd49cc`)
 
