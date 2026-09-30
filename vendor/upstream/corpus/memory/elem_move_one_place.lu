@@ -1,0 +1,26 @@
+//! check: run(exit=0, stdout="1 2\n")
+//! phase: run
+//! conforms: mem.model.place.elem, mem.tier0.move.2, mem.model.place
+//!
+//! s182 (wolf-lang#446) — `move xs[0]` on a `List[int]` and then a read
+//! of `xs[1]`. Through 0.2.17 every element of a container was ONE
+//! place on the compiler (`Proj::Opaque`), so the move of `xs[0]`
+//! emptied `xs[_]` and the read of `xs[1]` was E1001 on both wolfgang
+//! lanes while lupin, which models elements one by one, ran it: the
+//! documented conservatism row this file pinned.
+//!
+//! eg01 (EGC's EG1) closes it: `[mem.model.place.elem]` item 1(a) — two
+//! integer-literal indices whose values differ are distinct places, so
+//! the move leaves `xs[1]` readable. `1 2` on checked, native, release
+//! and lupin 0.1.40. The driver test `element_move_conservatism_lanes.rs`
+//! asserts every lane; `elem_move_same_const_read.lu` keeps the moved
+//! element itself unreadable.
+
+fn main() -> !int {
+    var xs = List[int]()
+    (mut xs).push(1)
+    (mut xs).push(2)
+    let a = move xs[0]
+    print("{a} {xs[1]}")
+    0
+}

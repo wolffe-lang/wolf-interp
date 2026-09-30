@@ -25,9 +25,147 @@ vocabulary.
   identity beyond their current place.
 - `[mem.model.place]` A **place** is a storage location denoted by a
   **path**: a base binding followed by field/index projections (`a.x.y`,
-  `xs[i]`). Paths are field-granular: `a.x` and `a.y` are disjoint places.
+  `xs[i]`). Paths are field-granular: `a.x` and `a.y` are disjoint places;
+  they are element-granular exactly where `[mem.model.place.elem]` says,
+  and no further.
   `[mem.model.path.disjoint]` Two paths conflict iff one is a prefix of
   the other (after identical projections); otherwise they are disjoint.
+  `[mem.model.place.rhs]` **A store evaluates its right-hand side
+  first, then mints its place.** In `place = expr` the storage location
+  of `place` is computed AFTER `expr` has run to a value, so a
+  right-hand side that grows, rehashes or otherwise moves the container
+  under the place — `xs[0].n = grow(mut xs)`, `m["a"] = grow(mut m)`,
+  `p[a].value = grow(mut p)` — stores into the container as it is after
+  the call; an address minted before it would be dangling by the time
+  the store lands. Every container's place lowering owes the re-mint.
+  Ruled 2026-09-24 (s173's proposal 1, B123, path B): it pins what all
+  three machines already do, and what makes the accepted program sound
+  — under mint-once s173's pool witness printed `1 65` on native
+  against `7 65` on checked with no diagnostic on either (wolf-lang#442
+  §4). This is an evaluation-order sentence, not an exclusivity one:
+  the right-hand side's claim on the container ends before the place
+  is minted, so there are never two live paths and `[mem.tier0.excl.1]`
+  is not engaged — s168's E1002 reaches a nested call under a `mut`
+  ARGUMENT (`take2(mut xs[0], grow(mut xs))`), not a store's right-hand
+  side. **The place's operands run before the right-hand side; only
+  its address runs after.** Every index and key expression in the
+  place — left to right, outermost first, each exactly once, as
+  `[mem.model.order]` reads — is evaluated BEFORE `expr`; what "mints
+  its place" above moves after `expr` is the address alone: walking
+  the already-evaluated path through the container as it is once
+  `expr` has run. The two sentences are one order: operands, then
+  right-hand side, then address, then the store. So `xs[idx()] = val()`
+  and `m[key()] = val()` print `idx val` and `key val`; `ys[i] =
+  bump(mut i)` stores at the `i` read before `bump` changed it; and
+  `xs[x()] = grow(mut xs)` evaluates `x()`, then `grow`, then stores
+  at that index of the grown list. A compound store (`xs[i()] +=
+  v()`: operands, right-hand side, then read-combine-write) and a
+  raw-pointer element store (`p[i()] = v()`: pointer, index,
+  right-hand side, write) follow the same order. Ruled 2026-09-26
+  (wolf-lang#452, "index first, then value"): native, release and
+  lupin (0.1.38 and 0.1.40, measured) already did this; the checked
+  machine ran the right-hand side first (`val idx`, through 0.2.17)
+  and moved in 0.2.18. lupin 0.1.40 evaluates a multi-index store's
+  outer operands twice (wolf-interp#145). Witnesses
+  `corpus/memory/ctl_store_order.lu` (s182's control) and
+  `ctl_store_order_map.lu`, `ctl_store_order_nested.lu`,
+  `ctl_store_order_nested_index.lu`, `ctl_store_order_captured.lu`,
+  `ctl_store_order_compound.lu`, `ctl_store_order_raw.lu`. **Cost:**
+  zero — the address computation moves after the
+  right-hand side; it does not multiply. Witnesses
+  `corpus/memory/store_rhs_first_list.lu`, `store_rhs_first_map.lu`,
+  `store_rhs_first_pool.lu` (the pool one is `unsupported` on lupin,
+  which declines `Pool` by name).
+- `[mem.model.place.elem]` **Element places.** An index projection
+  `c[e]` on a `List`, `Map` or `Pool` denotes one element of `c`. Two
+  paths with the same base that first differ at an index step are
+  **distinct places** — disjoint under `[mem.model.path.disjoint]` —
+  only where the compiler can **prove** the two steps never denote the
+  same element; everywhere else they are **one place**, and every rule
+  that asks whether two paths conflict (the moves of `[mem.tier0.move]`,
+  `[mem.tier0.excl]`, `[mem.tier0.borrow]`, `[mem.iter.excl]`) treats
+  them as conflicting. The proof is static and reads the program's
+  text: nothing is evaluated to decide it, and a program is never
+  accepted because of a value it happens to compute.
+  1. **Distinct.** (a) Two **integer-literal** indices of one `List`
+     whose values differ: `xs[0]` and `xs[1]` (an origin shift,
+     `[gram.expr.index.origin]`, moves both alike and changes nothing).
+     (b) Two **literal keys** of one `Map` whose values differ after
+     escape decoding: `m["a"]` and `m["b"]`, `m[1]` and `m[2]`,
+     `m['x']` and `m['y']`, `m[true]` and `m[false]`. (c) An index step
+     and a member step on the same container: `xs[i]` and `xs.len`,
+     whatever `i` is — an element is never the container's header.
+     (d) Tuple positions are field steps (`t.0`, `t.1`) and were
+     distinct before this clause. A step pair that is distinct makes
+     every path through it distinct: `g[0][1]` and `g[1][0]`,
+     `xs[0].tags` and `xs[1].tags`.
+  2. **One place.** Everything else: an index that is not a literal
+     against any other index of the same container (`xs[i]` and
+     `xs[0]`, `xs[i]` and `xs[j]`, `xs[i]` and `xs[i]`); the same
+     literal twice; any `Pool` index (a handle is a run-time value); a
+     `Map` key that is not a literal. The whole container against any
+     of its elements is a prefix and conflicts, as it always did. This
+     is the soundness bar, not a shortfall: whether two run-time
+     indices differ is undecidable in general, and a refusal here is a
+     documented conservatism — the reference interpreter, which sees
+     every index as the value it has at run time, may run what the
+     compiler refuses, never the reverse.
+  3. **Re-initialization is a *must*.** `[mem.tier0.move.4]` revives a
+     moved element only through a store that provably denotes it:
+     `xs[1] = v` revives a moved `xs[1]`; a store at a different
+     literal, or at an index that is not a literal and that R3 does not
+     prove the same element, revives nothing, and the moved element
+     stays unreadable (E1001). A store to the whole container revives
+     every element.
+  4. **Proof rules for run-time indices.** R3 is implemented for a
+     store through the same plain local (`a = b = 0` below); R1's
+     distinct half, any offset, and R2 are **NOT YET IMPLEMENTED** (EGC
+     milestone EG3; until each lands its shape is one place under 2).
+     **R1, offset:** `xs[i + a]` and `xs[i + b]`, with `a` and `b`
+     integer literals (either may be absent, as `0`) over one local `i`
+     of a `Copy` type — an integer index, a `str`, `char` or `bool`
+     key, a `Pool` handle; an offset other than `0` needs an integer
+     `i` — that is not assigned between the two uses, are distinct when
+     `a ≠ b` and the same element when `a = b`. **R2, induction
+     against a literal:** inside `for i in lo..hi` with integer-literal
+     `lo` and `hi`, `xs[i]` and `xs[c]` for a literal `c` are distinct
+     when `c < lo` or `c ≥ hi` (`..=` includes `hi`). **R3, revival:**
+     a store `xs[e] = v`
+     revives a moved `xs[e']` when R1 proves them the same element;
+     `var t = move xs[i]` … `xs[i] = take t` is the shape it keeps, and
+     on a `Map` with a `str` key `k`, `var v = m[k] else …` …
+     `m[k] = take v`.
+     A spelling the rules cannot relate stays one place even when the
+     two indices are equal at run time — `xs[i]` against `xs[k + 1]`
+     with `k = i - 1`.
+
+  **Where the machines stand (wolf 0.2.18; lupin 0.1.41).** wolfgang makes moves element-granular: items
+  1(a)–(c) hold for a moved element, item 3 holds (wolf-lang#460, where
+  any index store revived a moved sibling and native aliased it, is
+  fixed), and R3 holds for a store through the same plain local of a
+  `Copy` type, never through an offset (`xs[i + 1]`). The compiler is
+  stricter than R1's "not assigned between": a local some loan is taken
+  on, and every local of a body with a raw-tier statement, never
+  carries the proof. Exclusivity, borrows and iteration
+  (`[mem.tier0.excl]`, `[mem.tier0.borrow]`, `[mem.iter.excl]`) still
+  treat a container's elements as one place (EG2), and R1's distinct
+  half and R2 are not implemented (EG3), so their shapes are refused as
+  item 2's. A `Map` element is a place for moves and stores; a `mut`
+  lend of `m[k]` is a typing question (the read is `V ! {none}`,
+  `[mem.map.absent]`, E0401 today) that this clause does not answer.
+  lupin separates elements at run time and is the oracle for which
+  element a move empties and for the exclusivity trap; at 0.1.41 every
+  read of a moved element traps (wolffe-lang/wolf-interp#141), and a
+  value read out of a `Map` still stays in the map
+  (wolffe-lang/wolf-interp#144). **Cost:** none at run time — every rule here is static.
+  Witnesses: `corpus/memory/elem_*.lu`, each asserted on checked,
+  native, release and lupin by
+  `crates/wolf_driver/tests/element_places_lanes.rs` or
+  `element_move_conservatism_lanes.rs`; the EG2 and EG3 rows
+  (`elem_const_mut_pair`, `elem_const_nested_mut`,
+  `elem_offset_mut_pair`, `elem_loop_induction_mut`) stay parked with
+  their ruled verdicts in the planning repository
+  (`sprints/compiler/90-element-granularity/witnesses/`).
 - `[mem.model.granule]` A **granule** is the unit of ownership reasoning:
   a value (Tier 0), a region (Tier 1), or a shared/handle cell (Tier 2).
 - `[mem.model.machine]` The abstract machine state comprises:
@@ -151,7 +289,11 @@ law: `.docs/refs/papers/swift-ownership-manifesto.md`.
 - `[mem.tier0.mode.mut]` `mut` parameters are **exclusive inout**: for the
   duration of the call no other access (read or write) to the argument
   place or any conflicting path may occur. Call sites must write `mut`
-  (X1, grammar `[gram.item.fn]`).
+  (X1, grammar `[gram.item.fn]`). **A `mut` parameter is initialized at
+  every return of the callee**: a path on which it, or any place under
+  it (a field, an element, a map value), may be left moved-out is a
+  compile error (E1001) in the safe tiers, and a store back before the
+  return (`[mem.tier0.move.4]`) makes that path legal.
 - `[mem.tier0.mode.take]` `take` consumes: the argument moves into the
   callee (`[mem.tier0.move.1]` applies at the call site).
 
@@ -415,12 +557,15 @@ Edge legality (source stores a reference to target):
   different source for the same generic signature, and only one of them
   with a diagnostic explaining itself. The permissive reading is the one
   the whole container surface is already written against, so the index
-  store joins it rather than `push` being tightened to meet it. Since
-  wolf-lang#366 the stored `v` must be the function's own — `take v: V`
-  (the store consumes it) or `copy v` — because a `read` `v` stored into
-  the caller's `m` would still be the caller's too (E1002,
-  `[mem.tier0.mode.read]`); the regions merge at the index store exactly
-  as before. A FIELD
+  store joins it rather than `push` being tightened to meet it. Between
+  wolf-lang#366 and #438 the stored `v` had to be the function's own —
+  `take v: V` or `copy v` — because a plain store MOVED, so a `read` `v`
+  stored into the caller's `m` would still be the caller's too (E1002,
+  `[mem.tier0.mode.read]`). A plain store COPIES now (below), the copy
+  is the function's own, and a `read` `v` is stored plainly — exactly
+  as `push_copies_element.lu`'s `put` line already stores one through
+  `push`; `m[k] = take v` on a `read` `v` is E1014, `push(take v)`'s
+  answer. The regions merge at the index store exactly as before. A FIELD
   store (`holder.item = item`) keeps its E1004 — that is the one
   annotation Cyclone's measurement says exists — and so does a value
   provably outliving its region (`region tmp { xs[i] = … }`), which is
@@ -460,15 +605,38 @@ Edge legality (source stores a reference to target):
   and says so. Witnesses `corpus/memory/push_copies_element.lu` and
   `corpus/memory/push_take_moves.lu`.
 
-  The **index store is not yet aligned with this reading.** `m[k] = v`
-  and `xs[i] = v` still MOVE their right-hand side — a later use of `v`
-  is E1001 — and `m[k] = take v` does not parse at all, because the
-  assignment grammar has no mode slot on its right (`[gram.expr.assign]`).
-  So the two surfaces this clause otherwise treats as one operation
-  disagree about what a plain store does, in the opposite direction
-  from the defect above. That divergence is open under wolf-lang#385
-  and deliberately unresolved here: this clause states only what is
-  implemented.
+  **The index store reads the same way** — ruled 2026-09-24
+  (wolf-lang#438: "align … follows `push`"), closing the half of #385's
+  option 3 that said "`m[k] = v` and `xs[i] = v` read the same way" and
+  shipped only for `push`. A non-`Copy` value stored PLAINLY through a
+  container index is **COPIED into the container** by
+  `[mem.tier0.move.3]`'s rule — the stored element and the binding it
+  came from are independent, and the binding is live after the
+  statement. `xs[i] = take v` and `m[k] = take v` **MOVE** it instead:
+  `v` is dead after the statement and a later use is E1001 with the
+  ladder's `copy v` fix-it; `[gram.expr.assign]` admits `take` in
+  exactly this position and nowhere else in an assignment. **`Copy`
+  elements and `str` are unaffected** and stay free, as for `push`.
+  **Cost:** `[mem.tier0.move.3]`'s, paid once per plain store of a
+  value that reaches heap storage, and nothing for a scalar, a `str`,
+  or a struct of them; a program that wants the old zero-cost handover
+  spells `take` and says so. **What moves at the boundary:** a program
+  refused because it used `v` after a plain store (E1001 on the
+  wolfgang lanes, `trap(use-after-move)` on lupin — s175's table on
+  #438, trunk `2f8deb7f`, 0.2.15 and lupin 0.1.37) is accepted, and a
+  `read` parameter stored plainly (E1002 under #366) is accepted; no
+  printed byte of any program accepted before changes, and no corpus
+  row changes verdict (s182: none of the corpus's `fail(E1001)` or
+  `fail(E1002)` rows contains an index store). Until the three
+  machines land it (wave 47: s180 on the wolfgang lanes, is55 on
+  lupin) the ruled witnesses live under
+  `wolf/sprints/compiler/88-the-rulings-prose/witnesses/` in the
+  planning repo — `index_store_copies_list`, `index_store_copies_map`,
+  `index_store_take_list`, `index_store_take_map`,
+  `index_store_read_param` — each with its verdict per machine; they
+  become `corpus/memory/index_store_*.lu` with the implementation. The
+  `Copy` half holds on every machine today:
+  `corpus/memory/index_store_copy_elem.lu`.
 - `[mem.region.edge.raw]` Cross-region raw edges exist only in Tier 3 and
   carry §7 obligations.
 
