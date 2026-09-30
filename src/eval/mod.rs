@@ -59,7 +59,7 @@ use crate::diag::Span;
 use crate::sema::{Def, Program};
 use crate::trap::TrapKind;
 
-use place::{Access, AccessSet, Held, HeldWhy, MapKey, Path, Proj};
+use place::{Access, AccessSet, CallId, Held, HeldWhy, MapKey, Path, Proj, Reach};
 use prov::{AccessKind, Prov, Provenance, RawPtr, RetagKind, UbFinding, UbRow};
 use region::{Edge, Ref, RegionId, RegionState, Store, Strategy};
 use rules::Rule;
@@ -1536,7 +1536,21 @@ impl Machine {
     /// Checks a new access against everything currently held
     /// (`[mem.tier0.excl.1]`).
     fn check_access(&mut self, path: &Path, access: Access, span: Span) -> EResult<()> {
-        if let Some(held) = self.access.conflict(path, access) {
+        self.check_access_as(path, access, Reach::Access, span)
+    }
+
+    /// [`check_access`](Machine::check_access) for an access that reaches
+    /// as `reach` — a read lend into the call being evaluated, or a local
+    /// borrow — which a pending `mut` claim meets where an ordinary read
+    /// does not (ruling #17, [`Reach`]).
+    fn check_access_as(
+        &mut self,
+        path: &Path,
+        access: Access,
+        reach: Reach,
+        span: Span,
+    ) -> EResult<()> {
+        if let Some(held) = self.access.conflict_as(path, access, reach) {
             let (held_path, held_access, held_span, held_why) =
                 (held.path.to_string(), held.access, held.span, held.why);
             // D40's ruling: the `for` loop's read claim makes mutation during
@@ -3186,11 +3200,37 @@ impl Machine {
     /// trait-qualified call whose dispatch needs the arguments first): those
     /// positions keep ordinary resolution, honestly narrower than the clause,
     /// exactly as wide as what this machine can know without a type checker.
+    ///
+    /// Ruling #17 (the maintainer, 2026-09-30): "within one call, arguments
+    /// are evaluated left to right, and a `mut` argument's claim takes effect
+    /// when the call is entered, not when its argument is evaluated." Each
+    /// `mut` claim is held [`HeldWhy::Pending`] while the rest of the list
+    /// runs — a later argument may READ the place (`ensure(mut f, f.len + n)`,
+    /// `ring_drop(mut r, ring_len(r))`, `fail(mut fl, "{fl.store}")`) but a
+    /// write, a move, a second claim or a lend into this same call still
+    /// meets it — and the list's end is the call's entry, where every claim
+    /// takes effect for the callee's whole extent. A list that stops on a
+    /// signal enters too, so its claims stay held exactly as they always did.
     fn eval_args_for(
         &mut self,
         args: &[Arg],
         callee: Callee,
         param_rows: Option<&[Vec<String>]>,
+    ) -> EResult<Args> {
+        let call = self.access.open_call();
+        let evaluated = self.eval_arg_list(args, callee, param_rows, call);
+        self.access.enter_call(call);
+        evaluated
+    }
+
+    /// [`eval_args_for`](Machine::eval_args_for)'s list, left to right, with
+    /// its `mut` claims pending for `call`.
+    fn eval_arg_list(
+        &mut self,
+        args: &[Arg],
+        callee: Callee,
+        param_rows: Option<&[Vec<String>]>,
+        call: CallId,
     ) -> EResult<Args> {
         let mut values = Vec::with_capacity(args.len());
         let mut writebacks = Vec::new();
@@ -3221,7 +3261,7 @@ impl Machine {
                         path: path.clone(),
                         access: Access::Exclusive,
                         span: arg.span,
-                        why: HeldWhy::Call,
+                        why: HeldWhy::Pending(call),
                     });
                     held += 1;
                     // `[mem.prov.tag]`: `mut` parameter entry is a retag point,
@@ -3264,7 +3304,15 @@ impl Machine {
                     // (`[mem.tier0.mode.read]`).
                     let value: Value = match self.live_place(&arg.expr)? {
                         Some(path) => {
-                            self.check_access(&path, Access::Shared, arg.span)?;
+                            // A read lend INTO this call: held for its whole
+                            // extent, so this call's pending claims meet it
+                            // (ruling #17's "lend it into the same call").
+                            self.check_access_as(
+                                &path,
+                                Access::Shared,
+                                Reach::Lend(call),
+                                arg.span,
+                            )?;
                             let value = self.read_whole(&path, arg.span)?;
                             self.fire(Rule::ModeRead, arg.span, &format!("`read {path}`"));
                             held += 1;
@@ -5425,7 +5473,9 @@ impl Machine {
                 } else {
                     Access::Shared
                 };
-                self.check_access(&path, access, span)?;
+                // A borrow outlives the argument it is taken in, so a pending
+                // `mut` claim meets it as it would a lend (ruling #17).
+                self.check_access_as(&path, access, Reach::Borrow, span)?;
                 let value = self.read_path(&path, span)?;
                 self.fire(
                     if op == UnOp::BorrowMut {

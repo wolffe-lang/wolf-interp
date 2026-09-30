@@ -200,11 +200,22 @@ impl fmt::Display for Access {
     }
 }
 
+/// One argument list's identity while it is being evaluated — what tells a
+/// `mut` claim's own call apart from a nested one (ruling #17).
+pub type CallId = u64;
+
 /// Why an access is held open — the detail a conflict trap names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeldWhy {
     /// A call argument's extent (`mut`/`read` passing).
     Call,
+    /// A `mut` argument's claim while the rest of its call's arguments are
+    /// still being evaluated: the maintainer's ruling #17 (2026-09-30) — "a
+    /// `mut` argument's claim takes effect when the call is entered, not when
+    /// its argument is evaluated". Until [`AccessSet::enter_call`] it meets
+    /// a write, a move, a claim, a lend into its own call and a local borrow
+    /// ([`Reach`]), and no read; then it is [`HeldWhy::Call`].
+    Pending(CallId),
     /// A local borrow binding's extent.
     Borrow,
     /// D40: `for x in xs` holds a read claim on the container for the
@@ -225,10 +236,51 @@ pub struct Held {
     pub why: HeldWhy,
 }
 
+/// What a new access is, as far as a PENDING claim is concerned (ruling
+/// #17). A claim that has taken effect meets every conflicting access the way
+/// `[mem.tier0.excl.1]` says, whatever this is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    /// An ordinary access. A shared one is a read that ends before the call —
+    /// a `Copy` value, an operand, a header or member read, a whole read, a
+    /// nested call's own argument — and meets no pending claim; an exclusive
+    /// one (a write, a move, a claim) meets every pending claim.
+    Access,
+    /// A read lend INTO the call being evaluated: a bare place argument in
+    /// `read` mode is held for the whole call, so it meets that call's pending
+    /// claims (`bump(mut a, a)`, `both(mut xs[0], xs)`) — and only that call's.
+    Lend(CallId),
+    /// A local borrow (`&p`): held for its binding's extent, which a later
+    /// argument does not end, so it meets every pending claim.
+    Borrow,
+}
+
 /// The set of accesses currently held (`[mem.tier0.excl.1]`).
 #[derive(Debug, Clone, Default)]
 pub struct AccessSet {
     held: Vec<Held>,
+    /// The next [`CallId`] [`AccessSet::open_call`] hands out.
+    next_call: CallId,
+}
+
+/// Whether `held` meets a new `access` of `path` reaching as `reach`.
+fn meets(held: &Held, path: &Path, access: Access, reach: Reach) -> bool {
+    if !((held.access == Access::Exclusive || access == Access::Exclusive)
+        && held.path.conflicts_with(path))
+    {
+        return false;
+    }
+    match held.why {
+        HeldWhy::Pending(call) => {
+            access == Access::Exclusive
+                || match reach {
+                    Reach::Access => false,
+                    Reach::Lend(lent_to) => lent_to == call,
+                    Reach::Borrow => true,
+                }
+        }
+        HeldWhy::Call | HeldWhy::Borrow | HeldWhy::Iteration => true,
+    }
 }
 
 impl AccessSet {
@@ -253,12 +305,37 @@ impl AccessSet {
     /// them is exclusive — `[mem.tier0.excl.1]` bans "any other live access
     /// path" only for `mut`; several `read`s coexist by
     /// `[mem.tier0.mode.read]`.
+    ///
+    /// An ordinary access ([`Reach::Access`]): a pending `mut` claim meets it
+    /// only when it is exclusive (ruling #17).
     #[must_use]
     pub fn conflict(&self, path: &Path, access: Access) -> Option<&Held> {
-        self.held.iter().find(|held| {
-            (held.access == Access::Exclusive || access == Access::Exclusive)
-                && held.path.conflicts_with(path)
-        })
+        self.conflict_as(path, access, Reach::Access)
+    }
+
+    /// [`AccessSet::conflict`] for an access that reaches as `reach` — a lend
+    /// into a call being evaluated, or a local borrow.
+    #[must_use]
+    pub fn conflict_as(&self, path: &Path, access: Access, reach: Reach) -> Option<&Held> {
+        self.held
+            .iter()
+            .find(|held| meets(held, path, access, reach))
+    }
+
+    /// A fresh id for one argument list about to be evaluated.
+    pub fn open_call(&mut self) -> CallId {
+        self.next_call += 1;
+        self.next_call
+    }
+
+    /// Call entry: every claim `call`'s arguments hold pending takes effect,
+    /// and from here on meets every conflicting access (ruling #17).
+    pub fn enter_call(&mut self, call: CallId) {
+        for held in &mut self.held {
+            if held.why == HeldWhy::Pending(call) {
+                held.why = HeldWhy::Call;
+            }
+        }
     }
 
     /// Whether every held access that conflicts with `path` lies strictly
@@ -270,9 +347,7 @@ impl AccessSet {
     pub fn conflicts_only_below(&self, path: &Path, access: Access) -> bool {
         let mut any = false;
         for held in &self.held {
-            if (held.access == Access::Exclusive || access == Access::Exclusive)
-                && held.path.conflicts_with(path)
-            {
+            if meets(held, path, access, Reach::Access) {
                 if held.path.projections.len() <= path.projections.len() {
                     return false;
                 }
@@ -437,6 +512,60 @@ mod tests {
         reads.push(held(&["0"], Access::Shared));
         assert!(!reads.conflicts_only_below(&p("g", &[]), Access::Shared));
         assert!(reads.conflicts_only_below(&p("g", &[]), Access::Exclusive));
+    }
+
+    /// Ruling #17: a `mut` claim is pending until its call is entered. A read
+    /// does not meet it; a write, a move or a claim does; a read lend meets it
+    /// only when it is lent into the claim's own call; a local borrow always
+    /// does. After `enter_call` it meets every conflicting access.
+    #[test]
+    fn a_pending_claim_meets_writes_and_its_own_lends_and_no_read() {
+        let mut set = AccessSet::new();
+        let outer = set.open_call();
+        let inner = set.open_call();
+        assert_ne!(outer, inner, "every argument list has its own id");
+        set.push(Held {
+            path: p("xs", &["0"]),
+            access: Access::Exclusive,
+            span: Span::new(0, 1),
+            why: HeldWhy::Pending(outer),
+        });
+        let whole = p("xs", &[]);
+        let other = p("xs", &["1"]);
+        // A read of the claimed place, or of a prefix, runs.
+        assert!(set.conflict(&whole, Access::Shared).is_none());
+        assert!(set.conflict(&p("xs", &["0"]), Access::Shared).is_none());
+        assert!(!set.conflicts_only_below(&whole, Access::Shared));
+        // A write, a move or a second claim still meets it.
+        assert!(set.conflict(&whole, Access::Exclusive).is_some());
+        assert!(set.conflict(&p("xs", &["0"]), Access::Exclusive).is_some());
+        assert!(set.conflicts_only_below(&whole, Access::Exclusive));
+        // A lend into the SAME call meets it; into a nested call it does not.
+        assert!(
+            set.conflict_as(&whole, Access::Shared, Reach::Lend(outer))
+                .is_some()
+        );
+        assert!(
+            set.conflict_as(&whole, Access::Shared, Reach::Lend(inner))
+                .is_none()
+        );
+        // A local borrow meets it.
+        assert!(
+            set.conflict_as(&whole, Access::Shared, Reach::Borrow)
+                .is_some()
+        );
+        // Disjoint places stay disjoint in every phase.
+        assert!(set.conflict(&other, Access::Exclusive).is_none());
+        assert!(
+            set.conflict_as(&other, Access::Shared, Reach::Lend(outer))
+                .is_none()
+        );
+        // Another call's entry changes nothing; this call's makes it a claim.
+        set.enter_call(inner);
+        assert!(set.conflict(&whole, Access::Shared).is_none());
+        set.enter_call(outer);
+        assert!(set.conflict(&whole, Access::Shared).is_some());
+        assert!(set.conflicts_only_below(&whole, Access::Shared));
     }
 
     #[test]
