@@ -3289,6 +3289,11 @@ impl Machine {
                     values.push(value);
                 }
                 None => {
+                    // `[mem.tier0.excl.4]`: a closure written as the argument
+                    // lends every local it names into this call.
+                    if let ExprKind::Closure { params, body, .. } = &*arg.expr.kind {
+                        self.check_closure_lend(params, body, call, arg.span)?;
+                    }
                     // D52's argument position (`[gram.expr.tagident]`): the
                     // callee's declared parameter row is the expected row,
                     // asked FIRST — a local place would have shadowed inside
@@ -3378,6 +3383,42 @@ impl Machine {
             retags,
             protectors,
         })
+    }
+
+    /// `[mem.tier0.excl.4]`: "a later argument may not [...] lend it into the
+    /// same call (a non-`Copy` place passed `read`, [...] or a closure or `dyn`
+    /// value that borrows it)". A closure literal written as the argument
+    /// borrows every local its body names (the compiler's env borrows its
+    /// captures, `[abi.native.closure]`; this machine copies them, which is
+    /// why nothing here checked them through 0.1.42, wolffe-lang/wolf-interp#160),
+    /// so each such local that meets a claim THIS call holds pending traps
+    /// `exclusivity` at the closure — `grow2(mut xs, fn() { xs.len })`. A
+    /// closure created inside a nested call lends to that call, and one bound
+    /// before the claim is passed as a plain value: neither reaches here.
+    fn check_closure_lend(
+        &mut self,
+        params: &[ClosureParam],
+        body: &Expr,
+        call: CallId,
+        span: Span,
+    ) -> EResult<()> {
+        let mut bound: BTreeSet<String> = params.iter().map(|p| p.name.name.clone()).collect();
+        let mut used = BTreeSet::new();
+        crate::lint::free_names(body, &mut bound, &mut used, &BTreeSet::new());
+        for name in used {
+            if !self.local_exists(&name) {
+                continue;
+            }
+            let path = Path::local(self.frame(), name);
+            if self
+                .access
+                .conflict_as(&path, Access::Shared, Reach::Lend(call))
+                .is_some_and(|held| held.why == HeldWhy::Pending(call))
+            {
+                self.check_access_as(&path, Access::Shared, Reach::Lend(call), span)?;
+            }
+        }
+        Ok(())
     }
 
     /// Whether a bare place argument passed `read` is ruling #17's `Copy`
