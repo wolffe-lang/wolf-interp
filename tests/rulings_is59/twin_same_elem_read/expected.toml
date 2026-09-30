@@ -9,8 +9,11 @@ clause = "mem.model.place.elem"
 item = "2 (twin)"
 ruling = "wolffe-lang/wolf-lang#472"
 
+# is63 — ruling #17 and `[mem.tier0.excl.4]` (s186 `6dbb05b5`): a bare `Copy` place passed
+# `read` beside its own call's claim is a read, not a lend, so this runs with the value
+# from before the call. Until is63 the ruled cell was { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [195, 200] }
 [expected]
-lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [195, 200] }
+lupin   = { verdict = "exit(0)", stdout = "2\n" }
 
 [trunk]
 checked = { verdict = "fail(E1002)" }

@@ -223,8 +223,9 @@ fn member_len_before_claim() {
 // -- twins: still one place, still trunk's trap -------------------------
 //
 // Ruling #17 (is63): the three member reads below are later-argument reads
-// and run; `twin_same_elem_read` and `twin_whole_read_under_elem_claim` lend
-// the claimed place into the same call and keep the trap.
+// and run; so is `twin_same_elem_read`, a bare `Copy` element passed `read`
+// (`[mem.tier0.excl.4]`). `twin_whole_read_under_elem_claim` lends the whole
+// `List` into the same call and keeps the trap.
 
 /// The whole container claimed: `grow(mut xs, xs.len)`.
 /// Ruling #17 (is63): a later argument's read runs.
@@ -248,6 +249,7 @@ fn twin_field_mut_member_read() {
 }
 
 /// No member: `bump(mut xs[0], xs[0])`.
+/// Ruling #17 (is63): a bare `Copy` read, not a lend — it runs.
 #[test]
 fn twin_same_elem_read() {
     run("twin_same_elem_read");
