@@ -43,9 +43,18 @@ pin). Pin unchanged: `ec56a08f`.
   place passed `read` beside its claim (`both(mut xs[0], xs)`) is the lend
   it was and traps. D39's caller-side overlap half retires with it
   (`docs/approximation-contract.md` §6.12).
-- 40 witnesses in `tests/rulings_is63/` (24 reads that run with wolf
-  0.2.19's bytes where it runs them, 16 writes, moves, re-claims and lends
-  that keep trunk's trap); 15 earlier witnesses and tests move to the ruling
+- **A closure lent into the call that claims its capture traps**
+  (`a6d7791`, #160). `grow2(mut xs, fn() { xs.len })` ran through 0.1.42,
+  because this machine copies captures and checked nothing when a closure
+  was written. A closure literal written as a bare argument now records
+  each capture whose place that call holds pending, and holds it `mut`
+  while the body runs, so the body's read traps `exclusivity` there. The
+  compiler refuses the same program as E1002. A closure bound before the
+  claim, one created inside a nested call, and one that never reads the
+  claimed capture all run.
+- 58 witnesses in `tests/rulings_is63/` (27 reads that run with wolf
+  0.2.19's bytes where it runs them, 18 writes, moves, re-claims and lends
+  that trap, and s186's 13 corpus rows verbatim at their `check:` lines); 15 earlier witnesses and tests move to the ruling
   by name (`8cce125`, `a7d7504`, `762bb6a`). The corpus census moves one
   row, `memory/mut_read_overlap.lu`, from dynamic counterpart to
   static-conservatism (46 → 45, 55 → 56) until the re-pin carries s186's
