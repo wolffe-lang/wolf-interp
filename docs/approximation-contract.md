@@ -536,9 +536,13 @@ that kind, and D39 names no new one. The trap's second span is the
 parameter's declaration, and the message teaches `mut` plus the X1
 call-site spelling. A body-scope local shadowing the parameter's name is an
 ordinary local and writes freely. wolfgang's static half (a new
-memory-family code, s72) is the same rule at the other rung, and the
-caller-side overlap half (`f(mut a, a.x)`) was already trapped here and
-stays. The D39 spec text lands with s72; this machine implements it ahead
+memory-family code, s72) is the same rule at the other rung. The
+caller-side overlap half (`f(mut a, a.x)`) trapped here from before 0.1.8
+until is63: ruling #17 (2026-09-30, `[mem.tier0.excl.4]`) makes a `mut`
+argument's claim take effect at call entry, so a later argument's read of
+the claimed place — a bare `Copy` place passed `read` included — runs with
+the value from before the call, while a write, a move, a second claim or a
+non-`Copy` lend into the same call still traps `exclusivity`. The D39 spec text lands with s72; this machine implements it ahead
 of the pin on the ruling's authority, which is the 0.1.8 pass's noted
 drift (with §6.8's D40).
 
