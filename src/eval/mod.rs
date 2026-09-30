@@ -1590,7 +1590,9 @@ impl Machine {
     /// `xs[0]` as a prefix and trapped. The member's own path — the parent
     /// with a `Field` step — is what the read touches, and `Proj::may_equal`
     /// (`place.rs`) already keeps a field step apart from an index or key
-    /// step.
+    /// step. The header METHODS (`count()`, `is_empty()`, `len()`) ask it the
+    /// same question with their own name as the member (is60,
+    /// wolffe-lang/wolf-lang#474).
     ///
     /// `Some(value)` when a claim is held somewhere under `parent`'s binding
     /// and none of them conflicts with the member: the parent's value, read
@@ -1622,6 +1624,28 @@ impl Machine {
             Some((slot, _)) => Ok(Some(slot.value.clone())),
             None => unsupported(format!("`{parent}` does not denote a place at run time")),
         }
+    }
+
+    /// Whether `place.method(args)`, spelled bare, reads only the receiver's
+    /// header: `len`, `count` or `is_empty`, with no argument, on a place
+    /// holding a `List` or a `Map` (the maintainer's ruling of 2026-09-30 on
+    /// wolffe-lang/wolf-lang#474 and wolffe-lang/wolf-interp#149). The NAME
+    /// alone is not enough: an impl method called `count` takes the whole
+    /// `self`, and a `str`'s `count` takes a needle.
+    fn header_read(
+        &mut self,
+        place: &Path,
+        method: &str,
+        mode: Option<ParamMode>,
+        args: &[Arg],
+    ) -> bool {
+        mode.is_none()
+            && args.is_empty()
+            && matches!(method, "len" | "count" | "is_empty")
+            && matches!(
+                self.slot_mut(place).map(|slot| &slot.value),
+                Some(Value::List(..) | Value::Map(_))
+            )
     }
 
     /// Everything a read of `path` *does* — the exclusivity check, the
@@ -7536,6 +7560,18 @@ impl Machine {
                 ),
                 declared.map(|at| (at, "the receiver mode is declared here".to_owned())),
             );
+        }
+        // `len`, `count` and `is_empty` on a `List` or `Map` read only its
+        // header (the maintainer's ruling on wolffe-lang/wolf-lang#474,
+        // 2026-09-30; `[mem.model.place.elem]` 1(c)), so beside an element
+        // claim the call is the member read `xs.len` already is: its own
+        // path, not the container's. Only under a claim the header does not
+        // meet — anywhere else the call takes the route below unchanged.
+        if let Receiver::Place(path) = receiver
+            && self.header_read(path, method, mode, args)
+            && let Some(mut value) = self.read_header(path, method, span)?
+        {
+            return builtin::method(self, &mut value, method, Vec::new(), span);
         }
         // A receiver whose value is a builtin container is **lent** rather than
         // copied: the read is charged here exactly as it always was, but the
