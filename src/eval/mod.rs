@@ -3390,9 +3390,7 @@ impl Machine {
         self.access
             .conflict_as(path, Access::Shared, Reach::Lend(call))
             .is_some_and(|held| held.why == HeldWhy::Pending(call))
-            && self
-                .slot_mut(path)
-                .is_some_and(|slot| is_copy(&slot.value))
+            && self.slot_mut(path).is_some_and(|slot| is_copy(&slot.value))
     }
 
     /// One argument crossing a call boundary.

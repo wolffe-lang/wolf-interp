@@ -307,9 +307,6 @@ fn stay_lend_before_claim() {
     run("stay_lend_before_claim");
 }
 
-
-
-
 /// still a trap: the whole container lent into the same call as its claimed element, `both(mut xs[0], xs)`.
 #[test]
 fn stay_lend_whole_elem_claim() {
