@@ -4993,6 +4993,27 @@ the head build presented as the next release (is58's
 under `PRE_MEMBER_LUPIN`, `PRE_MAP_MOVE_LUPIN`, `PRE_MIRROR_LUPIN` and
 `LUPIN_145` satisfied by the ruled arm. Falsified by any red.
 
+**Addendum, before the first edit of part C** (H, E and R had landed; no C
+edit existed): the neighbours `c13`/`c14` are the same duplication as #151's
+(A), and a slice base meets (B) too. Five probes added:
+
+| probe | trunk | head (C) | [0.2.18 checked] |
+| --- | --- | --- | --- |
+| `c13` `let n = g[f()]`, `f` → 5 | `f` ×2, `trap(bounds)` | `f` once, the same trap (clause, span) | [`f` once] |
+| `c14` `let s = xs[a()..2]` | `a` ×2 | `a` once | [once] |
+| `c18` `let n = xs[a()..2].len` | `a` ×3 | `a` once | [`a` ×2 — **the checked machine's own double evaluation**; `--native` and `--release` once] |
+| `c19` `"{xs[a()..2].len}"` | `a` ×2 | `a` once | [`a` ×3 checked; once native/release] |
+| `c20` `let v = m[k()]`, `k` absent | `k` ×2 | `k` once | [once] |
+| `c21` `"{g[f()].len}"`, `f` → 5 | `f` ×2, `trap(bounds)` | `f` once, the same trap | [once] |
+| `c22` `let n = xs[f()]` under `#![index(1)]`, `f` → 4 | `f` ×2, `trap(bounds)` | `f` once, the same trap and the writer's index in its line | [once] |
+
+So C widens to the whole read-side family: a place whose operands ran and
+which has no slot (a non-stored member, an index out of range, an absent
+key) is read off the evaluated path; a slice spelled in brackets is refused
+as a place before its endpoints run. `c13`/`c14` leave the "unchanged" row
+of the table above. The wolf 0.2.18 checked machine's own duplication on
+`c18`/`c19` is the compiler's, to be filed on wolf-lang.
+
 #### §3a — the prediction, scored
 
 *(appended when measured)*
