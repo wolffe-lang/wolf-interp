@@ -1,0 +1,12 @@
+fn f(mut m: Map[str, List[int]], k: str) {
+    var v = m.get(k) else List[int]()
+    (mut v).push(9)
+}
+
+fn main() -> !int {
+    var m = Map[str, List[int]]()
+    m["a"] = [1]
+    f(mut m, "a")
+    print("{m.len}")
+    0
+}

@@ -1,0 +1,13 @@
+struct S { n: int, tags: List[int] }
+
+fn f(mut s: S) {
+    let m = s.n
+    print("{m}")
+}
+
+fn main() -> !int {
+    var s = S { n: 1, tags: [1] }
+    f(mut s)
+    print("{s.n}")
+    0
+}

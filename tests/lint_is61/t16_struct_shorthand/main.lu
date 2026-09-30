@@ -1,0 +1,13 @@
+struct W { xs: List[int] }
+
+fn f(mut xs: List[int]) {
+    let w = W { xs }
+    print("{w.xs.len}")
+}
+
+fn main() -> !int {
+    var xs = [1]
+    f(mut xs)
+    print("{xs.len}")
+    0
+}

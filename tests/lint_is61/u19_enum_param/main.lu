@@ -1,0 +1,13 @@
+enum E { A, B }
+
+fn f(mut e: E) {
+    let d = e
+    print("x")
+}
+
+fn main() -> !int {
+    var e = E.A
+    f(mut e)
+    print("y")
+    0
+}

@@ -1,0 +1,13 @@
+struct W { tags: List[int] }
+
+fn f(mut w: W, mut xs: List[int]) {
+    w.tags = xs
+}
+
+fn main() -> !int {
+    var w = W { tags: [1] }
+    var xs = [2, 3]
+    f(mut w, mut xs)
+    print("{w.tags.len} {xs.len}")
+    0
+}

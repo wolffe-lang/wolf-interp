@@ -1,0 +1,13 @@
+fn f(mut xs: List[int], c: bool) {
+    if c {
+        var t = move xs
+        (mut t).push(9)
+    }
+}
+
+fn main() -> !int {
+    var xs = [1]
+    f(mut xs, false)
+    print("{xs.len}")
+    0
+}

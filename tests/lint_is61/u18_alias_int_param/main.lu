@@ -1,0 +1,13 @@
+type Count = int
+
+fn f(mut n: Count) {
+    let m = n
+    print("{m}")
+}
+
+fn main() -> !int {
+    var n = 1
+    f(mut n)
+    print("{n}")
+    0
+}

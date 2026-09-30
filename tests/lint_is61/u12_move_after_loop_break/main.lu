@@ -1,0 +1,14 @@
+fn f(mut xs: List[int]) {
+    loop {
+        var t = move xs
+        (mut t).push(9)
+        break
+    }
+}
+
+fn main() -> !int {
+    var xs = [1]
+    f(mut xs)
+    print("{xs.len}")
+    0
+}

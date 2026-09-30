@@ -1,0 +1,13 @@
+fn f(mut g: List[List[int]], mut h: List[List[int]]) {
+    g[0] = take h[0]
+}
+
+fn main() -> !int {
+    var g = List[List[int]]()
+    (mut g).push([1])
+    var h = List[List[int]]()
+    (mut h).push([2, 3])
+    f(mut g, mut h)
+    print("{g[0].len}")
+    0
+}

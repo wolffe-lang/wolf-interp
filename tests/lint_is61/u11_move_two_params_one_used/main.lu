@@ -1,0 +1,15 @@
+fn f(mut xs: List[int], mut ys: List[int]) {
+    var a = move xs
+    var b = move ys
+    (mut a).push(1)
+    (mut b).push(1)
+    print("{xs.len}")
+}
+
+fn main() -> !int {
+    var xs = [1]
+    var ys = [1]
+    f(mut xs, mut ys)
+    print("{xs.len}")
+    0
+}

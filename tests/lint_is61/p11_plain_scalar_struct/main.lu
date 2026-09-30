@@ -1,0 +1,13 @@
+struct P { x: int, y: int }
+
+fn f(mut p: P) {
+    let q = p
+    print("{q.x}")
+}
+
+fn main() -> !int {
+    var p = P { x: 1, y: 2 }
+    f(mut p)
+    print("{p.x}")
+    0
+}

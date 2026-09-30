@@ -1,0 +1,11 @@
+fn f(mut s: str) {
+    let b = s[0]
+    print("{b}")
+}
+
+fn main() -> !int {
+    var s = "ab"
+    f(mut s)
+    print("{s}")
+    0
+}

@@ -1,0 +1,14 @@
+struct S { tags: List[int] }
+
+fn f(mut m: Map[str, S], k: str) {
+    var v = m[k] else S { tags: [] }
+    (mut v.tags).push(9)
+}
+
+fn main() -> !int {
+    var m = Map[str, S]()
+    m["a"] = S { tags: [1] }
+    f(mut m, "a")
+    print("{m.len}")
+    0
+}

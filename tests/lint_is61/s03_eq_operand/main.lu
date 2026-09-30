@@ -1,0 +1,9 @@
+fn f(mut xs: List[int]) -> bool {
+    xs == [1]
+}
+
+fn main() -> !int {
+    var xs = [1]
+    print("{f(mut xs)}")
+    0
+}

@@ -1,0 +1,14 @@
+fn f(mut xs: List[int], c: bool) {
+    let t = match c {
+        true => xs,
+        false => [0],
+    }
+    print("{t.len}")
+}
+
+fn main() -> !int {
+    var xs = [1]
+    f(mut xs, true)
+    print("{xs.len}")
+    0
+}

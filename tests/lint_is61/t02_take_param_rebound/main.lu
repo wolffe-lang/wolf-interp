@@ -1,0 +1,11 @@
+fn f(take xs: List[int]) -> List[int] {
+    let xs = [2]
+    xs
+}
+
+fn main() -> !int {
+    var xs = [1]
+    let t = f(take xs)
+    print("{t.len}")
+    0
+}

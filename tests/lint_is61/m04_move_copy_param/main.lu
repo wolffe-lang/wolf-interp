@@ -1,0 +1,11 @@
+fn f(mut n: int) {
+    let m = move n
+    print("{m}")
+}
+
+fn main() -> !int {
+    var n = 1
+    f(mut n)
+    print("{n}")
+    0
+}

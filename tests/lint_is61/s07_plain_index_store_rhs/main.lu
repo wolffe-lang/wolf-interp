@@ -1,0 +1,12 @@
+fn f(mut g: List[List[int]], mut xs: List[int]) {
+    g[0] = xs
+}
+
+fn main() -> !int {
+    var g = List[List[int]]()
+    (mut g).push([1])
+    var xs = [2, 3]
+    f(mut g, mut xs)
+    print("{g[0].len} {xs.len}")
+    0
+}

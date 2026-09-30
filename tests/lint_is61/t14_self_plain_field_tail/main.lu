@@ -1,0 +1,14 @@
+struct S { tags: List[int] }
+
+impl S {
+    fn drain(mut self) -> List[int] {
+        self.tags
+    }
+}
+
+fn main() -> !int {
+    var s = S { tags: [1] }
+    let t = (mut s).drain()
+    print("{t.len}")
+    0
+}

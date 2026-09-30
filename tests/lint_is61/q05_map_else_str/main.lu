@@ -1,0 +1,12 @@
+fn f(mut m: Map[str, str], k: str) {
+    let v = m[k] else ""
+    print("{v}")
+}
+
+fn main() -> !int {
+    var m = Map[str, str]()
+    m["a"] = "x"
+    f(mut m, "a")
+    print("{m.len}")
+    0
+}

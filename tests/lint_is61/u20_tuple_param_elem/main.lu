@@ -1,0 +1,11 @@
+fn f(mut t: (List[int], int)) {
+    var a = t.0
+    (mut a).push(9)
+}
+
+fn main() -> !int {
+    var t = ([1], 2)
+    f(mut t)
+    print("{t.1}")
+    0
+}

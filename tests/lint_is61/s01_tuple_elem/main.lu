@@ -1,0 +1,11 @@
+fn f(mut xs: List[int]) {
+    let t = (xs, 1)
+    print("{t.1}")
+}
+
+fn main() -> !int {
+    var xs = [1]
+    f(mut xs)
+    print("{xs.len}")
+    0
+}

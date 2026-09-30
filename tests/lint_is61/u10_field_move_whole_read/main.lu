@@ -1,0 +1,16 @@
+struct S { tags: List[int], names: List[int] }
+
+fn g(s: S) -> int { s.names.len }
+
+fn f(mut s: S) {
+    var t = move s.tags
+    (mut t).push(9)
+    print("{g(s)}")
+}
+
+fn main() -> !int {
+    var s = S { tags: [1], names: [2] }
+    f(mut s)
+    print("{s.names.len}")
+    0
+}

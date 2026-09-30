@@ -1,0 +1,11 @@
+fn f(mut xs: List[int]) {
+    let n = xs.count()
+    print("{n}")
+}
+
+fn main() -> !int {
+    var xs = [1]
+    f(mut xs)
+    print("{xs.len}")
+    0
+}

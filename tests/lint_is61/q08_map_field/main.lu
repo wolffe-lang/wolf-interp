@@ -1,0 +1,14 @@
+struct H { m: Map[str, List[int]] }
+
+fn f(mut h: H, k: str) {
+    var v = h.m[k] else List[int]()
+    (mut v).push(9)
+}
+
+fn main() -> !int {
+    var h = H { m: Map[str, List[int]]() }
+    h.m["a"] = [1]
+    f(mut h, "a")
+    print("{h.m.len}")
+    0
+}
