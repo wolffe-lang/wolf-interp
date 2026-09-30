@@ -5294,7 +5294,7 @@ fn a_slice_of_a_list_holding_a_moved_element_traps_before_its_endpoints() {
             var xs = [[1], [2], [3]]
             let a = move xs[2]
             print("{a.len}")
-            print("{xs[0..e()].len}")
+            print("{xs[0..e()]}")
             0
         }"#,
         "1\n",
