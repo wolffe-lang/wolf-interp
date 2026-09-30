@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+**Header reads, whole reads, element reads and one evaluation** (is60; the
+maintainer's ruling of 2026-09-30 on wolffe-lang/wolf-lang#474 and #149:
+"`len`, `count`, `is_empty` are header reads … `push`, `get`, `pop`, slices
+and an impl method's `self` read the whole container"). Pin unchanged:
+`93a5fe50`.
+
+- **`count()`, `is_empty()` and `len()` under an element claim run**
+  (wolffe-lang/wolf-lang#474's lupin half, `4708106`): `bump(mut xs[0],
+  xs.count())` trapped `exclusivity`; a bare header method on a `List` or
+  `Map` place now asks is59's header route, as `xs.len` does. An impl method
+  named `count`, a whole-container claim, and the element's own header still
+  trap with trunk's record.
+- **An element read inside an expression checks the element** (#152,
+  `e675c2f`; `[mem.model.place.elem]` 1(a)): `bump(mut xs[1], xs[0] + 1)`
+  trapped because the index-read lend checked `xs` whole before the index was
+  known. While every claim that meets the container lies below it, a bracket
+  chain (`xs[i]`, `g[i][j]`, `b.xs[i]`) evaluates its operands in trunk's
+  order and checks the element's full path; the bare argument already did.
+  When the element itself is claimed the trap is trunk's (container path,
+  clause, span), now after the index operands ran, as the bare form's is.
+- **A method or slice on a container holding a moved part traps**
+  (#149's lupin half, `e78c40a`): `push`, `get`, `pop`, `last`, `clear`,
+  `Map.remove`, an impl or home-module method's `self` in any mode, and a
+  slice beside the moved element now trap `use-after-move` at the receiver
+  (before any argument or endpoint runs); `len`, `count()` and `is_empty()`
+  keep running on every container above the moved part. is56's and is58's
+  tests that pushed, `get`-ed and sliced beside a moved element follow the
+  ruling (`80434ba`, `ea7e403`).
+- **A read of an evaluated place runs its operands once** (#151,
+  `4a8c506`; `[mem.model.order]`): `let n = g[f()].len` ran `f` three times
+  (a `live_place` that found no slot for the member, then the member route
+  evaluating its base again); so did an argument, `copy`, a `match`
+  scrutinee, a nested or grouped base, and — the same family — an index out
+  of range (`let n = g[f()]`, twice before the bounds trap), an absent `Map`
+  key, and a slice (`xs[a()..2]`, whose endpoints `place_of` ran before
+  refusing a slice as a place). Each now runs once, with the same record.
+
+Witnesses: `tests/rulings_is60/` (82; s185's nine rows from wolf-lang
+`ecaf655a` among them), and path tests in `src/eval/tests.rs` and
+`src/eval/place.rs`.
+
 **A member read under an element claim reads the member** (is59,
 wolffe-lang/wolf-lang#472, ruled A; `[mem.model.place.elem]` 1(c) at
 wolf-lang `d3bd49cc`: "an element is never the container's header").
