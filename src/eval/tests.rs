@@ -4431,8 +4431,12 @@ fn a_for_over_a_map_traps_when_it_reaches_the_moved_value() {
 
 #[test]
 fn what_reads_no_moved_element_is_untouched() {
-    // Another element, another key, the header, a push, a store that
-    // revives the moved element, and `get` of a live index: all run.
+    // Another element, another key, the header — `len`, and the header
+    // METHODS `is_empty()` and `count()` (the maintainer's ruling of
+    // 2026-09-30, wolffe-lang/wolf-interp#149) — and a store that revives the
+    // moved element, after which `push` and `get` read a whole container
+    // again. Before the ruling this test pushed and `get`-ed beside the moved
+    // element; those are whole reads and trap (is60's tests below).
     assert_eq!(
         stdout(
             r#"fn main() -> !int {
@@ -4440,22 +4444,21 @@ fn what_reads_no_moved_element_is_untouched() {
                 (mut xs).push([1])
                 (mut xs).push([2, 3])
                 let a = move xs[0]
-                (mut xs).push([4])
-                print("{a.len} {xs[1].len} {xs.len} {xs.is_empty()}")
-                let b = xs.get(2) else [9, 9]
-                print("{b.len}")
+                print("{a.len} {xs[1].len} {xs.len} {xs.is_empty()} {xs.count()}")
                 xs[0] = [7, 7, 7]
-                print("{xs[0].len}")
+                (mut xs).push([4])
+                let b = xs.get(2) else [9, 9]
+                print("{b.len} {xs[0].len}")
                 var m = Map[str, int]()
                 m["a"] = 1
                 m["b"] = 2
                 let c = move m["a"]
                 let d = m["b"] else 9
-                print("{c} {d} {m.len}")
+                print("{c} {d} {m.len} {m.count()}")
                 0
             }"#
         ),
-        "1 2 3 false\n1\n3\n1 2 2\n"
+        "1 2 2 false 2\n1 3\n1 2 2 2\n"
     );
 }
 
@@ -5233,5 +5236,123 @@ fn a_map_value_of_a_mut_parameter_read_out_is_moved_in_the_caller() {
             0
         }"#,
         "",
+    );
+}
+
+// -- is60: the header reads and the whole reads (the maintainer's ruling of
+// 2026-09-30, wolffe-lang/wolf-lang#474 and wolffe-lang/wolf-interp#149) ----
+//
+// `len`, `count` and `is_empty` read a container's header; every other method,
+// a slice and an impl method's `self` read the whole container, so on one
+// holding a moved part they trap `use-after-move` at the receiver, before any
+// argument runs. Red at trunk `c68c4d3`, which ran each of these.
+
+#[test]
+fn a_push_onto_a_list_holding_a_moved_element_traps_before_its_argument() {
+    use_after_move_after(
+        r#"fn f() -> List[int] {
+            print("f")
+            [3]
+        }
+
+        fn main() -> !int {
+            var xs = [[1], [2]]
+            let a = move xs[0]
+            print("{a.len}")
+            (mut xs).push(f())
+            0
+        }"#,
+        "1\n",
+    );
+}
+
+#[test]
+fn a_get_of_a_live_index_beside_a_moved_element_traps() {
+    use_after_move_after(
+        r#"fn main() -> !int {
+            var xs = [[1], [2, 3]]
+            let a = move xs[0]
+            let b = xs.get(1) else [9]
+            print("{a.len} {b.len}")
+            0
+        }"#,
+        "",
+    );
+}
+
+#[test]
+fn a_slice_of_a_list_holding_a_moved_element_traps_before_its_endpoints() {
+    use_after_move_after(
+        r#"fn e() -> int {
+            print("e")
+            2
+        }
+
+        fn main() -> !int {
+            var xs = [[1], [2], [3]]
+            let a = move xs[2]
+            let s = xs[0..e()]
+            print("{a.len} {s.len}")
+            0
+        }"#,
+        "",
+    );
+}
+
+#[test]
+fn a_home_module_call_on_a_struct_holding_a_moved_field_traps() {
+    use_after_move_after(
+        r#"struct P { x: List[int], y: int }
+
+        fn peek(p: P) -> int {
+            p.y
+        }
+
+        fn main() -> !int {
+            var p = P { x: [1], y: 2 }
+            let a = move p.x
+            print("{a.len}")
+            print("{p.peek()}")
+            0
+        }"#,
+        "1\n",
+    );
+}
+
+#[test]
+fn the_header_methods_run_on_every_container_above_a_moved_element() {
+    assert_eq!(
+        stdout(
+            r#"fn main() -> !int {
+                var g = [[[1], [2]], [[3]]]
+                let a = move g[0][1]
+                var m = Map[str, List[int]]()
+                m["a"] = [1]
+                m["b"] = [2]
+                let b = move m["b"]
+                print("{a.len} {g.count()} {g.is_empty()} {g[0].count()} {g[0].len} {g[1].count()}")
+                print("{b.len} {m.count()} {m.is_empty()} {m.len}")
+                0
+            }"#
+        ),
+        "1 2 false 2 2 1\n1 2 false 2\n"
+    );
+}
+
+#[test]
+fn a_method_on_a_sibling_of_the_moved_element_runs() {
+    assert_eq!(
+        stdout(
+            r#"fn main() -> !int {
+                var g = [[[1], [2]], [[3]]]
+                let a = move g[0][0]
+                (mut g[1]).push([4])
+                let r = g[1].get(1) else [9, 9]
+                let s = g[1][0..1]
+                print("{a.len} {g[1].len} {r.len} {s.len}")
+                0
+            }"#
+        ),
+        "1 2 1 1\n"
     );
 }
