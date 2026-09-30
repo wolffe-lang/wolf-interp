@@ -4849,6 +4849,171 @@ lupin 0.1.41 `18848901…`, digests = release pages):
 - [ ] CI green at the head sha
 - [ ] kasumi build dirs pruned once evidence is written; worktree removed
 
+### Header reads — is60, wolf-lang#474's lupin half, wolf-interp#149, #151, #152 (ruled 2026-09-30)
+
+Wave 51's row: the maintainer's ruling on wolffe-lang/wolf-lang#474 and
+wolffe-lang/wolf-interp#149 (2026-09-30), quoted from #149: "`len`,
+`count`, `is_empty` are header reads — allowed on a container with a moved
+element, so the compiler widens for those (s185); `push`, `get`, `pop`,
+slices and an impl method's `self` read the whole container — the
+compiler's E1001 stands and lupin traps (is60)." And from wolf-lang#474:
+"`len`, `count` and `is_empty` are header reads under `[mem.model.place.elem]`
+1(c) on every machine; every other method reads the whole container. The
+compiler's current acceptance of `count`/`is_empty` under an element claim
+stands; lupin moves (is60)." Four parts, one commit chain each, each red at
+trunk first: (H) `count()`/`is_empty()` under an element claim are header
+reads; (E) wolf-interp#152, an element read inside an expression checks
+the element; (R) #149's lupin half, a whole-read method or slice on a
+container holding a moved part traps while the header methods run; (C)
+wolf-interp#151, `g[f()].len` evaluates `f()` once. The contract is is59's,
+in five sections; §1–§3 are committed before the first edit under `src/`
+or `tests/`, the rest is appended as it lands. Measurements on kasumi
+(linux x86-64) under `~/lanes/is60/`: the published wolf 0.2.18
+(`da027bf9…6bd4`) and lupin 0.1.41 (`18848901…e8d4`), archive digests
+equal to the release pages', and a release build of trunk `c68c4d3`
+(`lupin-trunk-c68c4d3`, `lupin 0.1.41+dev.c68c4d3`, `91839eb9…`). Probes:
+82 one-directory programs under `~/lanes/is60/probes/` (`h*` header methods
+under a claim, `e*` element reads under a claim, `r*` receivers and slices
+on a partly-moved container, `c*` operand counts, `*t*` twins that keep
+trunk's answer, and `s_*` — s185's nine corpus witnesses copied verbatim
+from wolf-lang `origin/s185` `ecaf655a`, Pool's left out since lupin
+declines `Pool`); runner `~/lanes/is60/scripts/run-probes.sh`
+(`lupin conform-run main.lu --json`, and `wolf conform-run main.lu
+--checked --json` beside it), summarised by `~/lanes/is60/scripts/summ.py`.
+
+#### §1 — forbidden, absolutely
+
+No `rm` outside `~/lanes/is60/` (kasumi) and `/private/tmp/is60`; no
+deletion in any tree this lane did not create; no `git add -A`; no edit to
+another lane's file (s185 owns wolf-lang; no workflow edit here); no
+`~/.claude`; no build or test on nomad-1 (kasumi only, `CARGO_BUILD_JOBS=4`);
+no tag; no pin move (pin stays `93a5fe50`); no merge, no rebase-merge; no
+`2>/dev/null` on a checkout; kill only my own pids, never a pattern or a
+group; no claim of "seen red" without the log it is in; no trailer on any
+commit.
+
+#### §2 — inputs, re-derived 2026-09-30
+
+| input as written | at origin / measured | drift |
+| --- | --- | --- |
+| wolf-interp trunk `c68c4d3` | `origin/trunk` = `c68c4d3` "docs: re-point is58's shas after the rebase onto is57 and is59"; pin `93a5fe50` (wolf-lang v0.2.16); branch `is60` cut there | none |
+| wolf 0.2.18, lupin 0.1.41 from the published archives | archives re-downloaded into `~/lanes/is60/archives/`: `da027bf9…6bd4` and `18848901…e8d4`, equal to the release assets' digests; `wolf 0.2.18 (wolfgang, pin ec56a08) paired with lupin 0.1.41` | none |
+| the archive and trunk agree | `probes-archive-0.1.41.log` against `probes-trunk-c68c4d3.log`, lupin column: equal on 80 of 82; `c16` (a member read under a claim) runs on trunk and traps on 0.1.41 — is59; `e03` (`(m["b"] else 0) + 1` under `mut m["a"]`) runs on trunk and traps on 0.1.41 — is58's #144 read-out took the `else` operand off the index-read lend | trunk is 0.1.41 plus is58 and is59, as expected; `e03` needs no change here |
+| H: `count`/`is_empty` under an element claim trap on lupin | `h01` `bump(mut xs[0], xs.count())`, `h02` `xs.is_empty()`, `h07` `g.count()` under `mut g[1][2]`, `h08` `b.xs.count()`, `h09` in an operand, `h10` under a borrow, `h11` under two claims, `s_elem_header_methods_under_claim`: trunk `trap(exclusivity)` `mem.model.path.disjoint`; wolf 0.2.18 runs `h01` `4`, `h02` `2`, `h07` `7`, `h08` `7`, `h09` `34`, s185's row `4 3` | none. Cause: `eval_method` reads a `Receiver::Place` through `read_claim(path)` (`src/eval/mod.rs:7557`), which checks the whole container against the held element; is59's `read_header` (`mod.rs:1603`) is only asked by the member routes |
+| H: `xs.len()` | lupin's builtin surface answers `len` as a method too (`builtin.rs:1389`); wolf 0.2.18 refuses it (`E0301: len is not a builtin method of List[int]`, `h03`, `r08`) | the header set is `len`/`count`/`is_empty` on a `List` or `Map` receiver; `len()` rides along on lupin's surface, no compiler row |
+| E: `xs[0] + 1` under `mut xs[1]` traps (#152) | `e01` trunk `trap(exclusivity)` "`xs` is accessed as `read` while `xs[1]` is held as `mut`"; wolf `4`. Also traps on trunk: `e02` two siblings, `e04` a sibling row `g[0][1]` under `mut g[1][0]`, `e05` the same row `g[0][1]` under `mut g[0][0]`, `e06` run-time indices, `e07` an interpolation hole, `e08` a field's list, `e09` under a borrow, `e10` an index operand with an effect, `e11` beside two claims, `e13` under `#![index(1)]`; wolf runs every one it accepts (`15`, `6`, `4`, `5`, `4`, `4`, `f 4`, `5`) | none. Cause as #152 says: the index-read lend in `eval_bracket` (`mod.rs:7936-7952`) calls `read_claim(&place)` on the CONTAINER before the index is known; a nested `g[0][1]` reaches it through `eval_projected(g[0])`, so the check is made on `g[0]` at best, never on `g[0][1]` |
+| E: the bare form | `e12` `bump(mut xs[1], xs[0])` runs on trunk (`3`) — `live_place` checks `xs[0]` itself; wolf 0.2.18 `E1002` | the bare form is already element-granular; the expression form moves to it |
+| R: #149's seven rows | trunk runs `r01` push `1 3`, `r02` get `1 2`, `r03` is_empty `1 false`, `r04` pop `1 2 1`, `r05` slice `1 2`, `r06` impl `self` `1 2`; wolf 0.2.18 `E1001` on each (`r07`'s `&xs` is `unsupported` on wolf and is not in the ruling: not probed again) | none |
+| R: the rest of the method surface | trunk runs `r09` `last`, `r10` `clear`, `r12` `Map.remove`, `r13` `mut self`, `r14` `(mut g[0]).push` with `g[0][0]` moved, `r16` `g.get(1)` with `g[0][0]` moved, `r18` `b.xs.get(0)`, `r22` a slice of the row `g[0][1..3]`, `r23` an impl method on `ps[0]` whose field moved; wolf refuses each it can check (`E1001`; `Map` methods are `unsupported` on the checked machine) and runs `r17` (`(mut g[1]).push`, `g[1].get(0)` with `g[0][0]` moved: `1 2 1`) | "every other method" is the rule: any method but the three header reads on a `List`/`Map`, and any impl or home-module method, reads the receiver whole. An impl method NAMED `count` is not a header read (s185's `elem_whole_read_named_count_after_move.lu`) |
+| R: header reads after a move | `r03`, `r07`, `r11`, `r15`, s185's `elem_header_methods_after_move{,_map}.lu`: trunk runs them; wolf 0.2.18 `E1001` (s185 widens the compiler) | none — they keep running here |
+| R: the mechanism | a method receiver is a projection base (`ReadAs::Projected`, is58, `mod.rs:217`): `eval_method` reads it with `read_claim`/`read_path` and never walks it for a moved part; a slice's target comes from `eval_projected(base)` (`mod.rs:7962`) and `builtin::slice` checks only the sliced range (#141) | none |
+| C: `g[f()].len` runs `f()` three times (#151) | trunk: `f` ×3 in a `let` (`c01`), an argument (`c04`), `copy` (`c08`), a `match` scrutinee (`c09`), a grouped base (`c10`), a field's list (`c07`), a `str` element (`c15`), a `Map` value (`c05`, `k` ×3); ×2 in an interpolation hole (`c02`) and an operand (`c03`); `f h` ×3 on a nested base (`c06`); ×2 under a claim (`c16`); ×3 then the trap on a moved element (`c17`). wolf 0.2.18: once, everywhere it runs | **wider than the title**: two duplications, not one. (A) a caller asks `live_place(expr)` (`mod.rs:3891`), which evaluates the operands, finds no slot for the member, answers `None`, and the caller then evaluates `expr` from scratch; (B) `eval_member` asks `place_of(base)` (`mod.rs:7838`), and when the member is not a stored field falls to `eval_projected(base)` (`:7865`), evaluating the base a second time. Interpolation and operands meet only (B) |
+| C: controls and neighbours | once on trunk: `c11` `g[f()].count()` (the receiver's place is taken once, `method_split`), `c12` `g[f()][0]`. Twice on trunk, not a member read: `c13` `let n = g[f()]` out of bounds (the `live_place` fallback, then the bounds trap), `c14` `xs[a()..2]` (`place_of` evaluates the range before refusing a slice as a place) | the neighbours are (A)'s family on the element and slice side, not #151's shape: filed, not fixed here |
+| the compiler is looser on the twins too | wolf 0.2.18 runs `et01` `bump(mut xs[1], xs[1] + 1)` (`5`), `et03` `grow(mut g[0], g[0][1] + 1)` (`3`), `et04` `grow(mut xs, xs[0] + 1)` (`4`), `ht01` `grow(mut xs, xs.count())` (`4`), `ht02`, `ht03` `xs.get(1)` under `mut xs[0]` (`3`), `ht04` (`4`) — its E1002 sees an element or member read only as a bare argument (wolf-lang#474's body; the nested-call half is wolf-lang#476) | the compiler's half, on file; lupin keeps trapping these — each reads the claimed place or the whole container |
+| the gates at wolf-lang `d11c03b7` | `element_places_lanes.rs`: `PRE_MIRROR_LUPIN = ["0.1.40"]`, `PRE_MAP_MOVE_LUPIN = ["0.1.40", "0.1.41"]`, `PRE_MEMBER_LUPIN = ["0.1.40", "0.1.41"]`; `mut_param_return_lanes.rs`: `PRE_MIRROR_LUPIN`, `PRE_MAP_MOVE_LUPIN` (`0.1.40`, `0.1.41`), `PRE_ELEM_TRAP_LUPIN = ["0.1.40"]`; `store_order_lanes.rs`: `LUPIN_145` for `0.1.40`, `0.1.41`; `index_store_lanes.rs`: `PRE_MIRROR_LUPIN = ["0.1.38", "0.1.39"]`. No case at `d11c03b7` names #149, #151, #152 or `count`/`is_empty`; s185's branch adds corpus rows (above), no gate yet | none; the pinned cases this head satisfies are measured, not read (§4) |
+
+#### §3 — prediction, committed before the first edit
+
+**The fixes, one mechanism each.**
+
+- **H.** A method call whose receiver is a place holding a `List` or a
+  `Map`, spelled bare (no `mut`/`take`), with no argument, named `len`,
+  `count` or `is_empty`, is a header read: while a claim is held under the
+  receiver's binding it asks is59's `read_header` with the method's name as
+  the member, and answers from the builtin surface. When the header meets
+  a claim (the whole container, a prefix, the element whose header it is),
+  the call takes trunk's route, so the trap keeps trunk's record.
+- **E.** An index read whose bracket chain (`xs[i]`, `g[i][j]`, `b.xs[i]`)
+  bottoms out at a plain container path, while a claim is held strictly
+  below that container and none on it or above it, evaluates its index
+  operands in trunk's order and then checks the ELEMENT's full path; the
+  rest of the container read (the `Moved` trap, the freed-region fault,
+  the rule fire, the provenance read) is made where trunk made it. When the
+  element meets the claim, the trap is trunk's (the container path, its
+  clause and span). With no claim, or one on the container or above it,
+  the read is trunk's code.
+- **R.** A method call on a place whose value holds a moved part traps
+  `use-after-move` at the receiver read, naming the part and its move
+  site (is58's whole-read trap), unless it is one of H's header reads on a
+  `List`/`Map`. A slice (`e[a..b]`) whose target holds a moved part traps
+  the same way before its endpoints are evaluated. Behind is58's
+  `parts_moved` flag, so a program that never moves a part pays one load.
+- **C.** A member read that is not a stored field reads its base off the
+  place its operands were already evaluated into: `eval_member` reads the
+  base path instead of evaluating the base again (B), and a `live_place`
+  that evaluated a member's base and found no slot for the member hands
+  the base's path to the evaluation that follows it (A). When the base
+  place meets a claim the read takes trunk's route (whose container check
+  traps before any operand runs again).
+
+**The probe table** (lupin at head against trunk; wolf 0.2.18 checked in
+brackets):
+
+| probe | trunk | head | [0.2.18] |
+| --- | --- | --- | --- |
+| `h01`, `h02`, `h07`, `h08`, `h09` | `trap(exclusivity)` | `exit(0)` `4`, `2`, `7`, `7`, `34` | [same bytes] |
+| `h03` `xs.len()`, `h04` `m.count()`, `h05` `m.is_empty()`, `h10` borrow, `h11` two claims | trap | `exit(0)` `4`, `3`, `2`, `3`, `4 5` | [E0301, E0401, E0401, unsupported, E1002] |
+| `s_elem_header_methods_under_claim` | trap | `exit(0)` `4 3` | [`4 3`] |
+| `h06` `g[0].count()` under `mut g[1][0]` | `exit(0)` `5` | unchanged | [`5`] |
+| `ht01`–`ht04` (whole claim; the element's own header; `get`, `last` under an element claim) | trap | unchanged, same clause and span | [runs — the compiler's half] |
+| `e01`, `e02`, `e04`–`e08`, `e10`, `e13` | trap | `exit(0)` `4`, `15`, `6`, `4`, `5`, `4`, `4`, `f 4`, `5` | [same bytes] |
+| `e09` borrow, `e11` two claims | trap | `exit(0)` `2`, `5 6` | [unsupported, E1002] |
+| `e03`, `e12` | `exit(0)` | unchanged | [E0401, E1002] |
+| `et01`, `et03`, `et04`, `et05` | trap | unchanged, same clause and span | [runs, runs, runs, E1002] |
+| `et02` `bump(mut xs[1], xs[f()] + 1)`, `f` → 1 | trap, no stdout | trap, same clause and span, stdout `f` — the index now runs before the element's check, as the bare `et05` already does | [`f 5`] |
+| `r01`, `r02`, `r04`, `r05`, `r06`, `r09`, `r10`, `r12`, `r13`, `r14`, `r16`, `r18`, `r22`; s185's `get`/`pop`/`push`/`self`/`slice`/`named_count` rows | `exit(0)` | `trap(use-after-move)` `mem.tier0.move.2`, nothing printed | [E1001; `r12` unsupported] |
+| `r23` | `exit(0)` `1 5` `3` | `1 5` then the trap at `ps[0].total()` | [E1001 at that line] |
+| `r03`, `r07`, `r08`, `r11`, `r15`, `r17`, `r19`, `r20`, `r21`; s185's two header rows | `exit(0)` | unchanged | [E1001 on the header rows until s185; `r17`, `r19`–`r21` run] |
+| `c01`–`c10`, `c15`, `c16` | `f` ×2 or ×3 | `f` (`k`; `f h`) once, the rest of the bytes unchanged | [once] |
+| `c17` | `f` ×3, then `trap(use-after-move)` | `f` once, the same trap (clause, span) | [E1001] |
+| `c11`, `c12` | once | unchanged | [once] |
+| `c13`, `c14` | twice | **unchanged — out of scope, named** | [once] |
+
+**Existing tests that change: exactly one**, by the ruling: is56's
+`what_reads_no_moved_element_is_untouched` (`src/eval/tests.rs`) pushes
+onto and `get`s from a list whose `xs[0]` moved; its push and `get` move to
+the trap side and the test keeps the header reads, another element, the
+store that revives, and `push`/`get` after the revival. Falsified by any
+other test red at head that was green at trunk.
+
+**Corpus rows that change verdict: zero.** No row at the pin calls a
+method or slices a container holding a moved part, or reads an element in
+an expression beside an element claim (the one `mut xs[0], mut xs[1]` row,
+`memory/mut_elem_excl.lu`, reads nothing beside them). Falsified by any
+line moving in `lupin corpus`.
+
+**The differential against wolf 0.2.18** (all entries at pin `93a5fe50`,
+four counterparty tiers, trunk release build against head release build):
+**no entry added on any tier, and no ledger line added.** Falsified by any
+divergence or ledger line added.
+
+**The gates at wolf-lang `d11c03b7`**, run on kasumi with `LUPIN` set to
+the head build presented as the next release (is58's
+`lupin-as-next.sh` shape): every case green, which is every pinned case
+under `PRE_MEMBER_LUPIN`, `PRE_MAP_MOVE_LUPIN`, `PRE_MIRROR_LUPIN` and
+`LUPIN_145` satisfied by the ruled arm. Falsified by any red.
+
+#### §3a — the prediction, scored
+
+*(appended when measured)*
+
+#### §4 — evidence index
+
+*(appended as it lands)*
+
+#### §5 — done-when
+
+- [ ] branch `is60` on origin; PR open, unmerged, with these five sections
+- [ ] §2 re-derived, §3 committed before the first `src/`/`tests/` edit, §3a scored
+- [ ] H, E, R, C: each a test red at trunk for its named reason, green at head, in its own commit chain
+- [ ] every read path each part reaches has a test (H: `List`/`Map`, dotted and projected receivers, call and borrow claims; E: flat, nested, field, map, dynamic, origin-1, interpolation; R: every method family, impl and `mut self`, slices, the header reads that keep running; C: every caller of `live_place` a member reaches, and the member route)
+- [ ] whole-corpus differential against wolf 0.2.18: no new divergence (or each filed)
+- [ ] CHANGELOG `Unreleased`
+- [ ] the pinned lupin cases in wolf-lang's gates this head satisfies, by test name
+- [ ] the neighbours `c13`/`c14` filed
+- [ ] CI green at the head sha
+- [ ] kasumi build dirs pruned once evidence is written; worktree removed
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
