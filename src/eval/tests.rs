@@ -171,16 +171,36 @@ fn a_whole_value_and_one_of_its_fields_conflict() {
 }
 
 #[test]
-fn a_read_argument_conflicts_with_a_mut_one() {
-    // `[mem.tier0.excl.1]`: a `mut`-held place has "no other live access path"
-    // — a `read` of the same path during the same call is one.
+fn a_copy_read_argument_beside_a_mut_one_is_two_phase() {
+    // `[mem.tier0.excl.4]` (ruling #17, is63): a `mut` argument's claim takes
+    // effect at call entry, and a bare `Copy` place passed `read` is a read
+    // that ends before it — `f(mut p.x, p.x)` sees 1, and `a + b` is 2. Until
+    // is63 this was D39's caller-side overlap trap.
     assert_eq!(
-        trap_kind(
+        outcome(
             "struct P { x: int }\n\
              fn f(mut a: int, b: int) -> int { a + b }\n\
              fn main() -> int {\n\
              \x20   var p = P { x: 1 }\n\
              \x20   f(mut p.x, p.x)\n\
+             }\n"
+        ),
+        Outcome::Exit(2)
+    );
+}
+
+#[test]
+fn a_non_copy_read_argument_conflicts_with_a_mut_one() {
+    // `[mem.tier0.excl.1]` with `[mem.tier0.excl.4]`'s lend: a `mut`-held place
+    // has "no other live access path" — a non-`Copy` place passed `read` into
+    // the same call is held for the call's whole extent, and is one.
+    assert_eq!(
+        trap_kind(
+            "struct P { xs: List[int] }\n\
+             fn f(mut a: List[int], b: List[int]) -> int { a.len + b.len }\n\
+             fn main() -> int {\n\
+             \x20   var p = P { xs: [1] }\n\
+             \x20   f(mut p.xs, p.xs)\n\
              }\n"
         ),
         TrapKind::Exclusivity

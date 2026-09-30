@@ -2,8 +2,9 @@
 //!
 //! - **D39** (`[mem.tier0.mode.read]`, wolf-lang#27's dynamic half): a write
 //!   through a read-mode binding traps `exclusivity` — the callee-side write
-//!   barrier. The caller-side overlap half (`f(mut a, a.x)`) was already
-//!   trapped and stays (approximation-contract §6.12).
+//!   barrier. The caller-side overlap half (`f(mut a, a.x)`) trapped from
+//!   0.1.8 until is63, where ruling #17 (`[mem.tier0.excl.4]`) made a bare
+//!   `Copy` argument a read (approximation-contract §6.12).
 //! - **D40** (resolves S-11, wolf-interp#9): `for x in xs` holds a read claim
 //!   on the container for the loop's extent; a mut use inside the body traps
 //!   `exclusivity` at the mutation (`[conf.trap.map]`'s E1013 row;
@@ -162,9 +163,12 @@ fn main() -> !int {
 }
 
 #[test]
-fn the_caller_side_overlap_half_still_traps() {
-    // D39's other half, held since before this pass: `f(mut a, a.x)`.
-    traps_exclusivity(
+fn the_caller_side_copy_read_is_two_phase() {
+    // D39's other half, held from 0.1.8 to is63: `f(mut a, a.x)` trapped.
+    // Ruling #17 and `[mem.tier0.excl.4]` retire it: a bare `Copy` place
+    // passed `read` is a read that ends before the call, so it runs (`1 + 1`
+    // printed as `2`; the non-`Copy` lend still traps, `src/eval/tests.rs`).
+    exits_zero(
         "\
 struct P { x: int, y: int }
 
