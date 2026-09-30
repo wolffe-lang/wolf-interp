@@ -3303,6 +3303,23 @@ impl Machine {
                     // Default mode: immutable for the whole call, caller retains
                     // (`[mem.tier0.mode.read]`).
                     let value: Value = match self.live_place(&arg.expr)? {
+                        // `[mem.tier0.excl.4]` (ruling #17): a `Copy` value
+                        // passed `read` beside this call's own pending claim
+                        // on it (`bump(mut a, a)`, `bump(mut p, p.x)`) is a
+                        // read that ends before the call, not a lend: it is
+                        // read as an operand would be, seeing the value from
+                        // before the call, and nothing is held or retagged
+                        // for the callee's extent — the claim the call is
+                        // about to enter writes that place.
+                        Some(path) if self.copy_read_beside_own_claim(&path, call) => {
+                            let value = self.read_whole(&path, arg.span)?;
+                            self.fire(
+                                Rule::ModeRead,
+                                arg.span,
+                                &format!("`{path}` read before the call (two-phase)"),
+                            );
+                            value
+                        }
                         Some(path) => {
                             // A read lend INTO this call: held for its whole
                             // extent, so this call's pending claims meet it
@@ -3361,6 +3378,21 @@ impl Machine {
             retags,
             protectors,
         })
+    }
+
+    /// Whether a bare place argument passed `read` is ruling #17's `Copy`
+    /// read rather than a lend: its value is `Copy`, and it meets a claim
+    /// this same call holds pending (`[mem.tier0.excl.4]`: "a later argument
+    /// may [...] read the claimed place [...]: a `Copy` value"; a non-`Copy`
+    /// place passed `read` is the lend it may not make). Anywhere else the
+    /// argument is the lend it always was.
+    fn copy_read_beside_own_claim(&mut self, path: &Path, call: CallId) -> bool {
+        self.access
+            .conflict_as(path, Access::Shared, Reach::Lend(call))
+            .is_some_and(|held| held.why == HeldWhy::Pending(call))
+            && self
+                .slot_mut(path)
+                .is_some_and(|slot| is_copy(&slot.value))
     }
 
     /// One argument crossing a call boundary.
