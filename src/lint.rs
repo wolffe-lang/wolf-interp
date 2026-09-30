@@ -199,6 +199,7 @@ pub fn analyze(program: &Program) -> Analysis {
                     .then(|| bound.clone())
             })
             .collect();
+        let types = TypeTable::of(module);
         for unit in &module.units {
             let mut walk = Walk {
                 source: &unit.source,
@@ -206,6 +207,8 @@ pub fn analyze(program: &Program) -> Analysis {
                 item_names: &item_names,
                 fn_names: &fn_names,
                 fn_decls: &fn_decls,
+                types: &types,
+                impl_self: None,
                 row_tags: &module.row_tags,
                 alias_names: &alias_names,
                 findings: &mut findings,
@@ -471,6 +474,12 @@ struct Walk<'a> {
     /// Module-level `fn` signatures by name — a callee's declaration read at
     /// its call site (W0305's fire-at-use over the declared parameter rows).
     fn_decls: &'a BTreeMap<&'a str, &'a FnDecl>,
+    /// The module's struct, enum and alias declarations — the `Copy`
+    /// question W1002's move evidence asks (is61).
+    types: &'a TypeTable<'a>,
+    /// Inside an `impl`: its subject type (what `self` is) and its generic
+    /// parameter names.
+    impl_self: Option<(Type, Vec<String>)>,
     findings: &'a mut Vec<(String, Span)>,
     statics: &'a mut Vec<Diag>,
     allows: &'a mut Vec<(String, Span)>,
@@ -853,6 +862,13 @@ impl Walk<'_> {
                 }
             }
             ItemKind::Impl(def) => {
+                let subject = def
+                    .subject
+                    .as_ref()
+                    .unwrap_or(&def.trait_or_subject)
+                    .clone();
+                let generics = def.generics.iter().map(|g| g.name.name.clone()).collect();
+                let outer_impl = self.impl_self.replace((subject, generics));
                 for member in &def.members {
                     self.attributes(&member.attrs, member.span);
                     let outer_origin = self.origin;
@@ -866,6 +882,7 @@ impl Walk<'_> {
                     }
                     self.origin = outer_origin;
                 }
+                self.impl_self = outer_impl;
             }
             ItemKind::TypeAlias(alias) => {
                 self.shadow_check(&alias.name.name, alias.name.span);
@@ -1088,12 +1105,45 @@ impl Walk<'_> {
         // parameter returned unchanged: a round trip that consumes nothing.
         // Spans: the mode keyword at the declaration (`[393,396]` = `mut`,
         // `[307,311]` = `take`, observed at pin `e94b879`).
+        //
+        // is61 (wolf-interp#155): a name the body rebinds draws neither, as
+        // on the compiler; and a move out of an unwritten `mut` parameter
+        // that reaches a return unused is its write — the compiler's
+        // at-return E1001 names the parameter there and W1002 stands down
+        // (`consumed_mut_params`).
+        let param_name = |param: &crate::ast::Param| match &param.kind {
+            crate::ast::ParamKind::Named { name, .. } => name.name.clone(),
+            crate::ast::ParamKind::SelfParam { .. } => "self".to_owned(),
+        };
+        let rebound = rebound_names(body);
+        let unwritten: Vec<&crate::ast::Param> = decl
+            .params
+            .iter()
+            .filter(|param| {
+                let name = param_name(param);
+                param.mode == Some(ParamMode::Mut)
+                    && !rebound.contains(&name)
+                    && !self.writes.contains(&name)
+            })
+            .collect();
+        let consumed = if unwritten.is_empty() {
+            BTreeSet::new()
+        } else {
+            let (self_ty, impl_generics) = match &self.impl_self {
+                Some((ty, generics)) => (Some(ty), generics.as_slice()),
+                None => (None, &[][..]),
+            };
+            consumed_mut_params(decl, body, &unwritten, self_ty, impl_generics, self.types)
+        };
         for param in &decl.params {
             let name = match &param.kind {
                 crate::ast::ParamKind::Named { name, .. } => name.name.as_str(),
                 crate::ast::ParamKind::SelfParam { .. } => "self",
             };
-            let written = self.writes.iter().any(|w| w == name);
+            if rebound.contains(name) {
+                continue;
+            }
+            let written = self.writes.iter().any(|w| w == name) || consumed.contains(name);
             let keyword = |len: usize, word: &str| {
                 let start = param.span.start;
                 (self.source.get(start..start + len) == Some(word))
@@ -2712,6 +2762,1138 @@ fn head_of(place: &Expr) -> Option<&str> {
         ExprKind::ModedReceiver { place, .. } | ExprKind::Group(place) => head_of(place),
         _ => None,
     }
+}
+
+// ---- W1002's second evidence: the move out of the parameter (is61) -------
+//
+// wolffe-lang/wolf-interp#155. `[mem.tier0.mode.mut]` (s184,
+// wolffe-lang/wolf-lang#464): a `mut` parameter is initialized at every
+// return. The compiler refuses a move out of one (the parameter, a field, an
+// element, a map value) that reaches a return with E1001 at the move, and
+// stands W1002 down beside it — the move IS the write its syntactic scan
+// cannot see, and W1002's help (drop the `mut`) points away from the fix.
+// This machine has no static E1001 (it traps `use-after-move` at the
+// caller's read), so the lint reads the same evidence off the body itself.
+//
+// What the compiler does, measured at wolf 0.2.19 and read at its
+// `wolf_mem/src/moves.rs` (`at_return`) and `wolf_mem/src/lower.rs`
+// (`use_value`), and mirrored here:
+//
+// - a move is `move e` on a place under the parameter (any type), a place
+//   under it whose type is not `Copy` in value position (an initializer, the
+//   right side of a plain non-index store or of a `take` store, a `return`,
+//   a tail in value position, a struct, list or tuple literal's element), or
+//   a `Map` value read out of it under `else`/`?` (a non-`Copy` value moves,
+//   #144's ruling). A read argument, a receiver, an operand, a hole, an
+//   iterable, a scrutinee and a plain index store's right side READ;
+// - the refusal names the parameter only for a move still maybe-moved at a
+//   return AND never used again in the body: a later access of an
+//   overlapping place (a read, a move, a `defer` run at the exit) draws its
+//   own E1001, which names no parameter, and W1002 stays. Header reads —
+//   `len`, `count()`, `is_empty()` — overlap only the container or an
+//   ancestor (s185); distinct literal indices, keys and fields never
+//   overlap; a move inside a loop meets itself on the back edge;
+// - one use is charged to ONE moved place, the first in the order the
+//   places were first named (`check_use`'s "one report per use").
+//
+// Nothing here writes, so nothing revives: a store under the parameter is
+// already W1002's write evidence, and only unwritten parameters are asked.
+
+/// The module's type declarations, for the one question the move evidence
+/// asks of a type: is it `Copy`?
+#[derive(Default)]
+struct TypeTable<'a> {
+    structs: BTreeMap<&'a str, &'a [crate::ast::Field]>,
+    enums: BTreeSet<&'a str>,
+    aliases: BTreeMap<&'a str, &'a Type>,
+}
+
+impl<'a> TypeTable<'a> {
+    fn of(module: &'a crate::sema::Module) -> Self {
+        let mut table = TypeTable::default();
+        for unit in &module.units {
+            for item in &unit.unit.items {
+                match &item.kind {
+                    ItemKind::Struct(def) => {
+                        if let Some(name) = &def.name {
+                            table.structs.insert(name.name.as_str(), &def.fields);
+                        }
+                    }
+                    ItemKind::Enum(def) => {
+                        if let Some(name) = &def.name {
+                            table.enums.insert(name.name.as_str());
+                        }
+                    }
+                    ItemKind::TypeAlias(alias) => {
+                        let name = alias.name.name.as_str();
+                        match &alias.def {
+                            crate::ast::TypeDef::Struct(def) => {
+                                table.structs.insert(name, &def.fields);
+                            }
+                            crate::ast::TypeDef::Enum(_) => {
+                                table.enums.insert(name);
+                            }
+                            crate::ast::TypeDef::Alias(ty) => {
+                                table.aliases.insert(name, ty);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        table
+    }
+}
+
+/// One projection step of a place under a tracked parameter. An index or
+/// key is its literal's text, or `None` when it is computed — a computed
+/// index may be any element (`[mem.model.place.elem]`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Step {
+    Field(String),
+    Index(Option<String>),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Place {
+    root: String,
+    steps: Vec<Step>,
+}
+
+/// Two places may name overlapping storage: one is a prefix of the other,
+/// step for step, where distinct fields and distinct literal indices part.
+fn places_overlap(a: &Place, b: &Place) -> bool {
+    a.root == b.root
+        && a.steps.iter().zip(&b.steps).all(|pair| match pair {
+            (Step::Field(x), Step::Field(y)) => x == y,
+            (Step::Index(Some(x)), Step::Index(Some(y))) => x == y,
+            _ => true,
+        })
+}
+
+/// A header read of `container` (`len`, `count()`, `is_empty()`) meets a
+/// moved place only when the move emptied the container itself or an
+/// ancestor of it — never an element or field under it (s185).
+fn header_meets(moved: &Place, container: &Place) -> bool {
+    moved.steps.len() <= container.steps.len() && places_overlap(moved, container)
+}
+
+/// A place expression under a tracked parameter: the place, the index
+/// operands evaluated to reach it, and whether it is a header read (`xs.len`,
+/// the place being the container).
+struct PlaceExpr<'e> {
+    place: Place,
+    operands: Vec<&'e Expr>,
+    header: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Ctx {
+    /// The value is used: a non-`Copy` place moves.
+    Value,
+    /// The value is only read: a place is read in place.
+    Read,
+}
+
+#[derive(Clone, Copy)]
+enum Access {
+    Read,
+    Header,
+    Move(Span),
+}
+
+/// The move state: each moved place (by the order it was first named) and
+/// the move site that emptied it. `None` is unreachable code.
+type MoveState = Option<BTreeMap<usize, Span>>;
+
+fn join_moves(into: MoveState, from: MoveState) -> MoveState {
+    match (into, from) {
+        (None, other) | (other, None) => other,
+        (Some(mut a), Some(b)) => {
+            for (place, site) in b {
+                a.entry(place)
+                    .and_modify(|kept| {
+                        if (site.start, site.end) < (kept.start, kept.end) {
+                            *kept = site;
+                        }
+                    })
+                    .or_insert(site);
+            }
+            Some(a)
+        }
+    }
+}
+
+#[derive(Default)]
+struct LoopFrame {
+    breaks: Vec<MoveState>,
+    continues: Vec<MoveState>,
+}
+
+struct MoveFlow<'e> {
+    /// The tracked `mut` parameters and their declared types.
+    tracked: BTreeMap<String, Option<&'e Type>>,
+    types: &'e TypeTable<'e>,
+    /// Generic parameter names in force (the fn's and its impl's): not `Copy`.
+    generics: BTreeSet<String>,
+    /// Places in the order they were first named — the compiler's place ids.
+    places: Vec<Place>,
+    state: MoveState,
+    /// Move sites a later access met.
+    used: BTreeSet<(usize, usize)>,
+    /// The state at every return, `?` edge and the fall-through.
+    exit: MoveState,
+    loops: Vec<LoopFrame>,
+    /// Loop passes still ahead of the last one; uses and exits are recorded
+    /// only on the last pass of every enclosing loop, where the state has
+    /// reached its fixpoint.
+    rehearsing: usize,
+    defers: Vec<&'e Expr>,
+}
+
+impl<'e> MoveFlow<'e> {
+    fn id_of(&mut self, place: &Place) -> usize {
+        if let Some(id) = self.places.iter().position(|p| p == place) {
+            return id;
+        }
+        self.places.push(place.clone());
+        self.places.len() - 1
+    }
+
+    fn access(&mut self, place: &Place, kind: Access) {
+        let id = self.id_of(place);
+        let recording = self.rehearsing == 0;
+        let Some(state) = self.state.as_mut() else {
+            return;
+        };
+        // One use is charged to one moved place: the first by place order.
+        let places = &self.places;
+        let met = state
+            .iter()
+            .find(|(moved, _)| {
+                let moved = &places[**moved];
+                match kind {
+                    Access::Header => header_meets(moved, place),
+                    Access::Read | Access::Move(_) => places_overlap(moved, place),
+                }
+            })
+            .map(|(_, site)| *site);
+        if let Some(site) = met
+            && recording
+        {
+            self.used.insert((site.start, site.end));
+        }
+        if let Access::Move(site) = kind {
+            state.insert(id, site);
+        }
+    }
+
+    fn exit_edge(&mut self) {
+        if self.state.is_none() {
+            return;
+        }
+        let saved = self.state.clone();
+        // Every return runs the defers registered before it, then leaves.
+        let defers = self.defers.clone();
+        for deferred in defers.iter().rev() {
+            self.expr(deferred, Ctx::Value);
+        }
+        if self.rehearsing == 0 {
+            let reached = self.state.take();
+            self.exit = join_moves(self.exit.take(), reached);
+        }
+        self.state = saved;
+    }
+
+    // ---- types ------------------------------------------------------------
+
+    fn resolve<'t>(&self, mut ty: &'t Type) -> &'t Type
+    where
+        'e: 't,
+    {
+        for _ in 0..32 {
+            match &*ty.kind {
+                TypeKind::Path { path, .. } if path.is_single() => {
+                    match self.types.aliases.get(path.segments[0].name.as_str()) {
+                        Some(target) => ty = target,
+                        None => return ty,
+                    }
+                }
+                TypeKind::Prefixed {
+                    kw: crate::ast::PrefixTypeKw::Distinct,
+                    ty: inner,
+                } => ty = inner,
+                _ => return ty,
+            }
+        }
+        ty
+    }
+
+    /// Is the type `Copy` (`[mem.tier0.move.3]`, the compiler's `is_copy`)?
+    /// `None` when this walk cannot tell — a type from another module, a
+    /// trait object — and then nothing moves.
+    fn is_copy(&self, ty: &Type) -> Option<bool> {
+        let ty = self.resolve(ty);
+        match &*ty.kind {
+            TypeKind::Path { path, .. } if path.is_single() => {
+                let name = path.segments[0].name.as_str();
+                if crate::sema::BUILTIN_SCALAR_TYPES.contains(&name)
+                    || matches!(
+                        name,
+                        "float" | "wrapping" | "Chan" | "Mutex" | "Scope" | "Proc" | "ExitReason"
+                    )
+                {
+                    Some(true)
+                } else if matches!(name, "List" | "Map" | "Pool")
+                    || self.types.structs.contains_key(name)
+                    || self.types.enums.contains(name)
+                    || self.generics.contains(name)
+                {
+                    Some(false)
+                } else {
+                    None
+                }
+            }
+            TypeKind::Path { .. } | TypeKind::Dyn(_) => None,
+            TypeKind::Tuple(items) => Some(items.is_empty()),
+            TypeKind::Fn { .. } | TypeKind::RawPointer(_) | TypeKind::TypeOfTypes => Some(true),
+            TypeKind::Prefixed { kw, .. } => Some(matches!(kw, crate::ast::PrefixTypeKw::Handle)),
+            TypeKind::ErrorUnion(_) | TypeKind::Fallible { .. } | TypeKind::Region => Some(false),
+        }
+    }
+
+    fn type_args(ty: &Type) -> Vec<&Type> {
+        match &*ty.kind {
+            TypeKind::Path { args, .. } => args
+                .iter()
+                .filter_map(|arg| match arg {
+                    crate::ast::TypeArg::Type(ty) => Some(ty),
+                    crate::ast::TypeArg::Expr(_) => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn head_name(ty: &Type) -> Option<&str> {
+        match &*ty.kind {
+            TypeKind::Path { path, .. } if path.is_single() => Some(path.segments[0].name.as_str()),
+            _ => None,
+        }
+    }
+
+    fn type_of(&self, place: &Place) -> Option<&'e Type> {
+        let mut ty: &'e Type = (*self.tracked.get(&place.root)?)?;
+        for step in &place.steps {
+            ty = self.resolve(ty);
+            ty = match step {
+                Step::Field(name) => match &*ty.kind {
+                    TypeKind::Tuple(items) => items.get(name.parse::<usize>().ok()?)?,
+                    _ => {
+                        let fields: &'e [crate::ast::Field] =
+                            self.types.structs.get(Self::head_name(ty)?).copied()?;
+                        &fields.iter().find(|field| &field.name.name == name)?.ty
+                    }
+                },
+                Step::Index(_) => {
+                    let args = Self::type_args(ty);
+                    match (Self::head_name(ty)?, args.as_slice()) {
+                        ("List" | "Pool", [elem]) => elem,
+                        ("Map", [_, value]) => value,
+                        _ => return None,
+                    }
+                }
+            };
+        }
+        Some(ty)
+    }
+
+    /// Is `name` a header member of the place's value — `len` on a
+    /// container, `str`, or a type this walk cannot see (a struct field of
+    /// that name reads the field)?
+    fn is_header_member(&self, place: &Place, name: &str) -> bool {
+        if name != "len" {
+            return false;
+        }
+        match self.type_of(place).map(|ty| self.resolve(ty)) {
+            Some(ty) => match Self::head_name(ty) {
+                Some(head) => self
+                    .types
+                    .structs
+                    .get(head)
+                    .is_none_or(|fields| !fields.iter().any(|f| f.name.name == name)),
+                None => !matches!(&*ty.kind, TypeKind::Tuple(_)),
+            },
+            None => true,
+        }
+    }
+
+    fn moves_by_value(&self, place: &Place) -> bool {
+        self.type_of(place)
+            .and_then(|ty| self.is_copy(ty))
+            .is_some_and(|copy| !copy)
+    }
+
+    // ---- places -----------------------------------------------------------
+
+    fn step_onto(&self, mut base: PlaceExpr<'e>, name: &str, last: bool) -> Option<PlaceExpr<'e>> {
+        if base.header {
+            return None;
+        }
+        if last && self.is_header_member(&base.place, name) {
+            base.header = true;
+        } else {
+            base.place.steps.push(Step::Field(name.to_owned()));
+        }
+        Some(base)
+    }
+
+    fn place_of(&self, expr: &'e Expr) -> Option<PlaceExpr<'e>> {
+        match &*expr.kind {
+            ExprKind::Group(inner) => self.place_of(inner),
+            ExprKind::Path(path) => {
+                let (root, rest) = path.segments.split_first()?;
+                if !self.tracked.contains_key(&root.name) {
+                    return None;
+                }
+                let mut place = PlaceExpr {
+                    place: Place {
+                        root: root.name.clone(),
+                        steps: Vec::new(),
+                    },
+                    operands: Vec::new(),
+                    header: false,
+                };
+                for (at, segment) in rest.iter().enumerate() {
+                    place = self.step_onto(place, &segment.name, at + 1 == rest.len())?;
+                }
+                Some(place)
+            }
+            ExprKind::Member { base, member } => {
+                let base = self.place_of(base)?;
+                match member {
+                    Member::Named(ident) => self.step_onto(base, &ident.name, true),
+                    Member::Index(index, _) => self.step_onto(base, &index.to_string(), false),
+                }
+            }
+            ExprKind::BracketApply { base, args, .. } => {
+                let [IndexArg::Value(arg)] = args.as_slice() else {
+                    return None;
+                };
+                if arg.mode.is_some()
+                    || matches!(
+                        &*arg.expr.kind,
+                        ExprKind::Range { .. } | ExprKind::FromEnd(_)
+                    )
+                {
+                    return None;
+                }
+                let mut place = self.place_of(base)?;
+                if place.header {
+                    return None;
+                }
+                let literal = match &*arg.expr.kind {
+                    ExprKind::Int(text) => {
+                        Some(format!("i{}", text.replace('_', "").parse::<i128>().ok()?))
+                    }
+                    ExprKind::Str(lit) => lit.as_plain_text().map(|text| format!("s{text}")),
+                    ExprKind::Char(c) => Some(format!("c{c}")),
+                    _ => None,
+                };
+                place.place.steps.push(Step::Index(literal));
+                place.operands.push(&arg.expr);
+                Some(place)
+            }
+            _ => None,
+        }
+    }
+
+    /// A place under a tracked parameter in `ctx`: its operands, then the
+    /// access. Answers whether `expr` was such a place.
+    fn place_expr(&mut self, expr: &'e Expr, ctx: Ctx) -> bool {
+        let Some(found) = self.place_of(expr) else {
+            return false;
+        };
+        for operand in &found.operands {
+            self.expr(operand, Ctx::Read);
+        }
+        let kind = if found.header {
+            Access::Header
+        } else if ctx == Ctx::Value && self.moves_by_value(&found.place) {
+            Access::Move(expr.span)
+        } else {
+            Access::Read
+        };
+        self.access(&found.place, kind);
+        true
+    }
+
+    // ---- the walk ---------------------------------------------------------
+
+    fn block(&mut self, block: &'e Block, ctx: Ctx) {
+        for stmt in &block.stmts {
+            self.stmt(stmt);
+        }
+        if let Some(tail) = &block.tail {
+            self.expr(tail, ctx);
+        }
+    }
+
+    fn place_operands(&mut self, place: &'e Expr) {
+        match &*place.kind {
+            ExprKind::BracketApply { base, args, .. } => {
+                self.place_operands(base);
+                for arg in args {
+                    if let IndexArg::Value(arg) = arg {
+                        self.expr(&arg.expr, Ctx::Read);
+                    }
+                }
+            }
+            ExprKind::Member { base, .. } | ExprKind::Group(base) => self.place_operands(base),
+            _ => {}
+        }
+    }
+
+    fn stmt(&mut self, stmt: &'e Stmt) {
+        match &stmt.kind {
+            StmtKind::Binding(binding) => self.expr(&binding.value, Ctx::Value),
+            StmtKind::Assign {
+                place,
+                op,
+                value,
+                take,
+            } => {
+                // Index first, then the value (`[mem.model.place.rhs]`, s183).
+                self.place_operands(place);
+                if *take {
+                    self.explicit_move(value);
+                } else if *op != crate::ast::AssignOp::Assign || place.is_index_place() {
+                    // A compound store reads; a plain index store COPIES
+                    // (`[mem.region.edge.elem]`, wolf-lang#438).
+                    self.expr(value, Ctx::Read);
+                } else {
+                    self.expr(value, Ctx::Value);
+                }
+            }
+            StmtKind::Defer { expr, .. } => {
+                if !self.defers.iter().any(|d| d.span == expr.span) {
+                    self.defers.push(expr);
+                }
+            }
+            StmtKind::AssumeNoalias(exprs) => {
+                for expr in exprs {
+                    self.expr(expr, Ctx::Read);
+                }
+            }
+            StmtKind::Expr(expr) => self.expr(expr, Ctx::Value),
+            StmtKind::Item(_) => {}
+        }
+    }
+
+    /// `move e` and a `take` store: the place moves, whatever its type.
+    fn explicit_move(&mut self, operand: &'e Expr) {
+        if let Some(found) = self.place_of(operand) {
+            for index in &found.operands {
+                self.expr(index, Ctx::Read);
+            }
+            let mut place = found.place;
+            if found.header {
+                place.steps.push(Step::Field("len".to_owned()));
+            }
+            self.access(&place, Access::Move(operand.span));
+        } else {
+            self.expr(operand, Ctx::Value);
+        }
+    }
+
+    fn operand(&mut self, expr: &'e Expr) {
+        self.expr(expr, Ctx::Read);
+    }
+
+    fn args(&mut self, args: &'e [Arg]) {
+        for arg in args {
+            match arg.mode {
+                Some(ParamMode::Take) => self.explicit_move(&arg.expr),
+                _ => self.expr(&arg.expr, Ctx::Read),
+            }
+        }
+    }
+
+    /// A method receiver: a header read for `count()`/`is_empty()` with no
+    /// argument, the whole value otherwise.
+    fn receiver(&mut self, receiver: Option<PlaceExpr<'e>>, method: &str, args: &[Arg]) {
+        let Some(found) = receiver else { return };
+        for operand in &found.operands {
+            self.expr(operand, Ctx::Read);
+        }
+        let header =
+            found.header || (args.is_empty() && matches!(method, "count" | "is_empty" | "len"));
+        let kind = if header { Access::Header } else { Access::Read };
+        self.access(&found.place, kind);
+    }
+
+    fn loop_(&mut self, cond: Option<&'e Expr>, body: &'e Block, runs_out: bool) {
+        self.loops.push(LoopFrame::default());
+        let entry = self.state.clone();
+        let mut head = entry.clone();
+        let mut out = None;
+        for pass in 0..2 {
+            if pass == 0 {
+                self.rehearsing += 1;
+            }
+            self.state = head.clone();
+            if let Some(cond) = cond {
+                self.expr(cond, Ctx::Read);
+            }
+            if runs_out {
+                out = self.state.clone();
+            }
+            self.block(body, Ctx::Value);
+            let frame = self.loops.last_mut().expect("pushed above");
+            let continues = std::mem::take(&mut frame.continues);
+            let mut back = self.state.take();
+            for state in continues {
+                back = join_moves(back, state);
+            }
+            head = join_moves(entry.clone(), back);
+            if pass == 0 {
+                self.rehearsing -= 1;
+            }
+        }
+        let frame = self.loops.pop().expect("pushed above");
+        for state in frame.breaks {
+            out = join_moves(out, state);
+        }
+        self.state = out;
+    }
+
+    fn expr(&mut self, expr: &'e Expr, ctx: Ctx) {
+        if self.place_expr(expr, ctx) {
+            return;
+        }
+        match &*expr.kind {
+            ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Char(_)
+            | ExprKind::Path(_)
+            | ExprKind::Wildcard
+            | ExprKind::Closure { .. }
+            | ExprKind::UnsafeC { .. } => {}
+            ExprKind::Continue => {
+                let state = self.state.take();
+                if let Some(frame) = self.loops.last_mut() {
+                    frame.continues.push(state);
+                }
+            }
+            ExprKind::Str(lit) => {
+                for part in &lit.parts {
+                    if let StrPart::Interp(interp) = part {
+                        self.operand(&interp.expr);
+                    }
+                }
+            }
+            ExprKind::StructLit { fields, .. } => {
+                for field in fields {
+                    match &field.value {
+                        Some(value) => self.expr(value, Ctx::Value),
+                        // The shorthand `W { xs }` reads on the compiler:
+                        // wolf 0.2.19 keeps W1002 and runs it (`t16`).
+                        None => {
+                            if self.tracked.contains_key(&field.name.name) {
+                                let place = Place {
+                                    root: field.name.name.clone(),
+                                    steps: Vec::new(),
+                                };
+                                self.access(&place, Access::Read);
+                            }
+                        }
+                    }
+                }
+            }
+            ExprKind::Tuple(items) | ExprKind::List(items) => {
+                for item in items {
+                    self.expr(item, Ctx::Value);
+                }
+            }
+            ExprKind::Group(inner) => self.expr(inner, ctx),
+            ExprKind::Block(block) => self.block(block, ctx),
+            ExprKind::Unary { op, operand } => match op {
+                UnOp::Move => self.explicit_move(operand),
+                _ => self.operand(operand),
+            },
+            ExprKind::Binary { lhs, rhs, .. } => {
+                self.operand(lhs);
+                self.operand(rhs);
+            }
+            ExprKind::Cast { expr: inner, .. } | ExprKind::FromEnd(inner) => self.operand(inner),
+            ExprKind::Freeze(inner) => self.operand(inner),
+            ExprKind::Call { callee, args } => {
+                match &*callee.kind {
+                    ExprKind::Path(path)
+                        if path.segments.len() >= 2
+                            && self.tracked.contains_key(&path.segments[0].name) =>
+                    {
+                        let (method, receiver) =
+                            path.segments.split_last().expect("two segments or more");
+                        let mut found = Some(PlaceExpr {
+                            place: Place {
+                                root: receiver[0].name.clone(),
+                                steps: Vec::new(),
+                            },
+                            operands: Vec::new(),
+                            header: false,
+                        });
+                        for (at, segment) in receiver[1..].iter().enumerate() {
+                            found = found.and_then(|base| {
+                                self.step_onto(base, &segment.name, at + 2 == receiver.len())
+                            });
+                        }
+                        self.receiver(found, &method.name, args);
+                    }
+                    ExprKind::Member {
+                        base,
+                        member: Member::Named(method),
+                    } => match self.place_of(base) {
+                        Some(found) => self.receiver(Some(found), &method.name, args),
+                        None => self.expr(base, Ctx::Value),
+                    },
+                    _ => self.operand(callee),
+                }
+                self.args(args);
+            }
+            ExprKind::SpawnProc { args, .. } => self.args(args),
+            ExprKind::BracketApply { base, args, .. } => {
+                // A slice, a computed base or an application: the base is
+                // read where it is a place, evaluated where it is not.
+                if !self.place_expr(base, Ctx::Read) {
+                    self.expr(base, Ctx::Value);
+                }
+                for arg in args {
+                    if let IndexArg::Value(arg) = arg {
+                        self.operand(&arg.expr);
+                    }
+                }
+            }
+            ExprKind::Member { base, .. } => self.expr(base, Ctx::Value),
+            ExprKind::ModedReceiver { place, .. } => self.operand(place),
+            ExprKind::Try(inner) => {
+                self.expr(inner, Ctx::Value);
+                self.exit_edge();
+            }
+            ExprKind::ElseDefault {
+                expr: inner,
+                handler,
+            } => {
+                // A `Map` read under `else` reads the value OUT (#144).
+                self.expr(inner, Ctx::Value);
+                let hit = self.state.clone();
+                match &**handler {
+                    ElseHandler::Block(block) => self.block(block, ctx),
+                    ElseHandler::Expr(value) => self.expr(value, ctx),
+                    ElseHandler::Handler { body, .. } => self.expr(body, ctx),
+                }
+                self.state = join_moves(hit, self.state.take());
+            }
+            ExprKind::Range { start, end, .. } => {
+                for bound in [start, end].into_iter().flatten() {
+                    self.operand(bound);
+                }
+            }
+            ExprKind::If {
+                cond,
+                then,
+                otherwise,
+            } => {
+                self.operand(cond);
+                let before = self.state.clone();
+                self.block(then, ctx);
+                let after_then = self.state.take();
+                self.state = before;
+                if let Some(otherwise) = otherwise {
+                    self.expr(otherwise, ctx);
+                }
+                self.state = join_moves(after_then, self.state.take());
+            }
+            ExprKind::Match { scrutinee, arms } => {
+                self.operand(scrutinee);
+                let before = self.state.clone();
+                let mut after = None;
+                for arm in arms {
+                    self.state = before.clone();
+                    if let Some(guard) = &arm.guard {
+                        self.operand(guard);
+                    }
+                    self.expr(&arm.body, ctx);
+                    after = join_moves(after, self.state.take());
+                }
+                self.state = if arms.is_empty() { before } else { after };
+            }
+            ExprKind::For { iter, body, .. } => {
+                self.operand(iter);
+                self.loop_(None, body, true);
+            }
+            ExprKind::While { cond, body } => self.loop_(Some(cond), body, true),
+            ExprKind::Loop { body } => self.loop_(None, body, false),
+            ExprKind::Return(value) => {
+                if let Some(value) = value {
+                    self.expr(value, Ctx::Value);
+                }
+                self.exit_edge();
+                self.state = None;
+            }
+            ExprKind::Break(value) => {
+                if let Some(value) = value {
+                    self.expr(value, Ctx::Value);
+                }
+                let state = self.state.take();
+                if let Some(frame) = self.loops.last_mut() {
+                    frame.breaks.push(state);
+                }
+            }
+            ExprKind::RegionSugar { cap, body, .. } => {
+                if let Some(cap) = cap {
+                    self.operand(cap);
+                }
+                self.block(body, ctx);
+            }
+            ExprKind::RegionValue { cap, .. } => {
+                if let Some(cap) = cap {
+                    self.operand(cap);
+                }
+            }
+            ExprKind::In { region, body } => {
+                self.operand(region);
+                self.block(body, ctx);
+            }
+            ExprKind::Scope { body, .. } | ExprKind::Unsafe { body } => self.block(body, ctx),
+            ExprKind::When { operands, body } => {
+                for operand in operands {
+                    self.operand(operand);
+                }
+                self.block(body, ctx);
+            }
+            ExprKind::Select { arms } => {
+                let before = self.state.clone();
+                let mut after = None;
+                for arm in arms {
+                    self.state = before.clone();
+                    match &arm.kind {
+                        crate::ast::SelectArmKind::Recv { channel, .. } => self.operand(channel),
+                        crate::ast::SelectArmKind::Timeout(limit) => self.operand(limit),
+                    }
+                    self.expr(&arm.body, ctx);
+                    after = join_moves(after, self.state.take());
+                }
+                self.state = if arms.is_empty() { before } else { after };
+            }
+            ExprKind::Asm { operands, .. } => {
+                for operand in operands {
+                    self.operand(&operand.value);
+                }
+            }
+            ExprKind::Borrow { place, from } => {
+                self.operand(place);
+                self.operand(from);
+            }
+        }
+    }
+}
+
+/// The unwritten `mut` parameters of `decl` that a move out of reaches a
+/// return unused — the parameters the compiler's at-return E1001 names, and
+/// so the ones its W1002 stands down for (is61, wolf-interp#155).
+fn consumed_mut_params<'e>(
+    decl: &'e FnDecl,
+    body: &'e Block,
+    candidates: &[&'e crate::ast::Param],
+    self_ty: Option<&'e Type>,
+    impl_generics: &[String],
+    types: &'e TypeTable<'e>,
+) -> BTreeSet<String> {
+    let mut tracked = BTreeMap::new();
+    for param in candidates {
+        match &param.kind {
+            crate::ast::ParamKind::Named { name, ty } => {
+                tracked.insert(name.name.clone(), Some(ty));
+            }
+            crate::ast::ParamKind::SelfParam { .. } => {
+                tracked.insert("self".to_owned(), self_ty);
+            }
+        }
+    }
+    let generics = decl
+        .generics
+        .iter()
+        .map(|g| g.name.name.clone())
+        .chain(impl_generics.iter().cloned())
+        .collect();
+    let mut flow = MoveFlow {
+        tracked,
+        types,
+        generics,
+        places: Vec::new(),
+        state: Some(BTreeMap::new()),
+        used: BTreeSet::new(),
+        exit: None,
+        loops: Vec::new(),
+        rehearsing: 0,
+        defers: Vec::new(),
+    };
+    // The parameters are the first places a body names.
+    let roots: Vec<String> = flow.tracked.keys().cloned().collect();
+    for root in roots {
+        flow.id_of(&Place {
+            root,
+            steps: Vec::new(),
+        });
+    }
+    flow.block(body, Ctx::Value);
+    flow.exit_edge();
+    let mut consumed = BTreeSet::new();
+    for (place, site) in flow.exit.iter().flatten() {
+        if !flow.used.contains(&(site.start, site.end)) {
+            consumed.insert(flow.places[*place].root.clone());
+        }
+    }
+    consumed
+}
+
+/// Every name the body binds anew — `let`/`var`/`const` patterns, every
+/// binding pattern (a `match` arm, a `for`, an `else |e|` handler, a `select`
+/// arm), a closure's parameters — nested `fn` bodies included, their own
+/// parameters not. The compiler's W1002/W1003 skip such a name: shadowing
+/// makes a flat write scan unreliable (`rebound_names`, `wolf_sema`).
+fn rebound_names(body: &Block) -> BTreeSet<String> {
+    fn pattern(pat: &Pattern, out: &mut BTreeSet<String>) {
+        match &*pat.kind {
+            PatKind::Binding(ident) => {
+                out.insert(ident.name.clone());
+            }
+            PatKind::Variant { fields, .. } => fields.iter().for_each(|p| pattern(p, out)),
+            PatKind::Tuple(items) | PatKind::Or(items) => {
+                items.iter().for_each(|p| pattern(p, out));
+            }
+            PatKind::Struct { fields, .. } => {
+                for field in fields {
+                    match &field.pattern {
+                        Some(p) => pattern(p, out),
+                        None => {
+                            out.insert(field.name.name.clone());
+                        }
+                    }
+                }
+            }
+            PatKind::At { name, pattern: p } => {
+                out.insert(name.name.clone());
+                pattern(p, out);
+            }
+            PatKind::Wildcard | PatKind::Literal(_) | PatKind::Path(_) | PatKind::Range { .. } => {}
+        }
+    }
+    fn block(b: &Block, out: &mut BTreeSet<String>) {
+        for stmt in &b.stmts {
+            match &stmt.kind {
+                StmtKind::Binding(binding) => {
+                    pattern(&binding.pattern, out);
+                    expr(&binding.value, out);
+                }
+                StmtKind::Assign { place, value, .. } => {
+                    expr(place, out);
+                    expr(value, out);
+                }
+                StmtKind::Defer { expr: e, .. } | StmtKind::Expr(e) => expr(e, out),
+                StmtKind::AssumeNoalias(es) => es.iter().for_each(|e| expr(e, out)),
+                StmtKind::Item(item) => item_body(item, out),
+            }
+        }
+        if let Some(tail) = &b.tail {
+            expr(tail, out);
+        }
+    }
+    fn item_body(item: &Item, out: &mut BTreeSet<String>) {
+        match &item.kind {
+            ItemKind::Fn(decl) => {
+                if let Some(b) = &decl.body {
+                    block(b, out);
+                }
+            }
+            ItemKind::Binding(binding) => {
+                pattern(&binding.pattern, out);
+                expr(&binding.value, out);
+            }
+            _ => {}
+        }
+    }
+    fn args(list: &[Arg], out: &mut BTreeSet<String>) {
+        list.iter().for_each(|a| expr(&a.expr, out));
+    }
+    fn expr(e: &Expr, out: &mut BTreeSet<String>) {
+        match &*e.kind {
+            ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Char(_)
+            | ExprKind::Path(_)
+            | ExprKind::Wildcard
+            | ExprKind::Continue
+            | ExprKind::UnsafeC { .. }
+            | ExprKind::RegionValue { cap: None, .. } => {}
+            ExprKind::Str(lit) => {
+                for part in &lit.parts {
+                    if let StrPart::Interp(interp) = part {
+                        expr(&interp.expr, out);
+                    }
+                }
+            }
+            ExprKind::StructLit { fields, .. } => {
+                fields
+                    .iter()
+                    .filter_map(|f| f.value.as_ref())
+                    .for_each(|v| expr(v, out));
+            }
+            ExprKind::Tuple(items) | ExprKind::List(items) => {
+                items.iter().for_each(|i| expr(i, out))
+            }
+            ExprKind::When { operands, body } => {
+                operands.iter().for_each(|i| expr(i, out));
+                block(body, out);
+            }
+            ExprKind::Group(inner)
+            | ExprKind::Unary { operand: inner, .. }
+            | ExprKind::Cast { expr: inner, .. }
+            | ExprKind::FromEnd(inner)
+            | ExprKind::Freeze(inner)
+            | ExprKind::Try(inner)
+            | ExprKind::Member { base: inner, .. }
+            | ExprKind::ModedReceiver { place: inner, .. }
+            | ExprKind::RegionValue {
+                cap: Some(inner), ..
+            } => expr(inner, out),
+            ExprKind::Return(value) | ExprKind::Break(value) => {
+                if let Some(value) = value {
+                    expr(value, out);
+                }
+            }
+            ExprKind::Block(b) | ExprKind::Scope { body: b, .. } | ExprKind::Unsafe { body: b } => {
+                block(b, out);
+            }
+            ExprKind::Binary { lhs, rhs, .. }
+            | ExprKind::Borrow {
+                place: lhs,
+                from: rhs,
+            } => {
+                expr(lhs, out);
+                expr(rhs, out);
+            }
+            ExprKind::Call { callee, args: list } => {
+                expr(callee, out);
+                args(list, out);
+            }
+            ExprKind::SpawnProc { args: list, .. } => args(list, out),
+            ExprKind::BracketApply {
+                base, args: list, ..
+            } => {
+                expr(base, out);
+                for arg in list {
+                    if let IndexArg::Value(arg) = arg {
+                        expr(&arg.expr, out);
+                    }
+                }
+            }
+            ExprKind::ElseDefault {
+                expr: inner,
+                handler,
+            } => {
+                expr(inner, out);
+                match &**handler {
+                    ElseHandler::Block(b) => block(b, out),
+                    ElseHandler::Expr(v) => expr(v, out),
+                    ElseHandler::Handler { pattern: p, body } => {
+                        pattern(p, out);
+                        expr(body, out);
+                    }
+                }
+            }
+            ExprKind::Range { start, end, .. } => {
+                [start, end]
+                    .into_iter()
+                    .flatten()
+                    .for_each(|b| expr(b, out));
+            }
+            ExprKind::If {
+                cond,
+                then,
+                otherwise,
+            } => {
+                expr(cond, out);
+                block(then, out);
+                if let Some(o) = otherwise {
+                    expr(o, out);
+                }
+            }
+            ExprKind::Match { scrutinee, arms } => {
+                expr(scrutinee, out);
+                for arm in arms {
+                    pattern(&arm.pattern, out);
+                    if let Some(guard) = &arm.guard {
+                        expr(guard, out);
+                    }
+                    expr(&arm.body, out);
+                }
+            }
+            ExprKind::For {
+                pattern: p,
+                iter,
+                body,
+            } => {
+                pattern(p, out);
+                expr(iter, out);
+                block(body, out);
+            }
+            ExprKind::While { cond, body } => {
+                expr(cond, out);
+                block(body, out);
+            }
+            ExprKind::Loop { body } => block(body, out),
+            ExprKind::Closure { params, body, .. } => {
+                for param in params {
+                    out.insert(param.name.name.clone());
+                }
+                expr(body, out);
+            }
+            ExprKind::RegionSugar { cap, body, .. } => {
+                if let Some(cap) = cap {
+                    expr(cap, out);
+                }
+                block(body, out);
+            }
+            ExprKind::In { region, body } => {
+                expr(region, out);
+                block(body, out);
+            }
+            ExprKind::Select { arms } => {
+                for arm in arms {
+                    match &arm.kind {
+                        crate::ast::SelectArmKind::Recv {
+                            pattern: p,
+                            channel,
+                        } => {
+                            pattern(p, out);
+                            expr(channel, out);
+                        }
+                        crate::ast::SelectArmKind::Timeout(limit) => expr(limit, out),
+                    }
+                    expr(&arm.body, out);
+                }
+            }
+            ExprKind::Asm { operands, .. } => operands.iter().for_each(|o| expr(&o.value, out)),
+        }
+    }
+    let mut out = BTreeSet::new();
+    block(body, &mut out);
+    out
 }
 
 fn collect_type_rows<'a>(ty: &'a Type, out: &mut Vec<(&'a crate::ast::ErrorRow, bool)>) {

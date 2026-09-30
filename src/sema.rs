@@ -2956,7 +2956,7 @@ fn tier_check(program: &Program) -> Option<Diag> {
 /// name is not a type. `byte` (singular) IS one since D72/s135: an 8-bit
 /// unsigned scalar resolved in type position like `int` and `char`, and not a
 /// keyword — `[gram.inv.kw]`'s closed set stays at 50.
-const BUILTIN_SCALAR_TYPES: &[&str] = &[
+pub(crate) const BUILTIN_SCALAR_TYPES: &[&str] = &[
     "bool", "byte", "char", "f32", "f64", "i128", "i16", "i32", "i64", "i8", "int", "str", "u128",
     "u16", "u32", "u64", "u8", "uint",
 ];
