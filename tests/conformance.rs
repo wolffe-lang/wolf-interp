@@ -126,7 +126,25 @@ fn pinned_code(check: Option<&Check>) -> Option<&str> {
 /// the path does, and the row leaves the day the mirror lands.
 const RESOLVE_REFUSALS_BY_PATH: &[(&str, &str)] = &[("typecheck/generic_bind_once.lu", "E0401")];
 
+/// Module MEMBERS — files with no `check:` of their own — whose own text is
+/// the refusal their entry pins, so this machine refuses them read alone.
+/// `resolve/sibling_diag/geometry/shapes.lu` arrives at the `ec56a08f` pin
+/// (r24, wolf-lang v0.2.18; s181, wolf-lang#437): the duplicate `area` is
+/// in the member, the entry `main.lu` pins `fail(E0302)` with the span in
+/// the member (`[proto.record.diag]`'s `files`/`file`), and the member read
+/// alone answers `fail(E0302)` at `resolve` with the same span `[245,249]`.
+/// Measured red first: `left: Fail("E0302"), right: Pass` (kasumi
+/// `~/lanes/r24/logs/repin-2.log`).
+const MEMBER_REFUSALS_BY_PATH: &[(&str, &str)] =
+    &[("resolve/sibling_diag/geometry/shapes.lu", "E0302")];
+
 fn declaration_read_code(case: &Case) -> Option<&str> {
+    if let Some((_, code)) = MEMBER_REFUSALS_BY_PATH
+        .iter()
+        .find(|(path, _)| case.path.ends_with(path))
+    {
+        return Some(code);
+    }
     let code = pinned_code(case.check.as_ref())?;
     if let Some((_, code)) = RESOLVE_REFUSALS_BY_PATH
         .iter()
