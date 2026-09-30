@@ -4,8 +4,9 @@
 # kasumi, ~/lanes/is63/evidence/witnesses-archive-0.1.42-wolf-0.2.19-addendum2.log.
 ruling = "STATUS #17"
 
+# addendum 3: the trap is at the body's read of the lent capture, the claim its second span.
 [expected]
-lupin   = { verdict = "trap(exclusivity)", clause = "mem.tier0.excl.1", span = [164, 176] }
+lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [351, 354] }
 
 [trunk]
 lupin   = { verdict = "exit(0)" }

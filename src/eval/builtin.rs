@@ -1809,6 +1809,7 @@ pub fn method(
                         params: Vec::new(),
                         // A named fn has no captures and takes no loans.
                         loans: Vec::new(),
+                        claimed: Vec::new(),
                         body: crate::ast::Expr {
                             kind: Box::new(crate::ast::ExprKind::Call {
                                 callee: crate::ast::Expr {

@@ -327,6 +327,10 @@ pub struct ClosureValue {
     /// at a later call — that a captured place was written after the capture,
     /// which is the one observation that could tell copy from reference apart.
     pub loans: Vec<CaptureLoan>,
+    /// The captures this closure was lent into a call with while that call
+    /// held their places `mut` (`[mem.tier0.excl.4]`), each with the claim's
+    /// span: held `mut` for the body's extent, so a read of one traps.
+    pub claimed: Vec<(String, Span)>,
 }
 
 /// One captured place's loan (wolf-interp#36).

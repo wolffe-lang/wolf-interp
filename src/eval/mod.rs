@@ -3290,9 +3290,12 @@ impl Machine {
                 }
                 None => {
                     // `[mem.tier0.excl.4]`: a closure written as the argument
-                    // lends every local it names into this call.
-                    if let ExprKind::Closure { params, body, .. } = &*arg.expr.kind {
-                        self.check_closure_lend(params, body, call, arg.span)?;
+                    // lends its captures into this call.
+                    if let ExprKind::Closure { .. } = &*arg.expr.kind {
+                        let mut value = self.eval(&arg.expr)?;
+                        self.mark_closure_lend(&mut value, call);
+                        values.push(value);
+                        continue;
                     }
                     // D52's argument position (`[gram.expr.tagident]`): the
                     // callee's declared parameter row is the expected row,
@@ -3387,38 +3390,33 @@ impl Machine {
 
     /// `[mem.tier0.excl.4]`: "a later argument may not [...] lend it into the
     /// same call (a non-`Copy` place passed `read`, [...] or a closure or `dyn`
-    /// value that borrows it)". A closure literal written as the argument
-    /// borrows every local its body names (the compiler's env borrows its
-    /// captures, `[abi.native.closure]`; this machine copies them, which is
-    /// why nothing here checked them through 0.1.42, wolffe-lang/wolf-interp#160),
-    /// so each such local that meets a claim THIS call holds pending traps
-    /// `exclusivity` at the closure — `grow2(mut xs, fn() { xs.len })`. A
-    /// closure created inside a nested call lends to that call, and one bound
-    /// before the claim is passed as a plain value: neither reaches here.
-    fn check_closure_lend(
-        &mut self,
-        params: &[ClosureParam],
-        body: &Expr,
-        call: CallId,
-        span: Span,
-    ) -> EResult<()> {
-        let mut bound: BTreeSet<String> = params.iter().map(|p| p.name.name.clone()).collect();
-        let mut used = BTreeSet::new();
-        crate::lint::free_names(body, &mut bound, &mut used, &BTreeSet::new());
-        for name in used {
-            if !self.local_exists(&name) {
-                continue;
-            }
-            let path = Path::local(self.frame(), name);
-            if self
+    /// value that borrows it)". The compiler's closure env borrows its
+    /// captures (`[abi.native.closure]`); this machine copies them where the
+    /// closure is written, so through 0.1.42 nothing noticed a closure lent
+    /// into the very call that claims one of them (wolffe-lang/wolf-interp#160).
+    /// A closure literal written as a bare argument records each capture
+    /// whose place meets a claim THIS call holds pending, with the claim's
+    /// span; the closure call arm holds each such capture
+    /// `mut` for the body's extent, so the body's first access to it traps
+    /// `exclusivity` there — `grow2(mut xs, fn() { xs.len })`. A capture the
+    /// body never touches traps nothing (the conservatism class). A closure
+    /// created inside a nested call lends to that call, and one bound before
+    /// the claim is passed as a plain value: neither reaches here.
+    fn mark_closure_lend(&mut self, value: &mut Value, call: CallId) {
+        let Value::Closure(closure) = value else {
+            return;
+        };
+        let frame = self.frame();
+        for (name, _) in &closure.captures {
+            let path = Path::local(frame, name.clone());
+            if let Some(held) = self
                 .access
                 .conflict_as(&path, Access::Shared, Reach::Lend(call))
-                .is_some_and(|held| held.why == HeldWhy::Pending(call))
+                .filter(|held| held.why == HeldWhy::Pending(call))
             {
-                self.check_access_as(&path, Access::Shared, Reach::Lend(call), span)?;
+                closure.claimed.push((name.clone(), held.span));
             }
         }
-        Ok(())
     }
 
     /// Whether a bare place argument passed `read` is ruling #17's `Copy`
@@ -3797,6 +3795,7 @@ impl Machine {
                 body: body_expr,
                 captures: Vec::new(),
                 loans: Vec::new(),
+                claimed: Vec::new(),
             }))),
         );
         Ok(())
@@ -6738,6 +6737,7 @@ impl Machine {
             body: body.clone(),
             captures,
             loans,
+            claimed: Vec::new(),
         })))
     }
 
@@ -7490,6 +7490,18 @@ impl Machine {
                 }
                 for (name, value) in closure.params.iter().zip(args) {
                     self.declare(name, Slot::live(value));
+                }
+                // `[mem.tier0.excl.4]`: a capture this closure was lent into a
+                // call with is that call's claimed place — held `mut` for the
+                // body, so the first access to it traps (`mark_closure_lend`).
+                let frame = self.frame();
+                for (name, claim) in &closure.claimed {
+                    self.access.push(Held {
+                        path: Path::local(frame, name.clone()),
+                        access: Access::Exclusive,
+                        span: *claim,
+                        why: HeldWhy::Call,
+                    });
                 }
                 let result = self.eval(&closure.body);
                 let frame = self.frame();
