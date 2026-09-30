@@ -1,0 +1,8 @@
+//! is60 (wolffe-lang/wolf-interp#152) — under a borrow's claim: `&mut xs[1]`, then `xs[0] + 1`.
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    let r = &mut xs[1]
+    print("{xs[0] + 1}")
+    0
+}

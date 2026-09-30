@@ -236,3 +236,101 @@ fn twin_last_under_elem_claim() {
 fn twin_impl_count_under_field_claim() {
     run("twin_impl_count_under_field_claim");
 }
+
+// -- E: an element read inside an expression (wolf-interp#152) ---------
+
+/// `bump(mut xs[1], xs[0] + 1)` — wolf-interp#152's witness.
+#[test]
+fn elem_sibling_in_expr() {
+    run("elem_sibling_in_expr");
+}
+
+/// two siblings in one operand: `xs[0] * 10 + xs[2]`.
+#[test]
+fn elem_two_siblings_in_expr() {
+    run("elem_two_siblings_in_expr");
+}
+
+/// nested, the other row: `g[0][1] + 1` under `mut g[1][0]`.
+#[test]
+fn elem_nested_sibling_row() {
+    run("elem_nested_sibling_row");
+}
+
+/// nested, the same row: `g[0][1] + 1` under `mut g[0][0]`.
+#[test]
+fn elem_nested_same_row() {
+    run("elem_nested_same_row");
+}
+
+/// run-time indices: `xs[j] + 1` under `mut xs[i]`, `i != j`.
+#[test]
+fn elem_dyn_indices() {
+    run("elem_dyn_indices");
+}
+
+/// interpolation holes: `"{xs[0]}{xs[2]}"` under `mut xs[1]`.
+#[test]
+fn elem_in_interp() {
+    run("elem_in_interp");
+}
+
+/// through a field: `b.xs[0] + 1` under `mut b.xs[1]`.
+#[test]
+fn elem_field_list_sibling() {
+    run("elem_field_list_sibling");
+}
+
+/// under a borrow's claim: `&mut xs[1]`, then `xs[0] + 1`.
+#[test]
+fn elem_under_borrow_claim() {
+    run("elem_under_borrow_claim");
+}
+
+/// an index operand with an effect: `xs[f()] + 1`, `f` → 0, once.
+#[test]
+fn elem_effect_index() {
+    run("elem_effect_index");
+}
+
+/// beside EG2's pair: `add2(mut xs[0], mut xs[1], xs[2] + 1)`.
+#[test]
+fn elem_two_claims_third() {
+    run("elem_two_claims_third");
+}
+
+/// under `#![index(1)]`: `xs[1] + 1` under `mut xs[3]`.
+#[test]
+fn elem_origin1_sibling() {
+    run("elem_origin1_sibling");
+}
+
+/// a `Map`: `"{m["b"]}"` under `mut m["a"]`.
+#[test]
+fn elem_map_sibling_interp() {
+    run("elem_map_sibling_interp");
+}
+
+/// twin, still a trap: `xs[1] + 1` under `mut xs[1]`.
+#[test]
+fn twin_same_elem_in_expr() {
+    run("twin_same_elem_in_expr");
+}
+
+/// twin, still a trap: `xs[f()] + 1`, `f` → 1 — the index runs first, as the bare form's does.
+#[test]
+fn twin_effect_index_same_elem() {
+    run("twin_effect_index_same_elem");
+}
+
+/// twin, still a trap: `g[0][1] + 1` under `mut g[0]`.
+#[test]
+fn twin_row_claim_elem_read() {
+    run("twin_row_claim_elem_read");
+}
+
+/// twin, still a trap: `xs[0] + 1` under `mut xs`.
+#[test]
+fn twin_whole_claim_elem_read() {
+    run("twin_whole_claim_elem_read");
+}

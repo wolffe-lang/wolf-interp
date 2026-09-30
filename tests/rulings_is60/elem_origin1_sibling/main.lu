@@ -1,0 +1,14 @@
+//! is60 (wolffe-lang/wolf-interp#152) — under `#![index(1)]`: `xs[1] + 1` under `mut xs[3]`.
+
+#![index(1)]
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    bump(mut xs[3], xs[1] + 1)
+    print("{xs[3]}")
+    0
+}

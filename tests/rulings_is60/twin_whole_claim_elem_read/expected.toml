@@ -1,0 +1,15 @@
+# is60 — wolffe-lang/wolf-interp#152, `[mem.model.place.elem]` 1(a) (wolf-lang `d3bd49cc`): `xs[0]` and
+# `xs[1]` are distinct places, so an element read inside an expression checks the
+# element's own path, as the bare argument already did.
+# `[expected]` is the ruled lupin cell; `[trunk]` is what lupin at trunk `c68c4d3`
+# (0.1.41 plus is58 and is59) and wolf 0.2.18 `conform-run --checked` (archive
+# da027bf9…) answered on kasumi, ~/lanes/is60/evidence/witnesses-trunk-c68c4d3.log.
+ruling = "wolffe-lang/wolf-interp#152"
+part = "E"
+
+[expected]
+lupin   = { verdict = "trap(exclusivity)", clause = "mem.tier0.excl.1", span = [213, 215] }
+
+[trunk]
+checked = { verdict = "exit(0)" }
+lupin   = { verdict = "trap(exclusivity)", clause = "mem.tier0.excl.1", span = [213, 215] }

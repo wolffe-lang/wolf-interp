@@ -1,0 +1,12 @@
+//! is60 (wolffe-lang/wolf-interp#152) — twin, still a trap: `xs[0] + 1` under `mut xs`.
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, xs[0] + 1)
+    print("{xs.len}")
+    0
+}

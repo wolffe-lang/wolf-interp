@@ -1,0 +1,12 @@
+//! is60 (wolffe-lang/wolf-interp#152) — interpolation holes: `"{xs[0]}{xs[2]}"` under `mut xs[1]`.
+
+fn note(mut a: int, s: str) {
+    a = a + s.len
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    note(mut xs[1], "{xs[0]}{xs[2]}")
+    print("{xs[1]}")
+    0
+}

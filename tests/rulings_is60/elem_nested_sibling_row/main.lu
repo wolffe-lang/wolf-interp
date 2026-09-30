@@ -1,0 +1,12 @@
+//! is60 (wolffe-lang/wolf-interp#152) — nested, the other row: `g[0][1] + 1` under `mut g[1][0]`.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var g = [[1, 2], [3, 4, 5]]
+    bump(mut g[1][0], g[0][1] + 1)
+    print("{g[1][0]}")
+    0
+}
