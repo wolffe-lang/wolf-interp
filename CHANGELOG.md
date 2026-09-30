@@ -22,6 +22,35 @@ unchanged: `ec56a08f`.
 - **r24's waiver retires** (`8aa78d2`): the warns ledger now holds s184's
   `mut_param_moveout_{whole,elem,field,map}.lu` with no filing.
 
+**Two-phase arguments** (is63, the maintainer's ruling #17 of 2026-09-30;
+`[mem.tier0.excl.4]`, wolffe-lang/wolf-lang#485's clause, not yet at the
+pin). Pin unchanged: `ec56a08f`.
+
+- **A `mut` argument's claim takes effect at call entry** (`cb474b4`).
+  Within one call the arguments run left to right; each `mut` claim is held
+  pending until the list is done, and a later argument may READ the
+  claimed place and runs, seeing the value from before the call: an
+  operand (`bump(mut a, a + 1)`), a header or member read
+  (`grow(mut xs, xs.len)`, `ensure(mut f, f.len + n)`), a whole read
+  (`fail(mut fl, "{fl.store}")`, a `for`, a receiver, a slice), a nested
+  call's own argument (`ring_drop(mut r, ring_len(r))`,
+  `bump(mut xs[0], total(xs))`). Through 0.1.42 each of these trapped
+  `exclusivity`. A later argument that writes the place, moves it, claims
+  it again, or lends it into the same call still traps, with the record it
+  had; `take` arguments are unchanged.
+- **A bare `Copy` argument is a read, not a lend** (`036b2f1`): `bump(mut
+  a, a)`, `f(mut p, p.x)` and `bump(mut xs[0], xs[0])` run; a non-`Copy`
+  place passed `read` beside its claim (`both(mut xs[0], xs)`) is the lend
+  it was and traps. D39's caller-side overlap half retires with it
+  (`docs/approximation-contract.md` §6.12).
+- 40 witnesses in `tests/rulings_is63/` (24 reads that run with wolf
+  0.2.19's bytes where it runs them, 16 writes, moves, re-claims and lends
+  that keep trunk's trap); 15 earlier witnesses and tests move to the ruling
+  by name (`8cce125`, `a7d7504`, `762bb6a`). The corpus census moves one
+  row, `memory/mut_read_overlap.lu`, from dynamic counterpart to
+  static-conservatism (46 → 45, 55 → 56) until the re-pin carries s186's
+  re-spelled header.
+
 ## 0.1.42 — 2026-09-30
 
 THE FORTY-SECOND (is57, is58, is59, is60, and r24's re-pin), the lupin
