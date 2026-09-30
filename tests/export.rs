@@ -284,7 +284,13 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // place witnesses), `type.err.alias.qualified` and
 // `type.err.alias.transparent` (s175's `rows/error_alias_*`), and
 // `type.list.lit.elem` (the two `typecheck/list_lit_elem_*.lu`).
-const RATCHET_FLOOR: usize = 264;
+// 264 -> 268 at ec56a08f (r24, wolf-lang v0.2.18 — the TAG): FOUR, each
+// cited first by files the pin adds (the corpus `conforms:` sets of the two
+// pins diffed): `mem.model.place.elem` (the `memory/elem_*` rows),
+// `mem.model.place.rhs` (the `memory/ctl_store_order*` rows),
+// `mem.shared.handle` (`memory/elem_pool_handles_one_place.lu`) and
+// `proto.record.diag` (`resolve/sibling_diag/main.lu`).
+const RATCHET_FLOOR: usize = 268;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -470,7 +476,11 @@ const RATCHET_FLOOR: usize = 264;
 // `conc.proc.{arg,handle,join}`, `conf.exit` and its five children,
 // `mem.region.{imm.ret,root}`, `proto.cmp.pass`, `proto.record.{pass,trap}`
 // and `type.err.alias.qualified`. No new namespace.
-const ANCHORS_TOTAL: usize = 539;
+// 539 -> 542 at ec56a08f (r24, wolf-lang v0.2.18 — the TAG): THREE. Key sets
+// diffed BOTH ways: three added, NOTHING dropped, no owner changed —
+// `mem.model.place.elem`, `mem.model.place.rhs` (spec/02) and
+// `os.fs.path.domain` (spec/11). No new namespace.
+const ANCHORS_TOTAL: usize = 542;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -729,9 +739,12 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // 704/663 -> 728/684 at 93a5fe50 (is54, wolf-lang v0.2.16 — the TAG):
     // twenty-four corpus files, none leaving, twenty-one of them entries —
     // `programs` by 24, `records` by 21, the three new members the gap.
-    assert_eq!(summary.pin, "93a5fe504593ca7642b78ba83b4986e7a03cfe71");
-    assert_eq!(summary.programs, 728);
-    assert_eq!(summary.records, 684);
+    // 728/684 -> 785/740 at ec56a08f (r24, wolf-lang v0.2.18 — the TAG):
+    // fifty-seven corpus files, none leaving, fifty-six of them entries —
+    // `programs` by 57, `records` by 56, the one new member the gap.
+    assert_eq!(summary.pin, "ec56a08f04ff318ea659fd58683f7ae4f22dc7a5");
+    assert_eq!(summary.programs, 785);
+    assert_eq!(summary.records, 740);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
