@@ -5448,6 +5448,65 @@ answers `ub(mem.ub)` (`mem.prov.state`, row P1: the write is foreign to
 the receiver's protected Reserved tag), wolf 0.2.19 runs `1 9` on
 checked, native and release. Reported, not fixed; predicted unchanged.
 
+#### §3 addendum — s186's clause landed mid-lane; committed before the edit it drives
+
+At 19:25Z s186's branch moved to `e3ae62b5` and carries the clause:
+`6dbb05b5` "spec: [mem.tier0.excl.4] — arguments are two-phase". Its
+operative sentences: a later argument may read "a `Copy` value
+(`f(mut a, a.x)`) [...] A later argument may **not** [...] lend it into
+the same call (a non-`Copy` place passed `read`, `both(mut xs[0], xs)`,
+or a closure or `dyn` value that borrows it)". So **a bare `Copy` place
+passed `read` is a read, not a lend** — D39's direct form retires
+(s186 `da5b7fb4` flips `mut_read_overlap.lu` to `run(exit=0)`). §3 read
+the ruling's "lend it into the same call" as every bare place argument;
+the clause is narrower, and this lane follows the clause. The anchor
+this lane cites is `[mem.tier0.excl.4]` (s186 `6dbb05b5`, unmerged; the
+vendored pin `ec56a08f` does not carry it yet).
+
+What moves, predicted before the edit:
+
+- **The mechanism, one more arm.** A bare place argument passed `read`
+  whose value is `Copy` (`is_copy`: the scalars, `str`, ranges, fn values,
+  handles, raw pointers; never a `List`, `Map` or struct) and which meets
+  a claim THIS call holds pending is read as an operand is — the value
+  from before the call, no hold and no retag for the callee's extent —
+  and runs. Every other bare place argument is the lend it was.
+- **Three `stay_*` witnesses are reads:** `stay_lend_direct`
+  (`bump(mut a, a)`), `stay_lend_elem_whole_claim` (`grow(mut xs, xs[1])`)
+  and `stay_lend_field` (`ring_drop(mut r, r.head)`) become
+  `read_copy_direct` → `2`, `read_copy_elem_direct` → `2 4`,
+  `read_copy_field_direct` → `2`; a `str` field (`fail(mut fl,
+  fl.store)`) joins as `read_copy_str_direct` → `4 1`; and two lends
+  that stay join the `stay_*` rows: a non-`Copy` field
+  (`stay_lend_list_field`, `fail(mut fl, fl.store)` with `store:
+  List[int]`) and a whole struct beside its claimed field
+  (`stay_lend_struct`, `bump(mut p.x, p)`). Each new or renamed row is
+  seen red against `cb474b4` (the first fix) before this arm lands.
+- **Existing tests that change, beyond §3's twelve: exactly three,**
+  each D39's direct `Copy` read: is59's `twin_same_elem_read`
+  (`bump(mut xs[0], xs[0])` → `2`), `src/eval/tests.rs`'s
+  `a_read_argument_conflicts_with_a_mut_one` (`f(mut p.x, p.x)`), and
+  `tests/mode_read_iteration.rs`'s `the_caller_side_overlap_half_still_traps`
+  (`f(mut a, a.x)`). is59's `twin_whole_read_under_elem_claim`
+  (`sum(mut xs[0], xs)`, a `List`) keeps its trap.
+- **The pinned corpus moves by exactly one row**, `memory/mut_read_overlap.lu`
+  (`bump(mut p, p.x)`, header `fail(E1002)` at `ec56a08f`): head runs it
+  `exit(0)` (`p.x - 2` = 0). It becomes a filed divergence, DIV-2026-027,
+  in `differ::FILED_DIVERGENCES` until the re-pin carries s186's re-spelled
+  row; `lupin corpus` gains that one mismatch (filed) and nothing else,
+  and the differential against wolf 0.2.19 gains that one verdict parting
+  on each tier.
+- **Named, not changed:** a closure passed into the call that captures the
+  claimed place (`grow2(mut xs, fn() { xs.len })`,
+  `~/lanes/is63/probes/p02_closure_into_same_call`) runs `4 3` on lupin
+  0.1.42 already — lupin's closure copies its captures where it is written
+  — while wolf 0.2.19 is E1002 and the clause calls it a lend: a
+  pre-existing parting in the looser direction, reported, not fixed here.
+  An all-`Copy` struct passed whole beside its claimed field
+  (`stay_lend_struct`) is a lend here because lupin's `is_copy` never
+  counts a struct; if the compiler counts it `Copy` under the clause,
+  lupin is the stricter side.
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
