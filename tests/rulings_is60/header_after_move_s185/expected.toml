@@ -1,0 +1,16 @@
+# is60 — wolffe-lang/wolf-interp#149, ruled by the maintainer 2026-09-30: `len`, `count` and `is_empty` read
+# only a container's header; every other method (`push`, `get`, `pop`, a slice,
+# an impl method's `self`) reads the whole container, so on a container holding
+# a moved part it traps `use-after-move` (`[mem.tier0.move.2]`).
+# `[expected]` is the ruled lupin cell; `[trunk]` is what lupin at trunk `c68c4d3`
+# (0.1.41 plus is58 and is59) and wolf 0.2.18 `conform-run --checked` (archive
+# da027bf9…) answered on kasumi, ~/lanes/is60/evidence/witnesses-trunk-c68c4d3.log.
+ruling = "wolffe-lang/wolf-interp#149"
+part = "R"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "1 2 false 20 1 2 2 false false\n" }
+
+[trunk]
+checked = { verdict = "fail(E1001)" }
+lupin   = { verdict = "exit(0)", stdout = "1 2 false 20 1 2 2 false false\n" }

@@ -1,0 +1,11 @@
+//! is60 (wolffe-lang/wolf-interp#149) — `b.xs.get(0)` after `move b.xs[1]`.
+
+struct Bag { xs: List[List[int]] }
+
+fn main() -> !int {
+    var b = Bag { xs: [[1], [2]] }
+    let a = move b.xs[1]
+    let r = b.xs.get(0) else [9]
+    print("{a.len} {r.len}")
+    0
+}

@@ -1,0 +1,8 @@
+//! is60 (wolffe-lang/wolf-interp#149) — keeps running: every container's header above and beside `move g[0][0]`.
+
+fn main() -> !int {
+    var g = [[[1], [2]], [[3]]]
+    let a = move g[0][0]
+    print("{a.len} {g.count()} {g[0].count()} {g[1].count()} {g[0].is_empty()}")
+    0
+}

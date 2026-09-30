@@ -1,0 +1,9 @@
+//! is60 (wolffe-lang/wolf-interp#149) — `g[0][1..3]` after `move g[0][0]`.
+
+fn main() -> !int {
+    var g = [[[1], [2], [3]], [[4]]]
+    let a = move g[0][0]
+    let s = g[0][1..3]
+    print("{a.len} {s.len}")
+    0
+}

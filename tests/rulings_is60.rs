@@ -334,3 +334,173 @@ fn twin_row_claim_elem_read() {
 fn twin_whole_claim_elem_read() {
     run("twin_whole_claim_elem_read");
 }
+
+// -- R: a method or slice on a container holding a moved part (#149) ---
+
+/// `(mut xs).push` after `move xs[0]` — #149's `r01`.
+#[test]
+fn whole_read_push_after_move() {
+    run("whole_read_push_after_move");
+}
+
+/// `xs.get(1)` of a live index after `move xs[0]`.
+#[test]
+fn whole_read_get_after_move() {
+    run("whole_read_get_after_move");
+}
+
+/// `(mut xs).pop()`, the last element live.
+#[test]
+fn whole_read_pop_after_move() {
+    run("whole_read_pop_after_move");
+}
+
+/// `xs[1..3]`, a slice beside the moved element.
+#[test]
+fn whole_read_slice_after_move() {
+    run("whole_read_slice_after_move");
+}
+
+/// an impl method's `self` after `move p.x`.
+#[test]
+fn whole_read_self_after_move() {
+    run("whole_read_self_after_move");
+}
+
+/// `xs.last()` after `move xs[0]`.
+#[test]
+fn whole_read_last_after_move() {
+    run("whole_read_last_after_move");
+}
+
+/// `(mut xs).clear()` after `move xs[0]`.
+#[test]
+fn whole_read_clear_after_move() {
+    run("whole_read_clear_after_move");
+}
+
+/// `(mut m).remove("b")` after `move m["a"]`.
+#[test]
+fn whole_read_map_remove_after_move() {
+    run("whole_read_map_remove_after_move");
+}
+
+/// an impl method's `mut self` after `move p.x`.
+#[test]
+fn whole_read_mut_self_after_move() {
+    run("whole_read_mut_self_after_move");
+}
+
+/// `(mut g[0]).push` after `move g[0][0]`.
+#[test]
+fn whole_read_nested_row_push() {
+    run("whole_read_nested_row_push");
+}
+
+/// `g.get(1)` after `move g[0][0]`, two levels down.
+#[test]
+fn whole_read_outer_get_deep_move() {
+    run("whole_read_outer_get_deep_move");
+}
+
+/// `b.xs.get(0)` after `move b.xs[1]`.
+#[test]
+fn whole_read_field_list_get() {
+    run("whole_read_field_list_get");
+}
+
+/// `g[0][1..3]` after `move g[0][0]`.
+#[test]
+fn whole_read_slice_of_row() {
+    run("whole_read_slice_of_row");
+}
+
+/// `ps[1].total()` runs, `ps[0].total()` traps after `move ps[0].x`.
+#[test]
+fn whole_read_impl_on_elem() {
+    run("whole_read_impl_on_elem");
+}
+
+/// s185's `elem_whole_read_get_after_move.lu` (wolf-lang `ecaf655a`), verbatim below this line.
+#[test]
+fn whole_read_get_s185() {
+    run("whole_read_get_s185");
+}
+
+/// s185's `elem_whole_read_pop_after_move.lu` (wolf-lang `ecaf655a`), verbatim below this line.
+#[test]
+fn whole_read_pop_s185() {
+    run("whole_read_pop_s185");
+}
+
+/// s185's `elem_whole_read_push_after_move.lu` (wolf-lang `ecaf655a`), verbatim below this line.
+#[test]
+fn whole_read_push_s185() {
+    run("whole_read_push_s185");
+}
+
+/// s185's `elem_whole_read_self_after_move.lu` (wolf-lang `ecaf655a`), verbatim below this line.
+#[test]
+fn whole_read_self_s185() {
+    run("whole_read_self_s185");
+}
+
+/// s185's `elem_whole_read_slice_after_move.lu` (wolf-lang `ecaf655a`), verbatim below this line.
+#[test]
+fn whole_read_slice_s185() {
+    run("whole_read_slice_s185");
+}
+
+/// s185's `elem_whole_read_named_count_after_move.lu` (wolf-lang `ecaf655a`), verbatim below this line.
+#[test]
+fn whole_read_named_count_s185() {
+    run("whole_read_named_count_s185");
+}
+
+/// keeps running: `xs.is_empty()` after `move xs[0]` — #149's `r03`.
+#[test]
+fn header_after_move_is_empty() {
+    run("header_after_move_is_empty");
+}
+
+/// keeps running: `xs.count()` after `move xs[0]`.
+#[test]
+fn header_after_move_count() {
+    run("header_after_move_count");
+}
+
+/// keeps running: a `Map`'s `len`, `count()`, `is_empty()` after `move m["a"]`.
+#[test]
+fn header_after_move_map() {
+    run("header_after_move_map");
+}
+
+/// keeps running: every container's header above and beside `move g[0][0]`.
+#[test]
+fn header_after_move_nested() {
+    run("header_after_move_nested");
+}
+
+/// s185's `elem_header_methods_after_move.lu` (wolf-lang `ecaf655a`), verbatim below this line.
+#[test]
+fn header_after_move_s185() {
+    run("header_after_move_s185");
+}
+
+/// s185's `elem_header_methods_after_move_map.lu` (wolf-lang `ecaf655a`), verbatim below this line.
+#[test]
+fn header_after_move_map_s185() {
+    run("header_after_move_map_s185");
+}
+
+/// keeps running: `(mut g[1]).push`, `g[1].get(0)` after `move g[0][0]`.
+#[test]
+fn sibling_row_methods_after_move() {
+    run("sibling_row_methods_after_move");
+}
+
+/// keeps running: `push` after the moved element is stored back.
+#[test]
+fn revived_push_after_move() {
+    run("revived_push_after_move");
+}

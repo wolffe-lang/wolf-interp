@@ -1,0 +1,10 @@
+//! is60 (wolffe-lang/wolf-interp#149) — keeps running: a `Map`'s `len`, `count()`, `is_empty()` after `move m["a"]`.
+
+fn main() -> !int {
+    var m = Map[str, List[int]]()
+    m["a"] = [1]
+    m["b"] = [2, 3]
+    let a = move m["a"]
+    print("{a.len} {m.len} {m.count()} {m.is_empty()}")
+    0
+}

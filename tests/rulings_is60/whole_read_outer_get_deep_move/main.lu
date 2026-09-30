@@ -1,0 +1,9 @@
+//! is60 (wolffe-lang/wolf-interp#149) — `g.get(1)` after `move g[0][0]`, two levels down.
+
+fn main() -> !int {
+    var g = [[[1], [2]], [[3]]]
+    let a = move g[0][0]
+    let r = g.get(1) else [[9]]
+    print("{a.len} {r.len}")
+    0
+}

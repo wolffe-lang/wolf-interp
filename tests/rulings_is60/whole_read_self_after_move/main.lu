@@ -1,0 +1,16 @@
+//! is60 (wolffe-lang/wolf-interp#149) — an impl method's `self` after `move p.x`.
+
+struct P { x: List[int], y: int }
+
+impl P {
+    fn why(self) -> int {
+        self.y
+    }
+}
+
+fn main() -> !int {
+    var p = P { x: [1], y: 2 }
+    let a = move p.x
+    print("{a.len} {p.why()}")
+    0
+}

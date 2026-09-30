@@ -1,0 +1,10 @@
+//! is60 (wolffe-lang/wolf-interp#149) — keeps running: `push` after the moved element is stored back.
+
+fn main() -> !int {
+    var xs = [[1], [2]]
+    let a = move xs[0]
+    xs[0] = [5, 6]
+    (mut xs).push([3])
+    print("{a.len} {xs.len} {xs[0].len}")
+    0
+}

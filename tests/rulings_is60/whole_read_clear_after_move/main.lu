@@ -1,0 +1,9 @@
+//! is60 (wolffe-lang/wolf-interp#149) — `(mut xs).clear()` after `move xs[0]`.
+
+fn main() -> !int {
+    var xs = [[1], [2]]
+    let a = move xs[0]
+    (mut xs).clear()
+    print("{a.len} {xs.len}")
+    0
+}

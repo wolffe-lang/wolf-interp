@@ -1,0 +1,17 @@
+//! is60 (wolffe-lang/wolf-interp#149) — an impl method's `mut self` after `move p.x`.
+
+struct P { x: List[int], y: int }
+
+impl P {
+    fn reset(mut self) {
+        self.x = [7]
+    }
+}
+
+fn main() -> !int {
+    var p = P { x: [1], y: 2 }
+    let a = move p.x
+    (mut p).reset()
+    print("{a.len} {p.x.len}")
+    0
+}

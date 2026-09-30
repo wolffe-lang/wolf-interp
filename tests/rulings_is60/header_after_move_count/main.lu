@@ -1,0 +1,8 @@
+//! is60 (wolffe-lang/wolf-interp#149) — keeps running: `xs.count()` after `move xs[0]`.
+
+fn main() -> !int {
+    var xs = [[1], [2]]
+    let a = move xs[0]
+    print("{a.len} {xs.count()}")
+    0
+}

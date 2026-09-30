@@ -1,0 +1,9 @@
+//! is60 (wolffe-lang/wolf-interp#149) — `xs.last()` after `move xs[0]`.
+
+fn main() -> !int {
+    var xs = [[1], [2]]
+    let a = move xs[0]
+    let b = xs.last() else [9]
+    print("{a.len} {b.len}")
+    0
+}

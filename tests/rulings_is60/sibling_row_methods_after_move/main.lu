@@ -1,0 +1,10 @@
+//! is60 (wolffe-lang/wolf-interp#149) — keeps running: `(mut g[1]).push`, `g[1].get(0)` after `move g[0][0]`.
+
+fn main() -> !int {
+    var g = [[[1], [2]], [[3]]]
+    let a = move g[0][0]
+    (mut g[1]).push([4])
+    let r = g[1].get(0) else [9]
+    print("{a.len} {g[1].len} {r.len}")
+    0
+}

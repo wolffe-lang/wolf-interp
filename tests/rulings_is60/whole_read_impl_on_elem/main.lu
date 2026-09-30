@@ -1,0 +1,17 @@
+//! is60 (wolffe-lang/wolf-interp#149) — `ps[1].total()` runs, `ps[0].total()` traps after `move ps[0].x`.
+
+struct P { x: List[int], y: int }
+
+impl P {
+    fn total(self) -> int {
+        self.y + 1
+    }
+}
+
+fn main() -> !int {
+    var ps = [P { x: [1], y: 2 }, P { x: [3], y: 4 }]
+    let a = move ps[0].x
+    print("{a.len} {ps[1].total()}")
+    print("{ps[0].total()}")
+    0
+}

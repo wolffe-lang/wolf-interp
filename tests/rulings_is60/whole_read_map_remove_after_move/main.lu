@@ -1,0 +1,11 @@
+//! is60 (wolffe-lang/wolf-interp#149) — `(mut m).remove("b")` after `move m["a"]`.
+
+fn main() -> !int {
+    var m = Map[str, List[int]]()
+    m["a"] = [1]
+    m["b"] = [2, 3]
+    let a = move m["a"]
+    let b = (mut m).remove("b") else [9]
+    print("{a.len} {b.len}")
+    0
+}
