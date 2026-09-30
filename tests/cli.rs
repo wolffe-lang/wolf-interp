@@ -276,7 +276,14 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // `rows/negative/error_alias_private/disk/d.lu`,
     // `typecheck/fn_param_shadows_import/cmp/c.lu`), so `members` moves
     // 41 -> 44. The registry gains FIFTEEN anchors, 524 -> 539.
-    assert!(stdout.contains("690 file(s)"), "{stdout}");
+    // 690 -> 747 at ec56a08f (r24, wolf-lang **v0.2.18** — the TAG, two
+    // releases forward): FIFTY-SEVEN new files, none leaves — fifty-six
+    // entries (fifty-five `memory/` witnesses of 0.2.17 and 0.2.18 —
+    // `elem_*`, `ctl_store_order*`, `index_store_*`, `mut_claim_*`,
+    // `mut_param_*`, `store_rhs_first_*` — and `resolve/sibling_diag/main.lu`)
+    // and one member (`resolve/sibling_diag/geometry/shapes.lu`), so
+    // `members` moves 44 -> 45. The registry gains THREE anchors, 539 -> 542.
+    assert!(stdout.contains("747 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -285,7 +292,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 690);
+    assert_eq!(value["total"], 747);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
