@@ -67,6 +67,22 @@ fn with_trap_message_json_is_accepted_and_the_message_lands_in_its_field() {
 }
 
 #[test]
+fn with_file_index_json_is_accepted_and_the_file_index_lands_in_its_field() {
+    // `[proto.record.diag]` (s181; wolf-lang#437): the additive `files` table
+    // and a diagnostic's `file` index into it, typed fields since 0.1.39 —
+    // the fixture arrives with the `ec56a08f` pin (r24, wolf-lang v0.2.18).
+    let value = fixture("with-file-index.json");
+    assert_eq!(schema::validate(&value), Ok(()));
+    let record: ObservationRecord = serde_json::from_value(value).expect("deserializes");
+    assert_eq!(
+        record.files.as_deref(),
+        Some(&["main.lu".to_owned(), "geometry/shapes.lu".to_owned()][..])
+    );
+    assert_eq!(record.diagnostics[0].file, Some(1));
+    assert!(!record.extensions.contains_key("files"));
+}
+
+#[test]
 fn wrong_version_json_is_rejected() {
     let errors = schema::validate(&fixture("wrong-version.json")).expect_err("must be rejected");
     assert!(
@@ -106,12 +122,15 @@ fn the_fixture_set_is_the_one_the_spec_names() {
         names,
         // `clean-stop.json` and `with-trap-message.json` arrive at the
         // `93a5fe50` pin (is54, wolf-lang v0.2.16): s169's `[proto.record.pass]`
-        // and `[proto.record.trap]`, both accepted.
+        // and `[proto.record.trap]`, both accepted. `with-file-index.json`
+        // arrives at the `ec56a08f` pin (r24, wolf-lang v0.2.18): s181's
+        // `[proto.record.diag]`, accepted.
         vec![
             "clean-stop.json",
             "missing-field.json",
             "valid.json",
             "with-extensions.json",
+            "with-file-index.json",
             "with-trap-message.json",
             "with-warnings.json",
             "wrong-version.json"
@@ -126,6 +145,7 @@ fn accepted_fixtures_round_trip_through_the_typed_record() {
         "with-extensions.json",
         "clean-stop.json",
         "with-trap-message.json",
+        "with-file-index.json",
     ] {
         let value = fixture(name);
         let record: ObservationRecord =
