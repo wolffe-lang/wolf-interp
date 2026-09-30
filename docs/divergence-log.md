@@ -5310,6 +5310,144 @@ Filed: wolffe-lang/wolf-lang#486, wolffe-lang/wolf-interp#159.
 - [ ] CI green at the head sha (the PR body)
 - [ ] kasumi build dirs pruned once evidence is written; worktree removed
 
+### Two-phase reads — is63, ruling #17 (the maintainer, 2026-09-30): a `mut` argument's claim takes effect at call entry
+
+Wave 52's row: "lupin evaluates the argument list before any `mut` claim
+takes effect, so it runs the reads #17 allows and keeps trapping the rest."
+Ruling #17 (`wolf/sprints/STATUS.md` item 17, quoted): "within one call,
+arguments are evaluated left to right, and a `mut` argument's claim takes
+effect when the call is entered, not when its argument is evaluated. A
+later argument may **read** the claimed place (a `Copy` value, an operand,
+a header or member read, a whole read such as string interpolation, or a
+nested call whose result lends nothing from the place), because each such
+read ends before the call. A later argument may **not** write the place,
+move it, claim it again (`mut`), or lend it into the same call; those stay
+E1002. [...] `take` arguments are unchanged: a move happens where it is
+written." The spec clause is s186's (wolffe-lang/wolf-lang#485); at the
+start of this lane that branch (`4e6af726`) carries no `spec/` change, so
+this lane cites the ruling and leaves the anchor to the re-pin. The
+contract is is60's, in five sections; §1–§3 are committed before the
+first edit under `src/` or `tests/`, the rest is appended as it lands.
+Measurements on kasumi (linux x86-64) under `~/lanes/is63/`: the
+published wolf 0.2.19 (`9f3873d8…8c8e`, `wolf 0.2.19 (wolfgang, pin
+c2401f0)`) and lupin 0.1.42 (`9856335a…8ab6`), archive digests equal to
+the release pages' (`gh release view`), lupin 0.1.42 being trunk
+`8e2516d` released. Witnesses: 37 one-directory programs under
+`tests/rulings_is63/` (`read_*` the reads #17 allows, `stay_*` the
+writes, moves, re-claims and lends it keeps refused), run by
+`~/lanes/is63/scripts/run-witnesses.sh` (`lupin conform-run main.lu
+--json`, and `wolf conform-run main.lu --{checked,native,release}
+--json` beside it), summarised by `~/lanes/is63/scripts/summ.py`.
+
+#### §1 — forbidden, absolutely
+
+No `rm` outside `~/lanes/is63/` (kasumi) and `/private/tmp/is63`; no
+deletion in any tree this lane did not create; no `git add -A`; no edit
+to another lane's file — is61 owns `src/lint.rs` (W1002), s186 owns
+wolf-lang and the clause; no workflow edit; no `~/.claude`; no build or
+test on nomad-1 (kasumi only, `CARGO_BUILD_JOBS=4`); no tag; no pin move
+(pin stays `ec56a08f`); no merge, no rebase-merge; no `2>/dev/null` on a
+checkout; kill only my own pids, never a pattern or a group; jobs
+launched with `setsid`; no claim of "seen red" without the log it is
+in; no trailer on any commit.
+
+#### §2 — inputs, re-derived 2026-09-30
+
+| input as written | at origin / measured | drift |
+| --- | --- | --- |
+| wolf-interp trunk | `origin/trunk` = `8e2516d` "release: lupin 0.1.42" = tag `v0.1.42`; pin `ec56a08f` (wolf-lang v0.2.18); branch `is63` cut there | none |
+| wolf 0.2.19, lupin 0.1.42 | archives `9f3873d8…8c8e` and `9856335a…8ab6`, equal to the release assets' digests; the wolf record names commit `c2401f0` | none |
+| lupin 0.1.42 traps every read shape #17 names | `witnesses-archive-0.1.42-wolf-0.2.19.log`: all 20 `read_*` trap `exclusivity` (`mem.tier0.excl.1` on a whole claim, `mem.model.path.disjoint` on an element or field claim): `ensure(mut f, f.len + 2)`, `ring_drop(mut r, ring_len(r))`, `fail(mut fl, "bad {fl.store} and {fl}")`, `ev_log(mut el, 3, ev_seq("abc", el.seq))`, `bump(mut a, a + 1)`, `bump(mut xs[0], id(xs[0]))`, `grow(mut xs, xs.len)`, `grow(mut xs, xs.count())`, `xs.get(1) else 9` under `mut xs[0]`, `total(xs)` under `mut xs[0]` and under `mut xs`, `msize(m)` under `mut m`, an `if` arm, a slice one call down, a `for` over the claimed container inside a block, an impl `self`, two claims then an operand, effects in order, an inner call's operand reading the outer claim, a `push` on another place whose argument reads the claim | none |
+| wolf 0.2.19 on the read shapes | runs 19 of 20 on checked, native and release with one set of bytes per row; refuses `grow(mut xs, xs.len)` E1002 ("`xs.len` is read for this call after `xs` goes `mut` in it") — the direct member read, which #17 now allows and s186 narrows | the one row lupin will run where 0.2.19 refuses; a #17 row, named |
+| the shapes #17 keeps refused | all 17 `stay_*` refused by lupin 0.1.42: 15 trap `exclusivity` (block write, element write, `(mut xs).push` inside a block, `take xs` after `mut xs`, `move xs` in a block, `take fl.store` one call down, `mut a` twice, `inc(mut a)` one call down, `clear_len(mut xs)` under `mut xs[0]`, the direct lends `bump(mut a, a)`, `both(mut xs[0], xs)`, `grow(mut xs, xs[1])`, `ring_drop(mut r, r.head)`, the lend before the claim `second(xs, mut xs)`, a write of the outer claim inside an inner call's argument, a `&a` borrow in a block); `grow(mut xs, eat(take xs))` is lupin's static `fail(E1001)` | none |
+| wolf 0.2.19 on the kept shapes | E1002 on the lends and re-claims; E1001 on the moves; **runs** the block write (`6` checked, `2` native/release), the element write (`3`), and the outer-claim write inside an inner argument (`18 11` checked, `12 11` native/release) — wrong answers s186 refuses; `&a` is `unsupported` (borrow expressions) | the compiler's half, s186's; lupin keeps trapping these |
+| the mechanism | `eval_args_for` (`src/eval/mod.rs:3189`) pushes each `mut` argument's claim into the access set as the argument is evaluated (`:3220`), and every later access meets it through `AccessSet::conflict` (`place.rs:258`): reads through `read_claim` (`mod.rs:1670`), header and element reads through `read_header`/`conflicts_only_below`, writes through `write_path`, moves through `move_path`, a read lend through the argument loop's own `check_access` (`:3267`) | none |
+| existing witnesses that assert a trap #17 moves | ruled `trap(exclusivity)` today, each a later-argument read: is59 `twin_elem_mut_its_member_read`, `twin_field_mut_member_read`, `twin_whole_mut_member_read`; is60 `twin_count_whole_claim`, `twin_effect_index_same_elem`, `twin_elem_count_same_elem_claim`, `twin_get_under_elem_claim`, `twin_impl_count_under_field_claim`, `twin_last_under_elem_claim`, `twin_row_claim_elem_read`, `twin_same_elem_in_expr`, `twin_whole_claim_elem_read` (12). Kept, each a lend into the same call: is59 `twin_same_elem_read` (`bump(mut xs[0], xs[0])`), `twin_whole_read_under_elem_claim` (`sum(mut xs[0], xs)`) | the 12 move to the ruling in their own commit |
+| the pinned corpus (`ec56a08f`) | every `fail(E1002)` row with a claim is a pair of claims or a lend (`mut_read_overlap.lu` `bump(mut p, p.x)`, `mut_elem_nested_call.lu` a nested re-claim); no row reads a claimed place in a later argument | none |
+| the differential at trunk | `diffrun/archive-0.1.42-*` (the 0.1.42 archive against wolf 0.2.19, four tiers): 4 gating findings on each tier, all pre-existing (`checked`: `explicit_apply_arity`, `index_origin_bad`, `push_take_moves` rung partings, `method_is_free_call`) | the baseline head is compared against |
+| wolf-lang's lupin-reading gates | wolf-lang trunk `4c57f3d7`: 11 files read `LUPIN`; only `element_places_lanes.rs` asserts `trap(exclusivity)` on a call, each a pair of claims or the direct lend `elem_claim_whole_read.lu`; s186's `nested_claim_reads_lanes.rs` (branch `4e6af726`, unmerged) asserts lupin traps on #476's rows | the s186 rows are s186's to narrow; listed at head, not edited |
+| s186's clause | `origin/s186` = `4e6af726`: 22 commits, `git diff --stat origin/trunk...origin/s186 -- spec` empty | cite ruling #17; the anchor waits for the re-pin |
+| is61 in the same repo | `origin/is61` touches `src/lint.rs`, `src/sema.rs` (2 lines), `tests/lint_is61/`, `tests/run_corpus.rs`, `CHANGELOG.md`, this file | no overlap in code; the second to merge rebases this file and the CHANGELOG |
+| the coverage ratchet | `tests/export.rs`: `RATCHET_FLOOR = 268`, `ANCHORS_TOTAL = 542` | none |
+
+#### §3 — prediction, committed before the first edit
+
+**The fix, one mechanism.** A `mut` argument's claim is pushed as today,
+but marked **pending** for its call (a fresh call id per argument list)
+until the list is fully evaluated; at the end of `eval_args_for` — call
+entry — every pending claim of the call becomes the ordinary call claim
+it is today, so the callee's extent is unchanged. While pending, a claim
+meets: every exclusive access (a write, a move, a `take`, a `mut`
+argument or receiver, a `&mut` borrow), a read **lend into its own call**
+(a bare place argument in `read` mode, checked with the call's id), and
+a local `&` borrow (lupin-only surface; a borrow is a lend). It does not
+meet a read: a `Copy` read, an operand, a header or member read, a whole
+read (interpolation, a `for` over the container, a method receiver read,
+a slice), or a nested call's read lend into ITS OWN call. Every trap that
+stays a trap keeps its record (the same detail, clause and span), since
+the check that finds it is the one that found it before.
+
+**The witness table** (lupin at head against trunk; wolf 0.2.19 checked
+in brackets):
+
+| witness | trunk (0.1.42) | head | [0.2.19] |
+| --- | --- | --- | --- |
+| `read_operand` | trap | `exit(0)` `3` | [`3`] |
+| `read_copy_nested` | trap | `2` | [`2`] |
+| `read_member_ensure` | trap | `3 3` | [`3 3`] |
+| `read_nested_ring_len` | trap | `4 0` | [`4 0`] |
+| `read_interp_whole` | trap | `bad [1, 2] and Fl { store: [1, 2], msg:  }` | [same] |
+| `read_nested_field_seq` | trap | `13 1` | [`13 1`] |
+| `read_member_whole_claim` | trap | `3 4` | [E1002 — a #17 row] |
+| `read_count_whole_claim` | trap | `3 4` | [`3 4`] |
+| `read_get_elem_claim` | trap | `3` | [`3`] |
+| `read_total_elem_claim` | trap | `4 3` | [`4 3`] |
+| `read_total_whole_claim` | trap | `1 4` | [`1 4`] |
+| `read_map_nested` | trap | `2 1` | [`2 1`] |
+| `read_if_arm` | trap | `44` | [`44`] |
+| `read_slice_nested` | trap | `3 4` | [`3 4`] |
+| `read_for_in_block` | trap | `6 4` | [`6 4`] |
+| `read_impl_self` | trap | `5` | [`5`] |
+| `read_two_claims` | trap | `13 14 3` | [`13 14 3`] |
+| `read_order_effects` | trap, nothing printed | `twice 5`, `in 5 10`, `15` | [same] |
+| `read_nested_claims` | trap | `22 21` | [`22 21`] |
+| `read_method_mut_receiver_arg` | trap | `4 2` | [`4 2`] |
+| the 16 trapping `stay_*` | trap | unchanged: verdict, clause, span | [E1002/E1001; runs the three writes; `&` unsupported] |
+| `stay_move_nested` | `fail(E1001)` | unchanged | [E1001] |
+
+**Existing tests that change: exactly the 12 twins in §2**, each to
+`exit(0)` with the bytes wolf 0.2.19 prints where it runs the row; no
+other test red at head that was green at trunk (`cargo test
+--no-fail-fast` in the gauntlet). Falsified by any other.
+
+**Corpus and differential.** `lupin corpus` at the pin: identical,
+trunk against head. `lupin diff-run` against wolf 0.2.19 on the four
+tiers: the same 4 gating findings per tier, report lines identical; no
+row at the pin moves (none reads a claimed place in a later argument).
+**The rows #17 moves** against 0.2.19 are therefore this lane's own:
+`read_member_whole_claim` and is59's three member-read twins (0.2.19
+refuses E1002, head runs), and the 19 other `read_*` plus nine is60 twins
+move from a lupin trap to wolf 0.2.19's own bytes — agreement where
+there was a parting.
+
+**Coverage.** `RATCHET_FLOOR` holds at 268 (the witnesses carry no
+`conforms:` line the bundle counts).
+
+**wolf-lang's gates** at trunk `4c57f3d7`, head presented as the next
+lupin: green, no case changes (none asserts a trap on a later-argument
+read). At s186's branch head, `nested_claim_reads_lanes` reds exactly on
+its lupin-trap assertions for the read rows — s186's to narrow under the
+same ruling — and on nothing else.
+
+**Out of scope, named:** a method call's `mut` receiver is not held as a
+claim while its arguments run (`(mut xs).push(…)` checks the receiver at
+the write-back), so a write of the receiver inside its own argument is
+not this change's. Probed before the edit (`~/lanes/is63/probes/
+p01_receiver_self_write`, `(mut xs).push({ xs = [9]; 5 })`): lupin 0.1.42
+answers `ub(mem.ub)` (`mem.prov.state`, row P1: the write is foreign to
+the receiver's protected Reserved tag), wolf 0.2.19 runs `1 9` on
+checked, native and release. Reported, not fixed; predicted unchanged.
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
