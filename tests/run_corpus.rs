@@ -1893,32 +1893,13 @@ fn main() -> !int { work.n() - 7 }
 /// that leaves its waiver behind fails the test below, so the waiver retires
 /// the round it stops being true (the wolf-lang#177 lesson in this shape).
 ///
-/// The ec56a08f pin (r24) brings s184's `mut_param_moveout_*` rows: the
-/// body moves the `mut` parameter out and the compiler reports E1001 with
-/// W1002 stood down beside it; this machine traps at run and its lint still
-/// says W1002, "never written" (wolffe-lang/wolf-interp#155).
-const WARNS_FILED: &[(&str, &str, &str)] = &[
-    (
-        "memory/mut_param_moveout_elem.lu",
-        "W1002",
-        "wolffe-lang/wolf-interp#155",
-    ),
-    (
-        "memory/mut_param_moveout_field.lu",
-        "W1002",
-        "wolffe-lang/wolf-interp#155",
-    ),
-    (
-        "memory/mut_param_moveout_map.lu",
-        "W1002",
-        "wolffe-lang/wolf-interp#155",
-    ),
-    (
-        "memory/mut_param_moveout_whole.lu",
-        "W1002",
-        "wolffe-lang/wolf-interp#155",
-    ),
-];
+/// Empty since is61. The ec56a08f pin (r24) brought s184's
+/// `mut_param_moveout_{whole,elem,field,map}.lu`, waived here for W1002
+/// (wolffe-lang/wolf-interp#155): the body moves the `mut` parameter out,
+/// the compiler reports E1001 and stands W1002 down, and this machine's lint
+/// said "never written". is61 taught the lint that a move reaching a return
+/// unused is the write, and the four rows left this table in the same change.
+const WARNS_FILED: &[(&str, &str, &str)] = &[];
 
 #[test]
 fn the_warns_ledger_is_enforced_for_the_analyses_this_machine_runs() {
