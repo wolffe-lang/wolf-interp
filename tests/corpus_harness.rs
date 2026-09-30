@@ -727,10 +727,16 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //  `check:` line changed — the fourteen modified files move `phase:` and
     //  prose only. The registry gains FIFTEEN anchors, 524 -> 539, and no new
     //  namespace: `conc`, `conf`, `mem`, `proto`, `type` are all registered.)
+    // (690 -> 747 at ec56a08f, r24, wolf-lang v0.2.18: FIFTY-SEVEN new files,
+    //  fifty-six entries and one member, none edited away and no `check:`
+    //  line changed — `memory/list_session_struct.lu` changes its body
+    //  (eg01's `copy tbl[2]`), not its directives. The registry gains THREE
+    //  anchors, 539 -> 542 (`mem.model.place.elem`, `mem.model.place.rhs`,
+    //  `os.fs.path.domain`), and no new namespace.)
     let report = report();
     assert_eq!(
         report.total(),
-        690,
+        747,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
@@ -745,8 +751,11 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     // 625 -> 646 at 93a5fe50 (is54, wolf-lang v0.2.16): twenty-four new
     // files, twenty-one of them entries; `members` moves 41 -> 44 with the
     // three sibling modules of s171's and s175's multi-file witnesses.
-    assert_eq!(report.entries(), 646);
-    assert_eq!(report.members(), 44);
+    // 646 -> 702 at ec56a08f (r24, wolf-lang v0.2.18): fifty-seven new
+    // files, fifty-six of them entries; `members` moves 44 -> 45 with s181's
+    // `resolve/sibling_diag/geometry/shapes.lu`.
+    assert_eq!(report.entries(), 702);
+    assert_eq!(report.members(), 45);
 }
 
 #[test]
