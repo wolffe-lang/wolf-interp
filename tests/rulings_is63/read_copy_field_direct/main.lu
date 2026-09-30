@@ -1,4 +1,4 @@
-//! is63 (ruling #17) — still a trap: a field of the claimed struct lent into the same call, `ring_drop(mut r, r.head)`.
+//! is63 (ruling #17) — a bare `Copy` field of the claimed struct passed `read`: `ring_drop(mut r, r.head)`.
 
 struct Ring {
     items: List[int],

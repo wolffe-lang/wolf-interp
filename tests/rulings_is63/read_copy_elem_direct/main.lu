@@ -1,0 +1,12 @@
+//! is63 (ruling #17) — a bare `Copy` element of the claimed container passed `read`: `grow(mut xs, xs[1])`.
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, xs[1])
+    print("{xs[3]} {xs.len}")
+    0
+}

@@ -1,15 +1,15 @@
 # is63 — ruling #17 (the maintainer, 2026-09-30; wolf `sprints/STATUS.md` item 17): a `mut`
-# argument's claim takes effect at call entry. This row: a write, move, re-claim or lend the ruling keeps refused — trunk's record, byte for byte.
+# argument's claim takes effect at call entry. This row: a read the ruling allows — it runs, reading the value the place holds before the call.
 # `[expected]` is the ruled lupin cell; `[trunk]` is what the published lupin 0.1.42 (trunk
 # `8e2516d`, archive 9856335a…) and wolf 0.2.19 (archive 9f3873d8…) `conform-run` answered on
-# kasumi, ~/lanes/is63/evidence/witnesses-archive-0.1.42-wolf-0.2.19.log.
+# kasumi, ~/lanes/is63/evidence/witnesses-archive-0.1.42-wolf-0.2.19-addendum.log.
 ruling = "STATUS #17"
 
 [expected]
-lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [332, 338] }
+lupin   = { verdict = "exit(0)", stdout = "4 1\n" }
 
 [trunk]
-lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [332, 338] }
+lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [328, 336] }
 checked = { verdict = "fail(E1002)", codes = "E1002" }
 native  = { verdict = "fail(E1002)", codes = "E1002" }
 release = { verdict = "fail(E1002)", codes = "E1002" }

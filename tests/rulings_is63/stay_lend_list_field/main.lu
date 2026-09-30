@@ -1,0 +1,18 @@
+//! is63 (ruling #17) — still a trap: a non-`Copy` field of the claimed struct lent into the same call, `fail(mut fl, fl.store)` with `store: List[int]`.
+
+struct Fl {
+    store: List[int],
+    n: int,
+}
+
+fn fail(mut fl: Fl, msg: List[int]) -> int {
+    fl.n = fl.n + 1
+    msg.len
+}
+
+fn main() -> !int {
+    var fl = Fl { store: [1, 2], n: 0 }
+    let k = fail(mut fl, fl.store)
+    print("{k} {fl.n}")
+    0
+}

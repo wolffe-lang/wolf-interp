@@ -1,0 +1,12 @@
+//! is63 (ruling #17) — a bare `Copy` place passed `read` is a read, not a lend (`[mem.tier0.excl.4]`): `bump(mut a, a)`, D39's direct form.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var a = 1
+    bump(mut a, a)
+    print("{a}")
+    0
+}

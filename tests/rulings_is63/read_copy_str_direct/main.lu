@@ -1,0 +1,18 @@
+//! is63 (ruling #17) — a bare `str` field (a `Copy` value) of the claimed struct passed `read`: `fail(mut fl, fl.store)`.
+
+struct Fl {
+    store: str,
+    n: int,
+}
+
+fn fail(mut fl: Fl, msg: str) -> int {
+    fl.n = fl.n + 1
+    msg.len
+}
+
+fn main() -> !int {
+    var fl = Fl { store: "/var", n: 0 }
+    let k = fail(mut fl, fl.store)
+    print("{k} {fl.n}")
+    0
+}

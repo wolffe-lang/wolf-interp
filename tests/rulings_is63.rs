@@ -257,6 +257,30 @@ fn read_two_claims() {
     run("read_two_claims");
 }
 
+/// a bare `Copy` place passed `read` is a read, not a lend (`[mem.tier0.excl.4]`): `bump(mut a, a)`, D39's direct form.
+#[test]
+fn read_copy_direct() {
+    run("read_copy_direct");
+}
+
+/// a bare `Copy` element of the claimed container passed `read`: `grow(mut xs, xs[1])`.
+#[test]
+fn read_copy_elem_direct() {
+    run("read_copy_elem_direct");
+}
+
+/// a bare `Copy` field of the claimed struct passed `read`: `ring_drop(mut r, r.head)`.
+#[test]
+fn read_copy_field_direct() {
+    run("read_copy_field_direct");
+}
+
+/// a bare `str` field (a `Copy` value) of the claimed struct passed `read`: `fail(mut fl, fl.store)`.
+#[test]
+fn read_copy_str_direct() {
+    run("read_copy_str_direct");
+}
+
 // -- the writes, moves, re-claims and lends #17 keeps refused -------------
 
 /// still a trap: a later argument WRITES the claimed place, `bump(mut a, { a = 5; 1 })`.
@@ -283,23 +307,8 @@ fn stay_lend_before_claim() {
     run("stay_lend_before_claim");
 }
 
-/// still a trap: the claimed place lent into the same call, `bump(mut a, a)` (D39).
-#[test]
-fn stay_lend_direct() {
-    run("stay_lend_direct");
-}
 
-/// still a trap: an element of the claimed container lent into the same call, `grow(mut xs, xs[1])`.
-#[test]
-fn stay_lend_elem_whole_claim() {
-    run("stay_lend_elem_whole_claim");
-}
 
-/// still a trap: a field of the claimed struct lent into the same call, `ring_drop(mut r, r.head)`.
-#[test]
-fn stay_lend_field() {
-    run("stay_lend_field");
-}
 
 /// still a trap: the whole container lent into the same call as its claimed element, `both(mut xs[0], xs)`.
 #[test]
@@ -359,4 +368,16 @@ fn stay_reclaim_prefix_nested() {
 #[test]
 fn stay_take_arg() {
     run("stay_take_arg");
+}
+
+/// still a trap: a non-`Copy` field of the claimed struct lent into the same call, `fail(mut fl, fl.store)` with `store: List[int]`.
+#[test]
+fn stay_lend_list_field() {
+    run("stay_lend_list_field");
+}
+
+/// still a trap: the whole struct lent into the same call beside its claimed field, `bump(mut p.x, p)`.
+#[test]
+fn stay_lend_struct() {
+    run("stay_lend_struct");
 }
