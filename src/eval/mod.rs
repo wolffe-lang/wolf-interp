@@ -603,6 +603,13 @@ pub struct Machine {
     /// A span identifies one syntactic site, so a nested `.bytes()` inside the
     /// receiver of a consumed one keeps its own answer.
     consumed_views: Vec<Span>,
+    /// The place a [`Machine::live_place`] evaluated an expression's operands
+    /// into and then found no slot for (`g[f()].len`, `g[f()]` out of range),
+    /// keyed by the expression's address: the `eval` of that same expression,
+    /// which is always the caller's next call, reads it instead of running the
+    /// operands a second time (wolffe-lang/wolf-interp#151). Taken by every
+    /// `eval`, so it never outlives the one call it was left for.
+    evaluated_place: Option<(usize, Path)>,
     /// The next [`Frame::serial`] this task will mint (#36).
     next_frame_serial: u64,
     /// The places some live closure has captured, `(frame serial, name)` —
@@ -740,6 +747,7 @@ impl Machine {
             when_held: Vec::new(),
             pending_retags: Vec::new(),
             consumed_views: Vec::new(),
+            evaluated_place: None,
             next_frame_serial: 0,
             captured_places: BTreeSet::new(),
             capture_gens: BTreeMap::new(),
@@ -3914,10 +3922,24 @@ impl Machine {
     /// `xs[3]` on a one-element list *is* a well-formed place expression and is
     /// *not* a place: the difference is the `bounds` trap, and it belongs to the
     /// value path (`builtin::index`), not to a "this is not a place" gap.
+    ///
+    /// A member or index expression whose place has no slot (`g[f()].len`,
+    /// `g[f()]` out of range) has had its operands evaluated here all the
+    /// same; the path is left in [`Machine::evaluated_place`] for the `eval`
+    /// of `expr` the caller makes next, so they run once (wolf-interp#151).
     fn live_place(&mut self, expr: &Expr) -> EResult<Option<Path>> {
         match self.place_of(expr) {
             Ok(path) if self.slot_mut(&path).is_some() => Ok(Some(path)),
-            Ok(_) | Err(Signal::Unsupported(_)) => Ok(None),
+            Ok(path) => {
+                if matches!(
+                    &*expr.kind,
+                    ExprKind::Member { .. } | ExprKind::BracketApply { .. }
+                ) {
+                    self.evaluated_place = Some((expr_key(expr), path));
+                }
+                Ok(None)
+            }
+            Err(Signal::Unsupported(_)) => Ok(None),
             Err(other) => Err(other),
         }
     }
@@ -4364,6 +4386,12 @@ impl Machine {
         let [IndexArg::Value(arg)] = args else {
             return unsupported("only a single-argument index denotes a place".to_owned());
         };
+        // A range spelled in the brackets is a slice, a value (below), known
+        // before its endpoints run: refused here, the slice evaluates them
+        // once, where it is read (wolf-interp#151's family).
+        if matches!(&*arg.expr.kind, ExprKind::Range { .. }) {
+            return unsupported("a slice expression denotes a value, not a place".to_owned());
+        }
         let key = self.eval(&arg.expr)?;
         // A map indexed by an int is a KEY, not a position, and
         // never shifts under origin 1 — the base's current value
@@ -4420,6 +4448,10 @@ impl Machine {
 
     #[allow(clippy::too_many_lines)]
     fn eval(&mut self, expr: &Expr) -> EResult<Value> {
+        let evaluated = self
+            .evaluated_place
+            .take()
+            .and_then(|(key, path)| (key == expr_key(expr)).then_some(path));
         self.step()?;
         match &*expr.kind {
             ExprKind::Int(text) => Ok(Value::Int(parse_int(text)?, IntTy::LITERAL)),
@@ -4597,10 +4629,21 @@ impl Machine {
             }
             ExprKind::Call { callee, args } => self.eval_call(callee, args, expr.span),
             ExprKind::BracketApply { base, args, origin } => {
+                if let Some(path) = evaluated
+                    && let Some(element) = self.read_missing_element(&path, expr, ReadAs::Whole)?
+                {
+                    return Ok(element);
+                }
                 self.eval_bracket(base, args, *origin, expr.span, ReadAs::Whole)
             }
             ExprKind::Member { base, member } => {
-                self.eval_member(base, member, expr.span, ReadAs::Whole)
+                // The member's own path, when `live_place` evaluated it: its
+                // base is that path's parent, operands already run.
+                let base_place = evaluated.map(|mut path| {
+                    path.projections.pop();
+                    path
+                });
+                self.eval_member_at(base, member, expr.span, ReadAs::Whole, base_place)
             }
             // A moded receiver evaluates as its place; the mode is consumed by
             // `method_split` when the member access is a call, and marks
@@ -7871,6 +7914,19 @@ impl Machine {
         span: Span,
         how: ReadAs,
     ) -> EResult<Value> {
+        self.eval_member_at(base, member, span, how, None)
+    }
+
+    /// [`eval_member`](Machine::eval_member), given the base's place when
+    /// its operands were already evaluated into it (`base_place`).
+    fn eval_member_at(
+        &mut self,
+        base: &Expr,
+        member: &Member,
+        span: Span,
+        how: ReadAs,
+        base_place: Option<Path>,
+    ) -> EResult<Value> {
         if self.is_module_expr(base)
             && let (ExprKind::Path(path), Member::Named(name)) = (&*base.kind, member)
         {
@@ -7889,7 +7945,11 @@ impl Machine {
             };
         }
 
-        if let Ok(path) = self.place_of(base) {
+        let base_place = match base_place {
+            Some(path) => Ok(path),
+            None => self.place_of(base),
+        };
+        if let Ok(path) = base_place {
             let projected = match member {
                 Member::Named(ident) => path.clone().project(Proj::Field(ident.name.clone())),
                 Member::Index(index, _) => path.clone().project(Proj::Index(i128::from(*index))),
@@ -7910,6 +7970,25 @@ impl Machine {
             {
                 self.step()?;
                 return builtin::property(self, &value, &ident.name, span);
+            }
+            // Anywhere no claim meets the base, the member is read off the
+            // base's place — its operands already ran in `place_of` — rather
+            // than by evaluating the base again (wolf-interp#151: `g[f()].len`
+            // ran `f` three times). A base under a claim it meets keeps the
+            // route below, whose container check traps before any operand
+            // runs again, with trunk's record.
+            if let Member::Named(ident) = member
+                && self.access.conflict(&path, Access::Shared).is_none()
+            {
+                let value = if self.slot_mut(&path).is_some() {
+                    self.step()?;
+                    Some(self.read_path(&path, base.span)?)
+                } else {
+                    self.read_missing_element(&path, base, ReadAs::Projected)?
+                };
+                if let Some(value) = value {
+                    return builtin::property(self, &value, &ident.name, span);
+                }
             }
         }
 
@@ -8047,6 +8126,55 @@ impl Machine {
             self.check_access(&container, Access::Shared, root.span)?;
         }
         Ok(picked)
+    }
+
+    /// An index read whose place was already evaluated (`path`, operands
+    /// run) and has no slot: an index out of range, or a `Map` key that is
+    /// absent (wolf-interp#151's family — `let n = g[f()]` ran `f` twice
+    /// before its bounds trap). `expr` is the bracket expression. The answer
+    /// is trunk's: the container read off its place, then `builtin::index`
+    /// with the index the writer wrote — the `bounds` trap and its line, or
+    /// the `none` row.
+    ///
+    /// `None` when the container itself has no slot, the step is not an
+    /// index or key, or a claim meets the container: the caller evaluates
+    /// as trunk.
+    fn read_missing_element(
+        &mut self,
+        path: &Path,
+        expr: &Expr,
+        how: ReadAs,
+    ) -> EResult<Option<Value>> {
+        let ExprKind::BracketApply { base, origin, .. } = &*expr.kind else {
+            return Ok(None);
+        };
+        let mut container = path.clone();
+        let Some(last) = container.projections.pop() else {
+            return Ok(None);
+        };
+        let ordinal = match self.slot_mut(&container) {
+            Some(slot) => matches!(slot.value, Value::List(..) | Value::Tuple(_)),
+            None => return Ok(None),
+        };
+        if self.access.conflict(&container, Access::Shared).is_some() {
+            return Ok(None);
+        }
+        let index = match last {
+            // `project_index` lowered an origin-1 position by one; the
+            // writer's number goes back to `builtin::index`, which lowers it
+            // again and renders it in the trap line (D61).
+            Proj::Index(i) if ordinal && *origin == 1 => Value::Int(i + 1, IntTy::INT),
+            Proj::Index(i) if ordinal => Value::Int(i, IntTy::INT),
+            Proj::Key(key) => key.to_value(),
+            _ => return Ok(None),
+        };
+        self.step()?;
+        let value = self.read_path(&container, base.span)?;
+        let element = builtin::index(self, &value, &index, *origin, expr.span)?;
+        if how == ReadAs::Whole {
+            self.check_whole(&element, None, expr.span)?;
+        }
+        Ok(Some(element))
     }
 
     fn eval_bracket(
@@ -9081,6 +9209,12 @@ fn check_struct_pattern(
         }
     }
     Ok(())
+}
+
+/// An expression's identity for [`Machine::evaluated_place`]: its address in
+/// the tree, which is stable for the one evaluation the key lives for.
+fn expr_key(expr: &Expr) -> usize {
+    std::ptr::from_ref(expr) as usize
 }
 
 fn prefix(path: &Path, depth: usize) -> Path {
