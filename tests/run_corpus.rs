@@ -485,7 +485,11 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // D39's write barrier (E1014), the caller-side overlap rule (E1002),
     // and D40's iteration claim (E1013). Dynamic counterparts, all three.
     ("memory/list_mutate_while_iter.lu", "trap(exclusivity)"),
-    ("memory/mut_read_overlap.lu", "trap(exclusivity)"),
+    // is63: ruling #17 (`[mem.tier0.excl.4]`, s186) makes the `Copy` read of
+    // `p.x` beside `mut p` two-phase — it runs, `p.x - 2` is 0. The pinned
+    // header still says `fail(E1002)` (D39) until the re-pin carries s186's
+    // re-spelled row; the census counts it static-conservatism meanwhile.
+    ("memory/mut_read_overlap.lu", "exit(0)"),
     ("memory/read_param_write.lu", "trap(exclusivity)"),
     // The c09-wave pin, `0b4e79c` (0.1.9, s73): the corpus grows one —
     // the `--schedules=N` dogfood witness. Both select arms are conforming
