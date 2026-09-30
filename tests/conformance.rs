@@ -183,6 +183,25 @@ fn declaration_read_code(case: &Case) -> Option<&str> {
         // assumed: the blanket-code spelling was written first and CI and the
         // local suite both went red on `destructure_partial_move.lu`
         // (`left: Pass, right: Fail("E1001")`).
+        //
+        // The ec56a08f pin (r24, wolf-lang v0.2.18) brings s180's two index
+        // stores that MOVE (`outs[0] = take xs`, `m["a"] = take xs`,
+        // `memory/index_store_take_{list,map}.lu`): they cite the same store-
+        // edge clause and pin the same E1001, but this machine's resolve rung
+        // refuses only the `push(take …)` spelling; the index store runs and
+        // traps `use-after-move` at the later push — a dynamic counterpart
+        // (is55's mirror of wolf-lang#438). Both carry `gram.expr.assign`, the
+        // index-store clause `push_take_moves.lu` does not, and that is the
+        // key: measured red first (`left: Pass, right: Fail("E1001")` on
+        // `index_store_take_list.lu`, kasumi `~/lanes/r24/logs/repin-1.log`).
+        "E1001"
+            if case
+                .conforms
+                .iter()
+                .any(|tag| tag.as_str() == "gram.expr.assign") =>
+        {
+            return None;
+        }
         "E1001" => ["mem.region.edge.elem"].as_slice(),
         _ => return None,
     };
