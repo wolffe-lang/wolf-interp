@@ -4343,7 +4343,7 @@ fn par_over_a_moved_element_traps() {
 }
 
 #[test]
-fn a_slice_covering_a_moved_element_traps_and_one_beside_it_does_not() {
+fn a_slice_covering_a_moved_element_traps_and_so_does_one_beside_it() {
     moved_element_trap(
         r#"fn main() -> !int {
             var xs = [1, 2, 3]
@@ -4353,17 +4353,18 @@ fn a_slice_covering_a_moved_element_traps_and_one_beside_it_does_not() {
             0
         }"#,
     );
-    assert_eq!(
-        stdout(
-            r#"fn main() -> !int {
-                var xs = [1, 2, 3]
-                let a = move xs[0]
-                let ys = xs[1..3]
-                print("{a} {ys[0]} {ys[1]}")
-                0
-            }"#
-        ),
-        "1 2 3\n"
+    // A slice reads the whole container whatever range it names (the
+    // maintainer's ruling of 2026-09-30, wolffe-lang/wolf-interp#149): the
+    // one beside the moved element ran here until is60, and traps now.
+    use_after_move_after(
+        r#"fn main() -> !int {
+            var xs = [1, 2, 3]
+            let a = move xs[0]
+            let ys = xs[1..3]
+            print("{a} {ys[0]} {ys[1]}")
+            0
+        }"#,
+        "",
     );
 }
 
@@ -4740,9 +4741,11 @@ fn a_map_with_a_moved_value_traps_whole() {
 
 #[test]
 fn what_projects_through_a_partly_moved_place_is_untouched() {
-    // The header, another element, a field beside the moved one, a `mut`
-    // lend of another element, a method receiver (is56's push and `get`),
-    // and a place revived whole or at the moved element: all run.
+    // The header (the member and the header methods), another element, a
+    // field beside the moved one, a `mut` lend of another element, and a
+    // place revived whole or at the moved element: all run. (Until is60 this
+    // also pushed and `get`-ed beside the moved element; those read the
+    // whole container and trap by the ruling of 2026-09-30, #149.)
     assert_eq!(
         stdout(
             r#"struct P { x: List[int], y: int }
@@ -4758,9 +4761,8 @@ fn what_projects_through_a_partly_moved_place_is_untouched() {
                 print("{a} {g.len} {g[0].len} {g[0][0]} {g[1].len}")
                 var xs = [[1], [2, 3]]
                 let b = move xs[0]
-                (mut xs).push([4])
-                let c = xs.get(1) else [9]
-                print("{b.len} {xs.len} {xs[1].len} {c.len}")
+                let c = xs[1].len
+                print("{b.len} {xs.len} {xs.count()} {xs.is_empty()} {c}")
                 var p = P { x: [1], y: 2 }
                 let d = move p.x
                 print("{d.len} {p.y}")
@@ -4772,7 +4774,7 @@ fn what_projects_through_a_partly_moved_place_is_untouched() {
                 0
             }"#
         ),
-        "2 2 2 1 2\n1 3 2 2\n1 2\n3 2 [[7], [2, 3], [4]]\n"
+        "2 2 2 1 2\n1 2 2 false 2\n1 2\n2 2 [[7], [2, 3]]\n"
     );
 }
 
@@ -5291,11 +5293,11 @@ fn a_slice_of_a_list_holding_a_moved_element_traps_before_its_endpoints() {
         fn main() -> !int {
             var xs = [[1], [2], [3]]
             let a = move xs[2]
-            let s = xs[0..e()]
-            print("{a.len} {s.len}")
+            print("{a.len}")
+            print("{xs[0..e()].len}")
             0
         }"#,
-        "",
+        "1\n",
     );
 }
 
