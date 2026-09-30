@@ -5130,6 +5130,106 @@ lupin 0.1.41 `18848901…`, digests = release pages; trunk build
 - [ ] CI green at the head sha (the PR body)
 - [ ] kasumi build dirs pruned once evidence is written; worktree removed
 
+### The move is the write — is61, wolf-interp#155, W1002 beside `[mem.tier0.mode.mut]`'s at-return E1001 (wolf 0.2.19)
+
+Wave 52's row: wolffe-lang/wolf-interp#155 — lupin's lint warns W1002
+("`mut` parameter the body never writes") on s184's four moveout rows
+(`memory/mut_param_moveout_{whole,elem,field,map}.lu`), whose `warns:` is
+empty because the compiler stands W1002 down beside the at-return E1001
+(wolffe-lang/wolf-lang#464, s184). The lint must agree with the compiler on
+those four rows and on every nearby shape found, each seen red first; r24's
+waiver for #155 (`WARNS_FILED` in `tests/run_corpus.rs`, `bc0ea33`) retires
+by name in the same PR; no new divergence against wolf 0.2.19 (release
+400208356); the coverage ratchet holds or rises. The contract is is60's, in
+five sections; §1–§3 are committed before the first edit under `src/` or
+`tests/`, the rest is appended as it lands. Measurements on kasumi (linux
+x86-64) under `~/lanes/is61/`: the published wolf 0.2.19
+(`wolf-0.2.19-x86_64-unknown-linux-gnu.tar.gz` `9f3873d8…8c8e`, binary
+`3821bfaa…13f9`) and lupin 0.1.42 (`lupin-0.1.42-x86_64-unknown-linux-gnu.tar.gz`
+`9856335a…8ab6`, binary `03f4a710…c660`), archive digests equal to the
+release pages'; a release build of trunk `8e2516d`
+(`archives/lupin-trunk-8e2516d`, `4b116c4e…a4cc`). Probes: 104
+one-directory programs under `~/lanes/is61/probes/` (`a*` s184's five rows,
+`m*` explicit `move`, `p*` plain moves of a non-`Copy` place, `q*` `Map`
+read-outs, `r*`/`s*` controls and value/read positions, `u*` uses after the
+move, `t*` rebinding, `defer`, generics, `self`, rung order); runner
+`~/lanes/is61/scripts/run-probes.sh` (`lupin conform-run main.lu --json`,
+and `wolf conform-run main.lu --checked --json` beside it).
+
+#### §1 — forbidden, absolutely
+
+No `rm` outside `~/lanes/is61/` (kasumi) and `/private/tmp/is61`; no
+deletion in any tree this lane did not create; no `git add -A`; no edit to
+another lane's file (s186/s187 own wolf-lang; no workflow edit here); no
+`~/.claude`; no build or test on this Mac (kasumi only,
+`CARGO_BUILD_JOBS=4`); no tag; no pin move (pin stays `ec56a08f`); no
+merge, no rebase-merge; no `2>/dev/null` on a checkout; kill only my own
+pids, never a pattern or a group; no claim of "seen red" without the log it
+is in; no trailer on any commit.
+
+#### §2 — inputs, re-derived 2026-09-30
+
+| input as written | at origin / measured | drift |
+| --- | --- | --- |
+| wolf-interp trunk `8e2516dc` | `origin/trunk` = `8e2516d` "release: lupin 0.1.42"; pin `ec56a08f` (wolf-lang v0.2.18); branch `is61` cut there | none |
+| wolf-interp#155, "with comments" | open, **0 comments**; the body is the table and r24's measurement (`c4143cf`, `repin-1.log`) | no comments to read |
+| r24 waived #155 by name | `tests/run_corpus.rs` `WARNS_FILED`: four rows, each `("…", "W1002", "wolffe-lang/wolf-interp#155")`, and the check that a waived row still differs by exactly that code (`bc0ea33`); `r24-evidence.md` prediction 3 names it | none |
+| wolf 0.2.19, release 400208356 | `repos/wolffe-lang/wolf-lang/releases/tags/v0.2.19` → id 400208356, not draft, published 16:02:58Z; tag object `ba0b43a7` → `c2401f05`; `wolf --version` = `wolf 0.2.19 (wolfgang, pin c2401f0) paired with lupin 0.1.42` | none |
+| the four rows: lupin W1002, compiler none | `probes-lupin-0.1.42.log` (`8af9d0ae…52a7`): `a01`–`a04` lupin `trap(use-after-move)` with `W1002` at the `mut`; wolf 0.2.19 `fail(E1001)`, `warnings: []`; `a05` (one path) agrees on `[]` (its store back is a write) | none |
+| the compiler's rule | wolf-lang `v0.2.19`: W1002 is a resolve-rung syntactic scan (`wolf_sema/src/wave.rs` `mode_discipline`, `body_writes`: an assignment rooted at the name, a moded argument or receiver) that **skips any name the body rebinds** (`rebound_names`: `let`/`var`/`const` patterns, every binding pattern, closure params); `suppress_mode_shadowed` (`wolf_diag/src/lib.rs`) drops it where E1001 names the parameter; only the **at-return** E1001 names one (`wolf_mem/src/moves.rs` `report_at_return` `.about(name, …)`), and it is not raised for a move whose use in the body already drew E1001 (`used`); the mem rung runs only when typecheck passed | the fix is not "a move is a write": it is "a move that reaches a return with no use after it", per parameter, and the rebinding skip |
+| what moves on the compiler | `wolf_mem/src/lower.rs` `use_value`: a place in value position moves unless its type is `Copy` (`is_copy`: scalars, `str`, ranges, fn values, `handle`, raw pointers, the conc handles; not structs, enums, tuples, `List`, `Map`); `move e` moves any type | measured below |
+| trunk vs the compiler on 104 probes | **62 part** — lupin warns where wolf is silent: `a01`–`a04`; explicit `move` out of the parameter, a field, an element, a nested place, `self`, a grouped operand, a `Copy` param or field, into a call, a struct or list literal, a tail or `return`, a `take` store (`m01`–`m07`, `m10`–`m15`, `m19`, `m20`, `r08`, `t15`, `t17`, `t19`); plain moves of a non-`Copy` place in value position (`p01`–`p07`, `p11`, `p12`, `p14`, `p15`, `s01`, `s02`, `s09`, `t07`, `t11`, `t14`, `u19`, `u20`); `Map` read-outs under `else`/`?` (`q02`, `q06`–`q09`, `u15`); a move whose later reads do not reach it (`u01` header read after an element move, `u02` a sibling literal index, `u04` the other branch, `u06` a second move, `u08` after an early return, `u09` a sibling field, `u11`'s `ys`, `u12` a `loop` left by `break`); rebinding (`r04`, `u16`, `t04`, `t05`, `t18`; and W1003 on `t02`). **42 agree**, among them every shape where the compiler KEEPS W1002 beside a move: `m09`/`u03`/`u10`/`t10` a use after the move, `u05` a move inside a loop with no store back (the back edge is the use), `u07` a read before the move inside the loop, `u13` a dynamic index, `u14` a read after a `?`, `t06` a `defer` reading it, and `t01` (typecheck E0401 stops the compiler before mem); plus the reads that do not move (`p08`, `s03`–`s08`, `s10`–`s12`, `q03`, `q05`, `q10`, `t16` struct shorthand) | wider than #155's four rows; the used-after-move half means W1002 must stay where a read follows the move |
+| struct field shorthand | `t16` `W { xs }` with `mut xs: List[int]`: wolf 0.2.19 keeps W1002, `--native` runs `1\n1\n` (no move); lupin also `exit(0)` (no move) — while `W { tags: xs }` (`p06`) moves on both | both machines treat the shorthand as not moving; the lint follows them here; filed (§3a) |
+| coverage ratchet | `tests/export.rs` `RATCHET_FLOOR = 268`, counted from `conforms:` lines — the lint does not enter it | none |
+
+#### §3 — prediction, committed before the first edit
+
+**The fix, one mechanism.** For a `mut` parameter the lint already finds
+unwritten, a second, flow-sensitive walk of the body asks whether some move
+out of the parameter — `move e` on a place rooted at it; a place rooted at
+it whose declared type is not `Copy`, in value position (an initializer, a
+plain non-index store's right side, a `take` store's, a `return`, a tail
+of the body or of an `if`/`match`/block in value position, a struct or list
+literal's element, a tuple element); a `Map` value read out of it under
+`else`/`?` when the value type is not `Copy` — reaches a return (a
+`return`, a `?` edge, the fall-through) with no later access of an
+overlapping place on any path after it (a read, a move, a mutation, a
+`defer` run at the exit; header reads `len`/`count`/`is_empty` overlap only
+the container itself or an ancestor; distinct literal indices, keys and
+fields do not overlap). If one does, W1002 does not fire. Types come from
+the parameter's declared type, the module's struct, enum and alias
+declarations, `List[T]`/`Map[K, V]`/tuple projections, and generic
+parameters (not `Copy`); an unresolvable type moves nothing (the lint keeps
+today's answer). Independently, a parameter whose name the body rebinds
+anywhere draws neither W1002 nor W1003, as on the compiler.
+
+**Predicted, at head:**
+
+- the 62 parting probes agree (lupin's W1002/W1003 set equals wolf's; `u11`
+  keeps W1002 on `xs` only); the 41 agreeing probes other than `t01` keep
+  trunk's warnings byte for byte;
+- **`t01` parts, the one new parting**: lupin drops W1002 (the move reaches
+  the return unused) while wolf keeps it, because E0401 stops the compiler
+  at typecheck, before the at-return check can stand W1002 down. Falsified
+  if any other probe parts at head;
+- verdicts do not move: every probe's lupin verdict and stdout at head equal
+  trunk's (the change is the lint's);
+- the corpus: every entry's lupin `warnings` at head equals trunk's except the
+  four rows, which lose `W1002` — exactly 4 records move; the warns-ledger
+  test is green with `WARNS_FILED` empty, and red at trunk on exactly the
+  four rows once the waiver is gone;
+- `lupin corpus` output identical trunk vs head; the differential against
+  wolf 0.2.19 on the four tiers: ledgers byte-identical trunk vs head (the
+  four rows already part on verdict, so `[proto.cmp.warn]` never reached
+  them); no new divergence;
+- coverage ratchet: 268, unchanged.
+
+#### §3a — scored (appended after the measurement)
+
+#### §4 — evidence index
+
+#### §5 — done-when
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
