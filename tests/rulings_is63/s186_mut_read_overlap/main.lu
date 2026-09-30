@@ -1,0 +1,20 @@
+//! check: run(exit=0)
+//! phase: run
+//! conforms: mem.tier0.excl.4, mem.tier0.mode.mut, mem.model.path.disjoint
+//! Arguments are two-phase (`[mem.tier0.excl.4]`, s186, ruled
+//! 2026-09-30): a `mut` argument's claim takes effect at call entry, so
+//! the `Copy` read of `p.x` in the later argument ends before it and
+//! sees the value from before the call (1); `bump` makes `p.x` 2. This
+//! row was D39's refusal (#27, E1002 through 0.2.19) — the receiver
+//! shape (`xs.push(xs.len)`) was always two-phase, and now an argument
+//! is too. lupin 0.1.42 traps `exclusivity` (is63 moves lupin).
+
+struct P { x: int, y: int }
+
+fn bump(mut a: P, n: int) { a.x += n }
+
+fn main() -> !int {
+    var p = P { x: 1, y: 2 }
+    bump(mut p, p.x)
+    p.x - 2
+}

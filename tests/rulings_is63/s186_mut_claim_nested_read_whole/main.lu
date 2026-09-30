@@ -1,0 +1,24 @@
+//! check: run(exit=0, stdout="1 4\n")
+//! phase: run
+//! conforms: mem.tier0.excl.4, mem.tier0.excl.1, mem.tier0.mode.mut, mem.model.order
+//!
+//! s186 (wolf-lang#476; ruled two-phase, `[mem.tier0.excl.4]`) — the
+//! whole-claim twin of `mut_claim_nested_read_elem.lu`:
+//! `grow(mut xs, total(xs))` reads `xs` one call down before the claim
+//! takes effect, then `grow` pushes that length (3). lupin 0.1.42 traps
+//! `exclusivity` (pre-mirror).
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn total(ys: List[int]) -> int {
+    ys.len
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, total(xs))
+    print("{xs[0]} {xs.len}")
+    0
+}

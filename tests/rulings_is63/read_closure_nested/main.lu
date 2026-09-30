@@ -1,0 +1,16 @@
+//! is63 (ruling #17) — a closure created and called inside a nested call lends into THAT call, not this one: `grow(mut xs, call0(fn() { xs.len }))`.
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn call0(f: fn() -> int) -> int {
+    f()
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, call0(fn() { xs.len }))
+    print("{xs.len} {xs[3]}")
+    0
+}

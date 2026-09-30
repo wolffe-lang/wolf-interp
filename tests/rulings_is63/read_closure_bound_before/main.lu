@@ -1,0 +1,13 @@
+//! is63 (ruling #17) — a closure bound BEFORE the claim and passed as a plain value: `let g = fn() { xs.len }` then `grow2(mut xs, g)`.
+
+fn grow2(mut ys: List[int], f: fn() -> int) {
+    (mut ys).push(f())
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    let g = fn() { xs.len }
+    grow2(mut xs, g)
+    print("{xs.len} {xs[3]}")
+    0
+}

@@ -1,0 +1,14 @@
+# is63 — ruling #17, `[mem.tier0.excl.4]` (wolf-lang `e3ae62b5`). This row: s186's corpus row, verbatim from wolf-lang `e3ae62b5` (`corpus/memory/mut_claim_arg_block_move.lu`, `check: fail(E1002)`).
+# `[expected]` is the ruled lupin cell; `[trunk]` is what the published lupin 0.1.42 (trunk
+# `8e2516d`, archive 9856335a…) and wolf 0.2.19 (archive 9f3873d8…) `conform-run` answered on
+# kasumi, ~/lanes/is63/evidence/witnesses-archive-0.1.42-wolf-0.2.19-addendum2.log.
+ruling = "STATUS #17"
+
+[expected]
+lupin   = { verdict = "trap(exclusivity)", clause = "mem.tier0.excl.1", span = [621, 628] }
+
+[trunk]
+lupin   = { verdict = "trap(exclusivity)", clause = "mem.tier0.excl.1", span = [621, 628] }
+checked = { verdict = "exit(0)", stdout = "2\n" }
+native  = { verdict = "exit(0)", stdout = "4\n" }
+release = { verdict = "exit(0)", stdout = "4\n" }

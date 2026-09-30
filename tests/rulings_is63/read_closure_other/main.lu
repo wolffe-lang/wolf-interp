@@ -1,0 +1,13 @@
+//! is63 (ruling #17) — a closure passed into the call that captures a DIFFERENT place: `grow2(mut xs, fn() { zs.len })`.
+
+fn grow2(mut ys: List[int], f: fn() -> int) {
+    (mut ys).push(f())
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    var zs = [7, 8]
+    grow2(mut xs, fn() { zs.len })
+    print("{xs.len} {xs[3]}")
+    0
+}

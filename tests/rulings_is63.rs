@@ -281,6 +281,24 @@ fn read_copy_str_direct() {
     run("read_copy_str_direct");
 }
 
+/// a closure bound BEFORE the claim and passed as a plain value: `let g = fn() { xs.len }` then `grow2(mut xs, g)`.
+#[test]
+fn read_closure_bound_before() {
+    run("read_closure_bound_before");
+}
+
+/// a closure created and called inside a nested call lends into THAT call, not this one: `grow(mut xs, call0(fn() { xs.len }))`.
+#[test]
+fn read_closure_nested() {
+    run("read_closure_nested");
+}
+
+/// a closure passed into the call that captures a DIFFERENT place: `grow2(mut xs, fn() { zs.len })`.
+#[test]
+fn read_closure_other() {
+    run("read_closure_other");
+}
+
 // -- the writes, moves, re-claims and lends #17 keeps refused -------------
 
 /// still a trap: a later argument WRITES the claimed place, `bump(mut a, { a = 5; 1 })`.
@@ -377,4 +395,96 @@ fn stay_lend_list_field() {
 #[test]
 fn stay_lend_struct() {
     run("stay_lend_struct");
+}
+
+/// still a trap: a closure that captures the claimed place, passed into the same call — a lend (`[mem.tier0.excl.4]`), `grow2(mut xs, fn() { xs.len })`.
+#[test]
+fn stay_closure_lend() {
+    run("stay_closure_lend");
+}
+
+/// still a trap: a closure that reads only a `Copy` field of the claimed struct still captures and lends it into the same call, `bump(mut r, fn() { r.n })`.
+#[test]
+fn stay_closure_lend_copy_field() {
+    run("stay_closure_lend_copy_field");
+}
+
+// -- s186's corpus rows, verbatim from wolf-lang `e3ae62b5` ------------------
+
+/// `corpus/memory/elem_dyn_read_after_mut.lu` — `check: run(exit=0, stdout="3 2\n")`
+#[test]
+fn s186_elem_dyn_read_after_mut() {
+    run("s186_elem_dyn_read_after_mut");
+}
+
+/// `corpus/memory/mut_claim_arg_block_move.lu` — `check: fail(E1002)`
+#[test]
+fn s186_mut_claim_arg_block_move() {
+    run("s186_mut_claim_arg_block_move");
+}
+
+/// `corpus/memory/mut_claim_arg_block_write.lu` — `check: fail(E1002)`
+#[test]
+fn s186_mut_claim_arg_block_write() {
+    run("s186_mut_claim_arg_block_write");
+}
+
+/// `corpus/memory/mut_claim_nested_copy_read.lu` — `check: run(exit=0, stdout="2\n")`
+#[test]
+fn s186_mut_claim_nested_copy_read() {
+    run("s186_mut_claim_nested_copy_read");
+}
+
+/// `corpus/memory/mut_claim_nested_disjoint_reads.lu` — `check: run(exit=0, stdout="11 3\n")`
+#[test]
+fn s186_mut_claim_nested_disjoint_reads() {
+    run("s186_mut_claim_nested_disjoint_reads");
+}
+
+/// `corpus/memory/mut_claim_nested_get.lu` — `check: run(exit=0, stdout="3\n")`
+#[test]
+fn s186_mut_claim_nested_get() {
+    run("s186_mut_claim_nested_get");
+}
+
+/// `corpus/memory/mut_claim_nested_header.lu` — `check: run(exit=0, stdout="4\n")`
+#[test]
+fn s186_mut_claim_nested_header() {
+    run("s186_mut_claim_nested_header");
+}
+
+/// `corpus/memory/mut_claim_nested_map.lu` — `check: run(exit=0, stdout="2\n")`
+#[test]
+fn s186_mut_claim_nested_map() {
+    run("s186_mut_claim_nested_map");
+}
+
+/// `corpus/memory/mut_claim_nested_read_elem.lu` — `check: run(exit=0, stdout="4 3\n")`
+#[test]
+fn s186_mut_claim_nested_read_elem() {
+    run("s186_mut_claim_nested_read_elem");
+}
+
+/// `corpus/memory/mut_claim_nested_read_whole.lu` — `check: run(exit=0, stdout="1 4\n")`
+#[test]
+fn s186_mut_claim_nested_read_whole() {
+    run("s186_mut_claim_nested_read_whole");
+}
+
+/// `corpus/memory/mut_claim_operand_read.lu` — `check: run(exit=0, stdout="3\n")`
+#[test]
+fn s186_mut_claim_operand_read() {
+    run("s186_mut_claim_operand_read");
+}
+
+/// `corpus/memory/mut_claim_two_phase_reads.lu` — `check: run(exit=0, stdout="2 4 23 1 3 5 2 3\n")`
+#[test]
+fn s186_mut_claim_two_phase_reads() {
+    run("s186_mut_claim_two_phase_reads");
+}
+
+/// `corpus/memory/mut_read_overlap.lu` — `check: run(exit=0)`
+#[test]
+fn s186_mut_read_overlap() {
+    run("s186_mut_read_overlap");
 }

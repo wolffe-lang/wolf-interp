@@ -1,0 +1,20 @@
+//! check: run(exit=0, stdout="4\n")
+//! phase: run
+//! conforms: mem.tier0.excl.4, mem.tier0.excl.1, mem.model.order, mem.model.place.elem
+//!
+//! s186 (wolf-lang#476, the second of s185's two shapes; ruled
+//! two-phase, `[mem.tier0.excl.4]`) — the header of a container whose
+//! WHOLE is claimed, read in a later argument: `count()` is 3 before
+//! the call, `grow` pushes it, the length is 4. lupin 0.1.42 traps
+//! `exclusivity` (pre-mirror).
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, xs.count())
+    print("{xs.len}")
+    0
+}

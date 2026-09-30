@@ -1,0 +1,14 @@
+//! is63 (ruling #17) — still a trap: a closure that reads only a `Copy` field of the claimed struct still captures and lends it into the same call, `bump(mut r, fn() { r.n })`.
+
+struct R { xs: List[int], n: int }
+
+fn bump(mut r: R, f: fn() -> int) {
+    r.n = r.n + f()
+}
+
+fn main() -> !int {
+    var r = R { xs: [1], n: 2 }
+    bump(mut r, fn() { r.n })
+    print("{r.n}")
+    0
+}

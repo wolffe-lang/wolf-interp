@@ -1,0 +1,23 @@
+//! check: run(exit=0, stdout="2\n")
+//! phase: run
+//! conforms: mem.tier0.excl.4, mem.tier0.excl.1, mem.model.order, mem.model.place.elem
+//!
+//! s186 (wolf-lang#476's rule; ruled two-phase, `[mem.tier0.excl.4]`)
+//! — a `Copy` read of the claimed element itself, one call down:
+//! `id(xs[0])` is 1 before the call, and `xs[0]` becomes 2. lupin
+//! 0.1.42 traps `exclusivity` (pre-mirror).
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn id(n: int) -> int {
+    n
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    bump(mut xs[0], id(xs[0]))
+    print("{xs[0]}")
+    0
+}

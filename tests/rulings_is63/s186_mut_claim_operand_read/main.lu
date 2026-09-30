@@ -1,0 +1,19 @@
+//! check: run(exit=0, stdout="3\n")
+//! phase: run
+//! conforms: mem.tier0.excl.4, mem.tier0.excl.1, mem.tier0.mode.mut, mem.model.order
+//!
+//! s186 (wolf-lang#476's rule; ruled two-phase, `[mem.tier0.excl.4]`)
+//! — an OPERAND of a later argument reads the claimed place:
+//! `a + 1` is 2 before the call, and `a` becomes 3. lupin 0.1.42 traps
+//! `exclusivity` (pre-mirror).
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var a = 1
+    bump(mut a, a + 1)
+    print("{a}")
+    0
+}
