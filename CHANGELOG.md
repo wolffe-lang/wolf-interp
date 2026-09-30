@@ -1,12 +1,63 @@
 # Changelog
 
-## Unreleased
+## 0.1.42 — 2026-09-30
+
+THE FORTY-SECOND (is57, is58, is59, is60, and r24's re-pin), the lupin
+half of wolf 0.2.19. **Pin: `ec56a08f` (wolf-lang v0.2.18 — the TAG)**,
+two releases forward of 0.1.41's `93a5fe50` (v0.2.16). Forty-four commits
+since 0.1.41 in four lanes, then the re-pin. It carries every lupin mirror
+wolf 0.2.18's gates pin by version — a whole read of a place holding a
+moved part traps (#143), a `Map` read moves a non-`Copy` value out (#144),
+a nested index store runs each operand once (#145), the caller sees a `mut`
+parameter its callee moved out (#146) — and the rulings of 2026-09-29 and
+-30 on `[mem.model.place.elem]` 1(c): a member read under an element claim
+reads the member (wolffe-lang/wolf-lang#472), `len`, `count` and `is_empty`
+are header reads (wolffe-lang/wolf-lang#474), and every other method or a
+slice beside a moved part reads the whole container and traps (#149); with
+#151 (one evaluation) and #152 (an element read inside an expression).
+wolf-lang's gates pin 0.1.41's answers on fourteen cases (seven lists) by
+version; each is one of these, measured against its ruled cell by the lane
+that mirrored it.
+
+**The re-pin** (r24; `c4143cf`). `vendor/upstream/{spec,corpus}` and the
+`upstream` gitlink move to `ec56a08f`, an ancestor of the released line
+(`merge-base --is-ancestor 93a5fe50 ec56a08f` holds); the two trees are
+byte-identical to wolf-lang's at the tag. The census moves (every count
+asserted by a test): corpus files 690 → 747 (57 new, none leaves), entries
+646 → 702, members 44 → 45 (`d9d71fe`, `611b579`); anchors 539 → 542 —
+`mem.model.place.elem`, `mem.model.place.rhs`, `os.fs.path.domain`, key
+sets diffed both ways, none dropped — and the coverage ratchet 264 → 268;
+the bundle 728/684 → 785/740 programs and records (`7a7ac64`). The fixture
+set gains s181's `with-file-index.json`, accepted and round-tripped
+(`4617c65`). Fifty-two of the fifty-six new entries reach `run`
+(`88416d3`): thirty-two match their `check:`, eighteen are dynamic
+counterparts of the compiler's E1001/E1002/E1014 (fourteen trap
+`use-after-move`, four `exclusivity`), and two are conservatism rows
+(`elem_dyn_move_const_read`, `elem_dyn_mut_pair`: a run-time index the
+compiler cannot prove distinct, whose value this machine sees); the three
+`Pool` rows are out of scope and s181's `resolve/sibling_diag/main.lu`
+matches `fail(E0302)` at resolve (its member, `geometry/shapes.lu`, holds
+the duplicate and is refused read alone, `bc19fa8`). s180's two index stores that `take`
+(`index_store_take_{list,map}.lu`) are dynamic counterparts, not resolve
+refusals as `push(take …)` is here (`f3801c8`).
+
+- **DIV-2026-026 retires** (`9c3c98a`, `a5bf4ba`): the pin carries
+  wolf-lang eg01's `let s2 = copy tbl[2]` in
+  `memory/list_session_struct.lu`, and the published wolf 0.2.18 and this
+  machine both answer `exit(0)` printing `102 1 1408 4 184`. One filed
+  divergence is left, DIV-2026-019.
+- **Filed, not fixed: W1002 on s184's moveout rows**
+  (wolffe-lang/wolf-interp#155). On `mut_param_moveout_{whole,elem,field,map}.lu`
+  this machine's lint says W1002 ("never written") where the corpus
+  `warns:` ledger is empty; the body moves the parameter out, the compiler
+  reports E1001 and stands W1002 down, and this machine traps at run. The
+  warns-ledger test waives exactly those four rows for exactly that code,
+  and fails if the waiver outlives the disagreement (`bc0ea33`).
 
 **Header reads, whole reads, element reads and one evaluation** (is60; the
 maintainer's ruling of 2026-09-30 on wolffe-lang/wolf-lang#474 and #149:
 "`len`, `count`, `is_empty` are header reads … `push`, `get`, `pop`, slices
-and an impl method's `self` read the whole container"). Pin unchanged:
-`93a5fe50`.
+and an impl method's `self` read the whole container").
 
 - **`count()`, `is_empty()` and `len()` under an element claim run**
   (wolffe-lang/wolf-lang#474's lupin half, `4708106`): `bump(mut xs[0],
@@ -71,7 +122,7 @@ pre-mirror.
 
 **The four mirrors** (is58; wolf 0.2.18's gates pin lupin 0.1.41's answer on
 three of them by version, so the release that carries this turns those rows
-to the ruled answer). Pin unchanged: `93a5fe50`.
+to the ruled answer).
 
 **A nested index store evaluates each operand once** (#145, `f44b975`;
 `[mem.model.place.rhs]`, `[mem.model.order]`). `g[i()][j()] = v` ran `i()`
@@ -114,6 +165,17 @@ reads it.
 
 The nineteen corpus rows wolf 0.2.18's three gates name for these clauses
 run against their ruled lupin cell in `tests/rulings_is58.rs`; five flip.
+
+**CI is sharded on every OS** (is57, #123). The linux and macOS test jobs
+ran unsharded against the 355-minute cap — the trunk run at 0.1.41's
+`0cfc0cf` timed out on linux at 355.3 min. Both now run three test shards
+and a ladder-and-bundle job, as windows did (`229d7b4`): the shard key is a
+function of the target name alone (`ci/test-shards.sh`, `22617d6`), and
+`ci/assert-shard-coverage.sh` holds every OS's shards to the declared
+targets, per test, with a planted-red self-test (`eefff0e`, `f54c791`).
+The per-test lists before and after are identical on ubuntu (1,261) and
+macOS (1,260) (`19849e3`, `38a0a7a`); the PR run fell from 5 h 52 m to
+2 h 55 m (run 36504583782, `ci/is57.md`).
 
 ## 0.1.41 — 2026-09-27
 
