@@ -954,10 +954,12 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/carried_quotient_pair.lu", "exit(0)"),
     ("memory/closure_cluster_split.lu", "exit(0)"),
     ("memory/list_mixed_width_struct.lu", "exit(0)"),
-    // is56 (#141): the `for` reads `tbl[2]`, which the row's plain `let`
-    // moved, and traps — DIV-2026-026, filed until the pin carries
-    // wolf-lang eg01's `copy tbl[2]` (wolffe-lang/wolf-lang#460).
-    ("memory/list_session_struct.lu", "trap(use-after-move)"),
+    // is56 (#141): the `for` read `tbl[2]`, which the row's plain `let`
+    // moved, and trapped — DIV-2026-026 while the pin was 93a5fe50. The
+    // ec56a08f pin (r24) carries wolf-lang eg01's `copy tbl[2]`
+    // (wolffe-lang/wolf-lang#460): the element is copied, not moved, and the
+    // row runs to its header's `exit(0)`. DIV-2026-026 retires.
+    ("memory/list_session_struct.lu", "exit(0)"),
     ("strings/boundary_battery.lu", "exit(0)"),
     ("strings/char_battery.lu", "exit(0)"),
     ("strings/char_interp.lu", "exit(0)"),
@@ -1713,6 +1715,77 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("typecheck/fn_param_shadows_item.lu", "exit(0)"),
     ("typecheck/list_lit_elem_i32.lu", "exit(0)"),
     ("typecheck/list_lit_elem_unfit.lu", "exit(0)"),
+    // The ec56a08f pin (r24, wolf-lang **v0.2.18** — the TAG, two releases
+    // forward of 93a5fe50): FIFTY-TWO of the fifty-six new entries reach
+    // `run`, and `memory/list_session_struct.lu` changes answer (below). The
+    // four that do not: the three `Pool` rows (`memory/elem_pool_handle_revive.lu`,
+    // `memory/elem_pool_handles_one_place.lu`, `memory/store_rhs_first_pool.lu`,
+    // `unsupported` at resolve — no `Pool` here) and s181's
+    // `resolve/sibling_diag/main.lu` (`fail(E0302)` at resolve, a match).
+    //
+    // THIRTY-TWO are run expectations and every one matches its `check:`
+    // (the `ctl_store_order*`, `index_store_copies_*`/`copy_elem`/`read_param`,
+    // `mut_claim_*`, `mut_param_restore_*`, `store_rhs_first_{list,map}` and
+    // the running `elem_*` rows). EIGHTEEN are dynamic counterparts — the
+    // compiler pins E1001/E1002/E1014 and this machine traps
+    // `use-after-move` (fourteen) or `exclusivity` (four) at run. TWO are
+    // CONSERVATISM rows, ledgered because they RUN, not because they agree:
+    // `memory/elem_dyn_move_const_read.lu` (E1001) and
+    // `memory/elem_dyn_mut_pair.lu` (E1002), where the compiler cannot prove a
+    // run-time index distinct from a literal and this machine, whose places
+    // are element-granular at run time, sees the index's value.
+    ("memory/ctl_store_order.lu", "exit(0)"),
+    ("memory/ctl_store_order_captured.lu", "exit(0)"),
+    ("memory/ctl_store_order_compound.lu", "exit(0)"),
+    ("memory/ctl_store_order_map.lu", "exit(0)"),
+    ("memory/ctl_store_order_nested.lu", "exit(0)"),
+    ("memory/ctl_store_order_nested_index.lu", "exit(0)"),
+    ("memory/ctl_store_order_raw.lu", "exit(0)"),
+    ("memory/elem_char_bool_key_revive.lu", "exit(0)"),
+    ("memory/elem_const_field_of_elem.lu", "exit(0)"),
+    ("memory/elem_const_move_heap.lu", "exit(0)"),
+    ("memory/elem_const_store_no_revive_heap.lu", "trap(use-after-move)"),
+    ("memory/elem_const_store_no_revive_int.lu", "trap(use-after-move)"),
+    ("memory/elem_const_store_revives.lu", "exit(0)"),
+    ("memory/elem_dyn_move_const_read.lu", "exit(0)"),
+    ("memory/elem_dyn_mut_pair.lu", "exit(0)"),
+    ("memory/elem_dyn_store_no_revive_heap.lu", "trap(use-after-move)"),
+    ("memory/elem_dyn_store_no_revive_int.lu", "trap(use-after-move)"),
+    ("memory/elem_key_move_map.lu", "exit(0)"),
+    ("memory/elem_key_reassigned_no_revive.lu", "trap(use-after-move)"),
+    ("memory/elem_len_after_move.lu", "exit(0)"),
+    ("memory/elem_loop_covers_const.lu", "trap(exclusivity)"),
+    ("memory/elem_move_one_place.lu", "exit(0)"),
+    ("memory/elem_move_same_const_read.lu", "trap(use-after-move)"),
+    ("memory/elem_offset_other_local.lu", "trap(exclusivity)"),
+    ("memory/elem_same_const_mut.lu", "trap(exclusivity)"),
+    ("memory/elem_same_index_revive.lu", "exit(0)"),
+    ("memory/elem_str_key_revive.lu", "exit(0)"),
+    ("memory/elem_sym_reassigned_no_revive.lu", "trap(use-after-move)"),
+    ("memory/elem_tuple_pos_move.lu", "exit(0)"),
+    ("memory/elem_tuple_pos_mut.lu", "exit(0)"),
+    ("memory/index_store_copies_list.lu", "exit(0)"),
+    ("memory/index_store_copies_map.lu", "exit(0)"),
+    ("memory/index_store_copy_elem.lu", "exit(0)"),
+    ("memory/index_store_read_param.lu", "exit(0)"),
+    ("memory/index_store_take_list.lu", "trap(use-after-move)"),
+    ("memory/index_store_take_map.lu", "trap(use-after-move)"),
+    ("memory/index_store_take_read_param.lu", "trap(exclusivity)"),
+    ("memory/mut_claim_cond_write.lu", "exit(0)"),
+    ("memory/mut_claim_if_else.lu", "exit(0)"),
+    ("memory/mut_claim_if_no_else.lu", "exit(0)"),
+    ("memory/mut_claim_match_arms.lu", "exit(0)"),
+    ("memory/mut_param_moveout_elem.lu", "trap(use-after-move)"),
+    ("memory/mut_param_moveout_field.lu", "trap(use-after-move)"),
+    ("memory/mut_param_moveout_map.lu", "trap(use-after-move)"),
+    ("memory/mut_param_moveout_one_path.lu", "trap(use-after-move)"),
+    ("memory/mut_param_moveout_whole.lu", "trap(use-after-move)"),
+    ("memory/mut_param_restore_elem.lu", "exit(0)"),
+    ("memory/mut_param_restore_field.lu", "exit(0)"),
+    ("memory/mut_param_restore_map.lu", "exit(0)"),
+    ("memory/mut_param_restore_whole.lu", "exit(0)"),
+    ("memory/store_rhs_first_list.lu", "exit(0)"),
+    ("memory/store_rhs_first_map.lu", "exit(0)"),
 ];
 
 #[test]
