@@ -1,0 +1,15 @@
+struct S { a: List[int], b: List[int] }
+
+fn f(mut s: S) {
+    var x = move s.a
+    var y = move s.b
+    (mut x).push(1)
+    (mut y).push(1)
+}
+
+fn main() -> !int {
+    var s = S { a: [1], b: [2] }
+    f(mut s)
+    print("x")
+    0
+}

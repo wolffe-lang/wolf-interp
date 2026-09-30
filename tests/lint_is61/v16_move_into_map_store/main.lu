@@ -1,0 +1,11 @@
+fn f(mut m: Map[str, List[int]], mut xs: List[int]) {
+    m["a"] = take xs
+}
+
+fn main() -> !int {
+    var m = Map[str, List[int]]()
+    var xs = [1]
+    f(mut m, mut xs)
+    print("{m.len}")
+    0
+}

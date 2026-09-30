@@ -1,0 +1,15 @@
+fn g() -> int ! {none} { 1 }
+
+fn f(mut xs: List[int]) -> int ! {none} {
+    let n = g()?
+    var t = move xs
+    (mut t).push(n)
+    n
+}
+
+fn main() -> !int {
+    var xs = [1]
+    let n = f(mut xs) else 0
+    print("{n}")
+    0
+}

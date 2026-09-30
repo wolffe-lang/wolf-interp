@@ -1,0 +1,10 @@
+fn f[T](mut x: T) {
+    let y = x
+}
+
+fn main() -> !int {
+    var n = 1
+    f(mut n)
+    print("{n}")
+    0
+}

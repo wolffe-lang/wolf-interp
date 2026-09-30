@@ -175,6 +175,22 @@ shapes! {
     u18_alias_int_param: "exit(0)", &[("W1002", [23, 26])];
     u19_enum_param: "exit(0)", &[];
     u20_tuple_param_elem: "exit(0)", &[];
+    v01_nested_loop_break_out: "exit(0)", &[("W1002", [5, 8])];
+    v02_continue_after_move: "exit(0)", &[("W1002", [5, 8])];
+    v03_match_arm_move_other_arm_read: "exit(0)", &[];
+    v04_defer_after_move: "trap(use-after-move)", &[("W1002", [5, 8])];
+    v05_try_before_move: "exit(0)", &[];
+    v06_self_whole_tail: "exit(0)", &[];
+    v07_loop_cond_reads_moved: "exit(0)", &[("W1002", [5, 8])];
+    v08_two_moves_one_whole_read: "trap(use-after-move)", &[];
+    v09_move_after_infinite_loop: "exit(0)", &[("W1002", [5, 8])];
+    v10_return_inside_loop: "exit(0)", &[];
+    v11_else_handler_reads: "exit(0)", &[];
+    v12_move_then_sibling_move: "exit(0)", &[];
+    v13_for_body_move_break: "trap(use-after-move)", &[];
+    v14_generic_param_whole: "exit(0)", &[];
+    v15_str_elem_copy: "exit(0)", &[("W1002", [5, 8])];
+    v16_move_into_map_store: "exit(0)", &[];
 }
 
 /// The one parting: a type error the compiler's typecheck rung refuses
