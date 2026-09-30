@@ -261,6 +261,27 @@ impl AccessSet {
         })
     }
 
+    /// Whether every held access that conflicts with `path` lies strictly
+    /// BELOW it — an element or a field of it, never `path` itself or a
+    /// prefix — and at least one does. A read of `path` then conflicts only
+    /// because it would read the claimed part, so a read of a part of `path`
+    /// can ask its own path instead (wolffe-lang/wolf-interp#152).
+    #[must_use]
+    pub fn conflicts_only_below(&self, path: &Path, access: Access) -> bool {
+        let mut any = false;
+        for held in &self.held {
+            if (held.access == Access::Exclusive || access == Access::Exclusive)
+                && held.path.conflicts_with(path)
+            {
+                if held.path.projections.len() <= path.projections.len() {
+                    return false;
+                }
+                any = true;
+            }
+        }
+        any
+    }
+
     /// A held access over the *same base* that this path does not conflict
     /// with — `[mem.tier0.excl.2]`'s "disjoint paths may be `mut`
     /// simultaneously", observed rather than merely permitted.
@@ -386,6 +407,36 @@ mod tests {
         assert!(set.conflict(&p("a", &["x"]), Access::Shared).is_some());
         assert!(set.conflict(&p("a", &["y"]), Access::Exclusive).is_none());
         assert!(set.conflict(&p("a", &[]), Access::Exclusive).is_some());
+    }
+
+    /// wolf-interp#152: a read of `xs` meets a claim on `xs[1]` only below
+    /// it, so an element read may ask its own path; a claim on `xs` itself or
+    /// a prefix of it is not "below".
+    #[test]
+    fn a_claim_below_the_container_is_told_from_one_on_it() {
+        let held = |steps: &[&str], access| Held {
+            path: p("g", steps),
+            access,
+            span: Span::new(0, 1),
+            why: HeldWhy::Call,
+        };
+        let mut set = AccessSet::new();
+        assert!(!set.conflicts_only_below(&p("g", &[]), Access::Shared));
+        set.push(held(&["1", "0"], Access::Exclusive));
+        assert!(set.conflicts_only_below(&p("g", &[]), Access::Shared));
+        assert!(set.conflicts_only_below(&p("g", &["1"]), Access::Shared));
+        // Disjoint from the claim: nothing conflicts, so nothing is below.
+        assert!(!set.conflicts_only_below(&p("g", &["0"]), Access::Shared));
+        // The claimed element itself is not below itself.
+        assert!(!set.conflicts_only_below(&p("g", &["1", "0"]), Access::Shared));
+        set.push(held(&[], Access::Exclusive));
+        assert!(!set.conflicts_only_below(&p("g", &["1"]), Access::Shared));
+
+        // Two shared reads never conflict, so a read claim is never "below".
+        let mut reads = AccessSet::new();
+        reads.push(held(&["0"], Access::Shared));
+        assert!(!reads.conflicts_only_below(&p("g", &[]), Access::Shared));
+        assert!(reads.conflicts_only_below(&p("g", &[]), Access::Exclusive));
     }
 
     #[test]

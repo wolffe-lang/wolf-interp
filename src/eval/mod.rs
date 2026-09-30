@@ -7942,6 +7942,95 @@ impl Machine {
         matches!(slot.value, Value::List(..) | Value::Map(_) | Value::Str(_)).then_some(place)
     }
 
+    /// `[mem.model.place.elem]` 1(a) for an index read inside an expression
+    /// (wolffe-lang/wolf-interp#152): `xs[0]` and `xs[1]` are distinct
+    /// places, so `bump(mut xs[1], xs[0] + 1)` reads `xs[0]`, not `xs`. The
+    /// index-read lend below checks the CONTAINER before the index is known,
+    /// which meets a claim on any element of it; the bare argument
+    /// (`live_place`) already checked the element's own path.
+    ///
+    /// Taken only for a bracket chain (`xs[i]`, `g[i][j]`, `b.xs[i]`) over a
+    /// plain container path, and only while every claim that conflicts with
+    /// the container lies strictly below it. The read is trunk's in every
+    /// other respect and order: one step per node, the container's `Moved`
+    /// trap, freed-region fault, rule fire and provenance read before any
+    /// index operand, each operand once, innermost first, each element picked
+    /// out by `builtin::index` (its bounds and moved-element traps). Then the
+    /// element's FULL path is checked: when it meets the claim, the trap is
+    /// the container's, as trunk reports it (path, clause, span) — only now
+    /// after the index operands ran, as the bare form's does.
+    ///
+    /// `None` when the route does not apply, and the caller reads as trunk.
+    fn read_elem_under_claim(
+        &mut self,
+        base: &Expr,
+        args: &[IndexArg],
+        origin: u8,
+        span: Span,
+    ) -> EResult<Option<Value>> {
+        fn single(args: &[IndexArg]) -> Option<&Expr> {
+            match args {
+                [IndexArg::Value(arg)] if !matches!(&*arg.expr.kind, ExprKind::Range { .. }) => {
+                    Some(&arg.expr)
+                }
+                _ => None,
+            }
+        }
+        if self.access.is_empty() {
+            return Ok(None);
+        }
+        let Some(outer) = single(args) else {
+            return Ok(None);
+        };
+        // The chain, outermost first: each level's operand, origin and span.
+        let mut levels = vec![(outer, origin, span)];
+        let mut root = base;
+        while let ExprKind::BracketApply { base, args, origin } = &*root.kind {
+            let Some(operand) = single(args) else {
+                return Ok(None);
+            };
+            levels.push((operand, *origin, root.span));
+            root = base;
+        }
+        let Some(container) = self.index_lend_place(root) else {
+            return Ok(None);
+        };
+        if !self.access.conflicts_only_below(&container, Access::Shared) {
+            return Ok(None);
+        }
+        for _ in 0..levels.len() {
+            self.step()?;
+        }
+        self.read_claim_checked(&container, root.span)?;
+        let mut path = container.clone();
+        let mut picked: Option<Value> = None;
+        for (operand, origin, at) in levels.into_iter().rev() {
+            let index = self.eval(operand)?;
+            let element = match picked.take() {
+                None => {
+                    let step = match self.resolve(&container) {
+                        Some((slot, _)) => element_step(&slot.value, &index, origin),
+                        None => Proj::UnknownIndex,
+                    };
+                    path = path.project(step);
+                    let lent = self.lend_path(&container);
+                    let element = builtin::index(self, &lent, &index, origin, at);
+                    self.restore_lent(&container, lent);
+                    element?
+                }
+                Some(outer) => {
+                    path = path.project(element_step(&outer, &index, origin));
+                    builtin::index(self, &outer, &index, origin, at)?
+                }
+            };
+            picked = Some(element);
+        }
+        if self.access.conflict(&path, Access::Shared).is_some() {
+            self.check_access(&container, Access::Shared, root.span)?;
+        }
+        Ok(picked)
+    }
+
     fn eval_bracket(
         &mut self,
         base: &Expr,
@@ -7950,6 +8039,12 @@ impl Machine {
         span: Span,
         how: ReadAs,
     ) -> EResult<Value> {
+        if let Some(element) = self.read_elem_under_claim(base, args, origin, span)? {
+            if how == ReadAs::Whole {
+                self.check_whole(&element, None, span)?;
+            }
+            return Ok(element);
+        }
         // The index-read lend (issue #28, wolf-std F-0078) — the other half of
         // #24's shape. `xs[i]` evaluated `xs` in order to pick one element out
         // of it, and evaluating a place-valued `xs` deep-copies the whole
@@ -8962,6 +9057,21 @@ fn prefix(path: &Path, depth: usize) -> Path {
     let mut prefix = path.clone();
     prefix.projections.truncate(depth);
     prefix
+}
+
+/// The path step an index read of `container` at `index` denotes — what
+/// `project_index` projects for the same operand: a `Map` key by value, a
+/// sequence position shifted under origin 1. Anything it cannot name is
+/// `UnknownIndex`, which conflicts with every sibling (the sound direction).
+fn element_step(container: &Value, index: &Value, origin: u8) -> Proj {
+    match (container, index) {
+        (Value::Map(_), key) => MapKey::of(key).map_or(Proj::UnknownIndex, Proj::Key),
+        (Value::List(..) | Value::Tuple(_), Value::Int(i, _)) if origin == 1 => {
+            i.checked_sub(1).map_or(Proj::UnknownIndex, Proj::Index)
+        }
+        (Value::List(..) | Value::Tuple(_), Value::Int(i, _)) => Proj::Index(*i),
+        _ => Proj::UnknownIndex,
+    }
 }
 
 /// A binary operator as the programmer wrote it. Fault messages quote source,
