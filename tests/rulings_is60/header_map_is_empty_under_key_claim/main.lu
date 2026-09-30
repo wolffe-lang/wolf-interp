@@ -1,0 +1,15 @@
+//! is60 (wolffe-lang/wolf-lang#474) — `flag(mut m["a"], m.is_empty())`.
+
+fn flag(mut a: int, e: bool) {
+    if e { a = 0 } else { a = a + 1 }
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 1
+    m["b"] = 5
+    flag(mut m["a"], m.is_empty())
+    let a = m["a"] else 0
+    print("{a}")
+    0
+}

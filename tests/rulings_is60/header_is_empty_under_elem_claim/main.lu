@@ -1,0 +1,12 @@
+//! is60 (wolffe-lang/wolf-lang#474) — `flag(mut xs[0], xs.is_empty())`.
+
+fn flag(mut a: int, e: bool) {
+    if e { a = 0 } else { a = a + 1 }
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    flag(mut xs[0], xs.is_empty())
+    print("{xs[0]}")
+    0
+}

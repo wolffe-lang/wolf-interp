@@ -1,0 +1,12 @@
+//! is60 (wolffe-lang/wolf-lang#474) — one level up: `bump(mut g[1][2], g.count())`.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var g = [[1, 2], [3, 4, 5]]
+    bump(mut g[1][2], g.count())
+    print("{g[1][2]}")
+    0
+}

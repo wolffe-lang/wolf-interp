@@ -1,0 +1,20 @@
+//! is60 (wolffe-lang/wolf-lang#474) — twin, still a trap: an impl method NAMED `count` takes the whole `self`.
+
+struct P { x: List[int], y: int }
+
+impl P {
+    fn count(self) -> int {
+        self.x.len
+    }
+}
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var p = P { x: [1, 2], y: 3 }
+    bump(mut p.y, p.count())
+    print("{p.y}")
+    0
+}

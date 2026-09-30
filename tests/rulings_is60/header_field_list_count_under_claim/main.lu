@@ -1,0 +1,14 @@
+//! is60 (wolffe-lang/wolf-lang#474) — through a field: `bump(mut b.xs[2], b.xs.count())`.
+
+struct Bag { xs: List[int] }
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var b = Bag { xs: [1, 2, 3, 4] }
+    bump(mut b.xs[2], b.xs.count())
+    print("{b.xs[2]}")
+    0
+}

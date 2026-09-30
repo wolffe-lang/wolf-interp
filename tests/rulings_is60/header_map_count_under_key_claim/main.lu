@@ -1,0 +1,15 @@
+//! is60 (wolffe-lang/wolf-lang#474) — a `Map`'s header: `bump(mut m["a"], m.count())`.
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 1
+    m["b"] = 5
+    bump(mut m["a"], m.count())
+    let a = m["a"] else 0
+    print("{a}")
+    0
+}

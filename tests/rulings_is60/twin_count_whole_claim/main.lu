@@ -1,0 +1,12 @@
+//! is60 (wolffe-lang/wolf-lang#474) — twin, still a trap: `xs.count()` while the WHOLE `xs` is claimed.
+
+fn grow(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    grow(mut xs, xs.count())
+    print("{xs.len}")
+    0
+}

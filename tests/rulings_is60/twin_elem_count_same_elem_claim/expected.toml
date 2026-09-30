@@ -1,0 +1,15 @@
+# is60 — wolffe-lang/wolf-lang#474, ruled by the maintainer 2026-09-30: `len`, `count` and `is_empty` read
+# only a container's header (`[mem.model.place.elem]` 1(c)), so they run beside
+# an element claim; every other method reads the whole container.
+# `[expected]` is the ruled lupin cell; `[trunk]` is what lupin at trunk `c68c4d3`
+# (0.1.41 plus is58 and is59) and wolf 0.2.18 `conform-run --checked` (archive
+# da027bf9…) answered on kasumi, ~/lanes/is60/evidence/witnesses-trunk-c68c4d3.log.
+ruling = "wolffe-lang/wolf-lang#474"
+part = "H"
+
+[expected]
+lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [235, 247] }
+
+[trunk]
+checked = { verdict = "exit(0)" }
+lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [235, 247] }

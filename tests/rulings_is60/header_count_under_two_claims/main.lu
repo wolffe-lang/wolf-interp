@@ -1,0 +1,13 @@
+//! is60 (wolffe-lang/wolf-lang#474) — under EG2's pair: `add2(mut xs[0], mut xs[1], xs.count())`.
+
+fn add2(mut a: int, mut b: int, n: int) {
+    a = a + n
+    b = b + n
+}
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    add2(mut xs[0], mut xs[1], xs.count())
+    print("{xs[0]} {xs[1]}")
+    0
+}

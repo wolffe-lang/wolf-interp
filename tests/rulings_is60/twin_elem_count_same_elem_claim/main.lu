@@ -1,0 +1,12 @@
+//! is60 (wolffe-lang/wolf-lang#474) — twin, still a trap: `g[0].count()` while `g[0]` itself is claimed.
+
+fn trim(mut ys: List[int], n: int) {
+    (mut ys).push(n)
+}
+
+fn main() -> !int {
+    var g = [[1, 2], [3]]
+    trim(mut g[0], g[0].count())
+    print("{g[0].len}")
+    0
+}

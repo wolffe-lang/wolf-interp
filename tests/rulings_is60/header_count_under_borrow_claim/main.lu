@@ -1,0 +1,8 @@
+//! is60 (wolffe-lang/wolf-lang#474) — under a borrow's claim: `&mut xs[0]`, then `xs.count()`.
+
+fn main() -> !int {
+    var xs = [1, 2, 3]
+    let r = &mut xs[0]
+    print("{xs.count()}")
+    0
+}
