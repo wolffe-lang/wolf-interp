@@ -207,31 +207,31 @@ fn header_elem_count_sibling_claim() {
     run("header_elem_count_sibling_claim");
 }
 
-/// twin, still a trap: `xs.count()` while the WHOLE `xs` is claimed.
+/// was a twin that trapped; ruling #17 (is63) runs it: `xs.count()` while the WHOLE `xs` is claimed.
 #[test]
 fn twin_count_whole_claim() {
     run("twin_count_whole_claim");
 }
 
-/// twin, still a trap: `g[0].count()` while `g[0]` itself is claimed.
+/// was a twin that trapped; ruling #17 (is63) runs it: `g[0].count()` while `g[0]` itself is claimed.
 #[test]
 fn twin_elem_count_same_elem_claim() {
     run("twin_elem_count_same_elem_claim");
 }
 
-/// twin, still a trap: `get` reads the whole container, under `mut xs[0]`.
+/// was a twin that trapped; ruling #17 (is63) runs it: `get` reads the whole container, under `mut xs[0]`.
 #[test]
 fn twin_get_under_elem_claim() {
     run("twin_get_under_elem_claim");
 }
 
-/// twin, still a trap: `last` reads the whole container, under `mut xs[0]`.
+/// was a twin that trapped; ruling #17 (is63) runs it: `last` reads the whole container, under `mut xs[0]`.
 #[test]
 fn twin_last_under_elem_claim() {
     run("twin_last_under_elem_claim");
 }
 
-/// twin, still a trap: an impl method NAMED `count` takes the whole `self`.
+/// was a twin that trapped; ruling #17 (is63) runs it: an impl method NAMED `count` takes the whole `self`.
 #[test]
 fn twin_impl_count_under_field_claim() {
     run("twin_impl_count_under_field_claim");
@@ -311,25 +311,25 @@ fn elem_map_sibling_interp() {
     run("elem_map_sibling_interp");
 }
 
-/// twin, still a trap: `xs[1] + 1` under `mut xs[1]`.
+/// was a twin that trapped; ruling #17 (is63) runs it: `xs[1] + 1` under `mut xs[1]`.
 #[test]
 fn twin_same_elem_in_expr() {
     run("twin_same_elem_in_expr");
 }
 
-/// twin, still a trap: `xs[f()] + 1`, `f` → 1 — the index runs first, as the bare form's does.
+/// was a twin that trapped; ruling #17 (is63) runs it: `xs[f()] + 1`, `f` → 1 — the index runs first, as the bare form's does.
 #[test]
 fn twin_effect_index_same_elem() {
     run("twin_effect_index_same_elem");
 }
 
-/// twin, still a trap: `g[0][1] + 1` under `mut g[0]`.
+/// was a twin that trapped; ruling #17 (is63) runs it: `g[0][1] + 1` under `mut g[0]`.
 #[test]
 fn twin_row_claim_elem_read() {
     run("twin_row_claim_elem_read");
 }
 
-/// twin, still a trap: `xs[0] + 1` under `mut xs`.
+/// was a twin that trapped; ruling #17 (is63) runs it: `xs[0] + 1` under `mut xs`.
 #[test]
 fn twin_whole_claim_elem_read() {
     run("twin_whole_claim_elem_read");

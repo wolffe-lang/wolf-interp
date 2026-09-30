@@ -9,8 +9,10 @@ clause = "mem.model.place.elem"
 item = "the path rule (twin)"
 ruling = "wolffe-lang/wolf-lang#472"
 
+# is63 — ruling #17 (the maintainer, 2026-09-30): a `mut` argument's claim takes effect at call
+# entry, so this later-argument read runs. Until is63 the ruled cell was { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [231, 239] }
 [expected]
-lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [231, 239] }
+lupin   = { verdict = "exit(0)", stdout = "3\n" }
 
 [trunk]
 checked = { verdict = "fail(E1002)" }

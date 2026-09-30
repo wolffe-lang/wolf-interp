@@ -221,20 +221,27 @@ fn member_len_before_claim() {
 }
 
 // -- twins: still one place, still trunk's trap -------------------------
+//
+// Ruling #17 (is63): the three member reads below are later-argument reads
+// and run; `twin_same_elem_read` and `twin_whole_read_under_elem_claim` lend
+// the claimed place into the same call and keep the trap.
 
 /// The whole container claimed: `grow(mut xs, xs.len)`.
+/// Ruling #17 (is63): a later argument's read runs.
 #[test]
 fn twin_whole_mut_member_read() {
     run("twin_whole_mut_member_read");
 }
 
 /// The element itself claimed, its member read: `trim(mut g[0], g[0].len)`.
+/// Ruling #17 (is63): a later argument's read runs.
 #[test]
 fn twin_elem_mut_its_member_read() {
     run("twin_elem_mut_its_member_read");
 }
 
 /// A field claimed, its member read: `grow(mut b.xs, b.xs.len)`.
+/// Ruling #17 (is63): a later argument's read runs.
 #[test]
 fn twin_field_mut_member_read() {
     run("twin_field_mut_member_read");

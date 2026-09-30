@@ -7,8 +7,10 @@
 ruling = "wolffe-lang/wolf-lang#474"
 part = "H"
 
+# is63 — ruling #17 (the maintainer, 2026-09-30): a `mut` argument's claim takes effect at call
+# entry, so this later-argument read runs. Until is63 the ruled cell was { verdict = "trap(exclusivity)", clause = "mem.tier0.excl.1", span = [229, 239] }
 [expected]
-lupin   = { verdict = "trap(exclusivity)", clause = "mem.tier0.excl.1", span = [229, 239] }
+lupin   = { verdict = "exit(0)", stdout = "4\n" }
 
 [trunk]
 checked = { verdict = "exit(0)" }
