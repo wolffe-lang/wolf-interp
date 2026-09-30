@@ -4236,6 +4236,35 @@ Predicted, before the edit:
   do not move. No pinned row passes a capturing closure beside a `mut`
   argument of the same call.
 
+#### §3 addendum 3: the closure arm's mechanism was wrong; committed before the replacement
+
+`3f4e423` (addendum 2's arm) asked `lint::free_names` which locals the
+closure names. That walk counts bare single names only. `xs.len` and `r.n`
+are one dotted `path` production (`[gram.item.use]` folds them), so it
+sees neither of them, and both closure witnesses still ran (`red-dbd030e.log`
+and `green-3f4e423.log`: `stay_closure_lend` and
+`stay_closure_lend_copy_field` answer `exit(0)` at `3f4e423`). The walk is
+the lint's (`src/lint.rs`, out of this lane), and #36's capture loans share
+its blind spot (filed with #160's comment).
+
+**The replacement arm is dynamic, the way this machine answers every
+other E1002.** When a closure literal is evaluated as a bare argument, the
+captured locals whose places meet a claim that call holds pending are
+recorded on the closure value, each with the claim's span. When that
+closure's body runs, each such capture is held `mut` for the body's
+extent, so the first access to it traps `exclusivity` at that read, with
+the claim as the second span. A capture the body never touches traps
+nothing: that is the conservatism class (the compiler refuses statically
+what this machine never reaches), not a looser answer.
+
+Re-predicted: `stay_closure_lend` and `stay_closure_lend_copy_field` trap
+`exclusivity` under `mem.tier0.excl.1`, but the trap is now at the read
+inside the body (`xs.len`, `r.n`) and not at the closure literal. Their
+`[expected]` spans move to those reads, in the same commit as the arm. The
+three `read_closure_*` rows keep running: `read_closure_other` captures
+`xs` too (a closure copies every live local) but never reads it. Nothing
+else moves.
+
 #### §3a — the prediction, scored
 
 - **Seven flip, three hold — held, every cell.** At the head, lupin's cell
