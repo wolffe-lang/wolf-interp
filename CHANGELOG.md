@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+**The move is the write** (is61, wolffe-lang/wolf-interp#155). Pin
+unchanged: `ec56a08f`.
+
+- **W1002 stands down where the body moves a `mut` parameter out**
+  (`62cfe67`). The compiler refuses a move out of a `mut` parameter that
+  reaches a return (E1001, `[mem.tier0.mode.mut]`, wolffe-lang/wolf-lang#464)
+  and drops its "never written" beside it; this machine traps at run and
+  kept saying W1002. The lint now reads the same evidence: a move out of
+  the parameter, a field, an element or a map value — `move e`, a non-`Copy`
+  place in value position, a `take` store, a `Map` value read out under
+  `else`/`?` — that reaches a return with no later access of an overlapping
+  place is the parameter's write. A move used again in the body (a read, a
+  second move, the loop's back edge, a `defer`) keeps W1002, as the compiler
+  does. A parameter whose name the body rebinds draws neither W1002 nor
+  W1003, as on the compiler. Measured against wolf 0.2.19 on 118 shapes
+  (`tests/lint_is61.rs`): 117 agree; the one parting is a program the
+  compiler refuses at typecheck, before the at-return check runs.
+- **r24's waiver retires** (`8aa78d2`): the warns ledger now holds s184's
+  `mut_param_moveout_{whole,elem,field,map}.lu` with no filing.
+
 ## 0.1.42 — 2026-09-30
 
 THE FORTY-SECOND (is57, is58, is59, is60, and r24's re-pin), the lupin
