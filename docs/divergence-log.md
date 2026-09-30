@@ -5507,6 +5507,118 @@ What moves, predicted before the edit:
   counts a struct; if the compiler counts it `Copy` under the clause,
   lupin is the stricter side.
 
+#### §3a — the prediction, scored
+
+- **held: the mechanism.** One arm in `eval_args_for` (a pending claim per
+  argument list, entered at the list's end; `cb474b4`) and, after the
+  addendum, one more for the bare `Copy` argument (`036b2f1`). `Reach`
+  in `place.rs` is the whole rule: an access meets a pending claim when
+  it is exclusive, a lend into the claim's own call, or a local borrow.
+- **held: 24 of 24 reads** run with the predicted bytes
+  (`witnesses-head-036b2f1.log`), each wolf 0.2.19's bytes where 0.2.19
+  runs the row.
+- **missed on one of 16 kept rows.** `stay_elem_write` keeps its verdict
+  and clause, but its span moves from the store's target read `[242, 244]`
+  to the store `[242, 259]`. Under #17 that read runs, and the write meets
+  the claim. Re-ruled by name in `2b1882c`. The other 15 keep trunk's
+  record byte for byte.
+- **held: the existing tests that change.** At `cb474b4` the twelve §2
+  twins went red and nothing else did (`green-cb474b4.log`: is59 3,
+  is60 9, `rulings_is63` 1, which is the miss above; `lib-cb474b4.log`
+  726 passed). At `036b2f1` exactly the addendum's three went red
+  (`probe-036b2f1.log`: the lib test, `mode_read_iteration`, is59's
+  `twin_same_elem_read`).
+- **addendum, missed in the corpus's own vocabulary.** I predicted that
+  `mut_read_overlap.lu` would become a filed mismatch. It does not: the
+  census counts a program this machine runs and the compiler refuses as
+  static-conservatism. `lupin corpus` moves one row, from counterpart to
+  conservatism (46 → 45 and 55 → 56; mismatches stay at 1, DIV-2026-019).
+  No DIV entry is needed. What does move is its `RUN_LEDGER` row
+  (`09c65ea`) and the manual's census line (`7f000c7`). The is56 lesson
+  (verdict, differential, document) held in the form the census gives it.
+- **held: the differential.** `diffrun/head-036b2f1-*` against
+  `diffrun/archive-0.1.42-*` (wolf 0.2.19, four tiers): the reports are
+  identical on `default`, `checked` and `release`. `native` differs only
+  in `memory/unsafe_ub_uaf.lu`'s compiled exit code (241 against 255).
+  That row is UB, and its native exit code is noise (s185's ten-run
+  finding). The same 4 gating findings appear per tier. **No new
+  divergence.**
+- **the rows #17 moves against wolf 0.2.19, by name.** lupin now runs rows
+  that 0.2.19 refuses with E1002:
+  - witnesses `read_member_whole_claim`, `read_copy_direct`,
+    `read_copy_elem_direct`, `read_copy_field_direct`,
+    `read_copy_str_direct`;
+  - is59's `twin_elem_mut_its_member_read`, `twin_field_mut_member_read`,
+    `twin_whole_mut_member_read` and `twin_same_elem_read`;
+  - the pinned corpus row `memory/mut_read_overlap.lu`.
+
+  Moved from a trap to 0.2.19's own bytes: the other 19 `read_*`
+  witnesses and is60's nine twins.
+- **held: the gates.** At wolf-lang trunk `4c57f3d7`, head is green on all
+  11 lupin-reading gate files (`wolfgates-trunk4c57-head-036b2f1.log`).
+  At s186 `e3ae62b5`, head satisfies every ruled arm of
+  `nested_claim_reads_lanes` (11/11, `wolfgates-s186-head-036b2f1.log`),
+  and the archive satisfies the pinned arm (`PRE_TWO_PHASE_LUPIN`). The
+  plant, the archive presented as `0.1.43-plant`, reds on exactly the 8
+  read cases and on `pairing` (`wolfgates-s186-plant-0.1.42-as-next.log`).
+  §3 predicted reds at s186's head; s186 had already pinned 0.1.42 by
+  name, so head passes instead.
+- **consistency with the checked machine.** All 40 witnesses and the 14
+  earlier twins, run against s186's checked machine (`e3ae62b5`, debug
+  build): every read row prints the same bytes, and every kept row is
+  E1002 or E1001 where lupin traps (`vs-checked-s186-e3ae62b5-*.log`).
+- **filed**:
+  - wolffe-lang/wolf-lang#487: a `mut` receiver written inside its own
+    call's argument runs `1 9` on every lane and loses the push, and s186
+    does not refuse it. lupin answers `ub(mem.ub)` there.
+  - wolffe-lang/wolf-interp#160: lupin runs a closure that captures a
+    claimed place passed into the same call, where the compiler says
+    E1002 (pre-existing, the looser direction).
+
+#### §4 — evidence index
+
+Commits:
+- `6ceb9db` §1–§3; `20e7035` the §3 addendum (before `036b2f1`)
+- `b12664a` 37 witnesses (red); `cb474b4` the pending claim
+- `8cce125` the twelve twins to the ruling; `2b1882c` `stay_elem_write`'s span
+- `ec1759a` the addendum's witnesses (red); `036b2f1` the `Copy` read
+- `a7d7504`, `762bb6a` the addendum's three tests; `206993f` approximation contract §6.12
+- `09c65ea` `RUN_LEDGER`; `7f000c7` the manual's census; `afd1f3d` CHANGELOG `Unreleased`; this section
+
+Artifacts: kasumi `~/lanes/is63/evidence/`. The archives are wolf 0.2.19
+`9f3873d8…` and lupin 0.1.42 `9856335a…`, whose digests equal the release
+pages'. The head release build is `lupin-head-036b2f1`, `2e849a06…`.
+- inputs:
+  - `witnesses-archive-0.1.42-wolf-0.2.19.log` and `…-addendum.log`
+  - `probes-archive-0.1.42-wolf-0.2.19.log`
+  - `diffrun/archive-0.1.42-*`
+- red, each for its named reason:
+  - `red-b12664a.log`: 20 failed, each "lupin answered `trap(exclusivity)`, ruled `exit(0)`"; the 17 kept rows passed; `EXIT=101`
+  - `red-ec1759a.log`: the 4 `read_copy_*` rows failed, each for the same reason; `EXIT=101`
+- green:
+  - `green-cb474b4.log` and `lib-cb474b4.log`: the predicted reds, above
+  - `probe-036b2f1.log`: `rulings_is63` 40/40, `rulings_is60` 82/82, `rulings_eg00`, `rulings_is58`, `rulings_s182`, `index_store`, `prov_machine`, `fault_snapshots`, `divergence`, `conformance`, `corpus_harness` green; the addendum's three red before `a7d7504`/`762bb6a`
+- head: `build-rel-036b2f1.log`, `witnesses-head-036b2f1.log`, `probes-head-036b2f1.log`, `twins-head-cb474b4.log`
+- differential and corpus: `diffrun/head-036b2f1-*` against `diffrun/archive-0.1.42-*`, and `…-corpus.log`
+- wolf-lang gates (`scripts/gates.sh`, `WOLF_PAIRING_REQUIRE_SIBLING=1`, no SKIP):
+  - `wolfgates-trunk4c57-head-036b2f1.log`
+  - `wolfgates-s186-head-036b2f1.log`
+  - `wolfgates-s186-archive-0.1.42.log`
+  - `wolfgates-s186-plant-0.1.42-as-next.log`
+- the checked machine: `vs-checked-s186-e3ae62b5-head-036b2f1.log` and `vs-checked-s186-e3ae62b5-twins-head-036b2f1.log`
+- gauntlet at `afd1f3d` (the default target dir, in `~/lanes/is63/rel`): `gauntlet-afd1f3d.log`. Its result and the GitHub CI run are in the PR body.
+
+#### §5 — done-when
+
+- [x] branch `is63` on origin; PR open, unmerged, with these five sections
+- [x] §2 re-derived, §3 committed before the first `src/`/`tests/` edit, and the addendum before its edit
+- [x] every read shape #17 names is seen red at trunk and runs at head; every write, move, re-claim and lend shape keeps its trap, with an explicit row
+- [x] the differential against wolf 0.2.19 shows no new divergence; the rows #17 moves are listed by name (§3a)
+- [x] CHANGELOG `Unreleased`
+- [ ] the coverage ratchet holds (`export::coverage_is_ratcheted`, in the gauntlet and CI)
+- [ ] kasumi gauntlet and GitHub CI green at the head sha (the PR body)
+- [ ] kasumi build dirs pruned once evidence is written; worktree removed
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
