@@ -1424,9 +1424,7 @@ impl Walk<'_> {
             ExprKind::Str(lit) => self.str_lit(lit),
             ExprKind::StructLit { fields, .. } => {
                 for field in fields {
-                    if let Some(value) = &field.value {
-                        self.expr(value);
-                    }
+                    self.expr(&field.value);
                 }
             }
             ExprKind::Tuple(items) | ExprKind::List(items) => {
@@ -2605,9 +2603,7 @@ fn walk_child_exprs(expr: &Expr, visit: &mut impl FnMut(&Expr)) {
         }
         ExprKind::StructLit { fields, .. } => {
             for field in fields {
-                if let Some(value) = &field.value {
-                    visit(value);
-                }
+                visit(&field.value);
             }
         }
         ExprKind::Tuple(items) | ExprKind::List(items) => {
@@ -3395,21 +3391,10 @@ impl<'e> MoveFlow<'e> {
                 }
             }
             ExprKind::StructLit { fields, .. } => {
+                // The shorthand `W { xs }` is its longhand `W { xs: xs }`
+                // (wolf-interp#159, s190): it moves, and `t16` reads so.
                 for field in fields {
-                    match &field.value {
-                        Some(value) => self.expr(value, Ctx::Value),
-                        // The shorthand `W { xs }` reads on the compiler:
-                        // wolf 0.2.19 keeps W1002 and runs it (`t16`).
-                        None => {
-                            if self.tracked.contains_key(&field.name.name) {
-                                let place = Place {
-                                    root: field.name.name.clone(),
-                                    steps: Vec::new(),
-                                };
-                                self.access(&place, Access::Read);
-                            }
-                        }
-                    }
+                    self.expr(&field.value, Ctx::Value);
                 }
             }
             ExprKind::Tuple(items) | ExprKind::List(items) => {
@@ -3748,10 +3733,7 @@ fn rebound_names(body: &Block) -> BTreeSet<String> {
                 }
             }
             ExprKind::StructLit { fields, .. } => {
-                fields
-                    .iter()
-                    .filter_map(|f| f.value.as_ref())
-                    .for_each(|v| expr(v, out));
+                fields.iter().for_each(|f| expr(&f.value, out));
             }
             ExprKind::Tuple(items) | ExprKind::List(items) => {
                 items.iter().for_each(|i| expr(i, out))

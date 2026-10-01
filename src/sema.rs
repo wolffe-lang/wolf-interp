@@ -1626,9 +1626,7 @@ impl ListLitWalk {
             }
             ExprKind::StructLit { fields, .. } => {
                 for field in fields {
-                    if let Some(value) = &field.value {
-                        self.expr(value);
-                    }
+                    self.expr(&field.value);
                 }
             }
             ExprKind::Tuple(items) => {
@@ -2237,9 +2235,7 @@ impl RowRewriter<'_> {
             }
             ExprKind::StructLit { fields, .. } => {
                 for field in fields {
-                    if let Some(value) = &mut field.value {
-                        self.expr(value);
-                    }
+                    self.expr(&mut field.value);
                 }
             }
             ExprKind::Tuple(items) | ExprKind::List(items) => {
@@ -3288,9 +3284,9 @@ impl TierWalk<'_> {
             ExprKind::Member { base, .. } | ExprKind::ModedReceiver { place: base, .. } => {
                 self.expr(base)
             }
-            ExprKind::StructLit { fields, .. } => fields
-                .iter()
-                .find_map(|field| field.value.as_ref().and_then(|value| self.expr(value))),
+            ExprKind::StructLit { fields, .. } => {
+                fields.iter().find_map(|field| self.expr(&field.value))
+            }
             ExprKind::Tuple(items) | ExprKind::List(items) => {
                 items.iter().find_map(|item| self.expr(item))
             }
@@ -4159,8 +4155,7 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
         }),
         ExprKind::StructLit { fields, .. } => fields
             .iter()
-            .filter_map(|field| field.value.as_ref())
-            .find_map(|value| walk_expr_assigns(value, env)),
+            .find_map(|field| walk_expr_assigns(&field.value, env)),
         ExprKind::Tuple(items) | ExprKind::List(items) => {
             items.iter().find_map(|item| walk_expr_assigns(item, env))
         }
@@ -4782,9 +4777,7 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
         ExprKind::StructLit { path, fields } => {
             collect_path_ref(path, scope);
             for field in fields {
-                if let Some(value) = &field.value {
-                    collect_expr_refs(value, scope);
-                }
+                collect_expr_refs(&field.value, scope);
             }
         }
         ExprKind::Str(literal) => collect_strlit_refs(literal, scope),
@@ -5646,9 +5639,7 @@ impl ScalarWalk<'_> {
             ExprKind::Call { callee, args } => self.call(callee, args),
             ExprKind::StructLit { path, fields } => {
                 for field in fields {
-                    if let Some(value) = &field.value
-                        && let Some(diag) = self.expr(value)
-                    {
+                    if let Some(diag) = self.expr(&field.value) {
                         return Some(diag);
                     }
                 }
@@ -5657,7 +5648,7 @@ impl ScalarWalk<'_> {
                     .last()
                     .and_then(|segment| self.fields.get(&segment.name))?;
                 fields.iter().find_map(|field| {
-                    let value = field.value.as_ref()?;
+                    let value = &field.value;
                     let slot = *declared.get(&field.name.name)?;
                     scalar_clash(slot, self.classify(value))
                         .then(|| scalar_clash_diag(slot, value.span, "this field's declared type"))
@@ -7374,7 +7365,7 @@ impl RowWalk<'_> {
                 self.struct_literal(path, fields, expr.span).or_else(|| {
                     fields
                         .iter()
-                        .find_map(|field| field.value.as_ref().and_then(|expr| self.expr(expr)))
+                        .find_map(|field| self.expr(&field.value))
                 })
             }
             ExprKind::Range { start, end, .. } => start

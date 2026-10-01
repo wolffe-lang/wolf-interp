@@ -151,7 +151,10 @@ shapes! {
     t11_generic_elem: "exit(0)", &[];
     t14_self_plain_field_tail: "exit(0)", &[];
     t15_move_in_while_break: "trap(use-after-move)", &[];
-    t16_struct_shorthand: "exit(0)", &[("W1002", [33, 36])];
+    // wolf-interp#159 (is62): the shorthand is its longhand and moves, as
+    // wolf-lang trunk `57805e35` reads it (s190: `fail(E1001)`, no warning);
+    // wolf 0.2.19 answered W1002 [33, 36] and ran.
+    t16_struct_shorthand: "trap(use-after-move)", &[];
     t17_view_set_self: "exit(0)", &[];
     t18_nested_fn_param_name: "trap(use-after-move)", &[];
     t19_move_copy_elem_list: "exit(0)", &[];

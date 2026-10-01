@@ -2917,11 +2917,19 @@ impl<'a> Parser<'a> {
                 let name = p.expect_ident(anchor)?;
                 let fstart = name.span.start;
                 // `field_init ::= IDENT ':' expr | IDENT` — the shorthand binds
-                // the field from the identifier.
+                // the field from the identifier: `x` is `x: x`, the value the
+                // path `x` at the name's span (wolf-interp#159).
                 let value = if p.eat(&Tok::Colon) {
-                    Some(p.parse_expr()?)
+                    p.parse_expr()?
                 } else {
-                    None
+                    Expr {
+                        kind: Box::new(ExprKind::Path(Path {
+                            segments: vec![name.clone()],
+                            span: name.span,
+                        })),
+                        span: name.span,
+                        anchor,
+                    }
                 };
                 let fend = p.prev_span().end;
                 fields.push(FieldInit {
@@ -4106,9 +4114,7 @@ fn trace_expr(out: &mut String, depth: usize, expr: &Expr) {
         }
         ExprKind::StructLit { fields, .. } => {
             for field in fields {
-                if let Some(value) = &field.value {
-                    trace_expr(out, child, value);
-                }
+                trace_expr(out, child, &field.value);
             }
         }
         ExprKind::Binary { lhs, rhs, .. } => {

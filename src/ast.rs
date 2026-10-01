@@ -683,9 +683,11 @@ pub enum Member {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldInit {
     pub name: Ident,
-    /// `None` for the `Point { x }` shorthand, which binds the field from the
-    /// identifier.
-    pub value: Option<Expr>,
+    /// The field's value. The `Point { x }` shorthand is parsed as its
+    /// longhand `Point { x: x }` — the value is the one-segment path `x`,
+    /// spanning the name — so every pass reads it exactly as it reads the
+    /// longhand (wolf-interp#159; s190's reading, wolffe-lang/wolf-lang#486).
+    pub value: Expr,
     pub span: Span,
 }
 

@@ -4690,14 +4690,10 @@ impl Machine {
                 }
                 let mut built = Vec::with_capacity(fields.len());
                 for field in fields {
-                    let value = match &field.value {
-                        Some(value) => self.eval_for_init(value)?,
-                        // `Point { x }` binds the field from the identifier.
-                        None => {
-                            let path = Path::local(self.frame(), field.name.name.clone());
-                            self.read_whole(&path, field.span)?
-                        }
-                    };
+                    // `Point { x }` is `Point { x: x }` (wolf-interp#159): a
+                    // bare place initializes the field by moving, or copying
+                    // a `Copy` value, either way it is spelled.
+                    let value = self.eval_for_init(&field.value)?;
                     built.push((field.name.name.clone(), Slot::live(value)));
                 }
                 // `[mem.model.order]`: struct-literal fields evaluate in
