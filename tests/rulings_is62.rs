@@ -273,19 +273,31 @@ fn shorthand_moves() {
 /// wolf-lang `field_shorthand_mixed.lu`: shorthand and longhand in one literal.
 #[test]
 fn shorthand_mixed() {
-    shorthand_is_longhand("shorthand_mixed", &[("M { xs, n, ys: ys }", "M { xs: xs, n: n, ys: ys }")]);
+    shorthand_is_longhand(
+        "shorthand_mixed",
+        &[("M { xs, n, ys: ys }", "M { xs: xs, n: n, ys: ys }")],
+    );
 }
 
 /// wolf-lang `field_shorthand_nested.lu`: the shorthand inside a nested literal.
 #[test]
 fn shorthand_nested() {
-    shorthand_is_longhand("shorthand_nested", &[("O { w: W { xs }, n }", "O { w: W { xs: xs }, n: n }")]);
+    shorthand_is_longhand(
+        "shorthand_nested",
+        &[("O { w: W { xs }, n }", "O { w: W { xs: xs }, n: n }")],
+    );
 }
 
 /// wolf-lang `field_shorthand_nested_bound.lu`: a shorthand local built by a shorthand.
 #[test]
 fn shorthand_nested_bound() {
-    shorthand_is_longhand("shorthand_nested_bound", &[("W { xs }", "W { xs: xs }"), ("O { w, n }", "O { w: w, n: n }")]);
+    shorthand_is_longhand(
+        "shorthand_nested_bound",
+        &[
+            ("W { xs }", "W { xs: xs }"),
+            ("O { w, n }", "O { w: w, n: n }"),
+        ],
+    );
 }
 
 /// wolf-lang `field_shorthand_return_mut.lu`: `return W { xs }` moves a `mut` parameter out.
@@ -309,13 +321,19 @@ fn shorthand_copy() {
 /// wolf-lang `field_shorthand_mixed_runs.lu` (agreed at trunk): no later use, it runs.
 #[test]
 fn shorthand_mixed_runs() {
-    shorthand_is_longhand("shorthand_mixed_runs", &[("M { xs, n, ys: ys }", "M { xs: xs, n: n, ys: ys }")]);
+    shorthand_is_longhand(
+        "shorthand_mixed_runs",
+        &[("M { xs, n, ys: ys }", "M { xs: xs, n: n, ys: ys }")],
+    );
 }
 
 /// wolf-lang `field_shorthand_nested_runs.lu` (agreed at trunk).
 #[test]
 fn shorthand_nested_runs() {
-    shorthand_is_longhand("shorthand_nested_runs", &[("O { w: W { xs }, n }", "O { w: W { xs: xs }, n: n }")]);
+    shorthand_is_longhand(
+        "shorthand_nested_runs",
+        &[("O { w: W { xs }, n }", "O { w: W { xs: xs }, n: n }")],
+    );
 }
 
 /// wolf-lang `field_shorthand_return_take.lu` (agreed at trunk): a `take` parameter returned through the shorthand.
@@ -351,7 +369,10 @@ fn shorthand_unknown_name() {
 /// s190's `P { nope }` and its true twin `P { nope: nope }`: the missing field, both ways.
 #[test]
 fn shorthand_unknown_field() {
-    shorthand_is_longhand("shorthand_unknown_field", &[("P { nope }", "P { nope: nope }")]);
+    shorthand_is_longhand(
+        "shorthand_unknown_field",
+        &[("P { nope }", "P { nope: nope }")],
+    );
 }
 
 // -- wolf-lang#487: a `mut` receiver inside its own argument --------------

@@ -7361,13 +7361,9 @@ impl RowWalk<'_> {
                         crate::ast::IndexArg::Type(_) => None,
                     })
                 }),
-            ExprKind::StructLit { path, fields } => {
-                self.struct_literal(path, fields, expr.span).or_else(|| {
-                    fields
-                        .iter()
-                        .find_map(|field| self.expr(&field.value))
-                })
-            }
+            ExprKind::StructLit { path, fields } => self
+                .struct_literal(path, fields, expr.span)
+                .or_else(|| fields.iter().find_map(|field| self.expr(&field.value))),
             ExprKind::Range { start, end, .. } => start
                 .as_ref()
                 .and_then(|expr| self.expr(expr))
