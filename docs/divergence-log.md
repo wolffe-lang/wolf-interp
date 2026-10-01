@@ -5889,6 +5889,36 @@ unchanged against `ee0cbfc` (no corpus row at the pin or at wolf-lang
 `57805e35` declares a view set and writes outside it in its argument —
 falsified by any row that moves).
 
+#### §3a addendum — scored
+
+- **held: #164 at `ee0cbfc` already**, and unchanged at `da9aa91`: the 14
+  refusal rows trap `exclusivity`, the reads row runs with wolf's bytes
+  (`probes3-head-da9aa91.log`). s192's gate at `c51a314d`,
+  `PRE_RECEIVER_LUPIN` emptied: 15/15 green with `da9aa91`
+  (`wolfgates192-head-da9aa91-unpinned.log`), exactly the 14 refusal cases
+  red with lupin 0.1.42 (`wolfgates192-plant-0.1.42-unpinned.log`,
+  `EXIT=101`); pinned, 0.1.42 is 15/15 green
+  (`wolfgates192-pinned-0.1.42.log`). 0 SKIP lines in each.
+- **held: #494.** `recv494_viewset_disjoint_write` prints `10 9`;
+  `recv494_viewset_two_fields` prints `8 9 7` and traps at `p.y = 100`.
+  Both were red at `ecd6864` (`red-ecd6864.log`: exactly these 2 of 53
+  failed) and are green at `da9aa91` (`green-da9aa91.log`: `rulings_is62`
+  53/53, lib 729, every neighbouring suite).
+- **held: nothing else moves.** Against `ee0cbfc`: `lupin corpus`
+  identical at the pin and on wolf-lang `57805e35`'s corpus; the
+  differential's divergences identical on all eight runs (the one
+  differing line is `unsafe_ub_uaf.lu`'s native exit under UB); 0 ledger
+  rows moved (`ledgerdiff-head-ee0cbfc-head-da9aa91.txt`). On `s192`'s
+  corpus, trunk `1e96e1f` against `da9aa91`: the 14 `recv_claim_arg_*`
+  refusal rows, the 6 shorthand rows and the 3 once rows move — 4 → 1
+  mismatch, 61 → 81 dynamic counterparts, 85 → 65 static conservatism —
+  and nothing else.
+- **missed, a detail of the gates:** with its pin kept, s192's gate is
+  green with `da9aa91` too, where the three gates of §3 red. It reads the
+  version from `lupin --version` (`0.1.42+dev.da9aa91`), they read the
+  record's `impl_version` (`0.1.42`). Either way a release that carries
+  this lane answers a new version and meets the ruled arm.
+
 #### §3a — the prediction, scored
 
 - **held: the four mechanisms**, one commit each: `9fb80c8` (#157),
@@ -5941,6 +5971,9 @@ Three slips, all mine, all repaired:
   killed (my pids 723743, 736409 and their children 770069, 770280,
   770328), `74313a1` is the rustfmt, and the gauntlet re-ran there. The
   first log is in `evidence/superseded/`.
+- the gauntlet at `74313a1` was superseded by the additions (`da9aa91`)
+  after 37 test targets had passed and none failed; killed by pid (2184642,
+  2184652, 2184990, 3955808), log in `evidence/superseded/`.
 
 #### §4 — evidence index
 
@@ -5950,13 +5983,22 @@ Commits:
 - `9fb80c8` #157; `d6a1cb0` #162; `301fdef` #159 (and `t16`); `ee0cbfc` #487
 - `9cf486e`, `3c9c645` unit tests (the shorthand's value node; the receiver claim's withdrawal)
 - `b26ed5d` CHANGELOG; `74313a1` rustfmt
+- `08404fb` §3 addendum (#164, #494); `ecd6864` 17 witnesses (#494's 2 red);
+  `da9aa91` #494, the view set; `7d1fc36` the view-set trap's span;
+  `b6ef5ae` CHANGELOG
 
 Artifacts on kasumi under `~/lanes/is62/` (`archives/`, `evidence/`,
 `probes/`, `scripts/`, `witnesses/`). Archives: lupin 0.1.42 `9856335a…`
 and wolf 0.2.19 `9f3873d8…`, digests equal to the release pages'; lupin
 trunk `lupin-trunk-1e96e1f` `387fd253…`; head `lupin-head-ee0cbfc`
-`3f899c9a…`; wolf-lang trunk `57805e35` release `wolf` `c608799f…` with its
-`libwolf_rt.a` `69f743b8…`.
+`3f899c9a…`, then `lupin-head-da9aa91`; wolf-lang trunk `57805e35`
+release `wolf` `c608799f…` with its `libwolf_rt.a` `69f743b8…`; wolf-lang
+`s192` at `c51a314d` (`wolf-lang-s192/`, debug, for its gate and corpus).
+- #164 and #494: `probes3-{archive-0.1.42,trunk-1e96e1f,head-ee0cbfc,head-da9aa91}.log`,
+  `red-ecd6864.log`, `green-da9aa91.log`, `witnesses-head-da9aa91.log`,
+  `wolfgates192-{pinned-0.1.42,plant-0.1.42-unpinned,head-ee0cbfc-unpinned,head-da9aa91-unpinned,head-da9aa91-pinned}.log`,
+  `wolfgates-head-da9aa91-{unpinned,pinned}.log`,
+  `diffrun/head-da9aa91-*`, `diffrun/{trunk-1e96e1f,head-da9aa91}-s192corpus.log`
 - inputs: `probes-archive-0.1.42.log`, `probes2-archive-0.1.42.log`,
   `probes-trunk-1e96e1f.log`, `witnesses-trunk-1e96e1f-wolf-57805e35.log`,
   `witnesses-archive-0.1.42.log`
@@ -5975,9 +6017,9 @@ trunk `lupin-trunk-1e96e1f` `387fd253…`; head `lupin-head-ee0cbfc`
   `wolfgates-head-ee0cbfc-pinned.log` (the 9 pinned cases red, `EXIT=101`)
 - differential and corpus: `diffrun/{trunk-1e96e1f,head-ee0cbfc}-{pin,wl}-{default,checked,native,release}.*`,
   `…-corpus.log`, `…-wlcorpus.log`, `ledgerdiff-trunk-1e96e1f-head-ee0cbfc.txt`
-- gauntlet at `74313a1`, the code head (the commit after it is this
-  section, `docs/` only): `gauntlet-74313a1.log`. Its result and the
-  GitHub CI run are in the PR body.
+- gauntlet at `7d1fc36`, the code head (the commits after it are
+  `CHANGELOG.md` and `docs/` only): `gauntlet-7d1fc36.log`. Its result and
+  the GitHub CI run are in the PR body.
 
 Filed and commented:
 - wolffe-lang/wolf-interp#163: a flow out of an argument list leaves the
@@ -5994,11 +6036,13 @@ Filed and commented:
 - [x] §2 re-derived; §3 committed (`c535eca`) before the first `src/`/`tests/` edit
 - [x] each mirror seen red first (`red-1498db2.log`) and green at head (`green-ee0cbfc.log`)
 - [x] wolf-lang `57805e35`'s three gates, every 0.1.42 pin dropped: green with head, red with 0.1.42 on exactly the 9 pinned cases
+- [x] wolf-lang `s192`'s `receiver_claim_args_lanes.rs`, `PRE_RECEIVER_LUPIN` emptied: green with head, red with 0.1.42 on exactly the 14 refusal cases (#164)
+- [x] #494's program prints `10 9`
 - [x] no new divergence against wolf trunk; 3 fewer on its own corpus
 - [x] CHANGELOG `Unreleased`
 - [ ] the coverage ratchet holds (`export::coverage_is_ratcheted`, in the gauntlet and CI)
 - [ ] kasumi gauntlet and GitHub CI green at the head sha (the PR body)
-- [ ] #157, #162, #159 close on merge (by hand if not)
+- [ ] #157, #162, #159, #164 close on merge (by hand if not)
 - [ ] kasumi build dirs pruned once evidence is written; worktree removed
 
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
