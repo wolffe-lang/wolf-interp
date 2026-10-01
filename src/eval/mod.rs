@@ -7887,22 +7887,38 @@ impl Machine {
         // the push, answered `ub(mem.ub)` by the tree). At call entry the
         // claim is withdrawn: the receiver is the callee's `self` from there,
         // written back when it returns.
-        let call = self.access.open_call();
-        let receiver_claim = match (&path, mode) {
-            (Some(path), Some(ParamMode::Mut)) => {
-                self.access.push(Held {
-                    path: path.clone(),
-                    access: Access::Exclusive,
-                    span: receiver_span,
-                    why: HeldWhy::Pending(call),
-                });
-                Some(path.clone())
-            }
-            _ => None,
+        //
+        // `[mem.tier0.excl.3]`: an impl method declared `mut self.{x, …}`
+        // holds only its view set — "the caller may use `self.z` while the
+        // callee holds `self.x`". Its pending claim is one claim per view-set
+        // field, and its write-back below stores only those fields, so an
+        // argument's write to a field outside the view set stands
+        // (wolffe-lang/wolf-lang#494: `(mut p).set_x({ p.z = 9; p.z })` is
+        // `10 9`; the whole write-back lost it, `10 3`).
+        let view_set = match (&path, &value, mode) {
+            (Some(_), Some(value), Some(ParamMode::Mut)) => self.receiver_view_set(value, method),
+            _ => Vec::new(),
         };
+        let call = self.access.open_call();
+        let receiver_claims: Vec<Path> = match (&path, mode) {
+            (Some(path), Some(ParamMode::Mut)) if view_set.is_empty() => vec![path.clone()],
+            (Some(path), Some(ParamMode::Mut)) => view_set
+                .iter()
+                .map(|field| path.clone().project(Proj::Field(field.clone())))
+                .collect(),
+            _ => Vec::new(),
+        };
+        for claimed in &receiver_claims {
+            self.access.push(Held {
+                path: claimed.clone(),
+                access: Access::Exclusive,
+                span: receiver_span,
+                why: HeldWhy::Pending(call),
+            });
+        }
         let evaluated = self.eval_arg_list(args, Callee::Wolf, None, call);
-        if let Some(path) = &receiver_claim {
-            self.access.withdraw(call, path);
+        for claimed in &receiver_claims {
+            self.access.withdraw(call, claimed);
         }
         self.access.enter_call(call);
         let evaluated = evaluated?;
@@ -8071,6 +8087,11 @@ impl Machine {
                     Ok(())
                 }
             }
+            // A view-set receiver writes back its view set only: each field
+            // the callee changed, and nothing it never held (#494).
+            (Some(path), Ok(_)) if !view_set.is_empty() && receiver_value != original_receiver => {
+                self.write_view_set(path, &view_set, &receiver_value, &original_receiver, span)
+            }
             (Some(path), Ok(_)) if receiver_value != original_receiver => {
                 self.write_path(path, receiver_value, span)
             }
@@ -8097,6 +8118,56 @@ impl Machine {
         }
         written?;
         result
+    }
+
+    /// The view set of the impl method `method` resolves to on `value`, when
+    /// its receiver is declared `self.{f, …}` (`[mem.tier0.excl.3]`); empty
+    /// for a whole `self`, a builtin, or a method that does not resolve.
+    fn receiver_view_set(&self, value: &Value, method: &str) -> Vec<String> {
+        let Some((_, decl)) = self.method_of(value, method) else {
+            return Vec::new();
+        };
+        match decl.params.first().map(|param| &param.kind) {
+            Some(ParamKind::SelfParam { view_set }) => {
+                view_set.iter().map(|field| field.name.clone()).collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// A view-set receiver's write-back (wolffe-lang/wolf-lang#494): each
+    /// view-set field whose value the call changed is stored into its own
+    /// place, so the rest of the receiver keeps what the caller's arguments
+    /// wrote there. A field the value does not carry is skipped (the
+    /// checker's concern, not this write's).
+    fn write_view_set(
+        &mut self,
+        path: &Path,
+        view_set: &[String],
+        after: &Value,
+        before: &Value,
+        span: Span,
+    ) -> EResult<()> {
+        fn field<'v>(value: &'v Value, name: &str) -> Option<&'v Value> {
+            match value {
+                Value::Struct { fields, .. } => fields
+                    .iter()
+                    .find(|(field, _)| field == name)
+                    .map(|(_, slot)| &slot.value),
+                _ => None,
+            }
+        }
+        for name in view_set {
+            let Some(new) = field(after, name) else {
+                continue;
+            };
+            if field(before, name) == Some(new) {
+                continue;
+            }
+            let place = path.clone().project(Proj::Field(name.clone()));
+            self.write_path(&place, new.clone(), span)?;
+        }
+        Ok(())
     }
 
     fn eval_member(
