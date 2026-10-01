@@ -4,11 +4,11 @@
 # 387fd253…) and wolf-lang trunk `57805e35` (release build c608799f…) `conform-run` answered on
 # kasumi (~/lanes/is62/evidence/probes3-trunk-1e96e1f.log, probes3-head-ee0cbfc.log); `[archive]`
 # is the published lupin 0.1.42 (9856335a…), probes3-archive-0.1.42.log. A trap's clause and span
-# were measured at ee0cbfc.
+# were measured at ee0cbfc (this row's at da9aa91, witnesses-head-da9aa91.log).
 issue = "wolffe-lang/wolf-lang#494"
 
 [expected]
-lupin   = { verdict = "trap(exclusivity)", stdout = "8 9 7\n" }
+lupin   = { verdict = "trap(exclusivity)", stdout = "8 9 7\n", clause = "mem.model.path.disjoint", span = [462, 471] }
 
 [trunk]
 lupin   = { verdict = "exit(0)", stdout = "8 9 3\n9 10 3\n" }
