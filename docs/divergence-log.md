@@ -5716,6 +5716,130 @@ release pages'. The head release build is `lupin-head-a6d7791`,
 - [ ] kasumi gauntlet and GitHub CI green at the head sha (the PR body)
 - [ ] kasumi build dirs pruned once evidence is written; worktree removed
 
+### Every operand once, the shorthand is the longhand, a receiver's own argument — is62, wolf-interp#157, #162, #159 and wolf-lang#487's lupin half
+
+Wave 52's row: "lupin mirrors wolf-interp#157, #162 and #159, and
+wolf-lang#487's trap kind. It empties the compiler gates' 0.1.42 pins."
+is64 (#159) is absorbed. The contract is is63's, in five sections; §1–§3
+are committed before the first edit under `src/` or `tests/`, the rest is
+appended as it lands. Measurements on kasumi (linux x86-64) under
+`~/lanes/is62/`: the published lupin 0.1.42 (`9856335a…8ab6`) and wolf
+0.2.19 (`9f3873d8…8c8e`), archive digests equal to the release pages'
+(`gh release view`); lupin trunk `1e96e1f` built release
+(`lupin-trunk-1e96e1f`, `387fd253…`); wolf-lang trunk `57805e35` built
+debug with `libwolf_rt.a` beside it (`archives/wolf-trunk-57805e35/`).
+Probes: 67 one-directory programs under `~/lanes/is62/probes/` (the
+wolf-lang rows the three gates run, verbatim, as `s_*`; their longhand
+twins as `l_*`; this lane's own shapes as `p*`), run by
+`scripts/run-probes.sh` (`lupin conform-run main.lu --json`, and `wolf
+conform-run main.lu --{checked,native,release} --json`), summarised by
+`scripts/summ.py`.
+
+#### §1 — forbidden, absolutely
+
+No `rm` outside `~/lanes/is62/` (kasumi) and `/private/tmp/is62`; no
+deletion in any tree this lane did not create; no `git add -A`; no edit to
+another lane's file — wolf-lang (s192 owns #487's compiler half, s191
+`ubcheck.rs`) is read and built, never edited or pushed; no workflow edit;
+no `~/.claude`; no build or test on nomad-1 (kasumi only,
+`CARGO_BUILD_JOBS=4`); no tag; no pin move (the pin stays `ec56a08f`); no
+merge, no rebase-merge; no `2>/dev/null` on a checkout; kill only my own
+pids, never a pattern or a group; jobs launched with `setsid`; no claim of
+"seen red" without the log it is in; no trailer on any commit.
+
+#### §2 — inputs, re-derived 2026-10-01
+
+| input as written | at origin / measured | drift |
+| --- | --- | --- |
+| wolf-interp trunk `1e96e1f`, is63 merged | `origin/trunk` = `1e96e1f`; `Cargo.toml` 0.1.42; a dev build answers `impl_version` `0.1.42+dev.<sha>`, so the gates' `"0.1.42"` pins never match a branch build — only the archive | none; noted, it decides the plant below |
+| wolf-lang trunk "about `57805e35`" | `origin/trunk` = `57805e35`; `PAIRING` 0.1.42 / `ec56a08` | none |
+| the three gates and their pins | `slice_endpoint_once_lanes.rs` 1 pin (`LUPIN_0_1_42_INDEXED_BASE`), `index_flow_once_lanes.rs` 2 (`LUPIN_0_1_42_RECEIVERS`, `LUPIN_0_1_42_SLICE_BASE`), `field_shorthand_lanes.rs` 6 (`moves`, `mixed`, `nested`, `nested_bound`, `return_mut`, `closure_borrow`): 9 pinned cases of 24 | none |
+| the gates at trunk with lupin 0.1.42 | `wolfgates-base-0.1.42-pinned.log`: 24/24 green, `EXIT=0`, 0 SKIP lines (`--nocapture`); with every pin replaced by `&[]` (`scripts/gates.sh … unpinned`), `wolfgates-plant-0.1.42-unpinned.log`: exactly the 9 pinned cases red, `EXIT=101`, 0 SKIP | none. **A first run skipped the native and release lanes silently** (`libwolf_rt.a not found next to the wolf binary`, visible only under `--nocapture`); superseded, kept in `evidence/superseded/` |
+| #157: `gi` runs two or three times in `g[gi()][lo()..hi()]` | trunk: `let` ×2, `.len` ×3, hole ×2; also `.count()` ×2, `.is_empty()` ×2, a `read` argument ×2, a `for` iterable ×1, under a pending claim ×3 then ×2; every index of a deeper base (`h[a()][b()][lo()..hi()]` runs `a`, `b` twice each), a field base, a `str` base, open, inclusive and `^` endpoints. wolf trunk runs each once on checked, native and release | the family is wider than the issue's table; all listed as witnesses |
+| the mechanism of #157 | `place_of` (`src/eval/mod.rs:4447`) evaluates the base's place (`gi` runs) before `project_index` refuses the bracket's range as "not a place"; every caller then evaluates the whole expression again (`live_place` → `eval`, `eval_member_at`, `method_split`), and `eval_member_at` under `live_place` once more | none |
+| #162: a propagating `?` in a receiver's index runs twice | trunk: `count`, `(mut …).push`, `.bytes().len`, `for … in ….bytes()`, `str` `.len` twice, as the issue says; also `upper()`, an impl method, a parenthesized receiver, a `List` `.len` as an operand, and a `return`, `break` or `continue` in a receiver's index (not only `?`) | wider: any flow, not only `?` |
+| the mechanism of #162 | `method_split` (`:7364`) answers `Err(_) => Receiver::Expr(base)` and `eval_member_at` (`:8083`) `if let Ok(path)`: a flow out of the base's operand is swallowed and the base is evaluated again | none |
+| #159: the shorthand copies (`1 2`) | trunk: `moves`, `mixed`, `nested`, `nested_bound` print `1 2`, `1 2 2 1`, `1 2 5`, `1 2 5`; `return_mut` `1 2` with W1002; `closure_borrow` `1 2`; every longhand twin traps (`use-after-move`, or `exclusivity` with W1102). The other six rows already agree | none |
+| the mechanism of #159 | `FieldInit.value` is `None` for the shorthand (`src/ast.rs:686`), and nine walkers skip `None` (`sema.rs` ×7, `lint.rs` ×4, `parse.rs` `trace_expr`); `eval` reads the name with `read_whole` — a copy, never `eval_for_init`'s move | none |
+| s190's three extra shapes | closure borrow as above. Module-level `let n` + `P { n }`: shorthand `unsupported` ("`n` does not denote a place"), longhand runs `3`. **The "unknown name" row compares `P { nope }` with `P { n: nope }`** (`~/lanes/s190/probes/shorthand/c04{s,l}`), which is not its longhand; the true twin `P { nope: nope }` answers `fail(E0408)` as the shorthand does, already on 0.1.42. With no `n` in scope, `P { n }` and `P { n: n }` are both `unsupported`, for two different reasons | the unknown-name row agrees on 0.1.42 at its true twin; witnessed both ways |
+| `tests/lint_is61/t16_struct_shorthand` | trunk: `exit(0)`, W1002 `[33, 36]`; its longhand twin traps `use-after-move` with no W1002; wolf trunk: `fail(E1001)`, no warning | t16 moves with the mirror, to the twin's answer |
+| #487: lupin answers `ub(mem.ub)` | trunk: `ub(mem.ub)` (`mem.prov.state` P1) on the whole write, a field write, an impl receiver's write, a nested `(mut xs).push` re-claim and `grow(mut xs)` one call down; **runs** an element write (`3 9`), a move (`eat(take xs)`, `3`), a lend into the same call (`(mut c).absorb(c)`, `2`) and a closure lend (`2`). wolf trunk refuses the move E1001 and both lends E1002, and runs the writes and the re-claims (`1 9`, `3 9`, `4`; the impl write `105` on checked, `6` on native) | wider than the issue; the runs are silent wrong answers too |
+| the mechanism of #487 | `eval_method` (`:7706`) holds no claim for a `(mut …)` receiver while `eval_args` runs; the receiver is checked only at its write-back | none |
+| found beside #487, not this lane's | a flow (`?`, `continue`) out of ANY call's argument list leaves that call's protected `mut` retag in the tree, and the next write through the place answers `ub(mem.ub)`: `pargs_try_leak`, `pargs_continue_leak` (`put(mut xs, v()?)`), and the receiver forms `p487_try_in_arg`, `p487_continue_in_arg`. wolf trunk runs all four | to be filed; out of scope |
+| the coverage ratchet | `tests/export.rs`: `RATCHET_FLOOR = 268`, `ANCHORS_TOTAL = 542` | none |
+
+#### §3 — prediction, committed before the first edit
+
+**Four mechanisms, one per issue.**
+
+1. **#157.** `place_of` refuses a bracket whose operand list is not one
+   plain index (a range, several arguments) BEFORE it evaluates the base,
+   so a slice's place lookup evaluates nothing and the slice is evaluated
+   once, where it is read.
+2. **#162.** `method_split` and `eval_member_at` fall back to evaluating
+   the base only on `Unsupported` ("not a place"); any other signal out of
+   `place_of` — `?`'s return, `return`, `break`, `continue`, a trap —
+   leaves as it left the operand. `method_split` returns `EResult`.
+3. **#159.** The parser builds the shorthand's value node: `W { xs }` is
+   `W { xs: xs }`, the value a one-segment path spanning the name, exactly
+   s190's reading. `FieldInit.value` becomes `Expr` (no `Option`), so no
+   walker can skip it again.
+4. **#487.** A `(mut …)` receiver's place is held exclusive and pending
+   for its own call (`HeldWhy::Pending`, is63's mechanism) while the
+   arguments run, under the same `CallId` the argument list uses, and is
+   withdrawn at call entry. It meets a write, a move, a re-claim, and a
+   lend into the same call (a non-`Copy` place passed `read`, a closure
+   capturing it); it meets no read. Disjoint places are untouched.
+
+**The witness table** (lupin head against trunk `1e96e1f`; wolf trunk
+`57805e35`'s answer in brackets, one answer on checked, native and release
+unless shown):
+
+| witness | trunk | head | [wolf trunk] |
+| --- | --- | --- | --- |
+| `s_ctl_slice_endpoints_indexed_base` | `gi` ×2/×3/×2 | once each | [once] |
+| `s_ctl_slice_try_once` | `gi` ×2 | once | [once] |
+| `s_ctl_index_try_once_receivers` | `idx` ×2 in five readers | once | [once] |
+| `p157_count`, `p157_deep_field_str`, `p157_inclusive_open`, `p157_under_claim` | ×2, ×3 | once | [once] |
+| `p162_more_receivers`, `p162_flows` | ×2 | once | [once] |
+| `s_field_shorthand_moves`, `_mixed`, `_nested`, `_nested_bound` | `exit(0)` `1 2…` | `trap(use-after-move)`, the twin's span | [E1001] |
+| `s_field_shorthand_return_mut` | `exit(0)` `1 2`, W1002 | `trap(use-after-move)`, no warning | [E1001] |
+| `s_field_shorthand_closure_borrow` | `exit(0)` `1 2` | `trap(exclusivity)` with W1102 | [E1002, W1102] |
+| `p159_module_let` | `unsupported` | `exit(0)` `3` | [`unsupported`] |
+| `p159_unknown` (`P { n }`, no `n`) | `unsupported` | `unsupported`, the longhand's reason | [E0301] |
+| the other six `s_field_shorthand_*` rows | the twin's answer | unchanged | [as the gate rules] |
+| `p487_write`, `_field_write`, `_impl_write`, `_reclaim_receiver`, `_reclaim` | `ub(mem.ub)` | `trap(exclusivity)` | [runs — s192's half] |
+| `p487_elem_write` | `exit(0)` `3 9` | `trap(exclusivity)` | [runs `3 9` — s192's half] |
+| `p487_move` | `exit(0)` `3` | `trap(exclusivity)` | [E1001] |
+| `p487_lend_impl`, `p487_closure_lend` | `exit(0)` `2` | `trap(exclusivity)` | [E1002] |
+| `p487_reads_run`, `p487_copy_read_impl`, `p487_sibling_write` | runs | unchanged bytes | [same bytes] |
+
+**The gates.** wolf-lang `57805e35`'s three gates with every 0.1.42 pin
+dropped, `LUPIN` = head: 24/24 green, no SKIP; the same files with lupin
+0.1.42: the 9 pinned cases red (already measured, §2). The pinned files
+with head are green too (a dev build's version never matches `"0.1.42"`).
+
+**Existing tests that change: exactly one,** `lint_is61`'s
+`t16_struct_shorthand`, from `exit(0)` with W1002 to the longhand's
+`trap(use-after-move)` with no warning (wolf trunk's warnings array is
+empty there). No other test red at head that was green at trunk.
+
+**Corpus and differential.** `lupin corpus` at the pin: identical, trunk
+against head. `lupin diff-run` on four tiers against wolf trunk
+`57805e35` (release build), on the vendored corpus and on wolf-lang
+trunk's own `corpus/`: no new divergence. On wolf-lang's corpus, only
+the rows behind the 9 pinned cases may move (3 `ctl_*` rows to wolf's
+bytes; 6 `field_shorthand_*` rows from a run to the twin's trap, beside
+wolf's E1001/E1002); nothing else moves. A row that writes a
+`mut` receiver inside its own argument would move from `ub` or a run to a
+trap: none is predicted on either corpus.
+
+**Coverage.** `RATCHET_FLOOR` holds at 268.
+
+**Out of scope, named:** the protected-retag leak on a flow out of an
+argument list (§2's last finding) — filed, not fixed; it is not #487's
+shape and it is not specific to receivers.
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
