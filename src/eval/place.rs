@@ -384,6 +384,21 @@ impl AccessSet {
         self.held.push(held);
     }
 
+    /// Withdraws the claim `call` holds pending on `path` — a `(mut …)`
+    /// receiver's, at its call's entry (wolffe-lang/wolf-lang#487): the
+    /// receiver is then the call's own `self`, written back when it returns,
+    /// and no longer a claim the caller holds. The first such claim, which is
+    /// the receiver's: it is pushed before any argument's.
+    pub fn withdraw(&mut self, call: CallId, path: &Path) {
+        if let Some(index) = self
+            .held
+            .iter()
+            .position(|held| held.why == HeldWhy::Pending(call) && held.path == *path)
+        {
+            self.held.remove(index);
+        }
+    }
+
     /// Releases the most recently held `count` accesses — the end of a call's
     /// or a borrow's extent.
     pub fn release(&mut self, count: usize) {

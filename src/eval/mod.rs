@@ -7126,7 +7126,11 @@ impl Machine {
         // `xs.push` and `geometry.area` arrive in the same shape and are told
         // apart by whether the head names a local or a module.
         if let Some((receiver, method, mode)) = self.method_split(callee)? {
-            return self.eval_method(&receiver, &method, mode, args, span);
+            let receiver_span = match &*callee.kind {
+                ExprKind::Member { base, .. } => base.span,
+                _ => callee.span,
+            };
+            return self.eval_method(&receiver, &method, mode, args, receiver_span, span);
         }
 
         // `assert` is an **intrinsic**, one name in both tiers, and is never
@@ -7735,6 +7739,7 @@ impl Machine {
         method: &str,
         mode: Option<ParamMode>,
         args: &[Arg],
+        receiver_span: Span,
         span: Span,
     ) -> EResult<Value> {
         // wolf-interp#37 — receiver modes get teeth. X1 is locked surface:
@@ -7872,7 +7877,35 @@ impl Machine {
             }
             None => None,
         };
-        let evaluated = self.eval_args(args)?;
+        // `[mem.tier0.excl.4]`: "a receiver's `mut` claim was always
+        // two-phase" — the receiver is the call's first argument. While the
+        // arguments run, a `(mut …)` receiver's place is held exclusive and
+        // pending for this call, exactly as a `mut` argument's is: a later
+        // argument may read it, but a write, a move, a second claim or a lend
+        // into this same call meets it and traps `exclusivity`
+        // (wolffe-lang/wolf-lang#487: `(mut xs).push({ xs = [9]; 5 })` lost
+        // the push, answered `ub(mem.ub)` by the tree). At call entry the
+        // claim is withdrawn: the receiver is the callee's `self` from there,
+        // written back when it returns.
+        let call = self.access.open_call();
+        let receiver_claim = match (&path, mode) {
+            (Some(path), Some(ParamMode::Mut)) => {
+                self.access.push(Held {
+                    path: path.clone(),
+                    access: Access::Exclusive,
+                    span: receiver_span,
+                    why: HeldWhy::Pending(call),
+                });
+                Some(path.clone())
+            }
+            _ => None,
+        };
+        let evaluated = self.eval_arg_list(args, Callee::Wolf, None, call);
+        if let Some(path) = &receiver_claim {
+            self.access.withdraw(call, path);
+        }
+        self.access.enter_call(call);
+        let evaluated = evaluated?;
         // Now the receiver's own accesses go through the child.
         let previous = receiver_tag
             .as_ref()
