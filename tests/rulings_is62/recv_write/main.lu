@@ -1,0 +1,11 @@
+//! is62 (wolf-lang#487) — the issue's shape: a `(mut xs)` receiver written inside its own argument traps `exclusivity`.
+
+fn main() -> !int {
+    var xs = [1, 2]
+    (mut xs).push({
+        xs = [9]
+        5
+    })
+    print("{xs.len} {xs[0]}")
+    0
+}

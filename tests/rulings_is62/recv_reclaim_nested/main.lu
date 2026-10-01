@@ -1,0 +1,13 @@
+//! is62 (wolf-lang#487) — the `mut` receiver claimed again one call down inside its own argument.
+
+fn grow(mut xs: List[int]) -> int {
+    (mut xs).push(7)
+    xs.len
+}
+
+fn main() -> !int {
+    var xs = [1, 2]
+    (mut xs).push(grow(mut xs))
+    print("{xs.len}")
+    0
+}

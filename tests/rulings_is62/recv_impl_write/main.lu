@@ -1,0 +1,19 @@
+//! is62 (wolf-lang#487) — an impl method's `mut self` receiver written inside its own argument.
+
+struct C { n: int }
+
+impl C {
+    fn add(mut self, k: int) {
+        self.n = self.n + k
+    }
+}
+
+fn main() -> !int {
+    var c = C { n: 1 }
+    (mut c).add({
+        c = C { n: 100 }
+        5
+    })
+    print("{c.n}")
+    0
+}

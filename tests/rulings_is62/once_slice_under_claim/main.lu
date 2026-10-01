@@ -1,0 +1,30 @@
+//! is62 (wolf-interp#157) — the slice as a later argument beside a pending `mut` claim: `gi` runs once.
+
+fn lo() -> int {
+    print("lo")
+    1
+}
+
+fn hi() -> int {
+    print("hi")
+    3
+}
+
+fn gi() -> int {
+    print("gi")
+    1
+}
+
+fn bump(mut a: int, n: int) {
+    a = a + n
+}
+
+fn main() -> !int {
+    var g = [[1, 2, 3, 4], [5, 6, 7, 8]]
+    var a = 10
+    bump(mut a, g[gi()][lo()..hi()].len)
+    print("{a}")
+    bump(mut a, g[gi()][lo()..hi()][0])
+    print("{a}")
+    0
+}

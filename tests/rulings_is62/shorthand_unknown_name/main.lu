@@ -1,0 +1,9 @@
+//! is62 (wolf-interp#159 (s190's comment)) — `P { n }` with no `n` in scope answers what `P { n: n }` answers.
+
+struct P { n: int }
+
+fn main() -> !int {
+    let p = P { n }
+    print("{p.n}")
+    0
+}

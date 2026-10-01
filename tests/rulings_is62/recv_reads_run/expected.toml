@@ -1,0 +1,18 @@
+# is62 — wolffe-lang/wolf-lang#487. This row: a read (or a disjoint write) of the receiver in its own argument runs, with wolf trunk's bytes.
+# `[expected]` is the ruled lupin cell. `[trunk]` is what lupin trunk `1e96e1f` (release build
+# 387fd253…) and wolf-lang trunk `57805e35` (release build c608799f…) `conform-run` answered on
+# kasumi, ~/lanes/is62/evidence/witnesses-trunk-1e96e1f-wolf-57805e35.log; `[archive]` is the
+# published lupin 0.1.42 (9856335a…), ~/lanes/is62/evidence/witnesses-archive-0.1.42.log.
+issue = "wolffe-lang/wolf-lang#487"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "[1, 2, 2, 11, 16, 5]\n" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "[1, 2, 2, 11, 16, 5]\n" }
+checked = { verdict = "exit(0)", stdout = "[1, 2, 2, 11, 16, 5]\n" }
+native  = { verdict = "exit(0)", stdout = "[1, 2, 2, 11, 16, 5]\n" }
+release = { verdict = "exit(0)", stdout = "[1, 2, 2, 11, 16, 5]\n" }
+
+[archive]
+lupin   = { verdict = "exit(0)", stdout = "[1, 2, 2, 11, 16, 5]\n" }

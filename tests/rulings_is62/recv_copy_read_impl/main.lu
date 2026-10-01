@@ -1,0 +1,17 @@
+//! is62 (wolf-lang#487) — a `Copy` field of the `mut self` receiver read inside its own argument runs.
+
+struct C { n: int }
+
+impl C {
+    fn add(mut self, k: int) {
+        self.n = self.n + k
+    }
+}
+
+fn main() -> !int {
+    var c = C { n: 1 }
+    (mut c).add(c.n)
+    (mut c).add(c.n + 1)
+    print("{c.n}")
+    0
+}

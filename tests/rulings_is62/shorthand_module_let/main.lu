@@ -1,0 +1,11 @@
+//! is62 (wolf-interp#159 (s190's comment)) — `P { n }` naming a module-level `let`: the longhand `P { n: n }` runs `3`, so the shorthand does.
+
+struct P { n: int }
+
+let n: int = 3
+
+fn main() -> !int {
+    let p = P { n }
+    print("{p.n}")
+    0
+}

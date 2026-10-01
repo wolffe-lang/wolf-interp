@@ -1,0 +1,37 @@
+//! is62 (wolf-interp#162) — `return`, `break` and `continue` inside a receiver's index, not only `?`: the operand runs once.
+
+fn idx() -> int {
+    print("idx")
+    1
+}
+
+fn ret(rows: List[List[int]]) -> int {
+    rows[{ print("r"); return 9 }].count()
+}
+
+fn sret(ss: List[str]) -> int {
+    ss[{ print("s"); return 8 }].len
+}
+
+fn main() -> !int {
+    var rows = [[1], [2, 3]]
+    var ss = ["ab", "cde"]
+    print("return")
+    print("{ret(rows)}")
+    print("{sret(ss)}")
+    print("break")
+    var n = 0
+    while true {
+        n = n + rows[{ print("b"); break }].count()
+    }
+    print("{n}")
+    print("continue")
+    var i = 0
+    var m = 0
+    while i < 2 {
+        i = i + 1
+        m = m + ss[if i == 1 { print("c"); continue } else { idx() }].len
+    }
+    print("{m}")
+    0
+}

@@ -1,0 +1,19 @@
+//! is62 (wolf-lang#487) — reads of the `mut` receiver inside its own argument (a member, an element, a nested call's read, `count`) run: a receiver's claim is two-phase.
+
+fn total(xs: List[int]) -> int {
+    var t = 0
+    for v in xs {
+        t = t + v
+    }
+    t
+}
+
+fn main() -> !int {
+    var xs = [1, 2]
+    (mut xs).push(xs.len)
+    (mut xs).push(xs[0] + 10)
+    (mut xs).push(total(xs))
+    (mut xs).push(xs.count())
+    print("{xs}")
+    0
+}

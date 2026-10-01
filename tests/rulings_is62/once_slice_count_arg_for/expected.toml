@@ -1,0 +1,18 @@
+# is62 — wolf-interp#157. This row: every operand runs once: wolf trunk's bytes on checked, native and release.
+# `[expected]` is the ruled lupin cell. `[trunk]` is what lupin trunk `1e96e1f` (release build
+# 387fd253…) and wolf-lang trunk `57805e35` (release build c608799f…) `conform-run` answered on
+# kasumi, ~/lanes/is62/evidence/witnesses-trunk-1e96e1f-wolf-57805e35.log; `[archive]` is the
+# published lupin 0.1.42 (9856335a…), ~/lanes/is62/evidence/witnesses-archive-0.1.42.log.
+issue = "wolf-interp#157"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "count\ngi\nlo\nhi\n2\narg\ngi\nlo\nhi\n13\nfor\ngi\nlo\nhi\n13\nis_empty\ngi\nlo\nhi\nfalse\n" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "count\ngi\ngi\nlo\nhi\n2\narg\ngi\ngi\nlo\nhi\n13\nfor\ngi\nlo\nhi\n13\nis_empty\ngi\ngi\nlo\nhi\nfalse\n" }
+checked = { verdict = "exit(0)", stdout = "count\ngi\nlo\nhi\n2\narg\ngi\nlo\nhi\n13\nfor\ngi\nlo\nhi\n13\nis_empty\ngi\nlo\nhi\nfalse\n" }
+native  = { verdict = "exit(0)", stdout = "count\ngi\nlo\nhi\n2\narg\ngi\nlo\nhi\n13\nfor\ngi\nlo\nhi\n13\nis_empty\ngi\nlo\nhi\nfalse\n" }
+release = { verdict = "exit(0)", stdout = "count\ngi\nlo\nhi\n2\narg\ngi\nlo\nhi\n13\nfor\ngi\nlo\nhi\n13\nis_empty\ngi\nlo\nhi\nfalse\n" }
+
+[archive]
+lupin   = { verdict = "exit(0)", stdout = "count\ngi\ngi\nlo\nhi\n2\narg\ngi\ngi\nlo\nhi\n13\nfor\ngi\nlo\nhi\n13\nis_empty\ngi\ngi\nlo\nhi\nfalse\n" }

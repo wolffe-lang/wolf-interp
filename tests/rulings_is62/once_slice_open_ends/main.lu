@@ -1,0 +1,20 @@
+//! is62 (wolf-interp#157) — open, inclusive and `^` endpoints over an indexed element: `gi` runs once.
+
+fn lo() -> int {
+    print("lo")
+    1
+}
+
+fn gi() -> int {
+    print("gi")
+    1
+}
+
+fn main() -> !int {
+    var g = [[1, 2, 3, 4], [5, 6, 7, 8]]
+    print("{g[gi()][lo()..].len}")
+    print("{g[gi()][..lo()].len}")
+    print("{g[gi()][lo()..=2].len}")
+    print("{g[gi()][^lo()..].len}")
+    0
+}

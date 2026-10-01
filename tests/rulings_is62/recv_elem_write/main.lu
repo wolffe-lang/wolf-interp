@@ -1,0 +1,11 @@
+//! is62 (wolf-lang#487) — an element of the `mut` receiver written inside its own argument: a write of the claimed place.
+
+fn main() -> !int {
+    var xs = [1, 2]
+    (mut xs).push({
+        xs[0] = 9
+        5
+    })
+    print("{xs.len} {xs[0]}")
+    0
+}

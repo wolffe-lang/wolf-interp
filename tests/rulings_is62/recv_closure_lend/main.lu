@@ -1,0 +1,16 @@
+//! is62 (wolf-lang#487) — a closure capturing the `mut` receiver lent into its own call.
+
+struct C { n: int }
+
+impl C {
+    fn apply(mut self, f: fn() -> int) {
+        self.n = self.n + f()
+    }
+}
+
+fn main() -> !int {
+    var c = C { n: 1 }
+    (mut c).apply(fn() { c.n })
+    print("{c.n}")
+    0
+}

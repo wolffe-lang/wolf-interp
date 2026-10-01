@@ -1,0 +1,12 @@
+//! is62 (wolf-lang#487) — the `mut` receiver moved (`take`) inside its own argument.
+
+fn eat(take xs: List[int]) -> int {
+    xs.len
+}
+
+fn main() -> !int {
+    var xs = [1, 2]
+    (mut xs).push(eat(take xs))
+    print("{xs.len}")
+    0
+}

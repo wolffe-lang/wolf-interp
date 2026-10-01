@@ -1,0 +1,13 @@
+//! is62 (wolf-lang#487) — a field receiver `(mut h.xs)` written inside its own argument.
+
+struct H { xs: List[int], k: int }
+
+fn main() -> !int {
+    var h = H { xs: [1], k: 0 }
+    (mut h.xs).push({
+        h.xs = [9]
+        5
+    })
+    print("{h.xs.len} {h.xs[0]}")
+    0
+}

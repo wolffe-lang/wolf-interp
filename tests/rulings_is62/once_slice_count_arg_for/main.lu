@@ -1,0 +1,41 @@
+//! is62 (wolf-interp#157) — a slice of an indexed element as a `count()`/`is_empty()` receiver, a `read` argument and a `for` iterable: `gi` runs once.
+
+fn lo() -> int {
+    print("lo")
+    1
+}
+
+fn hi() -> int {
+    print("hi")
+    3
+}
+
+fn gi() -> int {
+    print("gi")
+    1
+}
+
+fn total(xs: List[int]) -> int {
+    var t = 0
+    for v in xs {
+        t = t + v
+    }
+    t
+}
+
+fn main() -> !int {
+    var g = [[1, 2, 3, 4], [5, 6, 7, 8]]
+    print("count")
+    print("{g[gi()][lo()..hi()].count()}")
+    print("arg")
+    print("{total(g[gi()][lo()..hi()])}")
+    print("for")
+    var t = 0
+    for v in g[gi()][lo()..hi()] {
+        t = t + v
+    }
+    print("{t}")
+    print("is_empty")
+    print("{g[gi()][lo()..hi()].is_empty()}")
+    0
+}

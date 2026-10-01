@@ -1,0 +1,16 @@
+//! is62 (wolf-lang#487) — the `mut` receiver lent into its own call as a non-`Copy` `read` argument.
+
+struct C { n: int, xs: List[int] }
+
+impl C {
+    fn absorb(mut self, other: C) {
+        self.n = self.n + other.n
+    }
+}
+
+fn main() -> !int {
+    var c = C { n: 1, xs: [1] }
+    (mut c).absorb(c)
+    print("{c.n}")
+    0
+}

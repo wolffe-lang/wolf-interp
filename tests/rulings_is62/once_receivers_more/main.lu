@@ -1,0 +1,52 @@
+//! is62 (wolf-interp#162) — a propagating `?` in the index of a `str` method receiver, an impl method receiver, a `List` `.len` operand and a parenthesized receiver: once.
+
+struct Bag { items: List[int] }
+
+impl Bag {
+    fn total(self) -> int {
+        var t = 0
+        for v in self.items {
+            t = t + v
+        }
+        t
+    }
+}
+
+fn idx(ok: bool) -> int ! {parse} {
+    print("idx")
+    if ok { 1 } else { return parse }
+}
+
+fn upper(ss: List[str], ok: bool) -> str ! {parse} {
+    ss[idx(ok)?].upper()
+}
+
+fn bag_total(bs: List[Bag], ok: bool) -> int ! {parse} {
+    bs[idx(ok)?].total()
+}
+
+fn field_count(b: Bag, rows: List[List[int]], ok: bool) -> int ! {parse} {
+    rows[idx(ok)?].len + b.items[idx(ok)?]
+}
+
+fn grp(rows: List[List[int]], ok: bool) -> int ! {parse} {
+    (rows[idx(ok)?]).count()
+}
+
+fn main() -> !int {
+    var ss = ["ab", "cd"]
+    var bs = [Bag { items: [1] }, Bag { items: [2, 3] }]
+    var rows = [[1], [2, 3]]
+    print("upper")
+    print("{upper(ss, true) else "9"}")
+    print("{upper(ss, false) else "9"}")
+    print("impl")
+    print("{bag_total(bs, true) else 9}")
+    print("{bag_total(bs, false) else 9}")
+    print("field")
+    print("{field_count(Bag { items: [4, 5] }, rows, true) else 9}")
+    print("{field_count(Bag { items: [4, 5] }, rows, false) else 9}")
+    print("group")
+    print("{grp(rows, false) else 9}")
+    0
+}

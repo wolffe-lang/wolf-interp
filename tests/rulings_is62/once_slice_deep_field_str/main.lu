@@ -1,0 +1,45 @@
+//! is62 (wolf-interp#157) — a slice over a two-deep index, over a field's element, over a `str` element: every index runs once.
+
+struct B { g: List[List[int]] }
+
+fn lo() -> int {
+    print("lo")
+    1
+}
+
+fn hi() -> int {
+    print("hi")
+    3
+}
+
+fn a() -> int {
+    print("a")
+    0
+}
+
+fn b() -> int {
+    print("b")
+    1
+}
+
+fn si() -> int {
+    print("si")
+    1
+}
+
+fn main() -> !int {
+    var h = [[[1, 2, 3, 4], [5, 6, 7, 8]]]
+    print("deep")
+    print("{h[a()][b()][lo()..hi()].len}")
+    let d = h[a()][b()][lo()..hi()]
+    print("{d.len}")
+    var bx = B { g: [[1, 2, 3], [4, 5, 6, 7]] }
+    print("field")
+    print("{bx.g[b()][lo()..hi()].len}")
+    var ss = ["abcd", "efgh"]
+    print("str")
+    let s = ss[si()][lo()..hi()]
+    print("{s}")
+    print("{ss[si()][lo()..hi()].len}")
+    0
+}

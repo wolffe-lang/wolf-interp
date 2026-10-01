@@ -1,0 +1,11 @@
+//! is62 (wolf-lang#487) — the `mut` receiver claimed again as another call's `(mut …)` receiver inside its own argument.
+
+fn main() -> !int {
+    var xs = [1, 2]
+    (mut xs).push({
+        (mut xs).push(7)
+        5
+    })
+    print("{xs.len}")
+    0
+}
