@@ -7129,7 +7129,7 @@ impl Machine {
         // *value*. `[gram.item.use]`'s `path` production swallows the dots, so
         // `xs.push` and `geometry.area` arrive in the same shape and are told
         // apart by whether the head names a local or a module.
-        if let Some((receiver, method, mode)) = self.method_split(callee) {
+        if let Some((receiver, method, mode)) = self.method_split(callee)? {
             return self.eval_method(&receiver, &method, mode, args, span);
         }
 
@@ -7370,7 +7370,17 @@ impl Machine {
     /// Splits a callee into `(receiver, method, receiver mode)` when it is a
     /// method call. The mode is the X1 receiver spelling — `(mut c).bump()`,
     /// `(take conn).close()` — and `None` is the bare (`read self`) form.
-    fn method_split(&mut self, callee: &Expr) -> Option<(Receiver, String, Option<ParamMode>)> {
+    ///
+    /// Finding the receiver's place evaluates its operands (`rows[idx()?]`
+    /// runs `idx`). Only "not a place" sends the receiver down the value
+    /// route, which evaluates it; any other signal — `?`'s return, a
+    /// `return`, `break` or `continue` in an index, a trap — leaves from
+    /// here, once (wolf-interp#162: it was swallowed and the operand ran
+    /// again).
+    fn method_split(
+        &mut self,
+        callee: &Expr,
+    ) -> EResult<Option<(Receiver, String, Option<ParamMode>)>> {
         match &*callee.kind {
             ExprKind::Member {
                 base,
@@ -7380,27 +7390,27 @@ impl Machine {
                     ExprKind::ModedReceiver { mode, place } => (place, Some(*mode)),
                     _ => (base, None),
                 };
-                Some((
-                    match self.place_of(base) {
-                        Ok(path) => Receiver::Place(path),
-                        Err(_) => Receiver::Expr(base.clone()),
-                    },
-                    name.name.clone(),
-                    mode,
-                ))
+                let receiver = match self.place_of(base) {
+                    Ok(path) => Receiver::Place(path),
+                    Err(Signal::Unsupported(_)) => Receiver::Expr(base.clone()),
+                    Err(other) => return Err(other),
+                };
+                Ok(Some((receiver, name.name.clone(), mode)))
             }
             ExprKind::Path(path) if path.segments.len() >= 2 => {
                 let head = &path.segments[0].name;
                 if !self.local_exists(head) && !self.globals.contains_key(head) {
-                    return None;
+                    return Ok(None);
                 }
-                let mut place = self.place_of(callee).ok()?;
-                let Some(Proj::Field(method)) = place.projections.pop() else {
-                    return None;
+                let Ok(mut place) = self.place_of(callee) else {
+                    return Ok(None);
                 };
-                Some((Receiver::Place(place), method, None))
+                let Some(Proj::Field(method)) = place.projections.pop() else {
+                    return Ok(None);
+                };
+                Ok(Some((Receiver::Place(place), method, None)))
             }
-            _ => None,
+            _ => Ok(None),
         }
     }
 
@@ -8098,11 +8108,20 @@ impl Machine {
             };
         }
 
+        // Finding the base's place runs its operands. "Not a place" sends
+        // the base down the value route below, which evaluates it; any other
+        // signal out of an operand — `?`'s return, `return`, `break`,
+        // `continue`, a trap — leaves from here, once (wolf-interp#162:
+        // `ss[idx()?].len` ran `idx` again on the value route).
         let base_place = match base_place {
-            Some(path) => Ok(path),
-            None => self.place_of(base),
+            Some(path) => Some(path),
+            None => match self.place_of(base) {
+                Ok(path) => Some(path),
+                Err(Signal::Unsupported(_)) => None,
+                Err(other) => return Err(other),
+            },
         };
-        if let Ok(path) = base_place {
+        if let Some(path) = base_place {
             let projected = match member {
                 Member::Named(ident) => path.clone().project(Proj::Field(ident.name.clone())),
                 Member::Index(index, _) => path.clone().project(Proj::Index(i128::from(*index))),
