@@ -5840,6 +5840,118 @@ trap: none is predicted on either corpus.
 argument list (§2's last finding) — filed, not fixed; it is not #487's
 shape and it is not specific to receivers.
 
+#### §3a — the prediction, scored
+
+- **held: the four mechanisms**, one commit each: `9fb80c8` (#157),
+  `d6a1cb0` (#162), `301fdef` (#159), `ee0cbfc` (#487). The 25 witnesses
+  red at `1498db2` are green at `ee0cbfc`, each for its named reason; the
+  11 controls were green on both sides.
+- **held: the witness table**, row for row (`witnesses-head-ee0cbfc.log`).
+  The receiver traps land on the offending access: `xs = [9]`,
+  `xs[0] = 9`, `h.xs = [9]`, `c = C { n: 100 }`, `mut xs`,
+  `(mut xs).push(7)`, `take xs`, `c`, `c.n` (`87e2ae7` pins clause and
+  span).
+- **missed: "the pinned files with head are green too".** §2's first row
+  was wrong: a dev build prints `0.1.42+dev.<sha>` for `--version`, but its
+  record's `impl_version` is `0.1.42`, so with the pins in place the gates
+  read head as 0.1.42 and red on exactly the 9 pinned cases
+  (`wolfgates-head-ee0cbfc-pinned.log`, `EXIT=101`). This is the gates'
+  design working, not a defect: the pins must be emptied at the pairing
+  that ships these mirrors (0.1.43 answers a different version, so it
+  never matches them). Unpinned, head is 24/24 green
+  (`wolfgates-head-ee0cbfc-unpinned.log`, `EXIT=0`, 0 SKIP).
+- **held: existing tests that change, exactly one**, `lint_is61`'s
+  `t16_struct_shorthand` (`301fdef`); `lint_is61` 118/118 at `ee0cbfc`.
+- **held: corpus and differential, no new divergence.** `lupin corpus` at
+  the pin: identical reports, 536 / 45 / 56 / 64 / 1 mismatch. `lupin
+  diff-run` against wolf-lang trunk `57805e35` (release), four tiers: on
+  the pinned corpus the same divergences per tier (5 / 5 / 7 / 7); the one
+  differing line is `unsafe_ub_uaf.lu`'s native exit code under UB
+  (`89` / `83`), noise on a program both sides call undefined. On wolf-lang
+  trunk's corpus, head has **3 fewer divergences** on checked, native and
+  release (8 → 5, 10 → 7, 10 → 7): `ctl_slice_endpoints_indexed_base`,
+  `ctl_slice_try_once`, `ctl_index_try_once_receivers`. The conservatism
+  ledgers move 0 rows on all eight runs (`ledgerdiff-trunk-1e96e1f-head-
+  ee0cbfc.txt`). `lupin corpus --root` over wolf-lang's corpus: the same 3
+  rows go from mismatch to match (4 → 1 mismatch), and the 6
+  `field_shorthand_*` rows from static conservatism to the dynamic
+  counterpart of wolf's E1001/E1002 (61 → 67, 71 → 65); nothing else moves.
+- **coverage**: in the gauntlet (`export::coverage_is_ratcheted`; the
+  witnesses carry no `conforms:` line the bundle counts).
+
+Three slips, all mine, all repaired:
+- the first gate runs reported 24/24 green with the native and release
+  lanes **skipped** (`libwolf_rt.a not found next to the wolf binary`),
+  visible only under `--nocapture`. `scripts/gates.sh` now builds
+  `wolf_rt`, runs `--nocapture` and counts SKIP lines; every gate log
+  cited here says `SKIP lines: 0`. The first logs are kept in
+  `evidence/superseded/`.
+- one `git add -A src tests/lint_is61.rs` (`301fdef`), against §1's letter;
+  it was path-limited and staged exactly the six files `git status` listed.
+- the first gauntlet, at `b26ed5d`, failed `cargo fmt --check`; it was
+  killed (my pids 723743, 736409 and their children 770069, 770280,
+  770328), `74313a1` is the rustfmt, and the gauntlet re-ran there. The
+  first log is in `evidence/superseded/`.
+
+#### §4 — evidence index
+
+Commits:
+- `c535eca` §1–§3; this section and §5 in the last commit
+- `1498db2` 36 witnesses (25 red); `87e2ae7` the receiver traps' clause and span
+- `9fb80c8` #157; `d6a1cb0` #162; `301fdef` #159 (and `t16`); `ee0cbfc` #487
+- `9cf486e`, `3c9c645` unit tests (the shorthand's value node; the receiver claim's withdrawal)
+- `b26ed5d` CHANGELOG; `74313a1` rustfmt
+
+Artifacts on kasumi under `~/lanes/is62/` (`archives/`, `evidence/`,
+`probes/`, `scripts/`, `witnesses/`). Archives: lupin 0.1.42 `9856335a…`
+and wolf 0.2.19 `9f3873d8…`, digests equal to the release pages'; lupin
+trunk `lupin-trunk-1e96e1f` `387fd253…`; head `lupin-head-ee0cbfc`
+`3f899c9a…`; wolf-lang trunk `57805e35` release `wolf` `c608799f…` with its
+`libwolf_rt.a` `69f743b8…`.
+- inputs: `probes-archive-0.1.42.log`, `probes2-archive-0.1.42.log`,
+  `probes-trunk-1e96e1f.log`, `witnesses-trunk-1e96e1f-wolf-57805e35.log`,
+  `witnesses-archive-0.1.42.log`
+- gates at trunk: `wolfgates-base-0.1.42-pinned.log` (24/24, `EXIT=0`),
+  `wolfgates-plant-0.1.42-unpinned.log` (the 9 pinned cases red,
+  `EXIT=101`); each `SKIP lines: 0`
+- red: `red-1498db2.log` (25 failed, each "lupin answered …, ruled …" or
+  "the ruled stdout"; `EXIT=101`)
+- green: `green-ee0cbfc.log` (`rulings_is62` 36/36, `lint_is61` 118,
+  `rulings_is63` 58, `rulings_is60` 82, `rulings_is59` 18, `rulings_is58`
+  20, `rulings_eg00` 15, `rulings_s182` 11, `index_store` 7,
+  `mode_read_iteration` 20, `prov_machine` 14, lib 727; `EXIT=0`)
+- head: `build-head-ee0cbfc.log`, `witnesses-head-ee0cbfc.log`,
+  `probes-head-ee0cbfc.log`
+- gates at head: `wolfgates-head-ee0cbfc-unpinned.log` (24/24, `EXIT=0`),
+  `wolfgates-head-ee0cbfc-pinned.log` (the 9 pinned cases red, `EXIT=101`)
+- differential and corpus: `diffrun/{trunk-1e96e1f,head-ee0cbfc}-{pin,wl}-{default,checked,native,release}.*`,
+  `…-corpus.log`, `…-wlcorpus.log`, `ledgerdiff-trunk-1e96e1f-head-ee0cbfc.txt`
+- gauntlet at `74313a1`, the code head (the commit after it is this
+  section, `docs/` only): `gauntlet-74313a1.log`. Its result and the
+  GitHub CI run are in the PR body.
+
+Filed and commented:
+- wolffe-lang/wolf-interp#163: a flow out of an argument list leaves the
+  `mut` argument's protected retag, and the next write answers `ub(mem.ub)`
+  (receivers included). Not fixed here.
+- wolffe-lang/wolf-lang#487: lupin's half, with the twelve receiver
+  shapes against wolf trunk for s192 (the impl-receiver write parts on wolf
+  trunk itself: `105` checked, `6` native and release).
+- wolffe-lang/wolf-interp#159: the unknown-name row's true twin.
+
+#### §5 — done-when
+
+- [x] branch `is62` on origin, cut at trunk `1e96e1f`; PR open, unmerged, with these five sections
+- [x] §2 re-derived; §3 committed (`c535eca`) before the first `src/`/`tests/` edit
+- [x] each mirror seen red first (`red-1498db2.log`) and green at head (`green-ee0cbfc.log`)
+- [x] wolf-lang `57805e35`'s three gates, every 0.1.42 pin dropped: green with head, red with 0.1.42 on exactly the 9 pinned cases
+- [x] no new divergence against wolf trunk; 3 fewer on its own corpus
+- [x] CHANGELOG `Unreleased`
+- [ ] the coverage ratchet holds (`export::coverage_is_ratcheted`, in the gauntlet and CI)
+- [ ] kasumi gauntlet and GitHub CI green at the head sha (the PR body)
+- [ ] #157, #162, #159 close on merge (by hand if not)
+- [ ] kasumi build dirs pruned once evidence is written; worktree removed
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
