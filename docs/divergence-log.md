@@ -5840,6 +5840,55 @@ trap: none is predicted on either corpus.
 argument list (§2's last finding) — filed, not fixed; it is not #487's
 shape and it is not specific to receivers.
 
+#### §3 addendum — wolf-interp#164 and wolf-lang#494 join the lane; committed before the edit they drive
+
+The coordinator added two receiver mirrors mid-lane (after `ef9fa67`, with
+CI run 36805436056 in progress on it):
+
+1. **wolf-interp#164** (s192): all fourteen `corpus/memory/recv_claim_arg_*`
+   refusal rows on wolf-lang branch `s192` (`c51a314d`) must trap
+   `exclusivity`; the gate is that branch's `receiver_claim_args_lanes.rs`
+   (`PRE_RECEIVER_LUPIN = ["0.1.42"]`). Measured before any edit
+   (`probes3-head-ee0cbfc.log`): **head `ee0cbfc` already traps all
+   fourteen** (`ee0cbfc`'s pending receiver claim is #164's mechanism too),
+   and `recv_claim_arg_reads.lu` runs `5 2 5 5 2 3 3 5 3 3 2 10 5`, wolf's
+   bytes. lupin trunk `1e96e1f` and 0.1.42 answer `ub` on eight and run six,
+   as the issue says (`probes3-trunk-1e96e1f.log`,
+   `probes3-archive-0.1.42.log`).
+2. **wolf-lang#494, lupin's half:** `(mut p).set_x({ p.z = 9; p.z })` with
+   `fn set_x(mut self.{x}, n: int)` must print `10 9`. lupin 0.1.42 and
+   trunk print `10 3` (the receiver is read whole before the arguments and
+   written back whole). **Head `ee0cbfc` traps `exclusivity` at `p.z = 9`**
+   — `ee0cbfc` claims the whole receiver, not its view set. That is a
+   regression of this lane's own, and it is fixed here before the PR can
+   land.
+
+**The mechanism, one more arm of `ee0cbfc`'s.** When the call resolves to
+an impl method whose receiver is `mut self.{f, …}` (`[mem.tier0.excl.3]`:
+the view set is the callee's path footprint), the pending receiver claim
+is one claim per view-set field (`p.x`), not the whole place; and the
+write-back after the call writes only the view-set fields that changed, not
+the whole value — so an argument's write to a field outside the view set
+stands. A write of a view-set field in the argument still traps
+(`recv_claim_arg_view_write.lu`), and so does a whole lend or write of
+`p` (it overlaps `p.x`).
+
+**Predicted at the next head:**
+
+| witness | `ee0cbfc` | next head | [wolf trunk `57805e35` checked / native] |
+| --- | --- | --- | --- |
+| `p494_viewset_disjoint_write` (#494's program) | `trap(exclusivity)` | `exit(0)` `10 9` | [`10 9` / `10 3`] |
+| `p494_viewset_two_fields` (`mut self.{x, y}`; the argument writes `p.z`, then `p.y`) | `trap(exclusivity)` | `8 9 7`, then `trap(exclusivity)` at `p.y = 100` | [`8 9 7`… / `8 9 3`…] |
+| the 14 `recv_claim_arg_*` refusal rows | `trap(exclusivity)` | unchanged | [E1002 on `s192`] |
+| `recv_claim_arg_reads.lu` | `5 2 5 5 2 3 3 5 3 3 2 10 5` | unchanged | [same] |
+
+`s192`'s gate with `PRE_RECEIVER_LUPIN` emptied: 15/15 green with the next
+head; with lupin 0.1.42, exactly the 14 refusal cases red. The three gates
+of §3 and every witness of `1498db2` unchanged; the differential and corpus
+unchanged against `ee0cbfc` (no corpus row at the pin or at wolf-lang
+`57805e35` declares a view set and writes outside it in its argument —
+falsified by any row that moves).
+
 #### §3a — the prediction, scored
 
 - **held: the four mechanisms**, one commit each: `9fb80c8` (#157),
