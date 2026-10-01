@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+**Every operand once, the shorthand is the longhand, a receiver's own
+argument** (is62: wolffe-lang/wolf-interp#157, #162, #159 and
+wolffe-lang/wolf-lang#487's lupin half). Pin unchanged: `ec56a08f`.
+
+- **A slice of an indexed element runs each index once** (`9fb80c8`,
+  #157). `g[gi()][lo()..hi()]` ran `gi` twice bound or in a hole and three
+  times as a member base: the place lookup ran the base's index before it
+  learned the bracket was a slice, and the caller then evaluated the whole
+  expression again. A bracket that cannot be a place is now refused before
+  its base runs. The same held for `count()`, `is_empty()`, a `read`
+  argument, every index of a deeper base, a field's or a `str`'s element,
+  and open, inclusive or `^` endpoints (`[mem.model.order]`).
+- **A flow out of a receiver's index leaves once** (`d6a1cb0`, #162).
+  `rows[idx()?].count()`, `(mut rows[idx()?]).push(9)`,
+  `ss[idx()?].bytes().len`, `ss[idx()?].len` ran `idx` twice when its `?`
+  propagated: the receiver's and the member base's place lookup swallowed
+  the flow as "not a place" and evaluated the base again. Only "not a
+  place" falls back now; `?`, `return`, `break`, `continue` and a trap
+  leave from the operand.
+- **The field shorthand is the longhand** (`301fdef`, #159, s190's reading
+  of wolffe-lang/wolf-lang#486). `W { xs }` is parsed as `W { xs: xs }`, so
+  it moves a non-`Copy` value (through 0.1.42 it copied and printed `1 2`),
+  a later use traps `use-after-move`, a closure capturing through it
+  borrows (`exclusivity` with W1102), a module-level `let` names it, and
+  every analysis reads it — `lint_is61`'s `t16_struct_shorthand` now
+  answers its longhand's `trap(use-after-move)` with no W1002, as wolf
+  trunk refuses it E1001.
+- **A `(mut …)` receiver is claimed while its own arguments run**
+  (`ee0cbfc`, wolffe-lang/wolf-lang#487). `[mem.tier0.excl.4]`: a
+  receiver's `mut` claim is two-phase, the receiver the first argument.
+  `(mut xs).push({ xs = [9]; 5 })` answered `ub(mem.ub)`; it traps
+  `exclusivity` at the write, as does an element or field write, a move, a
+  re-claim one call down or as another receiver, a lend into the same call
+  (`(mut c).absorb(c)`) and a closure lend — some of which ran through
+  0.1.42 (`3 9`, `3`, `2`). A read of the receiver in its own argument
+  (`(mut xs).push(xs.len)`, `total(xs)`, `(mut c).add(c.n)`) runs.
+- 36 witnesses in `tests/rulings_is62/`; the shorthand rows run beside
+  their longhand twins.
+
 **The move is the write** (is61, wolffe-lang/wolf-interp#155). Pin
 unchanged: `ec56a08f`.
 
