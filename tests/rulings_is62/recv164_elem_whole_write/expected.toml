@@ -1,0 +1,20 @@
+# is62 — wolf-interp#164. This row: a write, move, re-claim or lend of the `mut` receiver inside its own argument traps `exclusivity`; s192's branch refuses it E1002 on every wolfgang lane.
+# The program: wolf-lang `corpus/memory/recv_claim_arg_elem_whole_write.lu` on branch `s192` (`c51a314d`), verbatim.
+# `[expected]` is the ruled lupin cell. `[trunk]` is what lupin trunk `1e96e1f` (release build
+# 387fd253…) and wolf-lang trunk `57805e35` (release build c608799f…) `conform-run` answered on
+# kasumi (~/lanes/is62/evidence/probes3-trunk-1e96e1f.log, probes3-head-ee0cbfc.log); `[archive]`
+# is the published lupin 0.1.42 (9856335a…), probes3-archive-0.1.42.log. A trap's clause and span
+# were measured at ee0cbfc.
+issue = "wolf-interp#164"
+
+[expected]
+lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [473, 546] }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "1 2\n" }
+checked = { verdict = "exit(0)", stdout = "1 1\n" }
+native  = { verdict = "exit(0)", stdout = "1 1\n" }
+release = { verdict = "exit(0)", stdout = "1 1\n" }
+
+[archive]
+lupin   = { verdict = "exit(0)", stdout = "1 2\n" }

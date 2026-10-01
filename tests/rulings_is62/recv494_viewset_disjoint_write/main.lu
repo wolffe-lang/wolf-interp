@@ -1,0 +1,23 @@
+//! is62 (wolffe-lang/wolf-lang#494) — wolffe-lang/wolf-lang#494's program: a view-set receiver `mut self.{x}` whose argument writes `p.z`, outside the view set; the write stands.
+
+struct V {
+    x: int,
+    y: int,
+    z: int,
+}
+
+impl V {
+    fn set_x(mut self.{x}, n: int) {
+        self.x = self.x + n
+    }
+}
+
+fn main() -> !int {
+    var p = V { x: 1, y: 2, z: 3 }
+    (mut p).set_x({
+        p.z = 9
+        p.z
+    })
+    print("{p.x} {p.z}")
+    0
+}

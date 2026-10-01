@@ -1,0 +1,29 @@
+//! is62 (wolffe-lang/wolf-lang#494) — the argument's write to `p.z` stands; a write to `p.y`, inside the view set, traps.
+
+struct V {
+    x: int,
+    y: int,
+    z: int,
+}
+
+impl V {
+    fn bump(mut self.{x, y}, n: int) {
+        self.x = self.x + n
+        self.y = self.y + n
+    }
+}
+
+fn main() -> !int {
+    var p = V { x: 1, y: 2, z: 3 }
+    (mut p).bump({
+        p.z = p.z + 4
+        p.z
+    })
+    print("{p.x} {p.y} {p.z}")
+    (mut p).bump({
+        p.y = 100
+        1
+    })
+    print("{p.x} {p.y} {p.z}")
+    0
+}

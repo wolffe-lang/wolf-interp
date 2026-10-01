@@ -448,3 +448,109 @@ fn recv_copy_read_impl() {
 fn recv_sibling_write() {
     run("recv_sibling_write");
 }
+
+// -- wolf-interp#164: s192's fourteen receiver rows, and its reads control --
+
+/// wolf-lang `corpus/memory/recv_claim_arg_write.lu` (s192): `(mut xs).push({ xs = [9]; 5 })`.
+#[test]
+fn recv164_write() {
+    run("recv164_write");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_move.lu` (s192): the receiver moved out and stored back inside its argument.
+#[test]
+fn recv164_move() {
+    run("recv164_move");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_reclaim.lu` (s192): `(mut a).absorb(mut a)` — 0.1.42 ran it (`6`).
+#[test]
+fn recv164_reclaim() {
+    run("recv164_reclaim");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_reclaim_nested.lu` (s192): `(mut xs).push({ (mut xs).push(7); 5 })`.
+#[test]
+fn recv164_reclaim_nested() {
+    run("recv164_reclaim_nested");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_reclaim_call.lu` (s192): `(mut xs).push(drain(mut xs))`.
+#[test]
+fn recv164_reclaim_call() {
+    run("recv164_reclaim_call");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_closure.lu` (s192): `(mut a).apply(fn() a.n)` — 0.1.42 ran it (`12`).
+#[test]
+fn recv164_closure() {
+    run("recv164_closure");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_lend.lu` (s192): `(mut a).absorb(a)`, `a` not `Copy` — 0.1.42 ran it (`6`).
+#[test]
+fn recv164_lend() {
+    run("recv164_lend");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_elem_write.lu` (s192): `(mut xs[0]).push({ xs[0] = [7, 7]; 5 })`.
+#[test]
+fn recv164_elem_write() {
+    run("recv164_elem_write");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_elem_move.lu` (s192): an element receiver moved out and stored back.
+#[test]
+fn recv164_elem_move() {
+    run("recv164_elem_move");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_elem_whole_write.lu` (s192): `(mut xs[0]).push({ xs = [[7]]; 5 })` — 0.1.42 ran it (`1 2`).
+#[test]
+fn recv164_elem_whole_write() {
+    run("recv164_elem_whole_write");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_field_write.lu` (s192): `(mut out.class_off).push({ out.class_off = [9]; 5 })`.
+#[test]
+fn recv164_field_write() {
+    run("recv164_field_write");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_field_move.lu` (s192): a field receiver moved out and stored back.
+#[test]
+fn recv164_field_move() {
+    run("recv164_field_move");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_field_prefix_write.lu` (s192): `out = Out { … }` under the claim on `out.class_off` — 0.1.42 ran it (`2 9`).
+#[test]
+fn recv164_field_prefix_write() {
+    run("recv164_field_prefix_write");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_view_write.lu` (s192): `(mut p).set_x({ p.x = 50; 1 })` under `mut self.{x}` — 0.1.42 ran it (`2`).
+#[test]
+fn recv164_view_write() {
+    run("recv164_view_write");
+}
+
+/// wolf-lang `corpus/memory/recv_claim_arg_reads.lu` (s192): s192's control: reads and disjoint writes beside a `mut` receiver run.
+#[test]
+fn recv164_reads() {
+    run("recv164_reads");
+}
+
+// -- wolf-lang#494: a view-set receiver holds its view set only ------------
+
+/// the issue's program: `(mut p).set_x({ p.z = 9; p.z })` under `mut self.{x}` prints `10 9`.
+#[test]
+fn recv494_viewset_disjoint_write() {
+    run("recv494_viewset_disjoint_write");
+}
+
+/// `mut self.{x, y}`: an argument's write to `p.z` stands, one to `p.y` traps.
+#[test]
+fn recv494_viewset_two_fields() {
+    run("recv494_viewset_two_fields");
+}
