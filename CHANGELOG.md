@@ -1,10 +1,44 @@
 # Changelog
 
-## Unreleased
+## 0.1.43 — 2026-10-01
+
+THE FORTY-THIRD (is61, is63, is62, and r25's re-pin), the lupin half of
+wolf 0.2.20. **Pin: `c2401f05` (wolf-lang v0.2.19 — the TAG)**, one release
+forward of 0.1.42's `ec56a08f` (v0.2.18). Forty-nine commits since 0.1.42
+in three lanes, then the re-pin. It carries every lupin mirror wolf
+0.2.20's gates pin 0.1.42's answers on by version: two-phase arguments
+(the maintainer's ruling #17, `[mem.tier0.excl.4]`; wolffe-lang/wolf-lang#476),
+the closure lent into its own call (#160), each operand once under a slice
+or a receiver (#157, #162), the field shorthand as its longhand (#159,
+wolffe-lang/wolf-lang#486), a `mut` receiver claimed while its own
+arguments run (#164, wolffe-lang/wolf-lang#487) and a view-set receiver's
+write-back (wolffe-lang/wolf-lang#494); with the lint's W1002 beside a
+moved-out `mut` parameter (#155), which retires r24's waiver.
+
+**The re-pin** (r25; `21413a5`). `vendor/upstream/{spec,corpus}` and the
+`upstream` gitlink move to `c2401f05`, an ancestor of the released line
+(`merge-base --is-ancestor ec56a08f c2401f05` holds); the two trees are
+byte-identical to wolf-lang's at the tag. The census moves (every count
+asserted by a test): corpus files 747 → 778 (31 new, every one an entry,
+none leaves), entries 702 → 733, members 45 → 45 (`75c05e4`, `28fdb36`);
+anchors 542 → 542, the same key set diffed both ways; the coverage ratchet
+268 → 271 (`mem.dyn.unsize`, `mem.iter.excl`, `mem.tier0.borrow`, each
+cited first by a new `memory/elem_*` row); the bundle 785/740 → 816/771
+programs and records (`41be529`). One `check:` line moves:
+`memory/mut_elem_excl.lu`, `fail(E1002)` → `run "2"` (eg02), which this
+machine already answered, so it turns from a conservatism row into a match.
+Thirty of the thirty-one new entries reach `run` (`7da5709`): seventeen
+match their `check:`, eight are dynamic counterparts of the compiler's
+E1001/E1002 (the six `elem_whole_read_*_after_move` rows trap
+`use-after-move`, `elem_claim_whole_read` and `elem_prefix_mut_pair` trap
+`exclusivity`), and five are conservatism rows (`elem_dyn_*`: a run-time
+index the compiler cannot prove distinct, whose value this machine sees);
+`elem_header_methods_after_move_pool.lu` is out of scope (`Pool`). No new
+divergence; DIV-2026-019 is still the one filed.
 
 **Every operand once, the shorthand is the longhand, a receiver's own
 argument** (is62: wolffe-lang/wolf-interp#157, #162, #159, #164 and the
-lupin halves of wolffe-lang/wolf-lang#487 and #494). Pin unchanged: `ec56a08f`.
+lupin halves of wolffe-lang/wolf-lang#487 and #494).
 
 - **A slice of an indexed element runs each index once** (`9fb80c8`,
   #157). `g[gi()][lo()..hi()]` ran `gi` twice bound or in a hole and three
@@ -53,8 +87,7 @@ lupin halves of wolffe-lang/wolf-lang#487 and #494). Pin unchanged: `ec56a08f`.
 - 53 witnesses in `tests/rulings_is62/`; the shorthand rows run beside
   their longhand twins.
 
-**The move is the write** (is61, wolffe-lang/wolf-interp#155). Pin
-unchanged: `ec56a08f`.
+**The move is the write** (is61, wolffe-lang/wolf-interp#155).
 
 - **W1002 stands down where the body moves a `mut` parameter out**
   (`62cfe67`). The compiler refuses a move out of a `mut` parameter that
@@ -75,7 +108,7 @@ unchanged: `ec56a08f`.
 
 **Two-phase arguments** (is63, the maintainer's ruling #17 of 2026-09-30;
 `[mem.tier0.excl.4]`, wolffe-lang/wolf-lang#485's clause, not yet at the
-pin). Pin unchanged: `ec56a08f`.
+pin).
 
 - **A `mut` argument's claim takes effect at call entry** (`8fd78de`).
   Within one call the arguments run left to right; each `mut` claim is held
