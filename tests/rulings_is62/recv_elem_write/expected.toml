@@ -3,10 +3,11 @@
 # 387fd253…) and wolf-lang trunk `57805e35` (release build c608799f…) `conform-run` answered on
 # kasumi, ~/lanes/is62/evidence/witnesses-trunk-1e96e1f-wolf-57805e35.log; `[archive]` is the
 # published lupin 0.1.42 (9856335a…), ~/lanes/is62/evidence/witnesses-archive-0.1.42.log.
+# The trap's clause and span (the offending access) were measured at ee0cbfc, witnesses-head-ee0cbfc.log.
 issue = "wolffe-lang/wolf-lang#487"
 
 [expected]
-lupin   = { verdict = "trap(exclusivity)" }
+lupin   = { verdict = "trap(exclusivity)", clause = "mem.model.path.disjoint", span = [194, 203] }
 
 [trunk]
 lupin   = { verdict = "exit(0)", stdout = "3 9\n" }
