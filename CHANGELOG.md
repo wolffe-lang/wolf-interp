@@ -3,8 +3,8 @@
 ## Unreleased
 
 **Every operand once, the shorthand is the longhand, a receiver's own
-argument** (is62: wolffe-lang/wolf-interp#157, #162, #159 and
-wolffe-lang/wolf-lang#487's lupin half). Pin unchanged: `ec56a08f`.
+argument** (is62: wolffe-lang/wolf-interp#157, #162, #159, #164 and the
+lupin halves of wolffe-lang/wolf-lang#487 and #494). Pin unchanged: `ec56a08f`.
 
 - **A slice of an indexed element runs each index once** (`9fb80c8`,
   #157). `g[gi()][lo()..hi()]` ran `gi` twice bound or in a hole and three
@@ -38,7 +38,19 @@ wolffe-lang/wolf-lang#487's lupin half). Pin unchanged: `ec56a08f`.
   (`(mut c).absorb(c)`) and a closure lend — some of which ran through
   0.1.42 (`3 9`, `3`, `2`). A read of the receiver in its own argument
   (`(mut xs).push(xs.len)`, `total(xs)`, `(mut c).add(c.n)`) runs.
-- 36 witnesses in `tests/rulings_is62/`; the shorthand rows run beside
+- **All fourteen of s192's receiver rows trap** (wolffe-lang/wolf-interp#164,
+  by the same claim): through 0.1.42 eight answered `ub(mem.ub)` and six
+  ran — `(mut a).absorb(mut a)`, `(mut a).absorb(a)`, a closure lend, the
+  container of an element receiver or the struct of a field receiver
+  replaced, a view-set field written.
+- **A view-set receiver holds its view set only** (`da9aa91`,
+  wolffe-lang/wolf-lang#494). `fn set_x(mut self.{x}, …)` claims `p.x`, not
+  `p`, while its arguments run, and writes back only the view-set fields it
+  changed, so `(mut p).set_x({ p.z = 9; p.z })` prints `10 9`
+  (`[mem.tier0.excl.3]`, `[mem.tier0.excl.4]`); through 0.1.42 the whole
+  write-back lost the argument's write (`10 3`). A write to a view-set field
+  in the argument still traps.
+- 53 witnesses in `tests/rulings_is62/`; the shorthand rows run beside
   their longhand twins.
 
 **The move is the write** (is61, wolffe-lang/wolf-interp#155). Pin
