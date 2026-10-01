@@ -1693,7 +1693,8 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // traps `exclusivity` where it pins E1002) and five are CONSERVATISM rows —
     // ledgered because they RUN, not because they agree:
     // `memory/mut_elem_excl.lu` (E1002: this machine's places are
-    // element-granular), `memory/region_str_view_return.lu` (E1010,
+    // element-granular; a match since the c2401f05 pin, r25, where eg02's
+    // `check:` became `run "2"`), `memory/region_str_view_return.lu` (E1010,
     // wolf-interp#126), `strings/trim_cutset_refused.lu` (E0402,
     // wolf-interp#125), `typecheck/list_lit_elem_unfit.lu` (E0415, the
     // `List[i32]` default, wolf-interp#132), and
@@ -1814,6 +1815,75 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/mut_param_restore_whole.lu", "exit(0)"),
     ("memory/store_rhs_first_list.lu", "exit(0)"),
     ("memory/store_rhs_first_map.lu", "exit(0)"),
+    // The c2401f05 pin (r25, wolf-lang **v0.2.19** — the TAG, one release
+    // forward of ec56a08f): THIRTY of the thirty-one new entries reach `run`.
+    // The one that does not: `memory/elem_header_methods_after_move_pool.lu`
+    // (`unsupported` at resolve — no `Pool` here, as r24's three `Pool` rows).
+    // `memory/mut_elem_excl.lu` (above) keeps its answer, `exit(0)` `2`, and
+    // moves from conservatism to a match: eg02 turned its `check:` from
+    // `fail(E1002)` to `run "2"`.
+    //
+    // SEVENTEEN are run expectations and every one matches its `check:` (the
+    // `elem_const_*` pairs, swaps, loans, iteration and take rows, the
+    // `elem_header_methods_*` and `elem_member_read_*` rows, and
+    // `mut_two_fields_one_region.lu`). EIGHT are dynamic counterparts — the
+    // compiler pins E1001 or E1002 and this machine traps `use-after-move`
+    // (the six `elem_whole_read_*_after_move` rows, wolf-interp#149) or
+    // `exclusivity` (`elem_claim_whole_read.lu`, `elem_prefix_mut_pair.lu`).
+    // FIVE are CONSERVATISM rows, ledgered because they RUN, not because they
+    // agree: `memory/elem_dyn_{dyn_loan,nested_call,read_after_mut}.lu`
+    // (E1002), `memory/elem_dyn_iter_mut.lu` (E1013) and
+    // `memory/elem_dyn_take_while_mut.lu` (E1001), where the compiler cannot
+    // prove a run-time index distinct from a literal and this machine sees
+    // the index's value.
+    ("memory/elem_claim_whole_read.lu", "trap(exclusivity)"),
+    ("memory/elem_const_dyn_loan.lu", "exit(0)"),
+    ("memory/elem_const_field_mut_pair.lu", "exit(0)"),
+    ("memory/elem_const_iter_mut.lu", "exit(0)"),
+    ("memory/elem_const_mut_pair.lu", "exit(0)"),
+    ("memory/elem_const_nested_call.lu", "exit(0)"),
+    ("memory/elem_const_nested_mut.lu", "exit(0)"),
+    ("memory/elem_const_read_after_mut.lu", "exit(0)"),
+    ("memory/elem_const_read_while_take.lu", "exit(0)"),
+    ("memory/elem_const_swap.lu", "exit(0)"),
+    ("memory/elem_const_swap_heap.lu", "exit(0)"),
+    ("memory/elem_const_take_while_mut.lu", "exit(0)"),
+    ("memory/elem_dyn_dyn_loan.lu", "exit(0)"),
+    ("memory/elem_dyn_iter_mut.lu", "exit(0)"),
+    ("memory/elem_dyn_nested_call.lu", "exit(0)"),
+    ("memory/elem_dyn_read_after_mut.lu", "exit(0)"),
+    ("memory/elem_dyn_take_while_mut.lu", "exit(0)"),
+    ("memory/elem_header_methods_after_move.lu", "exit(0)"),
+    ("memory/elem_header_methods_after_move_map.lu", "exit(0)"),
+    ("memory/elem_header_methods_under_claim.lu", "exit(0)"),
+    ("memory/elem_member_read_after_mut.lu", "exit(0)"),
+    ("memory/elem_member_read_under_claims.lu", "exit(0)"),
+    ("memory/elem_prefix_mut_pair.lu", "trap(exclusivity)"),
+    (
+        "memory/elem_whole_read_get_after_move.lu",
+        "trap(use-after-move)",
+    ),
+    (
+        "memory/elem_whole_read_named_count_after_move.lu",
+        "trap(use-after-move)",
+    ),
+    (
+        "memory/elem_whole_read_pop_after_move.lu",
+        "trap(use-after-move)",
+    ),
+    (
+        "memory/elem_whole_read_push_after_move.lu",
+        "trap(use-after-move)",
+    ),
+    (
+        "memory/elem_whole_read_self_after_move.lu",
+        "trap(use-after-move)",
+    ),
+    (
+        "memory/elem_whole_read_slice_after_move.lu",
+        "trap(use-after-move)",
+    ),
+    ("memory/mut_two_fields_one_region.lu", "exit(0)"),
 ];
 
 #[test]
