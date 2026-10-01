@@ -4481,6 +4481,26 @@ impl Machine {
                 })
             }
             ExprKind::BracketApply { base, args, origin } => {
+                // A bracket that cannot be a place — a range (a slice is a
+                // value) or several arguments — is refused BEFORE the base's
+                // operands run: every caller that hears "not a place"
+                // evaluates the whole expression next, so a refusal after
+                // `place_of(base)` ran `g[gi()][lo()..hi()]`'s `gi` twice, or
+                // three times under a member read (wolf-interp#157,
+                // `[mem.model.order]`: each operand once).
+                match args.as_slice() {
+                    [IndexArg::Value(arg)] if matches!(&*arg.expr.kind, ExprKind::Range { .. }) => {
+                        return unsupported(
+                            "a slice expression denotes a value, not a place".to_owned(),
+                        );
+                    }
+                    [IndexArg::Value(_)] => {}
+                    _ => {
+                        return unsupported(
+                            "only a single-argument index denotes a place".to_owned(),
+                        );
+                    }
+                }
                 let path = self.place_of(base)?;
                 self.project_index(path, args, *origin, expr.span)
             }
