@@ -583,6 +583,51 @@ mod tests {
         assert!(set.conflicts_only_below(&whole, Access::Shared));
     }
 
+    /// wolf-lang#487: a `(mut …)` receiver's claim is pending for its own
+    /// call, pushed before any argument's, and withdrawn at call entry — the
+    /// argument claims of the same call stay, and so does every other hold.
+    #[test]
+    fn a_receiver_claim_is_withdrawn_at_its_call_entry() {
+        let mut set = AccessSet::new();
+        let outer = set.open_call();
+        set.push(Held {
+            path: p("ys", &[]),
+            access: Access::Exclusive,
+            span: Span::new(0, 1),
+            why: HeldWhy::Pending(outer),
+        });
+        let call = set.open_call();
+        let receiver = p("xs", &[]);
+        set.push(Held {
+            path: receiver.clone(),
+            access: Access::Exclusive,
+            span: Span::new(2, 3),
+            why: HeldWhy::Pending(call),
+        });
+        set.push(Held {
+            path: p("zs", &[]),
+            access: Access::Exclusive,
+            span: Span::new(4, 5),
+            why: HeldWhy::Pending(call),
+        });
+        // While the arguments run, a write of the receiver meets its claim.
+        assert_eq!(
+            set.conflict(&receiver, Access::Exclusive).map(|h| h.span),
+            Some(Span::new(2, 3))
+        );
+        // Withdrawing another call's claim, or another place's, does nothing.
+        set.withdraw(outer, &receiver);
+        set.withdraw(call, &p("other", &[]));
+        assert_eq!(set.len(), 3);
+        set.withdraw(call, &receiver);
+        set.enter_call(call);
+        assert_eq!(set.len(), 2);
+        assert!(set.conflict(&receiver, Access::Exclusive).is_none());
+        // The argument's claim took effect; the outer call's is still pending.
+        assert!(set.conflict(&p("zs", &[]), Access::Shared).is_some());
+        assert!(set.conflict(&p("ys", &[]), Access::Shared).is_none());
+    }
+
     #[test]
     fn releasing_a_frame_drops_its_borrows() {
         let mut set = AccessSet::new();
