@@ -733,10 +733,15 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //  (eg01's `copy tbl[2]`), not its directives. The registry gains THREE
     //  anchors, 539 -> 542 (`mem.model.place.elem`, `mem.model.place.rhs`,
     //  `os.fs.path.domain`), and no new namespace.)
+    // (747 -> 778 at c2401f05, r25, wolf-lang v0.2.19: THIRTY-ONE new files,
+    //  every one an entry, none edited away; ONE `check:` line changed —
+    //  `memory/mut_elem_excl.lu`, `fail(E1002)` -> `run(exit=0, stdout="2\n")`
+    //  (eg02). The registry holds at 542, the same key set, and no new
+    //  namespace.)
     let report = report();
     assert_eq!(
         report.total(),
-        747,
+        778,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
@@ -754,7 +759,9 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     // 646 -> 702 at ec56a08f (r24, wolf-lang v0.2.18): fifty-seven new
     // files, fifty-six of them entries; `members` moves 44 -> 45 with s181's
     // `resolve/sibling_diag/geometry/shapes.lu`.
-    assert_eq!(report.entries(), 702);
+    // 702 -> 733 at c2401f05 (r25, wolf-lang v0.2.19): thirty-one new files,
+    // every one an entry. `members` holds at 45.
+    assert_eq!(report.entries(), 733);
     assert_eq!(report.members(), 45);
 }
 
