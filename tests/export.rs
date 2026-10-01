@@ -290,7 +290,12 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // `mem.model.place.rhs` (the `memory/ctl_store_order*` rows),
 // `mem.shared.handle` (`memory/elem_pool_handles_one_place.lu`) and
 // `proto.record.diag` (`resolve/sibling_diag/main.lu`).
-const RATCHET_FLOOR: usize = 268;
+// 268 -> 271 at c2401f05 (r25, wolf-lang v0.2.19 — the TAG): THREE, each
+// cited first by files the pin adds (the corpus `conforms:` sets of the two
+// pins diffed): `mem.dyn.unsize` and `mem.tier0.borrow`
+// (`memory/elem_{const,dyn}_dyn_loan.lu`) and `mem.iter.excl`
+// (`memory/elem_{const,dyn}_iter_mut.lu`).
+const RATCHET_FLOOR: usize = 271;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -480,6 +485,8 @@ const RATCHET_FLOOR: usize = 268;
 // diffed BOTH ways: three added, NOTHING dropped, no owner changed —
 // `mem.model.place.elem`, `mem.model.place.rhs` (spec/02) and
 // `os.fs.path.domain` (spec/11). No new namespace.
+// 542 -> 542 at c2401f05 (r25, wolf-lang v0.2.19 — the TAG): key sets diffed
+// BOTH ways, the same set; spec/02 gains prose, no anchor.
 const ANCHORS_TOTAL: usize = 542;
 
 fn crate_root() -> PathBuf {
@@ -742,9 +749,12 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // 728/684 -> 785/740 at ec56a08f (r24, wolf-lang v0.2.18 — the TAG):
     // fifty-seven corpus files, none leaving, fifty-six of them entries —
     // `programs` by 57, `records` by 56, the one new member the gap.
-    assert_eq!(summary.pin, "ec56a08f04ff318ea659fd58683f7ae4f22dc7a5");
-    assert_eq!(summary.programs, 785);
-    assert_eq!(summary.records, 740);
+    // 785/740 -> 816/771 at c2401f05 (r25, wolf-lang v0.2.19 — the TAG):
+    // thirty-one corpus files, none leaving, every one an entry — both
+    // counts move by thirty-one.
+    assert_eq!(summary.pin, "c2401f05f37794a078d2acf62f837dad98e5950d");
+    assert_eq!(summary.programs, 816);
+    assert_eq!(summary.records, 771);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
