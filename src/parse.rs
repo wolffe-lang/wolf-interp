@@ -4514,6 +4514,36 @@ mod tests {
         assert_eq!(d.code, diag::E_STRUCT_LIT_IN_COND);
     }
 
+    /// wolf-interp#159 (s190's reading): `W { xs }` is `W { xs: xs }` — the
+    /// shorthand carries the value node the longhand spells, the path `xs` at
+    /// the name's span, so no pass can read it as anything else.
+    #[test]
+    fn the_field_shorthand_is_its_longhand() {
+        let source = "fn main() -> int {\n    let w = W { xs, n: n }\n    0\n}\n";
+        let unit = parses(source);
+        let ItemKind::Fn(decl) = &unit.items[0].kind else {
+            panic!("a fn item");
+        };
+        let body = decl.body.as_ref().expect("a body");
+        let StmtKind::Binding(binding) = &body.stmts[0].kind else {
+            panic!("a let");
+        };
+        let ExprKind::StructLit { fields, .. } = &*binding.value.kind else {
+            panic!("a struct literal");
+        };
+        for field in fields {
+            let ExprKind::Path(path) = &*field.value.kind else {
+                panic!("`{}` carries a path value", field.name.name);
+            };
+            assert_eq!(path.segments.len(), 1);
+            assert_eq!(path.segments[0].name, field.name.name);
+        }
+        let short = &fields[0];
+        assert_eq!(short.value.span, short.name.span);
+        assert_eq!(&source[short.value.span.start..short.value.span.end], "xs");
+        assert_eq!(&source[short.span.start..short.span.end], "xs");
+    }
+
     #[test]
     fn parenthesising_the_struct_literal_is_the_fix() {
         parses("fn main() -> int {\n    if p == (Point { x: 0 }) { 0 } else { 1 }\n}\n");
