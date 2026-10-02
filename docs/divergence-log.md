@@ -6226,6 +6226,213 @@ trunk `lupin-trunk-6d6cde5` `cb8d424c…`; head `lupin-head-a4378d0`
 - [ ] #163 closes on merge (by hand if not)
 - [ ] kasumi build dirs pruned once evidence is written; worktree removed
 
+### `match` over a fallible value, and `?` under a `defer` — is67, rulings #21 and #19 (wolf-lang#497, #498)
+
+Wave 52's row: "**is67** (lupin: tag arms, the value half, the collision
+refusal)" on ruling #21, and "lupin's #498 refusal rides with is67" on
+ruling #19 (`sprints/wave-52.md`, 2026-10-02; the rulings' text is
+`sprints/STATUS.md` "Needs the human" items 19 and 21). The contract is
+is62's, in five sections; §1–§3 are committed before the first edit under
+`src/` or `tests/`, the rest is appended as it lands. Measurements on
+kasumi (linux x86-64) under `~/lanes/is67/`: the published lupin 0.1.43
+(archive `e957c8de…`, binary `3b0702c0…`) and wolf 0.2.20 (archive
+`24855d5e…`), both digests equal to the release pages' (`gh release view`,
+`evidence/setup.log`); lupin trunk `6d6cde5` (the 0.1.43 tag) built release
+in `dev/` (`archives/lupin-trunk-6d6cde5`, `cb8d424c…`,
+`evidence/build-trunk-6d6cde5.log`). Probes: 34 one-directory programs
+under `probes/` (`m21_*` for #497, `d19_*` for #498, `s196_*` the eight rows
+of wolf-lang PR #509 verbatim), run by `scripts/run-probes.sh` (`lupin
+conform-run main.lu --json`, `wolf conform-run main.lu
+--{checked,native,release} --json`), summarised by `scripts/summ.py`:
+`evidence/probes-archive-0.1.43-wolf-0.2.20.log`,
+`evidence/probes-trunk-6d6cde5.log` (lupin lines identical to the
+archive's), `evidence/probes-closure-archive-0.1.43-wolf-0.2.20.log`.
+
+#### §1 — forbidden, absolutely
+
+No `rm` outside `~/lanes/is67/` (kasumi) and `/private/tmp/is67`; no
+deletion in any tree this lane did not create; no `git add -A`; no edit to
+another lane's file — wolf-lang (s196's branch, s197's when it appears) is
+read and built, never edited or pushed; is65's claim-withdrawal code in
+`src/eval/mod.rs` (`eval_args`' abandon path and its unit tests) is not
+touched; no workflow edit; no `~/.claude`; no build or test on this Mac or
+nomad-1 (kasumi only, `CARGO_BUILD_JOBS=4`, jobs launched with `setsid`,
+never `ssh -f`; tars with `COPYFILE_DISABLE=1`); no tag; no pin move (the
+pin stays `c2401f05`); no merge, no rebase-merge; no `2>/dev/null` on a
+checkout; kill only my own pids, never a pattern or a group; no claim of
+"seen red" without the log it is in; no trailer on any commit; waits in
+printing loops; `gh run view`, never `gh run watch` without
+`--interval 60`.
+
+#### §2 — inputs, re-derived 2026-10-02
+
+| input as written | at origin / measured | drift |
+| --- | --- | --- |
+| wolf-interp trunk `6d6cde5`, lupin 0.1.43 tagged | `origin/trunk` = `6d6cde5`; `Cargo.toml` 0.1.43; the release build's record says `impl_version` `0.1.43` and `--version` `0.1.43` (a dev build `0.1.43+dev.<sha>`), so a gate that pins "0.1.43" by `impl_version` reads a head build as 0.1.43 (is62's §3a lesson) | none; the pinned gate below is run with its pin emptied |
+| is65 (#163) in flight; stay out of the claim withdrawal | PR #167 open, branch `is65` at `9d9c023`: `src/eval/mod.rs` hunks at 3210–3420 and 7987–8010, `src/eval/tests.rs`, `tests/rulings_is65*`, CHANGELOG, this log | this lane's eval edits are `ExprKind::Match` (4861), `match_pattern` (6760), `exec_binding` (3804), `call_fn`'s parameter binding (3060), `Scope` (437); adjacent to nothing of is65's |
+| ruling #21, "yes, as proposed"; s197 in parallel, "cite `[type.row.match]` when it exists" | STATUS #21 as quoted in §3; wolf-lang has **no `s197` branch and no PR** (`git ls-remote`, `gh pr list`, 2026-10-02); the pinned `spec/anchors.json` (c2401f05) has `type.row`, `type.row.operand` and no `type.row.match` | the ruling is cited; a `Rule` label cannot cite `type.row.match` (the registry test checks the registered `type` namespace against the pinned index), so the evaluator's label cites `type.row.operand` and the refusal texts name `[type.row.match]` |
+| ruling #19, "the same diagnostic code s196 chooses" | wolf-lang PR #509, branch `s196` at `2886c9e9`: **E0611**, clause `[type.row.defer]` (spec/10-types.md), `phase: resolve` on the three negative rows; "the refusal reads the whole deferred expression: a `?` in a call argument, an interpolation hole, a binding or a block under the `defer`"; "a `?` inside a closure defined under the `defer` is that closure's own propagation and is not refused"; the gate `crates/wolf_driver/tests/try_under_defer_refused_lanes.rs` compares verdict and stdout only and pins lupin 0.1.43 as pre-mirror by version | none; the span is the lane's choice (the `?` expression, operand through `?`) |
+| "lupin 0.1.43 already runs the two-arm shape" | it runs the **miss** path only. On the hit path the row arm BINDS the value: `match look(m, "a") { none => -1, v => v }` prints `-1` (`m21_call_tag_value`), as do the local, `_`, `Map`-index, imported, two-tag, nested, consumed and `?`-in-scrutinee shapes (`-1`, `-1`, `-1`, `-1`, `-1 -2 -1`, `-2 -2`, `0 0`, `key look a -1`); `{ Io(code) => …, Timeout => 0, v => v }` answers `0` for 40 (`Timeout` bound it); `{ none => 0, true => 1, false => 2 }` answers `0 0 0`; and `{ v => v, _ => -1 }` binds the ERROR to `v` and prints `none` (`m21_wild_row_half`). Eleven silent wrong answers | **the value half is wrong on 0.1.43**, not merely unimplemented; every one is a witness |
+| the mechanism | `match_pattern` (`src/eval/mod.rs:6760`) decides whether an identifier is a row-tag pattern from the VALUE: only over a `Value::Error` does a lowercase name in the value's row (or the module's `row_tags`) dispatch; over a plain value every identifier binds, so the first arm wins. `ExprKind::Match` (4861) tries arms in order with no notion of the scrutinee's two halves. The lint's `scrutinee_row` (`src/lint.rs:1525`) knows only an `else`-binder's row | none |
+| s191's probes (`~/lanes/s191/probes/`, read-only) | m1, m2: `unsupported` at resolve on checked, native and release of wolf 0.2.20 (the `check_match` NotYet, span of the match); lupin `look zz -1`. m3: `look zz -1 look zz seven` on all four. Reproduced byte for byte | none |
+| #498: p2 `… 9` on lupin, `… 1` on checked, native and release crash | wolf 0.2.20 (published): native and release `thread 'main' has overflowed its stack`, exit 134, no record (`d19_try_in_defer`, `d19_try_in_errdefer`, `d19_try_in_defer_block`); checked `body key deferred a 1 body key 1`; lupin 0.1.43 `body key deferred a 1 body key 9` | none; the crash ships in 0.2.20 |
+| s196's eight rows on lupin 0.1.43 | the five `run` rows print the checked machine's bytes (= the ruled bytes); native and release part on the three `errdefer` block rows (s196's #499 fix, not this lane's); the three `fail(E0611)` rows run on lupin (`9`) | none; the five are controls here |
+| the enum and bool value halves | `m21_enum_value_half` already prints `0 1 2 6` (a variant name resolves before the tag rule); `m21_bool_value_half` `0 0 0`; `m21_tag_collision` runs, `1` | the enum row is a control; the collision runs today |
+| a `?` in a closure under a `defer` (`fn(o: bool) { key(o)? }`) | lupin, native and release: `body key deferred a 1 body key deferred - 1`; checked `unsupported` ("closures in checked execution") | a control under `[type.row.defer]`'s closure sentence; unchanged |
+| warnings on the probes | W0603 on the capitalized tags (`Io`, `Timeout`) and W0313/W0314 on the imported module, on lupin and on every wolf tier alike | none |
+| the coverage ratchet | `tests/export.rs`: `RATCHET_FLOOR = 271`, `ANCHORS_TOTAL = 542` | none |
+| kasumi `/home` at 99% | 97%, 30 G free at launch; the lane dir is 522 MB after the trunk build | prune `dev/target` as each item's evidence is written |
+
+#### §3 — prediction, committed before the first edit
+
+**The ruled design, as this machine reads it** (`[type.row.match]`, the
+maintainer's #21, quoted from STATUS): the scrutinee has type `T ! {row}`;
+an arm is a **row arm** (a tag of the row by name, binding its payload when
+it has one: `none => …`, `Io(e) => …`) or a **value arm** (any pattern over
+`T`); an identifier that names a tag of the scrutinee's row is a row arm,
+anything else a value pattern; `_` covers what is left on both halves; the
+match must cover every tag of the row and the whole of `T`, and E0801 names
+the missing tag or the uncovered value half; the row is consumed; a tag
+that is also a constructor name reachable from `T` is refused by name,
+never guessed; `else |e| match e { … }` keeps working beside it.
+
+**Five mechanisms.**
+
+1. **The scrutinee's static type** (one reader for sema, the lint and the
+   evaluator, `src/rowmatch.rs`). A `match` is a ROW MATCH exactly when its
+   scrutinee is statically fallible: a call to a module `fn` (own or
+   `use`d, by its declared return row: `-> T ! {row}` in either spelling),
+   a call to a builtin with a declared row (`eval::builtin::declared_row`),
+   a `Map` index (`V ! {none}`, `[mem.map.absent]`, the base a local or
+   parameter declared or built as `Map[K, V]`), a local bound by such an
+   initializer or by a `T ! {row}` annotation, and a parenthesized one. A
+   method call, a closure call, an operator or anything else is not
+   statically fallible, and a match over it keeps today's behaviour,
+   unchanged — the sema boundary's rule: a guess never becomes a verdict.
+   Locals carry what the binding knew (`Scope::known`, set by
+   `exec_binding` and by `call_fn` for parameters).
+2. **Dispatch** (`ExprKind::Match`). In a row match a row value
+   (`Value::Error` that is not an enum variant) is tried against the row
+   arms and `_` only; any other value against the value arms and `_`
+   only. An arm is a row arm when its pattern is a bare identifier naming
+   a tag of the static row (the value's own row joins it for a row value),
+   or a payload pattern `Tag(…)` whose head names one; `_` is both; every
+   other pattern is a value arm (an enum variant, a literal, a binder, a
+   tuple, a struct, a range). A row value no arm takes, or a value no arm
+   takes, is `unsupported` naming the tag or the value half — never a
+   wrong arm. The arm boundary's whole-move rule and the guard are
+   unchanged. The match's value is the arm's: the row is consumed.
+3. **Exhaustiveness, static** (`sema::row_match_check`, the last link of
+   `resolve_check`'s chain; E0801 at the resolve rung, as E0805 is —
+   `[proto.cmp.rung]` makes it agreement; primary span from `match` to the
+   end of the scrutinee). For a row match: every tag of a closed row needs
+   an unguarded row arm or an unguarded `_`, else "this `match` does not
+   cover `none`"; an open row (`..`) needs `_`; the value half needs an
+   unguarded `_` or an unguarded irrefutable value arm (a binder, an `@`,
+   a tuple or struct of irrefutables), or — `T` a `bool` — both literals,
+   or — `T` an enum this module declares — every variant named with
+   irrefutable fields; else E0801 names the missing variant or literal,
+   or "the value half (`int`)" when the unguarded value arms are all
+   literals or ranges over a scalar. Any other value-half picture (a
+   product pattern with refutable parts, an unresolvable `T`) is left
+   alone: the dynamic miss of (2) answers. A guarded arm counts for
+   nothing (the compiler's rule).
+4. **The collision, static and by name** (`sema::row_match_refusal`,
+   asked by `frontend::admit` as `raise_check` is, before anything runs).
+   A tag of the static row that an enum of the module declares as a
+   variant of `T` (`T` the scrutinee's ok type, resolved by head name) is
+   `Refusal::Unsupported` naming the tag, the row and the enum and citing
+   `[type.row.match]`. The checker's code is s197's: it is not guessed, so
+   this is the conservatism class, not a `fail(E…)`. If s197's PR names a
+   code before this PR is final, the refusal becomes a `Diag` with it (one
+   edit, the detection unchanged).
+5. **#19** (`sema::defer_try_check`, in `resolve_check`'s chain before
+   (3)): a `?` anywhere inside a `defer`/`errdefer` expression — through
+   blocks, bindings, call arguments and interpolation holes, stopping at a
+   closure literal — is **E0611** at the `?` expression's span (operand
+   through `?`), anchor `type.row.defer`, message naming the fix as the
+   clause does. Items, impl methods, nested fns and closures are walked
+   alike.
+
+**The lint** (`src/lint.rs`): a row arm is not a binder (the same
+classification, so W0305 never reads `none` as a shadow), and
+`match_reachability` (E0802) says nothing about a row match — the two
+halves are the compiler's usefulness question (s197), and a `_` after a
+binder is live there. **The rule label**: `Rule::RowMatch`, anchored on
+`type.row.operand` (the pinned clause that names `match` as a way to handle
+a row), fired once per row match with the half taken.
+
+**The witness table** (`tests/rulings_is67/`, one directory per shape, the
+runner is is65's; lupin trunk `6d6cde5` = 0.1.43 against the head; wolf
+0.2.20's answer in brackets, one answer on checked, native and release
+unless shown):
+
+| witness | trunk | head | [wolf 0.2.20] |
+| --- | --- | --- | --- |
+| `m21_call_tag_value` (the issue's shape, miss then hit) | `look zz -1 look a -1` | `look zz -1 look a 5` | [`unsupported` at resolve] |
+| `m21_local_scrutinee` (s191's m2, miss then hit) | `-1 -1` | `-1 1` | [`unsupported`] |
+| `m21_payload_tags` (`Io(code)`, `Timeout`, `v`; 0, 1, 40) | `0 109 0` | `0 109 40` | [`unsupported`] |
+| `m21_wild_value_half` (`{ none => -1, _ => 1 }`) | `-1 -1` | `-1 1` | [`unsupported`] |
+| `m21_wild_row_half` (`{ v => v, _ => -1 }`) | `none 5` | `-1 5` | [`unsupported`] |
+| `m21_wild_both` (`{ _ => 7 }`, control) | `7 7` | `7 7` | [`unsupported`] |
+| `m21_missing_tag` (`{ v => v }`) | `exit(0)` `look a 5` | `fail(E0801)` naming `none`, nothing printed | [`unsupported`] |
+| `m21_uncovered_value` (`{ none => -1 }`) | `exit(0)` `look zz -1` | `fail(E0801)` naming the value half (`int`) | [`unsupported`] |
+| `m21_tag_collision` (`Timeout` a tag and a `Status` variant) | `exit(0)` `1` | `unsupported` by name, before running | [`unsupported`] |
+| `m21_else_match_control` (s191's m3, control) | `look zz -1 look zz seven` | unchanged | [same bytes] |
+| `m21_nested` (a row match in a row arm and in a value arm) | `look zz look a -2 look a look a -2` | `look zz look a -5 look a look zz 50` | [`unsupported`] |
+| `m21_try_in_scrutinee` (the #492 shape) | `key look a -1 key 9` | `key look a 5 key 9` | [`unsupported`] |
+| `m21_map_index` (`match m["zz"]`, miss then hit) | `-1 -1` | `-1 5` | [`unsupported`] |
+| `m21_two_tags_named` (`{none, stale}`, no `_`) | `-1 -2 -1` | `-1 -2 5` | [`unsupported`] |
+| `m21_guard_no_cover` (`none if flag => …, v => v`) | `exit(0)` `look zz -1` | `fail(E0801)` naming `none` | [`unsupported`] |
+| `m21_payload_missing_tag` (`{ Io(e) => e, v => v }`) | `exit(0)` `9` | `fail(E0801)` naming `Timeout` | [`unsupported`] |
+| `m21_enum_value_half` (every `Color` variant named, control) | `0 1 2 6` | `0 1 2 6` | [`unsupported`] |
+| `m21_enum_missing_variant` (`Green` unnamed) | `exit(0)` `1` | `fail(E0801)` naming `Green` | [`unsupported`] |
+| `m21_bool_value_half` (`true`, `false`) | `0 0 0` | `0 1 2` | [`unsupported`] |
+| `m21_result_consumed` (`(match …) + 1`) | `0 0` | `0 6` | [`unsupported`] |
+| `m21_imported_row` (`store.find`, a `use`d module's row) | `-1 -1` | `-1 5` | [`unsupported`] |
+| `d19_try_in_defer` (s191's p2) | `exit(0)` `body key deferred a 1 body key 9` | `fail(E0611)`, nothing printed | [checked `… 1`; native, release crash] |
+| `d19_try_in_errdefer` (s191's p3) | `exit(0)` `key look a 5 key key 9` | `fail(E0611)` | [checked runs; native, release crash] |
+| `d19_try_in_defer_block` (a `?` in a binding in a `defer` block) | `exit(0)` | `fail(E0611)` | [checked runs; native, release crash] |
+| `d19_defer_else_control` (PR #509's `defer_else_handles`) | `body key a key deferred a 1 body key key errdefer - key deferred - 9` | unchanged | [same bytes] |
+| `d19_try_in_closure_in_defer` (a closure's own `?`, control) | `body key deferred a 1 body key deferred - 1` | unchanged | [native, release same; checked `unsupported`] |
+
+Twenty-one witnesses red at the witness commit (on trunk's code), five
+controls green on both sides; each red for the reason its row names
+(wrong bytes, or a run where a refusal is ruled).
+
+**The gate.** wolf-lang `s196` (`2886c9e9`) `try_under_defer_refused_lanes.rs`
+with its 0.1.43 pre-mirror pin emptied, `LUPIN` = head: green on all three
+rows; with lupin 0.1.43: red on exactly the three; pinned, 0.1.43 green
+(the control). Its default lane needs the s196 compiler (`fail(E0611)`),
+built in `~/lanes/is67/wolf-lang-s196/` (debug, read-only).
+
+**Existing tests that change: none predicted.** No test under `tests/` or
+`src/eval/tests.rs` matches directly over a statically fallible scrutinee
+with a binder arm (the compiler refuses every such program, so no corpus
+row carries one); the suite decides, and a change is reported here.
+
+**Corpus and differential.** `lupin corpus` at the pin: identical reports,
+trunk against head (the census line's five counts unchanged). `lupin
+diff-run` on four tiers against wolf 0.2.20 (the archive), on the vendored
+corpus and on wolf-lang trunk's own `corpus/`: no new divergence; the
+conservatism ledgers move 0 rows. **New divergence against wolf 0.2.20,
+by name, the ruled rows only:** the seventeen `m21_*` programs that run or
+refuse here where 0.2.20 answers `unsupported` at resolve (the `check_match`
+NotYet s197 retires) — every `m21_*` row above except the two controls that
+already agree; and on the three `d19_try_*` programs lupin moves to the
+compiler's ruled answer (`fail(E0611)`) where 0.2.20's native and release
+still crash. On wolf-lang `s196`'s eight rows: the three negatives move
+`exit(0)` → `fail(E0611)`, the five run rows unchanged.
+
+**Coverage.** `RATCHET_FLOOR` holds at 271 (the witnesses are tests, not
+corpus rows).
+
+**Out of scope, named:** a `match` over a method call, a closure call or
+an operator result (no static row; today's behaviour, named in the PR); a
+static E0801 for a plain enum or bool match (the existing conservatism
+rows stay); E0802 over a row match; the compiler's E0801 span and witness
+rendering, and the collision's code (s197's).
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
