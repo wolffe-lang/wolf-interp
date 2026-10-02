@@ -70,6 +70,18 @@ fn cases() -> Vec<Case> {
 }
 
 /// The code a `check: fail(CODE)` directive pins, if it pins one.
+/// Files pinning a code this machine owns at the resolve rung, on a shape
+/// it DECLINES before that rung can see it: a call to a nested fn that
+/// declares a parameter mode (`memory/nested_fn_mut_omitted.lu`, s186,
+/// wolffe-lang/wolf-lang#466). The scoped v1 of #38 lowers a nested fn as a
+/// closure recipe whose parameters carry no mode, so the evaluator answers
+/// `unsupported` and the resolve rung's call-site mode law (E1007, issue
+/// #15) never sees the call: the resolve rung passes and every deeper rung
+/// declines. Waived by name since the cdde128a pin (r26), owed by
+/// wolffe-lang/wolf-interp#169; each waiver asserts today's answer, so the
+/// mirror turns it red and it leaves with the mirror.
+const NESTED_MODED_FN_DECLINED: &[&str] = &["memory/nested_fn_mut_omitted.lu"];
+
 fn pinned_code(check: Option<&Check>) -> Option<&str> {
     match check {
         Some(Check::Fail(code)) => Some(code.as_str()),
@@ -485,6 +497,11 @@ fn every_parseable_file_resolves_under_sema_lite() {
             continue;
         }
         let observation = frontend::observe(&case.source, Some(Phase::Resolve));
+        if NESTED_MODED_FN_DECLINED.contains(&case.path.as_str()) {
+            assert_eq!(observation.verdict, Verdict::Pass, "{} (#169)", case.path);
+            assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
+            continue;
+        }
         if let Some(code) = declaration_read_code(&case) {
             assert_eq!(
                 observation.verdict,
@@ -554,6 +571,16 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
         }
         for rung in [Phase::Typecheck, Phase::Mem, Phase::Wir] {
             let observation = frontend::observe(&case.source, Some(rung));
+            if NESTED_MODED_FN_DECLINED.contains(&case.path.as_str()) {
+                assert_eq!(
+                    observation.verdict,
+                    Verdict::Unsupported,
+                    "{} (#169)",
+                    case.path
+                );
+                assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
+                continue;
+            }
             if let Some(code) = declaration_read_code(&case) {
                 assert_eq!(
                     observation.verdict,
