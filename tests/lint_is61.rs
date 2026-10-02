@@ -201,17 +201,20 @@ shapes! {
     v16_move_into_map_store: "exit(0)", &[];
 }
 
-/// The one parting: a type error the compiler's typecheck rung refuses
-/// (E0401) stops it before the mem rung, so the at-return E1001 that would
-/// stand W1002 down never runs and wolf 0.2.19 keeps
-/// `W1002 [5, 8]`. This machine has no typecheck refusal for the annotation
-/// (it runs the body and traps at the caller's read), so its lint sees only
-/// the move that reaches the return, and says nothing. Pinned here as
-/// lupin's answer; the compiler's is the comment above.
+/// The one parting, healed at is68: a type error the compiler's typecheck
+/// rung refuses (E0401) stops it before the mem rung, so the at-return E1001
+/// that would stand W1002 down never runs and wolf 0.2.19 keeps
+/// `W1002 [5, 8]`. Through 0.1.43 this machine had no refusal for the
+/// annotation (it ran the body and trapped `use-after-move` at the caller's
+/// read). Since is68 (wolf-interp#138) `let n: int = "a"` is the declared-
+/// scalar pass's E0401 at the compiler's own span, `[83, 86]`, so both
+/// machines refuse the program with one first error — `[proto.cmp.rung]`'s
+/// agreement. This machine's lint says nothing, as before: the move reaches
+/// the return, the at-return E1001's shape, which stands W1002 down.
 #[test]
 fn t01_type_error_beside_move() {
     let (verdict, warnings) = observe("t01_type_error_beside_move");
-    assert_eq!(verdict, "trap(use-after-move)");
+    assert_eq!(verdict, "fail(E0401)");
     assert!(
         warnings.is_empty(),
         "t01: lupin warned {warnings:?}; the move reaches the return unused"
