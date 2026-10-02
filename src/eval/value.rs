@@ -331,6 +331,13 @@ pub struct ClosureValue {
     /// held their places `mut` (`[mem.tier0.excl.4]`), each with the claim's
     /// span: held `mut` for the body's extent, so a read of one traps.
     pub claimed: Vec<(String, Span)>,
+    /// A nested named fn that declares a parameter mode carries its
+    /// declaration, and a call runs it with the module fn's convention —
+    /// the `read` barrier, the `mut` write-back, a `take` that consumes, a
+    /// parameter moved out and never stored back moved-out in the caller
+    /// (s186, wolf-lang#466; wolf-interp#169). `None` for every closure and
+    /// for a nested fn with no mode, which keep the closure recipe.
+    pub decl: Option<Box<crate::ast::FnDecl>>,
 }
 
 /// One captured place's loan (wolf-interp#36).

@@ -3856,7 +3856,10 @@ impl Machine {
     /// refuses the same set, so an honest `unsupported` here is parity, not
     /// a gap: captures of enclosing locals (`typecheck/nested_fn_capture.lu`
     /// pins the refusal; "bind a closure instead"), generics, an error row
-    /// on the nested return, parameter modes and `self`.
+    /// on the nested return, and `self`. Parameter modes are not among them
+    /// since is68 (s186, wolf-lang#466; wolf-interp#169): a nested fn that
+    /// declares one binds with its declaration and is called with the module
+    /// fn's convention ([`ClosureValue::decl`]).
     fn exec_nested_fn(&mut self, decl: &FnDecl, span: Span) -> EResult<()> {
         let name = &decl.name.name;
         if !decl.generics.is_empty() {
@@ -3895,12 +3898,6 @@ impl Machine {
                     "nested fn `{name}` takes `self`; methods belong to impl blocks"
                 ));
             };
-            if param.mode.is_some() {
-                return unsupported(format!(
-                    "nested fn `{name}` declares a parameter mode; closure-recipe \
-                     parameters carry none in the scoped v1 (#38)"
-                ));
-            }
             params.push(pname.name.clone());
         }
         let body_expr = Expr {
@@ -3929,10 +3926,18 @@ impl Machine {
                 ));
             }
         }
+        let moded = decl.params.iter().any(|param| param.mode.is_some());
         self.fire(
             Rule::Call,
             span,
-            &format!("nested fn `{name}` binds as a capture-free fn value, like a `let`"),
+            &if moded {
+                format!(
+                    "nested fn `{name}` binds capture-free with its declared modes: a call is \
+                     a module fn's call (wolf-interp#169)"
+                )
+            } else {
+                format!("nested fn `{name}` binds as a capture-free fn value, like a `let`")
+            },
         );
         self.declare(
             name,
@@ -3942,6 +3947,7 @@ impl Machine {
                 captures: Vec::new(),
                 loans: Vec::new(),
                 claimed: Vec::new(),
+                decl: moded.then(|| Box::new(decl.clone())),
             }))),
         );
         Ok(())
@@ -7005,6 +7011,7 @@ impl Machine {
             captures,
             loans,
             claimed: Vec::new(),
+            decl: None,
         })))
     }
 
@@ -7540,6 +7547,32 @@ impl Machine {
                     .collect(),
             );
         }
+        // wolf-interp#169: a moded nested fn carries its declaration, so the
+        // same residue holds for it — a direct call that disagreed was
+        // refused at resolve, and one through a value is refused here.
+        if let Value::Closure(closure) = &target
+            && let Some(decl) = closure.decl.as_deref()
+        {
+            for (param, arg) in decl.params.iter().zip(args) {
+                if param.mode != arg.mode {
+                    let name = &decl.name.name;
+                    return unsupported(format!(
+                        "nested fn `{name}` declares a call-site mode this call does not spell \
+                         (X1); the disagreement is E1007's static rule, and through a value it \
+                         is refused, not guessed"
+                    ));
+                }
+            }
+            param_rows = Some(
+                decl.params
+                    .iter()
+                    .map(|param| match &param.kind {
+                        ParamKind::Named { ty, .. } => crate::sema::type_tags(ty),
+                        ParamKind::SelfParam { .. } => Vec::new(),
+                    })
+                    .collect(),
+            );
+        }
         let evaluated = self.eval_args_for(args, Callee::of(&target), param_rows.as_deref())?;
         // Handed to `call_fn` across `apply`, which performs no evaluation of
         // its own between here and the callee's parameter binding.
@@ -7700,6 +7733,17 @@ impl Machine {
                 }
             }
             Value::Closure(closure) => {
+                // wolf-interp#169: a moded nested fn is the module fn's call,
+                // resolved in the module of the frame that calls it — a
+                // nested fn is capture-free, so that is its own.
+                if let Some(decl) = closure.decl.as_deref() {
+                    let module = self
+                        .frames
+                        .last()
+                        .map(|f| f.module.clone())
+                        .unwrap_or_default();
+                    return self.call_fn(decl, &module, args, span);
+                }
                 if closure.params.len() != args.len() {
                     return unsupported(format!(
                         "a closure of {} parameter(s) was called with {}",
