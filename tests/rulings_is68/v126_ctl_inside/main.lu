@@ -1,0 +1,12 @@
+fn main() -> !int {
+    region scratch {
+        let s = "  re" + "gions  "
+        let t = s.trim()
+        let u = s.strip_prefix("  ") else "?"
+        print("[{t}] [{u}]")
+        for w in s.words() {
+            print(w)
+        }
+    }
+    0
+}

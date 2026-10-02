@@ -1,0 +1,6 @@
+fn main() -> !int {
+    let f = fn(x: int) { x }
+    f(1)
+    print("done")
+    0
+}

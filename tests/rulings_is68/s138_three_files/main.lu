@@ -1,0 +1,5 @@
+use geometry
+
+fn main() -> !int {
+    if geometry.area(3) == 9 { 0 } else { 1 }
+}

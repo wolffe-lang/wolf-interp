@@ -1,0 +1,8 @@
+fn area(side: int) -> int {
+    let s: str = side
+    side * side
+}
+
+fn main() -> !int {
+    if area(3) == 9 { 0 } else { 1 }
+}

@@ -1,0 +1,7 @@
+fn main() -> !int {
+    let s = "a\nb"
+    var n = 0
+    for l in s.lines("x") { n = n + 1 }
+    print("{n}")
+    0
+}

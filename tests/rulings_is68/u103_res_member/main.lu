@@ -1,0 +1,7 @@
+fn total(xs: List[int]) { xs.len }
+
+fn main() -> !int {
+    let v = total([1, 2])
+    print("{v}")
+    0
+}

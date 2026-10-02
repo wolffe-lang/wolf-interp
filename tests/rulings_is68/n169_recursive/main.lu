@@ -1,0 +1,12 @@
+fn main() -> !int {
+    fn fill(mut xs: List[int], n: int) {
+        if n > 0 {
+            (mut xs).push(n)
+            fill(mut xs, n - 1)
+        }
+    }
+    var xs = List[int]()
+    fill(mut xs, 3)
+    print("{xs.len} {xs[0]} {xs[2]}")
+    0
+}

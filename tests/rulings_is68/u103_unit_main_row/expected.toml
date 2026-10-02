@@ -1,0 +1,18 @@
+# is68 — wolf-interp#103. This row: the dynamic half: a unit `main` whose tail raises discards it (native and release).
+# `[expected]` is the ruled lupin cell. `[trunk]` is what lupin trunk `6ce7bc8` (release build
+# 93fd8329…) and wolf-lang trunk `12a56b22` (release build eaa22f61…; byte-identical to the
+# published 0.2.20, 24855d5e…, on every probe) `conform-run` answered on kasumi; `[archive]` is
+# the published lupin 0.1.43 (e957c8de…). Probe logs: ~/lanes/is68/evidence/probes*.log.
+issue = "wolf-interp#103"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "hi\n" }
+
+[trunk]
+lupin   = { verdict = "exit(1)", stdout = "hi\nerror: bad\n" }
+checked = { verdict = "exit(1)", stdout = "hi\nerror: bad\n" }
+native  = { verdict = "exit(0)", stdout = "hi\n" }
+release = { verdict = "exit(0)", stdout = "hi\n" }
+
+[archive]
+lupin   = { verdict = "exit(1)", stdout = "hi\nerror: bad\n" }

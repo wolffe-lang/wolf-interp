@@ -1,0 +1,6 @@
+fn main() -> !int {
+    let cents = 400
+    if cents > 300 { "*" }
+    print("done")
+    0
+}

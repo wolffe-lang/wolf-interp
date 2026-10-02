@@ -1,0 +1,8 @@
+fn name() -> str {
+    7
+}
+
+fn main() -> !int {
+    print(name())
+    0
+}

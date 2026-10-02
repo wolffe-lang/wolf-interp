@@ -1,0 +1,6 @@
+fn main() -> !int {
+    let n = 2
+    let m = if n > 3 { "a" } else if n > 2 { "b" } else if n > 1 { "c" }
+    print("{m}")
+    0
+}

@@ -1,0 +1,6 @@
+fn total() { 1 }
+
+fn main() -> !int {
+    total()
+    0
+}

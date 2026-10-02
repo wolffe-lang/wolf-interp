@@ -1,0 +1,12 @@
+fn build() -> str {
+    region scratch {
+        let s = "  re" + "gions,x  "
+        let t = copy s.trim()
+        t
+    }
+}
+
+fn main() -> !int {
+    print("[{build()}]")
+    0
+}

@@ -1,0 +1,15 @@
+fn build() -> str {
+    region scratch {
+        let s = "re" + "gions here"
+        var last = ""
+        for w in s.words() {
+            last = w
+        }
+        last
+    }
+}
+
+fn main() -> !int {
+    print("[{build()}]")
+    0
+}

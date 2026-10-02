@@ -1,0 +1,9 @@
+fn main() -> !int {
+    var n = 0
+    for w in "a. b,".words() {
+        let t = w.trim(".,")
+        n = n + t.len
+    }
+    print("{n}")
+    0
+}

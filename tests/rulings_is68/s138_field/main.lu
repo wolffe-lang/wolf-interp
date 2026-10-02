@@ -1,0 +1,7 @@
+struct Doc { title: str }
+
+fn main() -> !int {
+    let d = Doc { title: 3 }
+    print("{d.title}")
+    0
+}

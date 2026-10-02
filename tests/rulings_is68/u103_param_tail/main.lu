@@ -1,0 +1,9 @@
+fn f(s: str, c: bool) {
+    if c { s }
+}
+
+fn main() -> !int {
+    f("x", true)
+    print("done")
+    0
+}

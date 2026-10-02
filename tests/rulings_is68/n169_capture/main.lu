@@ -1,0 +1,10 @@
+fn main() -> !int {
+    let k = 5
+    fn f(mut xs: List[int]) {
+        (mut xs).push(k)
+    }
+    var xs = [1]
+    f(mut xs)
+    print("{xs[1]}")
+    0
+}

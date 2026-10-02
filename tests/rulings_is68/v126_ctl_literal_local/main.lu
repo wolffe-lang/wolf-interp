@@ -1,0 +1,11 @@
+fn build() -> str {
+    region scratch {
+        let s = "  lit  "
+        s.trim()
+    }
+}
+
+fn main() -> !int {
+    print("[{build()}]")
+    0
+}

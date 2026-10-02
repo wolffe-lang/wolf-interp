@@ -1,0 +1,8 @@
+fn main() -> !int {
+    fn helper() {
+        5
+    }
+    helper()
+    print("done")
+    0
+}

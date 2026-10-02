@@ -1,0 +1,9 @@
+fn main() -> !int {
+    fn f(mut xs: List[int]) {
+        (mut xs).push(9)
+    }
+    let g = f
+    var xs = [1]
+    print("{xs.len}")
+    0
+}

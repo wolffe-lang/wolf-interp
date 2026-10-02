@@ -1,0 +1,10 @@
+fn main() -> !int {
+    var i = 0
+    loop {
+        i = i + 1
+        if i > 2 { break }
+        "x"
+    }
+    print("{i}")
+    0
+}

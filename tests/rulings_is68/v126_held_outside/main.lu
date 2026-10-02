@@ -1,0 +1,9 @@
+fn main() -> !int {
+    var keep = ""
+    region scratch {
+        let s = "  ab" + "cd  "
+        keep = s.trim()
+    }
+    print("[{keep}]")
+    0
+}

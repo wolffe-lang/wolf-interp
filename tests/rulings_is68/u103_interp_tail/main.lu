@@ -1,0 +1,6 @@
+fn main() -> !int {
+    let n = 3
+    let m = if n > 1 { "n={n}" }
+    print("{m}")
+    0
+}

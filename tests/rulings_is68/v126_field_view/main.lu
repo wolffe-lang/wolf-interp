@@ -1,0 +1,13 @@
+struct Doc { title: str }
+
+fn build() -> str {
+    region scratch {
+        let d = Doc { title: "  re" + "gions  " }
+        d.title.trim()
+    }
+}
+
+fn main() -> !int {
+    print("[{build()}]")
+    0
+}

@@ -1,0 +1,7 @@
+fn main() -> !int {
+    let s = "!hi?"
+    let cut = "!?"
+    let t = s.trim(cut)
+    print("[{t}]")
+    0
+}

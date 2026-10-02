@@ -1,0 +1,18 @@
+# is68 — wolf-interp#169. This row: a `mut` parameter moved out and stored back.
+# `[expected]` is the ruled lupin cell. `[trunk]` is what lupin trunk `6ce7bc8` (release build
+# 93fd8329…) and wolf-lang trunk `12a56b22` (release build eaa22f61…; byte-identical to the
+# published 0.2.20, 24855d5e…, on every probe) `conform-run` answered on kasumi; `[archive]` is
+# the published lupin 0.1.43 (e957c8de…). Probe logs: ~/lanes/is68/evidence/probes*.log.
+issue = "wolf-interp#169"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "2 9\n" }
+
+[trunk]
+lupin   = { verdict = "unsupported", reason = "nested fn `f` declares a parameter mode; closure-recipe parameters carry none in the scoped v1 (#38)" }
+checked = { verdict = "unsupported", reason = "a nested fn in checked execution" }
+native  = { verdict = "exit(0)", stdout = "2 9\n" }
+release = { verdict = "exit(0)", stdout = "2 9\n" }
+
+[archive]
+lupin   = { verdict = "unsupported", reason = "nested fn `f` declares a parameter mode; closure-recipe parameters carry none in the scoped v1 (#38)" }

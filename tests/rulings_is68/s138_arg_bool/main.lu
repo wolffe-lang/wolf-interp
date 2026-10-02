@@ -1,0 +1,6 @@
+fn flag(b: bool) -> int { if b { 1 } else { 0 } }
+
+fn main() -> !int {
+    print("{flag("yes")}")
+    0
+}

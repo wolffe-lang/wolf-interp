@@ -1,0 +1,14 @@
+fn worker(n: int, out: channel[str]) -> !int {
+    let s = "  ab".repeat(n)
+    out.send(s.trim())?
+    0
+}
+
+fn main() -> !int {
+    let out = channel[str](4)
+    let c = spawn proc worker(2, out)
+    let m = c.monitor()
+    let v = out.recv() else "none"
+    print("[{v}]")
+    0
+}

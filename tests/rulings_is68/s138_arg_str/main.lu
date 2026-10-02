@@ -1,0 +1,6 @@
+fn greet(s: str) -> int { s.len }
+
+fn main() -> !int {
+    print("{greet(5)}")
+    0
+}

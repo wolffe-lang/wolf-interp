@@ -1,0 +1,12 @@
+fn build() -> List[byte] {
+    region scratch {
+        let s = "re" + "gions"
+        s.bytes()
+    }
+}
+
+fn main() -> !int {
+    let b = build()
+    print("{b.len}")
+    0
+}

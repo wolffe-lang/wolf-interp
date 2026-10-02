@@ -1,0 +1,12 @@
+fn build() -> str {
+    region scratch {
+        let s = "  re" + "gions,x  "
+        let ps = s.split(",")
+        ps[0]
+    }
+}
+
+fn main() -> !int {
+    print("[{build()}]")
+    0
+}

@@ -1,0 +1,11 @@
+fn tag(n: int) -> str {
+    if n > 0 { "pos" } else { "neg" }
+}
+
+fn main() -> !int {
+    let s: str = tag(1)
+    let b: bool = s.len > 1
+    let t: str = "{s}!"
+    print("{s} {b} {t}")
+    0
+}

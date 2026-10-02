@@ -1,0 +1,7 @@
+fn main() -> !int {
+    var s = "a"
+    let n = 3
+    s = n
+    print(s)
+    0
+}

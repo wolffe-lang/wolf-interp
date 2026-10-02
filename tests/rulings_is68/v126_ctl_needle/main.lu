@@ -1,0 +1,12 @@
+fn build() -> str {
+    region scratch {
+        let p = "x" + "y"
+        let t = "xyz".strip_prefix(p) else "?"
+        t
+    }
+}
+
+fn main() -> !int {
+    print("[{build()}]")
+    0
+}

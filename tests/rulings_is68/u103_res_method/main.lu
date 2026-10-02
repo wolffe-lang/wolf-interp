@@ -1,0 +1,15 @@
+struct C { n: int }
+
+impl C {
+    fn bump(mut self) {
+        self.n = self.n + 1
+        self.n
+    }
+}
+
+fn main() -> !int {
+    var c = C { n: 1 }
+    (mut c).bump()
+    print("{c.n}")
+    0
+}

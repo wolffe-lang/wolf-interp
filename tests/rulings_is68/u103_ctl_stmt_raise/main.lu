@@ -1,0 +1,10 @@
+fn boom() -> () ! {bad} {
+    return bad
+}
+
+fn main() -> !int {
+    let c = true
+    if c { boom() }
+    print("after")
+    0
+}

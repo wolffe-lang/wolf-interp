@@ -1,0 +1,8 @@
+fn boom() -> () ! {bad} {
+    return bad
+}
+
+fn main() {
+    print("hi")
+    boom()
+}

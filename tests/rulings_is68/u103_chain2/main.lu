@@ -1,0 +1,6 @@
+fn main() -> !int {
+    let cents = 200
+    let mark = if cents > 300 { "*" } else if cents > 100 { "+" }
+    print("{mark}")
+    0
+}

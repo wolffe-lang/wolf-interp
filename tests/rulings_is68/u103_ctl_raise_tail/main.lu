@@ -1,0 +1,16 @@
+fn boom() -> () ! {bad} {
+    return bad
+}
+
+fn g(c: bool) -> () ! {bad} {
+    if c { boom() }
+}
+
+fn main() -> !int {
+    g(true) else |_| {
+        print("raised")
+        return 0
+    }
+    print("ok")
+    0
+}

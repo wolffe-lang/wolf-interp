@@ -1,0 +1,7 @@
+fn main() -> !int {
+    let s = "a b"
+    var n = 0
+    for w in s.words(" ") { n = n + 1 }
+    print("{n}")
+    0
+}

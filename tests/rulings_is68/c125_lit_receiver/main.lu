@@ -1,0 +1,4 @@
+fn main() -> !int {
+    print("[{"!hi?".trim("!?")}]")
+    0
+}

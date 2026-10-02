@@ -1,0 +1,11 @@
+struct T { n: int }
+
+impl T {
+    fn trim(self, k: int) -> int { self.n - k }
+}
+
+fn main() -> !int {
+    let t = T { n: 5 }
+    print("{t.trim(2)}")
+    0
+}

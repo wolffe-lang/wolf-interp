@@ -1,0 +1,5 @@
+fn main() -> !int {
+    let b: bool = 1
+    print("{b}")
+    0
+}

@@ -1,0 +1,9 @@
+fn main() -> !int {
+    let s = "  re" + "gions  "
+    var keep = ""
+    region scratch {
+        keep = s.trim()
+    }
+    print("[{keep}]")
+    0
+}

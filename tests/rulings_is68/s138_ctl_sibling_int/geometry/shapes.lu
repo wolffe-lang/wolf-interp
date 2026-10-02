@@ -1,0 +1,7 @@
+//! member: true
+
+/// The square's area.
+pub fn area(side: int) -> int {
+    let s: int = side
+    s * side
+}

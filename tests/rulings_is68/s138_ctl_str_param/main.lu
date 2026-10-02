@@ -1,0 +1,9 @@
+fn f(t: str) -> int {
+    let s: str = t
+    s.len
+}
+
+fn main() -> !int {
+    print("{f("abc")}")
+    0
+}

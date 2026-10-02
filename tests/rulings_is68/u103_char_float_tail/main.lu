@@ -1,0 +1,7 @@
+fn main() -> !int {
+    let c = true
+    if c { 'x' }
+    if c { 1.5 }
+    print("done")
+    0
+}

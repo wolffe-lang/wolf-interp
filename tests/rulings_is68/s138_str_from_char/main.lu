@@ -1,0 +1,5 @@
+fn main() -> !int {
+    let s: str = 'x'
+    print(s)
+    0
+}

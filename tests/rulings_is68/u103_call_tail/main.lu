@@ -1,0 +1,8 @@
+fn seven() -> int { 7 }
+
+fn main() -> !int {
+    let c = true
+    let m = if c { seven() }
+    print("{m}")
+    0
+}

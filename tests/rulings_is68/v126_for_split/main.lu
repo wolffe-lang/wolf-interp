@@ -1,0 +1,17 @@
+fn build() -> str {
+    region scratch {
+        let s = "re" + "gions,here"
+        var first = ""
+        for p in s.split(",") {
+            if first.len == 0 {
+                first = p
+            }
+        }
+        first
+    }
+}
+
+fn main() -> !int {
+    print("[{build()}]")
+    0
+}

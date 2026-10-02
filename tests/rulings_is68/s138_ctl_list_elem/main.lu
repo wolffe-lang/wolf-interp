@@ -1,0 +1,6 @@
+fn main() -> !int {
+    let xs: List[str] = ["a"]
+    let s: str = xs[0]
+    print(s)
+    0
+}

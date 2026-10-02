@@ -1,0 +1,8 @@
+fn clean(w: str) -> str {
+    w.trim(".")
+}
+
+fn main() -> !int {
+    print("[{clean(".hi.")}]")
+    0
+}

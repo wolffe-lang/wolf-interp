@@ -1,0 +1,9 @@
+fn f() -> () {
+    5
+}
+
+fn main() -> !int {
+    f()
+    print("done")
+    0
+}

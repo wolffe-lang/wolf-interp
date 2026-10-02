@@ -1,0 +1,6 @@
+fn main() -> !int {
+    let t = "x"
+    let n: int = t
+    print("{n}")
+    0
+}

@@ -1,0 +1,5 @@
+fn main() -> !int {
+    for x in [1, 2] { x }
+    print("done")
+    0
+}

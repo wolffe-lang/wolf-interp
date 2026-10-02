@@ -1,0 +1,11 @@
+fn main() -> !int {
+    var keep = ""
+    region scratch {
+        let s = "re" + "gions here"
+        for w in s.words() {
+            keep = w
+        }
+    }
+    print("[{keep}]")
+    0
+}

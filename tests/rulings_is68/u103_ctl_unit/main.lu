@@ -1,0 +1,6 @@
+fn main() -> !int {
+    let c = true
+    let m = if c { print("x") }
+    print("{m}")
+    0
+}

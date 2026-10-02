@@ -1,0 +1,5 @@
+fn main() -> !int {
+    let s = "  hi  "
+    print("[{s.trim()}] [{s.trim_start()}] [{s.trim_end()}]")
+    0
+}

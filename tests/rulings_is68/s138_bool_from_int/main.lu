@@ -1,0 +1,9 @@
+fn f(n: int) -> bool {
+    let b: bool = n
+    b
+}
+
+fn main() -> !int {
+    print("{f(1)}")
+    0
+}

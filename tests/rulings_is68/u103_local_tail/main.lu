@@ -1,0 +1,7 @@
+fn main() -> !int {
+    let c = true
+    let s = "star"
+    let m = if c { s }
+    print("{m}")
+    0
+}

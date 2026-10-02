@@ -1,0 +1,7 @@
+fn ident[T](x: T) -> T { x }
+
+fn main() -> !int {
+    let s: str = ident("a")
+    print(s)
+    0
+}

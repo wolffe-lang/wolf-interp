@@ -1,0 +1,15 @@
+fn maybe(n: int) -> int ! {none} {
+    if n > 5 { return none }
+    n
+}
+
+fn g(n: int) -> int ! {none} {
+    if n > 1 { maybe(n) }
+    7
+}
+
+fn main() -> !int {
+    let v = g(9) else 0
+    print("{v}")
+    0
+}

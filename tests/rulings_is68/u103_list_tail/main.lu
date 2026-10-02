@@ -1,0 +1,6 @@
+fn main() -> !int {
+    let c = true
+    if c { [1, 2] }
+    print("done")
+    0
+}

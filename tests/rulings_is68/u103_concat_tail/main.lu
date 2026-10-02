@@ -1,0 +1,6 @@
+fn main() -> !int {
+    let s = "a"
+    if s.len > 0 { s + "b" }
+    print("done")
+    0
+}
