@@ -3844,16 +3844,55 @@ fn every_materializing_str_producer_dies_with_its_region() {
 fn a_view_product_is_no_site_and_escapes_clean() {
     // The other side of `[mem.str.view]`, "unchanged and allocates nothing":
     // a view of a LITERAL returned out of the region runs on both compiler
-    // tiers and here. (A view of a region-BUILT `str` also runs clean on
-    // both compiler tiers and here — the clause is silent on whether a view
-    // carries its receiver's sites, and that silence is filed upstream
-    // rather than decided in this machine.)
+    // tiers and here. A view of a region-BUILT `str` is the other case since
+    // s171 (wolf-lang#392): it carries its receiver's sites, E1010 on every
+    // compiler tier and `region-fault` here (is68, wolf-interp#126,
+    // `a_view_of_a_built_str_dies_with_its_region` below).
     for (expr, want) in [
         ("\"  re  \".trim()", "re\n"),
         ("\"re\".strip_prefix(\"r\") else \"?\"", "e\n"),
     ] {
         assert_eq!(stdout(&scratch_return(expr)), want, "{expr}");
     }
+}
+
+#[test]
+fn a_view_of_a_built_str_dies_with_its_region() {
+    // `[mem.region.escape]`, s171's extension: "a `[mem.str.view]` product
+    // carries its receiver's sites" — the family `trim`/`trim_start`/
+    // `trim_end`, `get`, `strip_prefix`/`strip_suffix` and the pieces of
+    // `split`/`words`/`lines`, and the slice. wolf 0.2.20 answers E1010 on
+    // every one of these on checked, native and release; 0.1.43 returned
+    // the view and printed from the freed region (wolf-interp#126).
+    for expr in [
+        "(\"  re\" + \"gions  \").trim()",
+        "(\"  re\" + \"gions\").trim_start()",
+        "(\"re\" + \"gions  \").trim_end()",
+        "(\"re\" + \"gions\").get(1..3) else \"?\"",
+        "(\"re\" + \"gions\").strip_prefix(\"r\") else \"?\"",
+        "(\"re\" + \"gions\").strip_suffix(\"s\") else \"?\"",
+        "(\"re\" + \"gions\")[1..3]",
+        "(\"re\" + \"gions\").split(\"g\")[0]",
+    ] {
+        assert_eq!(
+            trap_kind(&scratch_return(expr)),
+            TrapKind::RegionFault,
+            "{expr}"
+        );
+    }
+    // Only the receiver's sites flow: a view of a literal whose NEEDLE was
+    // built in the region is a subslice of the literal, and escapes clean.
+    let needle = "fn build() -> str {\n\
+                  \x20   region scratch {\n\
+                  \x20       let p = \"x\" + \"y\"\n\
+                  \x20       \"xyz\".strip_prefix(p) else \"?\"\n\
+                  \x20   }\n\
+                  }\n\
+                  fn main() -> !int {\n\
+                  \x20   print(\"{build()}\")\n\
+                  \x20   0\n\
+                  }\n";
+    assert_eq!(stdout(needle), "z\n");
 }
 
 #[test]
