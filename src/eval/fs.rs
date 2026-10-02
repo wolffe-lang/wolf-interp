@@ -282,11 +282,28 @@ impl FsTable {
     /// `fs_read_at`) acts on: for `0`, `1` and `2` the process's standard
     /// stream, duplicated for this one call ([`std_stream`]); a table slot
     /// otherwise. A closed or forged handle is `io`.
-    fn handle_file(&mut self, handle: i128) -> Result<HandleFile<'_>, Row> {
+    ///
+    /// **windows declines the standard streams by name.** What a handle IS
+    /// there is `GetFileType`'s answer, and this crate admits no `unsafe` to
+    /// call it; the metadata std reads instead calls an anonymous pipe a
+    /// regular file whose size is the bytes waiting in it (measured on the
+    /// runner, wolf-lang CI run 37062798818), so answering from it would be a
+    /// wrong `kind` and a seek that "succeeds" on a pipe. `[os.fs.std]` names
+    /// the decline. A handle an open made is a disk file there (containment
+    /// refuses every device and pipe name), so it is served.
+    fn handle_file(&mut self, handle: i128) -> Result<HandleFile<'_>, FsErr> {
         if (0..FIRST_HANDLE as i128).contains(&handle) {
-            return std_stream(handle).map(HandleFile::Std).ok_or("io");
+            if cfg!(windows) {
+                return Err(FsErr::Outside(format!(
+                    "descriptor {handle} is a standard stream; on windows what it IS is \
+                     `GetFileType`'s answer, which this machine (no `unsafe`) cannot ask, \
+                     so the call is declined rather than answered from metadata that calls \
+                     a pipe a file ([os.fs.std])"
+                )));
+            }
+            return std_stream(handle).map(HandleFile::Std).ok_or(FsErr::Row("io"));
         }
-        self.file(handle).map(HandleFile::Table)
+        self.file(handle).map(HandleFile::Table).map_err(FsErr::Row)
     }
 
     fn file(&mut self, handle: i128) -> Result<&mut File, Row> {

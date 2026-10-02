@@ -264,6 +264,7 @@ tell_unmoved=4 closed=io forged=io\ncleaned=true\n",
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn the_standard_streams_with_stdin_a_file() {
     let dir = scratch("fs-offset-std-file");
@@ -281,4 +282,18 @@ fn the_standard_streams_with_stdin_a_pipe() {
         &run_program(&dir, STD_DESCRIPTORS, Stdin::Pipe),
         "fstat0 kind=2\nseek0 unseekable\nread_at0 unseekable\ntell0 unseekable\nfstat2 kind=2\n",
     );
+}
+
+/// windows: the four calls on a standard stream are declined BY NAME
+/// (`[os.fs.std]`) — `GetFileType` is the only honest classifier there and
+/// this crate admits no `unsafe` to call it.
+#[cfg(windows)]
+#[test]
+fn the_standard_streams_are_declined_by_name_on_windows() {
+    let dir = scratch("fs-offset-std-windows");
+    let output = run_program(&dir, STD_DESCRIPTORS, Stdin::File);
+    assert_eq!(output.status.code(), Some(4), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unsupported"), "{stderr}");
+    assert!(stderr.contains("GetFileType"), "{stderr}");
 }
