@@ -5403,9 +5403,8 @@ fn a_flow_out_of_an_argument_list_withdraws_the_calls_claims_and_protectors() {
     assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "2\n9\n[1, 5, 3]\n");
     // The abandoned list says so: one claim (`mut xs`) and one protector.
     assert!(
-        run.trace
-            .iter()
-            .any(|line| line.contains("1 claim(s) and 1 protector(s) withdrawn: the call was never entered")),
+        run.trace.iter().any(|line| line
+            .contains("1 claim(s) and 1 protector(s) withdrawn: the call was never entered")),
         "the withdrawal is traced:\n{}",
         run.trace.join("\n")
     );

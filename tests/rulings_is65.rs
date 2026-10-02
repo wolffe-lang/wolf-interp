@@ -326,5 +326,8 @@ fn repl_trap_then_write() {
         !out.contains("trap(exclusivity)"),
         "the abandoned list's claim on `xs` outlived the trap:\n{out}"
     );
-    assert!(out.contains("[1, 3]"), "the push after the trap landed:\n{out}");
+    assert!(
+        out.contains("[1, 3]"),
+        "the push after the trap landed:\n{out}"
+    );
 }
