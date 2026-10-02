@@ -3190,7 +3190,11 @@ impl Machine {
         // `[type.unit.discard]` names; wolf 0.2.20's native and release exit
         // 0 on a unit `main` whose tail raises). Through 0.1.43 the tail's
         // value came back: `fn main() { …; 3 }` exited 3.
-        let value = if returns_unit(decl) { Value::Unit } else { value };
+        let value = if returns_unit(decl) {
+            Value::Unit
+        } else {
+            value
+        };
         // The declared return type types the value it returns (issue #14's
         // third shape): `math.int_max() - 1` is `int` arithmetic because
         // `int_max` says `-> int`, wherever the callee lives. Without this a
@@ -5033,11 +5037,13 @@ impl Machine {
                 // `rulings_is68/u103_ctl_raise_tail`), while an ok value of
                 // a `T ! row` tail is the discard `[type.unit.discard]` says
                 // (native and release print `()`).
-                Ok(if ends_without_else(otherwise.as_ref()) && !is_raise(&value) {
-                    Value::Unit
-                } else {
-                    value
-                })
+                Ok(
+                    if ends_without_else(otherwise.as_ref()) && !is_raise(&value) {
+                        Value::Unit
+                    } else {
+                        value
+                    },
+                )
             }
             ExprKind::Match { scrutinee, arms } => {
                 // The ARM BOUNDARY, per the spec's letter (s130's ruling, is31):

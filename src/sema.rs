@@ -3048,8 +3048,7 @@ fn fn_returns_unit(decl: &FnDecl) -> bool {
     match &decl.ret {
         None => true,
         Some(ret) => {
-            ret.row.is_none()
-                && matches!(&*ret.ty.kind, TypeKind::Tuple(parts) if parts.is_empty())
+            ret.row.is_none() && matches!(&*ret.ty.kind, TypeKind::Tuple(parts) if parts.is_empty())
         }
     }
 }
@@ -3246,9 +3245,7 @@ impl TierWalk<'_> {
             | ExprKind::StructLit { .. } => true,
             ExprKind::Tuple(items) => !items.is_empty(),
             ExprKind::Group(inner) => self.typed_value(inner),
-            ExprKind::Path(path) if path.is_single() => {
-                known(self.lookup(&path.segments[0].name))
-            }
+            ExprKind::Path(path) if path.is_single() => known(self.lookup(&path.segments[0].name)),
             ExprKind::Unary { .. } => known(self.classify(expr)),
             ExprKind::Binary { op, lhs, rhs } => {
                 use crate::ast::BinOp;
@@ -3374,15 +3371,23 @@ impl TierWalk<'_> {
                 // `if c { v } else if d { … }` with no final `else`: the
                 // trailing else-less `if` is `()` against a typed then-tail,
                 // and the compiler reports there first.
-                if typed && matches!(&*other.kind, ExprKind::If { otherwise: None, .. }) {
+                if typed
+                    && matches!(
+                        &*other.kind,
+                        ExprKind::If {
+                            otherwise: None,
+                            ..
+                        }
+                    )
+                {
                     return Some(unit_tail_diag(other.span));
                 }
                 self.expr(other)
             }
             ExprKind::Loop { body } if self.late.is_some() => self.block_tail(body, true).0,
-            ExprKind::While { cond, body } if self.late.is_some() => self
-                .expr(cond)
-                .or_else(|| self.block_tail(body, true).0),
+            ExprKind::While { cond, body } if self.late.is_some() => {
+                self.expr(cond).or_else(|| self.block_tail(body, true).0)
+            }
             ExprKind::Str(lit) => self.str_lit(lit),
             ExprKind::Group(inner)
             | ExprKind::Try(inner)
