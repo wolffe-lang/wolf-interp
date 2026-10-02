@@ -738,10 +738,16 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //  `memory/mut_elem_excl.lu`, `fail(E1002)` -> `run(exit=0, stdout="2\n")`
     //  (eg02). The registry holds at 542, the same key set, and no new
     //  namespace.)
+    // (778 -> 861 at cdde128a, r26, wolf-lang v0.2.20: EIGHTY-THREE new
+    //  files, every one an entry, none edited away; TWO `check:` lines
+    //  changed — `memory/elem_dyn_read_after_mut.lu` and
+    //  `memory/mut_read_overlap.lu`, `fail(E1002)` -> `run(exit=0, …)`
+    //  (eg03, s186). The registry gains TWO anchors, 542 -> 544
+    //  (`mem.tier0.excl.4`, `type.row.else`), and no new namespace.)
     let report = report();
     assert_eq!(
         report.total(),
-        778,
+        861,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
@@ -761,7 +767,9 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     // `resolve/sibling_diag/geometry/shapes.lu`.
     // 702 -> 733 at c2401f05 (r25, wolf-lang v0.2.19): thirty-one new files,
     // every one an entry. `members` holds at 45.
-    assert_eq!(report.entries(), 733);
+    // 733 -> 816 at cdde128a (r26, wolf-lang v0.2.20): eighty-three new
+    // files, every one an entry. `members` holds at 45.
+    assert_eq!(report.entries(), 816);
     assert_eq!(report.members(), 45);
 }
 
