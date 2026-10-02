@@ -1354,9 +1354,11 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| crate::rowmatch::defer_try_check(program))
         .or_else(|| crate::rowmatch::row_match_check(program))
         // is68: `[type.unit.context]`'s static half (wolf-interp#103) and
-        // `[mem.str.ws]`'s arity (wolf-interp#125), last in the chain for
-        // the same reason.
+        // `[mem.str.ws]`'s arity (wolf-interp#125), then `str` and `bool` in
+        // the declared-scalar lattice (wolf-interp#138), last in the chain
+        // for the same reason.
         .or_else(|| tier_late_check(program))
+        .or_else(|| scalar_wide_check(program))
 }
 
 /// `[type.list.lit]` (s158, wolf-lang#154; wolf-interp#106) — the list
@@ -5433,6 +5435,10 @@ enum ScalarTy {
     ListChar,
     /// A `List` whose element is an integer type.
     ListInt,
+    /// `str` — read only by [`scalar_wide_check`] (is68, wolf-interp#138).
+    Str,
+    /// `bool` — read only by [`scalar_wide_check`] (is68, wolf-interp#138).
+    Bool,
     /// Say nothing.
     Unknown,
 }
@@ -5480,6 +5486,59 @@ fn scalar_clash(slot: ScalarTy, found: ScalarTy) -> bool {
         (a, ScalarTy::Int) | (ScalarTy::Int, a) => a.is_width_bearing(),
         _ => false,
     }
+}
+
+/// [`scalar_wide_check`]'s rule (is68, wolf-interp#138): a `str` or a `bool`
+/// is no other scalar, so either one against a KNOWN different type is a
+/// clash; [`scalar_clash`]'s width-bearing rule is kept beside it. `Unknown`
+/// on either side still says nothing.
+fn scalar_clash_wide(slot: ScalarTy, found: ScalarTy) -> bool {
+    if scalar_clash(slot, found) {
+        return true;
+    }
+    match (slot, found) {
+        (ScalarTy::Unknown, _) | (_, ScalarTy::Unknown) => false,
+        (ScalarTy::Str | ScalarTy::Bool, _) | (_, ScalarTy::Str | ScalarTy::Bool) => {
+            slot != found
+        }
+        _ => false,
+    }
+}
+
+/// How a type reads in [`wide_clash_diag`]'s sentence.
+fn scalar_ty_name(ty: ScalarTy) -> &'static str {
+    match ty {
+        ScalarTy::Byte => "byte",
+        ScalarTy::Char => "char",
+        ScalarTy::Int => "int",
+        ScalarTy::ListByte => "List[byte]",
+        ScalarTy::ListChar => "List[char]",
+        ScalarTy::ListInt => "List[int]",
+        ScalarTy::Str => "str",
+        ScalarTy::Bool => "bool",
+        ScalarTy::Unknown => "a type this rung does not name",
+    }
+}
+
+/// The E0401 a `str`/`bool` clash earns, at the offending operand — the
+/// counterparty's span on every `rulings_is68/s138_*` witness (wolf 0.2.20).
+fn wide_clash_diag(slot: ScalarTy, found: ScalarTy, span: Span, position: &str) -> Diag {
+    let (want, have) = (scalar_ty_name(slot), scalar_ty_name(found));
+    let anchor = if matches!(slot, ScalarTy::Str) || matches!(found, ScalarTy::Str) {
+        "type.str"
+    } else {
+        "type.numlit.kind"
+    };
+    Diag::new(
+        "E0401",
+        span,
+        anchor,
+        format!(
+            "{position} is `{want}` and this is `{have}`: no conversion between the two \
+             happens implicitly — build the text with interpolation (\"{{value}}\"), compare \
+             to make a `bool`, or parse a `str` with `to_int()`"
+        ),
+    )
 }
 
 /// The E0401 a clash earns, at the offending expression's own span — which is
@@ -5604,9 +5663,47 @@ struct ScalarWalk<'a> {
     fields: &'a BTreeMap<String, BTreeMap<String, ScalarTy>>,
     /// The enclosing function's declared return type.
     ret: ScalarTy,
+    /// [`scalar_wide_check`]'s walk (is68): `str` and `bool` are types here.
+    /// `false` is the original byte/char walk, unchanged.
+    wide: bool,
+    /// Block nesting below the fn body (1 is the body itself): the wide walk
+    /// judges a block's tail against the declared result only at the body.
+    depth: usize,
 }
 
 impl ScalarWalk<'_> {
+    /// The scalar a type spelling names on this walk.
+    fn ty_of(&self, ty: &Type) -> ScalarTy {
+        if self.wide
+            && let TypeKind::Path { path, args } = &*ty.kind
+            && args.is_empty()
+            && path.is_single()
+        {
+            match path.segments[0].name.as_str() {
+                "str" => return ScalarTy::Str,
+                "bool" => return ScalarTy::Bool,
+                _ => {}
+            }
+        }
+        scalar_ty_of_type(ty)
+    }
+
+    fn clash(&self, slot: ScalarTy, found: ScalarTy) -> bool {
+        if self.wide {
+            scalar_clash_wide(slot, found)
+        } else {
+            scalar_clash(slot, found)
+        }
+    }
+
+    fn clash_diag(&self, slot: ScalarTy, found: ScalarTy, span: Span, position: &str) -> Diag {
+        if scalar_clash(slot, found) {
+            scalar_clash_diag(slot, span, position)
+        } else {
+            wide_clash_diag(slot, found, span, position)
+        }
+    }
+
     fn lookup(&self, name: &str) -> ScalarTy {
         for scope in self.scopes.iter().rev() {
             for (n, ty) in scope.iter().rev() {
@@ -5622,6 +5719,12 @@ impl ScalarWalk<'_> {
         if let Some(scope) = self.scopes.last_mut() {
             scope.push((name.to_owned(), ty));
         }
+    }
+
+    fn lookup_is_local(&self, name: &str) -> bool {
+        self.scopes
+            .iter()
+            .any(|scope| scope.iter().any(|(n, _)| n == name))
     }
 
     /// Every name a pattern binds, declared `Unknown`. A `for` element, a
@@ -5661,9 +5764,18 @@ impl ScalarWalk<'_> {
             // `var c = 'a'` declares nothing and the later `c = 65` is
             // measured against `Unknown`.
             ExprKind::Char(_) => ScalarTy::Char,
+            // is68: a `str` literal (an interpolation included) and a `bool`
+            // literal, on the wide walk only.
+            ExprKind::Str(_) if self.wide => ScalarTy::Str,
+            ExprKind::Bool(_) if self.wide => ScalarTy::Bool,
             ExprKind::Group(inner) => self.classify(inner),
             ExprKind::Path(path) if path.is_single() => self.lookup(&path.segments[0].name),
-            ExprKind::Cast { ty, .. } => scalar_ty_of_type(ty),
+            ExprKind::Cast { ty, .. } => self.ty_of(ty),
+            // `-n` is an `int`; `!n`, a borrow or a deref is not, and the wide
+            // walk says nothing about them.
+            ExprKind::Unary { op, .. } if self.wide && !matches!(op, crate::ast::UnOp::Neg) => {
+                ScalarTy::Unknown
+            }
             // `[type.byte.op]`: every arithmetic and bitwise operator widens
             // its byte operand to `int` FIRST and yields `int`, which is why
             // `b + 1` is not a finding and `b += 1` is (the compound half is
@@ -5727,6 +5839,7 @@ impl ScalarWalk<'_> {
         if let ExprKind::Path(path) = &*callee.kind
             && path.is_single()
             && let Some(sig) = self.sigs.get(&path.segments[0].name)
+            && !(self.wide && self.lookup_is_local(&path.segments[0].name))
         {
             return sig.ret;
         }
@@ -5791,25 +5904,44 @@ fn is_comparison_op(op: crate::ast::BinOp) -> bool {
 impl ScalarWalk<'_> {
     fn block(&mut self, block: &Block) -> Option<Diag> {
         self.scopes.push(Vec::new());
+        self.depth += 1;
+        let out = self.block_inner(block);
+        self.depth -= 1;
+        self.scopes.pop();
+        out
+    }
+
+    fn block_inner(&mut self, block: &Block) -> Option<Diag> {
         for stmt in &block.stmts {
             if let Some(diag) = self.stmt(stmt) {
-                self.scopes.pop();
                 return Some(diag);
             }
         }
-        let out = block
+        block
             .tail
             .as_deref()
-            .and_then(|tail| self.expr(tail).or_else(|| self.returned(tail)));
-        self.scopes.pop();
-        out
+            .and_then(|tail| self.expr(tail).or_else(|| self.returned(tail)))
     }
 
     /// The declared return type is a slot like any other: a function that says
     /// `-> byte` and hands back an `int` is the E0401 a binding would be.
     fn returned(&self, value: &Expr) -> Option<Diag> {
-        scalar_clash(self.ret, self.classify(value))
-            .then(|| scalar_clash_diag(self.ret, value.span, "this function's return type"))
+        let found = self.classify(value);
+        // The wide walk judges a `str`/`bool` pair only at the body's own
+        // tail (and at a `return`, below): a nested block's tail is not the
+        // function's result.
+        if self.wide && !scalar_clash(self.ret, found) && self.depth > 1 {
+            return None;
+        }
+        self.clash(self.ret, found)
+            .then(|| self.clash_diag(self.ret, found, value.span, "this function's return type"))
+    }
+
+    /// A `return` operand: the declared result whatever the depth.
+    fn returned_operand(&self, value: &Expr) -> Option<Diag> {
+        let found = self.classify(value);
+        self.clash(self.ret, found)
+            .then(|| self.clash_diag(self.ret, found, value.span, "this function's return type"))
     }
 
     fn stmt(&mut self, stmt: &Stmt) -> Option<Diag> {
@@ -5827,13 +5959,17 @@ impl ScalarWalk<'_> {
                 // operand first, so `b += 1` assigns an `int` to a `byte`.
                 // The machine refuses it dynamically since is36; this is the
                 // same refusal one phase earlier, where the compilers answer.
+                // (A `str`'s `+=` is concatenation, `[type.str.concat]`, and
+                // the wide walk says nothing about a compound `bool`.)
                 let found = if matches!(op, crate::ast::AssignOp::Assign) {
                     self.classify(value)
+                } else if matches!(slot, ScalarTy::Str | ScalarTy::Bool) {
+                    ScalarTy::Unknown
                 } else {
                     ScalarTy::Int
                 };
-                scalar_clash(slot, found)
-                    .then(|| scalar_clash_diag(slot, value.span, "this place's type"))
+                self.clash(slot, found)
+                    .then(|| self.clash_diag(slot, found, value.span, "this place's type"))
             }
             StmtKind::AssumeNoalias(operands) => {
                 operands.iter().find_map(|operand| self.expr(operand))
@@ -5842,6 +5978,29 @@ impl ScalarWalk<'_> {
             StmtKind::Expr(expr) => self.expr(expr),
             StmtKind::Item(item) => match &item.kind {
                 ItemKind::Binding(binding) => self.binding(binding),
+                // The wide walk reads a nested fn against its OWN signature.
+                ItemKind::Fn(decl) if self.wide => {
+                    let body = decl.body.as_ref()?;
+                    let ret = decl
+                        .ret
+                        .as_ref()
+                        .map_or(ScalarTy::Unknown, |ret| self.ty_of(&ret.ty));
+                    let (outer_ret, outer_depth) = (self.ret, self.depth);
+                    self.ret = ret;
+                    self.depth = 0;
+                    self.scopes.push(Vec::new());
+                    for param in &decl.params {
+                        if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
+                            let ty = self.ty_of(ty);
+                            self.declare(&name.name, ty);
+                        }
+                    }
+                    let out = self.block(body);
+                    self.scopes.pop();
+                    self.ret = outer_ret;
+                    self.depth = outer_depth;
+                    out
+                }
                 ItemKind::Fn(decl) => decl.body.as_ref().and_then(|body| self.block(body)),
                 _ => None,
             },
@@ -5855,11 +6014,12 @@ impl ScalarWalk<'_> {
         let annotated = binding
             .ty
             .as_ref()
-            .map_or(ScalarTy::Unknown, scalar_ty_of_type);
+            .map_or(ScalarTy::Unknown, |ty| self.ty_of(ty));
         let found = self.classify(&binding.value);
-        if scalar_clash(annotated, found) {
-            return Some(scalar_clash_diag(
+        if self.clash(annotated, found) {
+            return Some(self.clash_diag(
                 annotated,
+                found,
                 binding.value.span,
                 "this binding's declared type",
             ));
@@ -5974,8 +6134,10 @@ impl ScalarWalk<'_> {
                 fields.iter().find_map(|field| {
                     let value = &field.value;
                     let slot = *declared.get(&field.name.name)?;
-                    scalar_clash(slot, self.classify(value))
-                        .then(|| scalar_clash_diag(slot, value.span, "this field's declared type"))
+                    let found = self.classify(value);
+                    self.clash(slot, found).then(|| {
+                        self.clash_diag(slot, found, value.span, "this field's declared type")
+                    })
                 })
             }
             ExprKind::Tuple(items) | ExprKind::List(items) => {
@@ -6032,7 +6194,13 @@ impl ScalarWalk<'_> {
             ExprKind::Loop { body } => self.block(body),
             ExprKind::Return(value) => {
                 let value = value.as_ref()?;
-                self.expr(value).or_else(|| self.returned(value))
+                self.expr(value).or_else(|| {
+                    if self.wide {
+                        self.returned_operand(value)
+                    } else {
+                        self.returned(value)
+                    }
+                })
             }
             ExprKind::Break(value) => value.as_ref().and_then(|value| self.expr(value)),
             ExprKind::Closure { params, body, .. } => {
@@ -6041,10 +6209,18 @@ impl ScalarWalk<'_> {
                     let ty = param
                         .ty
                         .as_ref()
-                        .map_or(ScalarTy::Unknown, scalar_ty_of_type);
+                        .map_or(ScalarTy::Unknown, |ty| self.ty_of(ty));
                     self.declare(&param.name.name, ty);
                 }
+                // A `return` in a closure returns from the closure, whose
+                // result this walk does not read: the wide walk says nothing
+                // about it.
+                let outer_ret = self.ret;
+                if self.wide {
+                    self.ret = ScalarTy::Unknown;
+                }
                 let out = self.expr(body);
+                self.ret = outer_ret;
                 self.scopes.pop();
                 out
             }
@@ -6112,9 +6288,16 @@ impl ScalarWalk<'_> {
             && let Some(sig) = self.sigs.get(&path.segments[0].name)
             && sig.params.len() == args.len()
         {
+            // A local of the callee's name makes the call a call through a
+            // value; the wide walk does not read the module fn's signature
+            // there (the byte walk never asked).
+            if self.wide && self.lookup_is_local(&path.segments[0].name) {
+                return None;
+            }
             return sig.params.iter().zip(args).find_map(|(slot, arg)| {
-                scalar_clash(*slot, self.classify(&arg.expr)).then(|| {
-                    scalar_clash_diag(*slot, arg.expr.span, "this parameter's declared type")
+                let found = self.classify(&arg.expr);
+                self.clash(*slot, found).then(|| {
+                    self.clash_diag(*slot, found, arg.expr.span, "this parameter's declared type")
                 })
             });
         }
@@ -6160,6 +6343,39 @@ impl ScalarWalk<'_> {
 /// deterministic pass per function body; the first finding wins, because
 /// `[proto.cmp.phase]` compares the first diagnostic and a record carries one.
 fn scalar_check(program: &Program) -> Option<Diag> {
+    scalar_check_with(program, false)
+}
+
+/// wolf-interp#138 (is68): `str` and `bool` join the lattice. s181's program
+/// — `let s: str = side` with `side: int`, in a sibling module — ran here
+/// (`exit(0)`) where every compiler tier answers E0401 at `side`, and so did
+/// the same body in the root module: the declared-scalar pass knew `byte`,
+/// `char` and the integers and nothing else, so a `str` or `bool` slot
+/// against any other known scalar was never a clash. The wide walk is the
+/// same pass with two more types, in every position it already reads — a
+/// `let` annotation, an assignment, a return, an argument, a struct field —
+/// run LAST in the resolve chain so the byte/char rows keep their first
+/// diagnostics. A diagnostic in a sibling file names that file
+/// ([`Module::item_files`], `[proto.record.diag]`).
+fn scalar_wide_check(program: &Program) -> Option<Diag> {
+    scalar_check_with(program, true)
+}
+
+fn scalar_check_with(program: &Program, wide: bool) -> Option<Diag> {
+    let ty_of = |ty: &Type| -> ScalarTy {
+        if wide
+            && let TypeKind::Path { path, args } = &*ty.kind
+            && args.is_empty()
+            && path.is_single()
+        {
+            match path.segments[0].name.as_str() {
+                "str" => return ScalarTy::Str,
+                "bool" => return ScalarTy::Bool,
+                _ => {}
+            }
+        }
+        scalar_ty_of_type(ty)
+    };
     for module in program.modules.values() {
         let mut sigs: BTreeMap<String, ScalarSig> = BTreeMap::new();
         let mut fields: BTreeMap<String, BTreeMap<String, ScalarTy>> = BTreeMap::new();
@@ -6170,28 +6386,41 @@ fn scalar_check(program: &Program) -> Option<Diag> {
                         .params
                         .iter()
                         .map(|param| match &param.kind {
-                            crate::ast::ParamKind::Named { ty, .. } => scalar_ty_of_type(ty),
+                            crate::ast::ParamKind::Named { ty, .. } => ty_of(ty),
                             crate::ast::ParamKind::SelfParam { .. } => ScalarTy::Unknown,
                         })
                         .collect();
+                    // A fallible result (`-> str ! {…}`) is a `Fallible`
+                    // type, which neither walk names.
                     let ret = decl
                         .ret
                         .as_ref()
-                        .map_or(ScalarTy::Unknown, |ret| scalar_ty_of_type(&ret.ty));
+                        .filter(|ret| !wide || ret.row.is_none())
+                        .map_or(ScalarTy::Unknown, |ret| ty_of(&ret.ty));
                     sigs.insert(name.clone(), ScalarSig { params, ret });
                 }
                 Def::Struct(def) => {
                     let declared = def
                         .fields
                         .iter()
-                        .map(|field| (field.name.name.clone(), scalar_ty_of_type(&field.ty)))
+                        .map(|field| (field.name.name.clone(), ty_of(&field.ty)))
                         .collect();
                     fields.insert(name.clone(), declared);
                 }
                 _ => {}
             }
         }
-        for decl in each_fn(module) {
+        // The fn items by name (for the file a wide diagnostic names), then
+        // the methods — [`each_fn`]'s order.
+        let named = module.items.iter().filter_map(|(name, (def, _))| match def {
+            Def::Fn(decl) => Some((Some(name), &**decl)),
+            _ => None,
+        });
+        let methods = module
+            .methods
+            .values()
+            .flat_map(|methods| methods.values().flatten().map(|m| (None, &*m.decl)));
+        for (name, decl) in named.chain(methods) {
             let mut walk = ScalarWalk {
                 scopes: vec![Vec::new()],
                 sigs: &sigs,
@@ -6199,17 +6428,23 @@ fn scalar_check(program: &Program) -> Option<Diag> {
                 ret: decl
                     .ret
                     .as_ref()
-                    .map_or(ScalarTy::Unknown, |ret| scalar_ty_of_type(&ret.ty)),
+                    .filter(|ret| !wide || ret.row.is_none())
+                    .map_or(ScalarTy::Unknown, |ret| ty_of(&ret.ty)),
+                wide,
+                depth: 0,
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
-                    walk.declare(&name.name, scalar_ty_of_type(ty));
+                    walk.declare(&name.name, ty_of(ty));
                 }
             }
             if let Some(body) = &decl.body
                 && let Some(diag) = walk.block(body)
             {
-                return Some(diag);
+                return Some(match name.and_then(|name| module.item_files.get(name)) {
+                    Some(file) if wide => diag.in_file(file.clone()),
+                    _ => diag,
+                });
             }
         }
         for (def, _) in module.items.values() {
@@ -6219,6 +6454,8 @@ fn scalar_check(program: &Program) -> Option<Diag> {
                     sigs: &sigs,
                     fields: &fields,
                     ret: ScalarTy::Unknown,
+                    wide,
+                    depth: 0,
                 };
                 if let Some(diag) = walk.binding(binding) {
                     return Some(diag);
