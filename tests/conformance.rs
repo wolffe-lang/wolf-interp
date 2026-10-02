@@ -177,6 +177,9 @@ fn declaration_read_code(case: &Case) -> Option<&str> {
         ]
         .as_slice(),
         "E0419" => ["type.list.lit"].as_slice(),
+        // is68 (wolf-interp#125): `[mem.str.ws]`'s "the family takes no
+        // argument" is decided where the receiver is visibly a `str`.
+        "E0402" => ["mem.str.ws"].as_slice(),
         "E0610" => ["type.err.alias"].as_slice(),
         "E0409" => ["type.row.operand"].as_slice(),
         "E0417" => ["mem.map.absent"].as_slice(),
