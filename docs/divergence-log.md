@@ -6531,6 +6531,72 @@ Slips, all mine, all repaired:
 - the first head run, at `2cc8951`, failed `cargo fmt --check` and one
   clippy `manual_contains`; `5fffc6d` is the rustfmt and the fix.
 
+#### §4 — evidence index
+
+Commits:
+- `f191cda` §1–§3; `58574d0` §3 addendum and §3a; the last commit this
+  section and §5
+- `a804d40` 26 witnesses (21 red); `2cc8951` the consumed row's cell;
+  `61cb7d8` chapter 6's three shapes (bs57)
+- `068c2ab` the static reader, E0801, E0611 and the by-name refusal
+  (`src/rowmatch.rs`, `sema`'s chain, `frontend::admit`); `de1d89c` the
+  two-half dispatch and `Rule::RowMatch`; `9eb3cbf` the lint
+- `5fffc6d` rustfmt and clippy; `1648ea7` E0816 (s197's code) and the
+  mixed shapes by name; `44a241b` CHANGELOG
+
+Artifacts on kasumi under `~/lanes/is67/` (`archives/`, `evidence/`,
+`probes/`, `scripts/`, `corpora/`, the read-only clones `wolf-lang-s196/`
+at s197 `68d80376` and its worktree `wl-s196wt/` at s196 `7a8be823`).
+Archives: lupin 0.1.43 `e957c8de…` (binary `3b0702c0…`) and wolf 0.2.20
+`24855d5e…`, digests equal to the release pages' (`setup.log`); lupin
+trunk `lupin-trunk-6d6cde5` `cb8d424c…`; head `lupin-head-1648ea7`
+`c1b8f6ac…` (the src head; `61cb7d8` adds witnesses only); wolf-lang
+s196 `wolf` `3bf39452…`, s197 `wolf` `3f7e29ce…`.
+- inputs: `probes-archive-0.1.43-wolf-0.2.20.log` (34 probes on lupin
+  0.1.43 and wolf 0.2.20's three tiers), `probes-trunk-6d6cde5.log`
+  (identical lupin lines), `probes-closure-archive-0.1.43-wolf-0.2.20.log`,
+  `probes-book-archive-0.1.43-wolf-0.2.20.log` (bs57's three shapes)
+- red: `red-a804d40.log` (`rulings_is67`: 5 passed, 21 failed,
+  `EXIT=101`)
+- green: `witnesses-head-1648ea7.log` (the 26 rows, lupin head beside wolf
+  0.2.20), `probes-head-1648ea7.log` (the probes, s197's nine rows
+  included), `probes-book-head-1648ea7.log`, `green-61cb7d8.log`
+  (`rulings_is67` 29/29, `EXIT=0`); `wip-build.log`'s `rowmatch` unit
+  tests ran again in the gauntlet
+- gates: `wolfgate-s196-{head-1648ea7,archive-0.1.43}-{unpinned,pinned}.log`,
+  `wolfgate-s197-{head-1648ea7,archive-0.1.43}-{unpinned,pinned}.log`
+  (each `SKIP lines: 0`; the first s197 four in `superseded/`),
+  `build-wl-s196wt.log`, `build-wolf-s196.log`, `build-wolf-s197.log`
+- differential and corpus: `diffrun/{trunk-6d6cde5,head-1648ea7}-pin-{default,checked,native,release}.*`,
+  `diffrun/{trunk-6d6cde5,head-1648ea7}-{wltrunk,s196,s197}-{default,checked,native,release}.*`,
+  `diffrun/*-corpus.log` (the census lines), `diffrun/*.ledger.jsonl`
+- head: `fmt-1648ea7.log` (`FMT_EXIT=0`), `clippy-1648ea7.log`
+  (`CLIPPY_EXIT=0`), `build-head-1648ea7.log`
+- gauntlet at `1648ea7`, the src head: `gauntlet-1648ea7.log` (its result
+  is in §5 and the PR body); the superseded `gauntlet-5fffc6d.log` in
+  `superseded/`
+- GitHub CI at the head sha: in the PR body
+
+Filed and commented: nothing new. The three findings this lane made are
+in §2 (0.1.43's value half was eleven silent wrong answers, not an
+unimplemented form; wolf 0.2.20's native and release still die on the
+`?`-under-`defer` programs; s196's five run rows already print the ruled
+bytes on lupin).
+
+#### §5 — done-when
+
+- [x] branch `is67` on origin, cut at trunk `6d6cde5`; PR #168 open, unmarked draft once CI is green, with these five sections
+- [x] §2 re-derived; §3 committed (`f191cda`) before the first `src/`/`tests/` edit; §3 addendum (`58574d0`) before the E0816 edit
+- [x] each witness seen red first (`red-a804d40.log`), green at the head (`green-61cb7d8.log`)
+- [x] s196's gate with its 0.1.43 pin dropped: green with the head, red with 0.1.43 on exactly 3
+- [x] s197's gate with its 0.1.43 pins dropped: green with the head, red with 0.1.43 on 8 (the `else` control green)
+- [x] s197's nine rows and s196's eight rows answer their `check:` lines on the head
+- [x] no new divergence against wolf 0.2.20 beyond the ruled rows (named in §3a); the ledgers move 0 rows on the pinned and wolf-lang trunk corpora
+- [x] CHANGELOG `Unreleased`
+- [ ] the coverage ratchet holds at 271 (`export::coverage_is_ratcheted`, in the gauntlet and CI)
+- [ ] kasumi gauntlet green at `1648ea7` (`GAUNTLET_FAILS=0`); GitHub CI green at the head sha (the PR body)
+- [ ] kasumi build dirs pruned once the evidence is written (`headsrc/target`, `wl-s196wt/target`, `wolf-lang-s196/target`, `dev/target`); worktree `/private/tmp/is67` removed after the last push
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
