@@ -1,6 +1,43 @@
 # Changelog
 
-## Unreleased
+## 0.1.44 — 2026-10-02
+
+THE FORTY-FOURTH (is65, is67, and r26's re-pin), the lupin half of wolf
+0.2.21. **Pin: `cdde128a` (wolf-lang v0.2.20 — the TAG)**, one release
+forward of 0.1.43's `c2401f05` (v0.2.19). Twenty-three commits since
+0.1.43 in two lanes, then the re-pin. It carries every lupin mirror wolf
+0.2.21's gates pin 0.1.43's answers on by version: a `match` over a
+fallible value has two halves (the maintainer's ruling #21,
+`[type.row.match]`; wolffe-lang/wolf-lang#497) and a `?` under a `defer`
+or `errdefer` is refused, E0611 (ruling #19, `[type.row.defer]`;
+wolffe-lang/wolf-lang#498); with a flow out of an argument list
+withdrawing the call's claims and protectors (#163).
+
+**The re-pin** (r26; `eb00a30`). `vendor/upstream/{spec,corpus}` and the
+`upstream` gitlink move to `cdde128a`, an ancestor of the released line
+(`merge-base --is-ancestor c2401f05 cdde128a` holds); the two trees are
+byte-identical to wolf-lang's at the tag. The census moves (every count
+asserted by a test): corpus files 778 → 861 (83 new, every one an entry,
+none leaves), entries 733 → 816, members 45 → 45 (`76469fa`, `bfb517d`);
+anchors 542 → 544 (`mem.tier0.excl.4`, `type.row.else`; none dropped,
+the key sets diffed both ways); distinct `conforms:` anchors 374 → 376;
+the coverage ratchet 271 → 273, the two new anchors; the bundle
+816/771 → 899/854 programs and records (`189f141`). Two `check:` lines
+move, `memory/elem_dyn_read_after_mut.lu` (`run "3 2"`, eg03) and
+`memory/mut_read_overlap.lu` (`run`, s186), both `fail(E1002)` before;
+this machine already ran each, so both turn from conservatism rows into
+matches. Eighty of the eighty-three new entries reach `run` (`69b3e18`):
+forty-five match their `check:`, twenty-eight are dynamic counterparts of
+the compiler's E1002 (`trap(exclusivity)`, twenty-three) or E1001
+(`trap(use-after-move)`, five), and seven are conservatism rows (three
+run-time offsets the compiler cannot prove distinct, two shorthand
+initializers, two nested `read` parameters). The three that do not are
+the nested fns that declare a parameter mode
+(`memory/nested_fn_mut_{param,omitted,moveout}.lu`), which this machine
+declines at resolve under #38's scoped v1; `nested_fn_mut_omitted.lu`
+pins E1007, which the resolve rung owns, so `tests/conformance.rs` waives
+it by name until the mirror lands (`6b7ac41`, #169). No new divergence;
+DIV-2026-019 is still the one filed.
 
 **A flow out of an argument list withdraws the call's claims and
 protectors** (is65: wolffe-lang/wolf-interp#163). A `?`, a `return`, a
