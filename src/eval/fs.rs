@@ -301,7 +301,9 @@ impl FsTable {
                      a pipe a file ([os.fs.std])"
                 )));
             }
-            return std_stream(handle).map(HandleFile::Std).ok_or(FsErr::Row("io"));
+            return std_stream(handle)
+                .map(HandleFile::Std)
+                .ok_or(FsErr::Row("io"));
         }
         self.file(handle).map(HandleFile::Table).map_err(FsErr::Row)
     }
