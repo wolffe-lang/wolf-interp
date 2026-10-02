@@ -178,6 +178,12 @@ fn admit_with(program: &sema::Program, statics: Vec<crate::diag::Diag>) -> Optio
     if let Some(reason) = sema::raise_check(program) {
         return Some(Refusal::Unsupported(reason));
     }
+    // is67 (`[type.row.match]`): a row tag that is also a constructor of the
+    // scrutinee's value type is refused by name before anything runs; the
+    // checker's code for it is s197's and is not guessed here.
+    if let Some(reason) = crate::rowmatch::collision_refusal(program) {
+        return Some(Refusal::Unsupported(reason));
+    }
     // wolf-interp#57: what `main` may return is a declaration fact, so it is
     // decided here rather than from the value `finish` was handed — a
     // program refused for its `main` signature must not have run first.

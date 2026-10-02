@@ -45,6 +45,7 @@ pub mod lint;
 pub mod parse;
 pub mod phase;
 pub mod protocol;
+pub mod rowmatch;
 pub mod schema;
 pub mod sema;
 pub mod sha256;

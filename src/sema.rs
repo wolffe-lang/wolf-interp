@@ -1340,6 +1340,11 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| row_operand_check(program))
         .or_else(|| annotation_check(program))
         .or_else(|| variant_value_check(program))
+        // is67: `[type.row.defer]`'s E0611 and `[type.row.match]`'s E0801,
+        // last in the chain so a file that trips an older check keeps the
+        // diagnostic it had.
+        .or_else(|| crate::rowmatch::defer_try_check(program))
+        .or_else(|| crate::rowmatch::row_match_check(program))
 }
 
 /// `[type.list.lit]` (s158, wolf-lang#154; wolf-interp#106) — the list
