@@ -6148,6 +6148,84 @@ conservatism ledgers move 0 rows.
 **Out of scope, named:** nothing new is filed from §2; the `take`-then-`?`
 move stands on every machine and is a control, not a finding.
 
+#### §3a — the prediction, scored
+
+- **held: one mechanism, one commit**, `dfebf6b`. The 18 witnesses red at
+  `3e7f230` (`red-3e7f230.log`: 17 × "lupin answered `ub(mem.ub)`, ruled
+  `exit(0)`" and the REPL's "the abandoned list's claim on `xs` outlived
+  the trap"; the 6 controls green; `EXIT=101`) are 24/24 green at
+  `7264f7d` (`green-7264f7d.log`, `EXIT=0`).
+- **held: the witness table**, row for row (`witnesses-head-a4378d0.log`):
+  22 of 23 rows are byte-identical with wolf 0.2.19 on checked, native and
+  release; `trap_arg` is the same `trap(bounds)` with native and release
+  carrying no clause or span. The REPL (`repl-trap-head-a4378d0.log`): the
+  push after the trap runs and `xs` answers `[1, 3] : List`.
+- **held: existing tests that change, none.** At `7264f7d` the lib is 730
+  (one new), `rulings_is62` 53, `rulings_is63` 58, `rulings_is60` 82,
+  `rulings_eg00` 15, `repl_session` 9, `prov_machine` 14, `index_store`
+  7, `mode_read_iteration` 20; the trace line is `Rule::ModeMut`'s "1
+  claim(s) and 1 protector(s) withdrawn: the call was never entered".
+- **held: corpus and differential, no new divergence.** `lupin corpus` at
+  the pin: identical reports, 586 / 554 / 53 / 60 / 65 / 1 mismatch.
+  `lupin diff-run` against wolf 0.2.19, four tiers: the same gating lines
+  per tier (5 / 5 / 6 / 6), 0 differing report lines on default, checked
+  and release; native's one differing line is `unsafe_ub_uaf.lu`'s exit
+  code under UB (`148` / `238`; is62 saw `89` / `83`), noise on a program
+  both sides call undefined. The conservatism ledgers move 0 rows on all
+  four (`diffrun/`).
+- **coverage**: in the gauntlet (`export::coverage_is_ratcheted`) and in
+  CI; the PR body carries both.
+
+Two slips, both mine, both repaired:
+- rustfmt, twice: the first `cargo fmt --check` log was read through
+  `tail -20`, which hid a third reflow, so `710db1c` fixed two of three and
+  CI went red on `rustfmt` at every job (run 36953762235); the gauntlet at
+  `710db1c` was red on its fmt step and was killed (my pids 3305952,
+  3305954, 3343257, 3379754), kept as
+  `evidence/superseded-gauntlet-710db1c-fmt-red.log`; `a4378d0` is the
+  third reflow, the gauntlet re-ran there.
+- `final.sh` lost its executable bit on a second `scp` and the chained
+  launch ran the gauntlet alone; `final.sh` now builds in a clone of its
+  own (`headsrc/`) so it never waits on, or touches, the gauntlet's `dev/`.
+
+#### §4 — evidence index
+
+Commits:
+- `02e1c31` §1–§3; this section and §5 in the last commit
+- `3e7f230` 24 witnesses (18 red); `dfebf6b` the fix; `7264f7d` unit test
+- `9f62d3a` CHANGELOG; `710db1c`, `a4378d0` rustfmt
+
+Artifacts on kasumi under `~/lanes/is65/` (`archives/`, `evidence/`,
+`probes/`, `scripts/`, `witnesses/`). Archives: lupin 0.1.43 `e957c8de…`
+and wolf 0.2.19 `9f3873d8…`, digests equal to the release assets'; lupin
+trunk `lupin-trunk-6d6cde5` `cb8d424c…`; head `lupin-head-a4378d0`
+`29fea436…`.
+- inputs: `setup.log`, `probes-trunk-6d6cde5.log`,
+  `probes-archive-0.1.43.log`, `repl-trap-trunk-and-archive.log`,
+  `witnesses-trunk-6d6cde5-wolf-0.2.19.log`
+- red: `red-3e7f230.log` (18 failed, `EXIT=101`); green:
+  `green-7264f7d.log` (`EXIT=0`); `fmt-7264f7d.log`
+- head: `build-head-a4378d0.log`, `witnesses-head-a4378d0.log`,
+  `probes-head-a4378d0.log`, `repl-trap-head-a4378d0.log`
+- differential and corpus: `diffrun/{trunk-6d6cde5,head-a4378d0}-pin-{default,checked,native,release}.{jsonl,ledger.jsonl,log}`,
+  `…-corpus.log`, `….done`, `….version`
+- gauntlet at `a4378d0`, the code head (the commit after it is this
+  section, `docs/` only): `gauntlet-a4378d0.log`. Its result and the
+  GitHub CI run are in the PR body.
+
+#### §5 — done-when
+
+- [x] branch `is65` on origin, cut at trunk `6d6cde5`; PR #167 open, unmerged, with these five sections
+- [x] §2 re-derived; §3 committed (`02e1c31`) before the first `src/`/`tests/` edit
+- [x] each witness seen red first (`red-3e7f230.log`) and green at the fix (`green-7264f7d.log`)
+- [x] every exit kind (`?`, `return`, `break`, `continue`, a trap) and a nested call inside an argument witnessed, receivers included, each agreeing with wolf 0.2.19 on checked, native and release
+- [x] no new divergence against wolf 0.2.19; the corpus report identical
+- [x] CHANGELOG `Unreleased`
+- [ ] the coverage ratchet holds (`export::coverage_is_ratcheted`, in the gauntlet and CI)
+- [ ] kasumi gauntlet green at `a4378d0` and GitHub CI green at the head sha (the PR body)
+- [ ] #163 closes on merge (by hand if not)
+- [ ] kasumi build dirs pruned once evidence is written; worktree removed
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
