@@ -1735,9 +1735,7 @@ pub fn method(
             Some(machine.current_region()),
         )),
         (Value::Str(s), "lines") => Ok(Value::list(
-            s.lines()
-                .map(|line| Slot::live(view(s, line)))
-                .collect(),
+            s.lines().map(|line| Slot::live(view(s, line))).collect(),
             None,
             Some(machine.current_region()),
         )),
