@@ -489,6 +489,7 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // `p.x` beside `mut p` two-phase — it runs, `p.x - 2` is 0. The pinned
     // header still says `fail(E1002)` (D39) until the re-pin carries s186's
     // re-spelled row; the census counts it static-conservatism meanwhile.
+    // The cdde128a pin (r26) carries it: `check:` is `run(exit=0)`, a match.
     ("memory/mut_read_overlap.lu", "exit(0)"),
     ("memory/read_param_write.lu", "trap(exclusivity)"),
     // The c09-wave pin, `0b4e79c` (0.1.9, s73): the corpus grows one —
@@ -1884,6 +1885,113 @@ const RUN_LEDGER: &[(&str, &str)] = &[
         "trap(use-after-move)",
     ),
     ("memory/mut_two_fields_one_region.lu", "exit(0)"),
+    //
+    // The cdde128a pin (r26, wolf-lang **v0.2.20** — the TAG, one release
+    // forward of c2401f05): EIGHTY of the eighty-three new entries reach
+    // `run`. The three that do not are the nested fns that declare a
+    // parameter mode — `memory/nested_fn_mut_{param,omitted,moveout}.lu` —
+    // which this machine declines at resolve (`unsupported`, the scoped v1 of
+    // #38: a closure-recipe parameter carries no mode). Two old rows change
+    // their `check:` and keep their answers, moving from conservatism to a
+    // match: `memory/elem_dyn_read_after_mut.lu` (`run "3 2"`, eg03) and
+    // `memory/mut_read_overlap.lu` (`run`, s186).
+    //
+    // FORTY-FIVE are run expectations and every one matches its `check:`
+    // (s187/s189's once-only operands `ctl_*`, eg03's `elem_dyn_proofs_legs`,
+    // `elem_loop_*` and `elem_offset_*` runs, s186's `mut_claim_*` reads,
+    // s190's shorthand runs, s192's `recv_claim_arg_reads`, s193's
+    // `recv_view_arg_*`, and s191's seven `rows/else_*`). TWENTY-EIGHT are
+    // dynamic counterparts: the compiler pins E1002 and this machine traps
+    // `exclusivity` (twenty-three: eg03's refused offsets and loops, s186's
+    // block write and move, s190's closure borrow, s192's fourteen refused
+    // receiver shapes), or E1001 and `use-after-move` (s190's five
+    // shorthand moves). SEVEN are CONSERVATISM rows, ledgered because they
+    // RUN, not because they agree: `memory/elem_loop_nonliteral_range_mut.lu`,
+    // `elem_offset_negative_mut.lu`, `elem_offset_nonliteral_mut.lu` (E1002:
+    // the compiler cannot prove the run-time indices distinct, this machine
+    // sees them), `field_shorthand_closure.lu`, `field_shorthand_task.lu`
+    // (E1001), `nested_fn_read_param_return.lu` (E1002) and
+    // `nested_fn_read_param_write.lu` (E1014).
+    ("memory/ctl_index_else_once.lu", "exit(0)"),
+    ("memory/ctl_index_return_break_once.lu", "exit(0)"),
+    ("memory/ctl_index_try_once.lu", "exit(0)"),
+    ("memory/ctl_index_try_once_receivers.lu", "exit(0)"),
+    ("memory/ctl_nested_index_try_once.lu", "exit(0)"),
+    ("memory/ctl_slice_endpoints.lu", "exit(0)"),
+    ("memory/ctl_slice_endpoints_call.lu", "exit(0)"),
+    ("memory/ctl_slice_endpoints_indexed_base.lu", "exit(0)"),
+    ("memory/ctl_slice_endpoints_nested.lu", "exit(0)"),
+    ("memory/ctl_slice_endpoints_str.lu", "exit(0)"),
+    ("memory/ctl_slice_try_once.lu", "exit(0)"),
+    ("memory/ctl_store_index_try_once.lu", "exit(0)"),
+    ("memory/elem_dyn_proofs_legs.lu", "exit(0)"),
+    ("memory/elem_loop_inclusive_covers_const.lu", "trap(exclusivity)"),
+    ("memory/elem_loop_induction_mut.lu", "exit(0)"),
+    ("memory/elem_loop_induction_written_mut.lu", "trap(exclusivity)"),
+    ("memory/elem_loop_nonliteral_range_mut.lu", "exit(0)"),
+    ("memory/elem_offset_mut_pair.lu", "exit(0)"),
+    ("memory/elem_offset_negative_mut.lu", "exit(0)"),
+    ("memory/elem_offset_nonliteral_mut.lu", "exit(0)"),
+    ("memory/elem_offset_rebound_call_mut.lu", "trap(exclusivity)"),
+    ("memory/elem_offset_rebound_mut.lu", "trap(exclusivity)"),
+    ("memory/elem_offset_vs_literal_mut.lu", "trap(exclusivity)"),
+    ("memory/elem_offset_zero_mut.lu", "trap(exclusivity)"),
+    ("memory/field_shorthand_closure.lu", "exit(0)"),
+    ("memory/field_shorthand_closure_borrow.lu", "trap(exclusivity)"),
+    ("memory/field_shorthand_copy.lu", "exit(0)"),
+    ("memory/field_shorthand_mixed.lu", "trap(use-after-move)"),
+    ("memory/field_shorthand_mixed_runs.lu", "exit(0)"),
+    ("memory/field_shorthand_moves.lu", "trap(use-after-move)"),
+    ("memory/field_shorthand_nested.lu", "trap(use-after-move)"),
+    ("memory/field_shorthand_nested_bound.lu", "trap(use-after-move)"),
+    ("memory/field_shorthand_nested_runs.lu", "exit(0)"),
+    ("memory/field_shorthand_return_mut.lu", "trap(use-after-move)"),
+    ("memory/field_shorthand_return_take.lu", "exit(0)"),
+    ("memory/field_shorthand_task.lu", "exit(0)"),
+    ("memory/mut_claim_arg_block_move.lu", "trap(exclusivity)"),
+    ("memory/mut_claim_arg_block_write.lu", "trap(exclusivity)"),
+    ("memory/mut_claim_nested_copy_read.lu", "exit(0)"),
+    ("memory/mut_claim_nested_disjoint_reads.lu", "exit(0)"),
+    ("memory/mut_claim_nested_get.lu", "exit(0)"),
+    ("memory/mut_claim_nested_header.lu", "exit(0)"),
+    ("memory/mut_claim_nested_map.lu", "exit(0)"),
+    ("memory/mut_claim_nested_read_elem.lu", "exit(0)"),
+    ("memory/mut_claim_nested_read_whole.lu", "exit(0)"),
+    ("memory/mut_claim_operand_read.lu", "exit(0)"),
+    ("memory/mut_claim_two_phase_reads.lu", "exit(0)"),
+    ("memory/nested_fn_read_param_return.lu", "exit(0)"),
+    ("memory/nested_fn_read_param_write.lu", "exit(0)"),
+    ("memory/recv_claim_arg_closure.lu", "trap(exclusivity)"),
+    ("memory/recv_claim_arg_elem_move.lu", "trap(exclusivity)"),
+    ("memory/recv_claim_arg_elem_whole_write.lu", "trap(exclusivity)"),
+    ("memory/recv_claim_arg_elem_write.lu", "trap(exclusivity)"),
+    ("memory/recv_claim_arg_field_move.lu", "trap(exclusivity)"),
+    ("memory/recv_claim_arg_field_prefix_write.lu", "trap(exclusivity)"),
+    ("memory/recv_claim_arg_field_write.lu", "trap(exclusivity)"),
+    ("memory/recv_claim_arg_lend.lu", "trap(exclusivity)"),
+    ("memory/recv_claim_arg_move.lu", "trap(exclusivity)"),
+    ("memory/recv_claim_arg_reads.lu", "exit(0)"),
+    ("memory/recv_claim_arg_reclaim.lu", "trap(exclusivity)"),
+    ("memory/recv_claim_arg_reclaim_call.lu", "trap(exclusivity)"),
+    ("memory/recv_claim_arg_reclaim_nested.lu", "trap(exclusivity)"),
+    ("memory/recv_claim_arg_view_write.lu", "trap(exclusivity)"),
+    ("memory/recv_claim_arg_write.lu", "trap(exclusivity)"),
+    ("memory/recv_view_arg_callee_view_write.lu", "exit(0)"),
+    ("memory/recv_view_arg_elem.lu", "exit(0)"),
+    ("memory/recv_view_arg_field_recv.lu", "exit(0)"),
+    ("memory/recv_view_arg_list_field.lu", "exit(0)"),
+    ("memory/recv_view_arg_nested_field.lu", "exit(0)"),
+    ("memory/recv_view_arg_outside_write.lu", "exit(0)"),
+    ("memory/recv_view_arg_relend.lu", "exit(0)"),
+    ("memory/recv_view_arg_two_fields.lu", "exit(0)"),
+    ("memory/recv_view_arg_two_view_third.lu", "exit(0)"),
+    ("rows/else_own_failure.lu", "exit(0)"),
+    ("rows/else_return_tag.lu", "exit(0)"),
+    ("rows/else_try_block.lu", "exit(0)"),
+    ("rows/else_try_call_arg.lu", "exit(0)"),
+    ("rows/else_try_handler.lu", "exit(0)"),
+    ("rows/else_try_index.lu", "exit(0)"),
+    ("rows/else_try_nested_else.lu", "exit(0)"),
 ];
 
 #[test]
