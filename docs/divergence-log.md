@@ -6433,6 +6433,104 @@ static E0801 for a plain enum or bool match (the existing conservatism
 rows stay); E0802 over a row match; the compiler's E0801 span and witness
 rendering, and the collision's code (s197's).
 
+#### §3 addendum — s197's PR appeared mid-lane (wolf-lang#510, 2026-10-02)
+
+Committed before the edit it drives (`1648ea7`'s). s197 (branch `s197`,
+code head `68d80376`; `83f370f1` is its plant) names the collision
+**E0816** ("the row tag `Line` is also a variant of `Shape`"), refused
+"whether or not an arm spells it", and refuses by name "an or-pattern
+mixing a row arm with a value pattern, an `@`-binding at the top of an
+arm". Its E0801 reads "does not cover `_` (the value half, `int`)" with
+the primary span `match` through the scrutinee, and its gate
+`match_fallible_lanes.rs` pins lupin 0.1.43 pre-mirror by version on nine
+rows. Per §3's clause, the collision becomes a `Diag` with s197's code
+(the detection unchanged), the mixed shapes become the by-name refusal
+(`frontend::admit`, as `raise_check`), and the E0801 wording follows the
+compiler's. Predicted: `m21_tag_collision` moves `unsupported` →
+`fail(E0816)`; s197's nine rows answer their `check:` lines on the head;
+its gate with the pin emptied: head green 9/9, 0.1.43 red on 8 (the
+`else` control passes), 0.1.43 pinned green.
+
+#### §3a — the prediction, scored
+
+- **held: the five mechanisms**, one commit each: `068c2ab` (the static
+  reader and the resolve-rung checks), `de1d89c` (the dispatch), `9eb3cbf`
+  (the lint), with the addendum at `1648ea7`. The 21 witnesses red at
+  `a804d40` (`red-a804d40.log`: 5 passed, 21 failed, `EXIT=101`, each for
+  its named reason — a wrong byte, or a run where a refusal is ruled) are
+  green at `1648ea7` (`witnesses-head-1648ea7.log`), and the three chapter
+  6 shapes bs57 measured (`61cb7d8`) are green with them: `rulings_is67`
+  29/29 (`green-61cb7d8.log`, `EXIT=0`); 0.1.43 answers `no comma / no
+  comma / … / no comma`, `no_comma` and `7 -4 Weird` on them
+  (`probes-book-archive-0.1.43-wolf-0.2.20.log`), the head `340 cents /
+  nothing owed / …`, `fail(E0801)` and `7 -4 -99`.
+- **held: the witness table, row for row** — with one slip of mine:
+  `m21_result_consumed`'s ruled stdout is `look zz\nlook a\n0 6\n`, not
+  `0 6\n` (the two `look` lines were in the trunk cell and not in the
+  prediction; `2cc8951` corrects the cell, the fix is real: trunk `0 0`).
+- **held: s197's nine rows** answer their `check:` lines on the head
+  byte for byte (`probes-head-1648ea7.log`, `s197_*`), the E0816 and both
+  E0801 rows included; 0.1.43 ran the six run rows with the first-arm
+  bytes and ran the three refusals.
+- **held: the gates.** s196's `try_under_defer_refused_lanes.rs` at
+  `7a8be823` (worktree `wl-s196wt/`, `wolf` `3bf39452…`): pin emptied,
+  head 3/3 green (`wolfgate-s196-head-1648ea7-unpinned.log`, `EXIT=0`),
+  0.1.43 red on exactly 3 (`wolfgate-s196-archive-0.1.43-unpinned.log`,
+  `EXIT=101`); pinned, 0.1.43 3/3 green. s197's `match_fallible_lanes.rs`
+  at `68d80376` (`wolf-lang-s196/`, `wolf` `3f7e29ce…`): pin emptied, head
+  9/9 green (`wolfgate-s197-head-1648ea7-unpinned.log`, `EXIT=0`), 0.1.43
+  red on 8 with the `else` control green
+  (`wolfgate-s197-archive-0.1.43-unpinned.log`, `EXIT=101`); pinned,
+  0.1.43 9/9 green. `SKIP lines: 0` in every log. As §2 predicted, the
+  pinned files read a dev build as 0.1.43 and red on it (3 and 8): the
+  pins are emptied at the pairing that ships this.
+- **held: existing tests that change: none.** The gauntlet's `cargo test
+  --no-fail-fast` at `1648ea7` is in §4; no test outside `rulings_is67`
+  and `rowmatch`'s unit tests moved.
+- **held: corpus and differential, no new divergence beyond the ruled
+  rows.** `lupin diff-run` on four tiers against wolf 0.2.20, trunk
+  `6d6cde5` against `1648ea7`: on the pinned corpus the divergence lists
+  are identical (5 / 5 / 6 / 6 per tier) and the ledgers move 0 rows; on
+  wolf-lang trunk `cdde128a`'s corpus the same (5 / 5 / 6 / 6, 0 ledger
+  rows); the census lines are identical (pin 554 / 53 / 60 / 65 / 1,
+  wl-trunk 601 / 81 / 65 / 68 / 1). On s196's corpus (`7a8be823`) three
+  rows move, by name — `rows/negative/try_in_defer.lu`,
+  `try_in_defer_block.lu`, `try_in_errdefer.lu` — from a stdout mismatch
+  against 0.2.20's checked machine (lupin `… 9`, checked `… 1`) to a
+  verdict mismatch (lupin `fail(E0611)`, 0.2.20 checked `exit(0)`): the
+  ruled answer against a compiler that still runs the shape (checked) or
+  dies on it (native, release); the census moves 606 → 609 match, 68 → 65
+  conservatism. On s197's corpus (`68d80376`) the nine `match_row_*` rows
+  move: the census 602 → 610 match, 6 → 1 mismatch (the one is
+  DIV-2026-019), 68 → 65 conservatism; the ledger moves 6 rows per tier
+  (the six run rows, from the first-arm bytes to their `check:`); the
+  divergence lists against 0.2.20 are unchanged (`unsupported` on every
+  tier is the conservatism ledger).
+- **held, the addendum**: `m21_tag_collision` is `fail(E0816)` at the
+  head (`witnesses-head-1648ea7.log`); the mixed shapes are refused by
+  name (`rowmatch` unit tests).
+- **coverage**: `RATCHET_FLOOR` 271, unchanged (the gauntlet's
+  `export::coverage_is_ratcheted`).
+
+Slips, all mine, all repaired:
+- the first patch shipped to kasumi lacked the untracked `src/rowmatch.rs`
+  (`git diff` before `git add -N`); the build that read it was killed by
+  pid (2043320 and its two children) and re-run.
+- `head.sh`'s gate loop at `1648ea7` wrote no logs: the scripts had been
+  re-shipped without their execute bit (`Permission denied`, seen under
+  `bash -x`); `chmod +x`, and the eight runs were made by
+  `scripts/gates-all.sh` with explicit calls.
+- the pin-emptying regex did not cross a Rust string's `\`-newline
+  continuation, so s197's `a_wildcard_covers_what_is_left_on_each_half`
+  kept its pin and read the head as 0.1.43 (8/9 green, 1 red on the
+  pre-mirror bytes). The regex now spans newlines; the four first logs
+  are in `evidence/superseded/` and the cited runs are the second.
+- the first gauntlet, at `5fffc6d`, was superseded by the E0816
+  alignment and killed by pid (2621914 and its tree); its log is in
+  `evidence/superseded/`.
+- the first head run, at `2cc8951`, failed `cargo fmt --check` and one
+  clippy `manual_contains`; `5fffc6d` is the rustfmt and the fix.
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
