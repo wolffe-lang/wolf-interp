@@ -1529,10 +1529,23 @@ pub fn method(
         // receiver's live.
         (Value::Str(s), "upper") => produced_str(machine, s.to_uppercase(), "upper", span),
         (Value::Str(s), "lower") => produced_str(machine, s.to_lowercase(), "lower", span),
-        (Value::Str(s), "trim") => Ok(match args.first() {
-            Some(Value::Str(cut)) => view(s, s.trim_matches(|c| cut.contains(c))),
-            _ => view(s, s.trim()),
-        }),
+        // `[mem.str.ws]` (s175, wolf-interp#125): "the family takes no
+        // argument" — a cutset is E0402 on every implementation. Through
+        // 0.1.43 `trim` read one as a cutset and the other four ignored
+        // theirs. The resolve rung refuses the call where it can see the
+        // receiver is a `str`; one it could not see reaches here with its
+        // argument and is declined by name, never trimmed by it.
+        (Value::Str(_), "trim" | "trim_start" | "trim_end" | "words" | "lines")
+            if !args.is_empty() =>
+        {
+            unsupported(format!(
+                "`{name}` takes 0 arguments, but this call passes {} — `[mem.str.ws]`'s \
+                 family takes no argument (E0402, which this machine decides at resolve only \
+                 where it can see the receiver is a `str`)",
+                args.len()
+            ))
+        }
+        (Value::Str(s), "trim") => Ok(view(s, s.trim())),
         (Value::Str(s), "trim_start") => Ok(view(s, s.trim_start())),
         (Value::Str(s), "trim_end") => Ok(view(s, s.trim_end())),
         (Value::Str(s), "get") => {
