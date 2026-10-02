@@ -1523,15 +1523,18 @@ pub fn method(
         // read after that region's wholesale free is the
         // `[mem.region.intra.2]` fault (E1010's dynamic half). The view side
         // of `[mem.str.view]` — `trim`, `get`, `strip_*`, the `split`/
-        // `words`/`lines` pieces — allocates nothing and stays home-less.
+        // `words`/`lines` pieces — allocates nothing, and since s171
+        // (wolf-lang#392, wolf-interp#126) each product carries its
+        // RECEIVER's home ([`view`]): the bytes it names live where the
+        // receiver's live.
         (Value::Str(s), "upper") => produced_str(machine, s.to_uppercase(), "upper", span),
         (Value::Str(s), "lower") => produced_str(machine, s.to_lowercase(), "lower", span),
-        (Value::Str(s), "trim") => Ok(Value::Str(match args.first() {
-            Some(Value::Str(cut)) => s.trim_matches(|c| cut.contains(c)).into(),
-            _ => s.trim().into(),
-        })),
-        (Value::Str(s), "trim_start") => Ok(Value::Str(s.trim_start().into())),
-        (Value::Str(s), "trim_end") => Ok(Value::Str(s.trim_end().into())),
+        (Value::Str(s), "trim") => Ok(match args.first() {
+            Some(Value::Str(cut)) => view(s, s.trim_matches(|c| cut.contains(c))),
+            _ => view(s, s.trim()),
+        }),
+        (Value::Str(s), "trim_start") => Ok(view(s, s.trim_start())),
+        (Value::Str(s), "trim_end") => Ok(view(s, s.trim_end())),
         (Value::Str(s), "get") => {
             // `[mem.str.get]` — the boundary primitive, when the range
             // arrived as an evaluated value (`s.get(a..b)`, `s.get(r)`).
@@ -1680,7 +1683,7 @@ pub fn method(
             }
             Ok(Value::list(
                 s.split(sep.as_str())
-                    .map(|part| Slot::live(Value::Str(part.into())))
+                    .map(|part| Slot::live(view(s, part)))
                     .collect(),
                 None,
                 Some(machine.current_region()),
@@ -1696,7 +1699,9 @@ pub fn method(
                 s.strip_suffix(needle.as_str())
             };
             match stripped {
-                Some(rest) => Ok(Value::Str(rest.into())),
+                // The receiver's home, never the needle's: the rest is a
+                // subslice of `s` and never of `needle` (s171).
+                Some(rest) => Ok(view(s, rest)),
                 None => {
                     machine.note(Rule::ErrUnion, span, "`strip` yields the `none` row");
                     Ok(error("none"))
@@ -1724,14 +1729,14 @@ pub fn method(
         }
         (Value::Str(s), "words") => Ok(Value::list(
             s.split_whitespace()
-                .map(|word| Slot::live(Value::Str(word.into())))
+                .map(|word| Slot::live(view(s, word)))
                 .collect(),
             None,
             Some(machine.current_region()),
         )),
         (Value::Str(s), "lines") => Ok(Value::list(
             s.lines()
-                .map(|line| Slot::live(Value::Str(line.into())))
+                .map(|line| Slot::live(view(s, line)))
                 .collect(),
             None,
             Some(machine.current_region()),
@@ -2244,7 +2249,7 @@ pub fn slice(
                     format!("byte range {range} splits a UTF-8 code point"),
                 );
             }
-            Ok(Value::Str(s[from..to].into()))
+            Ok(view(s, &s[from..to]))
         }
         Value::List(items, elem, _) => {
             let len = items.len() as i128;
@@ -2298,7 +2303,7 @@ pub fn slice(
 /// only the machine's own signal plumbing.
 pub fn str_get(
     machine: &mut Machine,
-    s: &str,
+    s: &super::value::Str,
     start: Option<i128>,
     end: Option<i128>,
     inclusive: bool,
@@ -2322,7 +2327,22 @@ pub fn str_get(
     if !s.is_char_boundary(from) || !s.is_char_boundary(to) {
         return miss(machine);
     }
-    Ok(Value::Str(s[from..to].into()))
+    Ok(view(s, &s[from..to]))
+}
+
+/// A `[mem.str.view]` product: `text` is a subslice of `receiver`'s own
+/// storage, so it lives where the receiver's bytes live and carries the
+/// receiver's home (`[mem.region.escape]`, s171 for wolf-lang#392;
+/// wolf-interp#126). It allocates nothing and charges nothing — allocating
+/// nothing and pointing nowhere are different properties — and a view of a
+/// literal (home `None`) stays site-free. Through 0.1.43 every view minted a
+/// home-less `str`, so a view of a region-built `str` left its region clean
+/// and printed from freed bytes; the region fault is the clause's answer.
+fn view(receiver: &super::value::Str, text: &str) -> Value {
+    Value::Str(super::value::Str {
+        text: text.to_owned(),
+        home: receiver.home,
+    })
 }
 
 /// Exact arity for a modelled C intrinsic (wolf-interp#18 item 4): C

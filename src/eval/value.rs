@@ -461,11 +461,14 @@ impl ElemTy {
 /// building expression, never in an operand's; a `str` is `Copy` (its
 /// two-word view copies freely) but the bytes it views live where they were
 /// built, so a `str` read from a binding carries that binding's sites out
-/// with it. A literal's bytes are static and a literal is no site; a slice
-/// and every `[mem.str.view]` product allocate nothing — `home` is `None`
-/// for all of those. Until is46 this machine's `str` was a bare `String`
-/// with no home, which is why `region scratch { let s = "re" + "gions"; s }`
-/// returned from a function printed `regions` from freed bytes.
+/// with it. A literal's bytes are static and a literal is no site (`home`
+/// `None`); a slice and every `[mem.str.view]` product allocate nothing but
+/// carry their RECEIVER's home (s171, wolf-lang#392; wolf-interp#126): they
+/// are subslices of the receiver's storage, so they live where it lives.
+/// Until is46 this machine's `str` was a bare `String` with no home, which
+/// is why `region scratch { let s = "re" + "gions"; s }` returned from a
+/// function printed `regions` from freed bytes; until is68 the same was true
+/// of `s.trim()`.
 ///
 /// Equality, ordering and hashing are over the TEXT alone: two `str`s are
 /// one value when their bytes are (`[mem.str.order]`), wherever they live.
