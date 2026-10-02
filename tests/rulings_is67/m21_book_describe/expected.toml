@@ -1,0 +1,14 @@
+# is67 — wolffe-lang/wolf-lang#497, ruling #21 ([type.row.match]). This row: Chapter 6's `part-rowmatch` (bs57, wolf-book PR #69): two row arms, a literal and a binder on the value half.
+# bs57 measured it on lupin 0.1.42/0.1.43 (wolf-book PR #69, docs/audit/bs57-evidence/probes-pin.txt) and the
+# ruled bytes on s197's build; `[trunk]` is what lupin trunk `6d6cde5` (= 0.1.43) and wolf 0.2.20 answered on
+# kasumi, ~/lanes/is67/evidence/probes-book-archive-0.1.43-wolf-0.2.20.log.
+ruling = "wolffe-lang/wolf-lang#497"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "340 cents\nnothing owed\n`lots` at byte 7 is not a number\nno comma\n" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "no comma\nno comma\n`lots` at byte 7 is not a number\nno comma\n" }
+checked = { verdict = "unsupported" }
+native  = { verdict = "unsupported" }
+release = { verdict = "unsupported" }

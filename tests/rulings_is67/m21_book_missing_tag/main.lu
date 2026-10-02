@@ -1,0 +1,21 @@
+//! is67 (#497) — chapter 6's `s7` (bs57): `n => n` is a value arm, so `no_comma` is uncovered — E0801 names it.
+struct Bad { at: int, found: str }
+fn cents(row: str) -> int ! {no_comma, NotANumber(Bad)} {
+    var i = 0
+    while i < row.len {
+        if row[i..i + 1] == "," {
+            let text = row[i + 1..]
+            return text.to_int() else { return NotANumber(Bad { at: i + 1, found: text }) }
+        }
+        i += 1
+    }
+    no_comma
+}
+fn main() -> !int {
+    let owed = match cents("tip 100") {
+        NotANumber(bad) => 0 - bad.at,
+        n => n,
+    }
+    print("{owed}")
+    0
+}

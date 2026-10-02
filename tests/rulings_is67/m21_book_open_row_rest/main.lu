@@ -1,0 +1,17 @@
+//! is67 (#497) — chapter 6's exercise 6-15 (bs57): an open row, a row arm, a value arm, and `_` for the row's rest.
+fn probe(n: int) -> int ! {Io(int), ..} {
+    if n < 0 { return Weird }
+    if n == 0 { return Io(4) }
+    n
+}
+fn code_for(n: int) -> int {
+    match probe(n) {
+        Io(code) => 0 - code,
+        v => v,
+        _ => 0 - 99,
+    }
+}
+fn main() -> !int {
+    print("{code_for(7)} {code_for(0)} {code_for(-1)}")
+    0
+}

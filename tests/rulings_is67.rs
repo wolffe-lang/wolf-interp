@@ -284,6 +284,26 @@ fn m21_tag_collision() {
     run("m21_tag_collision");
 }
 
+// -- chapter 6's shapes, measured by bs57 (wolf-book PR #69) -------------------
+
+/// Chapter 6's `part-rowmatch`: two row arms, a literal and a binder on the value half (0.1.43: `no comma` for `espresso,340`).
+#[test]
+fn m21_book_describe() {
+    run("m21_book_describe");
+}
+
+/// Chapter 6's `s7`: `n => n` is a value arm, so `no_comma` is uncovered — E0801 (0.1.43 bound the tag to `n`).
+#[test]
+fn m21_book_missing_tag() {
+    run("m21_book_missing_tag");
+}
+
+/// Chapter 6's exercise 6-15: an open row, a row arm, a value arm, and `_` for the row's rest (0.1.43: `7 -4 Weird`).
+#[test]
+fn m21_book_open_row_rest() {
+    run("m21_book_open_row_rest");
+}
+
 // -- a `?` under a `defer` (#19) -------------------------------------------
 
 /// s191's p2: `defer print("deferred {key(ok)?}")` — E0611.

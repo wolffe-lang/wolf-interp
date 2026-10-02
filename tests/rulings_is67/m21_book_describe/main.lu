@@ -1,0 +1,28 @@
+//! is67 (#497) — chapter 6's `part-rowmatch` (bs57, wolf-book PR #69): two row arms, a literal and a binder on the value half.
+struct Bad { at: int, found: str }
+fn cents(row: str) -> int ! {no_comma, NotANumber(Bad)} {
+    var i = 0
+    while i < row.len {
+        if row[i..i + 1] == "," {
+            let text = row[i + 1..]
+            return text.to_int() else { return NotANumber(Bad { at: i + 1, found: text }) }
+        }
+        i += 1
+    }
+    no_comma
+}
+fn describe(row: str) -> str {
+    match cents(row) {
+        no_comma => "no comma",
+        NotANumber(bad) => "`{bad.found}` at byte {bad.at} is not a number",
+        0 => "nothing owed",
+        n => "{n} cents",
+    }
+}
+fn main() -> !int {
+    print(describe("espresso,340"))
+    print(describe("water,0"))
+    print(describe("pastry,lots"))
+    print(describe("tip 100"))
+    0
+}

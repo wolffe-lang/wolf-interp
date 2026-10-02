@@ -1,0 +1,14 @@
+# is67 — wolffe-lang/wolf-lang#497, ruling #21 ([type.row.match]). This row: Chapter 6's `s7` (bs57): `n => n` is a value arm, so `no_comma` is uncovered — E0801 names it.
+# bs57 measured it on lupin 0.1.42/0.1.43 (wolf-book PR #69, docs/audit/bs57-evidence/probes-pin.txt) and the
+# ruled bytes on s197's build; `[trunk]` is what lupin trunk `6d6cde5` (= 0.1.43) and wolf 0.2.20 answered on
+# kasumi, ~/lanes/is67/evidence/probes-book-archive-0.1.43-wolf-0.2.20.log.
+ruling = "wolffe-lang/wolf-lang#497"
+
+[expected]
+lupin   = { verdict = "fail(E0801)" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "no_comma\n" }
+checked = { verdict = "unsupported" }
+native  = { verdict = "unsupported" }
+release = { verdict = "unsupported" }
