@@ -70,7 +70,7 @@
 //! and served a link that does; [`resolves_inside`] is the resolved check.
 
 use std::fs::{File, Metadata, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{Read, Seek as _, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -260,18 +260,33 @@ impl FsTable {
         Ok(self.observation_root()?.join(relative))
     }
 
-    /// Mint a handle. 1-based, so `0` and every negative are `io` for free.
+    /// Mint a handle. The first is [`FIRST_HANDLE`] (3): `0`, `1` and `2`
+    /// are the process's standard streams (`[os.fs.std]`, wolf-lang#424),
+    /// never a file's handle, and every negative is `io` for free. (Until
+    /// s199 the first handle was 1 here and 0 on the compiled lane; the
+    /// clause makes both 3.)
     fn mint(&mut self, file: File) -> i128 {
         self.slots.push(Some(file));
-        self.slots.len() as i128
+        (self.slots.len() - 1 + FIRST_HANDLE) as i128
     }
 
     fn slot(&mut self, handle: i128) -> Result<&mut Option<File>, Row> {
         let index = usize::try_from(handle)
             .ok()
-            .and_then(|h| h.checked_sub(1))
+            .and_then(|h| h.checked_sub(FIRST_HANDLE))
             .ok_or("io")?;
         self.slots.get_mut(index).ok_or("io")
+    }
+
+    /// The file a handle-only call (`fs_fstat`, `fs_seek`, `fs_tell`,
+    /// `fs_read_at`) acts on: for `0`, `1` and `2` the process's standard
+    /// stream, duplicated for this one call ([`std_stream`]); a table slot
+    /// otherwise. A closed or forged handle is `io`.
+    fn handle_file(&mut self, handle: i128) -> Result<HandleFile<'_>, Row> {
+        if (0..FIRST_HANDLE as i128).contains(&handle) {
+            return std_stream(handle).map(HandleFile::Std).ok_or("io");
+        }
+        self.file(handle).map(HandleFile::Table)
     }
 
     fn file(&mut self, handle: i128) -> Result<&mut File, Row> {
@@ -334,11 +349,88 @@ impl FsTable {
     }
 
     /// `fs_fstat(fd) -> [kind, size, modified_ms]` (`[os.fs.fstat]`): ONE
-    /// metadata read on the handle the open returned.
+    /// metadata read on the handle the open returned — or, for `0`, `1` and
+    /// `2`, on the standard stream (`[os.fs.std]`, wolf-lang#424).
     pub(crate) fn fstat(&mut self, handle: i128) -> FsResult<[i128; 3]> {
-        let file = self.file(handle)?;
+        let file = self.handle_file(handle)?;
         let meta = file.metadata().map_err(io_row)?;
         Ok([kind_of(&meta), size_of(&meta)?, modified_ms(&meta)?])
+    }
+
+    /// `fs_seek(fd, off, whence) -> int` (`[os.fs.seek]`): move the offset,
+    /// answer the new one from the start. The handle first (`io`), then the
+    /// whence (outside {0, 1, 2} is `invalid`, before the host), then the
+    /// host: `ESPIPE` is `unseekable`, a result below zero `invalid`.
+    pub(crate) fn seek(&mut self, handle: i128, off: i128, whence: i128) -> FsResult<i128> {
+        let file = self.handle_file(handle)?;
+        let off = i64::try_from(off).map_err(|_| "invalid")?;
+        let to = match whence {
+            0 => SeekFrom::Start(u64::try_from(off).map_err(|_| "invalid")?),
+            1 => SeekFrom::Current(off),
+            2 => SeekFrom::End(off),
+            _ => return Err(FsErr::Row("invalid")),
+        };
+        windows_unseekable(&file)?;
+        #[cfg(windows)]
+        {
+            // `ERROR_NEGATIVE_SEEK`'s mapping is not pinned by std, so the
+            // one refusal the clause names is decided here.
+            let base = match to {
+                SeekFrom::Start(_) => 0,
+                SeekFrom::Current(_) => i128::from((&*file).stream_position().map_err(io_row)?),
+                SeekFrom::End(_) => i128::from(file.metadata().map_err(io_row)?.len()),
+            };
+            if let SeekFrom::Current(o) | SeekFrom::End(o) = to
+                && base + i128::from(o) < 0
+            {
+                return Err(FsErr::Row("invalid"));
+            }
+        }
+        let at = (&*file).seek(to).map_err(seek_row)?;
+        Ok(in_int_domain(i128::from(at))?)
+    }
+
+    /// `fs_tell(fd) -> int` (`[os.fs.tell]`): the offset, unmoved. The rows
+    /// are the seek's less `invalid`.
+    pub(crate) fn tell(&mut self, handle: i128) -> FsResult<i128> {
+        let file = self.handle_file(handle)?;
+        windows_unseekable(&file)?;
+        let at = (&*file).stream_position().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotSeekable {
+                FsErr::Row("unseekable")
+            } else {
+                FsErr::Row("io")
+            }
+        })?;
+        Ok(in_int_domain(i128::from(at))?)
+    }
+
+    /// `fs_read_at(fd, off, max) -> List[byte]` (`[os.fs.read_at]`): the
+    /// chunk read at an offset, the cursor untouched. The order is the
+    /// family's: the handle, the offset (below zero `invalid`), `max` (at or
+    /// below zero the empty list, before the host), the cap, and zero bytes
+    /// at a positive `max` is `eof`.
+    pub(crate) fn read_at(&mut self, handle: i128, off: i128, want: i128) -> FsResult<Vec<u8>> {
+        let file = self.handle_file(handle)?;
+        let off = u64::try_from(off).map_err(|_| "invalid")?;
+        if want <= 0 {
+            return Ok(Vec::new());
+        }
+        windows_unseekable(&file)?;
+        let want = usize::try_from(want).unwrap_or(usize::MAX).min(READ_CAP);
+        let mut buf = vec![0u8; want];
+        let got = positional_read(&file, &mut buf, off).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotSeekable {
+                FsErr::Row("unseekable")
+            } else {
+                FsErr::Row("io")
+            }
+        })?;
+        if got == 0 {
+            return Err(FsErr::Row("eof"));
+        }
+        buf.truncate(got);
+        Ok(buf)
     }
 
     /// `fs_close(fd)`: the slot is spent, never reused. A second close is
@@ -360,6 +452,118 @@ fn read_retrying(reader: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usiz
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
             other => return other,
         }
+    }
+}
+
+/// The first handle an open answers (`[os.fs.std]`): `0`, `1` and `2` are the
+/// standard streams.
+const FIRST_HANDLE: usize = 3;
+
+/// The file a handle-only call reads through: a standard stream duplicated
+/// for the call, or a slot of the table.
+enum HandleFile<'a> {
+    Std(File),
+    Table(&'a mut File),
+}
+
+impl std::ops::Deref for HandleFile<'_> {
+    type Target = File;
+    fn deref(&self) -> &File {
+        match self {
+            HandleFile::Std(f) => f,
+            HandleFile::Table(f) => f,
+        }
+    }
+}
+
+/// Descriptor `0`, `1` or `2` — the process's standard stream — duplicated
+/// (`dup`; `DuplicateHandle`) with no `unsafe`: the duplicate shares the
+/// stream's offset, so a seek through it is a seek of the stream, and
+/// dropping it closes only the duplicate. `None` is a stream the process
+/// does not have, or one that is closed (`io`).
+fn std_stream(handle: i128) -> Option<File> {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsFd as _;
+        let owned = match handle {
+            0 => std::io::stdin().as_fd().try_clone_to_owned(),
+            1 => std::io::stdout().as_fd().try_clone_to_owned(),
+            2 => std::io::stderr().as_fd().try_clone_to_owned(),
+            _ => return None,
+        };
+        owned.ok().map(File::from)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsHandle as _;
+        let owned = match handle {
+            0 => std::io::stdin().as_handle().try_clone_to_owned(),
+            1 => std::io::stdout().as_handle().try_clone_to_owned(),
+            2 => std::io::stderr().as_handle().try_clone_to_owned(),
+            _ => return None,
+        };
+        owned.ok().map(File::from)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = handle;
+        None
+    }
+}
+
+/// A failed seek's row: `ESPIPE` is `unseekable`, an offset the host refuses
+/// as out of range (`EINVAL`, a result below zero) is `invalid`, the rest
+/// `io` — the handle calls' posture ([`io_row`]).
+fn seek_row(error: std::io::Error) -> FsErr {
+    FsErr::Row(match error.kind() {
+        std::io::ErrorKind::NotSeekable => "unseekable",
+        std::io::ErrorKind::InvalidInput => "invalid",
+        _ => "io",
+    })
+}
+
+/// windows has no `ESPIPE` on this path — a pipe or console handle's file
+/// pointer is undefined rather than refused — so the offset calls ask first:
+/// anything whose metadata is not a regular file is `unseekable`, by name
+/// (`[os.fs.seek]`). unix asks the host and maps its `ESPIPE`.
+fn windows_unseekable(file: &File) -> Result<(), FsErr> {
+    #[cfg(windows)]
+    {
+        if !file.metadata().is_ok_and(|m| m.is_file()) {
+            return Err(FsErr::Row("unseekable"));
+        }
+    }
+    let _ = file;
+    Ok(())
+}
+
+/// One positional read at `off`, the cursor untouched: `pread` on unix; on
+/// windows `seek_read` moves the file pointer, so it is put back. An
+/// interrupted read is retried, never an `io`.
+fn positional_read(file: &File, buf: &mut [u8], off: u64) -> std::io::Result<usize> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileExt as _;
+        loop {
+            match file.read_at(buf, off) {
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                other => return other,
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileExt as _;
+        let mut cursor = file;
+        let at = cursor.stream_position()?;
+        let got = file.seek_read(buf, off);
+        cursor.seek(SeekFrom::Start(at))?;
+        got
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (file, buf, off);
+        Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
     }
 }
 
@@ -939,6 +1143,35 @@ impl Machine {
                     }
                     Err(err) => Err(err),
                 };
+                self.fs_answer(name, answer, span)
+            }
+            // `[os.fs.seek]`, `[os.fs.tell]`, `[os.fs.read_at]` (s199,
+            // wolf-lang#426): the handle's offset; `0`..`2` are the standard
+            // streams (`[os.fs.std]`, #424).
+            "fs_seek" => {
+                let fd = int_arg(args, 0, name)?;
+                let off = int_arg(args, 1, name)?;
+                let whence = int_arg(args, 2, name)?;
+                let answer = self
+                    .shared_fs()
+                    .seek(fd, off, whence)
+                    .map(|at| Value::Int(at, IntTy::INT));
+                self.fs_answer(name, answer, span)
+            }
+            "fs_tell" => {
+                let fd = int_arg(args, 0, name)?;
+                let answer = self
+                    .shared_fs()
+                    .tell(fd)
+                    .map(|at| Value::Int(at, IntTy::INT));
+                self.fs_answer(name, answer, span)
+            }
+            "fs_read_at" => {
+                let fd = int_arg(args, 0, name)?;
+                let off = int_arg(args, 1, name)?;
+                let want = int_arg(args, 2, name)?;
+                let answer = self.shared_fs().read_at(fd, off, want);
+                let answer = self.fs_byte_list(answer, "fs_read_at", span)?;
                 self.fs_answer(name, answer, span)
             }
             // -- the path calls --------------------------------------------
