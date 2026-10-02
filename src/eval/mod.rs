@@ -436,6 +436,12 @@ pub struct Run {
 #[derive(Debug, Default)]
 struct Scope {
     locals: Vec<(String, Slot)>,
+    /// What each local's binding statically recorded (is67,
+    /// `[type.row.match]`): one entry per `declare`, in declaration order, so
+    /// the last entry for a name is the live binding's. A `T ! {row}`
+    /// annotation or initializer, or a `Map[K, V]`, is what a `match` over
+    /// the name reads its row from; everything else records `None`.
+    known: Vec<(String, Option<Arc<crate::rowmatch::Known>>)>,
     /// `(on_error, expr)` in registration order; run in reverse
     /// (`[mem.shared.drop.1]`).
     defers: Vec<(bool, Expr)>,
@@ -1437,6 +1443,62 @@ impl Machine {
             && let Some(scope) = frame.scopes.last_mut()
         {
             scope.locals.push((name.to_owned(), slot));
+            scope.known.push((name.to_owned(), None));
+        }
+    }
+
+    /// Records what the live binding of `name` statically holds (is67): the
+    /// innermost scope's last entry for the name, which `declare` just
+    /// pushed.
+    fn set_known(&mut self, name: &str, known: crate::rowmatch::Known) {
+        if let Some(frame) = self.frames.last_mut()
+            && let Some(scope) = frame.scopes.last_mut()
+            && let Some((_, slot)) = scope.known.iter_mut().rev().find(|(n, _)| n == name)
+        {
+            *slot = Some(Arc::new(known));
+        }
+    }
+
+    /// What the live binding of `name` statically holds, innermost scope
+    /// first (is67).
+    fn known_of(&self, name: &str) -> Option<crate::rowmatch::Known> {
+        let frame = self.frames.last()?;
+        frame
+            .scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.known.iter().rev().find(|(n, _)| n == name))
+            .and_then(|(_, known)| known.as_deref().cloned())
+    }
+
+    /// The declared row of the `fn` a call's path names, unless a local
+    /// shadows the name (`[type.row.match]`'s static reader, is67).
+    fn callee_row(&self, path: &crate::ast::Path) -> Option<crate::rowmatch::RowTy> {
+        if path.is_single() && self.local_exists(&path.segments[0].name) {
+            return None;
+        }
+        let module = self
+            .frames
+            .last()
+            .map(|f| f.module.as_str())
+            .unwrap_or_default();
+        crate::rowmatch::callee_row(&self.shared.program, module, path)
+    }
+
+    /// What an expression is statically known to hold, read as `sema` reads
+    /// it (is67): the same reader, with this frame's locals and module.
+    fn static_known(&self, expr: &Expr) -> Option<crate::rowmatch::Known> {
+        let locals = |name: &str| self.known_of(name);
+        let callee = |path: &crate::ast::Path| self.callee_row(path);
+        crate::rowmatch::known_of_expr(expr, &locals, &callee)
+    }
+
+    /// The row a `match` scrutinee statically carries — `Some` exactly when
+    /// the match is a row match under `[type.row.match]` (is67).
+    fn static_fallible(&self, expr: &Expr) -> Option<crate::rowmatch::RowTy> {
+        match self.static_known(expr)? {
+            crate::rowmatch::Known::Fallible(row) => Some(row),
+            crate::rowmatch::Known::Map { .. } => None,
         }
     }
 
@@ -3072,6 +3134,11 @@ impl Machine {
                 self.prov().bind_place(&key, retag.alloc, retag.tag);
             }
             self.declare(&name, Slot::live(value));
+            if let ParamKind::Named { ty, .. } = &param.kind
+                && let Some(known) = crate::rowmatch::known_of_type(ty)
+            {
+                self.set_known(&name, known);
+            }
         }
         self.drain_prov();
 
@@ -3869,6 +3936,29 @@ impl Machine {
     }
 
     fn exec_binding(&mut self, binding: &Binding) -> EResult<()> {
+        // is67 (`[type.row.match]`): what the binding's annotation or
+        // initializer statically says the name holds, read before anything
+        // runs (a shadowing `let m = m[k]` reads the outer `m`), recorded
+        // once the pattern has bound.
+        let known = match &*binding.pattern.kind {
+            PatKind::Binding(_) => {
+                let locals = |name: &str| self.known_of(name);
+                let callee = |path: &crate::ast::Path| self.callee_row(path);
+                crate::rowmatch::known_of_binding(binding, &locals, &callee)
+            }
+            _ => None,
+        };
+        let result = self.exec_binding_inner(binding);
+        if result.is_ok()
+            && let Some(known) = known
+            && let PatKind::Binding(ident) = &*binding.pattern.kind
+        {
+            self.set_known(&ident.name, known);
+        }
+        result
+    }
+
+    fn exec_binding_inner(&mut self, binding: &Binding) -> EResult<()> {
         // D52's annotated-`let`/`var` position (`[gram.expr.tagident]`): the
         // annotation's declared row is the initializer's expected row, asked
         // before ordinary resolution — locals shadow, module items lose.
@@ -4940,12 +5030,60 @@ impl Machine {
                 // held, and its binds are shown to include something a copy
                 // would forge — an all-`Copy` arm leaves the scrutinee live,
                 // exactly as `consume_place` copies rather than moves.
+                //
+                // `[type.row.match]` (is67, the maintainer's #21): when the
+                // scrutinee is statically a `T ! {row}`, the match has two
+                // halves. A row value (a tag, not an enum variant) is tried
+                // against the ROW ARMS only — a tag of the row named bare or
+                // with its payload — and any other value against the VALUE
+                // ARMS only; `_` covers both. The row is the static one, and
+                // for a row value the row it travelled through joins it. The
+                // static reading is `rowmatch`'s: a call to a declared `fn`, a
+                // builtin with a row, a `Map` index, a local that recorded one
+                // of those; a scrutinee it cannot name keeps the old dispatch,
+                // unchanged. Nothing here guesses: a value no arm of its half
+                // takes is refused by name, never run down the wrong arm.
+                let row = self.static_fallible(scrutinee);
                 let place = self.live_place(scrutinee)?;
                 let value = match &place {
                     Some(path) => self.read_whole(path, scrutinee.span)?,
                     None => self.eval(scrutinee)?,
                 };
+                let is_row_value = matches!(&value, Value::Error(e) if !e.enum_variant);
+                let tags: Option<Vec<String>> = row.as_ref().map(|row| {
+                    let mut tags = row.tags.clone();
+                    if let Value::Error(e) = &value {
+                        for tag in &e.row {
+                            if !tags.contains(tag) {
+                                tags.push(tag.clone());
+                            }
+                        }
+                    }
+                    tags
+                });
+                if let Some(row) = &row {
+                    self.fire(
+                        Rule::RowMatch,
+                        expr.span,
+                        &format!(
+                            "`match` over a `{}`: {} half",
+                            row.render(),
+                            if is_row_value { "the row" } else { "the value" }
+                        ),
+                    );
+                }
                 for arm in arms {
+                    if let Some(tags) = &tags {
+                        let half = crate::rowmatch::arm_half(&arm.pattern, tags);
+                        let tried = match half {
+                            crate::rowmatch::Half::Both | crate::rowmatch::Half::Mixed => true,
+                            crate::rowmatch::Half::Row(_) => is_row_value,
+                            crate::rowmatch::Half::Value => !is_row_value,
+                        };
+                        if !tried {
+                            continue;
+                        }
+                    }
                     self.push_scope();
                     let matched = self.match_pattern(&arm.pattern, &value)?;
                     let guard = if matched {
@@ -4969,6 +5107,22 @@ impl Machine {
                         return result;
                     }
                     self.pop_scope();
+                }
+                if let Some(row) = &row {
+                    return unsupported(match &value {
+                        Value::Error(e) if is_row_value => format!(
+                            "`match` over a `{}`: no row arm covers the tag `{}` and there is no \
+                             `_` ([type.row.match]); the checker's E0801 names it",
+                            row.render(),
+                            e.tag
+                        ),
+                        other => format!(
+                            "`match` over a `{}`: no value arm covers the value half (`{}` here) \
+                             and there is no `_` ([type.row.match]); the checker's E0801 names it",
+                            row.render(),
+                            other.kind()
+                        ),
+                    });
                 }
                 unsupported(
                     "no `match` arm applied; exhaustiveness is the type checker's".to_owned(),

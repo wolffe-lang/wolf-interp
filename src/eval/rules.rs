@@ -213,6 +213,11 @@ pub enum Rule {
     ErrElse,
     /// `errdefer` runs on the error path only.
     ErrDefer,
+    /// A `match` over a `T ! {row}` has two halves: a row value goes to the
+    /// row arms, a value to the value arms, `_` covers both (ruling #21,
+    /// `[type.row.match]` at the next pin; cited here on the clause that
+    /// names `match` as a way to handle a row).
+    RowMatch,
     /// Scope-exit effects run LIFO.
     DeferLifo,
 
@@ -631,6 +636,10 @@ impl Rule {
                 "err.else",
                 "`else`, `else |err|` and `else |err| { … }` default an error away",
             ),
+            Rule::RowMatch => (
+                "type.row.operand",
+                "a `match` over a `T ! {row}` dispatches a row value to its row arms and a value to its value arms; `_` covers both halves ([type.row.match], ruling #21)",
+            ),
             Rule::ErrDefer => (
                 "err.errdefer",
                 "`errdefer` runs when the scope is left on the error path, and only then",
@@ -882,7 +891,7 @@ impl Rule {
     }
 
     /// Every rule, in declaration order. The registry.
-    pub const ALL: [Rule; 118] = [
+    pub const ALL: [Rule; 119] = [
         Rule::ValueSemantics,
         Rule::PlacePath,
         Rule::PathDisjoint,
@@ -952,6 +961,7 @@ impl Rule {
         Rule::ErrRows,
         Rule::ErrPropagate,
         Rule::ErrElse,
+        Rule::RowMatch,
         Rule::ErrDefer,
         Rule::DeferLifo,
         Rule::StrInterp,
