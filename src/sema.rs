@@ -4138,6 +4138,7 @@ fn body_walk(
                 modes: sigs.clone().map(|sigs| ModeCtx {
                     module: module.name.clone(),
                     sigs,
+                    nested: Vec::new(),
                 }),
                 moves: moves.then(MoveCtx::default),
             };
@@ -4159,6 +4160,7 @@ fn body_walk(
                     modes: sigs.clone().map(|sigs| ModeCtx {
                         module: module.name.clone(),
                         sigs,
+                        nested: Vec::new(),
                     }),
                     moves: moves.then(MoveCtx::default),
                 };
@@ -4203,6 +4205,20 @@ struct MoveCtx {
 /// One declared parameter of a visible signature: its mode and its name.
 type SigParam = (Option<ParamMode>, String);
 
+/// A fn's declared parameter row, for the mode pass.
+fn sig_params(decl: &FnDecl) -> Vec<SigParam> {
+    decl.params
+        .iter()
+        .map(|param| {
+            let name = match &param.kind {
+                crate::ast::ParamKind::Named { name, .. } => name.name.clone(),
+                crate::ast::ParamKind::SelfParam { .. } => "self".to_owned(),
+            };
+            (param.mode, name)
+        })
+        .collect()
+}
+
 /// The signature map of the mode pass: `(module, fn)` → the declared
 /// parameter row.
 type SigMap = BTreeMap<(String, String), Vec<SigParam>>;
@@ -4213,6 +4229,12 @@ type SigMap = BTreeMap<(String, String), Vec<SigParam>>;
 struct ModeCtx {
     module: String,
     sigs: SigMap,
+    /// The nested fns declared so far on the walked line (wolf-interp#169):
+    /// name, the scope depth of the block that declares it, and its
+    /// parameter row. A call to one is held to its modes exactly as a call
+    /// to a module fn is (s186, wolf-lang#466); the entries leave with the
+    /// block that declared them.
+    nested: Vec<(String, usize, Vec<SigParam>)>,
 }
 
 /// What the eager raise check resolves a bare lowercase `return` name
@@ -4260,6 +4282,14 @@ impl Env {
         if let Some(ctx) = &mut self.moves {
             ctx.moved.remove(name);
         }
+    }
+
+    /// The depth (1-based) of the innermost scope that binds `name`.
+    fn binding_depth(&self, name: &str) -> Option<usize> {
+        self.scopes
+            .iter()
+            .rposition(|scope| scope.iter().any(|(n, _)| n == name))
+            .map(|index| index + 1)
     }
 
     /// The latest binding of `name`, innermost scope first — shadowing means
@@ -4351,6 +4381,11 @@ fn walk_block_assigns(block: &Block, env: &mut Env) -> Option<Diag> {
         diag = walk_expr_assigns(tail, env);
     }
     env.scopes.pop();
+    // A nested fn's signature leaves with the block that declared it.
+    let depth = env.scopes.len();
+    if let Some(ctx) = &mut env.modes {
+        ctx.nested.retain(|(_, declared_at, _)| *declared_at <= depth);
+    }
     diag
 }
 
@@ -4444,6 +4479,13 @@ fn walk_stmt_assigns(stmt: &Stmt, env: &mut Env) -> Option<Diag> {
         StmtKind::Expr(expr) => walk_expr_assigns(expr, env),
         StmtKind::Item(item) => match &item.kind {
             ItemKind::Fn(decl) => {
+                // Inside the nested body the enclosing fn's nested fns are
+                // not callees this pass resolves (a nested fn is
+                // capture-free, #38): their row is set aside for the walk.
+                let outer_nested = env
+                    .modes
+                    .as_mut()
+                    .map(|ctx| std::mem::take(&mut ctx.nested));
                 let mut nested = Env {
                     scopes: vec![env.scopes.first().cloned().unwrap_or_default()],
                     raise: env.raise.take(),
@@ -4456,6 +4498,14 @@ fn walk_stmt_assigns(stmt: &Stmt, env: &mut Env) -> Option<Diag> {
                 let diag = walk_fn_assigns(decl, &mut nested);
                 env.raise = nested.raise;
                 env.modes = nested.modes;
+                // wolf-interp#169: from here on the block can call it, and
+                // the call spells the declared modes (X1).
+                let depth = env.scopes.len();
+                if let (Some(ctx), Some(outer)) = (&mut env.modes, outer_nested) {
+                    ctx.nested = outer;
+                    ctx.nested
+                        .push((decl.name.name.clone(), depth, sig_params(decl)));
+                }
                 diag
             }
             _ => None,
@@ -4729,6 +4779,22 @@ fn check_call_modes(callee: &Expr, args: &[Arg], env: &Env) -> Option<Diag> {
     let ExprKind::Path(path) = &*base.kind else {
         return None;
     };
+    // wolf-interp#169: a nested fn declared on this line, unless a binding
+    // in a deeper scope shadows it, is held to its own parameter row — the
+    // module fn's law (s186, wolf-lang#466).
+    if let [single] = path.segments.as_slice()
+        && let Some((declared_at, sig)) = ctx
+            .nested
+            .iter()
+            .rev()
+            .find(|(name, _, _)| *name == single.name)
+            .map(|(_, declared_at, sig)| (*declared_at, sig))
+        && env
+            .binding_depth(&single.name)
+            .is_none_or(|bound_at| bound_at <= declared_at)
+    {
+        return mode_disagreement(&single.name, args, sig);
+    }
     // A local binding shadowing the head makes the callee a value; its
     // signature is not this rung's to see.
     if let Some(head) = path.segments.first()
@@ -4751,6 +4817,12 @@ fn check_call_modes(callee: &Expr, args: &[Arg], env: &Env) -> Option<Diag> {
         _ => return None,
     };
     let sig = ctx.sigs.get(&key)?;
+    mode_disagreement(fn_name, args, sig)
+}
+
+/// The first argument whose spelled mode disagrees with `sig`'s, as E1007 —
+/// [`check_call_modes`]'s comparison, for a module fn and a nested one alike.
+fn mode_disagreement(fn_name: &str, args: &[Arg], sig: &[SigParam]) -> Option<Diag> {
     for (arg, (declared, param)) in args.iter().zip(sig) {
         if arg.mode == *declared {
             continue;
