@@ -158,7 +158,11 @@ fn run(name: &str) {
             .as_array()
             .and_then(|all| all.iter().find(|d| d["severity"] != "warning"))
             .unwrap_or_else(|| panic!("{name}: a fail carries its error — record {record}"));
-        assert_eq!(first["code"].as_str(), Some(code.as_str()), "{name}: {record}");
+        assert_eq!(
+            first["code"].as_str(),
+            Some(code.as_str()),
+            "{name}: {record}"
+        );
         if let Some([start, end]) = ruled.diag {
             assert_eq!(
                 first["span"],
@@ -166,13 +170,19 @@ fn run(name: &str) {
                 "{name}: the error's span — record {record}"
             );
         }
-        let file = first["file"].as_u64().filter(|index| *index > 0).map(|index| {
-            record["files"][usize::try_from(index).expect("an index")]
-                .as_str()
-                .expect("the files table names the index")
-                .to_owned()
-        });
-        assert_eq!(file, ruled.file, "{name}: the error's file — record {record}");
+        let file = first["file"]
+            .as_u64()
+            .filter(|index| *index > 0)
+            .map(|index| {
+                record["files"][usize::try_from(index).expect("an index")]
+                    .as_str()
+                    .expect("the files table names the index")
+                    .to_owned()
+            });
+        assert_eq!(
+            file, ruled.file,
+            "{name}: the error's file — record {record}"
+        );
     }
 }
 
