@@ -3210,7 +3210,8 @@ impl Machine {
     /// write, a move, a second claim or a lend into this same call still
     /// meets it — and the list's end is the call's entry, where every claim
     /// takes effect for the callee's whole extent. A list that stops on a
-    /// signal enters too, so its claims stay held exactly as they always did.
+    /// signal never reaches that entry: the call it was for is never made,
+    /// so it is abandoned (wolffe-lang/wolf-interp#163, [`Machine::abandon_args`]).
     fn eval_args_for(
         &mut self,
         args: &[Arg],
@@ -3218,13 +3219,19 @@ impl Machine {
         param_rows: Option<&[Vec<String>]>,
     ) -> EResult<Args> {
         let call = self.access.open_call();
-        let evaluated = self.eval_arg_list(args, callee, param_rows, call);
+        let evaluated = self.eval_arg_list(args, callee, param_rows, call)?;
         self.access.enter_call(call);
-        evaluated
+        Ok(evaluated)
     }
 
     /// [`eval_args_for`](Machine::eval_args_for)'s list, left to right, with
     /// its `mut` claims pending for `call`.
+    ///
+    /// A signal out of any argument — `?`'s return, a `return`, a `break`, a
+    /// `continue`, a trap — leaves before the call is entered, and a call
+    /// never entered has no extent: the list is abandoned, everything it
+    /// held or protected withdrawn, and the signal leaves as it left the
+    /// argument (wolffe-lang/wolf-interp#163).
     fn eval_arg_list(
         &mut self,
         args: &[Arg],
@@ -3232,11 +3239,41 @@ impl Machine {
         param_rows: Option<&[Vec<String>]>,
         call: CallId,
     ) -> EResult<Args> {
-        let mut values = Vec::with_capacity(args.len());
-        let mut writebacks = Vec::new();
-        let mut held = 0usize;
-        let mut retags: Vec<(usize, PendingRetag)> = Vec::new();
-        let mut protectors: Vec<prov::TagId> = Vec::new();
+        let mut list = Args {
+            values: Vec::with_capacity(args.len()),
+            writebacks: Vec::new(),
+            held: 0,
+            retags: Vec::new(),
+            protectors: Vec::new(),
+        };
+        match self.fill_arg_list(args, callee, param_rows, call, &mut list) {
+            Ok(()) => Ok(list),
+            Err(signal) => {
+                let span = args.first().map_or(Span::new(0, 0), |arg| arg.span);
+                self.abandon_args(&list, span);
+                Err(signal)
+            }
+        }
+    }
+
+    /// [`eval_arg_list`](Machine::eval_arg_list)'s loop, filling `list` as
+    /// it goes so that what a signal interrupts is still in the caller's
+    /// hands.
+    fn fill_arg_list(
+        &mut self,
+        args: &[Arg],
+        callee: Callee,
+        param_rows: Option<&[Vec<String>]>,
+        call: CallId,
+        list: &mut Args,
+    ) -> EResult<()> {
+        let Args {
+            values,
+            writebacks,
+            held,
+            retags,
+            protectors,
+        } = list;
 
         for (index, arg) in args.iter().enumerate() {
             match arg.mode {
@@ -3263,7 +3300,7 @@ impl Machine {
                         span: arg.span,
                         why: HeldWhy::Pending(call),
                     });
-                    held += 1;
+                    *held += 1;
                     // `[mem.prov.tag]`: `mut` parameter entry is a retag point,
                     // and "parameter entry is protector-equivalent: the tag is
                     // protected for the whole call". The child is *Reserved*,
@@ -3275,8 +3312,8 @@ impl Machine {
                         value,
                         RetagKind::Mutable,
                         index,
-                        &mut retags,
-                        &mut protectors,
+                        retags,
+                        protectors,
                         arg.span,
                     );
                     writebacks.push((index, path));
@@ -3340,7 +3377,7 @@ impl Machine {
                             )?;
                             let value = self.read_whole(&path, arg.span)?;
                             self.fire(Rule::ModeRead, arg.span, &format!("`read {path}`"));
-                            held += 1;
+                            *held += 1;
                             // `read` parameter entry retags too, with a Frozen
                             // child: the caller's place is immutable for the
                             // whole call, which is O2 — the SB "holy grail"
@@ -3351,8 +3388,8 @@ impl Machine {
                                 value,
                                 RetagKind::Shared,
                                 index,
-                                &mut retags,
-                                &mut protectors,
+                                retags,
+                                protectors,
                                 arg.span,
                             );
                             self.access.push(Held {
@@ -3379,13 +3416,43 @@ impl Machine {
                 &format!("{} argument(s) evaluated left to right", args.len()),
             );
         }
-        Ok(Args {
-            values,
-            writebacks,
-            held,
-            retags,
-            protectors,
-        })
+        Ok(())
+    }
+
+    /// An argument list a signal left before its call was entered
+    /// (wolffe-lang/wolf-interp#163).
+    ///
+    /// `[mem.tier0.excl.4]` (ruling #17): a `mut` argument's claim "takes
+    /// effect when the call is entered"; `[mem.prov.tag]`: parameter entry's
+    /// tag "is protected for the whole call". The call is never made, so
+    /// there is no extent for the claim to take effect for and nothing for
+    /// the protector to protect: every access this list pushed is released
+    /// (its pending claims and its `read` lends — the newest entries of the
+    /// set, since every scope and nested list inside an argument has popped
+    /// its own), every protector it minted comes off, and the tags nothing
+    /// reaches any more go away. Through 0.1.43 the protected Reserved
+    /// child stayed, and the next write through the place was a foreign
+    /// write to a protected tag — `ub(mem.ub)` on `put(mut xs, v(ok)?)`,
+    /// which every wolf tier runs; the claim stayed held until its scope
+    /// popped, which the REPL's top level never does.
+    fn abandon_args(&mut self, list: &Args, span: Span) {
+        self.access.release(list.held);
+        for tag in &list.protectors {
+            self.prov().unprotect(*tag, span);
+        }
+        self.prov().prune();
+        self.drain_prov();
+        if list.held > 0 || !list.protectors.is_empty() {
+            self.fire(
+                Rule::ModeMut,
+                span,
+                &format!(
+                    "{} claim(s) and {} protector(s) withdrawn: the call was never entered",
+                    list.held,
+                    list.protectors.len()
+                ),
+            );
+        }
     }
 
     /// `[mem.tier0.excl.4]`: "a later argument may not [...] lend it into the
@@ -7920,8 +7987,29 @@ impl Machine {
         for claimed in &receiver_claims {
             self.access.withdraw(call, claimed);
         }
+        // A signal out of the list leaves before the call is entered: the
+        // list has abandoned its own claims and protectors, the receiver's
+        // claims are withdrawn above, and the receiver's protected child —
+        // minted before the arguments, bound to nothing yet — comes off here
+        // (wolffe-lang/wolf-interp#163: `(mut xs).push(v(ok)?)` left it, and
+        // the next push through `xs` was a foreign write to a protected tag).
+        let evaluated = match evaluated {
+            Ok(evaluated) => evaluated,
+            Err(signal) => {
+                if let Some((_, _, child)) = &receiver_tag {
+                    self.prov().unprotect(*child, span);
+                    self.prov().prune();
+                    self.drain_prov();
+                    self.fire(
+                        Rule::ModeMut,
+                        receiver_span,
+                        "the receiver's protector withdrawn: the call was never entered",
+                    );
+                }
+                return Err(signal);
+            }
+        };
         self.access.enter_call(call);
-        let evaluated = evaluated?;
         // Now the receiver's own accesses go through the child.
         let previous = receiver_tag
             .as_ref()
