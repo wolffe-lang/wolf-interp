@@ -4384,7 +4384,8 @@ fn walk_block_assigns(block: &Block, env: &mut Env) -> Option<Diag> {
     // A nested fn's signature leaves with the block that declared it.
     let depth = env.scopes.len();
     if let Some(ctx) = &mut env.modes {
-        ctx.nested.retain(|(_, declared_at, _)| *declared_at <= depth);
+        ctx.nested
+            .retain(|(_, declared_at, _)| *declared_at <= depth);
     }
     diag
 }
