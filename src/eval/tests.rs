@@ -5358,3 +5358,55 @@ fn a_method_on_a_sibling_of_the_moved_element_runs() {
         "1 2 1 1\n"
     );
 }
+
+// -- wolf-interp#163: a flow out of an argument list -------------------------
+
+#[test]
+fn a_flow_out_of_an_argument_list_withdraws_the_calls_claims_and_protectors() {
+    // `[mem.tier0.excl.4]`: a `mut` argument's claim "takes effect when the
+    // call is entered"; `[mem.prov.tag]`: the parameter-entry tag "is
+    // protected for the whole call". `put(mut xs, v(ok)?)` with `ok` false
+    // never enters `put`, so there is no extent: the claim and the protector
+    // are withdrawn, and `(mut xs).push(3)` in the caller is an ordinary
+    // write. Through 0.1.43 the protected Reserved child stayed in the tree
+    // and that push answered `ub(mem.ub)` (`mem.prov.state` P1), where every
+    // wolf tier prints `[1, 5, 3]`.
+    let run = run_source_seeded(
+        "t.lu",
+        "fn v(ok: bool) -> int ! {parse} {\n\
+         \x20   if ok { 5 } else { return parse }\n\
+         }\n\
+         fn put(mut xs: List[int], k: int) {\n\
+         \x20   (mut xs).push(k)\n\
+         }\n\
+         fn add(mut xs: List[int], ok: bool) -> int ! {parse} {\n\
+         \x20   put(mut xs, v(ok)?)\n\
+         \x20   xs.len\n\
+         }\n\
+         fn main() -> !int {\n\
+         \x20   var xs = [1]\n\
+         \x20   print(\"{add(mut xs, true) else 9}\")\n\
+         \x20   print(\"{add(mut xs, false) else 9}\")\n\
+         \x20   (mut xs).push(3)\n\
+         \x20   print(\"{xs}\")\n\
+         \x20   0\n\
+         }\n",
+        None,
+        Trace::All,
+    )
+    .expect("the fixture parses");
+    assert!(
+        matches!(run.outcome, Outcome::Exit(0)),
+        "the next write runs: {:?}",
+        run.outcome
+    );
+    assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "2\n9\n[1, 5, 3]\n");
+    // The abandoned list says so: one claim (`mut xs`) and one protector.
+    assert!(
+        run.trace
+            .iter()
+            .any(|line| line.contains("1 claim(s) and 1 protector(s) withdrawn: the call was never entered")),
+        "the withdrawal is traced:\n{}",
+        run.trace.join("\n")
+    );
+}
