@@ -2685,8 +2685,10 @@ fn a_nested_fn_capturing_an_enclosing_local_refuses_by_name() {
 
 #[test]
 fn the_nested_fn_scoped_out_shapes_refuse_by_name() {
-    // Generics, an error row on the nested return, and parameter modes are
-    // the compiler's refused set too — refusing THERE and here is parity.
+    // Generics and an error row on the nested return are the compiler's
+    // refused set too — refusing THERE and here is parity. Parameter modes
+    // left the set at s186 (wolf-lang#466) and here at is68
+    // (wolf-interp#169): `a_nested_fn_with_a_mode_is_a_module_fns_call`.
     for (source, needle) in [
         (
             "fn main() -> !int {\n\
@@ -2702,20 +2704,36 @@ fn the_nested_fn_scoped_out_shapes_refuse_by_name() {
              }\n",
             "error row",
         ),
-        (
-            "fn main() -> !int {\n\
-             \x20   fn bump(mut v: int) { v = v + 1 }\n\
-             \x20   bump(1)\n\
-             \x20   0\n\
-             }\n",
-            "parameter mode",
-        ),
     ] {
         let Outcome::Unsupported(reason) = outcome(source) else {
             panic!("expected a by-name refusal for: {source}");
         };
         assert!(reason.contains(needle), "{reason} vs {needle}");
     }
+}
+
+#[test]
+fn a_nested_fn_with_a_mode_is_a_module_fns_call() {
+    // s186 (wolf-lang#466), mirrored at is68 (wolf-interp#169): a nested fn's
+    // `mut` parameter is the module fn's — the write reaches the caller's
+    // place — and a call that does not spell the mode is E1007's static rule,
+    // which the evaluator refuses by name rather than run unwritten-back.
+    let wrote = "fn main() -> !int {\n\
+                 \x20   fn bump(mut v: int) { v = v + 1 }\n\
+                 \x20   var n = 41\n\
+                 \x20   bump(mut n)\n\
+                 \x20   if n == 42 { 0 } else { 1 }\n\
+                 }\n";
+    assert_eq!(outcome(wrote), Outcome::Exit(0));
+    let unspelled = "fn main() -> !int {\n\
+                     \x20   fn bump(mut v: int) { v = v + 1 }\n\
+                     \x20   bump(1)\n\
+                     \x20   0\n\
+                     }\n";
+    let Outcome::Unsupported(reason) = outcome(unspelled) else {
+        panic!("expected a by-name refusal");
+    };
+    assert!(reason.contains("call-site mode"), "{reason}");
 }
 
 #[test]
