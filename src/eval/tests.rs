@@ -5400,7 +5400,10 @@ fn a_flow_out_of_an_argument_list_withdraws_the_calls_claims_and_protectors() {
         "the next write runs: {:?}",
         run.outcome
     );
-    assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "2\n9\n[1, 5, 3]\n");
+    assert_eq!(
+        String::from_utf8(run.stdout).expect("utf-8"),
+        "2\n9\n[1, 5, 3]\n"
+    );
     // The abandoned list says so: one claim (`mut xs`) and one protector.
     assert!(
         run.trace.iter().any(|line| line
