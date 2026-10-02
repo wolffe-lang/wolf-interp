@@ -3287,12 +3287,6 @@ impl TierWalk<'_> {
         }
     }
 
-    fn is_local(&self, name: &str) -> bool {
-        self.scopes
-            .iter()
-            .any(|scope| scope.iter().any(|(n, _)| n == name))
-    }
-
     fn block(&mut self, block: &Block) -> Option<Diag> {
         self.scopes.push(Vec::new());
         for stmt in &block.stmts {
