@@ -6045,6 +6045,109 @@ Filed and commented:
 - [ ] #157, #162, #159, #164 close on merge (by hand if not)
 - [ ] kasumi build dirs pruned once evidence is written; worktree removed
 
+### A flow out of an argument list withdraws the call's claims — is65, wolf-interp#163
+
+Wave 52's row: "wolf-interp#163. A `?` or `continue` leaving an argument
+list leaves the `mut` argument's retag in place, so the next write answers
+`ub(mem.ub)`." The contract is is62's, in five sections; §1–§3 are
+committed before the first edit under `src/` or `tests/`, the rest is
+appended as it lands. Measurements on kasumi (linux x86-64) under
+`~/lanes/is65/`: the published lupin 0.1.43 (`e957c8de…`) and wolf 0.2.19
+(`9f3873d8…`), archive digests equal to the release assets' (`gh api
+…/releases/tags/<tag>`, `.assets[].digest`); lupin trunk `6d6cde5` built
+release (`archives/lupin-trunk-6d6cde5`, `cb8d424c…`). Probes: 23
+one-directory programs under `~/lanes/is65/probes/` plus a REPL script
+(`repl-trap.txt`), run by `scripts/run-probes.sh` (`lupin conform-run
+main.lu --json`, and `wolf conform-run main.lu --{checked,native,release}
+--json`), summarised by `scripts/summ.py`.
+
+#### §1 — forbidden, absolutely
+
+No `rm` outside `~/lanes/is65/` (kasumi) and `/private/tmp/is65`; no
+deletion in any tree this lane did not create (is62's `~/lanes/is62/` is
+read only); no `git add -A`; no edit to another lane's file; no workflow
+edit; no `~/.claude`; no build or test on this Mac or on nomad-1 (kasumi
+only, `CARGO_BUILD_JOBS=4`); no tag; no pin move (the pin stays `c2401f05`);
+no merge, no rebase-merge; no `2>/dev/null` on a checkout; kill only my own
+pids, never a pattern or a group; jobs launched with `setsid`, never
+`ssh -f`; no claim of "seen red" without the log it is in; no trailer of
+any kind on any commit; no `gh run watch` without `--interval 60`; no
+silent wait past four minutes.
+
+#### §2 — inputs, re-derived 2026-10-01
+
+| input as written | at origin / measured | drift |
+| --- | --- | --- |
+| wolf-interp trunk `6d6cde5`, lupin 0.1.43 tagged | `origin/trunk` = `6d6cde5` ("release: lupin 0.1.43"); `Cargo.toml` 0.1.43; `vendor/upstream/PIN` `c2401f05` (wolf-lang v0.2.19, the tag); a dev build answers `--version` `0.1.43` (no `+dev` suffix at a tagged tree) | none |
+| the archives | lupin 0.1.43 linux x86-64 `e957c8de…`, wolf 0.2.19 `9f3873d8…`; both equal to the release assets' `digest` | none |
+| #163's shape: `put(mut xs, v(ok)?)` answers `ub(mem.ub)` after `2` `9`; `continue` in a `while` `ub(mem.ub)`; the receiver forms likewise; wolf runs all | trunk `6d6cde5` and the 0.1.43 archive: `ub(mem.ub)`, `mem.prov.state` P1, on all four (`probes-trunk-6d6cde5.log`, `probes-archive-0.1.43.log`); wolf 0.2.19 `exit(0)` `2 9 [1, 5, 3]` and `[1, 1, 3]` on checked, native and release | none |
+| the family | wider than the issue's four: a `return` and a `break` in the argument (`2 7` / `[1, 1, 3]` on wolf), `continue` in a `for`, the next write made by a `mut` argument instead of a receiver, a nested call inside the argument in three shapes (`outer(mut xs, inner(mut ys, v(ok)?))`, `outer(mut xs, inner(mut ys, 1), v(ok)?)`, `outer(inner(mut ys, v(ok)?), mut xs)`), a `read` lend (`both(ys, v(ok)?)`: the Frozen child leaks and `(mut ys).push(4)` is the foreign write), a scalar `mut n`, two `mut` arguments in one list, and every receiver form of `?`/`return`/`break`/`continue`/nested — 18 shapes, each `ub(mem.ub)` on trunk and 0.1.43, each run by wolf 0.2.19 on three tiers | wider; all listed as witnesses |
+| a trap out of the list | `put(mut xs, ys[9])`: `trap(bounds)` `[130, 135]` on lupin and on all three wolf tiers (`mem.ub.defined`); nothing after a trap runs in a program. In the REPL, where the session survives (`[repl.trap.alive]`), the next line `(mut xs).push(3)` answers `trap(exclusivity): xs is held as mut` and so does `xs` (`repl-trap-trunk-and-archive.log`, trunk and 0.1.43 alike): the claim leaks too, not only the protector — at top level no scope ever pops it | the REPL is the trap kind's witness; the hold leak is a second defect under the same cause |
+| shapes that already agree (controls) | `mut b.xs` (a field place), `mut xs[0]` (an element), an impl `(mut c).add(v(ok)?)` with a field write after, a view-set `(mut p).set_x(v(ok)?)` with field writes after: `exit(0)`, wolf's bytes, on trunk; `eat(take xs, v(ok)?)`: `6 9` on all four (the move stands on every machine) | none; kept as controls |
+| the mechanism | `eval_args_for` (`src/eval/mod.rs:3214`): `eval_arg_list` returns `EResult<Args>`, so on a signal the `Args` — `protectors`, `held`, `writebacks` — is dropped; `enter_call` still runs, so the list's claims become `HeldWhy::Call` and live until the enclosing scope pops them (`pop_scope_escaping` :1321, `eval_for` :6450, `release_frame` :3080) — which the REPL's top level never does; nothing calls `unprotect` for the protectors but `finish_args` (:3532), which the signal path never reaches. `eval_method` (:7919): the receiver's protected child (`receiver_tag`, :7869) is unprotected only at :8112, past `evaluated?` (:7924). The is63 comment at :3211 states the old behaviour as a design ("a list that stops on a signal enters too") | as the issue reads it, plus the hold |
+| the spec | `[mem.tier0.excl.4]` (ruling #17): a `mut` argument's claim "takes effect when the call is entered"; `[mem.prov.tag]`: parameter entry "is protector-equivalent: the tag is protected for the whole call". A call never entered has no extent: there is nothing for the claim to take effect for and nothing for the protector to protect | the clauses decide it; no ruling needed |
+| CI | `.github/workflows/ci.yml` runs on `push` to `trunk`/`main` and on `pull_request`: a branch has runs only while its PR is open, so the PR opens at the first push and its body is finished at the end | noted |
+| the coverage ratchet | `tests/export.rs`: `RATCHET_FLOOR = 271`, `ANCHORS_TOTAL = 542` | none |
+| no test pins the old behaviour | `grep -rn "stops on a signal\|enters too\|stay held" src tests`: only the :3211 comment | none |
+
+#### §3 — prediction, committed before the first edit
+
+**One mechanism, one commit.** `eval_arg_list` fills an `Args` it is
+handed by `&mut`; when any argument leaves on a signal — `?`'s `Return`,
+`return`, `break`, `continue`, a trap, a UB finding, an unsupported — the
+list is **abandoned**: the accesses it pushed are released (`held` of
+them, the most recent, so every `Pending(call)` claim and every `read`
+lend's `HeldWhy::Call` of this list go, and nothing of an enclosing list
+does), every protector it minted is unprotected and the forest pruned,
+and the signal leaves. `eval_args_for` enters the call only on `Ok`.
+`eval_method` does the same for the receiver on the signal path: its
+protected child is unprotected and pruned before the rebind that never
+happens, and the receiver claims are withdrawn as they already are. A
+trace line names it (`Rule::ModeMut`, "withdrawn: the call was never
+entered"). No change to `AccessSet`, `finish_args` or the success path.
+
+**The witness table** (lupin head against trunk `6d6cde5`; wolf 0.2.19's
+answer in brackets, one answer on checked, native and release):
+
+| witness | trunk and 0.1.43 | head | [wolf 0.2.19] |
+| --- | --- | --- | --- |
+| `try_arg` (#163's program) | `ub(mem.ub)` after `2` `9` | `exit(0)` `2` `9` `[1, 5, 3]` | [same] |
+| `try_arg_then_mut_arg` (the next write is `put(mut xs, 3)`) | `ub(mem.ub)` | `2` `9` `[1, 5, 3]` | [same] |
+| `continue_arg` (#163's `while`), `continue_for` | `ub(mem.ub)` | `[1, 1, 3]` | [same] |
+| `return_arg` | `ub(mem.ub)` after `2` `7` | `2` `7` `[1, 5, 3]` | [same] |
+| `break_arg` | `ub(mem.ub)` | `[1, 1, 3]` | [same] |
+| `try_nested_inner_claim`, `try_nested_first_arg` | `ub(mem.ub)` after `4` `9` | `4` `9` `[1, 2, 3] [2, 5, 4]` | [same] |
+| `try_after_nested_done` | `ub(mem.ub)` after `4` `9` | `4` `9` `[1, 7, 3] [2, 1, 1, 4]` | [same] |
+| `read_lend_try` | `ub(mem.ub)` after `2` `9` | `2` `9` `[2, 6, 4]` | [same] |
+| `recv_try`, `recv_return` | `ub(mem.ub)` | `2` `9` `[1, 5, 3]`; `2` `7` `[1, 5, 3]` | [same] |
+| `recv_continue`, `recv_break` | `ub(mem.ub)` | `[1, 1, 3]` | [same] |
+| `recv_nested_try` | `ub(mem.ub)` after `4` `9` | `4` `9` `[1, 2, 3] [2, 5, 4]` | [same] |
+| `scalar_mut_try` | `ub(mem.ub)` after `6` `9` | `6` `9` `16` | [same] |
+| `two_muts_try` | `ub(mem.ub)` after `4` `9` | `4` `9` `[1, 5, 3] [2, 5, 4]` | [same] |
+| `trap_arg` (control) | `trap(bounds)` `[130, 135]` | unchanged | [`trap(bounds)`] |
+| `take_then_try`, `field_mut_try`, `elem_mut_try`, `impl_recv_try`, `viewset_recv_try` (controls) | wolf's bytes | unchanged bytes | [same] |
+| REPL `trap_then_write` (`tests/repl_session.rs`'s pipe; lupin only) | `trap(exclusivity)` on the line after the trap | the push runs, `xs` answers `[1, 3]` | [no REPL] |
+
+Each witness is run red at the commit that adds it (18 red, the
+controls and the REPL row's trap line green) and green at the fix.
+
+**Existing tests that change: none.** No test pins the old behaviour (§2).
+`src/eval/tests.rs` gains one unit test: after a `?` out of an argument
+list the trace carries the withdrawal line and the next write runs.
+
+**Corpus and differential.** `lupin corpus` at the pin: identical reports,
+trunk against head. `lupin diff-run` on four tiers against wolf 0.2.19 on
+the vendored corpus (the pin is the 0.2.19 tag): no new divergence; a row
+could only move from `ub` to wolf's bytes, and none is predicted (no
+vendored row has a flow out of an argument list under a claim). The
+conservatism ledgers move 0 rows.
+
+**Coverage.** `RATCHET_FLOOR` holds at 271 (the witnesses carry no
+`conforms:` line the bundle counts).
+
+**Out of scope, named:** nothing new is filed from §2; the `take`-then-`?`
+move stands on every machine and is a control, not a finding.
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
