@@ -175,7 +175,12 @@ pub fn callee_row(program: &Program, module: &str, path: &Path) -> Option<RowTy>
                 .iter()
                 .find(|(bound, _)| bound == &head.name)
                 .map(|(_, segments)| segments.join("."))
-                .or_else(|| program.modules.contains_key(&head.name).then(|| head.name.clone()))?;
+                .or_else(|| {
+                    program
+                        .modules
+                        .contains_key(&head.name)
+                        .then(|| head.name.clone())
+                })?;
             match program.lookup(&target, &name.name, true) {
                 Some(Def::Fn(decl)) => fallible_of_decl(decl),
                 _ => None,
@@ -314,7 +319,7 @@ pub enum Half {
 pub fn arm_half(pattern: &Pattern, tags: &[String]) -> Half {
     match &*pattern.kind {
         PatKind::Wildcard => Half::Both,
-        PatKind::Binding(ident) if tags.iter().any(|tag| *tag == ident.name) => {
+        PatKind::Binding(ident) if tags.contains(&ident.name) => {
             Half::Row(vec![ident.name.clone()])
         }
         PatKind::Variant { path, .. }
@@ -364,9 +369,10 @@ pub fn irrefutable(pattern: &Pattern, is_variant: &dyn Fn(&str) -> bool) -> bool
         PatKind::Or(alternatives) => alternatives
             .iter()
             .any(|alternative| irrefutable(alternative, is_variant)),
-        PatKind::Literal(_) | PatKind::Range { .. } | PatKind::Path(_) | PatKind::Variant { .. } => {
-            false
-        }
+        PatKind::Literal(_)
+        | PatKind::Range { .. }
+        | PatKind::Path(_)
+        | PatKind::Variant { .. } => false,
     }
 }
 
@@ -395,10 +401,12 @@ enum Finding {
 /// agreement). The first finding in source order wins.
 #[must_use]
 pub fn row_match_check(program: &Program) -> Option<Diag> {
-    findings(program).into_iter().find_map(|finding| match finding {
-        Finding::Diag(diag) => Some(diag),
-        Finding::Unsupported(_) => None,
-    })
+    findings(program)
+        .into_iter()
+        .find_map(|finding| match finding {
+            Finding::Diag(diag) => Some(diag),
+            Finding::Unsupported(_) => None,
+        })
 }
 
 /// `[type.row.match]`'s collision: a tag of the row that is also a
@@ -407,10 +415,12 @@ pub fn row_match_check(program: &Program) -> Option<Diag> {
 /// for it is s197's; this machine spends none.
 #[must_use]
 pub fn collision_refusal(program: &Program) -> Option<String> {
-    findings(program).into_iter().find_map(|finding| match finding {
-        Finding::Unsupported(reason) => Some(reason),
-        Finding::Diag(_) => None,
-    })
+    findings(program)
+        .into_iter()
+        .find_map(|finding| match finding {
+            Finding::Unsupported(reason) => Some(reason),
+            Finding::Diag(_) => None,
+        })
 }
 
 /// `[type.row.defer]` (s196, E0611): a `?` anywhere inside a `defer` or
@@ -665,9 +675,9 @@ fn each_child_with_blocks<'a>(expr: &'a Expr, v: &mut dyn FnMut(Child<'a>)) {
             v(Child::Expr(cond));
             v(Child::Block(body));
         }
-        ExprKind::Loop { body }
-        | ExprKind::Scope { body, .. }
-        | ExprKind::Unsafe { body } => v(Child::Block(body)),
+        ExprKind::Loop { body } | ExprKind::Scope { body, .. } | ExprKind::Unsafe { body } => {
+            v(Child::Block(body))
+        }
         ExprKind::RegionSugar { cap, body, .. } => {
             if let Some(cap) = cap {
                 v(Child::Expr(cap));
@@ -884,9 +894,9 @@ impl Scope<'_> {
                 }
                 for arm in arms {
                     self.locals.push(Vec::new());
-                    let is_row_arm = row
-                        .as_ref()
-                        .is_some_and(|row| matches!(arm_half(&arm.pattern, &row.tags), Half::Row(_)));
+                    let is_row_arm = row.as_ref().is_some_and(|row| {
+                        matches!(arm_half(&arm.pattern, &row.tags), Half::Row(_))
+                    });
                     if !is_row_arm {
                         self.declare_pattern(&arm.pattern);
                     }
@@ -1226,7 +1236,11 @@ mod tests {
             "{LOOK}fn main() -> !int {{\n    match look(Map[str, int](), \"a\") {{ none => -1 }}\n}}\n"
         ));
         let diag = row_match_check(&prog).expect("E0801");
-        assert!(diag.message.contains("the value half (`int`)"), "{}", diag.message);
+        assert!(
+            diag.message.contains("the value half (`int`)"),
+            "{}",
+            diag.message
+        );
     }
 
     #[test]
@@ -1235,7 +1249,11 @@ mod tests {
             "{LOOK}fn main() -> !int {{\n    let f = true\n    match look(Map[str, int](), \"a\") {{ none if f => -1, v => v }}\n}}\n"
         ));
         let diag = row_match_check(&prog).expect("E0801");
-        assert!(diag.message.contains("`none`") && diag.message.contains("guard"), "{}", diag.message);
+        assert!(
+            diag.message.contains("`none`") && diag.message.contains("guard"),
+            "{}",
+            diag.message
+        );
     }
 
     #[test]
@@ -1256,7 +1274,11 @@ mod tests {
             "fn main() -> !int {\n    var m = Map[str, int]()\n    match m[\"a\"] { none => -1 }\n}\n",
         );
         let diag = row_match_check(&prog).expect("E0801");
-        assert!(diag.message.contains("the value half (`int`)"), "{}", diag.message);
+        assert!(
+            diag.message.contains("the value half (`int`)"),
+            "{}",
+            diag.message
+        );
     }
 
     #[test]
@@ -1279,7 +1301,10 @@ mod tests {
             "enum Status { Timeout, Fine }\nfn probe(n: int) -> Status ! {Timeout} { Status.Fine }\nfn main() -> !int {\n    match probe(1) { Timeout => 0, s => 1 }\n}\n",
         );
         let reason = collision_refusal(&prog).expect("refused by name");
-        assert!(reason.contains("`Timeout`") && reason.contains("`Status`"), "{reason}");
+        assert!(
+            reason.contains("`Timeout`") && reason.contains("`Status`"),
+            "{reason}"
+        );
         assert!(row_match_check(&prog).is_none());
     }
 

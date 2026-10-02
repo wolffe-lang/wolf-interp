@@ -1325,10 +1325,12 @@ impl Walk<'_> {
         self.declare_pattern(&binding.pattern, binding.kind == BindingKind::Var);
         if let Some(known) = known
             && let PatKind::Binding(ident) = &*binding.pattern.kind
-            && let Some(local) = self
-                .scopes
-                .last_mut()
-                .and_then(|scope| scope.iter_mut().rev().find(|local| local.name == ident.name))
+            && let Some(local) = self.scopes.last_mut().and_then(|scope| {
+                scope
+                    .iter_mut()
+                    .rev()
+                    .find(|local| local.name == ident.name)
+            })
         {
             local.known = Some(known);
         }
