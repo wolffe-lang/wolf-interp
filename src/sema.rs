@@ -5498,9 +5498,7 @@ fn scalar_clash_wide(slot: ScalarTy, found: ScalarTy) -> bool {
     }
     match (slot, found) {
         (ScalarTy::Unknown, _) | (_, ScalarTy::Unknown) => false,
-        (ScalarTy::Str | ScalarTy::Bool, _) | (_, ScalarTy::Str | ScalarTy::Bool) => {
-            slot != found
-        }
+        (ScalarTy::Str | ScalarTy::Bool, _) | (_, ScalarTy::Str | ScalarTy::Bool) => slot != found,
         _ => false,
     }
 }
@@ -6297,7 +6295,12 @@ impl ScalarWalk<'_> {
             return sig.params.iter().zip(args).find_map(|(slot, arg)| {
                 let found = self.classify(&arg.expr);
                 self.clash(*slot, found).then(|| {
-                    self.clash_diag(*slot, found, arg.expr.span, "this parameter's declared type")
+                    self.clash_diag(
+                        *slot,
+                        found,
+                        arg.expr.span,
+                        "this parameter's declared type",
+                    )
                 })
             });
         }
@@ -6412,10 +6415,13 @@ fn scalar_check_with(program: &Program, wide: bool) -> Option<Diag> {
         }
         // The fn items by name (for the file a wide diagnostic names), then
         // the methods — [`each_fn`]'s order.
-        let named = module.items.iter().filter_map(|(name, (def, _))| match def {
-            Def::Fn(decl) => Some((Some(name), &**decl)),
-            _ => None,
-        });
+        let named = module
+            .items
+            .iter()
+            .filter_map(|(name, (def, _))| match def {
+                Def::Fn(decl) => Some((Some(name), &**decl)),
+                _ => None,
+            });
         let methods = module
             .methods
             .values()
