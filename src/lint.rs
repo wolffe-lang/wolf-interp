@@ -203,6 +203,8 @@ pub fn analyze(program: &Program) -> Analysis {
         for unit in &module.units {
             let mut walk = Walk {
                 source: &unit.source,
+                program,
+                module,
                 from_std: unit.from_std,
                 item_names: &item_names,
                 fn_names: &fn_names,
@@ -451,6 +453,10 @@ struct Local {
     /// and the module's row vocabulary before they may bind, exactly as
     /// `eval::match_pattern` does dynamically.
     err_row: Option<Vec<String>>,
+    /// What the binding statically recorded (is67, `[type.row.match]`): a
+    /// `T ! {row}` annotation or initializer, or a `Map[K, V]` — what a
+    /// `match` over the name reads its row from.
+    known: Option<crate::rowmatch::Known>,
 }
 
 impl Local {
@@ -459,12 +465,17 @@ impl Local {
             name,
             is_var,
             err_row: None,
+            known: None,
         }
     }
 }
 
 struct Walk<'a> {
     source: &'a str,
+    /// The program and the module being walked — what resolves a call's
+    /// path to a `use`d module's signature (is67's static row reader).
+    program: &'a Program,
+    module: &'a crate::sema::Module,
     from_std: bool,
     /// Module-level names (items + imports) — what a bare name resolves to
     /// when no local scope declares it.
@@ -630,6 +641,7 @@ impl Walk<'_> {
                     name: ident.name.clone(),
                     is_var: false,
                     err_row: Some(row),
+                    known: None,
                 });
             }
         } else {
@@ -1081,11 +1093,10 @@ impl Walk<'_> {
         let Some(body) = &decl.body else { return };
         self.scopes.push(Vec::new());
         for param in &decl.params {
-            if let crate::ast::ParamKind::Named { name, .. } = &param.kind {
-                self.scopes
-                    .last_mut()
-                    .expect("pushed above")
-                    .push(Local::plain(name.name.clone(), param.mode.is_some()));
+            if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
+                let mut local = Local::plain(name.name.clone(), param.mode.is_some());
+                local.known = crate::rowmatch::known_of_type(ty);
+                self.scopes.last_mut().expect("pushed above").push(local);
             }
         }
         // Nested `fn` items re-enter here; the W1102 state is per-function.
@@ -1301,7 +1312,45 @@ impl Walk<'_> {
                 self.list_locals.push(ident.name.clone());
             }
         }
+        // is67 (`[type.row.match]`): what the annotation or the initializer
+        // statically says the name holds, read before the name is declared.
+        let known = match &*binding.pattern.kind {
+            PatKind::Binding(_) => crate::rowmatch::known_of_binding(
+                binding,
+                &|name| self.local(name).and_then(|local| local.known.clone()),
+                &|path| self.callee_row(path),
+            ),
+            _ => None,
+        };
         self.declare_pattern(&binding.pattern, binding.kind == BindingKind::Var);
+        if let Some(known) = known
+            && let PatKind::Binding(ident) = &*binding.pattern.kind
+            && let Some(local) = self
+                .scopes
+                .last_mut()
+                .and_then(|scope| scope.iter_mut().rev().find(|local| local.name == ident.name))
+        {
+            local.known = Some(known);
+        }
+    }
+
+    /// The declared row of the `fn` a call's path names, unless a local
+    /// shadows the name (is67's static row reader, `rowmatch::callee_row`).
+    fn callee_row(&self, path: &crate::ast::Path) -> Option<crate::rowmatch::RowTy> {
+        if path.is_single() && self.declared(&path.segments[0].name).is_some() {
+            return None;
+        }
+        crate::rowmatch::callee_row(self.program, &self.module.name, path)
+    }
+
+    /// The row a `match` scrutinee statically carries — `Some` exactly when
+    /// the match is a row match under `[type.row.match]` (is67).
+    fn static_fallible(&self, expr: &Expr) -> Option<crate::rowmatch::RowTy> {
+        crate::rowmatch::fallible_of_expr(
+            expr,
+            &|name| self.local(name).and_then(|local| local.known.clone()),
+            &|path| self.callee_row(path),
+        )
     }
 
     /// One assignment statement: the E1101/W1101 capture check, the W1302
@@ -1519,7 +1568,14 @@ impl Walk<'_> {
             ExprKind::Match { scrutinee, arms } => {
                 self.expr(scrutinee);
                 self.empty_range_arms(arms);
-                self.match_reachability(scrutinee, arms);
+                // is67 (`[type.row.match]`): a match over a `T ! {row}` has
+                // two halves, and a `_` after a value binder is live for the
+                // row half — its reachability is the compiler's usefulness
+                // question (s197), so E0802 says nothing about a row match.
+                let fallible = self.static_fallible(scrutinee);
+                if fallible.is_none() {
+                    self.match_reachability(scrutinee, arms);
+                }
                 // Tag-shaped scrutinee? A single-segment path resolving to
                 // an `else`-handler's error binder carries its row here.
                 let scrutinee_row: Option<Vec<String>> = match &*scrutinee.kind {
@@ -1530,7 +1586,17 @@ impl Walk<'_> {
                 };
                 for arm in arms {
                     self.scopes.push(Vec::new());
-                    if !self.arm_is_tag_pattern(&arm.pattern, scrutinee_row.as_deref()) {
+                    // A row arm names a tag of the static row and binds
+                    // nothing; over any other scrutinee the handler rule
+                    // decides as before.
+                    let is_tag = match &fallible {
+                        Some(row) => matches!(
+                            crate::rowmatch::arm_half(&arm.pattern, &row.tags),
+                            crate::rowmatch::Half::Row(_)
+                        ),
+                        None => self.arm_is_tag_pattern(&arm.pattern, scrutinee_row.as_deref()),
+                    };
+                    if !is_tag {
                         self.declare_pattern(&arm.pattern, false);
                     }
                     if let Some(guard) = &arm.guard {
@@ -2027,7 +2093,11 @@ impl Walk<'_> {
         self.scopes.push(
             params
                 .iter()
-                .map(|param| Local::plain(param.name.name.clone(), param.mode.is_some()))
+                .map(|param| {
+                    let mut local = Local::plain(param.name.name.clone(), param.mode.is_some());
+                    local.known = param.ty.as_ref().and_then(crate::rowmatch::known_of_type);
+                    local
+                })
                 .collect(),
         );
         self.expr(body);
