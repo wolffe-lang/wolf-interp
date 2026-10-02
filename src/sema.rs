@@ -1353,8 +1353,9 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         // diagnostic it had.
         .or_else(|| crate::rowmatch::defer_try_check(program))
         .or_else(|| crate::rowmatch::row_match_check(program))
-        // is68: `[type.unit.context]`'s static half (wolf-interp#103), last
-        // in the chain for the same reason.
+        // is68: `[type.unit.context]`'s static half (wolf-interp#103) and
+        // `[mem.str.ws]`'s arity (wolf-interp#125), last in the chain for
+        // the same reason.
         .or_else(|| tier_late_check(program))
 }
 
@@ -3053,6 +3054,25 @@ fn fn_returns_unit(decl: &FnDecl) -> bool {
     }
 }
 
+/// E0402 at a whole `[mem.str.ws]`-family call that passes an argument —
+/// the compiler's code, span and sentence ("`trim` takes 0 arguments, but
+/// this call passes 1"; wolf 0.2.20, `rulings_is68/c125_*`). `lines` is not
+/// in the clause's family but takes no argument either, and the compiler
+/// refuses it the same way.
+fn ws_arity_diag(method: &str, passed: usize, span: Span) -> Diag {
+    Diag::new(
+        "E0402",
+        span,
+        "mem.str.ws",
+        format!(
+            "`{method}` takes 0 arguments, but this call passes {passed} — `[mem.str.ws]`: \
+             `trim`, `trim_start`, `trim_end` and `words` test one separator set, Unicode \
+             `White_Space`, and the family takes no argument; a cutset is not a parameter. \
+             Strip other characters with a loop over the `str`"
+        ),
+    )
+}
+
 /// E0401 at a value the block's unit context consumes no one of.
 fn unit_tail_diag(span: Span) -> Diag {
     Diag::new(
@@ -3284,6 +3304,32 @@ impl TierWalk<'_> {
         }
     }
 
+    /// `[mem.str.ws]`'s family (and `lines`) called on a receiver this walk
+    /// classes `str`: a `str` local or parameter (`s.trim(…)`, which
+    /// `[gram.item.use]`'s path production delivers as two segments) or a
+    /// literal receiver (`"x".trim(…)`, a member over the literal). A
+    /// receiver it cannot class names nothing here; the builtin declines
+    /// that call by name at run time.
+    fn ws_family_call(&self, callee: &Expr) -> Option<&'static str> {
+        let (receiver, method) = match &*callee.kind {
+            ExprKind::Path(path) if path.segments.len() == 2 => (
+                self.lookup(&path.segments[0].name),
+                path.segments[1].name.as_str(),
+            ),
+            ExprKind::Member {
+                base,
+                member: crate::ast::Member::Named(name),
+            } => (self.classify(base), name.name.as_str()),
+            _ => return None,
+        };
+        if receiver != LitClass::Str {
+            return None;
+        }
+        ["trim", "trim_start", "trim_end", "words", "lines"]
+            .into_iter()
+            .find(|family| *family == method)
+    }
+
     fn block(&mut self, block: &Block) -> Option<Diag> {
         self.scopes.push(Vec::new());
         for stmt in &block.stmts {
@@ -3485,6 +3531,13 @@ impl TierWalk<'_> {
                     return Some(ring_diag("an integer-to-pointer cast", expr.span));
                 }
                 None
+            }
+            ExprKind::Call { callee, args } if self.late.is_some() && !args.is_empty() => {
+                if let Some(method) = self.ws_family_call(callee) {
+                    return Some(ws_arity_diag(method, args.len(), expr.span));
+                }
+                self.expr(callee)
+                    .or_else(|| args.iter().find_map(|arg| self.expr(&arg.expr)))
             }
             ExprKind::Call { callee, args } => {
                 // The C call itself is the ring's op; its span is the whole
