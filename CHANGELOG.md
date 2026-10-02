@@ -25,6 +25,45 @@ red at `3e7f230` and green at `dfebf6b`; six controls (a trap in a program,
 a `take`, a field, an element, an impl and a view-set receiver) unchanged.
 No new divergence; the ratchet holds at 271.
 
+**A `match` over a fallible value has two halves** (is67, lupin's half of
+the maintainer's ruling #21 — wolffe-lang/wolf-lang#497, the clause
+`[type.row.match]` s197 writes). The scrutinee has type `T ! {row}`; a row
+arm names a tag of the row (binding its payload: `Io(e) => …`), a value arm
+is any pattern over `T`; an identifier that names a tag of the scrutinee's
+row is a row arm, anything else a value pattern; `_` covers what is left on
+both halves; the row is consumed. A row value is tried against the row
+arms only and any other value against the value arms only, so `match
+look(m, "a") { none => -1, v => v }` prints `5` where 0.1.43 printed `-1`
+(the row arm's name BOUND the value, the first-arm disease on the value
+half: eleven silent wrong answers under `tests/rulings_is67/`). What makes
+a match a row match is what a signature or a binding spells
+(`src/rowmatch.rs`, one reader for the evaluator, the lint and sema): a
+call to a module `fn` — own or `use`d — by its declared return row, a
+builtin with a declared row, a `Map` index (`V ! {none}`,
+`[mem.map.absent]`), a local bound by such an initializer or by a
+`T ! {row}` annotation; a scrutinee the reader cannot name keeps the old
+dispatch unchanged. A non-exhaustive row match is **E0801** at the resolve
+rung naming the missing tag, the missing variant or literal, or the
+uncovered value half (`[proto.cmp.rung]` makes the resolve-rung emission of
+the checker's code agreement, as E0805); a guarded arm counts for nothing;
+a tag that is also a constructor name reachable from `T` is refused by name
+before anything runs (`unsupported`, the conservatism class — the checker's
+code for it is s197's and is not guessed). The lint reads a row arm as no
+binder, and E0802 says nothing about a row match. `else |e| match e { … }`
+is unchanged. Twenty-one witnesses red at `a804d40`, green at `9eb3cbf`,
+five controls green on both sides.
+
+**A `?` inside a `defer` or `errdefer` is refused** (is67, lupin's half of
+ruling #19 — wolffe-lang/wolf-lang#498, s196's `[type.row.defer]` and
+**E0611**). The deferred expression runs while the function is already
+leaving, so the error has nowhere honest to go: the shape is `fail(E0611)`
+at the resolve rung, at the `?` expression, reading the whole deferred
+expression (a call argument, an interpolation hole, a binding, a block); a
+`?` inside a closure defined under the `defer` is that closure's own and
+runs. 0.1.43 ran the `?` and made the row the function's result (`… 9`);
+wolf 0.2.20's native and release overflow the compiler's stack on the same
+programs.
+
 ## 0.1.43 — 2026-10-01
 
 THE FORTY-THIRD (is61, is63, is62, and r25's re-pin), the lupin half of
