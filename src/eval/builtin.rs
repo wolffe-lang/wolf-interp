@@ -112,6 +112,11 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "fs_create_dir",
     "fs_remove_dir",
     "fs_write_chunk",
+    // s199 (wolf-lang#426): the handle's offset — `[os.fs.seek]`,
+    // `[os.fs.tell]`, `[os.fs.read_at]`.
+    "fs_seek",
+    "fs_tell",
+    "fs_read_at",
     // `read_line` is NOT part of that landing and stays declined: stdin is
     // not a file, no clause names an injectable one, and nothing in the
     // pinned corpus calls it. Named here so the refusal still reads
@@ -324,7 +329,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_create" | "fs_open_mode" | "fs_read" | "fs_read_chunk" | "fs_write" | "fs_fstat"
         | "fs_close" | "fs_remove" | "fs_rename" | "fs_exists" | "fs_is_dir" | "fs_is_file"
         | "fs_size" | "fs_modified_ms" | "fs_read_dir" | "fs_create_dir_all"
-        | "fs_remove_dir_all" | "fs_create_dir" | "fs_remove_dir" | "fs_write_chunk" => {
+        | "fs_remove_dir_all" | "fs_create_dir" | "fs_remove_dir" | "fs_write_chunk"
+        | "fs_seek" | "fs_tell" | "fs_read_at" => {
             unsupported(format!(
                 "`{name}` is the s38/s90 fs tier; this wasm build has no filesystem to open, so \
              the tier is declined rather than mocked"
@@ -335,7 +341,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_create" | "fs_open_mode" | "fs_read" | "fs_read_chunk" | "fs_write" | "fs_fstat"
         | "fs_close" | "fs_remove" | "fs_rename" | "fs_exists" | "fs_is_dir" | "fs_is_file"
         | "fs_size" | "fs_modified_ms" | "fs_read_dir" | "fs_create_dir_all"
-        | "fs_remove_dir_all" | "fs_create_dir" | "fs_remove_dir" | "fs_write_chunk" => {
+        | "fs_remove_dir_all" | "fs_create_dir" | "fs_remove_dir" | "fs_write_chunk"
+        | "fs_seek" | "fs_tell" | "fs_read_at" => {
             machine.fs_call(name, &args, span)
         }
         // -- the s40 os/env/time tier (0.1.7) ------------------------------
@@ -2502,6 +2509,13 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // The handle's byte write (wolf-interp#112): `invalid` as at
         // `net_write_bytes`, over a shape a typed `List[byte]` cannot present.
         "fs_write_chunk" => &["invalid", "io"],
+        // `[os.fs.seek]`, `[os.fs.tell]`, `[os.fs.read_at]` (s199): the
+        // handle's offset. `unseekable` is a handle with no offset (a pipe,
+        // a fifo, a socket, a terminal); `invalid` a whence outside the set
+        // or an offset below zero; a tell cannot earn `invalid`.
+        "fs_seek" => &["invalid", "io", "unseekable"],
+        "fs_tell" => &["io", "unseekable"],
+        "fs_read_at" => &["eof", "invalid", "io", "unseekable"],
         // The path readers: `utf8` on the text spelling and not on the byte
         // one, which is `net_read`/`net_read_bytes`'s split exactly — a lone
         // 0x80 is data to a byte reader and a refusal to a text reader.
