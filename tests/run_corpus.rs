@@ -1986,6 +1986,16 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/mut_claim_nested_read_whole.lu", "exit(0)"),
     ("memory/mut_claim_operand_read.lu", "exit(0)"),
     ("memory/mut_claim_two_phase_reads.lu", "exit(0)"),
+    // ADDED by is68 (wolf-interp#169): a nested fn that declares a parameter
+    // mode is a module fn's call, so two of the three r26 left out reach
+    // `run` now — `nested_fn_mut_param.lu` matches its `check:` byte for
+    // byte, and `nested_fn_mut_moveout.lu` traps `use-after-move` at the
+    // caller's read, the dynamic counterpart of its pinned E1001 (the
+    // module fn's `mut_param_moveout_whole.lu` shape). The third,
+    // `nested_fn_mut_omitted.lu`, is refused at `resolve` with its pinned
+    // E1007 and never runs.
+    ("memory/nested_fn_mut_moveout.lu", "trap(use-after-move)"),
+    ("memory/nested_fn_mut_param.lu", "exit(0)"),
     ("memory/nested_fn_read_param_return.lu", "exit(0)"),
     ("memory/nested_fn_read_param_write.lu", "exit(0)"),
     ("memory/recv_claim_arg_closure.lu", "trap(exclusivity)"),
