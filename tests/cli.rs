@@ -288,7 +288,14 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // witnesses of eg02, eg02b and s185, and `mut_two_fields_one_region.lu`);
     // `memory/mut_elem_excl.lu` edits its `check:` (E1002 -> run). `members`
     // holds at 45; the registry holds at 542, the same key set.
-    assert!(stdout.contains("778 file(s)"), "{stdout}");
+    // 778 -> 861 at cdde128a (r26, wolf-lang **v0.2.20** — the TAG):
+    // EIGHTY-THREE new files, none leaves, all entries (76 under `memory/`:
+    // s186's two-phase rows, s187/s189's once-only operands, s190's
+    // shorthand, s192's receiver claims, s193's view sets, eg03's proofs;
+    // 7 under `rows/`: s191's `else` rows); two `check:` lines move
+    // (`memory/elem_dyn_read_after_mut.lu`, `memory/mut_read_overlap.lu`:
+    // E1002 -> run). `members` holds at 45; the registry 542 -> 544.
+    assert!(stdout.contains("861 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -297,7 +304,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 778);
+    assert_eq!(value["total"], 861);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
