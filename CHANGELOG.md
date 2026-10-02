@@ -46,9 +46,10 @@ dispatch unchanged. A non-exhaustive row match is **E0801** at the resolve
 rung naming the missing tag, the missing variant or literal, or the
 uncovered value half (`[proto.cmp.rung]` makes the resolve-rung emission of
 the checker's code agreement, as E0805); a guarded arm counts for nothing;
-a tag that is also a constructor name reachable from `T` is refused by name
-before anything runs (`unsupported`, the conservatism class — the checker's
-code for it is s197's and is not guessed). The lint reads a row arm as no
+a tag that is also a constructor name reachable from `T` is **E0816**
+(s197's code, wolf-lang PR #510), whether or not an arm spells it; an
+or-pattern mixing the halves or an `@` at the top of an arm is refused by
+name before anything runs. The lint reads a row arm as no
 binder, and E0802 says nothing about a row match. `else |e| match e { … }`
 is unchanged. Twenty-one witnesses red at `a804d40`, green at `9eb3cbf`,
 five controls green on both sides.

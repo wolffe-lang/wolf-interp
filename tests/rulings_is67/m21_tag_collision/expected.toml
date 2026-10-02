@@ -1,4 +1,4 @@
-# is67 — wolffe-lang/wolf-lang#497, ruling #21 ([type.row.match]). This row: A tag that is also a constructor name reachable from `T`: refused by name before running.
+# is67 — wolffe-lang/wolf-lang#497, ruling #21 ([type.row.match]). This row: A tag that is also a constructor name reachable from `T`: E0816 (s197, PR #510), whether or not an arm spells it.
 # `[expected]` is the ruled lupin cell. `[trunk]` is what lupin trunk `6d6cde5` (= the published
 # 0.1.43, archive e957c8de…, release build cb8d424c…) and wolf 0.2.20 (the published archive,
 # 24855d5e…) `conform-run` answered on kasumi, ~/lanes/is67/evidence/probes-archive-0.1.43-wolf-0.2.20.log
@@ -6,7 +6,7 @@
 ruling = "wolffe-lang/wolf-lang#497"
 
 [expected]
-lupin   = { verdict = "unsupported" }
+lupin   = { verdict = "fail(E0816)" }
 
 [trunk]
 lupin   = { verdict = "exit(0)", stdout = "1\n" }

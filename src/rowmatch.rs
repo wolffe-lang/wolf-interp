@@ -10,7 +10,10 @@
 //! what is left on both halves; the match must cover every tag of the row
 //! and the whole of `T`, and E0801 names the missing tag or the uncovered
 //! value half; the row is consumed; a tag that is also a constructor name
-//! reachable from `T` is refused by name, never guessed.
+//! reachable from `T` is **E0816**, refused by name whether or not an arm
+//! spells it, never guessed (s197, wolf-lang PR #510); an or-pattern mixing
+//! a row arm with a value pattern, or an `@`-binding at the top of an arm,
+//! is refused by name.
 //!
 //! **`[type.row.defer]`** (ruling #19, s196 — wolf-lang PR #509): a `?`
 //! inside a `defer` or `errdefer` expression is **E0611** at compile time on
@@ -35,8 +38,8 @@
 //! (`eval::Machine` dispatches a row value to the row arms and a value to the
 //! value arms), the lint (a row arm is not a binder; E0802 says nothing about
 //! a row match) and the resolve-rung checks here ([`row_match_check`] for
-//! E0801, [`collision_refusal`] for the by-name refusal, [`defer_try_check`]
-//! for E0611).
+//! E0801 and E0816, [`by_name_refusal`] for the shapes the clause refuses by
+//! name, [`defer_try_check`] for E0611).
 
 use std::collections::BTreeMap;
 
@@ -395,10 +398,11 @@ enum Finding {
     Unsupported(String),
 }
 
-/// `[type.row.match]`'s exhaustiveness, at the resolve rung: E0801 naming
-/// the missing tag or the uncovered value half, as E0805 is answered here
-/// (`[proto.cmp.rung]` makes a resolve-rung emission of the checker's code
-/// agreement). The first finding in source order wins.
+/// `[type.row.match]`'s two codes, at the resolve rung: E0816 for a row tag
+/// that is also a variant of `T`, and E0801 naming the missing tag or the
+/// uncovered value half — as E0805 is answered here (`[proto.cmp.rung]`
+/// makes a resolve-rung emission of the checker's code agreement). The
+/// first finding in source order wins.
 #[must_use]
 pub fn row_match_check(program: &Program) -> Option<Diag> {
     findings(program)
@@ -409,12 +413,12 @@ pub fn row_match_check(program: &Program) -> Option<Diag> {
         })
 }
 
-/// `[type.row.match]`'s collision: a tag of the row that is also a
-/// constructor name reachable from `T` is refused by name, never guessed —
-/// before anything runs, as `sema::raise_check` refuses. The checker's code
-/// for it is s197's; this machine spends none.
+/// The shapes `[type.row.match]` refuses by name — an or-pattern mixing a
+/// row arm with a value pattern, an `@`-binding at the top of an arm —
+/// before anything runs, as `sema::raise_check` refuses. The checker spends
+/// no code on them either (`unsupported`, the conservatism class).
 #[must_use]
-pub fn collision_refusal(program: &Program) -> Option<String> {
+pub fn by_name_refusal(program: &Program) -> Option<String> {
     findings(program)
         .into_iter()
         .find_map(|finding| match finding {
@@ -970,26 +974,40 @@ impl Scope<'_> {
         }
     }
 
-    /// `[type.row.match]`'s two judgements over one row match: the
-    /// collision (by name) and exhaustiveness (E0801).
+    /// `[type.row.match]`'s judgements over one row match: the collision
+    /// (E0816), the shapes refused by name, and exhaustiveness (E0801).
     fn judge(&mut self, expr: &Expr, scrutinee: &Expr, arms: &[MatchArm], row: &RowTy) {
         let ok_head = row.ok.as_ref().and_then(head_name);
-        // The collision first: an arm the checker cannot read is refused
-        // before its coverage is judged.
+        // The compiler's primary span: `match` through the scrutinee.
+        let span = Span {
+            start: expr.span.start,
+            end: scrutinee.span.end,
+        };
+        // The collision first, whether or not an arm spells the name: an
+        // arm the checker could not sort is refused before coverage.
         if let Some(head) = &ok_head {
             for tag in &row.tags {
                 let Some(enums) = self.module.variants.get(tag) else {
                     continue;
                 };
                 if enums.iter().any(|owner| owner == head) {
-                    self.findings.push(Finding::Unsupported(format!(
-                        "`{tag}` names both a tag of the row {} and a constructor of `{head}`, the \
-                         scrutinee's value type: a `match` over `{head} ! {}` cannot tell a `{tag}` \
-                         arm's half, and [type.row.match] refuses it by name rather than guess; \
-                         the checker's code for this refusal is the compiler's (s197)",
-                        row.render(),
-                        row.render()
-                    )));
+                    self.findings.push(Finding::Diag(
+                        Diag::new(
+                            "E0816",
+                            span,
+                            "type.row.match",
+                            format!(
+                                "the row tag `{tag}` is also a variant of `{head}`: this `match` \
+                                 is over `{head} ! {}`, and an arm `{tag}` could be either half. A \
+                                 `match` over a fallible value sorts its arms by name and never \
+                                 guesses a name both halves own ([type.row.match]); bind the row \
+                                 first (`else |e| match e {{ … }}`) and match the value \
+                                 separately, or rename the tag",
+                                row.render()
+                            ),
+                        )
+                        .in_file(self.file.to_owned()),
+                    ));
                     return;
                 }
             }
@@ -998,13 +1016,26 @@ impl Scope<'_> {
             .iter()
             .map(|arm| (arm_half(&arm.pattern, &row.tags), arm.guard.is_some()))
             .collect();
-        if halves.iter().any(|(half, _)| *half == Half::Mixed) {
-            return;
+        // The shapes the clause refuses by name.
+        for (arm, (half, _)) in arms.iter().zip(&halves) {
+            let what = if *half == Half::Mixed {
+                Some("an or-pattern mixing a row arm with a value pattern")
+            } else if matches!(&*arm.pattern.kind, PatKind::At { .. }) {
+                Some("an `@`-binding at the top of an arm")
+            } else {
+                None
+            };
+            if let Some(what) = what {
+                self.findings.push(Finding::Unsupported(format!(
+                    "{what} in a `match` over `{} ! {}` is refused by name ([type.row.match]): \
+                     the clause sorts each arm into one half, and this arm belongs to neither \
+                     one alone",
+                    ok_head.as_deref().unwrap_or("T"),
+                    row.render()
+                )));
+                return;
+            }
         }
-        let span = Span {
-            start: expr.span.start,
-            end: scrutinee.span.end,
-        };
         let covered_both = halves
             .iter()
             .any(|(half, guarded)| *half == Half::Both && !guarded);
@@ -1069,7 +1100,7 @@ impl Scope<'_> {
                 self.findings.push(Finding::Diag(self.e0801(
                     span,
                     format!(
-                        "this `match` does not cover the value half: the scrutinee is fallible \
+                        "this `match` does not cover `_` (the value half): the scrutinee is fallible \
                          (`{}`) and only its tags have arms; add a value arm (`v => …`) or a \
                          `_` ([type.row.match]){note}",
                         row.render()
@@ -1112,14 +1143,14 @@ impl Scope<'_> {
                     )
                 });
                 if only_literals {
-                    Some(format!("the value half (`{head}`)"))
+                    Some(format!("`_` (the value half, `{head}`)"))
                 } else {
                     None
                 }
             }
             _ => value_arms
                 .is_empty()
-                .then(|| format!("the value half (`{head}`)")),
+                .then(|| format!("`_` (the value half, `{head}`)")),
         };
         if let Some(missing) = missing {
             self.findings.push(Finding::Diag(self.e0801(
@@ -1217,7 +1248,7 @@ mod tests {
             "{LOOK}fn main() -> !int {{\n    let r = match look(Map[str, int](), \"a\") {{ none => -1, v => v }}\n    r\n}}\n"
         ));
         assert!(row_match_check(&prog).is_none());
-        assert!(collision_refusal(&prog).is_none());
+        assert!(by_name_refusal(&prog).is_none());
     }
 
     #[test]
@@ -1237,7 +1268,7 @@ mod tests {
         ));
         let diag = row_match_check(&prog).expect("E0801");
         assert!(
-            diag.message.contains("the value half (`int`)"),
+            diag.message.contains("`_` (the value half, `int`)"),
             "{}",
             diag.message
         );
@@ -1275,7 +1306,7 @@ mod tests {
         );
         let diag = row_match_check(&prog).expect("E0801");
         assert!(
-            diag.message.contains("the value half (`int`)"),
+            diag.message.contains("`_` (the value half, `int`)"),
             "{}",
             diag.message
         );
@@ -1296,16 +1327,33 @@ mod tests {
     }
 
     #[test]
-    fn a_tag_that_is_also_a_variant_is_refused_by_name() {
-        let prog = program(
-            "enum Status { Timeout, Fine }\nfn probe(n: int) -> Status ! {Timeout} { Status.Fine }\nfn main() -> !int {\n    match probe(1) { Timeout => 0, s => 1 }\n}\n",
-        );
-        let reason = collision_refusal(&prog).expect("refused by name");
+    fn a_tag_that_is_also_a_variant_is_e0816_whether_or_not_an_arm_spells_it() {
+        let source = "enum Status { Timeout, Fine }\nfn probe(n: int) -> Status ! {Timeout} { Status.Fine }\nfn main() -> !int {\n    match probe(1) { Timeout => 0, s => 1 }\n}\n";
+        let diag = row_match_check(&program(source)).expect("E0816");
+        assert_eq!(diag.code, "E0816");
         assert!(
-            reason.contains("`Timeout`") && reason.contains("`Status`"),
-            "{reason}"
+            diag.message.contains("`Timeout`") && diag.message.contains("`Status`"),
+            "{}",
+            diag.message
         );
-        assert!(row_match_check(&prog).is_none());
+        assert_eq!(&source[diag.span.start..diag.span.end], "match probe(1)");
+        // s197's row: no arm spells `Line`, and the match is still refused.
+        let silent = program(
+            "enum Shape { Dot, Line(int) }\nfn pick(n: int) -> Shape ! {Line(int)} { Shape.Dot }\nfn main() -> !int {\n    match pick(1) { Dot => 0, _ => 1 }\n}\n",
+        );
+        assert_eq!(row_match_check(&silent).map(|d| d.code), Some("E0816"));
+    }
+
+    #[test]
+    fn a_mixed_or_pattern_and_a_top_level_at_are_refused_by_name() {
+        let prog = program(&format!(
+            "{LOOK}fn main() -> !int {{\n    match look(Map[str, int](), \"a\") {{ none | 0 => -1, v => v }}\n}}\n"
+        ));
+        assert!(by_name_refusal(&prog).is_some_and(|r| r.contains("or-pattern")));
+        let prog = program(&format!(
+            "{LOOK}fn main() -> !int {{\n    match look(Map[str, int](), \"a\") {{ none => -1, w @ v => w }}\n}}\n"
+        ));
+        assert!(by_name_refusal(&prog).is_some_and(|r| r.contains("`@`")));
     }
 
     #[test]

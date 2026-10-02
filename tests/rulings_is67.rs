@@ -7,7 +7,7 @@
 //!   anything else a value pattern; `_` covers what is left on both halves;
 //!   a non-exhaustive match is E0801 naming the missing tag or the uncovered
 //!   value half; the row is consumed; a tag that is also a constructor name
-//!   reachable from `T` is refused by name. lupin 0.1.43 ran the miss path
+//!   reachable from `T` is E0816 (s197, wolf-lang PR #510). lupin 0.1.43 ran the miss path
 //!   and BOUND the row arm's name on the hit path (`none => -1` took `5`).
 //! - **#19, `[type.row.defer]`** (wolffe-lang/wolf-lang#498, s196's E0611): a
 //!   `?` inside a `defer` or `errdefer` expression is refused at the resolve
@@ -278,7 +278,7 @@ fn m21_enum_missing_variant() {
     run("m21_enum_missing_variant");
 }
 
-/// A tag that is also a constructor name reachable from `T`: refused by name before running.
+/// A tag that is also a constructor name reachable from `T`: E0816 (s197's code), whether or not an arm spells it.
 #[test]
 fn m21_tag_collision() {
     run("m21_tag_collision");
