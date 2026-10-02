@@ -2505,15 +2505,19 @@ fn a_record_that_completed_no_run_reports_no_stdout() {
     // asserts nothing. `typecheck/main_returns_str.lu` used to be that
     // program; wolf-interp#57 was that it was, and is35 moved the `main`
     // return-type decline to the admission ladder, so the corpus no longer
-    // contains one. The buffer below is the shape that remains: `main` with
-    // no declared return type at all, which no declaration fact can refuse,
-    // reaching `finish` with a `str` after it has already printed.
+    // contains one. Through is67 the buffer below was `main` with no declared
+    // return type reaching `finish` with a `str` after it had printed; is68
+    // (wolf-interp#103) retired that shape — a unit body's `str` tail is
+    // E0401 at resolve (`[type.unit.context]`), and its value is `()` in any
+    // case. The shape that remains is a member this machine cannot read on
+    // an `int`, met after a print: the run declines at that member.
     // Its own directory: D32 makes a directory a module, so a buffer written
     // beside other `.lu` files would load them as siblings.
-    let dir = std::env::temp_dir().join("lupin-is35-undeclared-main");
+    let dir = std::env::temp_dir().join("lupin-is68-declined-after-print");
     std::fs::create_dir_all(&dir).expect("scratch dir");
     let path = dir.join("m.lu");
-    let source: &[u8] = b"fn main() {\n    print(\"hi\")\n    \"nope\"\n}\n";
+    let source: &[u8] =
+        b"fn main() -> !int {\n    print(\"hi\")\n    let n = 1\n    print(\"{n.len}\")\n    0\n}\n";
     std::fs::write(&path, source).expect("writable");
     let (record, observed) = wolf_interp::observe_record(&path, source, None);
     assert_eq!(record.verdict, Verdict::Unsupported);
