@@ -145,6 +145,13 @@ pub struct Module {
     pub uses: Vec<String>,
     /// Per-file `use` decls and references, for [`resolve_check`].
     pub scopes: Vec<FileScope>,
+    /// The file each item was defined in, as the loader named it — what lets
+    /// an item-walking check attribute its diagnostic to a sibling file
+    /// (`[proto.record.diag]`'s file index, wolf-lang#437). Filled by
+    /// [`define`] for the first definition of a name; the later checks
+    /// (is68's) read it, the older ones still report entry-relative
+    /// (wolf-interp#136).
+    pub item_files: BTreeMap<String, String>,
     /// Duplicate definitions, in collection order.
     pub dups: Vec<DupDef>,
     /// Headers this module pulled in with `import c "…"` (D17). The importer
@@ -1202,6 +1209,7 @@ fn define(
     match module.items.entry(name.clone()) {
         std::collections::btree_map::Entry::Vacant(slot) => {
             slot.insert((def, visible));
+            module.item_files.insert(name, file.to_owned());
         }
         std::collections::btree_map::Entry::Occupied(mut slot) => {
             // D32: every `.lu` file in a directory is ONE module, so a second
@@ -1345,6 +1353,9 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         // diagnostic it had.
         .or_else(|| crate::rowmatch::defer_try_check(program))
         .or_else(|| crate::rowmatch::row_match_check(program))
+        // is68: `[type.unit.context]`'s static half (wolf-interp#103), last
+        // in the chain for the same reason.
+        .or_else(|| tier_late_check(program))
 }
 
 /// `[type.list.lit]` (s158, wolf-lang#154; wolf-interp#106) — the list
@@ -2682,6 +2693,10 @@ struct TierWalk<'a> {
     /// A module is a directory (D32), so this is the whole namespace a bare
     /// lower-case type name could resolve into.
     declared: &'a BTreeSet<String>,
+    /// Present on [`tier_late_check`]'s walk only: the module's fn items
+    /// whose declared result is a plain scalar, so a call to one is a tail
+    /// this rung can type. `None` is the original walk, unchanged.
+    late: Option<&'a BTreeSet<String>>,
 }
 
 impl TierWalk<'_> {
@@ -2914,6 +2929,7 @@ fn tier_check(program: &Program) -> Option<Diag> {
                 scopes: vec![Vec::new()],
                 rows: &rows,
                 declared: &declared,
+                late: None,
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
@@ -2934,6 +2950,7 @@ fn tier_check(program: &Program) -> Option<Diag> {
                     scopes: vec![Vec::new()],
                     rows: &rows,
                     declared: &declared,
+                    late: None,
                 };
                 if let Some(diag) = walk.expr(&binding.value) {
                     return Some(diag);
@@ -2942,6 +2959,113 @@ fn tier_check(program: &Program) -> Option<Diag> {
         }
     }
     None
+}
+
+/// `[type.unit.context]`'s static half (is68, wolf-interp#103): a value at
+/// the tail of a unit context is E0401 at the tail, where this rung can type
+/// the tail from syntax — the compiler's code and span on every witness in
+/// `tests/rulings_is68/` (`u103_*`), measured on wolf 0.2.20.
+///
+/// The unit contexts the walk reads are the clause's own list as far as the
+/// syntax shows it: the then-block of an `if` with no `else`, a `for`,
+/// `while` or `loop` body, and the body of a fn or method whose result is
+/// `()`, declared or omitted (nested fns included). A closure's body is not
+/// one unless a type checks it against `fn(…) -> ()`, which this rung never
+/// sees, so closures are left out. A tail is typed when it is a literal, a
+/// list or struct literal, arithmetic or concatenation or a comparison over
+/// operands the tier walk classes, a local or parameter it classes, a call
+/// to a module fn whose declared result is a plain scalar, or an `if … else`
+/// whose then-tail is one of those; anything else says nothing, and the
+/// evaluator's `()` is the answer there. A chain `if … else if …` with no
+/// final `else` reports where the compiler does: at the trailing else-less
+/// `if`, against the then-tail before it.
+///
+/// A second pass of [`TierWalk`] rather than a change to [`tier_check`]'s,
+/// so a file that trips an older check keeps the diagnostic it had; the
+/// diagnostic names its item's file ([`Module::item_files`]).
+fn tier_late_check(program: &Program) -> Option<Diag> {
+    for module in program.modules.values() {
+        let rows: BTreeMap<String, RowInfo> = BTreeMap::new();
+        let declared: BTreeSet<String> = module.items.keys().cloned().collect();
+        let scalar_rets: BTreeSet<String> = module
+            .items
+            .iter()
+            .filter_map(|(name, (def, _))| match def {
+                Def::Fn(decl) if decl.ret.as_ref().is_some_and(plain_scalar_result) => {
+                    Some(name.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        let walk_fn = |decl: &FnDecl| -> Option<Diag> {
+            let mut walk = TierWalk {
+                imports_c: !module.c_headers.is_empty(),
+                unsafe_depth: 0,
+                scopes: vec![Vec::new()],
+                rows: &rows,
+                declared: &declared,
+                late: Some(&scalar_rets),
+            };
+            walk.late_fn_body(decl)
+        };
+        for (name, (def, _)) in &module.items {
+            if let Def::Fn(decl) = def
+                && let Some(diag) = walk_fn(decl)
+            {
+                return Some(match module.item_files.get(name) {
+                    Some(file) => diag.in_file(file.clone()),
+                    None => diag,
+                });
+            }
+        }
+        for methods in module.methods.values() {
+            for method in methods.values().flatten() {
+                if let Some(diag) = walk_fn(&method.decl) {
+                    return Some(diag);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// A declared result this rung can type: a bare built-in scalar name, no
+/// row (`-> int`, `-> str`, `-> bool`, `-> char`, `-> byte`, …).
+fn plain_scalar_result(ret: &crate::ast::RetType) -> bool {
+    if ret.row.is_some() {
+        return false;
+    }
+    let TypeKind::Path { path, args } = &*ret.ty.kind else {
+        return false;
+    };
+    args.is_empty()
+        && path.is_single()
+        && BUILTIN_SCALAR_TYPES.contains(&path.segments[0].name.as_str())
+}
+
+/// Whether `decl` declares no result or `-> ()`: its body is a unit context.
+fn fn_returns_unit(decl: &FnDecl) -> bool {
+    match &decl.ret {
+        None => true,
+        Some(ret) => {
+            ret.row.is_none()
+                && matches!(&*ret.ty.kind, TypeKind::Tuple(parts) if parts.is_empty())
+        }
+    }
+}
+
+/// E0401 at a value the block's unit context consumes no one of.
+fn unit_tail_diag(span: Span) -> Diag {
+    Diag::new(
+        "E0401",
+        span,
+        "type.unit.context",
+        "this is a value, but its block is a unit context and its value is `()` — \
+         `[type.unit.context]`: the then-block of an `if` with no `else`, a loop body and \
+         the body of a fn whose result is `()` are consumed by no one, whatever the tail's \
+         type. End the block with a statement (`let _ = …` keeps a discard visible), give \
+         the `if` an `else`, or declare the result",
+    )
 }
 
 /// Every built-in scalar type name the language spells in lower case.
@@ -3057,6 +3181,118 @@ fn unknown_cast_target(ty: &Type, declared: &BTreeSet<String>) -> Option<Span> {
 }
 
 impl TierWalk<'_> {
+    /// [`tier_late_check`]'s entry: a fn's parameters classed, its body
+    /// walked, and the body's tail judged when the fn's result is `()`.
+    fn late_fn_body(&mut self, decl: &FnDecl) -> Option<Diag> {
+        let body = decl.body.as_ref()?;
+        self.scopes.push(Vec::new());
+        for param in &decl.params {
+            if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
+                self.declare(&name.name, class_of_type(ty));
+            }
+        }
+        let out = self.block_tail(body, fn_returns_unit(decl)).0;
+        self.scopes.pop();
+        out
+    }
+
+    /// [`TierWalk::block`], also answering whether the tail is a value this
+    /// rung can type — and, when `unit` (the block is a unit context) on the
+    /// late walk, refusing it there. The tail is judged with the block's own
+    /// locals still in scope.
+    fn block_tail(&mut self, block: &Block, unit: bool) -> (Option<Diag>, bool) {
+        self.scopes.push(Vec::new());
+        for stmt in &block.stmts {
+            if let Some(diag) = self.stmt(stmt) {
+                self.scopes.pop();
+                return (Some(diag), false);
+            }
+        }
+        let tail = block.tail.as_deref();
+        let mut out = tail.and_then(|tail| self.expr(tail));
+        let typed = tail.is_some_and(|tail| self.typed_value(tail));
+        if out.is_none()
+            && unit
+            && typed
+            && let Some(tail) = tail
+        {
+            out = Some(unit_tail_diag(tail.span));
+        }
+        self.scopes.pop();
+        (out, typed)
+    }
+
+    /// Whether `expr` is a non-`()` value whose type this rung can see from
+    /// syntax and the classes it tracks — the late walk's whole notion of a
+    /// typed tail. `false` means "say nothing", and always does off the late
+    /// walk.
+    fn typed_value(&self, expr: &Expr) -> bool {
+        let Some(rets) = self.late else {
+            return false;
+        };
+        let known = |class: LitClass| {
+            matches!(
+                class,
+                LitClass::Str | LitClass::Int | LitClass::Float | LitClass::Bool
+            )
+        };
+        match &*expr.kind {
+            ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Char(_)
+            | ExprKind::Str(_)
+            | ExprKind::List(_)
+            | ExprKind::StructLit { .. } => true,
+            ExprKind::Tuple(items) => !items.is_empty(),
+            ExprKind::Group(inner) => self.typed_value(inner),
+            ExprKind::Path(path) if path.is_single() => {
+                known(self.lookup(&path.segments[0].name))
+            }
+            ExprKind::Unary { .. } => known(self.classify(expr)),
+            ExprKind::Binary { op, lhs, rhs } => {
+                use crate::ast::BinOp;
+                match op {
+                    BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
+                        known(self.classify(lhs)) && known(self.classify(rhs))
+                    }
+                    BinOp::Add
+                        if self.classify(lhs) == LitClass::Str
+                            && self.classify(rhs) == LitClass::Str =>
+                    {
+                        true
+                    }
+                    _ => known(self.classify(expr)),
+                }
+            }
+            ExprKind::Call { callee, .. } => {
+                if let ExprKind::Path(path) = &*callee.kind
+                    && path.is_single()
+                {
+                    let name = &path.segments[0].name;
+                    rets.contains(name) && !self.is_local(name)
+                } else {
+                    false
+                }
+            }
+            ExprKind::If {
+                then,
+                otherwise: Some(_),
+                ..
+            } => then
+                .tail
+                .as_deref()
+                .is_some_and(|tail| self.typed_value(tail)),
+            _ => false,
+        }
+    }
+
+    fn is_local(&self, name: &str) -> bool {
+        self.scopes
+            .iter()
+            .any(|scope| scope.iter().any(|(n, _)| n == name))
+    }
+
     fn block(&mut self, block: &Block) -> Option<Diag> {
         self.scopes.push(Vec::new());
         for stmt in &block.stmts {
@@ -3111,6 +3347,7 @@ impl TierWalk<'_> {
             StmtKind::Expr(expr) => self.expr(expr),
             StmtKind::Item(item) => match &item.kind {
                 ItemKind::Binding(binding) => self.expr(&binding.value),
+                ItemKind::Fn(decl) if self.late.is_some() => self.late_fn_body(decl),
                 ItemKind::Fn(decl) => decl.body.as_ref().and_then(|body| self.block(body)),
                 _ => None,
             },
@@ -3126,6 +3363,32 @@ impl TierWalk<'_> {
             | ExprKind::Char(_)
             | ExprKind::Wildcard => None,
             ExprKind::Path(_) => None,
+            // The late walk's unit contexts (is68, [`tier_late_check`]).
+            ExprKind::If {
+                cond,
+                then,
+                otherwise,
+            } if self.late.is_some() => {
+                if let Some(diag) = self.expr(cond) {
+                    return Some(diag);
+                }
+                let (diag, typed) = self.block_tail(then, otherwise.is_none());
+                if diag.is_some() {
+                    return diag;
+                }
+                let other = otherwise.as_ref()?;
+                // `if c { v } else if d { … }` with no final `else`: the
+                // trailing else-less `if` is `()` against a typed then-tail,
+                // and the compiler reports there first.
+                if typed && matches!(&*other.kind, ExprKind::If { otherwise: None, .. }) {
+                    return Some(unit_tail_diag(other.span));
+                }
+                self.expr(other)
+            }
+            ExprKind::Loop { body } if self.late.is_some() => self.block_tail(body, true).0,
+            ExprKind::While { cond, body } if self.late.is_some() => self
+                .expr(cond)
+                .or_else(|| self.block_tail(body, true).0),
             ExprKind::Str(lit) => self.str_lit(lit),
             ExprKind::Group(inner)
             | ExprKind::Try(inner)
@@ -3346,7 +3609,11 @@ impl TierWalk<'_> {
                 }
                 self.scopes.push(Vec::new());
                 declare_pattern_classes(pattern, self);
-                let out = self.block(body);
+                let out = if self.late.is_some() {
+                    self.block_tail(body, true).0
+                } else {
+                    self.block(body)
+                };
                 self.scopes.pop();
                 out
             }
