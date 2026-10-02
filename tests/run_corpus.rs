@@ -1720,7 +1720,12 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/region_str_view_return.lu", "trap(region-fault)"),
     ("rows/error_alias_qualified/main.lu", "exit(0)"),
     ("rows/negative/error_alias_private/main.lu", "exit(0)"),
-    ("strings/trim_cutset_refused.lu", "exit(0)"),
+    // REMOVED by is68: `strings/trim_cutset_refused.lu`, which ran and
+    // printed `[hi]` against its pinned `fail(E0402)`. `[mem.str.ws]`'s
+    // "the family takes no argument" (s175, wolf-interp#125) is mirrored:
+    // the cutset call is refused at `resolve` with the compiler's code and
+    // span, which is the pinned expectation. A conservatism row became a
+    // match; it did not stop working.
     ("typecheck/fn_param_shadows_import/main.lu", "exit(0)"),
     ("typecheck/fn_param_shadows_item.lu", "exit(0)"),
     ("typecheck/list_lit_elem_i32.lu", "exit(0)"),
