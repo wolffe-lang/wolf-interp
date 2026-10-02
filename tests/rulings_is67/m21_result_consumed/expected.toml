@@ -6,7 +6,7 @@
 ruling = "wolffe-lang/wolf-lang#497"
 
 [expected]
-lupin   = { verdict = "exit(0)", stdout = "0 6\n" }
+lupin   = { verdict = "exit(0)", stdout = "look zz\nlook a\n0 6\n" }
 
 [trunk]
 lupin   = { verdict = "exit(0)", stdout = "look zz\nlook a\n0 0\n" }
