@@ -121,7 +121,12 @@ shapes! {
     q07_map_struct_value: "exit(0)", &[];
     q08_map_field: "exit(0)", &[];
     q09_map_member_len: "exit(0)", &[];
-    q10_map_match: "exit(0)", &[("W1002", [5, 8])];
+    // is67 (`[type.row.match]`, ruling #21): `match m[k] { ok(v) => …, none => 0 }` is
+    // a match over a `List[int] ! {none}` whose value half no arm covers — `ok(v)` fits no
+    // list and `none` is a row arm — so the value is refused by name where 0.1.43 bound the
+    // list to `none` and printed `0`. The warnings are unchanged; the verdict moves with the
+    // ruling, not with the lint (`docs/divergence-log.md`, is67 §3a).
+    q10_map_match: "unsupported", &[("W1002", [5, 8])];
     r01_only_member_read: "exit(0)", &[("W1002", [5, 8]), ("W0308", [98, 104])];
     r02_copy_out: "exit(0)", &[("W1002", [5, 8])];
     r03_move_other_local: "exit(0)", &[("W1002", [5, 8]), ("W0308", [153, 159])];
