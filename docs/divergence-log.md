@@ -6484,9 +6484,22 @@ its gate with the pin emptied: head green 9/9, 0.1.43 red on 8 (the
   0.1.43 9/9 green. `SKIP lines: 0` in every log. As §2 predicted, the
   pinned files read a dev build as 0.1.43 and red on it (3 and 8): the
   pins are emptied at the pairing that ships this.
-- **held: existing tests that change: none.** The gauntlet's `cargo test
-  --no-fail-fast` at `99788ca` is in §4; no test outside `rulings_is67`
-  and `rowmatch`'s unit tests moved.
+- **missed: existing tests that change — one, not none.**
+  `lint_is61`'s `q10_map_match` (CI run 36964862132 at the pre-rebase
+  head, `test (ubuntu-latest, test shard 2 of 3)`; the gauntlet at
+  `99788ca` reads the same): `match m[k] { ok(v) => v.len, none => 0 }`
+  over a `List[int] ! {none}`. 0.1.43 bound the list to `none` and
+  printed `0` (`exit(0)`, the row's asserted verdict, written when the
+  lint moved no verdict); under `[type.row.match]` `none` is a row arm and
+  `ok(v)` fits no list, so no value arm covers the value half and the
+  head refuses it by name (`unsupported`). The compiler's answer at s197
+  is E0801 or E0808 (an opaque `T` is covered only by a binding or `_`;
+  `ok(v)` is a constructor pattern over a list) — a code this machine
+  does not spend, so the dynamic refusal stays. `f7049fc` moves the row's
+  verdict to `unsupported` with the reason beside it; its warnings are
+  unchanged. §3's claim rested on the corpus (the compiler refused every
+  such program) and forgot lupin's own lint suite, whose programs were
+  written for lupin alone.
 - **held: corpus and differential, no new divergence beyond the ruled
   rows.** `lupin diff-run` on four tiers against wolf 0.2.20, trunk
   `9d9c023` (is65 merged; `lupin-trunk-9d9c023`, `4a27762b…`) against
@@ -6561,7 +6574,8 @@ Commits:
   (`src/rowmatch.rs`, `sema`'s chain, `frontend::admit`); `54b453e` the
   two-half dispatch and `Rule::RowMatch`; `79af9df` the lint
 - `d19ccb6` rustfmt and clippy; `39c6390` E0816 (s197's code) and the
-  mixed shapes by name; `683990c` CHANGELOG
+  mixed shapes by name; `683990c` CHANGELOG; `f7049fc` `lint_is61`'s
+  `q10_map_match` moved with the ruling
 
 Artifacts on kasumi under `~/lanes/is67/` (`archives/`, `evidence/`,
 `probes/`, `scripts/`, `corpora/`, the read-only clones `wolf-lang-s196/`
@@ -6594,8 +6608,10 @@ s196 `wolf` `3bf39452…`, s197 `wolf` `3f7e29ce…`.
   `diffrun/*-corpus.log` (the census lines), `diffrun/*.ledger.jsonl`
 - head: `fmt-99788ca.log` (`FMT_EXIT=0`), `clippy-99788ca.log`
   (`CLIPPY_EXIT=0`), `build-head-99788ca.log`
-- gauntlet at `99788ca`, the code head (the commits after it are docs
-  only): `gauntlet-99788ca.log` (its result
+- gauntlet at `99788ca` (`gauntlet-99788ca.log`, red on `q10_map_match`
+  alone, the missed prediction above) and at `f7049fc`, the code head
+  with that row moved (`gauntlet-f7049fc.log`; the commits after it are
+  docs only; its result
   is in §5 and the PR body); the superseded `gauntlet-5fffc6d.log` in
   `superseded/`
 - GitHub CI at the head sha: in the PR body
@@ -6617,7 +6633,7 @@ bytes on lupin).
 - [x] no new divergence against wolf 0.2.20 beyond the ruled rows (named in §3a); the ledgers move 0 rows on the pinned and wolf-lang trunk corpora
 - [x] CHANGELOG `Unreleased`
 - [ ] the coverage ratchet holds at 271 (`export::coverage_is_ratcheted`, in the gauntlet and CI)
-- [ ] kasumi gauntlet green at `99788ca` (`GAUNTLET_FAILS=0`); GitHub CI green at the head sha (the PR body)
+- [ ] kasumi gauntlet green at `f7049fc` (`GAUNTLET_FAILS=0`); GitHub CI green at the head sha (the PR body)
 - [ ] kasumi build dirs pruned once the evidence is written (`headsrc/target`, `wl-s196wt/target`, `wolf-lang-s196/target`, `dev/target`); worktree `/private/tmp/is67` removed after the last push
 
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
