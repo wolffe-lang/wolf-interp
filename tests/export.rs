@@ -295,7 +295,12 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // pins diffed): `mem.dyn.unsize` and `mem.tier0.borrow`
 // (`memory/elem_{const,dyn}_dyn_loan.lu`) and `mem.iter.excl`
 // (`memory/elem_{const,dyn}_iter_mut.lu`).
-const RATCHET_FLOOR: usize = 271;
+// 271 -> 273 at cdde128a (r26, wolf-lang v0.2.20 — the TAG): TWO, the two
+// anchors the pin adds, each cited first by files the pin adds (the corpus
+// `conforms:` sets of the two pins diffed, 374 -> 376 distinct):
+// `mem.tier0.excl.4` (the `memory/mut_claim_*`, `recv_claim_arg_*` and
+// `recv_view_arg_*` rows) and `type.row.else` (the seven `rows/else_*`).
+const RATCHET_FLOOR: usize = 273;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -487,7 +492,11 @@ const RATCHET_FLOOR: usize = 271;
 // `os.fs.path.domain` (spec/11). No new namespace.
 // 542 -> 542 at c2401f05 (r25, wolf-lang v0.2.19 — the TAG): key sets diffed
 // BOTH ways, the same set; spec/02 gains prose, no anchor.
-const ANCHORS_TOTAL: usize = 542;
+// 542 -> 544 at cdde128a (r26, wolf-lang v0.2.20 — the TAG): TWO. Key sets
+// diffed BOTH ways: two added, NOTHING dropped, no owner changed —
+// `mem.tier0.excl.4` (spec/02, ruling #17) and `type.row.else` (spec/10,
+// ruling #18). No new namespace.
+const ANCHORS_TOTAL: usize = 544;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -752,9 +761,12 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // 785/740 -> 816/771 at c2401f05 (r25, wolf-lang v0.2.19 — the TAG):
     // thirty-one corpus files, none leaving, every one an entry — both
     // counts move by thirty-one.
-    assert_eq!(summary.pin, "c2401f05f37794a078d2acf62f837dad98e5950d");
-    assert_eq!(summary.programs, 816);
-    assert_eq!(summary.records, 771);
+    // 816/771 -> 899/854 at cdde128a (r26, wolf-lang v0.2.20 — the TAG):
+    // eighty-three corpus files, none leaving, every one an entry — both
+    // counts move by eighty-three.
+    assert_eq!(summary.pin, "cdde128a30999652c9d70189664226b766a206f0");
+    assert_eq!(summary.programs, 899);
+    assert_eq!(summary.records, 854);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
