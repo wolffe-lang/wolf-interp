@@ -330,21 +330,17 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_close" | "fs_remove" | "fs_rename" | "fs_exists" | "fs_is_dir" | "fs_is_file"
         | "fs_size" | "fs_modified_ms" | "fs_read_dir" | "fs_create_dir_all"
         | "fs_remove_dir_all" | "fs_create_dir" | "fs_remove_dir" | "fs_write_chunk"
-        | "fs_seek" | "fs_tell" | "fs_read_at" => {
-            unsupported(format!(
-                "`{name}` is the s38/s90 fs tier; this wasm build has no filesystem to open, so \
+        | "fs_seek" | "fs_tell" | "fs_read_at" => unsupported(format!(
+            "`{name}` is the s38/s90 fs tier; this wasm build has no filesystem to open, so \
              the tier is declined rather than mocked"
-            ))
-        }
+        )),
         #[cfg(not(target_family = "wasm"))]
         "fs_read_text" | "fs_write_text" | "fs_read_bytes" | "fs_write_bytes" | "fs_open"
         | "fs_create" | "fs_open_mode" | "fs_read" | "fs_read_chunk" | "fs_write" | "fs_fstat"
         | "fs_close" | "fs_remove" | "fs_rename" | "fs_exists" | "fs_is_dir" | "fs_is_file"
         | "fs_size" | "fs_modified_ms" | "fs_read_dir" | "fs_create_dir_all"
         | "fs_remove_dir_all" | "fs_create_dir" | "fs_remove_dir" | "fs_write_chunk"
-        | "fs_seek" | "fs_tell" | "fs_read_at" => {
-            machine.fs_call(name, &args, span)
-        }
+        | "fs_seek" | "fs_tell" | "fs_read_at" => machine.fs_call(name, &args, span),
         // -- the s40 os/env/time tier (0.1.7) ------------------------------
         //
         // env v0: the machine-local OVERLAY — `env_set` writes here and
