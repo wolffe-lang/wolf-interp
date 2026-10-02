@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+**A flow out of an argument list withdraws the call's claims and
+protectors** (is65: wolffe-lang/wolf-interp#163). A `?`, a `return`, a
+`break`, a `continue` or a trap that leaves a call's argument list never
+enters the call; `[mem.tier0.excl.4]` has a `mut` claim take effect at
+entry and `[mem.prov.tag]` protects the parameter-entry tag for the call's
+extent, and with no entry there is no extent. The list is abandoned — every
+access it held released, every protector it minted withdrawn, a `(mut …)`
+receiver's included — and the signal leaves as it left the argument.
+Through 0.1.43 the protected Reserved child stayed in the tree, so the next
+write through the place was a foreign write to a protected tag:
+`put(mut xs, v(ok)?)` and `(mut xs).push(v(ok)?)` answered `ub(mem.ub)`
+(`mem.prov.state`, P1) at the caller's next push, and the `continue` forms
+answered it inside the loop, where wolf 0.2.19 prints `[1, 5, 3]` and
+`[1, 1, 3]` on checked, native and release; the claim itself stayed held
+until its scope popped, which the REPL's top level never does
+(`[repl.trap.alive]`: `trap(exclusivity)` on every line after a trap out
+of a list). Eighteen witnesses under `tests/rulings_is65/` — each exit
+kind, a nested call inside the argument in three shapes, a `read` lend, a
+scalar, two `mut`s, every receiver form, and the REPL after a trap — each
+red at `3e7f230` and green at `dfebf6b`; six controls (a trap in a program,
+a `take`, a field, an element, an impl and a view-set receiver) unchanged.
+No new divergence; the ratchet holds at 271.
+
 ## 0.1.43 — 2026-10-01
 
 THE FORTY-THIRD (is61, is63, is62, and r25's re-pin), the lupin half of
