@@ -1650,10 +1650,18 @@ mod tests {
         write_text(&path, "12345").expect("written");
         let mut table = FsTable::default();
 
-        for forged in [999_999, 0, -1, i128::MIN] {
+        for forged in [999_999, -1, i128::MIN] {
             assert!(matches!(table.fstat(forged), Err(FsErr::Row("io"))));
             assert!(matches!(table.close(forged), Err(FsErr::Row("io"))));
             assert!(matches!(table.read_text(forged, 4), Err(FsErr::Row("io"))));
+        }
+        // s199 (`[os.fs.std]`, wolf-lang#424): 0, 1 and 2 are the standard
+        // streams — no open answers them, so `close` and the reads stay `io`
+        // there (#405 is the reading half); `fstat` is not asserted here,
+        // because what the test runner wired to them is the runner's.
+        for stream in 0..3 {
+            assert!(matches!(table.close(stream), Err(FsErr::Row("io"))));
+            assert!(matches!(table.read_text(stream, 4), Err(FsErr::Row("io"))));
         }
 
         let fd = table.open(&path, 0).expect("opens");
@@ -1675,6 +1683,19 @@ mod tests {
         table.close(first).expect("closes");
         let second = table.open(&path, 0).expect("opens");
         assert_ne!(first, second, "a closed handle's number came back");
+    }
+
+    #[test]
+    fn the_first_handle_is_three() {
+        // s199 (`[os.fs.std]`, wolf-lang#424): 0, 1 and 2 are the standard
+        // streams on every machine, so the first open answers 3 here and on
+        // the compiled lanes alike (it was 1 here and 0 there).
+        let dir = scratch("fs-first-handle");
+        let path = dir.join("a.txt");
+        write_text(&path, "x").expect("written");
+        let mut table = FsTable::default();
+        assert_eq!(table.open(&path, 0).expect("opens"), 3);
+        assert_eq!(table.open(&path, 0).expect("opens"), 4);
     }
 
     #[test]
