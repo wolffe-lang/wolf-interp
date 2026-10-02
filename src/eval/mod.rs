@@ -3183,6 +3183,14 @@ impl Machine {
             Ok(value) | Err(Signal::Return(value)) => value,
             Err(other) => return Err(other),
         };
+        // `[type.unit.context]` (wolf-interp#103): the body of a function or
+        // method whose result is `()`, declared or omitted, is a unit
+        // context, and so is the operand of a `return` in one — the value is
+        // `()` whatever the tail's type, a row included (the discard
+        // `[type.unit.discard]` names; wolf 0.2.20's native and release exit
+        // 0 on a unit `main` whose tail raises). Through 0.1.43 the tail's
+        // value came back: `fn main() { …; 3 }` exited 3.
+        let value = if returns_unit(decl) { Value::Unit } else { value };
         // The declared return type types the value it returns (issue #14's
         // third shape): `math.int_max() - 1` is `int` arithmetic because
         // `int_max` says `-> int`, wherever the callee lives. Without this a
@@ -5006,14 +5014,30 @@ impl Machine {
                     ));
                 };
                 self.fire(Rule::Flow, expr.span, "if");
-                if taken {
-                    self.eval_block(then)
+                let value = if taken {
+                    self.eval_block(then)?
                 } else {
                     match otherwise {
-                        Some(other) => self.eval(other),
-                        None => Ok(Value::Unit),
+                        Some(other) => self.eval(other)?,
+                        None => Value::Unit,
                     }
-                }
+                };
+                // `[type.unit.context]` (wolf-interp#103): the then-block of
+                // an `if` with no `else`, and every block of a chain that
+                // ends without one, is a unit context — "the block's value
+                // is `()` whatever the tail's type". Through 0.1.43 this
+                // handed back the taken block's value, so `let mark = if c
+                // { "*" }` bound `"*"`. A row value is the one exception: a
+                // raise out of the taken block leaves as the `if`'s value,
+                // as it does on every compiler tier (measured on wolf 0.2.20,
+                // `rulings_is68/u103_ctl_raise_tail`), while an ok value of
+                // a `T ! row` tail is the discard `[type.unit.discard]` says
+                // (native and release print `()`).
+                Ok(if ends_without_else(otherwise.as_ref()) && !is_raise(&value) {
+                    Value::Unit
+                } else {
+                    value
+                })
             }
             ExprKind::Match { scrutinee, arms } => {
                 // The ARM BOUNDARY, per the spec's letter (s130's ruling, is31):
@@ -9825,6 +9849,34 @@ fn qualify(module: &str, name: &str) -> String {
     } else {
         format!("{module}::{name}")
     }
+}
+
+/// Whether `decl` declares no result or `-> ()`: a unit fn.
+fn returns_unit(decl: &FnDecl) -> bool {
+    match &decl.ret {
+        None => true,
+        Some(ret) => {
+            ret.row.is_none() && matches!(&*ret.ty.kind, TypeKind::Tuple(parts) if parts.is_empty())
+        }
+    }
+}
+
+/// Whether an `if` whose `else` is `otherwise` belongs to a chain that ends
+/// without an `else` — `[type.unit.context]`'s "every block of an `if … else
+/// if …` chain that ends without one".
+fn ends_without_else(otherwise: Option<&Expr>) -> bool {
+    match otherwise {
+        None => true,
+        Some(other) => match &*other.kind {
+            ExprKind::If { otherwise, .. } => ends_without_else(otherwise.as_ref()),
+            _ => false,
+        },
+    }
+}
+
+/// A raised row value (an error tag, not an enum variant).
+fn is_raise(value: &Value) -> bool {
+    matches!(value, Value::Error(error) if !error.enum_variant)
 }
 
 fn split_qualified(qualified: &str) -> (String, String) {
