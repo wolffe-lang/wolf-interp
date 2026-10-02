@@ -1713,7 +1713,11 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/mut_place_nested.lu", "exit(0)"),
     ("memory/region_str_producers_charged.lu", "exit(0)"),
     ("memory/region_str_view_inside.lu", "exit(0)"),
-    ("memory/region_str_view_return.lu", "exit(0)"),
+    // is68 (wolf-interp#126): a view carries its receiver's region, so the
+    // view returned out of `scratch` is the clause's `region-fault` — a
+    // dynamic counterpart of the pinned E1010, no longer a conservatism row
+    // that printed from freed bytes.
+    ("memory/region_str_view_return.lu", "trap(region-fault)"),
     ("rows/error_alias_qualified/main.lu", "exit(0)"),
     ("rows/negative/error_alias_private/main.lu", "exit(0)"),
     ("strings/trim_cutset_refused.lu", "exit(0)"),
