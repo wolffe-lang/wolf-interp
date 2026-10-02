@@ -1,0 +1,21 @@
+//! is67 (#497) — `_` covers what is left on the value half: `{ none => -1, _ => 1 }`, miss then hit.
+fn look(m: Map[str, int], k: str) -> int ! {none} {
+    print("look {k}")
+    m[k]
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    let r = match look(m, "zz") {
+        none => -1,
+        _ => 1,
+    }
+    print("{r}")
+    let s = match look(m, "a") {
+        none => -1,
+        _ => 1,
+    }
+    print("{s}")
+    0
+}

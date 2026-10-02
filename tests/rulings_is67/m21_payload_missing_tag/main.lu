@@ -1,0 +1,20 @@
+//! is67 (#497) — the row half with a payload tag named and a bare one missing: E0801 names `Timeout`.
+
+fn risky(n: int) -> int ! {Io(int), Timeout} {
+    if n == 0 {
+        return Timeout
+    }
+    if n == 1 {
+        return Io(9)
+    }
+    n
+}
+
+fn main() -> !int {
+    let r = match risky(1) {
+        Io(code) => code,
+        v => v,
+    }
+    print("{r}")
+    0
+}

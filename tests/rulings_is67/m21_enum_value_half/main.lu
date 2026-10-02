@@ -1,0 +1,34 @@
+//! is67 (#497) — `T` is an enum: the value half is covered by naming every variant, the row by its tag.
+
+enum Color {
+    Red,
+    Green,
+    Rgb(int, int, int),
+}
+
+fn pick(n: int) -> Color ! {none} {
+    if n == 0 {
+        return none
+    }
+    if n == 1 {
+        return Color.Red
+    }
+    if n == 2 {
+        return Color.Green
+    }
+    Color.Rgb(1, 2, 3)
+}
+
+fn weight(n: int) -> int {
+    match pick(n) {
+        none => 0,
+        Red => 1,
+        Green => 2,
+        Rgb(r, g, b) => r + g + b,
+    }
+}
+
+fn main() -> !int {
+    print("{weight(0)} {weight(1)} {weight(2)} {weight(3)}")
+    0
+}

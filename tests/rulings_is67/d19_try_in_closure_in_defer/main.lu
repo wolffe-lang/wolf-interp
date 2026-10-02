@@ -1,0 +1,21 @@
+//! is67 (#498) — control under `[type.row.defer]`'s last sentence: a `?` inside a closure defined under the `defer` is the closure's own propagation, handled inside the deferred expression; not refused.
+
+fn key(ok: bool) -> str ! {parse} {
+    print("key")
+    if ok { "a" } else { return parse }
+}
+
+fn under(ok: bool) -> int ! {parse} {
+    defer {
+        let f = fn(o: bool) { key(o)? }
+        print("deferred {f(ok) else "-"}")
+    }
+    print("body")
+    1
+}
+
+fn main() -> !int {
+    print("{under(true) else 9}")
+    print("{under(false) else 9}")
+    0
+}

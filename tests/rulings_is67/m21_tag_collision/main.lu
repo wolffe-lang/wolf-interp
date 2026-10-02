@@ -1,0 +1,22 @@
+//! is67 (#497) — a tag that is also a constructor name reachable from `T`: refused by name, never guessed.
+
+enum Status {
+    Timeout,
+    Fine,
+}
+
+fn probe(n: int) -> Status ! {Timeout} {
+    if n == 0 {
+        return Timeout
+    }
+    Status.Fine
+}
+
+fn main() -> !int {
+    let r = match probe(1) {
+        Timeout => 0,
+        s => 1,
+    }
+    print("{r}")
+    0
+}

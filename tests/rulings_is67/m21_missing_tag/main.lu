@@ -1,0 +1,15 @@
+//! is67 (#497) — non-exhaustive, the row half: no arm names `none` and there is no `_`; E0801 names `none`.
+fn look(m: Map[str, int], k: str) -> int ! {none} {
+    print("look {k}")
+    m[k]
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    let r = match look(m, "a") {
+        v => v,
+    }
+    print("{r}")
+    0
+}

@@ -1,0 +1,17 @@
+//! is67 (#497) — the scrutinee is a `Map` index, `V ! {none}` by `[mem.map.absent]`: miss then hit.
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    let r = match m["zz"] {
+        none => -1,
+        v => v,
+    }
+    print("{r}")
+    let s = match m["a"] {
+        none => -1,
+        v => v,
+    }
+    print("{s}")
+    0
+}

@@ -1,0 +1,20 @@
+//! is67 (#498) — control (s196's `defer_else_handles`): the fallible call under a `defer`/`errdefer` handles its own row with `else`.
+fn key(ok: bool) -> str ! {parse} {
+    print("key")
+    if ok { "a" } else { return parse }
+}
+
+fn under(ok: bool) -> int ! {parse} {
+    defer print("deferred {key(ok) else "-"}")
+    errdefer print("errdefer {key(ok) else "-"}")
+    print("body")
+    let k = key(ok)?
+    print("{k}")
+    1
+}
+
+fn main() -> !int {
+    print("{under(true) else 9}")
+    print("{under(false) else 9}")
+    0
+}

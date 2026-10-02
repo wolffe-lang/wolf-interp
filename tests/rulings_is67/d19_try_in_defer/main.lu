@@ -1,0 +1,17 @@
+//! is67 (wolf-lang#498, ruling #19) — s191's p2: a `?` inside a `defer` is refused, never run.
+fn key(ok: bool) -> str ! {parse} {
+    print("key")
+    if ok { "a" } else { return parse }
+}
+
+fn under(ok: bool) -> int ! {parse} {
+    defer print("deferred {key(ok)?}")
+    print("body")
+    1
+}
+
+fn main() -> !int {
+    print("{under(true) else 9}")
+    print("{under(false) else 9}")
+    0
+}

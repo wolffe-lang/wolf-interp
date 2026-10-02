@@ -1,0 +1,18 @@
+//! is67 (#497) — control: `_` alone covers both halves.
+fn look(m: Map[str, int], k: str) -> int ! {none} {
+    print("look {k}")
+    m[k]
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    let r = match look(m, "zz") {
+        _ => 7,
+    }
+    let s = match look(m, "a") {
+        _ => 7,
+    }
+    print("{r} {s}")
+    0
+}

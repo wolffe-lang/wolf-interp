@@ -1,0 +1,20 @@
+//! is67 (#497) — control (s191's m3): `else |e| match e { … }` keeps working beside the new form.
+fn look(m: Map[str, int], k: str) -> int ! {none} {
+    print("look {k}")
+    m[k]
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    let r = look(m, "zz") else |e| match e {
+        none => -1,
+    }
+    print("{r}")
+    let s = match (look(m, "zz") else 7) {
+        7 => "seven",
+        _ => "other",
+    }
+    print("{s}")
+    0
+}

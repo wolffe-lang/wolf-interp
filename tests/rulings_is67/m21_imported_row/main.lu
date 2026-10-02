@@ -1,0 +1,19 @@
+//! is67 (#497) — the row comes from an imported module's signature: `store.find`, miss then hit.
+
+use store
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    let r = match store.find(m, "zz") {
+        none => -1,
+        v => v,
+    }
+    print("{r}")
+    let s = match store.find(m, "a") {
+        none => -1,
+        v => v,
+    }
+    print("{s}")
+    0
+}

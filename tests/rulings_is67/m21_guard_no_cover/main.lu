@@ -1,0 +1,17 @@
+//! is67 (#497) — a guarded row arm does not count toward coverage: E0801 names `none`.
+fn look(m: Map[str, int], k: str) -> int ! {none} {
+    print("look {k}")
+    m[k]
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    let flag = true
+    let r = match look(m, "zz") {
+        none if flag => -1,
+        v => v,
+    }
+    print("{r}")
+    0
+}

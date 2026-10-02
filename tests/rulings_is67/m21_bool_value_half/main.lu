@@ -1,0 +1,21 @@
+//! is67 (#497) — `T` is `bool`: `true` and `false` cover the value half.
+
+fn flag(n: int) -> bool ! {none} {
+    if n == 0 {
+        return none
+    }
+    n == 1
+}
+
+fn code(n: int) -> int {
+    match flag(n) {
+        none => 0,
+        true => 1,
+        false => 2,
+    }
+}
+
+fn main() -> !int {
+    print("{code(0)} {code(1)} {code(2)}")
+    0
+}

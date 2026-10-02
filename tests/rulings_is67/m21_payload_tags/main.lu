@@ -1,0 +1,24 @@
+//! is67 (#497) — payload tags: `Io(code)` binds the payload, `Timeout` is bare, `v` is the value half.
+
+fn risky(n: int) -> int ! {Io(int), Timeout} {
+    if n == 0 {
+        return Timeout
+    }
+    if n == 1 {
+        return Io(9)
+    }
+    n
+}
+
+fn read(n: int) -> int {
+    match risky(n) {
+        Io(code) => code + 100,
+        Timeout => 0,
+        v => v,
+    }
+}
+
+fn main() -> !int {
+    print("{read(0)} {read(1)} {read(40)}")
+    0
+}

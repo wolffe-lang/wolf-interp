@@ -1,0 +1,20 @@
+//! is67 (#498) — a `?` in a binding inside a `defer` block: the whole deferred expression is read.
+fn key(ok: bool) -> str ! {parse} {
+    print("key")
+    if ok { "a" } else { return parse }
+}
+
+fn under(ok: bool) -> int ! {parse} {
+    defer {
+        let k = key(ok)?
+        print("deferred {k}")
+    }
+    print("body")
+    1
+}
+
+fn main() -> !int {
+    print("{under(true) else 9}")
+    print("{under(false) else 9}")
+    0
+}

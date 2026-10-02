@@ -1,0 +1,21 @@
+//! is67 (wolf-lang#497, ruling #21) — the issue's shape, miss then hit: a row arm and a value arm.
+fn look(m: Map[str, int], k: str) -> int ! {none} {
+    print("look {k}")
+    m[k]
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    let r = match look(m, "zz") {
+        none => -1,
+        v => v,
+    }
+    print("{r}")
+    let s = match look(m, "a") {
+        none => -1,
+        v => v,
+    }
+    print("{s}")
+    0
+}

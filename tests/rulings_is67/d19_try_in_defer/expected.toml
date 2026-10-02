@@ -1,0 +1,15 @@
+# is67 — wolffe-lang/wolf-lang#498, ruling #19 ([type.row.defer], E0611). This row: s191's p2: `defer print("deferred {key(ok)?}")` — E0611.
+# `[expected]` is the ruled lupin cell. `[trunk]` is what lupin trunk `6d6cde5` (= the published
+# 0.1.43, archive e957c8de…, release build cb8d424c…) and wolf 0.2.20 (the published archive,
+# 24855d5e…) `conform-run` answered on kasumi, ~/lanes/is67/evidence/probes-archive-0.1.43-wolf-0.2.20.log
+# and probes-trunk-6d6cde5.log (identical lupin lines).
+ruling = "wolffe-lang/wolf-lang#498"
+
+[expected]
+lupin   = { verdict = "fail(E0611)" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "body\nkey\ndeferred a\n1\nbody\nkey\n9\n" }
+checked = { verdict = "exit(0)", stdout = "body\nkey\ndeferred a\n1\nbody\nkey\n1\n" }
+native  = { verdict = "crash", note = "stack overflow, exit 134, no record" }
+release = { verdict = "crash", note = "stack overflow, exit 134, no record" }

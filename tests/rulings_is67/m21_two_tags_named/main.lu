@@ -1,0 +1,23 @@
+//! is67 (#497) — a two-tag row with every tag named and a value binder: exhaustive with no `_`.
+
+fn get(m: Map[str, int], k: str) -> int ! {none, stale} {
+    if k == "old" {
+        return stale
+    }
+    m[k]
+}
+
+fn read(m: Map[str, int], k: str) -> int {
+    match get(m, k) {
+        none => -1,
+        stale => -2,
+        v => v,
+    }
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    print("{read(m, "zz")} {read(m, "old")} {read(m, "a")}")
+    0
+}

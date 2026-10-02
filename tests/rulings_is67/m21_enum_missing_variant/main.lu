@@ -1,0 +1,24 @@
+//! is67 (#497) — `T` is an enum and one variant is unnamed: E0801 names `Green`.
+
+enum Color {
+    Red,
+    Green,
+    Rgb(int, int, int),
+}
+
+fn pick(n: int) -> Color ! {none} {
+    if n == 0 {
+        return none
+    }
+    Color.Red
+}
+
+fn main() -> !int {
+    let w = match pick(1) {
+        none => 0,
+        Red => 1,
+        Rgb(r, g, b) => r + g + b,
+    }
+    print("{w}")
+    0
+}

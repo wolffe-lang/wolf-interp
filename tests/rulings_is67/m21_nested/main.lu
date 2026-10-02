@@ -1,0 +1,26 @@
+//! is67 (#497) — nested: a row match inside a row arm and inside a value arm.
+fn look(m: Map[str, int], k: str) -> int ! {none} {
+    print("look {k}")
+    m[k]
+}
+
+fn pair(m: Map[str, int], k: str) -> int {
+    match look(m, k) {
+        none => match look(m, "a") {
+            none => -2,
+            w => 0 - w,
+        },
+        v => match look(m, "zz") {
+            none => v * 10,
+            w => v + w,
+        },
+    }
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    print("{pair(m, "zz")}")
+    print("{pair(m, "a")}")
+    0
+}

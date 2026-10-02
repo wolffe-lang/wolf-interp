@@ -1,0 +1,15 @@
+# is67 — wolffe-lang/wolf-lang#498, ruling #19 ([type.row.defer], E0611). This row: Control: a `?` inside a closure under the `defer` is the closure's own propagation.
+# `[expected]` is the ruled lupin cell. `[trunk]` is what lupin trunk `6d6cde5` (= the published
+# 0.1.43, archive e957c8de…, release build cb8d424c…) and wolf 0.2.20 (the published archive,
+# 24855d5e…) `conform-run` answered on kasumi, ~/lanes/is67/evidence/probes-archive-0.1.43-wolf-0.2.20.log
+# and probes-trunk-6d6cde5.log (identical lupin lines).
+ruling = "wolffe-lang/wolf-lang#498"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "body\nkey\ndeferred a\n1\nbody\nkey\ndeferred -\n1\n" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "body\nkey\ndeferred a\n1\nbody\nkey\ndeferred -\n1\n" }
+checked = { verdict = "unsupported" }
+native  = { verdict = "exit(0)", stdout = "body\nkey\ndeferred a\n1\nbody\nkey\ndeferred -\n1\n" }
+release = { verdict = "exit(0)", stdout = "body\nkey\ndeferred a\n1\nbody\nkey\ndeferred -\n1\n" }

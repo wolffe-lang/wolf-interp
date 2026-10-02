@@ -1,0 +1,23 @@
+//! is67 (#497) — the fallible value bound to a local first (s191's m2), miss then hit.
+fn look(m: Map[str, int], k: str) -> int ! {none} {
+    print("look {k}")
+    m[k]
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    let x = look(m, "zz")
+    let r = match x {
+        none => -1,
+        _ => 1,
+    }
+    print("{r}")
+    let y = look(m, "a")
+    let s = match y {
+        none => -1,
+        _ => 1,
+    }
+    print("{s}")
+    0
+}

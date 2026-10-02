@@ -1,0 +1,4 @@
+pub fn find(m: Map[str, int], k: str) -> int ! {none} {
+    print("find {k}")
+    m[k]
+}

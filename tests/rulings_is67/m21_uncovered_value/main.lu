@@ -1,0 +1,15 @@
+//! is67 (#497) — non-exhaustive, the value half: only the row arm; E0801 names the uncovered value half.
+fn look(m: Map[str, int], k: str) -> int ! {none} {
+    print("look {k}")
+    m[k]
+}
+
+fn main() -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    let r = match look(m, "zz") {
+        none => -1,
+    }
+    print("{r}")
+    0
+}
