@@ -1,0 +1,18 @@
+# is65 — wolf-interp#163. This row: a `?` after `mut b.xs` (control): unchanged.
+# `[expected]` is the ruled lupin cell. `[trunk]` is what lupin trunk `6d6cde5` (release build
+# cb8d424c…) and wolf 0.2.19 (the published archive, 9f3873d8…) `conform-run` answered on
+# kasumi, ~/lanes/is65/evidence/probes-trunk-6d6cde5.log; `[archive]` is the published lupin
+# 0.1.43 (e957c8de…), ~/lanes/is65/evidence/probes-archive-0.1.43.log.
+issue = "wolf-interp#163"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "2\n9\n[1, 5, 3] 7\n" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "2\n9\n[1, 5, 3] 7\n" }
+checked = { verdict = "exit(0)", stdout = "2\n9\n[1, 5, 3] 7\n" }
+native  = { verdict = "exit(0)", stdout = "2\n9\n[1, 5, 3] 7\n" }
+release = { verdict = "exit(0)", stdout = "2\n9\n[1, 5, 3] 7\n" }
+
+[archive]
+lupin   = { verdict = "exit(0)", stdout = "2\n9\n[1, 5, 3] 7\n" }

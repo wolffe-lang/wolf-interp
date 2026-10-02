@@ -1,0 +1,22 @@
+fn v(ok: bool) -> int ! {parse} {
+    if ok { 5 } else { return parse }
+}
+
+fn bump(mut n: int, k: int) {
+    n = n + k
+}
+
+fn add(mut xs: List[int], ok: bool) -> int ! {parse} {
+    bump(mut xs[0], v(ok)?)
+    xs[0]
+}
+
+fn main() -> !int {
+    var xs = [1, 2]
+    print("{add(mut xs, true) else 9}")
+    print("{add(mut xs, false) else 9}")
+    xs[0] = xs[0] + 10
+    (mut xs).push(3)
+    print("{xs}")
+    0
+}

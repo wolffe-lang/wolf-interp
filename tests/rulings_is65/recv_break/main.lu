@@ -1,0 +1,11 @@
+fn main() -> !int {
+    var xs = [1]
+    var i = 0
+    while i < 5 {
+        i = i + 1
+        (mut xs).push(if i == 2 { break } else { i })
+    }
+    (mut xs).push(3)
+    print("{xs}")
+    0
+}

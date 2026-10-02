@@ -1,0 +1,28 @@
+fn v(ok: bool) -> int ! {parse} {
+    if ok { 5 } else { return parse }
+}
+
+fn inner(mut ys: List[int], k: int) -> int {
+    (mut ys).push(k)
+    ys.len
+}
+
+fn outer(mut xs: List[int], a: int, b: int) {
+    (mut xs).push(a + b)
+}
+
+fn go(mut xs: List[int], mut ys: List[int], ok: bool) -> int ! {parse} {
+    outer(mut xs, inner(mut ys, 1), v(ok)?)
+    xs.len + ys.len
+}
+
+fn main() -> !int {
+    var xs = [1]
+    var ys = [2]
+    print("{go(mut xs, mut ys, true) else 9}")
+    print("{go(mut xs, mut ys, false) else 9}")
+    (mut xs).push(3)
+    (mut ys).push(4)
+    print("{xs} {ys}")
+    0
+}

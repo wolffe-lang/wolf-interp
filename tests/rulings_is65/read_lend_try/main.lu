@@ -1,0 +1,22 @@
+fn v(ok: bool) -> int ! {parse} {
+    if ok { 5 } else { return parse }
+}
+
+fn both(ys: List[int], k: int) -> int {
+    ys.len + k
+}
+
+fn go(mut ys: List[int], ok: bool) -> int ! {parse} {
+    let n = both(ys, v(ok)?)
+    (mut ys).push(n)
+    ys.len
+}
+
+fn main() -> !int {
+    var ys = [2]
+    print("{go(mut ys, true) else 9}")
+    print("{go(mut ys, false) else 9}")
+    (mut ys).push(4)
+    print("{ys}")
+    0
+}

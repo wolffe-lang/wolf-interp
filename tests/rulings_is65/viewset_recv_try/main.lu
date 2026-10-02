@@ -1,0 +1,26 @@
+struct P { x: int, z: int }
+
+impl P {
+    fn set_x(mut self.{x}, k: int) {
+        self.x = k
+    }
+}
+
+fn v(ok: bool) -> int ! {parse} {
+    if ok { 5 } else { return parse }
+}
+
+fn go(mut p: P, ok: bool) -> int ! {parse} {
+    (mut p).set_x(v(ok)?)
+    p.x + p.z
+}
+
+fn main() -> !int {
+    var p = P { x: 1, z: 2 }
+    print("{go(mut p, true) else 9}")
+    print("{go(mut p, false) else 9}")
+    p.x = p.x + 10
+    p.z = p.z + 10
+    print("{p.x} {p.z}")
+    0
+}

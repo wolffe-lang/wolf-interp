@@ -1,0 +1,10 @@
+fn main() -> !int {
+    var xs = [1]
+    var i = 0
+    while i < 3 {
+        i = i + 1
+        (mut xs).push(if i == 2 { continue } else { i })
+    }
+    print("{xs}")
+    0
+}

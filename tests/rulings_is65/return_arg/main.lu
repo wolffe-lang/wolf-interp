@@ -1,0 +1,17 @@
+fn put(mut xs: List[int], k: int) {
+    (mut xs).push(k)
+}
+
+fn add(mut xs: List[int], stop: bool) -> int {
+    put(mut xs, if stop { return 7 } else { 5 })
+    xs.len
+}
+
+fn main() -> !int {
+    var xs = [1]
+    print("{add(mut xs, false)}")
+    print("{add(mut xs, true)}")
+    (mut xs).push(3)
+    print("{xs}")
+    0
+}

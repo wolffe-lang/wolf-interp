@@ -1,0 +1,24 @@
+struct Bag { xs: List[int], n: int }
+
+fn v(ok: bool) -> int ! {parse} {
+    if ok { 5 } else { return parse }
+}
+
+fn put(mut xs: List[int], k: int) {
+    (mut xs).push(k)
+}
+
+fn add(mut b: Bag, ok: bool) -> int ! {parse} {
+    put(mut b.xs, v(ok)?)
+    b.xs.len
+}
+
+fn main() -> !int {
+    var b = Bag { xs: [1], n: 0 }
+    print("{add(mut b, true) else 9}")
+    print("{add(mut b, false) else 9}")
+    (mut b.xs).push(3)
+    b.n = 7
+    print("{b.xs} {b.n}")
+    0
+}

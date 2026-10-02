@@ -1,0 +1,18 @@
+# is65 — wolf-interp#163. This row: a `continue` out of a receiver's list: the call was never entered, so its claims and protectors are withdrawn and the next write runs — wolf 0.2.19's bytes on checked, native and release.
+# `[expected]` is the ruled lupin cell. `[trunk]` is what lupin trunk `6d6cde5` (release build
+# cb8d424c…) and wolf 0.2.19 (the published archive, 9f3873d8…) `conform-run` answered on
+# kasumi, ~/lanes/is65/evidence/probes-trunk-6d6cde5.log; `[archive]` is the published lupin
+# 0.1.43 (e957c8de…), ~/lanes/is65/evidence/probes-archive-0.1.43.log.
+issue = "wolf-interp#163"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "[1, 1, 3]\n" }
+
+[trunk]
+lupin   = { verdict = "ub(mem.ub)", clause = "mem.prov.state", row = "P1" }
+checked = { verdict = "exit(0)", stdout = "[1, 1, 3]\n" }
+native  = { verdict = "exit(0)", stdout = "[1, 1, 3]\n" }
+release = { verdict = "exit(0)", stdout = "[1, 1, 3]\n" }
+
+[archive]
+lupin   = { verdict = "ub(mem.ub)", clause = "mem.prov.state", row = "P1" }

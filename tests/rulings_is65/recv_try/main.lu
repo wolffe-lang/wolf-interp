@@ -1,0 +1,17 @@
+fn v(ok: bool) -> int ! {parse} {
+    if ok { 5 } else { return parse }
+}
+
+fn add(mut xs: List[int], ok: bool) -> int ! {parse} {
+    (mut xs).push(v(ok)?)
+    xs.len
+}
+
+fn main() -> !int {
+    var xs = [1]
+    print("{add(mut xs, true) else 9}")
+    print("{add(mut xs, false) else 9}")
+    (mut xs).push(3)
+    print("{xs}")
+    0
+}

@@ -1,0 +1,21 @@
+fn v(ok: bool) -> int ! {parse} {
+    if ok { 5 } else { return parse }
+}
+
+fn bump(mut n: int, k: int) {
+    n = n + k
+}
+
+fn add(mut n: int, ok: bool) -> int ! {parse} {
+    bump(mut n, v(ok)?)
+    n
+}
+
+fn main() -> !int {
+    var n = 1
+    print("{add(mut n, true) else 9}")
+    print("{add(mut n, false) else 9}")
+    n = n + 10
+    print("{n}")
+    0
+}

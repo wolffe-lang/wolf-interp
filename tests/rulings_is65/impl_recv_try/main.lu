@@ -1,0 +1,25 @@
+struct Counter { n: int }
+
+impl Counter {
+    fn add(mut self, k: int) {
+        self.n = self.n + k
+    }
+}
+
+fn v(ok: bool) -> int ! {parse} {
+    if ok { 5 } else { return parse }
+}
+
+fn go(mut c: Counter, ok: bool) -> int ! {parse} {
+    (mut c).add(v(ok)?)
+    c.n
+}
+
+fn main() -> !int {
+    var c = Counter { n: 1 }
+    print("{go(mut c, true) else 9}")
+    print("{go(mut c, false) else 9}")
+    c.n = c.n + 10
+    print("{c.n}")
+    0
+}

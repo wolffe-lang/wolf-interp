@@ -1,0 +1,19 @@
+fn v(ok: bool) -> int ! {parse} {
+    if ok { 5 } else { return parse }
+}
+
+fn eat(take xs: List[int], k: int) -> int {
+    xs.len + k
+}
+
+fn go(ok: bool) -> int ! {parse} {
+    var xs = [1]
+    let n = eat(take xs, v(ok)?)
+    n
+}
+
+fn main() -> !int {
+    print("{go(true) else 9}")
+    print("{go(false) else 9}")
+    0
+}

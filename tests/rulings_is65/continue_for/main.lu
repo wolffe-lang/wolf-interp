@@ -1,0 +1,12 @@
+fn put(mut xs: List[int], k: int) {
+    (mut xs).push(k)
+}
+
+fn main() -> !int {
+    var xs = [1]
+    for i in 1..4 {
+        put(mut xs, if i == 2 { continue } else { i })
+    }
+    print("{xs}")
+    0
+}

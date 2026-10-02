@@ -1,0 +1,12 @@
+fn put(mut xs: List[int], k: int) {
+    (mut xs).push(k)
+}
+
+fn main() -> !int {
+    var xs = [1]
+    let ys = [0]
+    put(mut xs, ys[9])
+    (mut xs).push(3)
+    print("{xs}")
+    0
+}
