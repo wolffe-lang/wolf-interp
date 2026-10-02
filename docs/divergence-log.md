@@ -6435,7 +6435,7 @@ rendering, and the collision's code (s197's).
 
 #### §3 addendum — s197's PR appeared mid-lane (wolf-lang#510, 2026-10-02)
 
-Committed before the edit it drives (`1648ea7`'s). s197 (branch `s197`,
+Committed before the edit it drives (`39c6390`'s). s197 (branch `s197`,
 code head `68d80376`; `83f370f1` is its plant) names the collision
 **E0816** ("the row tag `Line` is also a variant of `Shape`"), refused
 "whether or not an arm spells it", and refuses by name "an or-pattern
@@ -6453,43 +6453,44 @@ its gate with the pin emptied: head green 9/9, 0.1.43 red on 8 (the
 
 #### §3a — the prediction, scored
 
-- **held: the five mechanisms**, one commit each: `068c2ab` (the static
-  reader and the resolve-rung checks), `de1d89c` (the dispatch), `9eb3cbf`
-  (the lint), with the addendum at `1648ea7`. The 21 witnesses red at
-  `a804d40` (`red-a804d40.log`: 5 passed, 21 failed, `EXIT=101`, each for
+- **held: the five mechanisms**, one commit each: `233dbb7` (the static
+  reader and the resolve-rung checks), `54b453e` (the dispatch), `79af9df`
+  (the lint), with the addendum at `39c6390`. The 21 witnesses red at
+  `c08285f` (`red-c08285f.log`: 5 passed, 21 failed, `EXIT=101`, each for
   its named reason — a wrong byte, or a run where a refusal is ruled) are
-  green at `1648ea7` (`witnesses-head-1648ea7.log`), and the three chapter
-  6 shapes bs57 measured (`61cb7d8`) are green with them: `rulings_is67`
-  29/29 (`green-61cb7d8.log`, `EXIT=0`); 0.1.43 answers `no comma / no
+  green at the code head `99788ca` (`witnesses-head-99788ca.log`, lupin
+  `d743fff5…`), the three chapter 6 shapes bs57 measured (`99788ca`) with
+  them: `rulings_is67` 29/29 (`green-99788ca.log`, `EXIT=0`); 0.1.43 answers `no comma / no
   comma / … / no comma`, `no_comma` and `7 -4 Weird` on them
   (`probes-book-archive-0.1.43-wolf-0.2.20.log`), the head `340 cents /
   nothing owed / …`, `fail(E0801)` and `7 -4 -99`.
 - **held: the witness table, row for row** — with one slip of mine:
   `m21_result_consumed`'s ruled stdout is `look zz\nlook a\n0 6\n`, not
   `0 6\n` (the two `look` lines were in the trunk cell and not in the
-  prediction; `2cc8951` corrects the cell, the fix is real: trunk `0 0`).
+  prediction; `e9fa018` corrects the cell, the fix is real: trunk `0 0`).
 - **held: s197's nine rows** answer their `check:` lines on the head
-  byte for byte (`probes-head-1648ea7.log`, `s197_*`), the E0816 and both
+  byte for byte (`probes-head-99788ca.log`, `s197_*`), the E0816 and both
   E0801 rows included; 0.1.43 ran the six run rows with the first-arm
   bytes and ran the three refusals.
 - **held: the gates.** s196's `try_under_defer_refused_lanes.rs` at
   `7a8be823` (worktree `wl-s196wt/`, `wolf` `3bf39452…`): pin emptied,
-  head 3/3 green (`wolfgate-s196-head-1648ea7-unpinned.log`, `EXIT=0`),
+  head 3/3 green (`wolfgate-s196-head-99788ca-unpinned.log`, `EXIT=0`),
   0.1.43 red on exactly 3 (`wolfgate-s196-archive-0.1.43-unpinned.log`,
   `EXIT=101`); pinned, 0.1.43 3/3 green. s197's `match_fallible_lanes.rs`
   at `68d80376` (`wolf-lang-s196/`, `wolf` `3f7e29ce…`): pin emptied, head
-  9/9 green (`wolfgate-s197-head-1648ea7-unpinned.log`, `EXIT=0`), 0.1.43
+  9/9 green (`wolfgate-s197-head-99788ca-unpinned.log`, `EXIT=0`), 0.1.43
   red on 8 with the `else` control green
   (`wolfgate-s197-archive-0.1.43-unpinned.log`, `EXIT=101`); pinned,
   0.1.43 9/9 green. `SKIP lines: 0` in every log. As §2 predicted, the
   pinned files read a dev build as 0.1.43 and red on it (3 and 8): the
   pins are emptied at the pairing that ships this.
 - **held: existing tests that change: none.** The gauntlet's `cargo test
-  --no-fail-fast` at `1648ea7` is in §4; no test outside `rulings_is67`
+  --no-fail-fast` at `99788ca` is in §4; no test outside `rulings_is67`
   and `rowmatch`'s unit tests moved.
 - **held: corpus and differential, no new divergence beyond the ruled
   rows.** `lupin diff-run` on four tiers against wolf 0.2.20, trunk
-  `6d6cde5` against `1648ea7`: on the pinned corpus the divergence lists
+  `9d9c023` (is65 merged; `lupin-trunk-9d9c023`, `4a27762b…`) against
+  `99788ca`: on the pinned corpus the divergence lists
   are identical (5 / 5 / 6 / 6 per tier) and the ledgers move 0 rows; on
   wolf-lang trunk `cdde128a`'s corpus the same (5 / 5 / 6 / 6, 0 ledger
   rows); the census lines are identical (pin 554 / 53 / 60 / 65 / 1,
@@ -6507,7 +6508,7 @@ its gate with the pin emptied: head green 9/9, 0.1.43 red on 8 (the
   divergence lists against 0.2.20 are unchanged (`unsupported` on every
   tier is the conservatism ledger).
 - **held, the addendum**: `m21_tag_collision` is `fail(E0816)` at the
-  head (`witnesses-head-1648ea7.log`); the mixed shapes are refused by
+  head (`witnesses-head-99788ca.log`); the mixed shapes are refused by
   name (`rowmatch` unit tests).
 - **coverage**: `RATCHET_FLOOR` 271, unchanged (the gauntlet's
   `export::coverage_is_ratcheted`).
@@ -6516,7 +6517,7 @@ Slips, all mine, all repaired:
 - the first patch shipped to kasumi lacked the untracked `src/rowmatch.rs`
   (`git diff` before `git add -N`); the build that read it was killed by
   pid (2043320 and its two children) and re-run.
-- `head.sh`'s gate loop at `1648ea7` wrote no logs: the scripts had been
+- `head.sh`'s gate loop at `39c6390` wrote no logs: the scripts had been
   re-shipped without their execute bit (`Permission denied`, seen under
   `bash -x`); `chmod +x`, and the eight runs were made by
   `scripts/gates-all.sh` with explicit calls.
@@ -6525,54 +6526,76 @@ Slips, all mine, all repaired:
   kept its pin and read the head as 0.1.43 (8/9 green, 1 red on the
   pre-mirror bytes). The regex now spans newlines; the four first logs
   are in `evidence/superseded/` and the cited runs are the second.
-- the first gauntlet, at `5fffc6d`, was superseded by the E0816
+- the first gauntlet, at `d19ccb6`, was superseded by the E0816
   alignment and killed by pid (2621914 and its tree); its log is in
   `evidence/superseded/`.
-- the first head run, at `2cc8951`, failed `cargo fmt --check` and one
-  clippy `manual_contains`; `5fffc6d` is the rustfmt and the fix.
+- the first head run, at `e9fa018`, failed `cargo fmt --check` and one
+  clippy `manual_contains`; `d19ccb6` is the rustfmt and the fix.
+- **the rebase** (the coordinator's ask, is65 merged at `9d9c023`): the
+  branch was rebased once, before the final push, keeping both sides of
+  `CHANGELOG.md` and this log (the subset check against both parents:
+  0 non-blank lines missing, both ways, both files); a first attempt
+  continued past a conflict with markers in the file and was redone from
+  the pre-rebase tip (`git reset --hard`, the reflog). Every sha this
+  section cites was re-pointed from the rebase's map and the evidence
+  re-measured at the rebased code head `99788ca` (fmt, clippy, the
+  release build, the witnesses red at `c08285f` and green, the probes,
+  the eight gate runs, the differentials against trunk `9d9c023`): the
+  same answers and the same numbers as before the rebase, row for row.
+  The pre-rebase logs (`*-1648ea7*`, `*-61cb7d8*`, `*-a804d40*`,
+  `trunk-6d6cde5*`) are kept as what they are.
+- `head2.sh` built the trunk binary in `headsrc/` after the head's, so
+  its witness step ran on a checkout of trunk and found no witness
+  directory (`== *`); `scripts/redgreen.sh` re-ran the red, the green and
+  the measurement beside wolf 0.2.20 at the right checkouts, and those
+  are the logs cited.
 
 #### §4 — evidence index
 
 Commits:
-- `f191cda` §1–§3; `58574d0` §3 addendum and §3a; the last commit this
+- `3d23732` §1–§3; `aa32fc8` §3 addendum and §3a; the last commit this
   section and §5
-- `a804d40` 26 witnesses (21 red); `2cc8951` the consumed row's cell;
-  `61cb7d8` chapter 6's three shapes (bs57)
-- `068c2ab` the static reader, E0801, E0611 and the by-name refusal
-  (`src/rowmatch.rs`, `sema`'s chain, `frontend::admit`); `de1d89c` the
-  two-half dispatch and `Rule::RowMatch`; `9eb3cbf` the lint
-- `5fffc6d` rustfmt and clippy; `1648ea7` E0816 (s197's code) and the
-  mixed shapes by name; `44a241b` CHANGELOG
+- `c08285f` 26 witnesses (21 red); `e9fa018` the consumed row's cell;
+  `99788ca` chapter 6's three shapes (bs57)
+- `233dbb7` the static reader, E0801, E0611 and the by-name refusal
+  (`src/rowmatch.rs`, `sema`'s chain, `frontend::admit`); `54b453e` the
+  two-half dispatch and `Rule::RowMatch`; `79af9df` the lint
+- `d19ccb6` rustfmt and clippy; `39c6390` E0816 (s197's code) and the
+  mixed shapes by name; `683990c` CHANGELOG
 
 Artifacts on kasumi under `~/lanes/is67/` (`archives/`, `evidence/`,
 `probes/`, `scripts/`, `corpora/`, the read-only clones `wolf-lang-s196/`
 at s197 `68d80376` and its worktree `wl-s196wt/` at s196 `7a8be823`).
 Archives: lupin 0.1.43 `e957c8de…` (binary `3b0702c0…`) and wolf 0.2.20
 `24855d5e…`, digests equal to the release pages' (`setup.log`); lupin
-trunk `lupin-trunk-6d6cde5` `cb8d424c…`; head `lupin-head-1648ea7`
-`c1b8f6ac…` (the src head; `61cb7d8` adds witnesses only); wolf-lang
+trunk `lupin-trunk-6d6cde5` `cb8d424c…` and, after the rebase,
+`lupin-trunk-9d9c023` `4a27762b…`; head `lupin-head-99788ca` `d743fff5…`
+(the code head: `src/` through `39c6390`, the witnesses through
+`99788ca`); wolf-lang
 s196 `wolf` `3bf39452…`, s197 `wolf` `3f7e29ce…`.
 - inputs: `probes-archive-0.1.43-wolf-0.2.20.log` (34 probes on lupin
   0.1.43 and wolf 0.2.20's three tiers), `probes-trunk-6d6cde5.log`
   (identical lupin lines), `probes-closure-archive-0.1.43-wolf-0.2.20.log`,
   `probes-book-archive-0.1.43-wolf-0.2.20.log` (bs57's three shapes)
-- red: `red-a804d40.log` (`rulings_is67`: 5 passed, 21 failed,
+- red: `red-c08285f.log` (`rulings_is67`: 5 passed, 21 failed,
   `EXIT=101`)
-- green: `witnesses-head-1648ea7.log` (the 26 rows, lupin head beside wolf
-  0.2.20), `probes-head-1648ea7.log` (the probes, s197's nine rows
-  included), `probes-book-head-1648ea7.log`, `green-61cb7d8.log`
+- green: `witnesses-head-99788ca.log` (the 26 rows, lupin head beside wolf
+  0.2.20), `probes-head-99788ca.log` (the probes, s197's nine rows
+  included), `probes-book-head-99788ca.log`, `green-99788ca.log`
   (`rulings_is67` 29/29, `EXIT=0`); `wip-build.log`'s `rowmatch` unit
   tests ran again in the gauntlet
-- gates: `wolfgate-s196-{head-1648ea7,archive-0.1.43}-{unpinned,pinned}.log`,
-  `wolfgate-s197-{head-1648ea7,archive-0.1.43}-{unpinned,pinned}.log`
+- gates: `wolfgate-s196-{head-99788ca,archive-0.1.43}-{unpinned,pinned}.log`,
+  `wolfgate-s197-{head-99788ca,archive-0.1.43}-{unpinned,pinned}.log`
   (each `SKIP lines: 0`; the first s197 four in `superseded/`),
   `build-wl-s196wt.log`, `build-wolf-s196.log`, `build-wolf-s197.log`
-- differential and corpus: `diffrun/{trunk-6d6cde5,head-1648ea7}-pin-{default,checked,native,release}.*`,
-  `diffrun/{trunk-6d6cde5,head-1648ea7}-{wltrunk,s196,s197}-{default,checked,native,release}.*`,
+- differential and corpus: `diffrun/{trunk-9d9c023,head-99788ca}-pin-{default,checked,native,release}.*`,
+  `diffrun/{trunk-9d9c023,head-99788ca}-{wltrunk,s196,s197}-{default,checked,native,release}.*`
+  (the pre-rebase runs, `trunk-6d6cde5` and `head-1648ea7`, kept beside them: the same numbers),
   `diffrun/*-corpus.log` (the census lines), `diffrun/*.ledger.jsonl`
-- head: `fmt-1648ea7.log` (`FMT_EXIT=0`), `clippy-1648ea7.log`
-  (`CLIPPY_EXIT=0`), `build-head-1648ea7.log`
-- gauntlet at `1648ea7`, the src head: `gauntlet-1648ea7.log` (its result
+- head: `fmt-99788ca.log` (`FMT_EXIT=0`), `clippy-99788ca.log`
+  (`CLIPPY_EXIT=0`), `build-head-99788ca.log`
+- gauntlet at `99788ca`, the code head (the commits after it are docs
+  only): `gauntlet-99788ca.log` (its result
   is in §5 and the PR body); the superseded `gauntlet-5fffc6d.log` in
   `superseded/`
 - GitHub CI at the head sha: in the PR body
@@ -6585,16 +6608,16 @@ bytes on lupin).
 
 #### §5 — done-when
 
-- [x] branch `is67` on origin, cut at trunk `6d6cde5`; PR #168 open, unmarked draft once CI is green, with these five sections
-- [x] §2 re-derived; §3 committed (`f191cda`) before the first `src/`/`tests/` edit; §3 addendum (`58574d0`) before the E0816 edit
-- [x] each witness seen red first (`red-a804d40.log`), green at the head (`green-61cb7d8.log`)
+- [x] branch `is67` on origin, cut at trunk `6d6cde5` and rebased onto `9d9c023` (is65 merged); PR #168 open, unmarked draft once CI is green, with these five sections
+- [x] §2 re-derived; §3 committed (`3d23732`) before the first `src/`/`tests/` edit; §3 addendum (`aa32fc8`) before the E0816 edit
+- [x] each witness seen red first (`red-c08285f.log`), green at the head (`green-99788ca.log`)
 - [x] s196's gate with its 0.1.43 pin dropped: green with the head, red with 0.1.43 on exactly 3
 - [x] s197's gate with its 0.1.43 pins dropped: green with the head, red with 0.1.43 on 8 (the `else` control green)
 - [x] s197's nine rows and s196's eight rows answer their `check:` lines on the head
 - [x] no new divergence against wolf 0.2.20 beyond the ruled rows (named in §3a); the ledgers move 0 rows on the pinned and wolf-lang trunk corpora
 - [x] CHANGELOG `Unreleased`
 - [ ] the coverage ratchet holds at 271 (`export::coverage_is_ratcheted`, in the gauntlet and CI)
-- [ ] kasumi gauntlet green at `1648ea7` (`GAUNTLET_FAILS=0`); GitHub CI green at the head sha (the PR body)
+- [ ] kasumi gauntlet green at `99788ca` (`GAUNTLET_FAILS=0`); GitHub CI green at the head sha (the PR body)
 - [ ] kasumi build dirs pruned once the evidence is written (`headsrc/target`, `wl-s196wt/target`, `wolf-lang-s196/target`, `dev/target`); worktree `/private/tmp/is67` removed after the last push
 
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)

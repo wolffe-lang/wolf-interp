@@ -51,7 +51,7 @@ a tag that is also a constructor name reachable from `T` is **E0816**
 or-pattern mixing the halves or an `@` at the top of an arm is refused by
 name before anything runs. The lint reads a row arm as no
 binder, and E0802 says nothing about a row match. `else |e| match e { … }`
-is unchanged. Twenty-one witnesses red at `a804d40`, green at `9eb3cbf`,
+is unchanged. Twenty-one witnesses red at `c08285f`, green at `79af9df`,
 five controls green on both sides.
 
 **A `?` inside a `defer` or `errdefer` is refused** (is67, lupin's half of
