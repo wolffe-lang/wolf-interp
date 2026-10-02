@@ -6636,6 +6636,176 @@ bytes on lupin).
 - [ ] kasumi gauntlet green at `f7049fc` (`GAUNTLET_FAILS=0`); GitHub CI green at the head sha (the PR body)
 - [ ] kasumi build dirs pruned once the evidence is written (`headsrc/target`, `wl-s196wt/target`, `wolf-lang-s196/target`, `dev/target`); worktree `/private/tmp/is67` removed after the last push
 
+### The P0s and the issues beside them — is68, wolf-interp#126, #103, #125, #138, #169
+
+Wave 53's row, from t04's triage (wolffe-lang/wolf#6, `sprints/triage/t04-report.md`):
+"wolf-interp #126 and #103 P0s, plus #125, #138, #169". Two of the three P0s
+on the board are this machine's: #126 runs a `[mem.str.view]` product out of
+its region and prints from freed bytes where every wolf lane refuses E1010,
+and #103's first row binds `"*"` from an `if` with no `else` where
+`[type.unit.context]` says the value is `()`. The contract is is65's, in five
+sections; §1–§3 are committed before the first edit under `src/` or
+`tests/`, the rest is appended as it lands. Measurements on kasumi (linux
+x86-64) under `~/lanes/is68/`: the published lupin 0.1.43 (`e957c8de…`) and
+wolf 0.2.20 (`24855d5e…`), archive digests equal to the release assets'
+(`setup.log`); lupin trunk `6ce7bc8` built release (`bin/lupin-trunk-6ce7bc8`,
+`93fd8329…`); wolf-lang trunk `12a56b22` built release
+(`bin/wolf-trunk-12a56b22/wolf`, `eaa22f61…`). Probes: 125 one-directory
+programs in `probes/` (71), `probes2/` (43) and `probes3/` (11), run by
+`scripts/run-probes.sh` (`lupin conform-run main.lu --json`, and `wolf
+conform-run main.lu --{checked,native,release} --json`), spans and phases by
+`scripts/dump.sh`.
+
+#### §1 — forbidden, absolutely
+
+No `rm` outside `~/lanes/is68/` (kasumi) and `/private/tmp/is68`; no
+deletion in any tree this lane did not create; no edit to r26's files (the
+re-pin, `CHANGELOG.md`, the version bump) — this lane writes no CHANGELOG
+entry and expects a rebase onto r26; no `git add -A`; no edit to another
+lane's file; no workflow edit; no `~/.claude`; no build or test on this Mac
+or nomad-1 (kasumi only, `CARGO_BUILD_JOBS=4`); no tag; no pin move; no
+merge; no `2>/dev/null` on a checkout; kill only my own pids, never a
+pattern or a group; jobs launched with `setsid`, never `ssh -f`; no claim
+of "seen red" without the log it is in; no trailer of any kind on any
+commit; no `gh run watch` without `--interval 60`; no silent wait past four
+minutes.
+
+#### §2 — inputs, re-derived 2026-10-02
+
+| input as written | at origin / measured | drift |
+| --- | --- | --- |
+| wolf-interp trunk `6ce7bc8` or later | `origin/trunk` = `6ce7bc8` (is67's merge); `Cargo.toml` 0.1.43; `vendor/upstream/PIN` `c2401f05` (wolf-lang v0.2.19); r26 (PR #170, branch `r26` at `ba47627`, CI run 37051991895 in progress) re-pins on v0.2.20 (`cdde128a`) and owns `CHANGELOG.md`, the version and the pin | none |
+| the archives and trunks | lupin 0.1.43 linux x86-64 `e957c8de…`, wolf 0.2.20 `24855d5e…`, both equal to the release assets' `digest`. lupin trunk `6ce7bc8` answers byte-identically to the 0.1.43 archive on all 125 probes, and wolf trunk `12a56b22` (s197's merge) byte-identically to wolf 0.2.20 on all 125, every tier (`probes{,2,3}-*.log`) | none: "wolf trunk" and 0.2.20 are one answer on everything this lane touches |
+| #126: `region scratch { let s = "  re" + "gions  "; let t = s.trim(); t }` returned from `build()` | lupin `exit(0)` `regions`; wolf `fail(E1010)` `[109,110]` at `mem` on checked, native and release | none |
+| #126's family | `[mem.region.escape]` (s171): `trim`/`trim_start`/`trim_end`, `get`, `strip_prefix`/`strip_suffix`, the pieces of `split`/`words`/`lines` carry the RECEIVER's sites; `bytes()` excluded; a view of a literal is site-free; only the receiver's sites flow, never the needle's. Measured: every member returned, held outside (`keep = s.trim()`), as the block's value, through a struct field, a view of a view, `copy` of a view inside the region, the slice `s[2..6]`, `get` open and inclusive, a split piece by index (`ps[0]`), and sent from a `spawn proc`: lupin `exit(0)`, wolf `fail(E1010)` on three tiers — 20 shapes | wider; all are witnesses |
+| #126 controls | a view of a literal (`[lit]`), of a parameter, of an outer local held in a region, a needle built in the region (`[z]`), views used inside the region, `region_str_view_inside.lu`'s shapes: `exit(0)`, the same bytes on all four. `s.bytes()` returned and `s.trim().upper()` returned: lupin already `trap(region-fault)`, wolf `fail(E1010)` | none |
+| **#126, the compiler side** | a piece bound by a `for` over `s.words()`/`s.lines()`/`s.split(",")` and then returned (`last = w; last`) or held outside (`keep = w`): **wolf `exit(0)` on all three tiers**, printing the piece; the clause names the pieces of all three, so the compiler is the looser machine here — the same freed-bytes read #126 is, one binding further | **new finding**: filed in wolf-lang, §3's table carries the four rows with lupin's ruled answer |
+| the mechanism (#126) | `Str` carries `home: Option<RegionId>`, consulted at every access and at a block's exit (`escaping_regions`, `pop_scope_escaping`), which is how a built `str` and every materializing producer already fault (`produced_str`, `builtin.rs:2518`). The view arms mint `home: None`: `trim`/`trim_start`/`trim_end` (`builtin.rs:1529`), `get` and `str_get` (`:2299`), the `s[a..b]` slice (`:2247`), `strip_prefix`/`strip_suffix` (`:1689`), the `split`/`words`/`lines` pieces (`:1668`, `:1725`, `:1732`). The doc comment on `Str` (`value.rs:458`) and `a_view_product_is_no_site_and_escapes_clean`'s comment still state the pre-s171 reading | as the issue reads it |
+| #103 row 1 | `let mark = if cents > 300 { "*" }`: lupin `exit(0)` `*`; wolf `fail(E0401)` `[72,75]` (the `"*"`) at `typecheck`, three tiers | none |
+| #103's neighbourhood | `[type.unit.context]`'s list on wolf: a non-unit tail is `fail(E0401)` at the tail in an else-less `if` as a statement (`[61,64]`), in a `for` (`[42,43]`), `while` (`[78,79]`) and `loop` (`[98,101]`) body, in a unit fn body (`fn total() { 1 }`, `[13,14]`; `fn main() { …; 3 }`, `[32,33]`; `-> ()`, `[19,20]`; a nested fn, `[46,47]`; a method, `[90,96]`), for literal, interpolated, arithmetic, comparison, concatenation, list, struct, char, float, call (`seven()`, `[81,88]`), parameter and local tails, and for an `if … else` tail (`[57,86]`, the whole `if`). A chain ending without `else` reports the trailing else-less `if` first (`[83,105]` then `[100,103]`; three links: `[90,106]` then `[101,104]`). lupin runs every one; `fn main() { …; 3 }` exits 3 | wider; the shapes lupin can type from syntax are witnesses |
+| #103 row 1's dynamic half, measured | a `!T` tail is W0601's discard (`[type.unit.discard]`): `let v = if n > 1 { maybe(n) }` (`int ! {none}`) prints `()` on native and release and **`3` on checked and lupin**; `fn main() { print("hi"); boom() }` (a `() ! {bad}` tail) exits 0 on native and release, **1 with `error: bad` on checked and lupin**; a discarded raise in a statement-position else-less `if` exits 1 on checked only. But an else-less `if` that is the TAIL of a `-> () ! {bad}` fn hands the raise to its caller on all three tiers and on lupin (`raised`), with no W0601 | **new finding**: the checked machine propagates a discarded row (filed in wolf-lang). The tail-position flow on all four is not what `[type.unit.discard]` says either; left as all four answer it and noted in the filing |
+| #103 rows 2–4 | row 2 (`pick(1, "two")`) and row 4 (`{ xs.len }`, a member read) need types this machine does not have; row 3 (the loop element binding) is `exit(0)` `a\nb` on BOTH machines at 0.2.20 — healed upstream | row 3 healed; rows 2 and 4's static halves stay owed (row 4's dynamic value becomes `()` with row 1's) |
+| the mechanism (#103) | `ExprKind::If` (`mod.rs:4996`) returns the then-block's value; `call_fn` (`:3042`) returns the body's value whatever `decl.ret` says. No resolve-rung check reads a unit context | as the issue reads it |
+| #125 | `s.trim(".,!?")`: lupin `exit(0)` `[hi]`; wolf `fail(E0402)` `[52,66]` (the whole call). The ruling (s175) is option 1 and `[mem.str.ws]` says "the family takes no argument". Measured: `trim_start`, `trim_end`, `words`, two arguments, a variable argument, a literal receiver (`[33,50]`), a `str` parameter receiver (`[30,41]`) — all E0402 on wolf. `lines(x)` is E0402 too, outside the clause's family. A user `impl` method named `trim(k)` runs on both | wider: `lines` |
+| #125, what this machine can see | a receiver this machine cannot type (a `for` piece, `c12`) is still E0402 on wolf; the builtin arm ignores extra arguments (`trim_start`/`trim_end`/`words`/`lines` run unchanged) and `trim` treats one as a cutset | the static half covers receivers known to be `str` (a literal, a literal-bound local, a `str` parameter); the rest declines by name |
+| #138 | s181's program (`let s: str = side`, `side: int`, in a sibling module): lupin `exit(0)`; wolf `fail(E0401)` `[90,94]`, file index 1 | **not sibling-specific**: the same body in the root module runs too. lupin's declared-scalar lattice (`ScalarTy`, `sema.rs:5101`) knows `byte`, `char`, integers and their lists and nothing else, so `str`/`bool` against a known other scalar is never a clash. Measured on wolf, all E0401 at the operand: a `let` annotation (`[37,38]`, `[45,49]`, `[53,54]`, `[41,42]`, `[38,39]`, `[37,41]`, `[37,40]`, `[51,56]`), a return tail (`[23,24]`), an argument (`[73,74]`, `[88,93]`), a field (`[72,73]`), an assignment (`[58,59]`); a two-file sibling module reports file index 2 |
+| #138's file index | an item-walking check reports no file (wolf-interp#136), so a sibling diagnostic would compare as a different file under wolf-lang#437 | the new refusals carry their item's file; #136's other checks stay as they are |
+| #169 | r26 waives `memory/nested_fn_mut_omitted.lu` by name in `tests/conformance.rs` (`NESTED_MODED_FN_DECLINED`, commit `6b7ac41` on `r26`); the file arrives with the `cdde128a` pin, so it is not on trunk | the waiver and its file exist only on r26: the retirement lands after the rebase onto r26 |
+| #169's rows | `nested_fn_mut_param.lu`: wolf native/release `exit(0)` `4 42 2 9 7 5\n4\n`, checked `unsupported` (a nested fn); `nested_fn_mut_omitted.lu` `fail(E1007)` `[600,602]`; `nested_fn_mut_moveout.lu` `fail(E1001)` `[600,602]`; lupin `unsupported` on all three ("declares a parameter mode", `mod.rs:3886`). Wider: a `take` omitted (`[117,119]`) and a `mut` spelled on a read parameter (`[118,120]`, beside W0308) are E1007 — the second RUNS on lupin today; a moded nested fn restored before return runs `2 9` on native/release; capturing, recursive and as-a-value moded nested fns are `unsupported` on every wolf lane | wider; all listed |
+| the mechanism (#169) | `exec_nested_fn` (`mod.rs:3846`) binds a nested fn as a capture-free `ClosureValue` and refuses a mode; `apply` (`:7648`) runs a closure with no modes, so the module-fn convention (`call_fn`: `read` barrier, write-back, moved-out parameters) is never reached. The resolve rung's mode pass (`check_call_modes`, `sema.rs:4393`) keys signatures by `(module, fn)` and never declares a nested item, so a call to one is never checked | as the issue reads it |
+| CI | `.github/workflows/ci.yml` runs on `push` to trunk and on `pull_request`; about 3 h, and Actions is congested under eleven lanes | noted |
+| the coverage ratchet | `tests/export.rs` on trunk: `RATCHET_FLOOR = 271`; r26 moves it to 273 | none |
+
+#### §3 — prediction, committed before the first edit
+
+**Five mechanisms, five commits under `src/`**, each after its witnesses:
+
+1. **#126, `eval`/`builtin`: a view product carries its receiver's home.**
+   Every `[mem.str.view]` arm builds `Str { text, home: receiver.home }`
+   (one helper); the needle's home is never read; `bytes()` and `chars()`
+   are untouched; a literal's home is `None`, so its views stay site-free.
+   The trap is the one the clauses name: `region-fault`
+   (`[mem.region.escape]`'s dynamic half, `[mem.region.intra.2]`), raised
+   where a built `str` already raises it — no read of freed bytes. No
+   charge moves (a view still allocates nothing).
+2. **#103, `eval`: a unit context's value is `()`.** An `if` with no `else`,
+   and every `if` of a chain that ends without one, evaluates to `()`
+   whatever its taken block's tail — except a row value (a raise), which
+   leaves as the `if`'s value exactly as all three wolf tiers let it leave
+   (the tail-position finding above). A body whose fn declares no result
+   or `-> ()` returns `()` (rows included: the native/release answer).
+   **And statically, at the end of the resolve chain** (`unit_tail_check`,
+   a second pass of the tier walk so no older row's first diagnostic
+   moves): E0401 at a tail this machine can type from syntax in a unit
+   context — the then-block of an else-less `if`, a `for`/`while`/`loop`
+   body, a unit fn or method body (closures excluded) — where "can type"
+   is: a literal (incl. interpolated), a list or struct literal, arithmetic
+   or concatenation or a comparison over typed operands, a call to a module
+   fn whose declared result is a plain scalar, a local or parameter the
+   walk already classes, and an `if … else` whose then-tail is one of
+   those (spanning the whole `if`). An `if … else` whose else is an
+   else-less `if` and whose then-tail is typed reports at that else-less
+   `if` first, as wolf does.
+3. **#125, `sema` + `builtin`: the `[mem.str.ws]` family takes no
+   argument.** E0402 at the whole call, wolf's sentence ("`trim` takes 0
+   arguments, but this call passes 1"), for `trim`/`trim_start`/`trim_end`/
+   `words` and `lines` on a receiver the walk classes `str`, in the same
+   late pass; any other receiver reaching the builtin arms with an argument
+   declines by name (`unsupported`, naming E0402) — never a cutset, never an
+   ignored argument.
+4. **#138, `sema`: `str` and `bool` join the declared-scalar lattice**, in
+   a late pass (`scalar_wide_check`) so the byte/char rows keep their
+   first diagnostics: a `str` or `bool` slot against a known other scalar,
+   and a known `str`/`bool` against a scalar slot, is E0401 at the operand,
+   in every position the pass already reads; the item's file rides on the
+   diagnostic (`Module::item_files`, filled in `define`).
+5. **#169, `sema` + `eval`: a nested fn's parameter modes are the module
+   fn's.** The mode pass records each nested fn's signature in the block
+   that declares it and checks a call to it exactly as a module fn's
+   (E1007 at the argument: omitted, spelled where the parameter is plain,
+   or the wrong word); the evaluator binds a moded nested fn with its
+   declaration and calls it through `call_fn`, so writes reach the caller,
+   a `take` consumes, and a parameter moved out and never stored back is
+   moved-out in the caller (`trap(use-after-move)` at the next read — the
+   dynamic counterpart of the E1001 row, as `mut_param_moveout_whole.lu`
+   is). Captures, generics, rows and `self` keep their refusals; a mode
+   disagreement through a value declines as a module fn's does.
+
+**The witness table** (`tests/rulings_is68/<row>/`, lupin head against trunk
+`6ce7bc8` = 0.1.43; wolf trunk `12a56b22` = 0.2.20, one answer on checked,
+native and release unless named):
+
+| witnesses | trunk and 0.1.43 | head | [wolf] |
+| --- | --- | --- | --- |
+| #126: the issue's program; `trim` (bound and as the tail), `trim_start`, `trim_end`, `get` (closed, open, inclusive), `strip_prefix` (bound and as the tail), `strip_suffix`, a view of a view, `copy` of a view inside its region, `s[2..6]`, a split piece by index, held outside, the block's value, a field's view, a proc send (19) | `exit(0)`, the view's bytes | `trap(region-fault)` (`mem.region.intra.2`) | [`fail(E1010)`] |
+| #126: a `for` piece of `words`/`lines`/`split` returned, and a `words` piece held outside (4) | `exit(0)` | `trap(region-fault)` | [`exit(0)`: the compiler-side finding] |
+| #126 controls: a literal's view, a parameter's view, an outer local's view held in a region, a built needle, views inside the region, `bytes()` returned, `trim().upper()` returned (7) | unchanged | unchanged | [same; the last two `fail(E1010)` against lupin's trap] |
+| #103: the issue's program, a statement `"*"` and `1`, a chain of two and of three, a `while`/`loop` tail, a local, interpolated, arithmetic, `bool`, comparison, list, struct, char/float, concatenation, call, parameter and `if … else` tail, a unit fn, `main`, `-> ()`, nested fn (23) | `exit(0)` | `fail(E0401)` at wolf's span | [same] |
+| #103 dynamic: `let v = if n > 1 { maybe(n) }`; `fn main() { …; boom() }` (2) | `3`; `exit(1)` `error: bad` | `()`; `exit(0)` `hi` | [native/release; checked is the filed finding] |
+| #103 residue: `let v = total([1, 2])` with `{ xs.len }`; `for x in [1, 2] { x }`; a method's `self.n` tail (3) | `2`; `done`; `2` | `()`; `done`; `2` | [`fail(E0401)` — member reads and an element type this machine cannot see] |
+| #103 controls: a unit-valued `if`, an `if … else` value, a raise out of a tail else-less `if` (`raised`), a W0601 statement discard, `match` arms in a loop, a closure with no result, a statement raise, a fn-body statement `if` (8) | unchanged | unchanged | [same] |
+| #125: the issue's program, `trim_start`, `trim_end`, a variable cutset, two arguments, `words(" ")`, `lines("x")`, a literal receiver, a `str` parameter receiver (9) | `exit(0)` | `fail(E0402)` at wolf's span | [same] |
+| #125: a `for` piece's `trim(".,")` (1) | `exit(0)` `2` | `unsupported` (E0402 named) | [`fail(E0402)`] |
+| #125 controls: the zero-argument family; a user `trim(k)` method (2) | unchanged | unchanged | [same] |
+| #138: s181's two-file program (file index 1), a three-file module (index 2), the root module, and the twelve positions of §2 (15) | `exit(0)` (two `unsupported`) | `fail(E0401)` at wolf's span and file | [same] |
+| #138 controls: a sibling's `int` from an `int`, `str` from a `str`, the ok shapes, a generic `str`, a `List[str]` element (5) | unchanged | unchanged | [same, the generic one aside: wolf `fail(E1002)`, unrelated] |
+| #169: `nested_fn_mut_param.lu`, the restored form (2) | `unsupported` | `exit(0)` `4 42 2 9 7 5\n4\n`; `2 9` | [native/release; checked `unsupported`] |
+| #169: `nested_fn_mut_omitted.lu`, `take` omitted, `mut` on a read parameter (3) | `unsupported`; the third `exit(0)` | `fail(E1007)` at wolf's span | [same] |
+| #169: `nested_fn_mut_moveout.lu` (1) | `unsupported` | `trap(use-after-move)` | [`fail(E1001)`: the dynamic counterpart] |
+| #169: capturing, recursive, as a value (3) | `unsupported` | `unsupported`, `unsupported`, `exit(0)` `1` | [`unsupported` on every lane] |
+
+Each witness is run red at the commit that adds it (every row whose head
+column differs) and green at its fix; the commits are ordered so each fix's
+witnesses go red in a CI run of their own (s188's lesson).
+
+**Existing tests that change** (each named in the commit that moves it):
+`tests/run_corpus.rs`'s run ledger — `memory/region_str_view_return.lu`
+`exit(0)` → `trap(region-fault)` (a dynamic counterpart now, not
+conservatism) and `strings/trim_cutset_refused.lu` leaves the ledger (a
+match at `resolve`); `tests/conformance.rs` — `E0402` by `mem.str.ws` joins
+`declaration_read_code`'s table; `src/eval/tests.rs`'s
+`a_view_product_is_no_site_and_escapes_clean` keeps its asserts and loses
+the pre-s171 comment. Nothing else: no corpus row at the pin returns a view
+of a region-built `str`, binds an else-less `if`, passes a cutset, clashes a
+`str`/`bool`, or calls a moded nested fn.
+
+**Corpus and differential.** `lupin corpus` at the pin: the two rows above
+move, nothing else. `lupin diff-run` on four tiers against wolf 0.2.20 on
+the vendored corpus: the two rows move toward agreement (a trap where E1010
+was a run; a matching E0402), no row moves away. After the rebase onto r26
+the same at the `cdde128a` pin, plus `nested_fn_mut_omitted.lu` (E1007, a
+match), `nested_fn_mut_param.lu` (wolf's bytes) and
+`nested_fn_mut_moveout.lu` (a dynamic counterpart), and r26's
+`NESTED_MODED_FN_DECLINED` waiver deleted by name.
+
+**Coverage.** The ratchet holds (271 on trunk, 273 after r26): the
+witnesses carry no `conforms:` line the bundle counts.
+
+**Out of scope, named:** #103 rows 2 and 4's static halves (inference this
+machine does not have); wolf-interp#136's other item-walking checks; the
+tail-position raise out of an else-less `if` (all four machines agree, the
+clause reads otherwise — in the wolf-lang filing).
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
