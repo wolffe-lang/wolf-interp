@@ -28,6 +28,8 @@ fn scratch(name: &str) -> PathBuf {
 enum Stdin {
     Null,
     File,
+    // The pipe test is unix's: windows declines the standard streams by name.
+    #[cfg_attr(windows, allow(dead_code))]
     Pipe,
 }
 
