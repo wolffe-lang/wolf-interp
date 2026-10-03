@@ -556,7 +556,8 @@ fn u103_ctl_if_else() {
     run("u103_ctl_if_else");
 }
 
-/// Control: a raise out of an else-less `if` at a fallible fn's tail leaves on every machine.
+/// A raise out of an else-less `if` at a fallible fn's tail: is68's control, which
+/// ruling #34 = A (s208, #179) turned into a discard on every machine.
 #[test]
 fn u103_ctl_raise_tail() {
     run("u103_ctl_raise_tail");

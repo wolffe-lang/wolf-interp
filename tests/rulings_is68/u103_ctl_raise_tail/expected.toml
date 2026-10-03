@@ -6,7 +6,9 @@
 issue = "wolf-interp#103"
 
 [expected]
-lupin   = { verdict = "exit(0)", stdout = "raised\n" }
+# Ruling #34 = A (s208, wolf-interp#179) moved this cell: the raise is the
+# then-block's discard, on all four machines. `[trunk]` keeps is68's record.
+lupin   = { verdict = "exit(0)", stdout = "ok\n" }
 
 [trunk]
 lupin   = { verdict = "exit(0)", stdout = "raised\n" }
