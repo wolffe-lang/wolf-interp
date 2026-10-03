@@ -6964,6 +6964,162 @@ at 21:43Z): no wolf binary was run after it.
   upstream), with a comment saying so
 - [ ] kasumi build dirs pruned, worktree removed after the last push
 
+### The inferred row — is69, wolf-interp#176, `-> !T`'s private row read from the body (`[type.row.match]` over an inferred row)
+
+Wave 53's row (the orchestrator's brief, 2026-10-02): lupin 0.1.44's
+row-match reader (is67's `src/rowmatch.rs`, ruling #21) reads a function's
+inferred `-> !T` row as the open row `{..}`, so wolf-lang's
+`corpus/rows/eu_bind_empty_row_handled.lu` (s202, wolf-lang trunk
+`ebba7574`) answers `fail(E0801)` where checked, native, release and lupin
+0.1.43 answer `exit(0)` `43 42 42`. The grammar (`01-grammar.md`:
+"`-> !T` error union with inferred private row") and the compiler's
+sealing (`crates/wolf_sema/src/rows.rs`, s15) say the row is what the body
+can raise. The contract is is67's, in five sections; §1–§3 are committed
+before the first edit under `src/` or `tests/`, the rest is appended as it
+lands. Measurements on kasumi (linux x86-64) under `~/lanes/is69/`: the
+published lupin 0.1.44 (archive `e44aae06…`, binary `be9bf9fc…`) and
+0.1.43 (archive `e957c8de…`, binary `3b0702c0…`), both archive digests
+equal to the release pages' (`evidence/setup.log`); wolf-lang r26
+`dfcc2f13` (trunk `ebba7574` plus the 0.2.21 pairing, which carries the
+pin this lane retires) built debug in `wolf-lang/` (`wolf` `135f784f…`,
+`libwolf_rt.a` beside it). Probes: 24 one-directory programs under
+`probes/` (`i69_*` the witnesses, `q_*` the questions asked of the
+compiler), run by `scripts/run-probes.sh` (`lupin conform-run main.lu
+--json` and, on a `fail`, the first line of `lupin check`; `wolf
+conform-run main.lu --{checked,native,release} --json` and, on a `fail`,
+the first line of `wolf build`): `evidence/probes-archives-0.1.44-0.1.43-wolf-dfcc2f13.log`.
+
+#### §1 — forbidden, absolutely
+
+No `rm` outside `~/lanes/is69/` (kasumi) and `/private/tmp/is69`; no
+deletion in any tree this lane did not create; no `git add -A`; no edit to
+another lane's file — wolf-lang is read and built in the lane's own clone,
+never edited or pushed (the gate's pin is emptied in that clone for a run
+and restored by `git checkout` after it); is68's code (wolf-interp#126,
+#103: `sema`'s late tier pass and unit-context arms, `eval/builtin.rs`'s
+`[mem.str.ws]` family, `eval/value.rs`, `tests/run_corpus.rs`) is not
+touched; no workflow edit; no `~/.claude`; no build or test on this Mac or
+nomad-1 (kasumi only, `CARGO_BUILD_JOBS=4`, jobs launched with `setsid
+-f`, never `ssh -f`); no tag; no pin move (the pin stays `cdde128a`); no
+merge; no `2>/dev/null` on a checkout; kill only my own pids by number,
+never a pattern or a group; no claim of "seen red" without the log it is
+in; no trailer of any kind on any commit; waits in printing loops; `gh run
+view`, never `gh run watch` without `--interval 60`.
+
+#### §2 — inputs, re-derived 2026-10-02
+
+| input as written | at origin / measured | drift |
+| --- | --- | --- |
+| wolf-interp trunk `ba47627`, lupin 0.1.44 tagged | `origin/trunk` = `ba47627` (rustfmt after `91774fa`, the 0.1.44 release commit); `v0.1.44` released 2026-10-02; `Cargo.toml` 0.1.44; the archive's record answers `impl_version` `0.1.44`, a dev build `0.1.44+dev.<sha>`, so the gate's `"0.1.44"` pin never matches a branch build — only the archive | none; it decides the plant below |
+| is68 (#126, #103) in flight | branch `is68` at `5e7c944`: `src/sema.rs` (+689), `src/eval/mod.rs`, `src/eval/builtin.rs`, `src/eval/value.rs`, `src/eval/tests.rs`, `tests/conformance.rs`, `tests/lint_is61.rs`, `tests/run_corpus.rs`, the log | this lane's `sema.rs` edit is one field of `Program` and its initializer; a rebase is expected and will be subset-checked |
+| the issue's row: `fail(E0801)` on 0.1.44, `exit(0)` `43 42 42` elsewhere | reproduced: 0.1.44 `fail(E0801)` "does not cover the rest of an open row: the scrutinee is a `int ! {..}`" at 23:13; 0.1.43 and wolf r26 checked, native, release `exit(0)` `43 42 42` | none |
+| r26 pins 0.1.44 by version on this one case in `fallible_bind_empty_row_lanes.rs` | `origin/r26` `51b478b4`: `lupin_pre_mirror` `&[("0.1.44", "fail(E0801)")]` on `a_bound_empty_row_value_matches_elses_and_widens` only. At `dfcc2f13` with the archive: pinned 3/3 green (`wolfgate-archive-0.1.44-pinned.log`, `EXIT=0`); pin emptied, exactly that case red, `left: "fail(E0801)" right: "exit(0)"` (`wolfgate-archive-0.1.44-unpinned.log`, `EXIT=101`); 0 SKIP lines in each | none |
+| the compiler's inference (s197's clause over s15's sealing) | `rows.rs`: a cycle-aware fixpoint over each module's inferred fns, rows growing monotonically from empty; the collector absorbs (a) a tag raised at a checked position against the fn's own row (`inject_tag`: a bare capitalized unresolved name, or such a name called with a payload), (b) a fallible value flowing into the return (`expect_unify` → `require_row_widening`: a tail or `return` whose value is a `T ! {row}`), (c) a `?`'s row (`caller_row`), (d) a spawned task closure's row at the spawn; a `?` inside a closure is the closure's own. `absorb_row` takes the listed tags only, so an open row flowing in is later E0602 (`open_into_closed`) | none; this machine mirrors (a)–(c) and treats (d), and anything it cannot name, as not inferable |
+| the witnesses the brief names | measured on the compiler (r26, three tiers, one answer each): one tag `4 -1`, uncovered E0801 "does not cover `Neg`"; `?` from a callee `8 -1`, uncovered "`bad`"; a value flowing out of the tail `5 -1`, uncovered "`none`"; recursion and mutual recursion `0 -1 10 -2`, the cycle's tag uncovered "`Near`"; the grown row: before `4`, after "`High`", answered `4 -2`; generic `4 -1 x`, uncovered "`Empty`". **lupin 0.1.44 answers `fail(E0801)` "open row" on every one, the runs included**; 0.1.43 runs all of them and BINDS the value to the first tag arm (`-1 -1`, `-1 -1`, `-1 -1 -2 -2`, `-1 -1 -`: is67's value-half defect) and runs the uncovered ones | the 0.1.43 answers are silent wrong answers already retired by is67; every run row here is a 0.1.44 false refusal |
+| the issue's fallback: "where this machine cannot infer it, keeps the old dispatch" | `q_method_tail` (`fn pick(xs) -> !int { xs.get(0) }`, `match pick([3]) { v => v }`): the compiler `fail(E0801)` "does not cover `none`"; 0.1.44 `fail(E0801)` (the open row); the old dispatch would run it (0.1.43: `3`) | **the fallback keeps 0.1.44's reading (`{..}`), not the old dispatch**: a row this machine cannot infer may hold tags, so only `_` is safe, and the old dispatch would part with the compiler where 0.1.44 agrees |
+| the other readings of an inferred row | `let a: !int = f()` then `match a { v => v + 1 }` (`i69_let_annotated`): the compiler `exit(0)` `43`; 0.1.44 E0801 (the annotation read as `{..}`). `let a: !int = half(8)` with `half`'s row `{Neg}` (`q_let_annot_tag`): the compiler refuses the binding, `fail(E0602)` "this can also fail with `Neg`, which `main`'s row does not include"; 0.1.44 E0801 | the annotated binding is a reader of the inferred row: it takes its initializer's row where that is known; `q_let_annot_tag` stays a verdict-code parting (E0801 here, E0602 there; lupin has no E0602 for a binding) — named, not this lane's |
+| more compiler answers | a tail `xs.len` (`q_method_len_tail`) `1`; a tail field read `p.x` (`q_field_tail`) `3`; a tail `match` whose value arm returns a binder (`q_match_binder_tail`) `8`; a `?` inside a closure (`q_closure_try`) native and release `1`, checked `unsupported` (closures) | a member read of a plain value and a value arm's binder are plain; a closure's `?` is its own |
+| nested fns | `eval` refuses a nested fn with a rowed return by name (`unsupported`, "lift it to the module (#38)") | none; out of scope |
+| the coverage ratchet | `tests/export.rs`: `RATCHET_FLOOR = 271` | none |
+| kasumi | load 7–9 on 24 threads; `/home` 96%, 39 G free; the lane dir about 1.5 G after the wolf-lang debug build | prune `wolf-lang/target` and `dev/target` as evidence is written |
+
+#### §3 — prediction, committed before the first edit
+
+**The reading.** A module `fn` whose return is `-> !T` (no row spelled)
+has the row its body can raise, sealed per module as the compiler seals
+it: the least fixpoint over the module's inferred fns of (a) a tag raised
+at a checked position — the operand of `return` or the body's tail,
+through `if`/`match`/block/`else` branches — spelled as a bare capitalized
+name no local, item or import resolves, or that name called (`Io(3)`);
+(b) the row of a fallible value flowing into the return (a call with a
+declared or inferred row, a `Map` index, a local bound to one); (c) the
+row of every `?` in the body, closures excluded. A fn whose body reaches
+something this machine cannot name — a method call, a closure call, a
+spawn, an open row, a bare import, an unknown local — has an **unknown**
+row, and an unknown row is read as `{..}`, exactly 0.1.44's reading.
+
+**Three mechanisms.**
+
+1. **The inference** (`src/rowinfer.rs`, new): one walk per inferred fn
+   (locals typed plain / `Map` / a closed row / unknown, parameters from
+   their types, a generic `T` plain), iterated to a fixpoint over every
+   inferred fn of the program (monotone: tags only grow, unknown absorbs;
+   a cap of 64 rounds makes every row unknown). Computed once per program
+   and cached on `sema::Program` (a `OnceLock`, reset when the REPL
+   installs a definition).
+2. **The readers** (`src/rowmatch.rs`): `callee_row` answers a `-> !T`
+   callee (own module, or a `use`d module's `pub fn`) with the inferred
+   row, closed, `ok` the spelled `T` — so sema's E0801/E0816 judge, the
+   evaluator's two-half dispatch and the lint (all three already read
+   `callee_row`) read the body's row; an unknown row keeps `{..}`.
+   `known_of_binding`: an annotation `!T` with an initializer whose row
+   is known takes that row; otherwise `{..}` as before. A parameter
+   annotated `!T` stays `{..}`.
+3. **The E0801 text** is unchanged: with a closed row the judge's existing
+   "does not cover `Neg`" sentence fires, which is the compiler's first
+   line.
+
+**The witness table** (`tests/rulings_is69/`, one directory per shape,
+is67's runner extended by one optional key, `names`: a string the first
+diagnostic line of `lupin check main.lu` must contain; trunk = the code
+at `ba47627` = 0.1.44; the compiler = wolf-lang r26 `dfcc2f13`, one answer
+on checked, native and release unless shown):
+
+| witness | trunk (0.1.44) | head | [compiler] |
+| --- | --- | --- | --- |
+| `i69_issue_row` (s202's row verbatim) | `fail(E0801)` open row | `exit(0)` `43 42 42` | [same] |
+| `i69_one_tag` (`return Neg`; `{ Neg => -1, v => v }`) | E0801 open row | `4 -1` | [same] |
+| `i69_one_tag_missing` (`{ v => v }`) | E0801 open row | E0801 names `Neg` | [same] |
+| `i69_try_callee` (`parse(s)?` with `{bad}`) | E0801 open row | `8 -1` | [same] |
+| `i69_try_callee_missing` | E0801 open row | E0801 names `bad` | [same] |
+| `i69_tail_call_row` (tail `look(m, k)`, `{none}`) | E0801 open row, W0604 | `5 -1`, W0604 | [same] |
+| `i69_tail_call_row_missing` | E0801 open row | E0801 names `none` | [same] |
+| `i69_recursive` (`down` recursive; `ping`/`pong` mutual) | E0801 open row | `0 -1 10 -2` | [same] |
+| `i69_recursive_missing` (`Far` only; `Near` through the cycle) | E0801 open row | E0801 names `Near` | [same] |
+| `i69_row_grows_before` (`{Low}`) | E0801 open row | `4` | [same] |
+| `i69_row_grows_after` (`High` added, the match unchanged) | E0801 open row | E0801 names `High` | [same] |
+| `i69_row_grows_covered` (an arm for `High`) | E0801 open row | `4 -2` | [same] |
+| `i69_generic` (`wrap[T]`, `{Empty}`, `int` and `str`) | E0801 open row | `4 -1 x` | [same] |
+| `i69_generic_missing` | E0801 open row | E0801 names `Empty` | [same] |
+| `i69_let_annotated` (`let a: !int = f()`) | E0801 open row | `43` | [same] |
+| `i69_match_binder_tail` (tail `match` returning `v * 2`) | E0801 open row | `8` | [same] |
+| `i69_member_tail` (tail `xs.len`) | E0801 open row | `1` | [same] |
+| `i69_field_tail` (tail `p.x`) | E0801 open row | `3` | [same] |
+| `i69_closure_try` (a `?` in a closure is the closure's) | E0801 open row | `1` | [native, release `1`; checked `unsupported`] |
+| `i69_unknown_method` (control: tail `xs.get(0)`, not inferable) | E0801 open row | unchanged | [E0801 names `none`] |
+
+Nineteen witnesses red at the witness commit (on trunk's code), each for
+its named reason (a run refused, or an E0801 that names the open row and
+not the tag); one control green on both sides.
+
+**The gate.** wolf-lang r26 `dfcc2f13`'s
+`fallible_bind_empty_row_lanes.rs` with the 0.1.44 pre-mirror pin emptied,
+`LUPIN` = the head's release build: 3/3 green; with the archive 0.1.44:
+red on exactly `a_bound_empty_row_value_matches_elses_and_widens` (the
+plant, already measured in §2); pinned, the archive green (§2) and the
+head green (its `impl_version` is `0.1.44+dev.<sha>`, so the pin does not
+apply and the ruled answer is asserted).
+
+**Existing tests that change: none predicted.** No `tests/` row and no
+unit test matches over the result of a `-> !T` fn (the rowmatch unit
+tests use `-> T ! {row}` callees; `-> !int` appears on `main` only); the
+suite decides, and a change is reported here.
+
+**Corpus and differential.** `lupin corpus` at the pin: identical
+reports, trunk against head. `lupin diff-run`, four tiers, against r26's
+`wolf`: on the vendored corpus (pin `cdde128a`) no row moves; on wolf-lang
+r26's own `corpus/`, exactly `rows/eu_bind_empty_row_handled.lu` moves
+from a verdict mismatch to agreement on every tier, and nothing else
+moves (the conservatism ledgers 0 rows).
+
+**Coverage.** `RATCHET_FLOOR` holds at 271 (the witnesses are tests).
+
+**Out of scope, named:** a method call's row (`xs.get(0)` and every
+builtin method: no static method table here; the row stays `{..}`); a
+`spawn`'s re-raise; a nested fn's row (refused by name); a parameter
+annotated `!T`; E0602 for a binding whose row is wider than its
+annotation (`q_let_annot_tag`); E0605 for a `pub fn -> !T`.
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
