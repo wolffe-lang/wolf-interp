@@ -57,8 +57,10 @@ The corpus walk at the end checks every pinned conformance file against
 this implementation and prints the ledger. Its last line counts
 mismatches; on a healthy checkout every mismatch it counts is one that
 is already triaged and filed in `docs/divergence-log.md` (the count is
-`1` at the current pin: DIV-2026-019, the broken-sibling parse-code
-disagreement; DIV-2026-026, `memory/list_session_struct.lu` reading the
+`3` at the current pin: DIV-2026-019, the broken-sibling parse-code
+disagreement, and DIV-2026-027's two failing `assert_msg_*` rows, whose
+`stdout=` pins the dropped rendering of an assert message this machine
+renders as a line (wolf-lang#556); DIV-2026-026, `memory/list_session_struct.lu` reading the
 element its `let` moved, retired at the `ec56a08f` bump, where the row
 copies the element instead; DIV-2026-022 and -023 retired at the `a7f517e` bump, where
 wolf-lang#341 re-pinned the two seed headers that had gone stale against
@@ -69,10 +71,10 @@ set):
 $ lupin corpus
 …
 
-861 file(s) under upstream/corpus: 816 entries, 45 member(s), 0 failure(s)
-376 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
+892 file(s) under upstream/corpus: 846 entries, 46 member(s), 0 failure(s)
+379 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 667 entries reach the `run` rung; 604 match their `check:` expectation, 83 are the dynamic counterpart of the static code the corpus pins, 63 are static-conservatism entries (the compiler rejects statically what this machine never checks), 65 are out of scope, 1 mismatch
+lupin: 691 entries reach the `run` rung; 629 match their `check:` expectation, 83 are the dynamic counterpart of the static code the corpus pins, 66 are static-conservatism entries (the compiler rejects statically what this machine never checks), 65 are out of scope, 3 mismatch
 ```
 
 ## Bumping the pin
