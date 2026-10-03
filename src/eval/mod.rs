@@ -5037,19 +5037,19 @@ impl Machine {
                 // ends without one, is a unit context — "the block's value
                 // is `()` whatever the tail's type". Through 0.1.43 this
                 // handed back the taken block's value, so `let mark = if c
-                // { "*" }` bound `"*"`. A row value is the one exception: a
-                // raise out of the taken block leaves as the `if`'s value,
-                // as it does on every compiler tier (measured on wolf 0.2.20,
-                // `rulings_is68/u103_ctl_raise_tail`), while an ok value of
-                // a `T ! row` tail is the discard `[type.unit.discard]` says
-                // (native and release print `()`).
-                Ok(
-                    if ends_without_else(otherwise.as_ref()) && !is_raise(&value) {
-                        Value::Unit
-                    } else {
-                        value
-                    },
-                )
+                // { "*" }` bound `"*"`. A raised row is no exception
+                // (ruling #34 = A, s208, wolf-interp#179): it is the
+                // discard `[type.unit.discard]` says, wherever the `if`
+                // sits — bound by a `let`, or the tail of a fallible fn.
+                // Through 0.1.45 a raise out of the taken block left as the
+                // `if`'s value, as it did on every compiler tier at such a
+                // tail until wolf-lang s208. A `?` or a `return` inside the
+                // block still leaves: neither is the block's value.
+                Ok(if ends_without_else(otherwise.as_ref()) {
+                    Value::Unit
+                } else {
+                    value
+                })
             }
             ExprKind::Match { scrutinee, arms } => {
                 // The ARM BOUNDARY, per the spec's letter (s130's ruling, is31):
@@ -9922,11 +9922,6 @@ fn ends_without_else(otherwise: Option<&Expr>) -> bool {
             _ => false,
         },
     }
-}
-
-/// A raised row value (an error tag, not an enum variant).
-fn is_raise(value: &Value) -> bool {
-    matches!(value, Value::Error(error) if !error.enum_variant)
 }
 
 fn split_qualified(qualified: &str) -> (String, String) {
