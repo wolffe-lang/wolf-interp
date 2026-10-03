@@ -708,6 +708,8 @@ impl Session {
         if let Some(root) = program.modules.get_mut("") {
             root.items.insert(name.to_owned(), (def, true));
         }
+        // A new or replaced fn can change any inferred row (is69).
+        program.inferred_rows = std::sync::OnceLock::new();
     }
 
     /// Sweeps and removes an about-to-be-shadowed root binding

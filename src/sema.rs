@@ -281,6 +281,11 @@ pub struct Program {
     /// Whether a std root was configured (`--std-root`, `LUPIN_STD`) — what
     /// separates `[type.method.root]`'s E0301 from a plain "no method".
     pub std_configured: bool,
+
+    /// is69 (wolf-interp#176): every `-> !T` fn's private row, inferred from
+    /// its body (`rowinfer`), computed on first read. Anything that changes
+    /// the program's items after that resets it (the REPL's `install_def`).
+    pub inferred_rows: std::sync::OnceLock<crate::rowinfer::Rows>,
 }
 
 impl Program {
@@ -378,6 +383,7 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
         files: Vec::new(),
         homes: BTreeMap::new(),
         std_configured: std_root.is_some(),
+        inferred_rows: std::sync::OnceLock::new(),
     };
     // `[type.method.root]`: a home module is loaded when some method call in
     // the program names one of its `pub fn`s, and not otherwise. The ones not
@@ -647,6 +653,7 @@ pub fn load_source(name: &str, source: &str) -> Result<Program, LoadError> {
         files: vec![name.to_owned()],
         homes: BTreeMap::new(),
         std_configured: false,
+        inferred_rows: std::sync::OnceLock::new(),
     })
 }
 

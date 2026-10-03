@@ -534,7 +534,7 @@ fn each_defer_in_expr(expr: &Expr, on_defer: &mut dyn FnMut(&Expr)) {
 
 /// One direct child of an expression: a sub-expression, or a block whose
 /// statements the visitor owns.
-enum Child<'a> {
+pub(crate) enum Child<'a> {
     Expr(&'a Expr),
     Block(&'a Block),
 }
@@ -570,7 +570,7 @@ fn each_child(expr: &Expr, visit: &mut dyn FnMut(&Expr)) {
 
 /// The generic walk: `v` on every direct child expression and on every
 /// directly nested block (whose statements are the visitor's).
-fn each_child_with_blocks<'a>(expr: &'a Expr, v: &mut dyn FnMut(Child<'a>)) {
+pub(crate) fn each_child_with_blocks<'a>(expr: &'a Expr, v: &mut dyn FnMut(Child<'a>)) {
     match &*expr.kind {
         ExprKind::Int(_)
         | ExprKind::Float(_)
