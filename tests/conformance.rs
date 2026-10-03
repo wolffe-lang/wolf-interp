@@ -182,6 +182,11 @@ fn declaration_read_code(case: &Case) -> Option<&str> {
         // `rows/negative/match_row_missing_tag.lu` (kasumi
         // `~/lanes/r27/logs/repin-1.log`).
         "E0801" | "E0816" => ["type.row.match"].as_slice(),
+        // `[type.row.defer]` joins at the same pin (is67 mirrored ruling
+        // #19): a `?` under a `defer` or `errdefer` is refused at resolve,
+        // E0611 at the `?` (`rows/negative/try_in_{defer,errdefer,
+        // defer_block}.lu`).
+        "E0611" => ["type.row.defer"].as_slice(),
         "E0409" => ["type.row.operand"].as_slice(),
         "E0417" => ["mem.map.absent"].as_slice(),
         "E0418" => ["type.map.key"].as_slice(),
