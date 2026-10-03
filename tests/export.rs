@@ -300,7 +300,12 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // `conforms:` sets of the two pins diffed, 374 -> 376 distinct):
 // `mem.tier0.excl.4` (the `memory/mut_claim_*`, `recv_claim_arg_*` and
 // `recv_view_arg_*` rows) and `type.row.else` (the seven `rows/else_*`).
-const RATCHET_FLOOR: usize = 273;
+// 273 -> 276 at dfcc2f13 (r27, wolf-lang v0.2.21 — the TAG): THREE, each
+// cited first by files the pin adds (the corpus `conforms:` sets of the two
+// pins diffed, 376 -> 379 distinct): `type.row.defer` and `type.row.match`,
+// the two anchors the pin adds (the `rows/match_row_*`, `try_in_*` and
+// defer rows), and `conf.trap.assert` (the four `faults/assert_msg_*`).
+const RATCHET_FLOOR: usize = 276;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -496,7 +501,11 @@ const RATCHET_FLOOR: usize = 273;
 // diffed BOTH ways: two added, NOTHING dropped, no owner changed —
 // `mem.tier0.excl.4` (spec/02, ruling #17) and `type.row.else` (spec/10,
 // ruling #18). No new namespace.
-const ANCHORS_TOTAL: usize = 544;
+// 544 -> 546 at dfcc2f13 (r27, wolf-lang v0.2.21 — the TAG): TWO. Key sets
+// diffed BOTH ways: two added, NOTHING dropped, no owner changed —
+// `type.row.defer` (spec/10, ruling #19) and `type.row.match` (spec/10,
+// ruling #21). No new namespace.
+const ANCHORS_TOTAL: usize = 546;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -764,9 +773,12 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // 816/771 -> 899/854 at cdde128a (r26, wolf-lang v0.2.20 — the TAG):
     // eighty-three corpus files, none leaving, every one an entry — both
     // counts move by eighty-three.
-    assert_eq!(summary.pin, "cdde128a30999652c9d70189664226b766a206f0");
-    assert_eq!(summary.programs, 899);
-    assert_eq!(summary.records, 854);
+    // 899/854 -> 930/884 at dfcc2f13 (r27, wolf-lang v0.2.21 — the TAG):
+    // thirty-one corpus files, none leaving, thirty of them entries —
+    // `programs` by 31, `records` by 30, the one new member the gap.
+    assert_eq!(summary.pin, "dfcc2f13e7c73182bdd41fc9bec2802c7da3b024");
+    assert_eq!(summary.programs, 930);
+    assert_eq!(summary.records, 884);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
