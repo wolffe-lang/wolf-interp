@@ -110,6 +110,35 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### DIV-2026-027 — two failing `assert_msg_*` rows — **OPEN, filed at the dfcc2f13 pin (r27, lupin 0.1.45); resolves with wolffe-lang/wolf-lang#556**
+
+`faults/assert_msg_effect_fails.lu` (`check: run(exit=trap(assert),
+stdout="effect\n")`) and `faults/assert_msg_name_fails.lu`
+(`stdout="before\n"`), s202's rows for wolf-lang#398, arrive at the
+dfcc2f13 pin (wolf-lang v0.2.21). This machine traps `assert` on both, as
+pinned, and evaluates the message on the failing path, as pinned. It also
+renders the message as one stdout line before the trap, so it observes
+`"effect\nm\n"` and `"before\nboom\n"`, which is a `MISMATCH` (kasumi
+`~/lanes/r27/logs/repin-1.log`). lupin 0.1.44 answered the same way.
+
+Triage (`[proto.cmp.triage]`, the spec is the defendant first).
+`[conf.trap.assert]` says rendering "is one line to stdout before the trap
+once formatting lands — until then implementations may drop the message".
+That permits two renderings. The second row's own comment says lupin's
+line "`[conf.trap.assert]` allows and does not require". The rows' `stdout=`
+admits only the dropped one, so a permitted rendering becomes a mismatch.
+The defect is the rows' pin, not either machine. Filed upstream as
+wolffe-lang/wolf-lang#556, which names the three ways out. Neither machine
+changes in this release.
+
+Added to `differ::FILED_DIVERGENCES` (both files under one id). That stops
+`tests/run_corpus.rs` and `tests/conformance.rs` asserting on these two
+rows only, and the differential report keeps them visible as `x-filed`.
+The run ledger keeps both rows (`trap(assert)`), and `fault_snapshots`
+records both traps. The entry retires on the first pin where the rows
+admit the line or the clause rules it out. `retired-waiver` in `diff-run`
+is the check.
+
 ### The thirty-ninth — is54, lupin 0.1.39, pin `2e4ca769` -> `93a5fe50` (wolf-lang **v0.2.16**)
 
 Five subjects, one pin move: wolf-interp#134 (a `use m.Alias` whose only

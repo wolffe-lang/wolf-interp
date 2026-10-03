@@ -181,15 +181,38 @@ use crate::schema;
 /// `memory/list_session_struct.lu` carries wolf-lang eg01's `copy tbl[2]`,
 /// so the `for` reads a live element and the row answers `exit(0)` printing
 /// `102 1 1408 4 184` here and on all three counterparty tiers.
-pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[(
-    "resolve/broken_sibling/entry.lu",
-    "DIV-2026-019",
-    "which parse error fires on the unparseable module sibling: the \
+pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
+    (
+        "resolve/broken_sibling/entry.lu",
+        "DIV-2026-019",
+        "which parse error fires on the unparseable module sibling: the \
          corpus pins the counterparty's fail(E0202) (EOF inside the mangled \
          item) where this machine stops at the first bad token, fail(E0201) \
          at `{` in the parameter list; same rung, span-or-code class — the \
          spec assigns neither code to junk recovery",
-)];
+    ),
+    // DIV-2026-027 FILED at the dfcc2f13 pin (r27, wolf-lang v0.2.21;
+    // wolffe-lang/wolf-lang#556): both rows trap `assert` as pinned; this
+    // machine renders the message as one stdout line before the trap, which
+    // `[conf.trap.assert]` permits, and the rows' `stdout=` admits only the
+    // dropped rendering.
+    (
+        "faults/assert_msg_effect_fails.lu",
+        "DIV-2026-027",
+        "the assert message's rendering: this machine prints the failing \
+         assert's message as one stdout line before the trap (\"m\"), which \
+         [conf.trap.assert] permits; the row's stdout pins the dropped \
+         rendering (wolf-lang#556)",
+    ),
+    (
+        "faults/assert_msg_name_fails.lu",
+        "DIV-2026-027",
+        "the assert message's rendering: this machine prints the failing \
+         assert's message as one stdout line before the trap (\"boom\"), \
+         which [conf.trap.assert] permits; the row's stdout pins the dropped \
+         rendering (wolf-lang#556)",
+    ),
+];
 
 // DIV-2026-022 (`wordcount.lu`) and DIV-2026-023
 // (`grammar/structlit_paren.lu`) stood here for exactly one release. is46
@@ -1730,7 +1753,19 @@ mod tests {
         // `102 1 1408 4 184` on `--checked`, `--native` and `--release`, and
         // this machine answers the same (kasumi
         // `~/lanes/r24/logs/div026-retire.log`). Two became one.
-        assert_eq!(FILED_DIVERGENCES.len(), 1);
+        // DIV-2026-027 FILED at the dfcc2f13 pin (r27, wolf-lang v0.2.21):
+        // s202's two failing `assert_msg_*` rows pin the dropped rendering
+        // of the message; this machine renders the line, which
+        // `[conf.trap.assert]` permits (wolf-lang#556). One became three.
+        assert_eq!(FILED_DIVERGENCES.len(), 3);
+        for row in [
+            "upstream/corpus/faults/assert_msg_effect_fails.lu",
+            "upstream/corpus/faults/assert_msg_name_fails.lu",
+        ] {
+            let (id, _) = filed(row).expect("DIV-2026-027 is filed against the assert rows");
+            assert_eq!(id, "DIV-2026-027");
+        }
+        assert_eq!(filed("upstream/corpus/faults/assert_msg_name.lu"), None);
         assert_eq!(
             filed("upstream/corpus/memory/list_session_struct.lu"),
             None,
