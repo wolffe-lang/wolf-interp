@@ -6806,6 +6806,164 @@ machine does not have); wolf-interp#136's other item-walking checks; the
 tail-position raise out of an else-less `if` (all four machines agree, the
 clause reads otherwise — in the wolf-lang filing).
 
+#### §3a — the prediction, scored
+
+The lane was cut at trunk `6ce7bc8` and rebased onto r26's `ba47627`
+(PR #170, the `cdde128a` re-pin, unmerged when this lane closed) so that
+#169's waiver could be retired by name; every commit sha below is on the
+rebased branch, and the evidence logs keep the sha they were taken at (the
+pre-rebase twins are named where they differ).
+
+- **held**: five mechanisms, each in its own `src/` commit(s) after its
+  witnesses: #126 `1a1c14f`; #103 `5314dfb` (eval) and `db9ac2a` (sema);
+  #125 `a4862f7` (sema) and `a77c4a4` (eval); #138 `a75adcc`; #169
+  `3ffdfd7` (sema) and `7dc33ba` (eval).
+- **held**: the witness table. 108 rows at `c8e8535`: 81 red, 27 green,
+  the split §3 counted row for row (`red-c8e8535.log`; the identical
+  split at the pre-rebase `e614d3c`, `red-e614d3c.log`). Each fix turned
+  exactly its own rows green: 58 left after #126, 32 after #103, 22 after
+  #125, 7 after #138, 0 after #169 (`fix126-7ebe1ba.log`,
+  `fix103-5d76681.log`, `fix125-89ca590.log`, `fix138-15752fc.log`,
+  `fix169-2ac7e10.log` — pre-rebase shas of `d11cafe`, `6fd7454`,
+  `6bebaac`, `a75adcc`, `7dc33ba`). 108/108 at `849e8e4` and at the head.
+- **held**: the trap is the clauses' — every #126 row answers
+  `trap(region-fault)`, `mem.region.intra.2`, at the region's exit or at
+  the first read after it; no row prints a view of freed bytes.
+- **missed, three existing tests**: §3 named three tests that change
+  (`run_corpus.rs`'s two ledger rows, `conformance.rs`'s E0402 row, a
+  comment in `src/eval/tests.rs`). Two more moved:
+  `eval::tests::the_nested_fn_scoped_out_shapes_refuse_by_name` pinned
+  the mode refusal #169 removes (red in `fix169-2ac7e10.log`; the mode
+  shape moved to its own test, `a_nested_fn_with_a_mode_is_a_module_fns_call`,
+  `849e8e4`), and `lint_is61`'s `t01_type_error_beside_move` pinned
+  lupin RUNNING `let n: int = "a"` — #138 refuses it E0401 at the
+  compiler's span `[83,86]`, so the one parting that test recorded heals
+  (red in `light-f897e62.log`, updated at `c1ad684`). Neither was a
+  behaviour any clause or ruling wanted kept.
+- **held**: corpus and differential. At the `c2401f05` pin (trunk against
+  the pre-rebase head `6611216`): the census moves by exactly the two
+  rows (586 → 585 run, conservatism 60 → 58, dynamic 53 → 54); the
+  gating lines are the same on all four tiers (4 / 4 / 6 / 6); one ledger
+  row leaves per tier (`trim_cutset_refused.lu`'s `rejects-beyond`). At
+  the `cdde128a` pin (r26's `ba47627` against `b6ea927` and the head):
+  666 → 667 run, 601 → 604 match, 81 → 83 dynamic, 65 → 63
+  conservatism, 68 → 65 out of scope; gating lines the same on all four
+  tiers; per tier the `unsupported(interp)` rows of the three
+  `nested_fn_mut_*.lu` files leave, and the E1007 and E0402
+  `rejects-beyond` rows leave; `nested_fn_mut_param.lu` becomes
+  `run-unmatched` on default/checked only (the checked executor declines a
+  nested fn). The only line that differs otherwise is
+  `unsafe_ub_uaf.lu`'s exit status under UB on native, which moves run to
+  run. No row moves away from agreement.
+- **held**: the waiver retires by name — at `849e8e4` (rebased, waiver in
+  place) both conformance tests go red on
+  `memory/nested_fn_mut_omitted.lu (#169)` (`waiver-red-849e8e4.log`);
+  `b6ea927` deletes `NESTED_MODED_FN_DECLINED` and both are green.
+- **held**: the ratchet (see §4).
+- **new, beside the prediction**: two compiler-side findings from §2's
+  probes, filed: wolffe-lang/wolf-lang#540 (a `for`-bound piece of
+  `words`/`lines`/`split` escapes its region on all three lanes; lupin
+  traps it) and wolffe-lang/wolf-lang#541 (the checked machine propagates
+  a row W0601 discards; native and release discard, and lupin now answers
+  with them).
+
+Slips, repaired:
+
+- `db9ac2a` does not compile: it added a second `TierWalk::is_local`
+  beside an existing one (`fix103-2b4bf49.log`, pre-rebase); fixed forward
+  at `6fd7454`.
+- my `pgrep -f` on the gauntlet's own command line matched the ssh shell
+  that ran it and killed that shell (my pids only); the gauntlet itself was
+  then stopped by number.
+- rustfmt, five times: the at-sha runs check `cargo fmt` first and each
+  reflow is its own commit (`e8de8d4`, `2f33757`, `52df1e8`, `c416f9e`,
+  `e7cf848`).
+- three gauntlets were stopped by pid and their logs kept: at `6611216`
+  when the rebase onto r26 moved the head
+  (`superseded-gauntlet-6611216-killed-for-r26-rebase.log`), at `f897e62`
+  when the light set found `t01`
+  (`superseded-gauntlet-f897e62-lint_is61-t01.log`, fmt and clippy
+  already 0 there), and at `c1ad684` when `heavy3` found the census block
+  and the no-stdout rule
+  (`superseded-gauntlet-c1ad684-doc_truth-run_corpus.log`; `cli`,
+  `conformance` and `divergence` had passed).
+
+#### §4 — evidence index
+
+Commits (on `is68`, rebased onto r26's `ba47627`, which merged to trunk
+as a fast-forward at 23:13Z):
+
+- `a5f923d` §1–§3; the closing commit §3a, §4, §5
+- `c8e8535` 108 witnesses (81 red); `e8de8d4` rustfmt
+- #126: `1a1c14f` eval; `7d6f6ee` unit test; `d11cafe` run ledger; `2f33757` rustfmt
+- #103: `5314dfb` eval; `db9ac2a` sema; `6fd7454` the duplicate removed; `52df1e8` rustfmt
+- #125: `a4862f7` sema; `a77c4a4` eval; `9def8e3` conformance; `6bebaac` run ledger
+- #138: `a75adcc` sema; `c416f9e` rustfmt
+- #169: `3ffdfd7` sema; `7dc33ba` eval; `e7cf848` rustfmt; `849e8e4` unit tests; `b6ea927` r26's waiver retired by name; `70dcdf5` run ledger
+- `f897e62` the manual's census; `c1ad684` `lint_is61` t01; `22fc514` the manual's bundle replay; `7e7c51c` the no-stdout record rule (the code head)
+
+Artifacts on kasumi under `~/lanes/is68/evidence/`. Archives: lupin
+0.1.43 `e957c8de…` and wolf 0.2.20 `24855d5e…`, both equal to the
+release assets' digests (`setup.log`); wolf-lang trunk `12a56b22` built
+release (`bin/wolf-trunk-12a56b22/wolf`, `eaa22f61…`); lupin trunk
+`6ce7bc8` (`93fd8329…`), r26 `ba47627` (`1e62a0d1…`), head `f897e62`
+(`629396d5…`, the same `src/` as `7e7c51c`). Every wolf measurement
+finished by 21:07Z, before kasumi's system upgrade began (21:35Z, `rc=0`
+at 21:43Z): no wolf binary was run after it.
+
+- inputs: `setup.log`, `probes-archives-0.1.43-0.2.20.log`,
+  `probes-trunk-6ce7bc8-wolf-12a56b22.log`, `probes2-trunk-6ce7bc8.log`
+  (wolf trunk and 0.2.20 both), `probes2-archive-0.1.43.log`,
+  `probes3-trunk-6ce7bc8.log`, `probes3-archives-0.1.43-0.2.20.log`;
+  the witness tree from them, `genwit.log`
+- red: `red-c8e8535.log` (27 passed, 81 failed; the same rows as
+  `red-e614d3c.log` before the rebase); the waiver: `waiver-red-849e8e4.log`
+- per fix (pre-rebase shas): `fix126-7ebe1ba.log`, `fix103-2b4bf49.log`
+  (does not compile), `fix103-5d76681.log`, `fix125-89ca590.log`,
+  `fix138-15752fc.log`, `fix169-2ac7e10.log`, `fix169b-6611216.log`;
+  after the rebase `quick-f897e62.log` (108/108, lib 745, conformance 9,
+  fmt 0); the light set (54 binaries, 1,738 passed) `light-c1ad684.log`;
+  `heavy3-c1ad684.log` (`export` 10/10 with `coverage_is_ratcheted`;
+  `doc_truth` and `run_corpus` one red each, both fixed at `22fc514` and
+  `7e7c51c`); `heavyB-7e7c51c.log` (`fuzz_smoke`, `region_machine`,
+  `rule_registry`)
+- head: `head-f897e62.log`, `build-head-f897e62.log`,
+  `probes{,2,3}-head-f897e62.log` (every lupin answer identical to
+  `…-head-6611216.log`, the pre-rebase head; wolf trunk = 0.2.20 on all
+  125)
+- differential and corpus: `diffrun/{trunk-6ce7bc8,head-6611216}-*` at the
+  `c2401f05` pin; `diffrun/{r26-ba47627,rebased-b6ea927,head-f897e62}-*`
+  at the `cdde128a` pin; `pinpair-ba47627-b6ea927.log`
+- clippy: `clippy-6611216.log` (0); the gauntlet: `gauntlet-7e7c51c.log`
+  at the code head (the closing commit is `docs/divergence-log.md` only,
+  which no test reads); its result and GitHub CI's are in PR #172's body
+- filed: wolffe-lang/wolf-lang#540, #541
+
+#### §5 — done-when
+
+- [x] branch `is68` on origin, cut at trunk `6ce7bc8`, rebased onto r26's
+  `ba47627` (now trunk); PR #172 open, unmerged; five sections
+- [x] §2 re-derived; §3 committed before the first edit; §3a scored
+- [x] each witness red first (`red-c8e8535.log`), green at its fix and at
+  the head
+- [x] #126: the escape is `trap(region-fault)` (`mem.region.intra.2`), the
+  dynamic counterpart of E1010; never a read of freed bytes
+- [x] #103 row 1: E0401 at `[72,75]` as on every wolf tier; the else-less
+  `if`'s value is `()` where this machine cannot type the tail
+- [x] #125, #138, #169 to the clause, agreeing with wolf trunk and 0.2.20
+  on checked, native and release wherever wolf answers (two compiler-side
+  partings filed, #540 and #541)
+- [x] #169's waiver retired by name (`b6ea927`)
+- [x] no new divergence against wolf 0.2.20 at either pin; corpus census
+  as predicted; no CHANGELOG entry (r26's file)
+- [x] coverage ratchet holds (`coverage_is_ratcheted` ok; floor 273)
+- [ ] kasumi gauntlet green at the code head `7e7c51c` (PR body)
+- [ ] GitHub CI green at the head (PR body)
+- [ ] #126, #125, #138, #169 close on merge (by hand if not); #103 stays
+  open for rows 2 and 4's static halves (row 1 done here, row 3 healed
+  upstream), with a comment saying so
+- [ ] kasumi build dirs pruned, worktree removed after the last push
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
