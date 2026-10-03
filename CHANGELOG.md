@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+**A `-> !T` function's row is what its body can raise** (is69,
+wolffe-lang/wolf-interp#176). `01-grammar.md` gives `-> !T` an *inferred
+private row*, and the compiler seals it per module (s15): the least
+fixpoint, over the module's inferred functions, of the tags a body raises
+at its tail or a `return` (`return Neg`, `Io(3)`), the row of a fallible
+value that flows out (a call with a row, a `Map` index, a local bound to
+one) and the row of every `?` (a closure's `?` is its own). 0.1.44's
+`[type.row.match]` reader read every such row as the open row `{..}`, so a
+`match` over the result with no `_` was E0801 whatever the body raised —
+wolf-lang's `rows/eu_bind_empty_row_handled.lu` (`fn f() -> !int { 42 }`,
+`match a { v => v + 1 }`) answered `fail(E0801)` where every other machine
+prints `43 42 42`, and r26 pinned 0.1.44's answer by version in
+`fallible_bind_empty_row_lanes.rs`. `src/rowinfer.rs` is the inference,
+cached on the program; `rowmatch::callee_row` reads it for an own or a
+`use`d `fn`, so sema's E0801 judge, the evaluator's two-half dispatch and
+the lint all see the body's row, and an uncovered tag is named
+("does not cover `Neg`") as the compiler names it. A binding annotated
+`!T` takes its initializer's row. A body this machine cannot read (a
+method call, a closure call or a spawn whose row would flow out) keeps
+`{..}`, 0.1.44's reading. Twenty witnesses under `tests/rulings_is69/`:
+nineteen red at `8f08e49` (on 0.1.44's code), green at `675ccea`, beside
+the compiler on every one; one control unchanged.
+
 ## 0.1.44 — 2026-10-02
 
 THE FORTY-FOURTH (is65, is67, and r26's re-pin), the lupin half of wolf
