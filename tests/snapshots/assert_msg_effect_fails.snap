@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: assert_msg_effect_fails.lu
+trap:    assert
+clause:  [conf.trap.map]
+rule:    Assert
+message: assertion failed
+at:      19:5 `assert(c == 2, "{noisy()}")`
+because: (single-span fault)

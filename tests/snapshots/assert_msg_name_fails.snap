@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: assert_msg_name_fails.lu
+trap:    assert
+clause:  [conf.trap.map]
+rule:    Assert
+message: assertion failed
+at:      14:5 `assert(false, msg)`
+because: (single-span fault)
