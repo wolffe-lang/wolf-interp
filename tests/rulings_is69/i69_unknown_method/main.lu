@@ -1,0 +1,12 @@
+//! is69 (wolf-interp#176) — control: the tail is a method call this machine cannot name (`xs.get(0)`), so `pick`'s row is not inferred and stays `{..}`: E0801, as on 0.1.44 and the compiler.
+fn pick(xs: List[int]) -> !int {
+    xs.get(0)
+}
+
+fn main() -> !int {
+    let a = match pick([3]) {
+        v => v,
+    }
+    print("{a}")
+    0
+}

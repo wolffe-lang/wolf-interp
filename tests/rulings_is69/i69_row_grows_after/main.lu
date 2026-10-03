@@ -1,0 +1,19 @@
+//! is69 (wolf-interp#176) — after the edit: `level` also raises `High`, so its inferred row grows to `{Low, High}` and the unchanged match no longer covers it: E0801 names `High`.
+fn level(n: int) -> !int {
+    if n < 0 {
+        return Low
+    }
+    if n > 100 {
+        return High
+    }
+    n
+}
+
+fn main() -> !int {
+    let r = match level(4) {
+        Low => -1,
+        v => v,
+    }
+    print("{r}")
+    0
+}

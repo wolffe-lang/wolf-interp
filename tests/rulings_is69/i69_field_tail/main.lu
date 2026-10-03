@@ -1,0 +1,20 @@
+//! is69 (wolf-interp#176) — a field read in the tail (`p.x`) raises nothing: `px`'s row is `{Neg}`.
+struct P {
+    x: int,
+}
+
+fn px(p: P) -> !int {
+    if p.x < 0 {
+        return Neg
+    }
+    p.x
+}
+
+fn main() -> !int {
+    let a = match px(P { x: 3 }) {
+        Neg => -1,
+        v => v,
+    }
+    print("{a}")
+    0
+}

@@ -1,0 +1,25 @@
+//! is69 (wolf-interp#176) — the row arrives through `?` from a callee with a declared row: `bump`'s inferred row is `{bad}`.
+fn parse(s: str) -> int ! {bad} {
+    if s == "x" {
+        return bad
+    }
+    7
+}
+
+fn bump(s: str) -> !int {
+    let n = parse(s)?
+    n + 1
+}
+
+fn main() -> !int {
+    let a = match bump("1") {
+        bad => -1,
+        v => v,
+    }
+    let b = match bump("x") {
+        bad => -1,
+        v => v,
+    }
+    print("{a} {b}")
+    0
+}

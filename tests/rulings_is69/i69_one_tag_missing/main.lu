@@ -1,0 +1,15 @@
+//! is69 (wolf-interp#176) — the inferred row is `{Neg}` and no arm names it: E0801 names `Neg`.
+fn half(n: int) -> !int {
+    if n < 0 {
+        return Neg
+    }
+    n / 2
+}
+
+fn main() -> !int {
+    let a = match half(8) {
+        v => v,
+    }
+    print("{a}")
+    0
+}

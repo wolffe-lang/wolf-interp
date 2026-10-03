@@ -1,0 +1,50 @@
+//! is69 (wolf-interp#176) — recursion and mutual recursion: `down`'s row is `{Under}`; `ping` and `pong` each raise one tag and carry the other's through `?`, so both rows are `{Far, Near}`.
+fn down(n: int) -> !int {
+    if n < 0 {
+        return Under
+    }
+    if n == 0 {
+        return 0
+    }
+    down(n - 1)?
+}
+
+fn ping(n: int) -> !int {
+    if n > 5 {
+        return Far
+    }
+    if n == 0 {
+        return 0
+    }
+    pong(n - 1)?
+}
+
+fn pong(n: int) -> !int {
+    if n < 0 {
+        return Near
+    }
+    ping(n)?
+}
+
+fn main() -> !int {
+    let a = match down(3) {
+        Under => -1,
+        v => v,
+    }
+    let b = match down(-2) {
+        Under => -1,
+        v => v,
+    }
+    let c = match pong(3) {
+        Far => -2,
+        Near => -3,
+        v => v + 10,
+    }
+    let d = match ping(9) {
+        Far => -2,
+        Near => -3,
+        v => v + 10,
+    }
+    print("{a} {b} {c} {d}")
+    0
+}

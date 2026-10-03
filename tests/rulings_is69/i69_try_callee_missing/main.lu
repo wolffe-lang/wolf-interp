@@ -1,0 +1,20 @@
+//! is69 (wolf-interp#176) — `bump`'s inferred row is `{bad}`, carried by `?` from `parse`; no arm names it: E0801 names `bad`.
+fn parse(s: str) -> int ! {bad} {
+    if s == "x" {
+        return bad
+    }
+    7
+}
+
+fn bump(s: str) -> !int {
+    let n = parse(s)?
+    n + 1
+}
+
+fn main() -> !int {
+    let a = match bump("1") {
+        v => v,
+    }
+    print("{a}")
+    0
+}

@@ -1,0 +1,16 @@
+//! is69 (wolf-interp#176) — before the edit: `level`'s inferred row is `{Low}` and the match covers it.
+fn level(n: int) -> !int {
+    if n < 0 {
+        return Low
+    }
+    n
+}
+
+fn main() -> !int {
+    let r = match level(4) {
+        Low => -1,
+        v => v,
+    }
+    print("{r}")
+    0
+}

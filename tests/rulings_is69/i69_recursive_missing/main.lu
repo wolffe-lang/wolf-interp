@@ -1,0 +1,26 @@
+//! is69 (wolf-interp#176) — `pong` raises `Near` itself and `Far` only through the cycle with `ping`; an arm for `Far` alone leaves `Near` uncovered: E0801 names `Near`.
+fn ping(n: int) -> !int {
+    if n > 5 {
+        return Far
+    }
+    if n == 0 {
+        return 0
+    }
+    pong(n - 1)?
+}
+
+fn pong(n: int) -> !int {
+    if n < 0 {
+        return Near
+    }
+    ping(n)?
+}
+
+fn main() -> !int {
+    let c = match ping(3) {
+        Far => -2,
+        v => v + 10,
+    }
+    print("{c}")
+    0
+}

@@ -1,0 +1,23 @@
+//! is69 (wolf-interp#176) — a value of a declared row flows out of the tail (`look(m, k)`, `{none}`): `get`'s inferred row is `{none}`.
+fn look(m: Map[str, int], k: str) -> int ! {none} {
+    m[k]
+}
+
+fn get(k: str) -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    look(m, k)
+}
+
+fn main() -> !int {
+    let a = match get("a") {
+        none => -1,
+        v => v,
+    }
+    let b = match get("z") {
+        none => -1,
+        v => v,
+    }
+    print("{a} {b}")
+    0
+}

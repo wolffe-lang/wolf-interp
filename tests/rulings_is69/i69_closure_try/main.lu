@@ -1,0 +1,20 @@
+//! is69 (wolf-interp#176) — a `?` inside a closure is the closure's own; `calm`'s row stays empty, so a lone value arm covers it.
+fn parse(s: str) -> int ! {bad} {
+    if s == "x" {
+        return bad
+    }
+    7
+}
+
+fn calm(s: str) -> !int {
+    let g = fn(t: str) { parse(t) else 0 }
+    g(s) + 1
+}
+
+fn main() -> !int {
+    let a = match calm("x") {
+        v => v,
+    }
+    print("{a}")
+    0
+}

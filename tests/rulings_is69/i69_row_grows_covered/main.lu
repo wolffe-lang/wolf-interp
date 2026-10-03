@@ -1,0 +1,25 @@
+//! is69 (wolf-interp#176) — the edit answered: an arm for the new tag `High` covers the grown row `{Low, High}`.
+fn level(n: int) -> !int {
+    if n < 0 {
+        return Low
+    }
+    if n > 100 {
+        return High
+    }
+    n
+}
+
+fn main() -> !int {
+    let a = match level(4) {
+        Low => -1,
+        High => -2,
+        v => v,
+    }
+    let b = match level(500) {
+        Low => -1,
+        High => -2,
+        v => v,
+    }
+    print("{a} {b}")
+    0
+}

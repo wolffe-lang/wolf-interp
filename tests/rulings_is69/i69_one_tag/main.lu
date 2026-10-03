@@ -1,0 +1,20 @@
+//! is69 (wolf-interp#176) — a `-> !int` body that raises one tag: the inferred row is `{Neg}`, so `Neg` and a value arm cover the match.
+fn half(n: int) -> !int {
+    if n < 0 {
+        return Neg
+    }
+    n / 2
+}
+
+fn main() -> !int {
+    let a = match half(8) {
+        Neg => -1,
+        v => v,
+    }
+    let b = match half(-3) {
+        Neg => -1,
+        v => v,
+    }
+    print("{a} {b}")
+    0
+}

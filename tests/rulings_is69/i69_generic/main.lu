@@ -1,0 +1,24 @@
+//! is69 (wolf-interp#176) — a generic function: `wrap[T]`'s inferred row is `{Empty}` at every `T`.
+fn wrap[T](ok: bool, v: T) -> !T {
+    if !ok {
+        return Empty
+    }
+    copy v
+}
+
+fn main() -> !int {
+    let a = match wrap(true, 4) {
+        Empty => -1,
+        v => v,
+    }
+    let b = match wrap(false, 5) {
+        Empty => -1,
+        v => v,
+    }
+    let s = match wrap(true, "x") {
+        Empty => "-",
+        v => v,
+    }
+    print("{a} {b} {s}")
+    0
+}

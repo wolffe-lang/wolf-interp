@@ -1,0 +1,22 @@
+//! is69 (wolf-interp#176) — `twice`'s tail is a `match` that consumes `half`'s row; its value arm returns the binder, a plain `int`, so `twice`'s row is empty.
+fn half(n: int) -> !int {
+    if n < 0 {
+        return Neg
+    }
+    n / 2
+}
+
+fn twice(n: int) -> !int {
+    match half(n) {
+        Neg => 0,
+        v => v * 2,
+    }
+}
+
+fn main() -> !int {
+    let a = match twice(8) {
+        v => v,
+    }
+    print("{a}")
+    0
+}

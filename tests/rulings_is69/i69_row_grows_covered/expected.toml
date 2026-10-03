@@ -1,0 +1,15 @@
+# is69 — wolffe-lang/wolf-interp#176 (`-> !T`'s inferred private row under [type.row.match]). This row: the edit answered: an arm for `High`.
+# `[expected]` is the ruled lupin cell (`names`: a string the first diagnostic line of `lupin check main.lu` contains).
+# `[trunk]` is what the published lupin 0.1.44 (archive e44aae06…, binary be9bf9fc…, = trunk ba47627's code) and
+# wolf-lang r26 dfcc2f13 (debug, `wolf` 135f784f…) `conform-run` answered on kasumi,
+# ~/lanes/is69/evidence/probes-archives-0.1.44-0.1.43-wolf-dfcc2f13.log.
+ruling = "wolffe-lang/wolf-interp#176"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "4 -2\n" }
+
+[trunk]
+lupin   = { verdict = "fail(E0801)" }
+checked = { verdict = "exit(0)", stdout = "4 -2\n" }
+native  = { verdict = "exit(0)", stdout = "4 -2\n" }
+release = { verdict = "exit(0)", stdout = "4 -2\n" }

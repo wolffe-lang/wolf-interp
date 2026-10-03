@@ -1,0 +1,15 @@
+//! is69 (wolf-interp#176) — `wrap[T]`'s inferred row is `{Empty}`; a lone value arm leaves it uncovered: E0801 names `Empty`.
+fn wrap[T](ok: bool, v: T) -> !T {
+    if !ok {
+        return Empty
+    }
+    copy v
+}
+
+fn main() -> !int {
+    let a = match wrap(true, 4) {
+        v => v,
+    }
+    print("{a}")
+    0
+}

@@ -1,0 +1,13 @@
+//! is69 (wolf-interp#176) — a local annotated `!int` takes the row of its initializer, `f`'s inferred (empty) row: a lone value arm covers it.
+fn f() -> !int {
+    42
+}
+
+fn main() -> !int {
+    let a: !int = f()
+    let m = match a {
+        v => v + 1,
+    }
+    print("{m}")
+    0
+}

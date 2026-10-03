@@ -1,0 +1,18 @@
+//! is69 (wolf-interp#176) — `get`'s inferred row is `{none}`, carried by its tail; no arm names it: E0801 names `none`.
+fn look(m: Map[str, int], k: str) -> int ! {none} {
+    m[k]
+}
+
+fn get(k: str) -> !int {
+    var m = Map[str, int]()
+    m["a"] = 5
+    look(m, k)
+}
+
+fn main() -> !int {
+    let a = match get("a") {
+        v => v,
+    }
+    print("{a}")
+    0
+}

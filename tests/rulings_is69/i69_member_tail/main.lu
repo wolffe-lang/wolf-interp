@@ -1,0 +1,16 @@
+//! is69 (wolf-interp#176) — a member read of a plain value in the tail (`xs.len`) raises nothing: `size`'s row is `{Big}`.
+fn size(xs: List[int]) -> !int {
+    if xs.len > 9 {
+        return Big
+    }
+    xs.len
+}
+
+fn main() -> !int {
+    let a = match size([3]) {
+        Big => -1,
+        v => v,
+    }
+    print("{a}")
+    0
+}
