@@ -169,6 +169,19 @@ fn declaration_read_code(case: &Case) -> Option<&str> {
         // argument" is decided where the receiver is visibly a `str`.
         "E0402" => ["mem.str.ws"].as_slice(),
         "E0610" => ["type.err.alias"].as_slice(),
+        // `[type.row.match]` joins at the dfcc2f13 pin (r27, wolf-lang
+        // v0.2.21; is67 mirrored ruling #21): a `match` over a fallible value
+        // is judged from the scrutinee's row at resolve, so its E0801 (an
+        // uncovered half) and E0816 (a tag that is also a variant) are
+        // resolve-rung refusals. Keyed on the CLAUSE and not on E0801 at
+        // large: `typecheck/match_missing.lu`,
+        // `match_arm_product_nonexhaustive.lu` and `match_str_nonexhaustive.lu`
+        // pin E0801 for enum, product and `str` exhaustiveness, which is the
+        // typecheck rung this machine does not perform (`unsupported`).
+        // Measured red first: `left: Fail("E0801"), right: Pass` on
+        // `rows/negative/match_row_missing_tag.lu` (kasumi
+        // `~/lanes/r27/logs/repin-1.log`).
+        "E0801" | "E0816" => ["type.row.match"].as_slice(),
         "E0409" => ["type.row.operand"].as_slice(),
         "E0417" => ["mem.map.absent"].as_slice(),
         "E0418" => ["type.map.key"].as_slice(),
