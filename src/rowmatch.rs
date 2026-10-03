@@ -153,6 +153,24 @@ pub fn fallible_of_decl(decl: &FnDecl) -> Option<RowTy> {
     decl.ret.as_ref().and_then(fallible_of_ret)
 }
 
+/// The row a module `fn` returns, as a caller reads it: the spelled row, or
+/// — for `-> !T` — the private row its body infers (is69,
+/// wolffe-lang/wolf-interp#176; `rowinfer`), closed. A body this machine
+/// cannot read keeps `{..}`, 0.1.44's reading.
+#[must_use]
+pub fn fallible_of_fn(program: &Program, module: &str, decl: &FnDecl) -> Option<RowTy> {
+    if let Some(ok) = decl.ret.as_ref().and_then(crate::rowinfer::inferred_ok)
+        && let Some(tags) = crate::rowinfer::row_of(program, module, &decl.name.name)
+    {
+        return Some(RowTy {
+            tags,
+            open: false,
+            ok: Some(ok.clone()),
+        });
+    }
+    fallible_of_decl(decl)
+}
+
 /// The callee a call's path names, at the resolve rung: the module's own
 /// `fn`, a `use`d module's `pub fn`, or an ambient builtin with a declared
 /// row. A single-segment name a LOCAL shadows is the caller's question
@@ -162,7 +180,7 @@ pub fn callee_row(program: &Program, module: &str, path: &Path) -> Option<RowTy>
     match path.segments.as_slice() {
         [name] => {
             if let Some(Def::Fn(decl)) = program.lookup(module, &name.name, false) {
-                return fallible_of_decl(decl);
+                return fallible_of_fn(program, module, decl);
             }
             let row = crate::eval::builtin::declared_row(&name.name);
             (!row.is_empty()).then(|| RowTy {
@@ -185,7 +203,7 @@ pub fn callee_row(program: &Program, module: &str, path: &Path) -> Option<RowTy>
                         .then(|| head.name.clone())
                 })?;
             match program.lookup(&target, &name.name, true) {
-                Some(Def::Fn(decl)) => fallible_of_decl(decl),
+                Some(Def::Fn(decl)) => fallible_of_fn(program, &target, decl),
                 _ => None,
             }
         }
@@ -297,6 +315,17 @@ pub fn known_of_binding(
     callee: &dyn Fn(&Path) -> Option<RowTy>,
 ) -> Option<Known> {
     if let Some(ty) = &binding.ty {
+        // `let a: !int = f()` — the annotation spells no row, so the binding
+        // holds its initializer's where that is known (is69, #176); `{..}`
+        // otherwise.
+        if let TypeKind::ErrorUnion(ok) = &*ty.kind
+            && let Some(Known::Fallible(row)) = known_of_expr(&binding.value, locals, callee)
+        {
+            return Some(Known::Fallible(RowTy {
+                ok: Some(ok.clone()),
+                ..row
+            }));
+        }
         return known_of_type(ty);
     }
     known_of_expr(&binding.value, locals, callee)
