@@ -744,10 +744,15 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //  `memory/mut_read_overlap.lu`, `fail(E1002)` -> `run(exit=0, …)`
     //  (eg03, s186). The registry gains TWO anchors, 542 -> 544
     //  (`mem.tier0.excl.4`, `type.row.else`), and no new namespace.)
+    // (861 -> 892 at dfcc2f13, r27, wolf-lang v0.2.21: THIRTY-ONE new
+    //  files, thirty entries and one member; no `check:` line moves
+    //  (`faults/index_origin_min_overflow.lu` annotates its binding, the
+    //  verdict unchanged). The registry gains TWO anchors, 544 -> 546
+    //  (`type.row.defer`, `type.row.match`), and no new namespace.)
     let report = report();
     assert_eq!(
         report.total(),
-        861,
+        892,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
@@ -769,8 +774,11 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     // every one an entry. `members` holds at 45.
     // 733 -> 816 at cdde128a (r26, wolf-lang v0.2.20): eighty-three new
     // files, every one an entry. `members` holds at 45.
-    assert_eq!(report.entries(), 816);
-    assert_eq!(report.members(), 45);
+    // 816 -> 846 at dfcc2f13 (r27, wolf-lang v0.2.21): thirty-one new
+    // files, thirty of them entries; `members` moves 45 -> 46 with s202's
+    // `memory/versioned_loop_cross_module/ring/ring.lu`.
+    assert_eq!(report.entries(), 846);
+    assert_eq!(report.members(), 46);
 }
 
 #[test]
