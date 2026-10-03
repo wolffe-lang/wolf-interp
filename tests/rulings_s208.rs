@@ -82,11 +82,18 @@ fn run(name: &str) {
     );
 }
 
-/// The plain tail, an inferred `!()` row, a method, a nested else-less `if`.
+/// The plain tail, a method, a nested else-less `if`.
 /// Red at trunk 9f4e4a1: `a true` … `d true`.
 #[test]
 fn tail_if() {
     run("tail_if");
+}
+
+/// The closure form: a closure checked against `fn(bool) -> () ! {bad}`.
+/// Red at trunk: `run true`.
+#[test]
+fn tail_closure() {
+    run("tail_closure");
 }
 
 /// An else-if chain with no final `else` at the tail. Red at trunk: `g true`
