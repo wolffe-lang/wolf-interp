@@ -1,6 +1,50 @@
 # Changelog
 
-## Unreleased
+## 0.1.45 — 2026-10-03
+
+THE FORTY-FIFTH (is68, is69, s199's lupin half, and r27's re-pin), the
+lupin half of wolf 0.2.22. **Pin: `dfcc2f13` (wolf-lang v0.2.21 — the
+TAG)**, one release forward of 0.1.44's `cdde128a` (v0.2.20). Forty-five
+commits since 0.1.44 in three lanes, then the re-pin. It heals the one
+parting wolf 0.2.21 shipped pinned by version: a `-> !T` function's row is
+what its body can raise, so `rows/eu_bind_empty_row_handled.lu` prints
+`43 42 42` here as on every compiler machine (#176). It fixes lupin's two
+P0s from the org triage: a view that outlives its region is a
+`region-fault` and is never read from freed bytes (#126), and a unit
+context's value is `()` (#103 row 1). And it mirrors wolf 0.2.22's
+`fs_seek`, `fs_tell` and `fs_read_at` and the standard streams
+(wolf-lang#426, #424): **the first handle is 3**.
+
+**The re-pin** (r27; `31d8dfa`). `vendor/upstream/{spec,corpus}` and the
+`upstream` gitlink move to `dfcc2f13`, an ancestor of the released line
+(`merge-base --is-ancestor cdde128a dfcc2f13` holds); the two trees are
+byte-identical to wolf-lang's at the tag. The census moves (every count
+asserted by a test): corpus files 861 → 892 (31 new, none leaves), entries
+816 → 846, members 45 → 46 (s202's
+`memory/versioned_loop_cross_module/ring/ring.lu`; `b8fa2a9`, `fd90571`);
+anchors 544 → 546 (`type.row.defer`, `type.row.match`; none dropped, the
+key sets diffed both ways); distinct `conforms:` anchors 376 → 379; the
+coverage ratchet 273 → 276, the two new anchors and `conf.trap.assert`;
+the bundle 899/854 → 930/884 programs and records (`3dc6dfa`). No `check:`
+line moves; `faults/index_origin_min_overflow.lu` annotates its binding,
+so it now traps at the 1-origin shift it is about rather than at the
+literal (`e0d1b96`). Twenty-four of the thirty new entries reach `run`
+(`79c0d45`): nineteen match their `check:`, three are conservatism rows
+(s202's `typecheck/numlit_binding_literal*.lu` pin E0415 at the binding;
+this machine traps `overflow` at the literal) and two are filed. The six
+that do not reach `run` are is67's refusals, matched at resolve:
+`tests/conformance.rs` now reads E0801 and E0816 under `[type.row.match]`
+and E0611 under `[type.row.defer]` as resolve-rung codes, keyed on the
+clause (`2c2cba3`, `fd414b2`).
+
+**DIV-2026-027, filed** (`c2bba7c`; wolffe-lang/wolf-lang#556).
+`faults/assert_msg_effect_fails.lu` and `faults/assert_msg_name_fails.lu`
+trap `assert` here as pinned. This machine also renders the message as one
+stdout line before the trap, which `[conf.trap.assert]` permits ("until
+then implementations may drop the message"). The rows' `stdout=` admits
+only the dropped rendering, so both are a `MISMATCH` and both are now
+waived by name. lupin 0.1.44 did the same thing. The walk's mismatch count
+is 3: DIV-2026-019 and these two.
 
 **A `-> !T` function's row is what its body can raise** (is69,
 wolffe-lang/wolf-interp#176). `01-grammar.md` gives `-> !T` an *inferred
@@ -24,6 +68,55 @@ method call, a closure call or a spawn whose row would flow out) keeps
 `{..}`, 0.1.44's reading. Twenty witnesses under `tests/rulings_is69/`:
 nineteen red at `8f08e49` (on 0.1.44's code), green at `675ccea`, beside
 the compiler on every one; one control unchanged.
+
+**A view carries its receiver's region** (is68, wolffe-lang/wolf-interp#126,
+the mirror of wolf-lang#392). A `[mem.str.view]` product — a slice, a
+`trim`, a `split`/`words`/`lines` piece, a view of a view — carries the home
+of the `str` it views (`1a1c14f`). A view that outlives the region its
+receiver was built in is the clause's `trap(region-fault)`
+(`mem.region.intra.2`), never a read of freed bytes. 0.1.44 ran nineteen
+such shapes to `exit(0)` from freed bytes; each is E1010 on the compiler.
+`memory/region_str_view_return.lu` is now a dynamic counterpart, not a
+conservatism row (`d11cafe`).
+
+**A unit context's value is `()`** (is68, #103 row 1). An else-less `if` and
+a unit `fn` body yield `()` (`5314dfb`). Where this machine can type the
+tail, a typed tail in a unit context is refused **E0401** at wolf's code
+and span, in a late tier pass (`db9ac2a`). Rows 2 and 4's static halves
+stay owed on #103. Found beside it and filed for the compiler:
+wolf-lang#541 (checked propagates a discarded W0601 row that native and
+release drop).
+
+**`trim` and its family take no argument** (is68, #125). A
+`[mem.str.ws]` call that passes an argument is **E0402** at resolve where
+the receiver is visibly a `str` (`a4862f7`). Where the receiver cannot be
+typed, the evaluator declines it by name and never trims a cutset
+(`a77c4a4`). `trim_cutset_refused.lu` is a match at resolve.
+
+**`str` and `bool` are declared scalars** (is68, #138). They join the
+declared-scalar lattice in a late wide pass (`a75adcc`), so `let s: str =
+side` from an `int` is E0401 in the root and in a sibling module alike. The
+sibling's diagnostic names its file. `lint_is61`'s `t01` parting heals.
+
+**A nested fn's parameter modes are a module fn's** (is68, #169). A call to
+a nested fn is held to its declared modes, **E1007** at resolve
+(`3ffdfd7`). A moded nested fn runs with the module fn's convention
+(`7dc33ba`), so `nested_fn_mut_param.lu` matches and
+`nested_fn_mut_moveout.lu` traps `use-after-move`. r26's
+`NESTED_MODED_FN_DECLINED` waiver went red by name and was retired
+(`b6ea927`).
+
+**Seek, tell and positional read; the standard streams** (s199's lupin half,
+wolffe-lang/wolf-interp#171, the mirror of wolf-lang#426 and #424).
+`fs_seek`, `fs_tell` and `fs_read_at` resolve, dispatch and declare the
+rows `[os.host.sigs]` gives them, including the new tag `unseekable`
+(`ESPIPE`) (`99c35ca`, `ff53642`). Descriptors 0, 1 and 2 are the standard
+streams for `fs_fstat` and the three offset calls (`[os.fs.std]`); this
+machine duplicates them with no `unsafe`, and `close` and `read` stay `io`
+there. **The first handle is 3** (it was 1). On windows the four calls on
+0..2 are declined by name (`a7304a5`): `GetFileType` is the only honest
+classifier there and the crate forbids `unsafe`. `tests/fs_offset.rs`
+passes 0 of 4 before the mirror and 4 of 4 after.
 
 ## 0.1.44 — 2026-10-02
 
