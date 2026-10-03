@@ -7120,6 +7120,117 @@ builtin method: no static method table here; the row stays `{..}`); a
 annotated `!T`; E0602 for a binding whose row is wider than its
 annotation (`q_let_annot_tag`); E0605 for a `pub fn -> !T`.
 
+#### §3a — the prediction, scored
+
+- **held: the three mechanisms**, two code commits: `56ade7d` (the
+  inference, `src/rowinfer.rs`, cached on `sema::Program`, reset by the
+  REPL's `install_def`) and `675ccea` (the readers: `callee_row` and the
+  annotated binding). The nineteen witnesses red at `8f08e49`
+  (`red-8f08e49.log`: 1 passed, 19 failed, `EXIT=101`, each for its named
+  reason: thirteen "lupin answered `fail(E0801)`, ruled `exit(0)`", six
+  "the diagnostic names … — `lupin check` said … open row") are green at `675ccea`
+  (`green-675ccea.log`: `rulings_is69` 20/20, `EXIT=0`); the control
+  `i69_unknown_method` passed on both sides.
+- **held: the witness table, row for row** (`witnesses-head-675ccea.log`,
+  `probes-head-675ccea.log`): every run row prints the compiler's bytes,
+  and every E0801 names the compiler's tag ("does not cover `Neg`" / `bad`
+  / `none` / `Near` / `High` / `Empty`, beside `wolf build`'s "error[E0801]:
+  this `match` does not cover `Neg`"). The first WIP build missed two rows
+  (`i69_member_tail`, `i69_field_tail`): the parser spells `p.x` and
+  `xs.len` as a dotted PATH from a local, not a `Member`, and the walk read
+  that path as unknown; fixed before the first code commit
+  (`wip-8f08e49.log` is the second, green run; the first run, 18/20 with
+  a clippy error in a test's shadowed name, wrote the same file and was
+  overwritten — its two failures are quoted here from the session, not a
+  log).
+- **held: the gate, pin emptied.** `fallible_bind_empty_row_lanes.rs` at
+  r26 `dfcc2f13`, `LUPIN` = the head's release build (`7e2e9506…`): 3/3
+  green (`wolfgate-head-675ccea-unpinned.log`, `EXIT=0`); the archive 0.1.44
+  red on exactly `a_bound_empty_row_value_matches_elses_and_widens`
+  (`wolfgate-archive-0.1.44-unpinned.log`, `EXIT=101`); the archive pinned
+  3/3 green (`wolfgate-archive-0.1.44-pinned.log`). 0 SKIP lines in each.
+- **missed: "pinned, the head green".** A dev build's record answers
+  `impl_version` `0.1.44` (only `--version` carries `+dev.<sha>`; the
+  archive's record and the head's both say `0.1.44`), so the pinned gate
+  reads the head as 0.1.44, expects its pre-mirror `fail(E0801)` and reds
+  on the head's `exit(0)` (`wolfgate-head-675ccea-pinned.log`: `left:
+  "exit(0)" right: "fail(E0801)"`, `EXIT=101`). §2's first row had it
+  backwards (copied from is62's note, never measured here); is67's §3a
+  records the same reading for 0.1.43. The gate passes with the pin
+  dropped, which is the deliverable; the pin must be dropped at the
+  pairing that ships this, as every pre-mirror pin is.
+- **missed: §2's ratchet row.** `RATCHET_FLOOR` is 273 at `ba47627`
+  (r26's re-pin moved it from 271; `ANCHORS_TOTAL` 544); §2 and §3 quoted
+  is67's 271 without reading `tests/export.rs`. It holds at 273: the
+  witnesses are tests, no corpus row and no anchor moves.
+- **held: no new divergence.** `lupin diff-run`, four tiers, against r26's
+  `wolf` (`135f784f…`), archive 0.1.44 → head: on the vendored corpus (pin
+  `cdde128a`) identical divergence lists (5/5/7/7) and identical ledgers;
+  on wolf-lang r26's `corpus/`, exactly `rows/eu_bind_empty_row_handled.lu`
+  leaves the list on every tier (9→8, 11→10, 13→12, 13→12) and nothing
+  enters; the conservatism ledgers move 0 rows (the default tier's ledger
+  gains that file's `run-unmatched` entry, 531→532: it now reaches `run`).
+  Census: pin identical (666 run, 601 match, 81 / 65 / 68, 1 mismatch);
+  r26 689→690 run, 625→626 match, 4→3 mismatch.
+- **held: existing tests that change, none** — `cargo test --lib row` 65/65
+  (`wip-8f08e49.log`); the whole suite is the gauntlet's (§5).
+- **named, not this lane's:** `q_let_annot_tag` (`let a: !int = half(8)`,
+  `half`'s row `{Neg}`): the compiler `fail(E0602)` at the binding, the
+  head `fail(E0801)` at the match (0.1.44: `fail(E0801)`, open row) — the
+  verdict code still parts; lupin has no E0602 for a binding. And
+  `q_method_tail` (an unreadable body): the head keeps 0.1.44's `{..}` and
+  agrees with the compiler's verdict, not its tag.
+
+#### §4 — evidence index
+
+Commits:
+- `43e030e` §1–§3; the last commit this section, §3a and §5
+- `8f08e49` 20 witnesses (19 red, one control)
+- `56ade7d` the inference (`src/rowinfer.rs`, `sema::Program::inferred_rows`,
+  the REPL reset, `rowmatch`'s child walker made crate-visible)
+- `675ccea` the readers (`rowmatch::fallible_of_fn` under `callee_row`, the
+  annotated binding)
+- `51fbf25` CHANGELOG `Unreleased`
+
+Artifacts on kasumi under `~/lanes/is69/` (`archives/`, `evidence/`,
+`probes/`, `scripts/`; the clones `dev/` (wolf-interp), `pinc/` (wolf-interp
+at `ba47627`, the differential's working directory) and `wolf-lang/` (r26
+`dfcc2f13`, debug)). Archives: lupin 0.1.44 `e44aae06…` (binary
+`be9bf9fc…`), lupin 0.1.43 `e957c8de…` (binary `3b0702c0…`), digests equal
+to the release pages' (`setup.log`); head `lupin-head-675ccea`
+`7e2e9506…` (`build-head-675ccea.log`); wolf-lang r26 `wolf` `135f784f…`.
+- inputs: `setup.log`, `probes-archives-0.1.44-0.1.43-wolf-dfcc2f13.log`
+  (24 probes: lupin 0.1.44, 0.1.43, wolf r26's three tiers, the first
+  diagnostic lines); two earlier runs in `superseded/` (relative binary
+  paths, then the generic probe's `take` and the closure's spelling)
+- red: `red-8f08e49.log`; green: `green-675ccea.log`,
+  `witnesses-head-675ccea.log`, `probes-head-675ccea.log`; WIP:
+  `wip-8f08e49.log`
+- gates: `wolfgate-archive-0.1.44-{pinned,unpinned}.log`,
+  `wolfgate-head-675ccea-{unpinned,pinned}.log`
+- differential and census: `diffrun/{archive-0.1.44,head-675ccea}-{pin,r26}-{default,checked,native,release}.{jsonl,ledger.jsonl,log}`,
+  `diffrun/*-corpus.log`, `diffrun/*.version`, `diffrun/*.done`
+- gauntlet: `gauntlet-675ccea.log` (the code head) and the final head's
+  (named in the PR body)
+- scripts: `setup.sh`, `run-probes.sh`, `summ.py`, `gates.sh`,
+  `gates-base.sh`, `redgreen.sh`, `try-wip.sh` (+ `wip.patch`),
+  `diffrun.sh`, `gauntlet.sh`, `head.sh`
+
+Filed and commented: nothing new; the issue's fallback sentence is
+answered in §2 (an unreadable row keeps `{..}`, not the old dispatch).
+
+#### §5 — done-when
+
+- [x] branch `is69` on origin, cut at trunk `ba47627`; PR open, unmerged, with these five sections
+- [x] §2 re-derived; §3 committed (`43e030e`) before the first `src/`/`tests/` edit
+- [x] each witness seen red first (`red-8f08e49.log`), green at the head (`green-675ccea.log`), agreeing with wolf-lang r26 on every one
+- [x] r26's gate with the 0.1.44 pin dropped: head 3/3 green, the archive 0.1.44 red on exactly the pinned case (the plant)
+- [x] no new divergence against r26's compiler; the one parting row leaves; conservatism ledgers move 0 rows
+- [x] CHANGELOG `Unreleased`
+- [ ] the coverage ratchet holds at 273 and the kasumi gauntlet is green (`GAUNTLET_FAILS=0`, the PR body)
+- [ ] GitHub CI green at the head sha (the PR body)
+- [ ] kasumi build dirs pruned once the evidence is written (`dev/target`, `wolf-lang/target`); worktree `/private/tmp/is69` removed after the last push
+
 ## Spec findings from is06/is07 (spec-is-defendant — filed, not absorbed)
 
 spec/03 had never been executed before is06. The machine was the first
