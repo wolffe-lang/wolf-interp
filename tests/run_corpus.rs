@@ -2038,6 +2038,50 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("rows/else_try_handler.lu", "exit(0)"),
     ("rows/else_try_index.lu", "exit(0)"),
     ("rows/else_try_nested_else.lu", "exit(0)"),
+    //
+    // The dfcc2f13 pin (r27, wolf-lang **v0.2.21** — the TAG, one release
+    // forward of cdde128a): TWENTY-FOUR of the thirty new entries reach
+    // `run`. The six that do not are is67's refusals, matched at resolve:
+    // `rows/negative/match_row_{missing_tag,missing_value}.lu` (E0801),
+    // `match_row_tag_variant_collision.lu` (E0816) and
+    // `rows/negative/try_in_{defer,errdefer,defer_block}.lu` (E0611).
+    //
+    // NINETEEN of the twenty-four match their `check:` byte for byte: s196's
+    // defer and errdefer rows, s197's six `rows/match_row_*` runs, s202's
+    // `assert_msg_name`, `assert_msg_try`, two versioned loops, the three
+    // `eu_bind_empty_row*` rows (`eu_bind_empty_row_handled.lu` is r26's
+    // parting, healed by is69, #176) and `numlit_binding_value_later_use.lu`.
+    // THREE are CONSERVATISM rows, ledgered because they RUN: s202's
+    // `typecheck/numlit_binding_literal{,_call,_term}.lu` pin E0415 at the
+    // binding and this machine traps `overflow` at the literal at run time.
+    // TWO are FILED (DIV-2026-027): `faults/assert_msg_effect_fails.lu` and
+    // `faults/assert_msg_name_fails.lu` trap `assert` as pinned, but this
+    // machine renders the message as one stdout line before the trap, which
+    // `[conf.trap.assert]` permits and the rows' `stdout=` does not admit.
+    ("faults/assert_msg_effect_fails.lu", "trap(assert)"),
+    ("faults/assert_msg_name.lu", "exit(0)"),
+    ("faults/assert_msg_name_fails.lu", "trap(assert)"),
+    ("faults/assert_msg_try.lu", "exit(0)"),
+    ("memory/versioned_loop_cross_module/main.lu", "exit(0)"),
+    ("memory/versioned_loop_inlined_root.lu", "exit(0)"),
+    ("rows/defer_else_handles.lu", "exit(0)"),
+    ("rows/errdefer_block_loop_break.lu", "exit(0)"),
+    ("rows/errdefer_block_nested.lu", "exit(0)"),
+    ("rows/errdefer_block_row.lu", "exit(0)"),
+    ("rows/errdefer_fn_tail_control.lu", "exit(0)"),
+    ("rows/eu_bind_empty_row.lu", "exit(0)"),
+    ("rows/eu_bind_empty_row_handled.lu", "exit(0)"),
+    ("rows/eu_bind_empty_row_unit.lu", "exit(0)"),
+    ("rows/match_row_bare_tag.lu", "exit(0)"),
+    ("rows/match_row_else_control.lu", "exit(0)"),
+    ("rows/match_row_nested.lu", "exit(0)"),
+    ("rows/match_row_payload_tag.lu", "exit(0)"),
+    ("rows/match_row_try_scrutinee.lu", "exit(0)"),
+    ("rows/match_row_wild_each_half.lu", "exit(0)"),
+    ("typecheck/numlit_binding_literal.lu", "trap(overflow)"),
+    ("typecheck/numlit_binding_literal_call.lu", "trap(overflow)"),
+    ("typecheck/numlit_binding_literal_term.lu", "trap(overflow)"),
+    ("typecheck/numlit_binding_value_later_use.lu", "exit(0)"),
 ];
 
 #[test]
