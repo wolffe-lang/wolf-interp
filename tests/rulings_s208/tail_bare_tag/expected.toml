@@ -1,0 +1,14 @@
+# s208 — ruling #34 = A (wolf-lang#541 part 2), lupin's half (wolf-interp#179). This row: a bare tag as that then-block's tail; lupin discards it as it does the statement form, the compiler declines both by name (`unsupported`).
+# `[expected]` is the ruled lupin cell. `[trunk]` is what lupin trunk `9f4e4a1` (= the published
+# 0.1.45, 907cfb1a… x86_64 linux archive) and wolf-lang trunk `8e36bc1a` (= the published 0.2.22)
+# `conform-run` answered on kasumi. Probe log: ~/lanes/s208/evidence/probes-trunk-8e36bc1a.log.
+issue = "wolf-interp#179"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "g false\n" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "g true\n" }
+checked = { verdict = "exit(0)", stdout = "g true\n" }
+native  = { verdict = "exit(0)", stdout = "g true\n" }
+release = { verdict = "exit(0)", stdout = "g true\n" }
