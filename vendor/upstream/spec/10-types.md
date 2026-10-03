@@ -106,7 +106,20 @@ to §`[type.numlit.default]`: `i32` when nothing in the body decides it,
 `take_int(n)` pins it, because defaulting is applied once at the end of
 the enclosing body and a reachable expectation gets there first. Either
 way the VALUE is then fixed: `let x: f64 = n` is **refused** (E0401) —
-the `.0` of adoption is a literal's privilege, not a value's. This is the X3 safety posture and the closed-coercion-set
+the `.0` of adoption is a literal's privilege, not a value's. **The
+literal written at the binding is not that later type.** It has no
+context of its own (`[type.numlit.propagate]`: adoption does not cross
+a binding), so it takes `i32` and must fit it: `let big = 5000000000`
+followed by `take_int(big)` is **E0415** at the literal, because the
+call decides `big`'s type but never the literal's. The same holds when
+the initializer is a term made only of literals (`3000000000 + 1`,
+`-3000000000 * 2`, `0 - 9223372036854775807 - 1`). A term with any other
+operand has that operand's type as its own context, so `packed /
+10000000000` with `packed: int` is an `int` division; and a literal in
+a call argument, a comparison operand or a block inside the
+initializer has that position's context instead.
+The spelling that means a wider literal is the annotation, `let big:
+int = 5000000000`. This is the X3 safety posture and the closed-coercion-set
 discipline of the memory model (`[mem.dyn.unsize]`'s "the coercion table
 grows by addition, never by a new implicit mechanism"): C's
 usual-arithmetic-conversions and Swift's exponential-search overloading
@@ -122,7 +135,19 @@ not fit `i32`", and `trap(overflow)` on lupin 0.1.36; add
 `take_int(big)` and wolf runs it, the later use having pinned `int`
 before the rule fires. The section's own point — a value never
 implicitly changes its type — was never at issue. Witnesses:
-`typecheck/numlit_fit.lu`, `typecheck/numlit_value_refused.lu`.)
+`typecheck/numlit_fit.lu`, `typecheck/numlit_value_refused.lu`.
+Corrected 2026-10-02 by s202 for wolf-lang#458: that last measurement
+was the defect, not the rule. A later `int` use typed the literal as
+well as the binding, so `let c = 922337203685477580` compared with an
+`int` ran as 64-bit on every wolfgang lane while lupin 0.1.43 trapped
+it as outside `i32`. The literal now takes `i32` at the binding on
+checked, native and release (E0415), which is lupin's answer; a later
+use still types the binding, so `let n = 0; take_int(n)` and `var i =
+0` compared with `xs.len` are unchanged. No corpus row and no
+boreutils or lobo build moved. Witnesses:
+`typecheck/numlit_binding_literal.lu`, `numlit_binding_literal_call.lu`,
+`numlit_binding_literal_term.lu`, and the control
+`numlit_binding_value_later_use.lu`.)
 
 ## §3 The numeric cast `[type.numlit.cast]`
 
@@ -717,6 +742,74 @@ carrying a rule about operators. The rule is written here, beside
   `rows/else_try_nested_else.lu`, `rows/else_try_handler.lu`,
   `rows/else_try_block.lu`, `rows/else_return_tag.lu`, and the
   control `rows/else_own_failure.lu`.
+- `[type.row.defer]` **A `?` inside a `defer` or `errdefer` expression
+  is refused.** A deferred expression runs while its function is
+  already leaving — the function's result is formed and the
+  `defer`/`errdefer` chain of `[mem.model.order]` is running on the
+  way out — so an error a `?` would propagate from inside it has
+  nowhere honest to go: replacing the result already on its way out
+  would lose that result, and dropping the `?`'s error would hide it.
+  The shape is **E0611** at compile time on every machine, and the
+  refusal reads the whole deferred expression: a `?` in a call
+  argument, an interpolation hole, a binding or a block under the
+  `defer` is the same refusal. The fix is to handle the row inside the
+  deferred expression (`defer close(f) else |e| note(e)`) or to move
+  the fallible call out of the `defer` into the body, where its `?` has
+  a function to leave. A `?` inside a closure defined under the
+  `defer` is that closure's own propagation (`[type.row.else]`'s
+  reading of frames) and is not refused by this clause. (Ruled
+  2026-10-02, the maintainer's #19 = refused, s196 — wolf-lang#498.
+  Before the ruling the machines parted three ways: native and release
+  overflowed the compiler's stack lowering the shape, the checked
+  machine ran the deferred `?` and dropped its error, lupin 0.1.42 made
+  it the function's result. **The cost, stated:** zero — a static
+  refusal, with no instruction added to any accepted program; lupin
+  0.1.43 ran the shape and was pinned by version as pre-mirror in the
+  gate; lupin 0.1.44 refuses it, E0611 at the `?`.) Witnesses:
+  `rows/negative/try_in_defer.lu`, `rows/negative/try_in_errdefer.lu`,
+  `rows/negative/try_in_defer_block.lu`, and the control
+  `rows/defer_else_handles.lu`.
+- `[type.row.match]` **A `match` over a fallible value has two
+  halves, sorted by name.** The scrutinee has type `T ! {row}`. An arm
+  is a **row arm** — a tag of the row by name, binding its payload
+  when it has one: `none => …`, `Io(e) => …` — or a **value arm** —
+  any pattern over `T`, exactly as a `match` over `T` today: `0 => …`,
+  `v => …`, `Line(k) => …`. An identifier (or a path head) that names
+  a tag of the scrutinee's row is a row arm; anything else is a value
+  pattern; `_` covers whatever is left on both halves. The arms are
+  tried in source order, and neither half sees the other: a row value
+  can match only a row arm or `_`, a value only a value arm or `_`,
+  so a binding `v` after the tags takes the whole of `T` and leaves
+  the row to a later `_`, which is then reachable, not dead. The
+  match must cover every tag of the row and the whole of `T`;
+  **E0801** names the missing tag (`` `eof` ``) or the uncovered
+  value half (`` `_` (the value half, `int`) ``), with the engine's
+  usual witness for a partly covered `T` (`` `1` ``). The expression's
+  type is the arms' type, and the row is consumed as an `else`
+  consumes it (`[type.row.operand]`): it handles the scrutinee's own
+  row only, so a `?` that fires *inside* the scrutinee leaves the
+  function past the arms (`[type.row.else]`). A tag of the row that
+  is also a variant of `T` (`Shape ! {Line(int)}` beside `Shape.Line`)
+  is **E0816**, refused by name whether or not an arm spells it —
+  never guessed; `else |e| match e { … }` keeps the halves apart and
+  keeps working beside this form. Shapes the rule does not name — an
+  or-pattern mixing a row arm with a value pattern, an `@`-binding at
+  the top of an arm — are refused by name. The grammar is unchanged:
+  `[gram.pat]` already spells a bare tag as `IDENT` and a tag with a
+  payload as `path '(' pattern… ')'`. (Ruled 2026-10-02, the
+  maintainer's #21 "yes, as proposed", s197 — wolf-lang#497. Before
+  it, every wolfgang lane refused the form as unsupported and lupin
+  0.1.42 ran it with no clause to say which was right. **The cost,
+  stated:** zero on an accepted program beyond what `else |e| match
+  e` already costs — one `is_err` test and one arm chain per half on
+  native and release; the checked machine dispatches by the flow it
+  already carries.) Witnesses: `rows/match_row_bare_tag.lu`,
+  `rows/match_row_payload_tag.lu`, `rows/match_row_wild_each_half.lu`,
+  `rows/match_row_nested.lu`, `rows/match_row_try_scrutinee.lu`, the
+  control `rows/match_row_else_control.lu`, and the refusals
+  `rows/negative/match_row_missing_tag.lu`,
+  `rows/negative/match_row_missing_value.lu`,
+  `rows/negative/match_row_tag_variant_collision.lu`.
 
 This chapter deliberately does **not** write the full numeric tower
 (mixed integer-width arithmetic, a complete `Add`/`Mul` trait hierarchy
