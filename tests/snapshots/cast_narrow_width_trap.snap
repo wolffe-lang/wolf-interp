@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: cast_narrow_width_trap.lu
+trap:    overflow
+clause:  [arith.checked]
+rule:    ArithChecked
+message: `299 as u8` is outside `u8` — numeric casts are checked conversions in every profile (X3); spell intended overflow `wrapping[u8]`
+at:      17:13 `(n + 299) as u8`
+because: (single-span fault)

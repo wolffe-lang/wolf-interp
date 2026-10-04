@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: cast_narrow_unsigned_to_signed_trap.lu
+trap:    overflow
+clause:  [arith.checked]
+rule:    ArithChecked
+message: `128 as i8` is outside `i8` — numeric casts are checked conversions in every profile (X3); spell intended overflow `wrapping[i8]`
+at:      13:13 `b as i8`
+because: (single-span fault)
