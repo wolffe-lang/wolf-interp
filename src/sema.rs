@@ -2710,6 +2710,9 @@ struct TierWalk<'a> {
     /// whose declared result is a plain scalar, so a call to one is a tail
     /// this rung can type. `None` is the original walk, unchanged.
     late: Option<&'a BTreeSet<String>>,
+    /// The module's bodyless `extern` fn items: a call to one is a C call,
+    /// the ring's op (`[abi.c.import]`; wolf-interp#181).
+    externs: BTreeSet<String>,
 }
 
 impl TierWalk<'_> {
@@ -2814,6 +2817,37 @@ impl TierWalk<'_> {
     }
 }
 
+/// The names of a module's bodyless `extern` fn items.
+fn extern_fns(module: &Module) -> BTreeSet<String> {
+    module
+        .items
+        .iter()
+        .filter_map(|(name, (def, _))| match def {
+            Def::Fn(decl)
+                if decl.body.is_none()
+                    && decl
+                        .quals
+                        .iter()
+                        .any(|q| matches!(q, crate::ast::FnQual::Extern { .. })) =>
+            {
+                Some(name.clone())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// `export fn` and `extern "…" fn` sit at the C membrane, where a `*T` is
+/// C's pointer (`[mem.unsafe.sig]`, `[abi.c.types]`).
+fn at_c_membrane(decl: &FnDecl) -> bool {
+    decl.quals.iter().any(|q| {
+        matches!(
+            q,
+            crate::ast::FnQual::Export(_) | crate::ast::FnQual::Extern { .. }
+        )
+    })
+}
+
 /// Does this type mention `*T` anywhere the signature's reader can see?
 fn type_contains_raw(ty: &Type) -> bool {
     match &*ty.kind {
@@ -2849,16 +2883,33 @@ fn each_fn(module: &Module) -> impl Iterator<Item = &FnDecl> {
         )
 }
 
-/// `[mem.unsafe.scope]` (s22's boundary law): unsafety never crosses a
-/// signature — there are no `unsafe fn`s, so a `*T` in a parameter or return
-/// type would smuggle the raw tier into every caller's audit surface. E1302
-/// at the parameter *name* (the counterparty's span, observed at pin
-/// `f0da6e6`: `corpus/memory/unsafe_sig.lu`, span `[329,330]` — the `p` of
+/// `[mem.unsafe.sig]` (K9(b) = B and R1, STATUS #31 and #32; kw02,
+/// wolf-interp#181): a `*T` may appear in the signature of a
+/// **module-private** fn item — every caller is inside the audit granule —
+/// and of a function at the **C membrane** (`export fn`, `extern "c" fn`),
+/// where the pointer is C's. Anywhere else this machine reads — a `pub` or
+/// `pub(pkg)` fn item, every impl method — it is E1302 at the parameter
+/// *name* (the counterparty's span, observed at pin `f0da6e6`:
+/// `corpus/memory/unsafe_sig.lu`, span `[329,330]` — the `p` of
 /// `fn peek(p: *u8)`); a raw return type reports at the type's span (no
-/// pinned witness — this machine's documented choice).
+/// pinned witness — this machine's documented choice). Until is70 this
+/// machine refused `*T` in every signature, s22's older boundary law.
 fn unsafe_sig_check(program: &Program) -> Option<Diag> {
     for module in program.modules.values() {
-        for decl in each_fn(module) {
+        // Items first, then impl methods — [`each_fn`]'s order, judged ones
+        // only.
+        let items = module
+            .items
+            .values()
+            .filter_map(|(def, visible)| match def {
+                Def::Fn(decl) if *visible && !at_c_membrane(decl) => Some(&**decl),
+                _ => None,
+            });
+        let methods = module
+            .methods
+            .values()
+            .flat_map(|methods| methods.values().flatten().map(|m| &*m.decl));
+        for decl in items.chain(methods) {
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind
                     && type_contains_raw(ty)
@@ -2947,6 +2998,18 @@ fn tier_check(program: &Program) -> Option<Diag> {
         // only to decline judging a name that *does* resolve.
         let declared: BTreeSet<String> = module.items.keys().cloned().collect();
         for decl in each_fn(module) {
+            // A `comptime` fn's call into an `extern` fn is the sandbox's
+            // E0701 (`comptime/sandbox_ffi.lu`, same span), never the ring's
+            // E1301: the compiler answers E0701 there on all three lanes.
+            let externs = if decl
+                .quals
+                .iter()
+                .any(|q| matches!(q, crate::ast::FnQual::Comptime(_)))
+            {
+                BTreeSet::new()
+            } else {
+                extern_fns(module)
+            };
             let mut walk = TierWalk {
                 imports_c: !module.c_headers.is_empty(),
                 unsafe_depth: 0,
@@ -2954,6 +3017,7 @@ fn tier_check(program: &Program) -> Option<Diag> {
                 rows: &rows,
                 declared: &declared,
                 late: None,
+                externs,
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
@@ -2975,6 +3039,7 @@ fn tier_check(program: &Program) -> Option<Diag> {
                     rows: &rows,
                     declared: &declared,
                     late: None,
+                    externs: extern_fns(module),
                 };
                 if let Some(diag) = walk.expr(&binding.value) {
                     return Some(diag);
@@ -3029,6 +3094,9 @@ fn tier_late_check(program: &Program) -> Option<Diag> {
                 rows: &rows,
                 declared: &declared,
                 late: Some(&scalar_rets),
+                // The late walk types unit tails only; the ring was judged
+                // by [`tier_check`]'s walk.
+                externs: BTreeSet::new(),
             };
             walk.late_fn_body(decl)
         };
@@ -3589,6 +3657,20 @@ impl TierWalk<'_> {
                     if !self.in_unsafe() {
                         return Some(ring_diag(&format!("the C call `c.{name}`"), expr.span));
                     }
+                } else if let ExprKind::Path(path) = &*callee.kind
+                    && path.is_single()
+                    && self.externs.contains(&path.segments[0].name)
+                    && self.lookup(&path.segments[0].name) == LitClass::Unknown
+                    && !self.in_unsafe()
+                {
+                    // A call through a hand-declared `extern "c" fn` is a C
+                    // call: the ring's op, at the whole call — the
+                    // compiler's span on all three lanes (wolf-interp#181,
+                    // `memory/extern_c_outside_unsafe.lu`).
+                    return Some(ring_diag(
+                        &format!("the C call `{}`", path.segments[0].name),
+                        expr.span,
+                    ));
                 } else if let ExprKind::Path(path) = &*callee.kind
                     && path.segments.len() == 2
                     && self.lookup(&path.segments[0].name) == LitClass::Raw
@@ -9472,10 +9554,50 @@ mod tests {
     fn a_raw_pointer_signature_is_e1302_at_the_parameter_name() {
         // `corpus/memory/unsafe_sig.lu`: span [329,330] there is the `p` of
         // `fn peek(p: *u8)` — the parameter NAME, the counterparty's choice.
-        let source = "fn peek(p: *u8) -> int {\n    0\n}\n\nfn main() -> !int {\n    0\n}\n";
-        let diag = resolve(source).expect("rejected");
+        // Since kw02's `[mem.unsafe.sig]` (is70, wolf-interp#181) only a
+        // `pub`/`pub(pkg)` fn item and every method are judged.
+        for vis in ["pub ", "pub(pkg) "] {
+            let source = format!(
+                "{vis}fn peek(p: *u8) -> int {{\n    0\n}}\n\nfn main() -> !int {{\n    0\n}}\n"
+            );
+            let diag = resolve(&source).expect("rejected");
+            assert_eq!(diag.code, "E1302", "{vis}");
+            assert_eq!(&source[diag.span.start..diag.span.end], "p", "{vis}");
+        }
+        let method = "struct B {\n    n: int,\n}\n\nimpl B {\n    fn poke(self, p: *u8) -> int {\n        \
+                      self.n\n    }\n}\n\nfn main() -> !int {\n    0\n}\n";
+        let diag = resolve(method).expect("a method is judged");
         assert_eq!(diag.code, "E1302");
-        assert_eq!(&source[diag.span.start..diag.span.end], "p");
+        assert_eq!(&method[diag.span.start..diag.span.end], "p");
+    }
+
+    #[test]
+    fn a_raw_pointer_in_a_private_or_membrane_signature_is_admitted() {
+        // `[mem.unsafe.sig]`: a module-private fn item, an `export fn` and a
+        // hand-declared `extern "c" fn` may carry `*T` (wolf-interp#181).
+        for source in [
+            "fn peek(p: *u8) -> int {\n    0\n}\n\nfn main() -> !int {\n    0\n}\n",
+            "fn fresh() -> *u8 {\n    unsafe {\n        0 as *u8\n    }\n}\n\nfn main() -> !int {\n    0\n}\n",
+            "export fn kx(p: *u8) -> i64 {\n    0\n}\n\nfn main() -> !int {\n    0\n}\n",
+            "extern \"c\" fn strlen(s: *u8) -> u64\n\nfn main() -> !int {\n    0\n}\n",
+        ] {
+            assert_eq!(resolve(source), None, "{source}");
+        }
+    }
+
+    #[test]
+    fn a_call_into_a_hand_declared_extern_outside_the_ring_is_e1301_at_the_call() {
+        // `memory/extern_c_outside_unsafe.lu` (wolf-interp#181): the whole
+        // call, as `c.malloc(8)`'s is. In a `comptime` fn the sandbox's
+        // E0701 is the answer instead (`comptime/sandbox_ffi.lu`).
+        let source = "extern \"c\" fn llabs(n: i64) -> i64\n\nfn main() -> !int {\n    \
+                      let a = llabs(-42)\n    0\n}\n";
+        let diag = resolve(source).expect("rejected");
+        assert_eq!(diag.code, "E1301");
+        assert_eq!(&source[diag.span.start..diag.span.end], "llabs(-42)");
+        let inside = "extern \"c\" fn llabs(n: i64) -> i64\n\nfn main() -> !int {\n    \
+                      let a = unsafe {\n        llabs(-42)\n    }\n    0\n}\n";
+        assert_eq!(resolve(inside), None);
     }
 
     #[test]
