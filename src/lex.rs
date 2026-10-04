@@ -372,6 +372,20 @@ impl Lexed {
     }
 }
 
+/// Whether `c` (the first character of `rest`) begins no token of
+/// `[gram.lex]`: not whitespace, an identifier or number start, a quote, a
+/// punctuator, a `#[`/`#![` opener, or the byte order mark (its own E0107,
+/// reported alone).
+fn begins_no_token(c: char, rest: &str) -> bool {
+    if c.is_whitespace() || is_xid_start(c) || c == '_' || c.is_ascii_digit() || c == '\u{feff}' {
+        return false;
+    }
+    if c == '#' {
+        return !(rest.starts_with("#[") || rest.starts_with("#!["));
+    }
+    !"\"'()[]{}:!+-*/%&^|<>=.?,@;".contains(c)
+}
+
 /// The mode stack (`[gram.lex.str]`) and the delimiter stack
 /// (`[gram.lex.newline]`) are the same stack: interpolations nest inside
 /// brackets which nest inside strings, and both rules ask about its top.
@@ -990,13 +1004,29 @@ impl<'a> Lexer<'a> {
                 Tok::Error
             }
             _ => {
+                // A run of characters that begin no token is one stray
+                // character diagnostic, E0107 over the whole run — the
+                // compiler's code and span (ruling #28's registry,
+                // wolf-interp#175: "```" is one E0107 at [670,673] on
+                // `rows/negative/first_stray_backtick.lu`; E0101 is the
+                // escape's code).
+                while let Some(next) = self.src[self.pos..].chars().next()
+                    && begins_no_token(next, &self.src[self.pos..])
+                {
+                    self.pos += next.len_utf8();
+                }
+                let span = Span::new(start, self.pos);
                 self.error(
-                    diag::E_UNEXPECTED_BYTE,
+                    diag::E_STRAY_CHARACTER,
                     span,
                     "gram.lex",
-                    &format!("`{c}` begins no token"),
+                    &format!(
+                        "`{}` begins no token: a stray character",
+                        &self.src[start..self.pos]
+                    ),
                 );
-                Tok::Error
+                self.push(Tok::Error, span);
+                return;
             }
         };
         self.push(tok, span);
@@ -1642,7 +1672,15 @@ impl<'a> Lexer<'a> {
                         '\\' => self.scan_escape(),
                         '\n' if matches!(kind, StrKind::Plain) => {
                             // A plain `"…"` does not span lines; `"""` does.
-                            let span = Span::new(self.pos, self.pos + 1);
+                            // The span runs from the opening `"` to the end
+                            // of its line, as the bare-brace form's does and
+                            // the compiler's does (wolf-interp#175: once a
+                            // parse error can be earlier than a lex error,
+                            // `rows/negative/first_same_offset_lex.lu` ties
+                            // only if this one starts at the quote).
+                            let span = self
+                                .open_plain_string(self.pos)
+                                .unwrap_or_else(|| Span::new(self.pos, self.pos + 1));
                             self.error(
                                 diag::E_UNTERMINATED_STRING,
                                 span,
