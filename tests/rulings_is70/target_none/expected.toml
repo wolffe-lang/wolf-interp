@@ -1,0 +1,15 @@
+# is70 — #182: conform-run --target x86_64-unknown-none is unsupported with the target named, never run ([abi.target], kw04)
+# `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
+# (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
+# `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+issue = "wolf-interp#182"
+args = "--target x86_64-unknown-none"
+
+[expected]
+lupin   = { verdict = "unsupported", stdout = "", named = "the freestanding target x86_64-unknown-none" }
+
+[trunk]
+lupin   = { verdict = "NO-RECORD(exit 2)", stdout = "", unsupported = "error: unexpected argument '--target' found\n\n  tip: a similar argument exists: '--trace'\n\nUsage: lupin-trunk-8d82031 con" }
+checked = { verdict = "unsupported", stdout = "", unsupported = "the freestanding target x86_64-unknown-none" }
+native  = { verdict = "unsupported", stdout = "", unsupported = "the freestanding target x86_64-unknown-none" }
+release = { verdict = "unsupported", stdout = "", unsupported = "the freestanding target x86_64-unknown-none" }

@@ -1,0 +1,9 @@
+fn main() -> int {
+    // # Safety: DELIBERATELY foreign: 0xb8000 is the VGA text buffer
+    // on a PC, and no allocation owns it on a hosted target.
+    unsafe {
+        let p = 0xb8000 as *u16
+        *p = 0x0f4b
+    }
+    0
+}
