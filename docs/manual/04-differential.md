@@ -121,15 +121,21 @@ addcd7f pin), until upstream r03 fixed the spec-extract scanner and the
 v0.2.0 registry re-gained the anchor. The waiver died at the c88ab64
 pin as filed, and every export is notice-free again:
 
+The conservatism counts are elided because they depend on the host:
+`ffi.lu`'s asm is `#[cfg(target = "x86_64")]`, so an aarch64 host drops it
+and runs the row (`[gram.item.attr.cfg]`), one fewer `unsupported` on each
+side until the 0.2.22 re-pin brings the row's aarch64 twin (128, 64 and 64
+on x86_64).
+
 ```console
 $ lupin conformance export --out target/bundle --json
 {"anchors_covered":276,"anchors_total":546,"bundle_sha256":"…","files":950,"forward_tags":109,"out":"target/bundle","pin":"dfcc2f13e7c73182bdd41fc9bec2802c7da3b024","programs":930,"records":884}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
 differential: 884 entries compared, 0 member(s) exercised through their entries
 divergences: 0
-conservatism ledger: 130 entries
-  unsupported(counterparty): 65
-  unsupported(interp): 65
+conservatism ledger: … entries
+  unsupported(counterparty): …
+  unsupported(interp): …
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
 notice: bundle target/bundle at pin dfcc2f13e7c73182bdd41fc9bec2802c7da3b024 verified (bundle_sha256 …)
 ```
