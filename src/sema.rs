@@ -2731,6 +2731,17 @@ impl TierWalk<'_> {
         self.unsafe_depth > 0
     }
 
+    /// A single-name local the walk knows holds a raw pointer.
+    fn raw_local(&self, expr: &Expr) -> bool {
+        match &*expr.kind {
+            ExprKind::Group(inner) => self.raw_local(inner),
+            ExprKind::Path(path) if path.is_single() => {
+                self.lookup(&path.segments[0].name) == LitClass::Raw
+            }
+            _ => false,
+        }
+    }
+
     /// The syntactic class of an expression, conservatively. `Unknown` means
     /// "say nothing" — the walk never guesses.
     fn classify(&self, expr: &Expr) -> LitClass {
@@ -3381,6 +3392,17 @@ impl TierWalk<'_> {
                 {
                     return Some(ring_diag("a raw pointer write", place.span));
                 }
+                // `*p = v` and `*p op= v` are `p[0]` as a place, under the
+                // same ring (`[mem.prov.expose]`; wolf-interp#184).
+                if let ExprKind::Unary {
+                    op: crate::ast::UnOp::Deref,
+                    operand,
+                } = &*place.kind
+                    && self.raw_local(operand)
+                    && !self.in_unsafe()
+                {
+                    return Some(ring_diag("a raw pointer write", place.span));
+                }
                 self.expr(place).or_else(|| self.expr(value))
             }
             StmtKind::AssumeNoalias(operands) => {
@@ -3448,6 +3470,15 @@ impl TierWalk<'_> {
             | ExprKind::Try(inner)
             | ExprKind::FromEnd(inner)
             | ExprKind::Freeze(inner) => self.expr(inner),
+            // Prefix `*p` is `p[0]` (`[mem.prov.expose]`, kw06): a read
+            // through a raw local outside the ring, at the `*p` itself —
+            // the compiler's span on all three lanes (wolf-interp#184).
+            ExprKind::Unary {
+                op: crate::ast::UnOp::Deref,
+                operand,
+            } if self.raw_local(operand) && !self.in_unsafe() => {
+                Some(ring_diag("a raw pointer read", expr.span))
+            }
             ExprKind::Unary { operand, .. } => self.expr(operand),
             ExprKind::Binary { lhs, rhs, .. } => self.expr(lhs).or_else(|| self.expr(rhs)),
             ExprKind::Cast { expr: operand, ty } => {
@@ -9388,6 +9419,32 @@ mod tests {
         let diag = resolve(source).expect("rejected");
         assert_eq!(diag.code, "E1301");
         assert_eq!(&source[diag.span.start..diag.span.end], "p[0]");
+    }
+
+    #[test]
+    fn a_prefix_deref_outside_the_ring_is_e1301_at_the_deref() {
+        // wolf-interp#184 item 3: `*p` is `p[0]` ([mem.prov.expose], kw06),
+        // as a read, a place and a compound place; the compiler's span on
+        // all three lanes is the `*p` itself.
+        for (stmt, at) in [
+            ("*p = 3", "*p"),
+            ("*p += 2", "*p"),
+            ("let a = *p", "*p"),
+            ("let a = (*(p)) + 1", "*(p)"),
+        ] {
+            let source = format!(
+                "import c \"stdlib.h\"\n\nfn main() -> !int {{\n    \
+                 let p = unsafe {{ c.calloc(1, 8) as *u8 }}\n    {stmt}\n    0\n}}\n"
+            );
+            let diag = resolve(&source).expect("rejected");
+            assert_eq!(diag.code, "E1301", "{stmt}");
+            assert_eq!(&source[diag.span.start..diag.span.end], at, "{stmt}");
+        }
+        // Inside the ring every spelling is clean.
+        let source = "import c \"stdlib.h\"\n\nfn main() -> !int {\n    \
+                      unsafe {\n        let p = c.calloc(1, 8) as *u8\n        *p = 3\n        \
+                      *p += 2\n        let a = *p\n        c.free(p)\n    }\n    0\n}\n";
+        assert!(resolve(source).is_none(), "{:?}", resolve(source));
     }
 
     #[test]
