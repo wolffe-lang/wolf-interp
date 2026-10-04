@@ -329,7 +329,9 @@ pub const E_MIXED_MARGIN: &str = "E0105";
 /// A numeric literal with no digits after its base prefix, or a malformed
 /// exponent (`[gram.lex.number]`). **Unpinned.**
 pub const E_BAD_NUMBER: &str = "E0106";
-/// Source that is not UTF-8 (`[gram.lex.source]`). **Unpinned.**
+/// Source that is not UTF-8 (`[gram.lex.source]`). The site is unpinned; the
+/// number is the corpus's since the 8e36bc1a pin (r28), which pins E0107 for
+/// [`E_STRAY_CHARACTER`] (`rows/negative/first_stray_backtick.lu`).
 pub const E_NOT_UTF8: &str = "E0107";
 /// A stray character that begins no token but is not merely an unexpected
 /// byte: a byte order mark anywhere but at offset 0. **Spec-pinned by D74**
@@ -432,8 +434,9 @@ pub const E_ASSUME_ARITY: &str = "E0212";
 /// is45 had already moved `assume noalias` off E0206 to E0212 to keep the
 /// number free.
 pub const E_EXPECTED_TYPE: &str = "E0206";
-/// Syntactic nesting past the recursion rail. The **code** is unpinned; the
-/// **depth** is not: `[gram.lex.rails]` makes expression/statement recursion
+/// Syntactic nesting past the recursion rail. The site's **code** is
+/// unpinned (the number is the corpus's since the 8e36bc1a pin, r28, which
+/// pins E0207 for [`E_EXPECTED_PATTERN`]); the **depth** is not: `[gram.lex.rails]` makes expression/statement recursion
 /// depth 256 normative and differential-tested, an amendment this
 /// implementation's is01 fuzz smoke provoked. See [`crate::parse::MAX_NESTING`].
 pub const E_NESTING_RAIL: &str = "E0207";
@@ -497,7 +500,13 @@ pub const UNPINNED_CODES: &[(&str, &str, &str)] = &[
     // that E0103/E0104/E0105 are implemented and corpus-pinned; E0109 is
     // unspoken by this implementation.
     (E_BAD_NUMBER, "gram.lex.number", "malformed numeric literal"),
-    (E_NOT_UTF8, "gram.lex.source", "source is not UTF-8"),
+    // E_NOT_UTF8 (E0107) sat here until the 8e36bc1a pin (r28, wolf-lang
+    // v0.2.22): s203's `rows/negative/first_stray_backtick.lu` pins
+    // `fail(E0107)` for a stray character (`[gram.lex]`, ruling #28), so the
+    // number is the corpus's to define and no longer this implementation's
+    // to choose. Source that is not UTF-8 rides the same code, the way a
+    // byte that began no token rode E0101, which the clause neither forbids
+    // nor mentions.
     (
         E_UNTERMINATED_INTERP,
         "gram.lex.str",
@@ -533,11 +542,13 @@ pub const UNPINNED_CODES: &[(&str, &str, &str)] = &[
         "gram.expr.unsafe",
         "`assume noalias` needs ≥2 operands",
     ),
-    (
-        E_NESTING_RAIL,
-        "gram.lex.rails",
-        "syntactic nesting past the normative depth-256 rail",
-    ),
+    // E_NESTING_RAIL (E0207) sat here until the 8e36bc1a pin (r28,
+    // wolf-lang v0.2.22): s203's `rows/negative/first_keyword_pattern.lu`,
+    // `first_parse_before_lex.lu` and `first_parse_before_resolve.lu` pin
+    // `fail(E0207)` for "expected a pattern" (`[gram.pat]`, ruling #28;
+    // [`E_EXPECTED_PATTERN`], is70), so the number is the corpus's. The
+    // rail still rides it here; the compiler answers the rail E0201
+    // (measured by is70, 300 nested parens, one byte later than here).
 ];
 
 #[cfg(test)]
