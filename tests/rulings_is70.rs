@@ -548,3 +548,77 @@ fn cfg_field_member() {
 fn attr_implemented_set() {
     run("attr_implemented_set", "wolf-interp#174");
 }
+
+// ---- wolf-interp#175: the first diagnostic, `[proto.record.first]` --------
+// Ruling #28: the diagnostic at the earliest byte offset wins, the earlier
+// phase at one offset. The `first_*` rows from `boundary_before_lex` to
+// `union_toplevel` are the compiler's s203 rows (`corpus/rows/negative/`)
+// and its gate fixtures (`first_diagnostic_lanes.rs`), byte for byte; the
+// rest are is70's own calibration of the boundary rule on the compiler.
+
+/// A parse error before a lex error is first. Red at trunk: E0102.
+#[test]
+fn first_parse_before_lex() {
+    run("first_parse_before_lex", "wolf-interp#175");
+}
+
+/// An unclosed `(` one byte before the unterminated string inside it:
+/// E0202 at the opener. Red at trunk: E0102.
+#[test]
+fn first_boundary_before_lex() {
+    run("first_boundary_before_lex", "wolf-interp#175");
+}
+
+/// A character that begins no token is E0107, over the whole run. Red at
+/// trunk: E0101 at the first backtick.
+#[test]
+fn first_stray_characters() {
+    run("first_stray_backtick", "wolf-interp#175");
+    run("first_stray_runs", "wolf-interp#175");
+}
+
+/// "Expected a pattern" is E0207. Red at trunk: E0201.
+#[test]
+fn first_expected_pattern() {
+    run("first_keyword_pattern", "wolf-interp#175");
+    run("first_parse_before_resolve", "wolf-interp#175");
+}
+
+/// A declaration keyword inside an error row: E0202 at the row's `{`. Red at
+/// trunk: E0008 at `var`.
+#[test]
+fn first_row_brace_unclosed() {
+    run("first_row_brace_unclosed", "wolf-interp#175");
+}
+
+/// A top-level `union` is E0203. Red at trunk: E0201.
+#[test]
+fn first_union_toplevel() {
+    run("first_union_toplevel", "wolf-interp#175");
+}
+
+/// The lex/parse tie at one offset is the lexer's E0102, spanning the
+/// string from its quote. Red at trunk: E0102 at the line end.
+#[test]
+fn first_same_offset_lex() {
+    run("first_same_offset_lex", "wolf-interp#175");
+}
+
+/// A group a later closer of another kind leaves open: E0202 at the
+/// opener — a call's `(` met by `}`, a list's `[` met by `}` after a stray
+/// `)`. Red at trunk: E0201 at the later token.
+#[test]
+fn first_boundary_at_the_opener() {
+    run("first_boundary_call", "wolf-interp#175");
+    run("first_boundary_list", "wolf-interp#175");
+}
+
+/// Controls: a group that does close later keeps E0201 at the bad token; a
+/// closer that matches nothing open is E0201 at the closer; #377's list
+/// literal runs everywhere.
+#[test]
+fn first_controls() {
+    run("first_group_closed_later", "wolf-interp#175");
+    run("first_stray_closer", "wolf-interp#175");
+    run("first_list_literal_sum", "wolf-interp#175");
+}

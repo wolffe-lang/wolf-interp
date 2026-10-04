@@ -1,0 +1,14 @@
+# is70 — #175: [proto.record.first] (ruling #28) — the earliest diagnostic, the earlier phase at one offset; lupin's codes and spans for the parse tier
+# `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
+# (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
+# `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+issue = "wolf-interp#175"
+
+[expected]
+lupin   = { verdict = "fail(E0107)", stdout = "", first = "E0107@[670,673]" }
+
+[trunk]
+lupin   = { verdict = "fail(E0101)", stdout = "", first = "E0101@[670,671]" }
+checked = { verdict = "fail(E0107)", stdout = "", first = "E0107@[670,673]" }
+native  = { verdict = "fail(E0107)", stdout = "", first = "E0107@[670,673]" }
+release = { verdict = "fail(E0107)", stdout = "", first = "E0107@[670,673]" }
