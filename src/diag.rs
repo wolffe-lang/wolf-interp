@@ -278,7 +278,9 @@ pub const E_KEYWORD_AS_IDENT: &str = "E0008";
 // Lexer tier, E01xx. Only E0108 is spec-pinned.
 // ---------------------------------------------------------------------------
 
-/// A byte that begins no token (`[gram.lex]`), and — **spec-pinned since
+/// A `\u{…}` escape's digit count — and, until is70, a byte that begins no
+/// token, which is [`E_STRAY_CHARACTER`] since then (wolf-interp#175: the
+/// compiler's E0107 over the whole run). **Spec-pinned since
 /// #189/r04** — a `\u{…}` escape whose digit count is outside the
 /// production's one-to-six, reported at the escape in char and string
 /// literals alike (`[gram.lex.char]`: "Seven or more digits, or none, is
@@ -381,6 +383,21 @@ pub const E_UNEXPECTED_TOKEN: &str = "E0201";
 /// that witness E0201 — it stops at the first bad token where the
 /// counterparty reads to EOF; filed as DIV-2026-019, span-or-code.)
 pub const E_UNEXPECTED_EOF: &str = "E0202";
+/// A top-level token that starts no declaration (`[gram.item]`): `union
+/// Word { … }`. **E0203 is the compiler's** — "expected a declaration
+/// here", measured at wolf-lang `50830027` on kw00's `union` pair and
+/// pinned by version in its `first_diagnostic_lanes.rs` (wolf-interp#175,
+/// is70); this implementation answered E0201 at the same span until is70.
+/// Inside an impl or trait body the generic E0201 stands.
+pub const E_EXPECTED_DECLARATION: &str = "E0203";
+/// A token that cannot begin a pattern where one starts (`[gram.pat]`):
+/// `let = 1`, `let mut f`. **E0207 is the compiler's** "expected a pattern"
+/// (wolf-interp#175, is70; `rows/negative/first_keyword_pattern.lu` and
+/// `first_parse_before_resolve.lu` at wolf-lang 0.2.22). It shares the
+/// number with [`E_NESTING_RAIL`], this implementation's own choice for the
+/// rail, the way E0101 and E0107 each serve two sites; the compiler answers
+/// the rail E0201 (measured, 300 nested parens, one byte later than here).
+pub const E_EXPECTED_PATTERN: &str = "E0207";
 /// `when` needs ≥2 operands (`[gram.expr.conc]`). **Unpinned.**
 ///
 /// The code is E0201, not a dedicated number: wolfc emits the generic
