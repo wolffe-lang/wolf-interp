@@ -1,0 +1,10 @@
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: 8 zeroed bytes, never freed (the program ends).
+    let p = unsafe {
+        c.calloc(1, 8) as *u8
+    }
+    *p = 3
+    0
+}

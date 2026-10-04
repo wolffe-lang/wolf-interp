@@ -1,0 +1,15 @@
+import c "stdlib.h"
+
+fn main() -> int {
+    var a = 0
+    // # Safety: p is a live 8-byte allocation, freed once.
+    unsafe {
+        let p = c.calloc(1, 8) as *u8
+        *p = 5
+        *p += 2
+        a = *p as int
+        c.free(p)
+    }
+    print("{a}")
+    a - 7
+}

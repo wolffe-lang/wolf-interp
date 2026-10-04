@@ -1,0 +1,14 @@
+# is70 — #184 item 3: prefix *p is p[0] under the same ring (E1301), [mem.prov.expose] at wolf-lang 50830027
+# `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
+# (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
+# `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+issue = "wolf-interp#184"
+
+[expected]
+lupin   = { verdict = "fail(E1301)", stdout = "", first = "E1301@[166,168]" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "" }
+checked = { verdict = "fail(E1301)", stdout = "", first = "E1301@[166,168]" }
+native  = { verdict = "fail(E1301)", stdout = "", first = "E1301@[166,168]" }
+release = { verdict = "fail(E1301)", stdout = "", first = "E1301@[166,168]" }
