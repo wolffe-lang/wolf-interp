@@ -270,47 +270,36 @@ fn is_filed_divergence(path: &str) -> bool {
     wolf_interp::differ::filed(path).is_some()
 }
 
-/// Rows whose pinned `check:` a later ruling changed upstream, which this
-/// machine already follows: `(row, what this machine answers at resolve,
-/// why)`. Each names the clause and the wolf-lang commit that re-spells the
-/// row — both commits are in wolf 0.2.22, the pairing, and neither is in the
-/// vendored 0.2.21 pin — so the entry leaves when the re-pin carries it.
-/// [`a_row_ruled_ahead_of_the_pin_answers_as_ruled`] asserts what each row
-/// does meanwhile, so the list hides nothing.
-const RULED_AHEAD_OF_PIN: &[(&str, &str, &str)] = &[
-    (
-        "memory/unsafe_sig.lu",
-        "pass",
-        "kw02's `[mem.unsafe.sig]` (K9(b) = B, R1; wolf-interp#181, is70): a \
-         module-private fn may carry `*T`. wolf-lang be13b445 re-spells the row \
-         `pub fn peek`, which this machine refuses E1302 \
-         (tests/rulings_is70/unsafe_sig).",
-    ),
-    (
-        "comptime.lu",
-        "fail(E0817)",
-        "kw01's `[gram.item.attr.set]` (K13; wolf-interp#174, is70): `#[noalloc]` \
-         has no checker and is refused by name. wolf-lang e951afbb drops it from \
-         the row, which then runs as pinned.",
-    ),
-];
+// (is70's `RULED_AHEAD_OF_PIN` stood here: `memory/unsafe_sig.lu`, which
+// this machine ran (kw02's `[mem.unsafe.sig]` admits `*T` in a private fn's
+// signature) while the vendored 0.2.21 row pinned E1302 on a private `peek`,
+// and `comptime.lu`, whose `#[noalloc]` the closed attribute set refuses
+// E0817. The 8e36bc1a pin (r28) carries wolf-lang be13b445's `pub fn peek`
+// and e951afbb's attribute-free row: the one fails E1302 at resolve as
+// pinned, the other resolves. Both retired by name when
+// `a_row_ruled_ahead_of_the_pin_answers_as_ruled` went red.)
 
-fn is_ruled_ahead_of_pin(path: &str) -> bool {
-    RULED_AHEAD_OF_PIN
-        .iter()
-        .any(|(row, _, _)| path.ends_with(row))
-}
-
-#[test]
-fn a_row_ruled_ahead_of_the_pin_answers_as_ruled() {
-    for (row, answer, why) in RULED_AHEAD_OF_PIN {
-        let case = cases()
-            .into_iter()
-            .find(|case| case.path.ends_with(row))
-            .unwrap_or_else(|| panic!("{row} is in the pinned corpus ({why})"));
-        let observation = frontend::observe(&case.source, Some(Phase::Resolve));
-        assert_eq!(observation.verdict.to_string(), *answer, "{row}: {why}");
-    }
+/// Whether a `phase: lex` row's lexical fault comes AFTER the parse refusal
+/// it pins. Ruling #28 (`[proto.record.first]`, s203; wolf-interp#175,
+/// is70): the record's diagnostic is the earliest across lex and parse, so
+/// `rows/negative/first_parse_before_lex.lu` and
+/// `first_boundary_before_lex.lu` (the 8e36bc1a pin, r28) carry an
+/// unterminated string past the parse error they pin. The ledger phase and
+/// the `check:` code are the corpus's statement of it; nothing is listed by
+/// name (wolf-interp#58).
+fn parse_refusal_precedes_lex_fault(case: &Case, lexed: &frontend::Observation) -> bool {
+    let (Some(Phase::Lex), Some(code), Some(lex_fault)) = (
+        case.ledger_phase,
+        pinned_code(case.check.as_ref()),
+        lexed.detail.as_ref(),
+    ) else {
+        return false;
+    };
+    let parsed = frontend::observe(&case.source, Some(Phase::Parse));
+    parsed.verdict == Verdict::Fail(code.to_owned())
+        && parsed
+            .detail
+            .is_some_and(|first| first.span.start < lex_fault.span.start)
 }
 
 /// A `member` file in a directory whose entry's disagreement is filed — the
@@ -360,7 +349,9 @@ fn every_corpus_file_lexes_clean() {
             continue;
         }
         let observation = frontend::observe(&case.source, Some(Phase::Lex));
-        if observation.verdict != Verdict::Pass {
+        if observation.verdict != Verdict::Pass
+            && !parse_refusal_precedes_lex_fault(&case, &observation)
+        {
             failures.push(format!(
                 "  {}: {} ({:?})",
                 case.path, observation.verdict, observation.detail
@@ -487,12 +478,19 @@ fn files_whose_ledger_stops_at_lex_fail_at_parse_with_their_pinned_code() {
     // precisely so that following wolfc here would cost nothing, and the file
     // is a match at first sight. It sorts between
     // `grammar/tuple_pattern_no_separator.lu` and `grammar/when_reserved.lu`.
+    // s203's four `rows/negative/first_*` rows joined at 8e36bc1a (r28,
+    // wolf-lang v0.2.22; ruling #28, `[proto.record.first]`): E0202 at an
+    // unclosed `(` one byte before a string's E0102
+    // (`first_boundary_before_lex.lu`) and E0207 "expected a pattern" three
+    // times (`first_keyword_pattern.lu`, `first_parse_before_lex.lu`,
+    // `first_parse_before_resolve.lu`). is70 (#175) answered all four
+    // before the pin carried them; they sort last, after `error_alias_open`.
     assert_eq!(
         seen.values().cloned().collect::<Vec<_>>(),
         vec![
             "E0201", "E0201", "E0201", "E0201", "E0211", "E0201", "E0201", "E0201", "E0001",
             "E0201", "E0210", "E0002", "E0201", "E0201", "E0201", "E0006", "E0201", "E0206",
-            "E0008", "E0201"
+            "E0008", "E0201", "E0202", "E0207", "E0207", "E0207"
         ],
         "the pinned grammar-tier codes changed: {seen:?}"
     );
@@ -552,7 +550,6 @@ fn every_parseable_file_resolves_under_sema_lite() {
         if case.ledger_phase.is_some_and(|p| p < Phase::Parse)
             || is_filed_divergence(&case.path)
             || is_member_of_filed_module(&case)
-            || is_ruled_ahead_of_pin(&case.path)
         {
             continue;
         }
@@ -575,10 +572,16 @@ fn every_parseable_file_resolves_under_sema_lite() {
         // the name (`sema::row_operand_check`, the RowWalk), a resolve-rung
         // refusal like the rest. E0409 is NOT here — see
         // `declaration_read_code` for the half of it this rung owns.
+        // E0817 and E0818 (kw01's `[gram.item.attr.set]`, `[gram.item.attr.cfg]`
+        // and `[abi.c.seams]`; is70, wolf-interp#174) join at the 8e36bc1a pin
+        // (r28), which carries the `grammar/attr_*`, `cfg_*` and
+        // `extern_abi_interrupt.lu` rows: an attribute nothing reads, a `cfg`
+        // this machine cannot read and an ABI string other than `"c"` are
+        // decided from the item's syntax at resolve, like the rest.
         if let Some(
             code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E0809"
             | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102" | "E1103"
-            | "E1301" | "E1302"),
+            | "E1301" | "E1302" | "E0817" | "E0818"),
         ) = pinned_code(case.check.as_ref())
         {
             assert_eq!(
@@ -621,7 +624,6 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
         if case.ledger_phase.is_some_and(|p| p < Phase::Parse)
             || is_filed_divergence(&case.path)
             || is_member_of_filed_module(&case)
-            || is_ruled_ahead_of_pin(&case.path)
         {
             continue;
         }
@@ -640,7 +642,7 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
             if let Some(
                 code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
                 | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101"
-                | "E1102" | "E1103" | "E1301" | "E1302"),
+                | "E1102" | "E1103" | "E1301" | "E1302" | "E0817" | "E0818"),
             ) = pinned_code(case.check.as_ref())
             {
                 assert_eq!(
