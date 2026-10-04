@@ -406,3 +406,35 @@ fn sig_controls() {
     run("unsafe_sig", "wolf-interp#181");
     run("sig_method_raw", "wolf-interp#181");
 }
+
+// ---- wolf-interp#180: E0602 at an annotated binding -----------------------
+// `[err.rows]`: a binding whose declared row cannot hold its initializer's
+// is refused at the initializer, before any `match` reads it.
+
+/// The issue's shape: `let a: !int = half([8])` where `half`'s inferred row
+/// is `{none}`. Red at trunk: E0801 at the later `match`.
+#[test]
+fn bind_row_wider() {
+    run("bind_row_wider", "wolf-interp#180");
+}
+
+/// A spelled row wider than the annotation's. Red at trunk: `exit(0)`, `5`.
+#[test]
+fn bind_row_named_wider() {
+    run("bind_row_named_wider", "wolf-interp#180");
+}
+
+/// The same under `var`. Red at trunk: `exit(0)`, `7`.
+#[test]
+fn bind_row_var_wider() {
+    run("bind_row_var_wider", "wolf-interp#180");
+}
+
+/// Controls: a declared row that holds the initializer's, an empty inferred
+/// row under `!int`, and an open declared row.
+#[test]
+fn bind_row_controls() {
+    for row in ["bind_row_fits", "bind_row_empty_ok", "bind_row_open_ok"] {
+        run(row, "wolf-interp#180");
+    }
+}

@@ -1,0 +1,14 @@
+# is70 — #180 control: a binding whose declared row holds the initializer's (or is open) runs
+# `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
+# (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
+# `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+issue = "wolf-interp#180"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "9\n" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "9\n" }
+checked = { verdict = "exit(0)", stdout = "9\n" }
+native  = { verdict = "exit(0)", stdout = "9\n" }
+release = { verdict = "exit(0)", stdout = "9\n" }

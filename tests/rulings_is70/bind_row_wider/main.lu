@@ -1,0 +1,13 @@
+fn half(xs: List[int]) -> !int {
+    let v = xs.get(0)?
+    v / 2
+}
+
+fn main() -> !int {
+    let a: !int = half([8])
+    let b = match a {
+        v => v + 1,
+    }
+    print("{b}")
+    0
+}

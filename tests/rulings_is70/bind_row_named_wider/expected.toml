@@ -1,0 +1,14 @@
+# is70 — #180: an annotated binding whose declared row cannot hold the initializer's row is E0602 at the initializer ([err.rows])
+# `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
+# (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
+# `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+issue = "wolf-interp#180"
+
+[expected]
+lupin   = { verdict = "fail(E0602)", stdout = "", first = "E0602@[181,188]" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "5\n" }
+checked = { verdict = "fail(E0602)", stdout = "", first = "E0602@[181,188]" }
+native  = { verdict = "fail(E0602)", stdout = "", first = "E0602@[181,188]" }
+release = { verdict = "fail(E0602)", stdout = "", first = "E0602@[181,188]" }

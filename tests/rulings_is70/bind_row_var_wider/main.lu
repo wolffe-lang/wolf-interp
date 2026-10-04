@@ -1,0 +1,16 @@
+fn parse_digit(s: str) -> int ! {parse, none} {
+    if s.len == 0 {
+        return none
+    }
+    s.to_int()?
+}
+
+fn main() -> !int {
+    var a: int ! {parse} = parse_digit("7")
+    let b = match a {
+        v => v,
+        parse => 0,
+    }
+    print("{b}")
+    0
+}

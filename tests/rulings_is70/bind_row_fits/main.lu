@@ -1,0 +1,17 @@
+fn half(n: int) -> int ! {neg} {
+    if n < 0 {
+        return neg
+    }
+    n / 2
+}
+
+fn main() -> !int {
+    let a: int ! {neg, odd} = half(8)
+    let b = match a {
+        v => v + 1,
+        neg => 0,
+        odd => 1,
+    }
+    print("{b}")
+    0
+}
