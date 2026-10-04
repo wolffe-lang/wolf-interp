@@ -269,6 +269,13 @@ struct ConformRunArgs {
     /// Emit the machine-readable observation record.
     #[arg(long)]
     json: bool,
+    /// The target triple (`[abi.target]`). This machine's own host triple
+    /// runs as if omitted; `x86_64-unknown-none`, the freestanding target, is
+    /// answered `unsupported` with the target named and never run; any other
+    /// triple is a tool error naming the two this machine accepts
+    /// (wolf-interp#182).
+    #[arg(long, value_name = "TRIPLE")]
+    target: Option<String>,
     /// Resolve `use std.X[.Y]` against `<DIR>/X[/Y]/` — the std tree's root.
     /// Falls back to the `LUPIN_STD` environment variable (the compiler's
     /// `--std-root`/`WOLF_STD` mechanism, interpreter half; issue #6).
@@ -1321,26 +1328,46 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
     // invoked in, as the compiler's do (`[os.fs.path]`, is55).
     wolf_interp::eval::Machine::observe_in_the_process_cwd();
 
-    if let Some(budget) = args.explore {
+    // `--target` (wolf-interp#182): the host runs, the freestanding target is
+    // a record refusing it by name, anything else is the invoker's error.
+    let freestanding = match args.target.as_deref() {
+        None => false,
+        Some(t) if t == wolf_interp::HOST_TRIPLE => false,
+        Some(t) if t == wolf_interp::FREESTANDING_TRIPLE => true,
+        Some(t) => {
+            return tool_error(&format!(
+                "unknown target `{t}` (this machine runs its host, `{}`, and refuses the \
+                 freestanding `{}` by name)",
+                wolf_interp::HOST_TRIPLE,
+                wolf_interp::FREESTANDING_TRIPLE
+            ));
+        }
+    };
+
+    if !freestanding && let Some(budget) = args.explore {
         return run_explore(args, budget);
     }
 
-    let request = match (args.seed, args.schedule.as_deref()) {
-        (Some(seed), _) => wolf_interp::eval::SchedRequest::Seed(seed),
-        (None, Some(text)) => match parse_schedule(text) {
-            Ok(request) => request,
-            Err(message) => return tool_error(&message),
-        },
-        (None, None) => wolf_interp::eval::SchedRequest::Default,
+    let (record, observed) = if freestanding {
+        wolf_interp::observe_record_freestanding(&args.file)
+    } else {
+        let request = match (args.seed, args.schedule.as_deref()) {
+            (Some(seed), _) => wolf_interp::eval::SchedRequest::Seed(seed),
+            (None, Some(text)) => match parse_schedule(text) {
+                Ok(request) => request,
+                Err(message) => return tool_error(&message),
+            },
+            (None, None) => wolf_interp::eval::SchedRequest::Default,
+        };
+        wolf_interp::observe_record_scheduled(
+            &args.file,
+            &source,
+            args.phase,
+            args.trace.unwrap_or_default(),
+            &request,
+            args.std_root.as_deref(),
+        )
     };
-    let (record, observed) = wolf_interp::observe_record_scheduled(
-        &args.file,
-        &source,
-        args.phase,
-        args.trace.unwrap_or_default(),
-        &request,
-        args.std_root.as_deref(),
-    );
 
     // Never emit a record this implementation's own validator would reject.
     let value = match serde_json::to_value(&record) {
