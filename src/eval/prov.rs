@@ -2098,6 +2098,6 @@ mod tests {
             assert!(!row.optimization().is_empty(), "{row}");
             assert!(!row.what().is_empty(), "{row}");
         }
-        assert_eq!(UbRow::ALL.len(), 11);
+        assert_eq!(UbRow::ALL.len(), 12);
     }
 }
