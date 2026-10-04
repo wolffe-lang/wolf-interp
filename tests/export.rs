@@ -305,7 +305,17 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // pins diffed, 376 -> 379 distinct): `type.row.defer` and `type.row.match`,
 // the two anchors the pin adds (the `rows/match_row_*`, `try_in_*` and
 // defer rows), and `conf.trap.assert` (the four `faults/assert_msg_*`).
-const RATCHET_FLOOR: usize = 276;
+// 276 -> 290 at 8e36bc1a (r28, wolf-lang v0.2.22 — the TAG): FOURTEEN, each
+// cited first by files the pin adds (the corpus `conforms:` sets of the two
+// pins diffed, 379 -> 392 distinct: fourteen added, `perf.contract` dropped
+// with `comptime.lu`'s `#[noalloc]`, a forward tag and never an anchor):
+// `abi.c.export`, `abi.c.import`, `abi.c.types`, `abi.layout.c` (kw01's and
+// kw02's `membrane/` and `memory/raw_*` rows), `gram.item.attr`,
+// `gram.item.attr.cfg` (the `grammar/attr_*` and `cfg_*` rows), `gram.lex`
+// and `proto.record.first` (s203's `first_*` rows), `mem.unsafe.sig`,
+// `os.fs.read_at`, `os.fs.seek`, `os.fs.std`, `os.fs.tell` (s199's `fs/`
+// rows) and `type.numlit.cast.narrow` (kw03's casts).
+const RATCHET_FLOOR: usize = 290;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -505,7 +515,18 @@ const RATCHET_FLOOR: usize = 276;
 // diffed BOTH ways: two added, NOTHING dropped, no owner changed —
 // `type.row.defer` (spec/10, ruling #19) and `type.row.match` (spec/10,
 // ruling #21). No new namespace.
-const ANCHORS_TOTAL: usize = 546;
+// 546 -> 569 at 8e36bc1a (r28, wolf-lang v0.2.22 — the TAG): TWENTY-THREE.
+// Key sets diffed BOTH ways: twenty-three added, NOTHING dropped —
+// `abi.asm`, `abi.asm.inline`, `abi.asm.link`, `abi.asm.machines`,
+// `abi.asm.roster`, `abi.c.export`, `abi.c.import`, `abi.layout.c`,
+// `abi.target`, `abi.target.entry`, `abi.target.none`,
+// `abi.target.none.alloc`, `abi.target.none.codegen`,
+// `abi.target.none.hooks` (spec/04, kw01–kw05), `gram.item.attr.cfg`,
+// `gram.item.attr.set` (spec/01, kw01), `mem.unsafe.sig` (spec/02, kw02),
+// `os.fs.read_at`, `os.fs.seek`, `os.fs.std`, `os.fs.tell` (spec/11, s199),
+// `proto.record.first` (spec/06, ruling #28) and `type.numlit.cast.narrow`
+// (spec/10, kw03). No new namespace.
+const ANCHORS_TOTAL: usize = 569;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -776,9 +797,12 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // 899/854 -> 930/884 at dfcc2f13 (r27, wolf-lang v0.2.21 — the TAG):
     // thirty-one corpus files, none leaving, thirty of them entries —
     // `programs` by 31, `records` by 30, the one new member the gap.
-    assert_eq!(summary.pin, "dfcc2f13e7c73182bdd41fc9bec2802c7da3b024");
-    assert_eq!(summary.programs, 930);
-    assert_eq!(summary.records, 884);
+    // 930/884 -> 985/938 at 8e36bc1a (r28, wolf-lang v0.2.22 — the TAG):
+    // fifty-five corpus files, none leaving, fifty-four of them entries —
+    // `programs` by 55, `records` by 54, the one new member the gap.
+    assert_eq!(summary.pin, "8e36bc1a0f92bbbbc6861b10d5b2638f76412d6a");
+    assert_eq!(summary.programs, 985);
+    assert_eq!(summary.records, 938);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
