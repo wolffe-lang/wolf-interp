@@ -145,6 +145,13 @@ fn main() {
     let commit = git(&["rev-parse", "--short=7", "HEAD"]).unwrap_or_else(|| "unknown".to_owned());
     println!("cargo:rustc-env=WOLF_INTERP_COMMIT={commit}");
 
+    // The triple this binary runs on (wolf-interp#182, #174): `conform-run
+    // --target` accepts it and refuses the freestanding one by name, and
+    // `#[cfg(target = "…")]` is evaluated against it. A build script always
+    // sees `TARGET`; it is the triple cargo compiled this package for.
+    let target = std::env::var("TARGET").expect("cargo sets the target triple");
+    println!("cargo:rustc-env=LUPIN_HOST_TRIPLE={target}");
+
     // D57 (r02): an off-tag build never claims to be the release. Only a
     // build made exactly at its own release tag — `v{version}` pointing at
     // HEAD — prints the bare crate version; every other build (trunk, a
