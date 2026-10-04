@@ -1,0 +1,16 @@
+fn boom() -> () ! {bad} {
+    return bad
+}
+
+fn f() -> () ! {bad} {
+    defer print("defer ran")
+    errdefer print("errdefer ran")
+    boom()?
+    print("unreached")
+}
+
+fn main() -> !int {
+    f() else |_| { print("handled") }
+    print("after")
+    0
+}

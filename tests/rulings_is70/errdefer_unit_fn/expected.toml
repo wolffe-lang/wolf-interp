@@ -1,0 +1,14 @@
+# is70 — #179 (errdefer half): errdefer in a function that cannot fail is E0607 at the keyword ([err.errdefer])
+# `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
+# (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
+# `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+issue = "wolf-interp#179"
+
+[expected]
+lupin   = { verdict = "fail(E0607)", stdout = "", first = "E0607@[86,94]" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "errdefer ran\ndefer ran\nafter\n" }
+checked = { verdict = "fail(E0607)", stdout = "", first = "E0607@[86,94]" }
+native  = { verdict = "fail(E0607)", stdout = "", first = "E0607@[86,94]" }
+release = { verdict = "fail(E0607)", stdout = "", first = "E0607@[86,94]" }

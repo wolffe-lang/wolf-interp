@@ -321,3 +321,37 @@ fn region_view_for_return() {
 fn region_return_ok() {
     run("region_return_ok", "wolf-interp#178");
 }
+
+// ---- wolf-interp#179, the `errdefer` half ----------------------------------
+// `[err.errdefer]`: `errdefer` in a function whose result carries no row is
+// E0607 at the keyword on the compiler's three lanes.
+
+/// The issue's shape: a unit fn. Red at trunk: `exit(0)`, both deferrals ran.
+#[test]
+fn errdefer_unit_fn() {
+    run("errdefer_unit_fn", "wolf-interp#179");
+}
+
+/// An `-> int` fn. Red at trunk: `exit(0)`, `2`.
+#[test]
+fn errdefer_int_fn() {
+    run("errdefer_int_fn", "wolf-interp#179");
+}
+
+/// `fn main() -> int`. Red at trunk: `exit(0)`, `body`.
+#[test]
+fn errdefer_main_int() {
+    run("errdefer_main_int", "wolf-interp#179");
+}
+
+/// Inside an `if` block of a unit fn. Red at trunk: `exit(0)`, `then`.
+#[test]
+fn errdefer_nested_block() {
+    run("errdefer_nested_block", "wolf-interp#179");
+}
+
+/// The control: in a fallible fn `errdefer` runs on the raise, before `defer`.
+#[test]
+fn errdefer_fallible_ok() {
+    run("errdefer_fallible_ok", "wolf-interp#179");
+}

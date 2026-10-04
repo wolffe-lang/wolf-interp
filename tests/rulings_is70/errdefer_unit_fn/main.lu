@@ -1,0 +1,15 @@
+fn boom() -> () ! {bad} {
+    return bad
+}
+
+fn f() {
+    defer print("defer ran")
+    errdefer print("errdefer ran")
+    boom()
+}
+
+fn main() -> !int {
+    f()
+    print("after")
+    0
+}

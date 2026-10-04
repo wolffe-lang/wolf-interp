@@ -1,0 +1,9 @@
+fn g(n: int) -> int {
+    errdefer print("errdefer ran")
+    n + 1
+}
+
+fn main() -> !int {
+    print("{g(1)}")
+    0
+}

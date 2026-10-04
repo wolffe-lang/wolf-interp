@@ -1,0 +1,11 @@
+fn f(c: bool) {
+    if c {
+        errdefer print("errdefer ran")
+        print("then")
+    }
+}
+
+fn main() -> !int {
+    f(true)
+    0
+}
