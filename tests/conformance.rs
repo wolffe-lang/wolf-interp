@@ -270,6 +270,37 @@ fn is_filed_divergence(path: &str) -> bool {
     wolf_interp::differ::filed(path).is_some()
 }
 
+/// Rows whose pinned `check:` a later ruling changed upstream, which this
+/// machine already follows. Each names the clause and the wolf-lang commit
+/// that re-spells the row; the entry leaves when the re-pin carries that
+/// commit, and [`a_row_ruled_ahead_of_the_pin_resolves_clean`] asserts what
+/// the row does meanwhile, so the list hides nothing.
+const RULED_AHEAD_OF_PIN: &[(&str, &str)] = &[(
+    "memory/unsafe_sig.lu",
+    "kw02's `[mem.unsafe.sig]` (K9(b) = B, R1; wolf-interp#181, is70): a \
+     module-private fn may carry `*T`. wolf-lang be13b445 re-spells the row \
+     `pub fn peek`, which this machine refuses E1302 \
+     (tests/rulings_is70/unsafe_sig).",
+)];
+
+fn is_ruled_ahead_of_pin(path: &str) -> bool {
+    RULED_AHEAD_OF_PIN
+        .iter()
+        .any(|(row, _)| path.ends_with(row))
+}
+
+#[test]
+fn a_row_ruled_ahead_of_the_pin_resolves_clean() {
+    for (row, why) in RULED_AHEAD_OF_PIN {
+        let case = cases()
+            .into_iter()
+            .find(|case| case.path.ends_with(row))
+            .unwrap_or_else(|| panic!("{row} is in the pinned corpus ({why})"));
+        let observation = frontend::observe(&case.source, Some(Phase::Resolve));
+        assert_eq!(observation.verdict, Verdict::Pass, "{row}: {why}");
+    }
+}
+
 /// A `member` file in a directory whose entry's disagreement is filed — the
 /// member is the filed pin's *subject*, not a case of its own. D59's
 /// broken-sibling witness is the shape: `mangled.lu` is deliberately
@@ -509,6 +540,7 @@ fn every_parseable_file_resolves_under_sema_lite() {
         if case.ledger_phase.is_some_and(|p| p < Phase::Parse)
             || is_filed_divergence(&case.path)
             || is_member_of_filed_module(&case)
+            || is_ruled_ahead_of_pin(&case.path)
         {
             continue;
         }
@@ -577,6 +609,7 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
         if case.ledger_phase.is_some_and(|p| p < Phase::Parse)
             || is_filed_divergence(&case.path)
             || is_member_of_filed_module(&case)
+            || is_ruled_ahead_of_pin(&case.path)
         {
             continue;
         }

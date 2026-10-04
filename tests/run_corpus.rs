@@ -495,6 +495,12 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // re-spelled row; the census counts it static-conservatism meanwhile.
     // The cdde128a pin (r26) carries it: `check:` is `run(exit=0)`, a match.
     ("memory/mut_read_overlap.lu", "exit(0)"),
+    // is70: kw02's `[mem.unsafe.sig]` (wolf-interp#181) admits `*T` in a
+    // module-private fn's signature, so `unsafe_sig.lu`'s private `peek`
+    // runs. The pinned header still says `fail(E1302)` until the re-pin
+    // carries wolf-lang be13b445, which re-spells it `pub fn peek`; the
+    // census counts it static-conservatism meanwhile, as is63's row above.
+    ("memory/unsafe_sig.lu", "exit(0)"),
     ("memory/read_param_write.lu", "trap(exclusivity)"),
     // The c09-wave pin, `0b4e79c` (0.1.9, s73): the corpus grows one —
     // the `--schedules=N` dogfood witness. Both select arms are conforming
