@@ -81,9 +81,12 @@ pub struct ExportOptions {
 
 /// The target the bundle's reference outcomes are observed as, on every OS:
 /// since is70 `cfg(target = "…")` is read (`[gram.item.attr.cfg]`,
-/// wolf-interp#174), and the pinned `ffi.lu` gates its asm to `x86_64`, so an
-/// aarch64 host would otherwise record a different outcome and the bundle
-/// would stop being byte-identical across OSes (CI's `bundle-identical`).
+/// wolf-interp#174), and pinned rows gate code by architecture (`ffi.lu`'s
+/// asm, `grammar/cfg_target_*.lu`), so a host observing as itself could
+/// record a different outcome (an outcome or a diagnostic span) and the
+/// bundle would stop being byte-identical across OSes (CI's
+/// `bundle-identical`). Until the 8e36bc1a pin `ffi.lu` gated its asm to
+/// `x86_64` alone, and an aarch64 host did record a different outcome.
 pub const BUNDLE_TARGET: &str = "x86_64-unknown-linux-gnu";
 
 impl ExportOptions {

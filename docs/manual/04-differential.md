@@ -123,22 +123,22 @@ pin as filed, and every export is notice-free again:
 
 The bundle's reference outcomes are observed as one target on every OS,
 `x86_64-unknown-linux-gnu` (`export::BUNDLE_TARGET`): since is70
-`cfg(target = "…")` is read (`[gram.item.attr.cfg]`), and the pinned
-`ffi.lu` gates its asm to `x86_64`, so an aarch64 host observing as itself
-would record a different outcome and the bundle would stop being
-byte-identical across OSes.
+`cfg(target = "…")` is read (`[gram.item.attr.cfg]`), and a pinned row
+may gate code to one architecture, so a host observing as itself could
+record a different outcome and the bundle would stop being byte-identical
+across OSes.
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":276,"anchors_total":546,"bundle_sha256":"…","files":950,"forward_tags":109,"out":"target/bundle","pin":"dfcc2f13e7c73182bdd41fc9bec2802c7da3b024","programs":930,"records":884}
+{"anchors_covered":290,"anchors_total":569,"bundle_sha256":"…","files":1005,"forward_tags":108,"out":"target/bundle","pin":"8e36bc1a0f92bbbbc6861b10d5b2638f76412d6a","programs":985,"records":938}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 884 entries compared, 0 member(s) exercised through their entries
+differential: 938 entries compared, 0 member(s) exercised through their entries
 divergences: 0
-conservatism ledger: 128 entries
-  unsupported(counterparty): 64
-  unsupported(interp): 64
+conservatism ledger: 136 entries
+  unsupported(counterparty): 68
+  unsupported(interp): 68
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin dfcc2f13e7c73182bdd41fc9bec2802c7da3b024 verified (bundle_sha256 …)
+notice: bundle target/bundle at pin 8e36bc1a0f92bbbbc6861b10d5b2638f76412d6a verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the
