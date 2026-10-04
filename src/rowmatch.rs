@@ -987,10 +987,82 @@ impl Scope<'_> {
         self.locals.pop();
     }
 
+    /// `[err.rows]` at an annotated binding (wolf-interp#180): `let a: T !
+    /// {row} = e` where `e`'s row is statically known and holds a tag the
+    /// declared row cannot is **E0602** at the initializer — the compiler's
+    /// code and span on all three lanes (measured at wolf-lang `50830027`,
+    /// `tests/rulings_is70/bind_row_*`). A `!T` annotation spells no row and
+    /// so admits none: the compiler refuses `let a: !int = half([8])` when
+    /// `half` can raise `none`, and runs it when `half`'s row is empty. An
+    /// open declared row (`{..}`) admits every tag; an initializer this
+    /// reader cannot type, or whose own row is open, is never judged.
+    fn binding_row_check(&self, binding: &Binding) -> Option<Diag> {
+        let declared = binding.ty.as_ref()?;
+        let (declared_tags, open) = match &*declared.kind {
+            TypeKind::Fallible { row, .. } => {
+                let row = row_of(declared, row);
+                (row.tags, row.open)
+            }
+            TypeKind::ErrorUnion(_) => (Vec::new(), false),
+            _ => return None,
+        };
+        if open {
+            return None;
+        }
+        let locals = |name: &str| self.local(name);
+        let callee = |path: &Path| {
+            if path.is_single() && self.shadowed(&path.segments[0].name) {
+                return None;
+            }
+            callee_row(self.program, &self.module.name, path)
+        };
+        let Some(Known::Fallible(init)) = known_of_expr(&binding.value, &locals, &callee) else {
+            return None;
+        };
+        if init.open {
+            return None;
+        }
+        let missing: Vec<&String> = init
+            .tags
+            .iter()
+            .filter(|tag| !declared_tags.contains(tag))
+            .collect();
+        if missing.is_empty() {
+            return None;
+        }
+        let names = missing
+            .iter()
+            .map(|tag| format!("`{tag}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Some(
+            Diag::new(
+                "E0602",
+                binding.value.span,
+                "err.rows",
+                format!(
+                    "this initializer can raise {names}, which the binding's declared row \
+                     `{}` does not include: the binding cannot hold it. Add {names} to the \
+                     annotation's row, or handle the row here (`… else |e| …`)",
+                    RowTy {
+                        tags: declared_tags.clone(),
+                        open: false,
+                        ok: None,
+                    }
+                    .render()
+                ),
+            )
+            .in_file(self.file.to_owned()),
+        )
+    }
+
     fn stmt(&mut self, stmt: &Stmt) {
         match &stmt.kind {
             StmtKind::Binding(binding) => {
                 self.expr(&binding.value);
+                if let Some(diag) = self.binding_row_check(binding) {
+                    self.findings.push(Finding::Diag(diag));
+                }
                 let known = match &*binding.pattern.kind {
                     PatKind::Binding(_) => {
                         let locals = |name: &str| self.local(name);
