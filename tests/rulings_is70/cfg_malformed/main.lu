@@ -1,0 +1,13 @@
+#[cfg(not(target = "x86_64"))]
+fn g() -> int {
+    1
+}
+
+#[cfg(target = "x86_64", target = "aarch64")]
+fn h() -> int {
+    2
+}
+
+fn main() -> int {
+    g() + h() - 3
+}

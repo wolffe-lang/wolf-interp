@@ -1,0 +1,28 @@
+struct S {
+    #[cfg(target = "x86_64")]
+    bits: int,
+    #[cfg(target = "aarch64")]
+    bits: int,
+    tag: int,
+}
+
+impl S {
+    #[cfg(target = "x86_64")]
+    fn width(self) -> int {
+        self.bits + self.tag
+    }
+
+    #[cfg(target = "aarch64")]
+    fn width(self) -> int {
+        self.bits + self.tag
+    }
+}
+
+fn main() -> int {
+    let s = S { bits: 60, tag: 4 }
+    var n = s.width()
+    #[cfg(target = "x86_64-unknown-none")]
+    n = undefined_here()
+    print("{n}")
+    0
+}

@@ -1,0 +1,14 @@
+# is70 — #174 control: the implemented set is no E0817 — lupin still declines this row's comptime fn by name (its own construct gap, pinned, not this issue's)
+# `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
+# (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
+# `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+issue = "wolf-interp#174"
+
+[expected]
+lupin   = { verdict = "unsupported", stdout = "", named = "comptime fn" }
+
+[trunk]
+lupin   = { verdict = "unsupported", stdout = "", unsupported = "`seven` is a `comptime fn`; compile-time evaluation with its sandbox and budgets is the compiler's engine (s16), and nothing in `spec/` pins it — the `comptime` namespace is still a reserved forward one" }
+checked = { verdict = "exit(0)", stdout = "3\n7\n" }
+native  = { verdict = "exit(0)", stdout = "3\n7\n" }
+release = { verdict = "exit(0)", stdout = "3\n7\n" }

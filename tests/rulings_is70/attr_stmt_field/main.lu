@@ -1,0 +1,11 @@
+struct S {
+    #[trusted]
+    x: int,
+}
+
+fn main() -> int {
+    let s = S { x: 1 }
+    #[noalloc]
+    let y = s.x + 1
+    y - 2
+}

@@ -37,6 +37,9 @@ struct Ruled {
     /// A substring `x-unsupported` must carry, when the row is refused by
     /// name.
     named: String,
+    /// Every diagnostic, `CODE@[lo,hi]` comma-joined, when the compiler
+    /// reports more than one; empty otherwise.
+    all: String,
     args: Vec<String>,
 }
 
@@ -71,6 +74,7 @@ fn ruled(name: &str) -> Ruled {
         stdout: quoted_after(&cell, "stdout = ").expect("a stdout"),
         first: quoted_after(&cell, "first = ").unwrap_or_default(),
         named: quoted_after(&cell, "named = ").unwrap_or_default(),
+        all: quoted_after(&cell, "all = ").unwrap_or_default(),
         args,
     }
 }
@@ -116,6 +120,25 @@ fn run(name: &str, issue: &str) {
         ),
         "{name} ({issue}): record {record}"
     );
+    if !want.all.is_empty() {
+        let all = record["diagnostics"]
+            .as_array()
+            .map(|ds| {
+                ds.iter()
+                    .map(|d| {
+                        format!(
+                            "{}@[{},{}]",
+                            d["code"].as_str().unwrap_or(""),
+                            d["span"][0],
+                            d["span"][1]
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .unwrap_or_default();
+        assert_eq!(all, want.all, "{name} ({issue}): every diagnostic");
+    }
     let reason = record["x-unsupported"].as_str().unwrap_or("");
     assert!(
         reason.contains(&want.named),
@@ -441,4 +464,87 @@ fn bind_row_controls() {
     for row in ["bind_row_fits", "bind_row_empty_ok", "bind_row_open_ok"] {
         run(row, "wolf-interp#180");
     }
+}
+
+// ---- wolf-interp#174: the closed attribute set, cfg(target), the ABI -----
+// `[gram.item.attr.set]`, `[gram.item.attr.cfg]`, `[abi.c.seams]` (KWC K13,
+// K7). The `attr_*`, `cfg_target_*`, `cfg_predicate_unknown` and
+// `extern_abi_interrupt` programs are the compiler's kw01 corpus rows
+// (`corpus/grammar/`), byte for byte; the compiler gate is
+// `attr_closed_set_lanes.rs`.
+
+/// Each refused attribute, red at trunk: `exit(0)` (the attribute ignored).
+#[test]
+fn attributes_nothing_reads_are_e0817() {
+    for row in [
+        "attr_unknown",
+        "attr_contract_unimplemented",
+        "attr_repr_unimplemented",
+        "attr_section",
+        "attr_thread_local",
+        "cfg_target_unknown",
+        "cfg_predicate_unknown",
+    ] {
+        run(row, "wolf-interp#174");
+    }
+}
+
+/// Every bad item of a `repr` line, each its own E0817. Red at trunk.
+#[test]
+fn attr_repr_bogus() {
+    run("attr_repr_bogus", "wolf-interp#174");
+}
+
+/// `repr(c)` on a fn and `consttime` on a struct. Red at trunk.
+#[test]
+fn attr_misplaced() {
+    run("attr_misplaced", "wolf-interp#174");
+}
+
+/// `#[trusted]` on a field and `#[noalloc]` on a statement. Red at trunk.
+#[test]
+fn attr_stmt_field() {
+    run("attr_stmt_field", "wolf-interp#174");
+}
+
+/// `cfg(not(…))` and two predicates in one `cfg`. Red at trunk.
+#[test]
+fn cfg_malformed() {
+    run("cfg_malformed", "wolf-interp#174");
+}
+
+/// `extern "x86-interrupt" fn` is E0818 at the string. Red at trunk.
+#[test]
+fn extern_abi_interrupt() {
+    run("extern_abi_interrupt", "wolf-interp#174");
+}
+
+/// Exactly one of two arch-gated definitions survives on every host. Red at
+/// trunk: `fail(E0302)`, both kept.
+#[test]
+fn cfg_target_arch() {
+    run("cfg_target_arch", "wolf-interp#174");
+}
+
+/// What the freestanding target gates — an ill-typed item and a statement
+/// naming what does not exist — is never resolved or typed on a hosted run.
+/// Red at trunk: `fail(E0401)`.
+#[test]
+fn cfg_target_freestanding() {
+    run("cfg_target_freestanding", "wolf-interp#174");
+}
+
+/// `cfg` on fields, impl members and a statement. Red at trunk:
+/// `unsupported` (the gated statement's name does not resolve).
+#[test]
+fn cfg_field_member() {
+    run("cfg_field_member", "wolf-interp#174");
+}
+
+/// The control: the implemented set earns no E0817. lupin still declines
+/// this row's `comptime fn` by name — its own construct gap, which the
+/// compiler gate pins and #174 does not cover.
+#[test]
+fn attr_implemented_set() {
+    run("attr_implemented_set", "wolf-interp#174");
 }
