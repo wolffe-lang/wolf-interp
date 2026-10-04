@@ -423,8 +423,12 @@ impl fmt::Display for Prov {
 /// `[proto.cmp.defined-divergence]` says is never compared (layout).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RawPtr {
-    /// `None` is the null pointer.
+    /// `None` is a pointer no allocation owns: the null pointer when
+    /// `offset` is 0, otherwise an integer-made address (`N as *T`), whose
+    /// address word lives in `offset` (wolf-interp#184).
     pub alloc: Option<AllocId>,
+    /// The byte offset into `alloc`; with no allocation, the address word
+    /// itself, in `0..2^64`.
     pub offset: i128,
     pub prov: Prov,
     /// The pointee's size in bytes — `*u8` is 1, `*int` is 8. Fixes what
@@ -456,16 +460,40 @@ impl RawPtr {
         }
     }
 
+    /// `p.is_null()` compares the address with zero (`[mem.prov.expose]`).
     #[must_use]
     pub const fn is_null(&self) -> bool {
-        self.alloc.is_none()
+        self.alloc.is_none() && self.offset == 0
     }
+
+    /// A pointer at address `word` that no allocation owns — `N as *T` when
+    /// `N` lands in none (`[mem.prov.device]`: an access through it is
+    /// foreign memory, UB row L2 on a hosted target).
+    #[must_use]
+    pub const fn foreign(word: i128, elem: usize, signed: bool) -> RawPtr {
+        RawPtr {
+            alloc: None,
+            offset: word,
+            prov: Prov::Wildcard,
+            elem,
+            signed,
+        }
+    }
+}
+
+/// The address word an integer names: `N` widened to 64 bits by its own
+/// signedness, as unsigned bits (`[mem.prov.expose]`: `N as *T` "widens `N`
+/// to the address word by `N`'s own signedness and never traps").
+#[must_use]
+pub const fn address_word(n: i128) -> i128 {
+    n.rem_euclid(1i128 << 64)
 }
 
 impl fmt::Display for RawPtr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.alloc {
-            None => f.write_str("*null"),
+            None if self.offset == 0 => f.write_str("*null"),
+            None => write!(f, "*addr {:#x}", self.offset),
             Some(alloc) => write!(f, "*alloc#{alloc}+{}@{}", self.offset, self.prov),
         }
     }
@@ -1291,7 +1319,14 @@ impl Provenance {
                 row: UbRow::L2,
                 span,
                 tag_span: None,
-                message: format!("{kind} through a null raw pointer"),
+                message: if ptr.offset == 0 {
+                    format!("{kind} through a null raw pointer")
+                } else {
+                    format!(
+                        "{kind} through {ptr}, an address no allocation owns: foreign \
+                         memory, which a hosted target does not define ([mem.prov.device])"
+                    )
+                },
                 tree: Vec::new(),
             });
         };
@@ -1514,7 +1549,7 @@ impl Provenance {
     #[must_use]
     pub fn address_of(&self, ptr: RawPtr) -> i128 {
         match ptr.alloc {
-            None => 0,
+            None => ptr.offset,
             Some(alloc) => (alloc as i128 + 1) * Provenance::STRIDE + ptr.offset,
         }
     }
@@ -1908,6 +1943,23 @@ mod tests {
         assert_eq!(prov.resolve_address(prov.address_of(past)), None);
         assert_eq!(prov.resolve_address(0), None);
         assert_eq!(prov.resolve_address(-1), None);
+    }
+
+    #[test]
+    fn an_address_no_allocation_owns_keeps_its_word() {
+        // wolf-interp#184: `N as *T` widens by N's sign into a 64-bit word.
+        assert_eq!(address_word(-1), (1i128 << 64) - 1);
+        assert_eq!(address_word(4_294_967_295), 4_294_967_295);
+        assert_eq!(address_word(0), 0);
+        let (prov, _) = machine();
+        let foreign = RawPtr::foreign(0xb8000, 2, false);
+        assert!(!foreign.is_null());
+        assert_eq!(prov.address_of(foreign), 0xb8000);
+        assert_eq!(foreign.to_string(), "*addr 0xb8000");
+        assert!(RawPtr::null().is_null());
+        assert_eq!(prov.address_of(RawPtr::null()), 0);
+        // Arithmetic on it moves the address, as on any pointer.
+        assert_eq!(prov.address_of(foreign.offset_by(3)), 0xb8000 + 6);
     }
 
     #[test]
