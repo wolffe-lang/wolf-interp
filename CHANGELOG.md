@@ -1,5 +1,77 @@
 # Changelog
 
+## Unreleased
+
+**is70 — the gaps the PAX lanes filed.** lupin now answers what the
+compiler at wolf-lang `50830027` answers on the rows the KWC and
+compiler lanes pinned against it. Every row is a witness under
+`tests/rulings_is70/`, measured on the compiler's three lanes and seen
+red at trunk first. The vendored pin does not move (still `dfcc2f13`,
+v0.2.21); three of its rows are ruled ahead of the pin until the 0.2.22
+re-pin carries their re-spelling (below).
+
+- **Prefix `*p` outside `unsafe` is E1301** (#184 item 3, the one place
+  lupin was looser than the compiler). `*p = v`, `*p op= v` and a read of
+  `*p` take the ring `p[0]` takes, at the `*p`.
+- **The provenance methods and the integer side of the casts** (#184,
+  `[mem.prov.expose]`, kw06). `expose`, `with_addr` and `with_exposed`
+  join `addr` and `is_null`. A pointer made from an integer no
+  allocation owns keeps its address: `N as *T` widens `N` by its own
+  signedness and never traps; `*T as N` is the address's bits for a
+  64-bit `N` and the address as `uint` otherwise, `overflow` outside
+  `N`. `is_null` compares the address with zero. (`addr` still exposes
+  the tag. The clause says it does not, but every machine answers the
+  witness that would tell them apart the same way, so the reading waits
+  for one.)
+- **`conform-run --target`** (#182, `[abi.target]`). The host's own
+  triple runs. `x86_64-unknown-none` is `unsupported`, naming "the
+  freestanding target x86_64-unknown-none", and nothing runs. Any other
+  triple is a tool error naming both.
+- **A `return` out of a region block** carrying a value the block frees
+  traps `region-fault`, the same fault the block's own value gets (#178,
+  `[mem.region.escape]`).
+- **`errdefer` in a function that cannot fail is E0607** at the keyword
+  (#179's second half, `[err.errdefer]`).
+  `rows/negative/errdefer_infallible.lu` leaves the run ledger, refused
+  as pinned. The `if` half shipped with s208 (`3ec58bc`), which left no
+  changelog text.
+- **E0602 at an annotated binding** (#180, `[err.rows]`). `let a: T !
+  {row} = e` is refused at `e` when `e`'s known row holds a tag the
+  declaration cannot; a `!T` annotation admits no row.
+- **The C membrane** (#181, `[mem.unsafe.sig]`, kw02). E1302 applies
+  only to `pub`/`pub(pkg)` fn items and methods. A module-private fn,
+  an `export fn` and an `extern "c" fn` may carry `*T`. A raw pointer
+  argument is a copy of the pointer: no retag, no protector. A call into
+  a hand-declared `extern "c" fn` outside `unsafe` is E1301, except in
+  a `comptime` fn, where E0701 is the answer. Inside `unsafe` it is still
+  refused by name.
+- **The closed attribute set, `cfg(target)`, the one ABI string**
+  (#174, `[gram.item.attr.set]`, `[gram.item.attr.cfg]`,
+  `[abi.c.seams]`). An attribute nothing reads in its position is E0817,
+  at the attr or at each bad `repr` item, and every one is reported.
+  `#[cfg(target = "S")]` is evaluated against the host triple or its
+  architecture: a node another target gates is dropped after parsing,
+  and a `cfg` this machine cannot read keeps its node and is E0817.
+  `extern "S"` with `S` other than `"c"` is E0818.
+- **The first diagnostic** (#175, `[proto.record.first]`, ruling #28).
+  The parser runs over the lexer's recovered stream, and the earliest
+  diagnostic of the two tiers is the record's (the lexer's when they
+  tie). A group that a later closer of another kind leaves open is E0202
+  at its opener. A run of stray characters is one E0107. An
+  unterminated string's E0102 spans from its quote. "Expected a pattern"
+  is E0207. A top-level token that starts no declaration is E0203. A
+  declaration keyword inside an error row is E0202 at the row's `{`.
+- **#187 is not changed.** macOS `read_at` on a pipe's write end still
+  answers `io`. The compiler's resolution, wolf-lang#566, is unruled.
+- **Ruled ahead of the pin**, each re-spelled in wolf 0.2.22 and not in
+  the vendored 0.2.21. `memory/unsafe_sig.lu` runs: its `peek` is
+  private, and be13b445 makes it `pub`. `comptime.lu` is E0817 on its
+  `#[noalloc]`, which e951afbb drops. On an aarch64 host, `ffi.lu`'s
+  x86_64-gated asm is dropped and the row runs to `exit(1)`, until the
+  same commit's aarch64 twin arrives. `tests/conformance.rs` and
+  `tests/run_corpus.rs` waive them by name, and each waiver goes red when
+  its row stops parting.
+
 ## 0.1.45 — 2026-10-03
 
 THE FORTY-FIFTH (is68, is69, s199's lupin half, and r27's re-pin), the
