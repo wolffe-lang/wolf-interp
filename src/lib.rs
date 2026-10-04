@@ -26,6 +26,7 @@
 
 pub mod anchor;
 pub mod ast;
+pub mod attrs;
 pub mod compare;
 pub mod corpus;
 pub mod diag;
@@ -499,6 +500,10 @@ pub fn explore_file(
     match frontend::admit(&program) {
         Some(frontend::Refusal::Reject(diag)) => Err(format!(
             "{diag} — statically rejected; the explorer runs the same admission ladder as `run`"
+        )),
+        Some(frontend::Refusal::RejectAll(diags)) => Err(format!(
+            "{} — statically rejected; the explorer runs the same admission ladder as `run`",
+            diags.first().map(ToString::to_string).unwrap_or_default()
         )),
         Some(frontend::Refusal::Unsupported(reason)) => Err(format!("unsupported — {reason}")),
         None => Ok(explore::explore(&program, options)),
