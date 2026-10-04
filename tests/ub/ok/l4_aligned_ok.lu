@@ -1,0 +1,22 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.unsafe.raw.1
+//! L4's near-miss twin: the same `with_addr` one element past the base —
+//! four bytes, a multiple of the `*u32`'s alignment — and a `*u8` one byte
+//! past it, whose alignment is 1. Same machinery, one property changed: the
+//! address is aligned, so the read is defined.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: 16 zeroed bytes from calloc; both reads are in bounds at
+    // their pointee's alignment; freed once.
+    unsafe {
+        let p = c.calloc(1, 16) as *u32
+        let q = p.with_addr(p.addr() + 4)
+        let b = (p as *u8).with_addr(p.addr() + 1)
+        let v = q[0] as int + b[0] as int
+        c.free(p as *u8)
+        v
+    }
+}
