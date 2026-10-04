@@ -137,7 +137,7 @@ impl Observation {
         }
     }
 
-    fn unsupported(phase: Phase, reason: impl Into<String>) -> Observation {
+    pub(crate) fn unsupported(phase: Phase, reason: impl Into<String>) -> Observation {
         Observation {
             reason: Some(reason.into()),
             ..Observation::clean(phase, Verdict::Unsupported)

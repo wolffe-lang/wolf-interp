@@ -72,6 +72,15 @@ pub const IMPL_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// `unknown` when built outside a checkout.
 pub const COMMIT: &str = env!("WOLF_INTERP_COMMIT");
 
+/// The target triple this binary was built for, and so the one it runs
+/// programs as (`[abi.target]`; wolf-interp#182, #174).
+pub const HOST_TRIPLE: &str = env!("LUPIN_HOST_TRIPLE");
+
+/// The freestanding target (`[abi.target]`, KWC K1). No machine here models
+/// a platform, so a program built for it is refused by name, never run
+/// (`[mem.prov.device]`).
+pub const FREESTANDING_TRIPLE: &str = "x86_64-unknown-none";
+
 /// The optimization profile this binary was built with (wolf-interp#63).
 ///
 /// `debug_assertions` is cargo's own `debug`/`release` switch, so this is the
@@ -229,6 +238,20 @@ pub fn observe_record_scheduled(
     let observation =
         frontend::observe_file(file, source, requested_phase, trace, request, std_root);
     record_of(slash_path(file), observation, request)
+}
+
+/// `conform-run --target x86_64-unknown-none` (wolf-interp#182, the mirror
+/// of KWC K1): the freestanding target is refused by name before anything is
+/// read past the file — `unsupported`, phase `none`, the target named in
+/// `x-unsupported` — as every wolfgang rung answers it. Nothing runs, so no
+/// access can be read as UB (`[mem.prov.device]`).
+#[must_use]
+pub fn observe_record_freestanding(file: &Path) -> (ObservationRecord, Observed) {
+    let observation = frontend::Observation::unsupported(
+        Phase::None,
+        format!("the freestanding target {FREESTANDING_TRIPLE}"),
+    );
+    record_of(slash_path(file), observation, &eval::SchedRequest::Default)
 }
 
 /// is12's stdin door (`lupin run - --json`): the same record built from a
