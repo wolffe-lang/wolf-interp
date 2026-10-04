@@ -412,7 +412,11 @@ fn sig_controls() {
 // is refused at the initializer, before any `match` reads it.
 
 /// The issue's shape: `let a: !int = half([8])` where `half`'s inferred row
-/// is `{none}`. Red at trunk: E0801 at the later `match`.
+/// is `{none}`, raised through `first`'s declared row. Red at trunk: E0801
+/// at the later `match`. (When `half` raises through `xs.get(0)?` directly,
+/// lupin's row inference reads no method row off a local and keeps `{..}`,
+/// so it still answers E0801 at the match where the compiler answers E0602
+/// — refused on both, by a different code; reported, not mirrored here.)
 #[test]
 fn bind_row_wider() {
     run("bind_row_wider", "wolf-interp#180");

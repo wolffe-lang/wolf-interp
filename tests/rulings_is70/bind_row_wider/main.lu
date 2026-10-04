@@ -1,5 +1,9 @@
+fn first(xs: List[int]) -> int ! {none} {
+    xs.get(0)?
+}
+
 fn half(xs: List[int]) -> !int {
-    let v = xs.get(0)?
+    let v = first(xs)?
     v / 2
 }
 
