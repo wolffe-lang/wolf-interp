@@ -68,6 +68,29 @@ fn pinned_lex_refusal(source: &[u8]) -> Option<String> {
     }
 }
 
+/// The code a `phase: lex` row pins when the PARSER refuses it at an
+/// earlier offset than this file's first lexical fault, if so.
+///
+/// Ruling #28 (`[proto.record.first]`, s203; wolf-interp#175, is70): the
+/// record's diagnostic is the earliest across lex and parse, so a counter-
+/// example the parser refuses may carry a lexical fault further on —
+/// `rows/negative/first_parse_before_lex.lu` and
+/// `first_boundary_before_lex.lu` (the 8e36bc1a pin, r28) do so on purpose.
+/// The file's own ledger phase and `check:` code state it; nothing is
+/// listed by name, as for `phase: none` (wolf-interp#58).
+fn pinned_parse_refusal_before(source: &[u8], lex_at: usize) -> Option<String> {
+    let text = std::str::from_utf8(source).ok()?;
+    let directives = directive::parse_header(text).ok()?;
+    if directives.phase != Some(Phase::Lex) {
+        return None;
+    }
+    let Some(Check::Fail(code)) = directives.check else {
+        return None;
+    };
+    let first = wolf_interp::frontend::observe(source, Some(Phase::Parse)).detail?;
+    (first.code == code && first.span.start < lex_at).then_some(code)
+}
+
 #[test]
 fn every_corpus_file_tokenizes_without_a_lex_diagnostic() {
     let mut failures = Vec::new();
@@ -86,7 +109,11 @@ fn every_corpus_file_tokenizes_without_a_lex_diagnostic() {
                 assert_eq!(first.code, code, "{relative}");
                 refused.push(relative);
             }
-            (Some(first), None) => failures.push(format!("  {}: {first}", path.display())),
+            (Some(first), None) => {
+                if pinned_parse_refusal_before(&source, first.span.start).is_none() {
+                    failures.push(format!("  {}: {first}", path.display()));
+                }
+            }
             (None, Some(code)) => {
                 failures.push(format!("  {relative}: pins {code} and lexed clean"));
             }
