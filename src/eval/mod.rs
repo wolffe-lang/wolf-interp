@@ -2650,12 +2650,25 @@ impl Machine {
                 // is. A struct, a list, and since wolf-interp#88 a built
                 // `str` (`region scratch { let s = "re" + "gions"; s }`
                 // printed `regions` from freed bytes through 0.1.33).
-                if let Ok(value) = &result
+                //
+                // A `return` from inside the block hands the value to the
+                // caller past the same `}` (wolf-interp#178: `return s`,
+                // `return s.trim()`, a `for` piece — E1010 on the compiler,
+                // "to be returned from the frame that owns the region"), so
+                // it is the same fault.
+                let (leaving, what) = match &result {
+                    Ok(value) => (Some(value), "the block's own value"),
+                    Err(Signal::Return(value)) => {
+                        (Some(value), "the value a `return` carries out of the block")
+                    }
+                    Err(_) => (None, ""),
+                };
+                if let Some(value) = leaving
                     && let Some(home) = value.home()
                     && freed.contains(&home)
                 {
                     self.pop_scope();
-                    return self.region_freed_fault("the block's own value", home, span);
+                    return self.region_freed_fault(what, home, span);
                 }
             }
             SugarExit::Freeze => match self.store_freeze(id) {
