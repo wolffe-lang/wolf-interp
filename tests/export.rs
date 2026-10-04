@@ -901,7 +901,11 @@ fn the_vocabularies_ship_closed() {
     )
     .expect("json");
     let rows = rows["rows"].as_array().expect("rows");
-    assert_eq!(rows.len(), 12, "[mem.ub] is the closed twelve (L4 since s209)");
+    assert_eq!(
+        rows.len(),
+        12,
+        "[mem.ub] is the closed twelve (L4 since s209)"
+    );
     for row in rows {
         // D2 on the wire: every row names what it licenses, and its coverage
         // status is stated rather than implied ([proto.record.unsupported]'s
