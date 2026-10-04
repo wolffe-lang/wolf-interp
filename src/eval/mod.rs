@@ -9127,6 +9127,61 @@ impl Machine {
         }))
     }
 
+    /// The pointer an address word names: into the allocation it lands in,
+    /// with wildcard provenance (resolved at the access), or a pointer no
+    /// allocation owns that keeps the address (`[mem.prov.expose]`).
+    pub(crate) fn pointer_at(&mut self, word: i128, elem: usize, signed: bool) -> RawPtr {
+        match self.prov().resolve_address(word) {
+            Some((alloc, offset)) => RawPtr {
+                alloc: Some(alloc),
+                offset,
+                prov: Prov::Wildcard,
+                elem,
+                signed,
+            },
+            None => RawPtr::foreign(word, elem, signed),
+        }
+    }
+
+    /// `*T as N` (kw06's integer side, wolf-interp#184): the address's bits
+    /// when `N` is 64 bits wide — a higher-half address read as `int` is
+    /// negative — and otherwise the address as `uint` under
+    /// `[type.numlit.cast.narrow]`: kept in range, `overflow` outside.
+    pub(crate) fn address_into(
+        &mut self,
+        ptr: RawPtr,
+        word: i128,
+        ty: &Type,
+        span: Span,
+    ) -> EResult<Value> {
+        let Value::Int(_, to) = coerce(Value::Int(0, IntTy::INT), Some(ty)) else {
+            return unsupported(format!(
+                "a raw pointer does not cast to `{}`",
+                type_name(ty)
+            ));
+        };
+        let value = if to.bits == 64 && to.signed && word >= 1i128 << 63 {
+            word - (1i128 << 64)
+        } else {
+            word
+        };
+        match to.reduce(value) {
+            Some(reduced) => Ok(Value::Int(reduced, to)),
+            None => self.trap(
+                TrapKind::Overflow,
+                Rule::ArithChecked,
+                span,
+                format!(
+                    "`{ptr} as {}`: the address {word} read as `uint` is outside `{}` — a \
+                     pointer narrows to an integer under [type.numlit.cast.narrow]",
+                    to.name(),
+                    to.name()
+                ),
+                None,
+            ),
+        }
+    }
+
     /// `e as T`.
     ///
     /// Three of the four arms are Tier 3: ptr→int exposes, int→ptr resolves
@@ -9184,21 +9239,11 @@ impl Machine {
                     // **exposed** provenance resolved angelically among exposed
                     // tags." The resolution happens at the *access*, so what the
                     // cast produces is a wildcard.
-                    let resolved = self.prov().resolve_address(address);
-                    let ptr = match resolved {
-                        Some((alloc, offset)) => RawPtr {
-                            alloc: Some(alloc),
-                            offset,
-                            prov: Prov::Wildcard,
-                            elem,
-                            signed,
-                        },
-                        None => RawPtr {
-                            elem,
-                            signed,
-                            ..RawPtr::null()
-                        },
-                    };
+                    //
+                    // The integer side (kw06, wolf-interp#184): `N` widens to
+                    // the address word by its own signedness and never traps,
+                    // and an address no allocation owns keeps its value.
+                    let ptr = self.pointer_at(prov::address_word(address), elem, signed);
                     self.fire(
                         Rule::ProvExpose,
                         span,
@@ -9220,8 +9265,8 @@ impl Machine {
                 // what later lets a wildcard resolve back to it.
                 self.prov().expose(ptr, span);
                 self.drain_prov();
-                let address = self.prov().address_of(ptr);
-                return Ok(coerce(Value::Int(address, IntTy::INT), Some(ty)));
+                let word = self.prov().address_of(ptr);
+                return self.address_into(ptr, word, ty, span);
             }
             return unsupported(format!("a raw pointer does not cast to `{target}`"));
         }
