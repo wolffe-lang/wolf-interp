@@ -118,7 +118,11 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("rows/hof_tail.lu", "exit(0)"),
     ("rows/inferred_private.lu", "exit(0)"),
     ("rows/negative/dup_tags.lu", "exit(7)"),
-    ("rows/negative/errdefer_infallible.lu", "exit(1)"),
+    // `rows/negative/errdefer_infallible.lu` ran `exit(1)` here from the
+    // bd41920 pin through 0.1.45 (conservatism: the corpus pins E0607).
+    // is70 (wolf-interp#179's errdefer half) refuses it E0607 at resolve,
+    // as the corpus pins, so it LEFT this ledger: a static refusal, not a
+    // lost run.
     ("rows/negative/missing_tag.lu", "exit(0)"),
     ("rows/negative/payload_mismatch.lu", "exit(0)"),
     ("rows/negative/pub_inferred.lu", "exit(1)"),

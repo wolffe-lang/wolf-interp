@@ -187,6 +187,13 @@ fn declaration_read_code(case: &Case) -> Option<&str> {
         // E0611 at the `?` (`rows/negative/try_in_{defer,errdefer,
         // defer_block}.lu`).
         "E0611" => ["type.row.defer"].as_slice(),
+        // is70 (wolf-interp#179's errdefer half): `errdefer` in a function
+        // whose declared result carries no row is decided from the
+        // signature at resolve, E0607 at the keyword
+        // (`rows/negative/errdefer_infallible.lu`). Measured red first:
+        // `left: Fail("E0607"), right: Pass` (kasumi
+        // `~/lanes/is70/logs/dev-d179.log`).
+        "E0607" => ["err.errdefer"].as_slice(),
         "E0409" => ["type.row.operand"].as_slice(),
         "E0417" => ["mem.map.absent"].as_slice(),
         "E0418" => ["type.map.key"].as_slice(),
