@@ -1,0 +1,14 @@
+# is70 — #178 control: a return out of a region block of a value the region does not own (a literal, an int read from a region-built str) runs
+# `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
+# (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
+# `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+issue = "wolf-interp#178"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "[literal] 7\n" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "[literal] 7\n" }
+checked = { verdict = "exit(0)", stdout = "[literal] 7\n" }
+native  = { verdict = "exit(0)", stdout = "[literal] 7\n" }
+release = { verdict = "exit(0)", stdout = "[literal] 7\n" }

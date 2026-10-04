@@ -1,0 +1,14 @@
+# is70 — #178: a return out of a region block is E1010 on the compiler; lupin traps region-fault, its dynamic counterpart ([mem.region.escape])
+# `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
+# (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
+# `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+issue = "wolf-interp#178"
+
+[expected]
+lupin   = { verdict = "trap(region-fault)", stdout = "" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "[regions]\n" }
+checked = { verdict = "fail(E1010)", stdout = "", first = "E1010@[87,95]" }
+native  = { verdict = "fail(E1010)", stdout = "", first = "E1010@[87,95]" }
+release = { verdict = "fail(E1010)", stdout = "", first = "E1010@[87,95]" }

@@ -1,0 +1,22 @@
+fn build() -> str {
+    region scratch {
+        let s = "re" + "gions"
+        if s.len > 3 {
+            return "literal"
+        }
+    }
+    "none"
+}
+
+fn count() -> int {
+    region scratch {
+        let s = "re" + "gions"
+        return s.len
+    }
+    0
+}
+
+fn main() -> !int {
+    print("[{build()}] {count()}")
+    0
+}

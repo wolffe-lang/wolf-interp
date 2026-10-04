@@ -284,3 +284,40 @@ fn target_host_runs_and_others_are_tool_errors() {
         );
     }
 }
+
+// ---- wolf-interp#178: a `return` out of a region block --------------------
+// `[mem.region.escape]`: E1010 on the compiler's three lanes; lupin's answer
+// is the dynamic counterpart, `trap(region-fault)` (`[conf.trap.map]`).
+
+/// The issue's program: `return s`. Red at trunk: `exit(0)`, `[regions]`.
+#[test]
+fn region_return_s() {
+    run("region_return_s", "wolf-interp#178");
+}
+
+/// `return s.trim()`, a view of the region's bytes. Red at trunk.
+#[test]
+fn region_return_trim() {
+    run("region_return_trim", "wolf-interp#178");
+}
+
+/// `for w in s.words() { return w }`. Red at trunk.
+#[test]
+fn region_return_for_word() {
+    run("region_return_for_word", "wolf-interp#178");
+}
+
+/// The compiler gate's row, `corpus/memory/region_str_view_for_return.lu`
+/// (`region_view_for_lanes::a_piece_returned_from_inside_the_loop_is_refused`).
+/// Red at trunk.
+#[test]
+fn region_view_for_return() {
+    run("region_view_for_return", "wolf-interp#178");
+}
+
+/// The control: returning a literal, or an `int` read from a region-built
+/// `str`, out of a region block runs on every machine.
+#[test]
+fn region_return_ok() {
+    run("region_return_ok", "wolf-interp#178");
+}

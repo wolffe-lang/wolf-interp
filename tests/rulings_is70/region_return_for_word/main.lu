@@ -1,0 +1,14 @@
+fn build() -> str {
+    region scratch {
+        let s = "re" + "gions"
+        for w in s.words() {
+            return w
+        }
+    }
+    "none"
+}
+
+fn main() -> !int {
+    print("[{build()}]")
+    0
+}
