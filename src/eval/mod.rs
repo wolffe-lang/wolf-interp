@@ -3637,10 +3637,9 @@ impl Machine {
     ///
     /// Two shapes, because two things can carry provenance across a call:
     ///
-    /// - a **raw pointer value**, whose tag travels *in* the value — the callee
-    ///   receives a pointer carrying the fresh child, so a write through a
-    ///   `read`-mode pointer is §7/P2 and a foreign write during the extent is
-    ///   §7/P1 at the write;
+    /// - a **raw pointer value**, which since is70 takes no retag at all: it
+    ///   is a copy of the pointer (`[mem.unsafe.sig]`, wolf-interp#181), so
+    ///   the callee's accesses are judged under the caller's tag;
     /// - a **Tier-0 place**, whose tag lives beside it in the provenance
     ///   forest. Only `mut` binds the callee's parameter to the child: under
     ///   MVS a `read` parameter is the callee's own copy, so its Frozen child
@@ -3658,20 +3657,21 @@ impl Machine {
         span: Span,
     ) -> Value {
         if let Value::Raw(ptr) = value {
-            let (Some(alloc), Prov::Tag(parent)) = (ptr.alloc, ptr.prov) else {
-                // A wildcard pointer takes on no obligations at a call
-                // boundary: `[mem.unsafe.raw.1]`, and D11's "simpler than safe".
-                return value;
-            };
-            let child = self
-                .prov()
-                .retag(alloc, parent, kind, true, "parameter", span);
-            protectors.push(child);
-            self.drain_prov();
-            return Value::Raw(RawPtr {
-                prov: Prov::Tag(child),
-                ..ptr
-            });
+            // `[mem.unsafe.sig]` (kw02, R1; wolf-interp#181): "A raw pointer
+            // passed by value is a copy of the pointer and nothing more: no
+            // retag, no freeze of the pointee" — the compiled tiers give a
+            // `*T` parameter no `readonly`/`noalias`, and `[mem.unsafe.raw.1]`
+            // gives raw pointers no aliasing assumptions. Passed by `mut` it
+            // is the caller's pointer variable, which the call's writeback
+            // already is. Until is70 a `read`-mode `*T` parameter was a
+            // Frozen, protected child, so a write through it was §7/P2.
+            let _ = (kind, retags, protectors, index);
+            self.fire(
+                Rule::UnsafeRaw,
+                span,
+                &format!("{ptr} passes as a copy of the pointer: no retag at parameter entry"),
+            );
+            return value;
         }
         let key = self.place_key(path);
         let (alloc, child) = self.prov().retag_place(&key, kind, true, span);
