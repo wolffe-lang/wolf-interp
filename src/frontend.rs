@@ -415,32 +415,26 @@ fn observe_with_spans(
 
     // -- lex ---------------------------------------------------------------
     let lexed = lex::lex_bytes(source);
-    if let Some(error) = lexed.first_error() {
-        return Observation::failed(Phase::Lex, error.clone());
-    }
     if requested == Some(Phase::Lex) {
-        return Observation::clean(Phase::Lex, Verdict::Pass);
+        return match lexed.first_error() {
+            Some(error) => Observation::failed(Phase::Lex, error.clone()),
+            None => Observation::clean(Phase::Lex, Verdict::Pass),
+        };
     }
 
     // -- parse -------------------------------------------------------------
-    let parsed = match parse::parse(&lexed) {
-        Err(error) => {
-            // A deferred lex diagnostic (E0007) is a parse-tier finding; when
-            // it sits earlier in the file than the parse error, it is the first
-            // diagnostic and the one the protocol compares.
-            let first = lexed
-                .deferred
-                .iter()
-                .min_by_key(|d| d.span.start)
-                .filter(|d| d.span.start <= error.span.start)
-                .cloned()
-                .unwrap_or(error);
-            return Observation::failed(Phase::Parse, first);
-        }
-        Ok(parsed) => parsed,
-    };
-    if let Some(deferred) = parsed.deferred.iter().min_by_key(|d| d.span.start) {
-        return Observation::failed(Phase::Parse, deferred.clone());
+    // `[proto.record.first]` (ruling #28; wolf-interp#175): the parser runs
+    // over the lexer's recovered stream even when lexing failed, and the
+    // earliest diagnostic of the two tiers is the record's — a lex error
+    // only when nothing the parser finds starts before it. A deferred lex
+    // diagnostic (E0007) is a parse-tier finding, as before.
+    if let Err(first) = parse::first_of(&lexed) {
+        let (first, tier) = *first;
+        let phase = match tier {
+            parse::Tier::Lex => Phase::Lex,
+            parse::Tier::Parse => Phase::Parse,
+        };
+        return Observation::failed(phase, first);
     }
     if requested == Some(Phase::Parse) {
         return Observation::clean(Phase::Parse, Verdict::Pass);
