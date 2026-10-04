@@ -185,6 +185,39 @@ conversion, and its numeric arms are closed and total:
   explicit unsafe-tier operation, never this `as` cast's silent default —
   the same posture as saturation on the float row.
 
+- `[type.numlit.cast.narrow]` **An integer cast keeps the value, and
+  traps if the target cannot hold it.** `as` between two integer types
+  (`int`, `uint`, `i8`–`i64`, `u8`–`u64`, and a `wrapping[T]` source)
+  converts the VALUE. Where the target holds every value of the source
+  (a wider type of the same signedness, or an unsigned source into a
+  wider signed type) the cast is total: it extends by the source's
+  signedness and never traps. Every other pair is a **narrowing cast**:
+  a narrower width, or a change of sign at any width (`int as uint`,
+  `u32 as i32`, `i8 as u64`). A narrowing cast checks the value against
+  the target's range and keeps it unchanged when it fits (`200 as u8` is
+  `200`, `-1 as i16` is `-1`); when it does not fit (`256 as u8`, `-1 as
+  u64`, `128 as u8 as i8`), the cast **traps** (`trap(overflow)`,
+  `[conf.trap.set]`), the same family as `[type.numlit.cast.trunc]` and
+  `[type.numlit.cast.wrap]` (which is this rule's unsigned-to-signed
+  case). Truncation to the low bits is spelled through the wrapping
+  family, whose cast target masks to its width and never traps
+  (wolf-lang#131): `x as wrapping[u8] as u8` is `x`'s low eight
+  bits, `300 as wrapping[u8] as u8` is `44`, `-1 as wrapping[u32] as
+  u32` is `4294967295`, `200 as wrapping[i8] as i8` is `-56`. A
+  bit-reinterpretation between signednesses is that spelling too
+  (`x as wrapping[u64] as …`), never the plain cast. `byte` is not an
+  integer type and keeps its own truncating bridge
+  (`[type.byte.cast]`). **The cost, stated:** one compare and a branch
+  to the trap per narrowing cast whose value is not known at compile
+  time; a total cast and a wrapping target cost nothing. Ruled K12
+  (STATUS #31, wolf-lang#533) as the checked machine and lupin already
+  answered; until then native and release refused the narrower widths
+  and reinterpreted the bits on a change of sign. Witnesses:
+  `corpus/faults/cast_narrow_*.lu`, `corpus/typecheck/cast_narrow_*.lu`,
+  and `crates/wolf_driver/tests/narrow_cast_lanes.rs` (every ordered
+  pair of the ten integer types at the target's boundary values, on
+  four machines).
+
 ## §3b The float remainder `[type.float.rem]`
 
 - `[type.float.rem]` **`%` on a float is C's `fmod`** — the remainder
@@ -572,6 +605,29 @@ expected. This section is that clause; `send`'s row follows it in
   see, unseen. The three spellings that see it are the ones the
   warning already names — propagate with `?`, handle with `else`, or
   bind it away — and the corpus witnesses spell the first.
+
+  (Measured 2026-10-03 by s207 for wolf-lang#541. **Lost means lost on
+  every machine.** W0601 fired on all three lanes, and native and
+  release then discarded (lupin too, but for an else-less `if`'s
+  raising value, which it binds — wolf-interp#179), while the checked
+  machine handed the row on:
+  a unit function's raising tail left `main` with `error: bad`, a
+  raising statement in `main` stopped it, and `let v = if c {
+  maybe(n) }` bound the value (`3`) or the row (`none`) where the
+  block's value is `()`. The checked machine now discards at every
+  tail the checker records as a unit-context discard and at every
+  non-trailing `!T` statement, and a `?` inside either still
+  propagates, because that row was consumed. "The operand of a
+  `return`" in a unit function is on the closed list too:
+  `return boom()` there stopped native and release with an internal
+  error and propagated on checked; it is the same discard now.
+  Witnesses `corpus/rows/unit_discard_*.lu`. One position is left as
+  the machines answer it: an else-less `if` that is itself the tail of
+  a fallible function (`fn g(c: bool) -> () ! {bad} { if c { boom() }
+  }`) hands the raise to `g`'s caller on all four machines and draws
+  no W0601, though "the then-block of an `if` with no `else`" is on the
+  list without exception; which way it goes is a ruling, recorded on
+  #541.)
 
 - `[type.unit.consume]` **A closure body with no fixed result is not a
   unit context.** `s.spawn(fn() { ch.send(v) })` infers `fn() -> !()`

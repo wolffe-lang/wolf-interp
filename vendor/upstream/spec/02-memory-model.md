@@ -163,7 +163,7 @@ vocabulary.
      two indices are equal at run time — `xs[i]` against `xs[k + 1]`
      with `k = i - 1`.
 
-  **Where the machines stand (wolf 0.2.21; lupin 0.1.44).** wolfgang makes moves element-granular: items
+  **Where the machines stand (wolf 0.2.22; lupin 0.1.45).** wolfgang makes moves element-granular: items
   1(a)–(c) hold for a moved element, item 3 holds (wolf-lang#460, where
   any index store revived a moved sibling and native aliased it, is
   fixed), and R3 holds for a store through the same plain local of a
@@ -182,7 +182,7 @@ vocabulary.
   lend of `m[k]` is a typing question (the read is `V ! {none}`,
   `[mem.map.absent]`, E0401 today) that this clause does not answer.
   lupin separates elements at run time and is the oracle for which
-  element a move empties and for the exclusivity trap; at 0.1.44 every
+  element a move empties and for the exclusivity trap; at 0.1.45 every
   read of a moved element traps (wolffe-lang/wolf-interp#141), a whole
   read of a place holding a moved part traps (wolffe-lang/wolf-interp#143),
   a non-`Copy` value read out of a `Map` moves out of it
@@ -593,6 +593,47 @@ fact, polymorphism defaults), `.docs/refs/papers/verona-refcaps.pdf`
   yet follow**: 0.1.37 runs the refused shape to `exit(0)`, so the
   wolf-interp mirror is filed and the differ will carry the row until
   it lands.)
+  (Extended 2026-10-03 by s207 for wolf-lang#540. **A `for` binding
+  carries its iterable's sites.** s171 named "the pieces of
+  `split`/`words`/`lines`" and the compiler refused a piece reached by
+  index (`s.split(",")[0]`), but a piece bound by a `for` over the same
+  call carried no site at all: `for w in s.words() { last = w }` handed
+  `last` out of the region, `exit(0)` from freed bytes on all three
+  lanes, while lupin traps `region-fault`. A loop binding is read out
+  of its iterable exactly as `xs[i]` is, so it carries what `xs[i]`
+  carries: a place's sites, or a value's — and a piece carries its
+  receiver's. Two sites are not where an element's bytes live, and
+  neither attaches: the `List` a `split`/`words`/`lines` call allocates
+  ("the LIST is, never the strings inside it" — so the pieces of a
+  literal, of a parameter, or of a `str` built outside the region
+  still leave freely), and a channel's own allocation, whose payloads
+  `[conc.chan.payload]` already refuses to let out of a region. A
+  binding of a scalar type carries nothing, as a `Copy` field read
+  carries nothing. The rule is not about views alone: `for w in mk()`,
+  where `mk` builds a `List[str]` in its caller's region, binds strings
+  whose bytes live there, and holding one past the region is the same
+  E1010. **The cost, stated.** Nothing at run time on any tier — a
+  refusal. The repair is to hoist the build out of the block. `copy` is
+  not a repair for a `str`: "a `str`'s bytes are immutable and the copy
+  shares them" (`[mem.tier0.move.3]`), and native and release lower
+  `copy s` as `s`, so `copy w` names the receiver's bytes and carries
+  its sites as `w` does — and so does `copy s` of a region-built `s`,
+  which the mem tier had let leave site-free
+  (`region_str_copy_return.lu`; lupin traps it). A parameter's
+  pseudo-site does not ride a `copy`: a parameter's bytes outlive the
+  frame and can escape no region in it, and E1004's fix-it keeps its
+  meaning (lobo's `acc.addr = copy pl.pt.authority`, s160's one
+  moved row, still compiles). s160's and s171's
+  sentences that `copy` "materializes the bytes into the ambient
+  region" disagree with that clause and with the lowering; the
+  disagreement is recorded on wolf-lang#540, not decided here.
+  Measured before it landed, trunk binary against head: boreutils' 54
+  binaries and lobo's two build byte-identical with no diagnostic, and
+  wolf-std's `std-test` answers as it did. Witnesses
+  `corpus/memory/region_str_view_for_*.lu`,
+  `region_str_list_for_held.lu`, `region_str_copy_return.lu`, and the
+  legal companion
+  `region_str_view_for_inside.lu`.)
   (Ruled 2026-09-11 by s153 for wolf-lang#310: `region scratch { let s
   = "re" + "gions"; s }` returned from a function printed `regions`
   from freed bytes on wolf 0.2.10 and lupin 0.1.31 alike, with a W1001
@@ -984,8 +1025,23 @@ Simpler than the safe tier, not stricter (anti-Stacked-Borrows lesson).
   Discharging a door's obligation falsely is UB at the *door* (§7/P6),
   not later — the safe tier stays safe by construction.
 - `[mem.unsafe.scope]` `unsafe { }` blocks appear only inside functions
-  whose signatures are fully safe; the enclosing **module** is the audit
-  granule (§8).
+  whose signatures are fully safe outside the module
+  (`[mem.unsafe.sig]`); the enclosing **module** is the audit granule
+  (§8).
+- `[mem.unsafe.sig]` A `*T` may appear in the signature of a
+  **module-private** fn item (every caller is inside the audit
+  granule) and of a function at the **C membrane** (`export fn`,
+  `extern "c" fn`, either side — the pointer is C's there,
+  `[abi.c.types]`). Anywhere else — a `pub` or `pub(pkg)` fn, every
+  impl and trait method, an exported type's field or payload, an
+  exported global — it is E1302 (K9(b) = B and R1, STATUS #31 and #32;
+  wolf-lang#514). A raw pointer passed by value is a copy of the
+  pointer and nothing more: no retag, no freeze of the pointee
+  (`[mem.unsafe.raw.1]`; the compiled tiers give a `*T` parameter no
+  `readonly`/`noalias`); passed by `mut` it is the caller's pointer
+  variable, call-by-reference-result. Witnesses:
+  `memory/raw_ptr_private_sig.lu`, `memory/raw_ptr_mut_param.lu`,
+  `memory/unsafe_sig.lu` (the `pub` control).
 
 ## §6 Provenance `[mem.prov]`
 

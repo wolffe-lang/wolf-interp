@@ -18,7 +18,11 @@ manifest that asks for build-time execution is refused (E1503).
   `deps`, `test`, `bench` (target-scoped dependency sections — a
   test-only dependency never reaches a consumer's build), `features`,
   `capabilities`, `paths`, `min_age`, `c`, `lints`, `trusted`,
-  `replace`, `exclude`. Unknown keys are schema errors (E1502).
+  `replace`, `exclude`, `target` (the build's target triple,
+  `[abi.target]`; read from the root manifest only, `--target`
+  wins), `asm` (assembly sources linked with the build,
+  `[abi.asm.link]`; the root manifest's alone, a dependency listing
+  it is refused). Unknown keys are schema errors (E1502).
 - `[pkg.manifest.dep]` A dependency entry binds a source-import
   ALIAS to a source: `{ path: "…" }` (a tree in place),
   `{ git: "…", tag: "…" }` (a pinned fetch), or
