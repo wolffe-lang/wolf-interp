@@ -301,7 +301,14 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // `eu_bind_empty_row*`, `numlit_binding_*` and versioned loops); the
     // thirty-first is `memory/versioned_loop_cross_module/ring/ring.lu`, a
     // member. `members` 45 -> 46; the registry 544 -> 546.
-    assert!(stdout.contains("892 file(s)"), "{stdout}");
+    // 892 -> 947 at 8e36bc1a (r28, wolf-lang **v0.2.22** — the TAG):
+    // FIFTY-FIVE new files, none leaves, fifty-four of them entries (kw01's
+    // attribute and `cfg` rows, kw02's membrane rows, kw03's narrowing
+    // casts, s199's `fs/` rows, s203's `first_*` rows, s207's
+    // `region_str_*` and `unit_discard_*` rows); the fifty-fifth is kw02's
+    // `membrane/geo/geo.lu`, a member. `members` 46 -> 47; the registry
+    // 546 -> 569.
+    assert!(stdout.contains("947 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -310,22 +317,21 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 892);
+    assert_eq!(value["total"], 947);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
-    // `/`). Until is70 it parsed and resolved and stopped at the deepest
-    // *completed* rung (comptime evaluation is the compiler's s16 engine).
-    // Since is70 its `#[noalloc]` is refused by name at resolve
-    // (`[gram.item.attr.set]`, wolf-interp#174) — a mismatch against the
-    // vendored 0.2.21 row, ruled ahead of the pin: wolf-lang e951afbb, in
-    // the 0.2.22 pairing, drops the attribute from the row.
+    // `/`): it parses and resolves, and comptime evaluation is the compiler's
+    // s16 engine, so it stops at the deepest *completed* rung. (Between is70
+    // and r28 its `#[noalloc]` was refused by name at resolve,
+    // `[gram.item.attr.set]`, ruled ahead of the 0.2.21 pin; the 0.2.22
+    // re-pin carries e951afbb, which drops the attribute from the row.)
     assert_eq!(value["files"][0]["file"], "comptime.lu");
     assert_eq!(
         value["files"][0]["interpreter_status"],
-        "fail(E0817)@resolve"
+        "unsupported@resolve"
     );
-    assert_eq!(value["files"][0]["judgement"]["class"], "MISMATCH");
+    assert_eq!(value["files"][0]["judgement"]["class"], "out-of-scope");
 }
 
 #[test]
