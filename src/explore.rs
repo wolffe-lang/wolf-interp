@@ -645,6 +645,10 @@ pub fn explore_source(name: &str, source: &str, options: &Options) -> Result<Rep
         Some(crate::frontend::Refusal::Reject(diag)) => Err(format!(
             "{diag} — statically rejected; the explorer runs the same admission ladder as `run`"
         )),
+        Some(crate::frontend::Refusal::RejectAll(diags)) => Err(format!(
+            "{} — statically rejected; the explorer runs the same admission ladder as `run`",
+            diags.first().map(ToString::to_string).unwrap_or_default()
+        )),
         Some(crate::frontend::Refusal::Unsupported(reason)) => {
             Err(format!("unsupported — {reason}"))
         }

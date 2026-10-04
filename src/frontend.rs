@@ -116,6 +116,18 @@ impl Observation {
         }
     }
 
+    /// Several rejections in one file: every one on the wire, the first the
+    /// verdict's (`[proto.cmp.phase]` compares the first).
+    fn failed_all(phase: Phase, diags: Vec<Diag>) -> Observation {
+        let mut diags = diags.into_iter();
+        let first = diags.next().expect("a refusal carries a diagnostic");
+        let mut observation = Observation::failed(phase, first);
+        observation
+            .diagnostics
+            .extend(diags.map(|diag| diag.to_protocol()));
+        observation
+    }
+
     fn clean(phase: Phase, verdict: Verdict) -> Observation {
         Observation {
             phase_reached: phase,
@@ -150,6 +162,10 @@ impl Observation {
 pub enum Refusal {
     /// A static rejection — `fail` at this machine's resolve rung.
     Reject(Box<crate::diag::Diag>),
+    /// Several static rejections in one file, reported together as the
+    /// compiler reports them — the closed attribute set's E0817s and E0818
+    /// (`attrs::check`, wolf-interp#174). The first is the verdict's.
+    RejectAll(Vec<crate::diag::Diag>),
     /// Outside this implementation's scope (`[proto.record.unsupported]`).
     Unsupported(String),
 }
@@ -169,6 +185,13 @@ pub fn admit(program: &sema::Program) -> Option<Refusal> {
 /// [`admit`] over an already-computed lint analysis, so `observe_with` (which
 /// also needs the warnings half) runs the walk once.
 fn admit_with(program: &sema::Program, statics: Vec<crate::diag::Diag>) -> Option<Refusal> {
+    // is70 (wolf-interp#174): an attribute nothing reads, or an ABI string
+    // that is not `"c"`, is refused before name resolution judges anything
+    // else — every one of them, as the compiler lists them.
+    let attributes = crate::attrs::check(program);
+    if !attributes.is_empty() {
+        return Some(Refusal::RejectAll(attributes));
+    }
     if let Some(diag) = sema::resolve_check(program) {
         return Some(Refusal::Reject(Box::new(diag)));
     }
@@ -475,6 +498,9 @@ fn observe_with_spans(
     match admit_with(&program, analysis.statics) {
         Some(Refusal::Reject(diag)) => {
             return attach(Observation::failed(Phase::Resolve, *diag));
+        }
+        Some(Refusal::RejectAll(diags)) => {
+            return attach(Observation::failed_all(Phase::Resolve, diags));
         }
         Some(Refusal::Unsupported(reason)) => {
             return attach(Observation::unsupported(Phase::Resolve, reason));
