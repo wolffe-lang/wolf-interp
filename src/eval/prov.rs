@@ -89,6 +89,10 @@ pub enum UbRow {
     P6,
     L1,
     L2,
+    /// s209 (ruling #36 = A, wolf-lang#574): an ordinary raw access
+    /// through an address not aligned to its pointee
+    /// (`[mem.unsafe.raw.4]`).
+    L4,
     T1,
     T2,
     C1,
@@ -111,7 +115,7 @@ pub enum Coverage {
 
 impl UbRow {
     /// Every row, in `[mem.ub]`'s order.
-    pub const ALL: [UbRow; 11] = [
+    pub const ALL: [UbRow; 12] = [
         UbRow::P1,
         UbRow::P2,
         UbRow::P3,
@@ -120,6 +124,7 @@ impl UbRow {
         UbRow::P6,
         UbRow::L1,
         UbRow::L2,
+        UbRow::L4,
         UbRow::T1,
         UbRow::T2,
         UbRow::C1,
@@ -137,6 +142,7 @@ impl UbRow {
             UbRow::P6 => "P6",
             UbRow::L1 => "L1",
             UbRow::L2 => "L2",
+            UbRow::L4 => "L4",
             UbRow::T1 => "T1",
             UbRow::T2 => "T2",
             UbRow::C1 => "C1",
@@ -161,6 +167,10 @@ impl UbRow {
             UbRow::P6 => "false discharge of a re-entry door",
             UbRow::L1 => "read of uninitialized or moved-from memory via raw pointers",
             UbRow::L2 => "deref of a dangling raw pointer",
+            UbRow::L4 => {
+                "an ordinary raw access through an address that is not a multiple of the \
+                 pointee's alignment"
+            }
             UbRow::T1 => "producing an invalid value of a restricted type in unsafe code",
             UbRow::T2 => {
                 "torn write producing a partially-updated wide value observed through another tag"
@@ -202,6 +212,9 @@ impl UbRow {
             UbRow::L2 => {
                 "O8: escape analysis / stack promotion without conservatively pinning addresses"
             }
+            UbRow::L4 => {
+                "O12: every ordinary raw access is emitted at the pointee's natural alignment — no alignment check, no split into narrower accesses"
+            }
             UbRow::T1 => {
                 "O9: niche packing; match jump tables without default arms; UTF-8 fast paths without re-validation"
             }
@@ -226,6 +239,7 @@ impl UbRow {
             UbRow::P5 => "mem.unsafe.raw.2",
             UbRow::P6 => "mem.unsafe.door",
             UbRow::L2 => "mem.unsafe.raw.1",
+            UbRow::L4 => "mem.unsafe.raw.4",
             UbRow::C1 => "conc.mm.race.3",
             UbRow::P3 | UbRow::L1 | UbRow::T1 | UbRow::T2 => "mem.ub",
         }
@@ -239,7 +253,7 @@ impl UbRow {
             UbRow::P4 => Rule::ProvRegion,
             UbRow::P5 => Rule::AssumeNoalias,
             UbRow::P6 => Rule::UnsafeDoor,
-            UbRow::L2 => Rule::UnsafeRaw,
+            UbRow::L2 | UbRow::L4 => Rule::UnsafeRaw,
             UbRow::P3 | UbRow::L1 | UbRow::T1 | UbRow::T2 | UbRow::C1 => Rule::Ub,
         }
     }
@@ -255,7 +269,8 @@ impl UbRow {
             | UbRow::P5
             | UbRow::P6
             | UbRow::L1
-            | UbRow::L2 => Coverage::Detected,
+            | UbRow::L2
+            | UbRow::L4 => Coverage::Detected,
             // T1's only modelled production door was `int as bool`, and the
             // cast matrix's bool column closed statically at pin f0da6e6
             // (E0805 at resolve, issue #18 item 2 — the counterparty rejects
