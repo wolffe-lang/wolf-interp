@@ -735,11 +735,13 @@ fn the_stdin_door_reads_a_program_with_file_semantics() {
     assert_eq!(stdout_of(&output), "sum of squares: 30\n");
 
     // Same semantics as a file: a bare expression is not a compilation unit,
-    // so the diagnostic prints and the static-rejection code reports it.
+    // so the diagnostic prints and the static-rejection code reports it —
+    // E0203, a top-level token that starts no declaration (wolf-interp#175;
+    // E0201 before is70).
     let output = lupin_with_stdin(&["-"], &manifest_dir(), b"1 + 1\n");
     assert_eq!(output.status.code(), Some(2));
     assert!(
-        stderr_of(&output).contains("E0201"),
+        stderr_of(&output).contains("E0203"),
         "{}",
         stderr_of(&output)
     );

@@ -154,12 +154,13 @@ fn a_shebang_at_byte_zero_is_trivia() {
 
 #[test]
 fn a_shebang_is_only_a_shebang_at_byte_zero() {
-    // One line down: `#` begins no token, so it is E0101 exactly as before.
+    // One line down: `#` begins no token, so it is a stray character —
+    // E0107 since is70 (wolf-interp#175; E0101 before), the compiler's code.
     let lexed = lex::lex("\n#!/usr/bin/env wolf\nfn main() -> !int { 0 }\n");
     let first = lexed
         .first_error()
         .expect("a stray `#` off byte zero errors");
-    assert_eq!(first.code, wolf_interp::diag::E_UNEXPECTED_BYTE);
+    assert_eq!(first.code, wolf_interp::diag::E_STRAY_CHARACTER);
 
     // Mid-file, after real code, likewise.
     let lexed = lex::lex("fn main() -> !int { 0 }\n#!/usr/bin/env wolf\n");
@@ -168,14 +169,14 @@ fn a_shebang_is_only_a_shebang_at_byte_zero() {
             .first_error()
             .expect("a stray `#` mid-file errors")
             .code,
-        wolf_interp::diag::E_UNEXPECTED_BYTE
+        wolf_interp::diag::E_STRAY_CHARACTER
     );
 
     // Not even indented by one space: "byte offset 0" is the whole domain.
     let lexed = lex::lex(" #!/usr/bin/env wolf\nfn main() -> !int { 0 }\n");
     assert_eq!(
         lexed.first_error().expect("an indented `#!` errors").code,
-        wolf_interp::diag::E_UNEXPECTED_BYTE
+        wolf_interp::diag::E_STRAY_CHARACTER
     );
 }
 
@@ -190,7 +191,7 @@ fn a_byte_order_mark_pushes_the_shebang_off_byte_zero() {
     let codes: Vec<&str> = lexed.errors.iter().map(|d| d.code).collect();
     assert_eq!(
         codes.first().copied(),
-        Some(wolf_interp::diag::E_UNEXPECTED_BYTE),
+        Some(wolf_interp::diag::E_STRAY_CHARACTER),
         "the `#!` after a BOM is not at byte zero, so it stays a stray byte: {codes:?}"
     );
 }
