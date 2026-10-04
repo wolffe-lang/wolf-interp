@@ -130,9 +130,9 @@ across OSes.
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":290,"anchors_total":569,"bundle_sha256":"…","files":1005,"forward_tags":108,"out":"target/bundle","pin":"8e36bc1a0f92bbbbc6861b10d5b2638f76412d6a","programs":985,"records":938}
+{"anchors_covered":290,"anchors_total":569,"bundle_sha256":"…","files":1007,"forward_tags":108,"out":"target/bundle","pin":"8e36bc1a0f92bbbbc6861b10d5b2638f76412d6a","programs":987,"records":940}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 938 entries compared, 0 member(s) exercised through their entries
+differential: 940 entries compared, 0 member(s) exercised through their entries
 divergences: 0
 conservatism ledger: 136 entries
   unsupported(counterparty): 68
