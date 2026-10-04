@@ -264,11 +264,16 @@ pub fn parse(lexed: &Lexed) -> Result<Parsed, Diag> {
 
 #[cfg(not(target_family = "wasm"))]
 pub fn parse(lexed: &Lexed) -> Result<Parsed, Diag> {
+    // `cfg(target = "…")` is decided while parsing, on the stack thread
+    // below: carry the caller's build target onto it (`attrs::build_target`).
+    let target = crate::attrs::build_target();
     std::thread::scope(|scope| {
         std::thread::Builder::new()
             .stack_size(PARSE_STACK)
             .name("wolf-interp-parse".to_owned())
-            .spawn_scoped(scope, || parse_on_this_stack(lexed))
+            .spawn_scoped(scope, move || {
+                crate::attrs::with_build_target(target, || parse_on_this_stack(lexed))
+            })
             .expect("the parser's stack thread must spawn")
             .join()
             // The descent itself never panics; a panic here is an interpreter

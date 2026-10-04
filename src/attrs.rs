@@ -129,11 +129,38 @@ fn read_cfg(attr: &Attr) -> Cfg<'_> {
     }
 }
 
+thread_local! {
+    static BUILD_TARGET: std::cell::Cell<Option<&'static str>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// The target `cfg(target = "…")` reads: the host's (`[abi.target]`: "the
+/// build's target is the host's"), unless this thread asked for another
+/// with [`with_build_target`].
+#[must_use]
+pub fn build_target() -> &'static str {
+    BUILD_TARGET
+        .with(std::cell::Cell::get)
+        .unwrap_or(crate::HOST_TRIPLE)
+}
+
+/// Runs `f` with `cfg` reading `target` on this thread — the conformance
+/// bundle's one use: its reference outcomes are observed as one target on
+/// every OS, so the bundle stays byte-identical across them
+/// (`export::BUNDLE_TARGET`). The parser carries the setting onto its own
+/// stack thread ([`crate::parse::parse`]).
+pub fn with_build_target<T>(target: &'static str, f: impl FnOnce() -> T) -> T {
+    let saved = BUILD_TARGET.with(|t| t.replace(Some(target)));
+    let out = f();
+    BUILD_TARGET.with(|t| t.set(saved));
+    out
+}
+
 /// Whether `target` (a known triple or architecture) names the build's
 /// target: the whole triple, or its architecture, the first component.
 fn holds(target: &str) -> bool {
-    let host = crate::HOST_TRIPLE;
-    target == host || host.split('-').next() == Some(target)
+    let build = build_target();
+    target == build || build.split('-').next() == Some(target)
 }
 
 /// Whether a node carrying `attrs` survives conditional compilation: false
@@ -430,6 +457,23 @@ mod tests {
 
     fn arch() -> &'static str {
         crate::HOST_TRIPLE.split('-').next().expect("a triple")
+    }
+
+    #[test]
+    fn a_thread_may_read_cfg_as_another_target() {
+        for (target, keeps_x86, keeps_arm) in [
+            ("x86_64-unknown-linux-gnu", true, false),
+            ("aarch64-apple-darwin", false, true),
+        ] {
+            with_build_target(target, || {
+                assert_eq!(build_target(), target);
+                let x86 = attrs_of("#[cfg(target = \"x86_64\")]");
+                let arm = attrs_of("#[cfg(target = \"aarch64\")]");
+                assert_eq!(x86.len() == 1, keeps_x86, "{target}: x86_64 item");
+                assert_eq!(arm.len() == 1, keeps_arm, "{target}: aarch64 item");
+            });
+        }
+        assert_eq!(build_target(), crate::HOST_TRIPLE, "restored");
     }
 
     fn other_arch() -> &'static str {
