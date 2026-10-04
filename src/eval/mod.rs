@@ -9567,8 +9567,40 @@ impl Machine {
         Ok(coerce(value, Some(ty)))
     }
 
+    /// `[mem.unsafe.raw.4]` (ruling #36 = A, wolf-lang#574; s209): an
+    /// ordinary raw access of an integer pointee wider than a byte sits at a
+    /// multiple of its width — its alignment — or it is §7 row L4. Asked
+    /// before the provenance check and only of a pointer with an
+    /// allocation, as the compiler's checked machine asks it (allocations
+    /// sit at `Provenance::STRIDE` multiples, so the address alone decides
+    /// it); a pointer no allocation owns keeps its own rows (L2).
+    fn raw_align(&mut self, ptr: RawPtr, kind: AccessKind, span: Span) -> EResult<()> {
+        let align = ptr.elem;
+        if align <= 1 || ptr.alloc.is_none() {
+            return Ok(());
+        }
+        let address = self.prov().address_of(ptr);
+        if address.rem_euclid(align as i128) == 0 {
+            return Ok(());
+        }
+        let what = match kind {
+            AccessKind::Read => "a raw read",
+            AccessKind::Write => "a raw write",
+        };
+        self.ub_row(
+            UbRow::L4,
+            span,
+            ptr.alloc,
+            format!(
+                "{what} of a {align}-byte pointee at address {address:#x}, which is not a multiple \
+                 of {align}: the compiled tiers emit the access at its natural alignment (O12)"
+            ),
+        )
+    }
+
     /// `p[i]` / `*p` — a provenance-checked load.
     fn raw_load(&mut self, ptr: RawPtr, span: Span) -> EResult<Value> {
+        self.raw_align(ptr, AccessKind::Read, span)?;
         self.prov_access(ptr, ptr.elem, AccessKind::Read, span)?;
         let raw = self.prov().load(ptr, ptr.elem);
         let bits = u32::try_from(ptr.elem * 8).unwrap_or(8);
@@ -9589,6 +9621,7 @@ impl Machine {
                 value.kind()
             ));
         };
+        self.raw_align(ptr, AccessKind::Write, span)?;
         self.prov_access(ptr, ptr.elem, AccessKind::Write, span)?;
         self.prov().store(ptr, ptr.elem, *v);
         Ok(())
