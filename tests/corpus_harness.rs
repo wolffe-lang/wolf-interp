@@ -749,10 +749,22 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //  (`faults/index_origin_min_overflow.lu` annotates its binding, the
     //  verdict unchanged). The registry gains TWO anchors, 544 -> 546
     //  (`type.row.defer`, `type.row.match`), and no new namespace.)
+    // (892 -> 947 at 8e36bc1a, r28, wolf-lang v0.2.22: FIFTY-FIVE new
+    //  files, fifty-four entries and one member (kw02's
+    //  `membrane/geo/geo.lu`); none leaves. FOUR files are edited:
+    //  `comptime.lu` drops its `#[noalloc]` and `perf.contract`, `ffi.lu`
+    //  gains its aarch64 asm twin (e951afbb), `memory/unsafe_sig.lu`'s
+    //  `peek` becomes `pub` (be13b445; `check:` unchanged, E1302) and
+    //  `typecheck/wrap_narrow_cast.lu`. The registry gains TWENTY-THREE
+    //  anchors, 546 -> 569 (`abi.asm*`, `abi.c.export`, `abi.c.import`,
+    //  `abi.layout.c`, `abi.target*`, `gram.item.attr.cfg`,
+    //  `gram.item.attr.set`, `mem.unsafe.sig`, `os.fs.*`,
+    //  `proto.record.first`, `type.numlit.cast.narrow`), none dropped, key
+    //  sets diffed both ways, and no new namespace.)
     let report = report();
     assert_eq!(
         report.total(),
-        892,
+        947,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
@@ -777,8 +789,11 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     // 816 -> 846 at dfcc2f13 (r27, wolf-lang v0.2.21): thirty-one new
     // files, thirty of them entries; `members` moves 45 -> 46 with s202's
     // `memory/versioned_loop_cross_module/ring/ring.lu`.
-    assert_eq!(report.entries(), 846);
-    assert_eq!(report.members(), 46);
+    // 846 -> 900 at 8e36bc1a (r28, wolf-lang v0.2.22): fifty-five new
+    // files, fifty-four of them entries; `members` moves 46 -> 47 with
+    // kw02's `membrane/geo/geo.lu`.
+    assert_eq!(report.entries(), 900);
+    assert_eq!(report.members(), 47);
 }
 
 #[test]
