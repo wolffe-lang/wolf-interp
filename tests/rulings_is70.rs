@@ -355,3 +355,54 @@ fn errdefer_nested_block() {
 fn errdefer_fallible_ok() {
     run("errdefer_fallible_ok", "wolf-interp#179");
 }
+
+// ---- wolf-interp#181: the C membrane (kw02, `[mem.unsafe.sig]`) ------------
+// The `raw_ptr_*`, `unsafe_sig` and `extern_*` programs are the compiler's
+// kw02 corpus rows (`corpus/memory/`, `corpus/membrane/`), byte for byte.
+
+/// A module-private fn takes `*T` and writes through it; the argument is a
+/// copy of the pointer, never a Frozen retag. Red at trunk: `fail(E1302)`.
+#[test]
+fn raw_ptr_private_sig() {
+    run("raw_ptr_private_sig", "wolf-interp#181");
+}
+
+/// `mut p: *u8`: the caller's pointer variable. Red at trunk: `fail(E1302)`.
+#[test]
+fn raw_ptr_mut_param() {
+    run("raw_ptr_mut_param", "wolf-interp#181");
+}
+
+/// A private fn returning `*T`. Red at trunk: `fail(E1302)` at the type.
+#[test]
+fn sig_private_ret_raw() {
+    run("sig_private_ret_raw", "wolf-interp#181");
+}
+
+/// An `export fn` taking `*T` sits at the membrane. Red at trunk:
+/// `fail(E1302)`.
+#[test]
+fn sig_export_raw() {
+    run("sig_export_raw", "wolf-interp#181");
+}
+
+/// A hand-declared C call outside `unsafe` is E1301 at the call. Red at
+/// trunk: `unsupported` (no body).
+#[test]
+fn extern_c_outside_unsafe() {
+    run("extern_c_outside_unsafe", "wolf-interp#181");
+}
+
+/// libc through hand-declared externs inside `unsafe`: lupin has no C ABI and
+/// refuses the call by name. Red at trunk: `fail(E1302)`.
+#[test]
+fn extern_libc() {
+    run("extern_libc", "wolf-interp#181");
+}
+
+/// Controls: a `pub` signature and an impl method still refuse `*T`.
+#[test]
+fn sig_controls() {
+    run("unsafe_sig", "wolf-interp#181");
+    run("sig_method_raw", "wolf-interp#181");
+}

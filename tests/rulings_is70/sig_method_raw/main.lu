@@ -1,0 +1,14 @@
+struct Buf {
+    n: int,
+}
+
+impl Buf {
+    fn poke(self, p: *u8) -> int {
+        self.n
+    }
+}
+
+fn main() -> int {
+    let b = Buf { n: 1 }
+    b.n - 1
+}

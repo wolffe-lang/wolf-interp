@@ -1,0 +1,14 @@
+# is70 — #181: [mem.unsafe.sig] (kw02, K9(b) = B, R1) — *T in a module-private or membrane signature, a raw pointer argument is a copy, a hand-declared C call outside unsafe is E1301
+# `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
+# (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
+# `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+issue = "wolf-interp#181"
+
+[expected]
+lupin   = { verdict = "fail(E1301)", stdout = "", first = "E1301@[405,415]" }
+
+[trunk]
+lupin   = { verdict = "unsupported", stdout = "", unsupported = "`llabs` has no body (extern or trait signature); the interpreter has no C ABI and no trait-method dispatch" }
+checked = { verdict = "fail(E1301)", stdout = "", first = "E1301@[405,415]" }
+native  = { verdict = "fail(E1301)", stdout = "", first = "E1301@[405,415]" }
+release = { verdict = "fail(E1301)", stdout = "", first = "E1301@[405,415]" }

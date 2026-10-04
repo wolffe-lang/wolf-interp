@@ -1,0 +1,20 @@
+import c "stdlib.h"
+
+fn fresh() -> *u8 {
+    // # Safety: 8 zeroed bytes; the caller frees them.
+    unsafe {
+        c.calloc(1, 8) as *u8
+    }
+}
+
+fn main() -> int {
+    let p = fresh()
+    // # Safety: p is the live allocation fresh() returned, freed once.
+    unsafe {
+        p[0] = 42
+        let v = p[0] as int
+        c.free(p)
+        print("{v}")
+    }
+    0
+}

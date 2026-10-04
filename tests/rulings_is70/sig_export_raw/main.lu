@@ -1,0 +1,10 @@
+export fn kx_first(p: *u8) -> i64 {
+    // # Safety: the caller passes a live byte.
+    unsafe {
+        p[0] as i64
+    }
+}
+
+fn main() -> int {
+    0
+}
