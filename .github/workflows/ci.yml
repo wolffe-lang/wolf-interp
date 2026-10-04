@@ -243,6 +243,24 @@ jobs:
               want='"verdict":"pass"'
             fi
             if [[ "$out" == *"$want"* && "$out" == *'"phase_reached":"lex"'* ]]; then :; else
+              # Ruling #28 (`[proto.record.first]`; wolf-interp#175): a
+              # `phase: lex` row may carry a lexical fault AFTER the parse
+              # refusal it pins — the record is the earliest diagnostic
+              # (`rows/negative/first_parse_before_lex.lu`,
+              # `first_boundary_before_lex.lu`, the 8e36bc1a pin). The same
+              # derivation as `tests/lex_corpus.rs` and
+              # `tests/conformance.rs`: the ledger phase and the `check:`
+              # code, no name.
+              if [[ "$phase" == lex ]]; then
+                code=$(sed -n 's|^//! *check: *fail(\([A-Z][0-9]*\)).*|\1|p' "$f" | head -1)
+                parsed=$(cargo run --quiet -- conform-run "$f" --phase=parse --json)
+                lex_at=$(echo "$out" | sed -n 's|.*"span":\[\([0-9]*\),.*|\1|p' | head -1)
+                parse_at=$(echo "$parsed" | sed -n 's|.*"span":\[\([0-9]*\),.*|\1|p' | head -1)
+                if [[ -n "$code" && "$parsed" == *"\"verdict\":\"fail($code)\""* \
+                      && -n "$lex_at" && -n "$parse_at" && "$parse_at" -lt "$lex_at" ]]; then
+                  continue
+                fi
+              fi
               echo "::error file=$f::lex rung is not clean: $out"; fail=1
             fi
           done < <(find vendor/upstream/corpus -name '*.lu' | sort)
