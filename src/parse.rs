@@ -699,6 +699,9 @@ impl<'a> Parser<'a> {
             }
             items.push(self.parse_item()?);
         }
+        // `[gram.item.attr.cfg]`: a node another target gates is removed
+        // after parsing, before resolution (wolf-interp#174).
+        items.retain(|item| crate::attrs::cfg_keeps(&item.attrs));
         let end = self.prev_span().end;
         Ok(Unit {
             inner_attrs,
@@ -1375,6 +1378,8 @@ impl<'a> Parser<'a> {
             self.eat(&Tok::Comma);
         }
         let end = self.expect(&Tok::RBrace, anchor)?.end;
+        // `[gram.item.attr.cfg]` gates a field as it does an item.
+        fields.retain(|field| crate::attrs::cfg_keeps(&field.attrs));
         Ok(StructDef {
             name,
             generics,
@@ -1515,6 +1520,7 @@ impl<'a> Parser<'a> {
             }
             members.push(self.parse_item()?);
         }
+        members.retain(|member| crate::attrs::cfg_keeps(&member.attrs));
         Ok(members)
     }
 
@@ -2206,6 +2212,17 @@ impl<'a> Parser<'a> {
             };
             tail = Some(Box::new(expr));
         }
+        // `[gram.item.attr.cfg]` (wolf-interp#174): a statement another
+        // target gates is removed after the tail is decided — an attributed
+        // statement is never a block's value, so dropping one never makes
+        // the statement before it the tail.
+        stmts.retain(|stmt| {
+            crate::attrs::cfg_keeps(&stmt.attrs)
+                && match &stmt.kind {
+                    StmtKind::Item(item) => crate::attrs::cfg_keeps(&item.attrs),
+                    _ => true,
+                }
+        });
 
         let end = self.expect(&Tok::RBrace, anchor)?.end;
         Ok(Block {
