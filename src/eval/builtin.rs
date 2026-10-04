@@ -1798,8 +1798,16 @@ pub fn method(
 
         // -- Tier 3: raw pointers (`[mem.unsafe.raw.1]`) -------------------
         (Value::Raw(ptr), "is_null") => Ok(Value::Bool(ptr.is_null())),
+        // The strict-provenance spellings beside the casts
+        // (`[mem.prov.expose]`, kw06; wolf-interp#184). An address is the
+        // 64-bit word read as `int`, as `p as int` reads it.
         (Value::Raw(ptr), "addr") => {
             let ptr = *ptr;
+            // The clause says `addr` reads without exposing. This machine
+            // still exposes here: every machine answers `1` on
+            // `tests/rulings_is70/addr_no_expose` (a C pointer behaves as
+            // exposed on the checked machine), and an unexposing `addr`
+            // would part there, so the reading waits for a witness.
             machine.prov().expose(ptr, span);
             let address = machine.prov().address_of(ptr);
             machine.note(
@@ -1807,7 +1815,54 @@ pub fn method(
                 span,
                 &format!("{ptr}.addr exposes its tag"),
             );
-            Ok(Value::Int(address, IntTy::INT))
+            Ok(Value::Int(as_int_bits(address), IntTy::INT))
+        }
+        (Value::Raw(ptr), "expose") => {
+            // `p.expose()` is the cast `p as int`: it exposes the tag.
+            let ptr = *ptr;
+            machine.prov().expose(ptr, span);
+            let address = machine.prov().address_of(ptr);
+            machine.note(
+                Rule::ProvExpose,
+                span,
+                &format!("{ptr}.expose exposes its tag"),
+            );
+            Ok(Value::Int(as_int_bits(address), IntTy::INT))
+        }
+        (Value::Raw(ptr), "with_addr") => {
+            // `p.with_addr(a)` is `p`'s own provenance at address `a`: an
+            // offset from `p`, never a resolution among exposed tags.
+            let ptr = *ptr;
+            let [Value::Int(a, _)] = args.as_slice() else {
+                return unsupported("`with_addr` takes one integer address".to_owned());
+            };
+            let word = super::prov::address_word(*a);
+            let delta = word - machine.prov().address_of(ptr);
+            let moved = super::prov::RawPtr {
+                offset: ptr.offset + delta,
+                ..ptr
+            };
+            machine.note(
+                Rule::ProvExpose,
+                span,
+                &format!("{ptr}.with_addr keeps its provenance at {moved}"),
+            );
+            Ok(Value::Raw(moved))
+        }
+        (Value::Raw(ptr), "with_exposed") => {
+            // `p.with_exposed(a)` is the cast `a as *T` at `p`'s pointee.
+            let ptr = *ptr;
+            let [Value::Int(a, _)] = args.as_slice() else {
+                return unsupported("`with_exposed` takes one integer address".to_owned());
+            };
+            let word = super::prov::address_word(*a);
+            let made = machine.pointer_at(word, ptr.elem, ptr.signed);
+            machine.note(
+                Rule::ProvExpose,
+                span,
+                &format!("with_exposed: {word} becomes {made} with wildcard provenance"),
+            );
+            Ok(Value::Raw(made))
         }
 
         (Value::Closure(_) | Value::Fn(_), "call") => {
@@ -2400,6 +2455,16 @@ fn c_len(args: &[Value], at: usize, name: &str) -> Result<usize, Signal> {
 
 /// `Option<&Value>` → `Option<Value>` for the `Copy`-shaped raw pointer, so the
 /// call sites above read as one `let … else`.
+/// A 64-bit address word read as `int`: its bits, so a higher-half address
+/// is negative (`[mem.prov.expose]`).
+fn as_int_bits(word: i128) -> i128 {
+    if word >= 1i128 << 63 {
+        word - (1i128 << 64)
+    } else {
+        word
+    }
+}
+
 trait CopiedRaw {
     fn copied_raw(self) -> Option<Value>;
 }
