@@ -11,7 +11,7 @@
 use std::path::{Path, PathBuf};
 
 use wolf_interp::eval::Trace;
-use wolf_interp::eval::prov::UbRow;
+use wolf_interp::eval::prov::{AccessKind, Prov, Provenance, RetagKind, UbRow};
 use wolf_interp::eval::rules::Rule;
 use wolf_interp::frontend;
 use wolf_interp::protocol::Verdict;
@@ -215,11 +215,16 @@ fn the_retag_then_opaque_call_program_demonstrates_the_protector() {
     // The sprint's named acceptance program: "interpreter trace demonstrates the
     // protector guarantee (foreign write during protected extent → UB), and the
     // paired licensed-optimization note names the fold."
-    // The retired `p1_protector.lu`, inline: at pin f0da6e6 its `*u8`
-    // parameters are outside the language (E1302), so the frontend rejects
-    // it — but the machine's protector logic is intact, and this test is
-    // the sprint's named acceptance evidence for it, run frontend-free
-    // (`load_source` + `Machine::run` perform no resolve_check).
+    //
+    // Through 0.1.45 the program below was that evidence, run frontend-free:
+    // its `read` parameter `a: *u8` took a Frozen, PROTECTED child at entry,
+    // so `b[0] = 3` through the caller's other pointer was §7/P1. kw02's
+    // `[mem.unsafe.sig]` (R1; wolf-interp#181, is70) rules the opposite for a
+    // raw pointer: "passed by value is a copy of the pointer and nothing
+    // more: no retag, no freeze of the pointee". So the program now runs —
+    // `a[0]` reads the 3 — and the trace says why. The protector itself is
+    // unchanged and still serves Tier-0 places; it is demonstrated below on
+    // the provenance machine directly, the shape a parameter entry mints.
     let source = "\
 import c \"stdlib.h\"
 
@@ -241,28 +246,44 @@ fn main() -> !int {
 ";
     let program = wolf_interp::sema::load_source("t.lu", source).expect("parses");
     let run = wolf_interp::eval::Machine::new(&program)
-        .tracing(Trace::Provenance)
+        .tracing(Trace::All)
         .run();
+    assert!(
+        matches!(run.outcome, wolf_interp::eval::Outcome::Exit(3)),
+        "a raw pointer argument is a copy: {:?}",
+        run.outcome
+    );
+    let joined = run.trace.join("\n");
+    assert!(
+        joined.contains("passes as a copy of the pointer: no retag at parameter entry"),
+        "{joined}"
+    );
+    assert!(!joined.contains("PROTECTED"), "{joined}");
 
-    let wolf_interp::eval::Outcome::Ub(finding) = &run.outcome else {
-        panic!("expected the protector violation, got {:?}", run.outcome)
+    // The protector, as a parameter entry mints it: a protected child, then a
+    // foreign write during the extent is §7/P1 at the write; after the extent
+    // the same write merely Disables the tag.
+    let span = wolf_interp::diag::Span::new(0, 1);
+    let mut prov = Provenance::new();
+    let root = prov.host_alloc(4, 0, span);
+    prov.init_range(root, 4);
+    let (Some(alloc), Prov::Tag(root_tag)) = (root.alloc, root.prov) else {
+        panic!("a host allocation carries a root tag: {root:?}")
     };
+    let child = prov.retag(alloc, root_tag, RetagKind::Shared, true, "parameter", span);
+    let finding = prov
+        .access(root, 1, AccessKind::Write, span)
+        .expect_err("a foreign write past a protected tag is UB");
     assert_eq!(finding.row, UbRow::P1);
     assert!(finding.message.contains("PROTECTED"), "{}", finding.message);
-
-    // The trace shows the whole story: the retag, the protector, the violation,
-    // and the D2 pairing that says what the rule bought.
-    let joined = run.trace.join("\n");
-    assert!(joined.contains("PROTECTED"), "{joined}");
-    assert!(joined.contains("§7/P1"), "{joined}");
     assert!(
-        joined.contains("licenses O1") && joined.contains("noalias"),
-        "the report must name the fold the row licenses:\n{joined}"
+        UbRow::P1.optimization().contains("noalias"),
+        "the row names the fold it licenses: {}",
+        UbRow::P1.optimization()
     );
-    // And the two spans are real offsets into this program.
-    assert!(finding.span.end <= source.len());
-    let tag_span = finding.tag_span.expect("a tag-creation span");
-    assert!(tag_span.end <= source.len());
+    prov.unprotect(child, span);
+    prov.access(root, 1, AccessKind::Write, span)
+        .expect("the extent ended: the write only Disables the tag");
 }
 
 // -- the trace namespace ----------------------------------------------------

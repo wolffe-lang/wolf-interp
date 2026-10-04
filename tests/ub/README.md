@@ -18,7 +18,7 @@ lenses, and `ledger::ub_is_the_oracle_verdict` is where that is argued.
 
 | row | file | what it does | licenses |
 |---|---|---|---|
-| P1 | *(unit)* `tests/prov_machine.rs` | a foreign write during a protected call extent — pinned as trace assertions since the v0.1.5 rebuild | O1 `noalias` on `mut` params |
+| P1 | *(unit)* `tests/prov_machine.rs` | a foreign write during a protected call extent — pinned as trace assertions since the v0.1.5 rebuild; on the provenance machine directly since is70, when a `*T` parameter stopped taking a retag (`[mem.unsafe.sig]`, wolf-interp#181) | O1 `noalias` on `mut` params |
 | P1 | *(corpus)* `memory/unsafe_ub_uaf.lu` | use-after-free through a freed C allocation | O1 |
 | P2 | `p2_frozen_write.lu` | a write through a `read` parameter's Frozen tag | O2 load hoisting (the SB "holy grail") |
 | P3 | `p3_out_of_bounds.lu` | byte 16 of an 8-byte allocation | O3a `dereferenceable(n)` |
