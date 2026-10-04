@@ -495,12 +495,11 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // re-spelled row; the census counts it static-conservatism meanwhile.
     // The cdde128a pin (r26) carries it: `check:` is `run(exit=0)`, a match.
     ("memory/mut_read_overlap.lu", "exit(0)"),
-    // is70: kw02's `[mem.unsafe.sig]` (wolf-interp#181) admits `*T` in a
-    // module-private fn's signature, so `unsafe_sig.lu`'s private `peek`
-    // runs. The pinned header still says `fail(E1302)` until the re-pin
-    // carries wolf-lang be13b445, which re-spells it `pub fn peek`; the
-    // census counts it static-conservatism meanwhile, as is63's row above.
-    ("memory/unsafe_sig.lu", "exit(0)"),
+    // (is70 ledgered `memory/unsafe_sig.lu` here as `exit(0)`: kw02's
+    // `[mem.unsafe.sig]`, wolf-interp#181, admits `*T` in a module-private
+    // fn's signature and the vendored 0.2.21 row's `peek` was private. The
+    // 8e36bc1a pin (r28) carries wolf-lang be13b445's `pub fn peek`, so the
+    // row stops at resolve with E1302 as pinned and leaves this ledger.)
     ("memory/read_param_write.lu", "trap(exclusivity)"),
     // The c09-wave pin, `0b4e79c` (0.1.9, s73): the corpus grows one —
     // the `--schedules=N` dogfood witness. Both select arms are conforming
@@ -2092,58 +2091,69 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("typecheck/numlit_binding_literal_call.lu", "trap(overflow)"),
     ("typecheck/numlit_binding_literal_term.lu", "trap(overflow)"),
     ("typecheck/numlit_binding_value_later_use.lu", "exit(0)"),
+    //
+    // The 8e36bc1a pin (r28, wolf-lang **v0.2.22** — the TAG, one release
+    // forward of dfcc2f13): THIRTY-FOUR of the fifty-four new entries reach
+    // `run`; `memory/unsafe_sig.lu` leaves (above).
+    //
+    // TWENTY-THREE match their `check:` byte for byte: kw03's narrowing
+    // casts (three `faults/cast_narrow_*` traps, two `typecheck/` runs),
+    // s199's `fs/read_at.lu` and `fs/seek_tell.lu`, kw01's
+    // `grammar/cfg_target_{arch,freestanding}.lu` (is70, #174), kw02's
+    // `membrane/export_{called,child}.lu` and `memory/raw_*` rows (is70,
+    // #181, #184), s207's `region_str_view_for_inside.lu`, s203's
+    // `rows/first_list_literal_sum.lu` and s207's and s208's seven
+    // `rows/unit_discard_*` rows (is68, s208's mirror of ruling #34).
+    // ELEVEN are DYNAMIC COUNTERPARTS: s207's `memory/region_str_*` rows
+    // pin E1010 at typecheck, which this machine does not perform, and trap
+    // `region-fault` at the escape at run time (is68, #126).
+    ("faults/cast_narrow_sign_trap.lu", "trap(overflow)"),
+    (
+        "faults/cast_narrow_unsigned_to_signed_trap.lu",
+        "trap(overflow)",
+    ),
+    ("faults/cast_narrow_width_trap.lu", "trap(overflow)"),
+    ("fs/read_at.lu", "exit(0)"),
+    ("fs/seek_tell.lu", "exit(0)"),
+    ("grammar/cfg_target_arch.lu", "exit(0)"),
+    ("grammar/cfg_target_freestanding.lu", "exit(0)"),
+    ("membrane/export_called.lu", "exit(0)"),
+    ("membrane/export_child.lu", "exit(0)"),
+    ("memory/raw_compound_assign.lu", "exit(0)"),
+    ("memory/raw_ptr_mut_param.lu", "exit(0)"),
+    ("memory/raw_ptr_private_sig.lu", "exit(0)"),
+    ("memory/region_str_copy_return.lu", "trap(region-fault)"),
+    ("memory/region_str_list_for_held.lu", "trap(region-fault)"),
+    ("memory/region_str_view_for_copy.lu", "trap(region-fault)"),
+    ("memory/region_str_view_for_held.lu", "trap(region-fault)"),
+    ("memory/region_str_view_for_inside.lu", "exit(0)"),
+    ("memory/region_str_view_for_lines.lu", "trap(region-fault)"),
+    ("memory/region_str_view_for_nested.lu", "trap(region-fault)"),
+    ("memory/region_str_view_for_place.lu", "trap(region-fault)"),
+    ("memory/region_str_view_for_return.lu", "trap(region-fault)"),
+    ("memory/region_str_view_for_split.lu", "trap(region-fault)"),
+    ("memory/region_str_view_for_value.lu", "trap(region-fault)"),
+    ("memory/region_str_view_for_words.lu", "trap(region-fault)"),
+    ("rows/first_list_literal_sum.lu", "exit(0)"),
+    ("rows/unit_discard_fallible_body_stmt.lu", "exit(0)"),
+    ("rows/unit_discard_if_value.lu", "exit(0)"),
+    ("rows/unit_discard_raise_stmts.lu", "exit(0)"),
+    ("rows/unit_discard_raise_unit_fn.lu", "exit(0)"),
+    ("rows/unit_discard_return_operand.lu", "exit(0)"),
+    ("rows/unit_discard_try_leaves.lu", "exit(0)"),
+    ("rows/unit_discard_unit_main.lu", "exit(0)"),
+    ("typecheck/cast_narrow_in_range.lu", "exit(0)"),
+    ("typecheck/cast_narrow_wrapping_truncates.lu", "exit(0)"),
 ];
 
-/// Pinned rows a later ruling re-spelled upstream, which this machine
-/// already follows, so the vendored `check:` no longer holds here: `(row,
-/// the architecture it parts on — `None` for every host —, why)`. Each
-/// re-spelling is in wolf 0.2.22 (the pairing) and not in the vendored
-/// 0.2.21 pin; the waiver retires by name at the re-pin, when
-/// [`rows_ruled_ahead_of_the_pin_still_part`] goes red.
-const RULED_AHEAD_OF_PIN: &[(&str, Option<&str>, &str)] = &[
-    (
-        "comptime.lu",
-        None,
-        "kw01's `[gram.item.attr.set]` (K13; wolf-interp#174, is70): the row's \
-         `#[noalloc]` has no checker and is refused E0817 by name; wolf-lang \
-         e951afbb drops it from the row",
-    ),
-    (
-        "ffi.lu",
-        Some("aarch64"),
-        "kw01's `[gram.item.attr.cfg]` (wolf-interp#174, is70): the row's asm is \
-         `#[cfg(target = \"x86_64\")]`, so on an aarch64 host it is dropped before \
-         resolution and the program runs to `exit(1)` (7, not 42); wolf-lang e951afbb \
-         gives it the aarch64 twin. On x86_64 the asm is kept and declined, as before",
-    ),
-];
-
-/// Whether `path` is ruled ahead of the pin on this host.
-fn ruled_ahead_here(path: &str) -> bool {
-    RULED_AHEAD_OF_PIN
-        .iter()
-        .any(|(row, arch, _)| path == *row && arch.is_none_or(|a| a == std::env::consts::ARCH))
-}
-
-#[test]
-fn rows_ruled_ahead_of_the_pin_still_part() {
-    let all = entries();
-    for (row, arch, why) in RULED_AHEAD_OF_PIN {
-        if arch.is_some_and(|a| a != std::env::consts::ARCH) {
-            continue;
-        }
-        let entry = all
-            .iter()
-            .find(|entry| entry.path == *row)
-            .unwrap_or_else(|| panic!("{row} is in the pinned corpus"));
-        assert!(
-            entry.judgement.is_mismatch(),
-            "{row} no longer parts — the re-pin carried its re-spelled row; retire the \
-             waiver ({why}): {}",
-            entry.judgement
-        );
-    }
-}
+// (is70's `RULED_AHEAD_OF_PIN` stood here: `comptime.lu`, whose `#[noalloc]`
+// the closed attribute set refuses E0817, and, on an aarch64 host, `ffi.lu`,
+// whose x86_64-gated asm was dropped so the row ran to `exit(1)`. The
+// 8e36bc1a pin (r28) carries wolf-lang e951afbb, which drops the attribute
+// and gives the asm its aarch64 twin: `comptime.lu` stops at resolve as
+// out of scope (a `comptime fn`), and `ffi.lu` keeps one asm on every host
+// and declines it by name. Both waivers retired by name, when
+// `rows_ruled_ahead_of_the_pin_still_part` went red.)
 
 #[test]
 fn no_corpus_file_mismatches_its_expectation() {
@@ -2156,7 +2166,6 @@ fn no_corpus_file_mismatches_its_expectation() {
         .iter()
         .filter(|entry| entry.judgement.is_mismatch())
         .filter(|entry| wolf_interp::differ::filed(&entry.path).is_none())
-        .filter(|entry| !ruled_ahead_here(&entry.path))
         .map(|entry| format!("  {}: {}", entry.path, entry.judgement))
         .collect();
     assert!(
@@ -2304,16 +2313,10 @@ fn the_run_ledger_is_exactly_what_reaches_run() {
         .filter(|entry| entry.phase == Phase::Run)
         .map(|entry| (entry.path, entry.verdict.to_string()))
         .collect();
-    let mut expected: BTreeMap<String, String> = RUN_LEDGER
+    let expected: BTreeMap<String, String> = RUN_LEDGER
         .iter()
         .map(|(path, verdict)| ((*path).to_owned(), (*verdict).to_owned()))
         .collect();
-    // is70 (wolf-interp#174): on an aarch64 host `ffi.lu`'s x86_64-gated asm
-    // is dropped, so the row runs — to `exit(1)`, ruled ahead of the pin
-    // ([`RULED_AHEAD_OF_PIN`]). Elsewhere the asm is kept and declined.
-    if std::env::consts::ARCH == "aarch64" {
-        expected.insert("ffi.lu".to_owned(), "exit(1)".to_owned());
-    }
 
     let gained: Vec<&String> = observed
         .keys()
@@ -2379,7 +2382,7 @@ fn every_run_expectation_this_machine_reaches_is_met_exactly() {
         }
         // A filed divergence (docs/divergence-log.md) is a known disagreement:
         // visible in every differential report, waived here until resolved.
-        if wolf_interp::differ::filed(&entry.path).is_some() || ruled_ahead_here(&entry.path) {
+        if wolf_interp::differ::filed(&entry.path).is_some() {
             continue;
         }
         checked += 1;
