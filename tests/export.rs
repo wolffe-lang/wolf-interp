@@ -948,11 +948,11 @@ fn the_coverage_table_is_the_honesty_document() {
         "{} / {} registered anchors",
         summary.anchors_covered, summary.anchors_total
     )));
-    // The UB enumeration's dedicated section (D2): all eleven rows, each
-    // detected-and-paired or carrying its named reason.
+    // The UB enumeration's dedicated section (D2): all twelve rows, each
+    // detected-and-paired or carrying its named reason (L4 since s209).
     assert!(rendered.contains("The UB enumeration"));
     for id in [
-        "P1", "P2", "P3", "P4", "P5", "P6", "L1", "L2", "T1", "T2", "C1",
+        "P1", "P2", "P3", "P4", "P5", "P6", "L1", "L2", "L4", "T1", "T2", "C1",
     ] {
         assert!(rendered.contains(&format!("| {id} |")), "{id} missing");
     }
