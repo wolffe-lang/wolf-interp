@@ -800,9 +800,12 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // 930/884 -> 985/938 at 8e36bc1a (r28, wolf-lang v0.2.22 — the TAG):
     // fifty-five corpus files, none leaving, fifty-four of them entries —
     // `programs` by 55, `records` by 54, the one new member the gap.
+    // 985/938 -> 987/940 at the same pin (s209): the bundle harvests
+    // `tests/ub`, and row L4 brings a trigger and its twin — both counts by
+    // two, the corpus unmoved.
     assert_eq!(summary.pin, "8e36bc1a0f92bbbbc6861b10d5b2638f76412d6a");
-    assert_eq!(summary.programs, 985);
-    assert_eq!(summary.records, 938);
+    assert_eq!(summary.programs, 987);
+    assert_eq!(summary.records, 940);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
@@ -898,7 +901,7 @@ fn the_vocabularies_ship_closed() {
     )
     .expect("json");
     let rows = rows["rows"].as_array().expect("rows");
-    assert_eq!(rows.len(), 11, "[mem.ub] is the closed eleven");
+    assert_eq!(rows.len(), 12, "[mem.ub] is the closed twelve (L4 since s209)");
     for row in rows {
         // D2 on the wire: every row names what it licenses, and its coverage
         // status is stated rather than implied ([proto.record.unsupported]'s
