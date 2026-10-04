@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Row L4: a misaligned ordinary raw access (s209, ruling #36 = A, #192)
+
+- **lupin defined what the compiled tiers assume away.** A `*u16`,
+  `*u32` or `*u64` read or write at an address that is not a multiple of
+  its width (`p.with_addr(p.addr() + 1)`, then `q[0]`) ran to `exit(0)`
+  here, while wolf's release tier emits `load i32 … align 4`. It is now
+  §7 row **L4** (`x-ub-row` L4, `x-ub-clause` `mem.unsafe.raw.4`;
+  licenses O12), asked in `raw_load`/`raw_store` before the provenance
+  check and only for a pointer with an allocation; a pointer no
+  allocation owns keeps L2. Wolf-lang s209 lands the clause and the
+  checked machine's half; its `raw_align_lanes.rs` pins 0.1.46 as
+  pre-mirror.
+- `tests/ub/l4_misaligned.lu` and its twin `ok/l4_aligned_ok.lu`; the
+  enumeration has twelve rows. The pin does not move (the clause's
+  anchor arrives with the next one).
+
 ## 0.1.46 — 2026-10-04
 
 THE FORTY-SIXTH (s208's lupin half, is70, and r28's re-pin), the lupin
