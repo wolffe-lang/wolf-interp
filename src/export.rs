@@ -79,6 +79,13 @@ pub struct ExportOptions {
     pub out: PathBuf,
 }
 
+/// The target the bundle's reference outcomes are observed as, on every OS:
+/// since is70 `cfg(target = "…")` is read (`[gram.item.attr.cfg]`,
+/// wolf-interp#174), and the pinned `ffi.lu` gates its asm to `x86_64`, so an
+/// aarch64 host would otherwise record a different outcome and the bundle
+/// would stop being byte-identical across OSes (CI's `bundle-identical`).
+pub const BUNDLE_TARGET: &str = "x86_64-unknown-linux-gnu";
+
 impl ExportOptions {
     /// The conventional roots, relative to the repository checkout.
     #[must_use]
@@ -177,7 +184,9 @@ pub fn export(options: &ExportOptions) -> Result<ExportSummary, String> {
             continue; // [conf.directive.member]: never conform-run directly
         }
         let on_disk = options.out.join(&program.bundle_path);
-        let (mut record, _) = crate::observe_record(&on_disk, &program.source, None);
+        let (mut record, _) = crate::attrs::with_build_target(BUNDLE_TARGET, || {
+            crate::observe_record(&on_disk, &program.source, None)
+        });
         // The wire path is the bundle-relative one: records travel between
         // machines, and an exporter-local prefix would make identical
         // observations compare unequal (and break cross-OS determinism).
