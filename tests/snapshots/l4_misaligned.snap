@@ -1,0 +1,15 @@
+---
+source: tests/prov_machine.rs
+---
+program:   l4_misaligned.lu
+verdict:   ub(mem.ub)
+row:       §7/L4
+clause:    [mem.unsafe.raw.4]
+what:      an ordinary raw access through an address that is not a multiple of the pointee's alignment
+licenses:  O12: every ordinary raw access is emitted at the pointee's natural alignment — no alignment check, no split into narrower accesses
+message:   a raw read of a 4-byte pointee at address 0x10001, which is not a multiple of 4: the compiled tiers emit the access at its natural alignment (O12)
+access:    `q[0]`
+tag from:  `c.calloc(1, 16)`
+tree:
+  alloc#0 `c.malloc(16)` 16 byte(s), live, owned by region #0
+    tag#0 c.malloc(16)#root Active exposed
