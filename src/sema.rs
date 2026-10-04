@@ -3470,7 +3470,7 @@ impl TierWalk<'_> {
                     operand,
                 } = &*place.kind
                     && self.raw_local(operand)
-                    && !self.in_unsafe()
+                    && self.in_unsafe()
                 {
                     return Some(ring_diag("a raw pointer write", place.span));
                 }
@@ -3547,7 +3547,7 @@ impl TierWalk<'_> {
             ExprKind::Unary {
                 op: crate::ast::UnOp::Deref,
                 operand,
-            } if self.raw_local(operand) && !self.in_unsafe() => {
+            } if self.raw_local(operand) && self.in_unsafe() => {
                 Some(ring_diag("a raw pointer read", expr.span))
             }
             ExprKind::Unary { operand, .. } => self.expr(operand),
