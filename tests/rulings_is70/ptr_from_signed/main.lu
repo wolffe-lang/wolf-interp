@@ -1,0 +1,14 @@
+fn main() -> int {
+    // # Safety: no pointer is accessed; only addresses cross the casts.
+    unsafe {
+        let n: i32 = -1
+        let m: u32 = 4294967295
+        let k: i8 = -2
+        let z = 0 as *u8
+        let q = n as *u8
+        let v = (k as *u16) as i64
+        let s = (m as *u8) as u32
+        print("{q as int} {v} {s} {z.is_null()} {q.is_null()}")
+    }
+    0
+}

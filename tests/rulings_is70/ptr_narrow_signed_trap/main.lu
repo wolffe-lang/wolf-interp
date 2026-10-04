@@ -1,0 +1,10 @@
+fn main() -> int {
+    // # Safety: no pointer is accessed; only the address is narrowed.
+    unsafe {
+        let n: i32 = -1
+        let q = n as *u8
+        let t = q as i32
+        print("{t}")
+    }
+    0
+}

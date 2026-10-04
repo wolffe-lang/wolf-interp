@@ -1,0 +1,11 @@
+fn main() -> int {
+    // # Safety: no pointer is accessed; addresses only.
+    unsafe {
+        let p = 4096 as *u32
+        let q = p.with_addr(p.addr() + 8)
+        let e = p.expose()
+        let r = p.with_exposed(e + 4)
+        print("{q.addr() - p.addr()} {r as int} {e}")
+    }
+    0
+}

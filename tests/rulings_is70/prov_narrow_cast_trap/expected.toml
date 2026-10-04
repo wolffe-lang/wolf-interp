@@ -1,0 +1,14 @@
+# is70 — #184 items 1-2: the provenance methods and the integer side of the casts, [mem.prov.expose] at wolf-lang 50830027
+# `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
+# (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
+# `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+issue = "wolf-interp#184"
+
+[expected]
+lupin   = { verdict = "trap(overflow)", stdout = "" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "" }
+checked = { verdict = "trap(overflow)", stdout = "" }
+native  = { verdict = "trap(overflow)", stdout = "" }
+release = { verdict = "trap(overflow)", stdout = "" }

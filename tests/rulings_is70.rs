@@ -139,3 +139,76 @@ fn deref_compound_outside() {
 fn deref_inside_ok() {
     run("deref_inside_ok", "wolf-interp#184");
 }
+
+// ---- wolf-interp#184: the provenance methods and the integer side ---------
+// The `prov_*` and `raw_deref*` programs are the compiler's kw06 corpus rows
+// (`corpus/memory/`), byte for byte; `f9_exposed` is kw00's probe from the
+// compiler gate `int_ptr_lanes.rs`.
+
+/// `with_addr` keeps the receiver's provenance. Red at trunk: `unsupported`.
+#[test]
+fn prov_addr_with_addr() {
+    run("prov_addr_with_addr", "wolf-interp#184");
+}
+
+/// `expose` / `with_exposed` round-trip. Red at trunk: `unsupported`.
+#[test]
+fn prov_expose_round_trip() {
+    run("prov_expose_round_trip", "wolf-interp#184");
+}
+
+/// kw00's F9 probe. Red at trunk: `unsupported`.
+#[test]
+fn f9_exposed() {
+    run("f9_exposed", "wolf-interp#184");
+}
+
+/// `N as *T` widens by `N`'s sign; `*T as N` is the address. Red at trunk:
+/// `0 0 0`.
+#[test]
+fn prov_narrow_cast() {
+    run("prov_narrow_cast", "wolf-interp#184");
+}
+
+/// `300 as *u8 as u8` is out of range. Red at trunk: `exit(0)`.
+#[test]
+fn prov_narrow_cast_trap() {
+    run("prov_narrow_cast_trap", "wolf-interp#184");
+}
+
+/// Signed widening into the address word, `is_null` on a non-zero address
+/// no allocation owns. Red at trunk: `0 0 0 true true`.
+#[test]
+fn ptr_from_signed() {
+    run("ptr_from_signed", "wolf-interp#184");
+}
+
+/// The all-ones address read as `i32` is out of range as `uint`. Red at
+/// trunk: `exit(0)`, `0`.
+#[test]
+fn ptr_narrow_signed_trap() {
+    run("ptr_narrow_signed_trap", "wolf-interp#184");
+}
+
+/// The methods on a pointer no allocation owns. Red at trunk: `unsupported`.
+#[test]
+fn ptr_offset_foreign() {
+    run("ptr_offset_foreign", "wolf-interp#184");
+}
+
+/// Controls, green at trunk and kept green: the round trip into an
+/// allocation, `is_null`, prefix `*p`, a signed pointee, and `addr` on a C
+/// allocation's pointer whose address is cast back (every machine answers
+/// `1`: the C pointer behaves as exposed).
+#[test]
+fn prov_controls() {
+    for row in [
+        "prov_cast_round_trip",
+        "prov_is_null",
+        "raw_deref",
+        "raw_deref_signed",
+        "addr_no_expose",
+    ] {
+        run(row, "wolf-interp#184");
+    }
+}

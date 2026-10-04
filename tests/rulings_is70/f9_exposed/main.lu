@@ -1,0 +1,15 @@
+import c "stdlib.h"
+
+fn main() -> int {
+    var a = 0
+    // # Safety: q is p's own address, round-tripped.
+    unsafe {
+        let p = c.malloc(8) as *u8
+        let n = p.expose()
+        let q = p.with_exposed(n)
+        q[0] = 5
+        a = p[0] as int
+        c.free(p)
+    }
+    a - 5
+}

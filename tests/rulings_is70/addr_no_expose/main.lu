@@ -1,0 +1,14 @@
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: DELIBERATELY wrong: addr() does not expose, so the int-made pointer has no tag to resolve to.
+    unsafe {
+        let p = c.calloc(1, 8) as *u8
+        let a = p.addr()
+        let q = a as *u8
+        q[0] = 1
+        print("{p[0]}")
+        c.free(p)
+    }
+    0
+}
