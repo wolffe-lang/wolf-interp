@@ -1,0 +1,14 @@
+# is70 — #184 control: an access through an address no allocation owns is UB row L2 on a hosted target, as on the checked machine ([mem.prov.device]); native and release ICE, which the row's undefined behaviour allows
+# `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
+# (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
+# `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+issue = "wolf-interp#184"
+
+[expected]
+lupin   = { verdict = "ub(mem.ub)", stdout = "" }
+
+[trunk]
+lupin   = { verdict = "ub(mem.ub)", stdout = "" }
+checked = { verdict = "ub(mem.ub)", stdout = "", first = "E1401@[204,216]" }
+native  = { verdict = "NO-RECORD(exit 2)", stdout = "", unsupported = "wolf conform-run: ICE: native binary died without an exit code" }
+release = { verdict = "NO-RECORD(exit 2)", stdout = "", unsupported = "wolf conform-run: ICE: native binary died without an exit code" }

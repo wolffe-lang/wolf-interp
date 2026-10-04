@@ -34,6 +34,9 @@ struct Ruled {
     stdout: String,
     /// `CODE@[lo,hi]`, empty when the row runs.
     first: String,
+    /// A substring `x-unsupported` must carry, when the row is refused by
+    /// name.
+    named: String,
     args: Vec<String>,
 }
 
@@ -67,6 +70,7 @@ fn ruled(name: &str) -> Ruled {
         verdict: quoted_after(&cell, "verdict = ").expect("a verdict"),
         stdout: quoted_after(&cell, "stdout = ").expect("a stdout"),
         first: quoted_after(&cell, "first = ").unwrap_or_default(),
+        named: quoted_after(&cell, "named = ").unwrap_or_default(),
         args,
     }
 }
@@ -111,6 +115,12 @@ fn run(name: &str, issue: &str) {
             want.first.as_str()
         ),
         "{name} ({issue}): record {record}"
+    );
+    let reason = record["x-unsupported"].as_str().unwrap_or("");
+    assert!(
+        reason.contains(&want.named),
+        "{name} ({issue}): x-unsupported {reason:?} names {:?}",
+        want.named
     );
 }
 
@@ -196,6 +206,15 @@ fn ptr_offset_foreign() {
     run("ptr_offset_foreign", "wolf-interp#184");
 }
 
+/// An access through an address no allocation owns is UB row L2 on a hosted
+/// target, as on the checked machine (`[mem.prov.device]`; the gate's
+/// `foreign_memory_on_a_hosted_target_is_ub_row_l2`). Green at trunk, and
+/// kept green now that such a pointer keeps its address.
+#[test]
+fn device_hosted() {
+    run("device_hosted", "wolf-interp#184");
+}
+
 /// Controls, green at trunk and kept green: the round trip into an
 /// allocation, `is_null`, prefix `*p`, a signed pointee, and `addr` on a C
 /// allocation's pointer whose address is cast back (every machine answers
@@ -211,4 +230,20 @@ fn prov_controls() {
     ] {
         run(row, "wolf-interp#184");
     }
+}
+
+// ---- wolf-interp#182: `conform-run --target` ------------------------------
+
+/// kw00's `f1_no_main` probe under the freestanding target. Red at trunk: a
+/// clap usage error, exit 2, no record.
+#[test]
+fn target_none() {
+    run("target_none", "wolf-interp#182");
+}
+
+/// The gate's device program under the freestanding target: refused by
+/// name, never `ub`. Red at trunk: no record.
+#[test]
+fn device_freestanding() {
+    run("device_freestanding", "wolf-interp#182");
 }
