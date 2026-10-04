@@ -314,14 +314,18 @@ fn the_corpus_walk_has_a_machine_mode() {
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
-    // `/`): it parses and resolves, and comptime evaluation is the compiler's
-    // s16 engine, so it stops at the deepest *completed* rung.
+    // `/`). Until is70 it parsed and resolved and stopped at the deepest
+    // *completed* rung (comptime evaluation is the compiler's s16 engine).
+    // Since is70 its `#[noalloc]` is refused by name at resolve
+    // (`[gram.item.attr.set]`, wolf-interp#174) — a mismatch against the
+    // vendored 0.2.21 row, ruled ahead of the pin: wolf-lang e951afbb, in
+    // the 0.2.22 pairing, drops the attribute from the row.
     assert_eq!(value["files"][0]["file"], "comptime.lu");
     assert_eq!(
         value["files"][0]["interpreter_status"],
-        "unsupported@resolve"
+        "fail(E0817)@resolve"
     );
-    assert_eq!(value["files"][0]["judgement"]["class"], "out-of-scope");
+    assert_eq!(value["files"][0]["judgement"]["class"], "MISMATCH");
 }
 
 #[test]
@@ -709,7 +713,10 @@ fn the_front_door_static_rejection_exits_2() {
 
 #[test]
 fn the_front_door_unsupported_explains_itself_and_exits_4() {
-    let file = format!("{}/corpus/comptime.lu", wolf_interp::upstream_root());
+    // `errors.lu` needs std surface no pinned document specifies (the seed
+    // file's `acquire`/`release`). Until is70 this was `comptime.lu`, which
+    // the closed attribute set now refuses E0817 at resolve.
+    let file = format!("{}/corpus/errors.lu", wolf_interp::upstream_root());
     let output = lupin(&["run", &file]);
     assert_eq!(output.status.code(), Some(4));
     assert!(

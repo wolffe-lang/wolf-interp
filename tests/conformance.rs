@@ -271,33 +271,45 @@ fn is_filed_divergence(path: &str) -> bool {
 }
 
 /// Rows whose pinned `check:` a later ruling changed upstream, which this
-/// machine already follows. Each names the clause and the wolf-lang commit
-/// that re-spells the row; the entry leaves when the re-pin carries that
-/// commit, and [`a_row_ruled_ahead_of_the_pin_resolves_clean`] asserts what
-/// the row does meanwhile, so the list hides nothing.
-const RULED_AHEAD_OF_PIN: &[(&str, &str)] = &[(
-    "memory/unsafe_sig.lu",
-    "kw02's `[mem.unsafe.sig]` (K9(b) = B, R1; wolf-interp#181, is70): a \
-     module-private fn may carry `*T`. wolf-lang be13b445 re-spells the row \
-     `pub fn peek`, which this machine refuses E1302 \
-     (tests/rulings_is70/unsafe_sig).",
-)];
+/// machine already follows: `(row, what this machine answers at resolve,
+/// why)`. Each names the clause and the wolf-lang commit that re-spells the
+/// row — both commits are in wolf 0.2.22, the pairing, and neither is in the
+/// vendored 0.2.21 pin — so the entry leaves when the re-pin carries it.
+/// [`a_row_ruled_ahead_of_the_pin_answers_as_ruled`] asserts what each row
+/// does meanwhile, so the list hides nothing.
+const RULED_AHEAD_OF_PIN: &[(&str, &str, &str)] = &[
+    (
+        "memory/unsafe_sig.lu",
+        "pass",
+        "kw02's `[mem.unsafe.sig]` (K9(b) = B, R1; wolf-interp#181, is70): a \
+         module-private fn may carry `*T`. wolf-lang be13b445 re-spells the row \
+         `pub fn peek`, which this machine refuses E1302 \
+         (tests/rulings_is70/unsafe_sig).",
+    ),
+    (
+        "comptime.lu",
+        "fail(E0817)",
+        "kw01's `[gram.item.attr.set]` (K13; wolf-interp#174, is70): `#[noalloc]` \
+         has no checker and is refused by name. wolf-lang e951afbb drops it from \
+         the row, which then runs as pinned.",
+    ),
+];
 
 fn is_ruled_ahead_of_pin(path: &str) -> bool {
     RULED_AHEAD_OF_PIN
         .iter()
-        .any(|(row, _)| path.ends_with(row))
+        .any(|(row, _, _)| path.ends_with(row))
 }
 
 #[test]
-fn a_row_ruled_ahead_of_the_pin_resolves_clean() {
-    for (row, why) in RULED_AHEAD_OF_PIN {
+fn a_row_ruled_ahead_of_the_pin_answers_as_ruled() {
+    for (row, answer, why) in RULED_AHEAD_OF_PIN {
         let case = cases()
             .into_iter()
             .find(|case| case.path.ends_with(row))
             .unwrap_or_else(|| panic!("{row} is in the pinned corpus ({why})"));
         let observation = frontend::observe(&case.source, Some(Phase::Resolve));
-        assert_eq!(observation.verdict, Verdict::Pass, "{row}: {why}");
+        assert_eq!(observation.verdict.to_string(), *answer, "{row}: {why}");
     }
 }
 

@@ -2094,6 +2094,57 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("typecheck/numlit_binding_value_later_use.lu", "exit(0)"),
 ];
 
+/// Pinned rows a later ruling re-spelled upstream, which this machine
+/// already follows, so the vendored `check:` no longer holds here: `(row,
+/// the architecture it parts on — `None` for every host —, why)`. Each
+/// re-spelling is in wolf 0.2.22 (the pairing) and not in the vendored
+/// 0.2.21 pin; the waiver retires by name at the re-pin, when
+/// [`rows_ruled_ahead_of_the_pin_still_part`] goes red.
+const RULED_AHEAD_OF_PIN: &[(&str, Option<&str>, &str)] = &[
+    (
+        "comptime.lu",
+        None,
+        "kw01's `[gram.item.attr.set]` (K13; wolf-interp#174, is70): the row's \
+         `#[noalloc]` has no checker and is refused E0817 by name; wolf-lang \
+         e951afbb drops it from the row",
+    ),
+    (
+        "ffi.lu",
+        Some("aarch64"),
+        "kw01's `[gram.item.attr.cfg]` (wolf-interp#174, is70): the row's asm is \
+         `#[cfg(target = \"x86_64\")]`, so on an aarch64 host it is dropped before \
+         resolution and the program runs to `exit(1)` (7, not 42); wolf-lang e951afbb \
+         gives it the aarch64 twin. On x86_64 the asm is kept and declined, as before",
+    ),
+];
+
+/// Whether `path` is ruled ahead of the pin on this host.
+fn ruled_ahead_here(path: &str) -> bool {
+    RULED_AHEAD_OF_PIN
+        .iter()
+        .any(|(row, arch, _)| path == *row && arch.is_none_or(|a| a == std::env::consts::ARCH))
+}
+
+#[test]
+fn rows_ruled_ahead_of_the_pin_still_part() {
+    let all = entries();
+    for (row, arch, why) in RULED_AHEAD_OF_PIN {
+        if arch.is_some_and(|a| a != std::env::consts::ARCH) {
+            continue;
+        }
+        let entry = all
+            .iter()
+            .find(|entry| entry.path == *row)
+            .unwrap_or_else(|| panic!("{row} is in the pinned corpus"));
+        assert!(
+            entry.judgement.is_mismatch(),
+            "{row} no longer parts — the re-pin carried its re-spelled row; retire the \
+             waiver ({why}): {}",
+            entry.judgement
+        );
+    }
+}
+
 #[test]
 fn no_corpus_file_mismatches_its_expectation() {
     // A mismatch that has been triaged and filed in `docs/divergence-log.md`
@@ -2105,6 +2156,7 @@ fn no_corpus_file_mismatches_its_expectation() {
         .iter()
         .filter(|entry| entry.judgement.is_mismatch())
         .filter(|entry| wolf_interp::differ::filed(&entry.path).is_none())
+        .filter(|entry| !ruled_ahead_here(&entry.path))
         .map(|entry| format!("  {}: {}", entry.path, entry.judgement))
         .collect();
     assert!(
@@ -2252,10 +2304,16 @@ fn the_run_ledger_is_exactly_what_reaches_run() {
         .filter(|entry| entry.phase == Phase::Run)
         .map(|entry| (entry.path, entry.verdict.to_string()))
         .collect();
-    let expected: BTreeMap<String, String> = RUN_LEDGER
+    let mut expected: BTreeMap<String, String> = RUN_LEDGER
         .iter()
         .map(|(path, verdict)| ((*path).to_owned(), (*verdict).to_owned()))
         .collect();
+    // is70 (wolf-interp#174): on an aarch64 host `ffi.lu`'s x86_64-gated asm
+    // is dropped, so the row runs — to `exit(1)`, ruled ahead of the pin
+    // ([`RULED_AHEAD_OF_PIN`]). Elsewhere the asm is kept and declined.
+    if std::env::consts::ARCH == "aarch64" {
+        expected.insert("ffi.lu".to_owned(), "exit(1)".to_owned());
+    }
 
     let gained: Vec<&String> = observed
         .keys()
@@ -2321,7 +2379,7 @@ fn every_run_expectation_this_machine_reaches_is_met_exactly() {
         }
         // A filed divergence (docs/divergence-log.md) is a known disagreement:
         // visible in every differential report, waived here until resolved.
-        if wolf_interp::differ::filed(&entry.path).is_some() {
+        if wolf_interp::differ::filed(&entry.path).is_some() || ruled_ahead_here(&entry.path) {
             continue;
         }
         checked += 1;
