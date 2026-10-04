@@ -247,3 +247,40 @@ fn target_none() {
 fn device_freestanding() {
     run("device_freestanding", "wolf-interp#182");
 }
+
+/// The host's own triple runs as if `--target` were absent; any other triple
+/// is a tool error (exit 2, no record) naming the two this machine accepts,
+/// as the compiler's `unknown target` is.
+#[test]
+fn target_host_runs_and_others_are_tool_errors() {
+    let dir = witness("target_none");
+    let host = Command::new(env!("CARGO_BIN_EXE_lupin"))
+        .args(["conform-run", "../deref_inside_ok/main.lu", "--json"])
+        .args(["--target", wolf_interp::HOST_TRIPLE])
+        .current_dir(&dir)
+        .output()
+        .expect("lupin runs");
+    let record: serde_json::Value = serde_json::from_slice(&host.stdout).expect("a record");
+    assert_eq!(record["verdict"], "exit(0)", "{record}");
+    assert_eq!(record["stdout_inline"], "7\n", "{record}");
+    for other in [
+        "aarch64-unknown-none",
+        "bogus-triple",
+        "x86_64-unknown-none-elf",
+    ] {
+        let out = Command::new(env!("CARGO_BIN_EXE_lupin"))
+            .args(["conform-run", "main.lu", "--json", "--target", other])
+            .current_dir(&dir)
+            .output()
+            .expect("lupin runs");
+        assert_eq!(out.status.code(), Some(2), "{other}: {out:?}");
+        assert!(out.stdout.is_empty(), "{other}: no record");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            err.contains(&format!("unknown target `{other}`"))
+                && err.contains(wolf_interp::HOST_TRIPLE)
+                && err.contains(wolf_interp::FREESTANDING_TRIPLE),
+            "{other}: {err}"
+        );
+    }
+}
