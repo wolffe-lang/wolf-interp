@@ -287,6 +287,7 @@ fn parse_on_this_stack(lexed: &Lexed) -> Result<Parsed, Diag> {
             .map_or(Span::empty(0), |t| Span::empty(t.span.end)),
         no_struct_lit: false,
         in_trait_body: false,
+        in_members: false,
         depth: 0,
         pending_items: std::collections::VecDeque::new(),
         pending_stmts: std::collections::VecDeque::new(),
@@ -307,27 +308,111 @@ fn parse_on_this_stack(lexed: &Lexed) -> Result<Parsed, Diag> {
 ///
 /// # Errors
 ///
-/// The first lex-tier or parse-tier diagnostic.
+/// The first lex-tier or parse-tier diagnostic ([`first_of`]).
 pub fn parse_source(source: &str) -> Result<Parsed, Diag> {
     let lexed = lex::lex(source);
-    if let Some(first) = lexed.first_error() {
-        return Err(first.clone());
+    first_of(&lexed).map_err(|first| first.0)
+}
+
+/// Which tier a frontend refusal belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tier {
+    Lex,
+    Parse,
+}
+
+/// The frontend's first diagnostic, `[proto.record.first]` (ruling #28,
+/// wolf-lang#377; wolf-interp#175): the diagnostic at the earliest byte
+/// offset wins, and at the same offset the earlier phase. So the parser
+/// runs even when the lexer failed — over the lexer's recovered token
+/// stream — and a parse error, an unclosed delimiter (reported at its
+/// opener, [`unclosed_delimiter`]) or a deferred lex finding that starts
+/// before the first lex error is the file's first diagnostic. Until is70
+/// this machine stopped at the first lex error, wherever it sat.
+///
+/// # Errors
+///
+/// The first diagnostic and its tier.
+pub fn first_of(lexed: &Lexed) -> Result<Parsed, Box<(Diag, Tier)>> {
+    let parsed = parse(lexed);
+    // The parse tier's candidates, in tie-break order (`min_by_key` keeps the
+    // first of equals): a deferred lex finding (E0007) before the parse
+    // error at the same offset, as before is70; an unclosed delimiter next.
+    let mut parse_tier: Vec<Diag> = lexed.deferred.clone();
+    if let Err(error) = &parsed {
+        parse_tier.extend(unclosed_delimiter(&lexed.tokens));
+        // A parse error AT a token the lexer recovered from its own error
+        // (`Tok::Error`, e.g. the whole of `'\u{0000041}'`) is that lex
+        // error's consequence, never a finding before it — the escape's
+        // E0101 inside the literal stays first
+        // (`grammar/char_uni_seven_digits.lu`).
+        let at_recovery = lexed
+            .tokens
+            .iter()
+            .any(|t| t.tok == Tok::Error && t.span.start == error.span.start);
+        if !at_recovery {
+            parse_tier.push(error.clone());
+        }
     }
-    let parsed = parse(&lexed);
-    match parsed {
-        Ok(parsed) => match parsed.deferred.first() {
-            Some(first) => Err(first.clone()),
-            None => Ok(parsed),
-        },
-        Err(error) => {
-            // Deferred lex diagnostics compete with the parse error on span
-            // order — whichever is earlier is the file's first diagnostic.
-            match lexed.deferred.iter().min_by_key(|d| d.span.start) {
-                Some(deferred) if deferred.span.start <= error.span.start => Err(deferred.clone()),
-                _ => Err(error),
+    let parse_first = parse_tier.into_iter().min_by_key(|d| d.span.start);
+    match (lexed.first_error(), parse_first) {
+        (Some(lex), Some(parse)) if parse.span.start < lex.span.start => {
+            Err(Box::new((parse, Tier::Parse)))
+        }
+        (Some(lex), _) => Err(Box::new((lex.clone(), Tier::Lex))),
+        (None, Some(parse)) => Err(Box::new((parse, Tier::Parse))),
+        (None, None) => parsed.map_err(|error| Box::new((error, Tier::Parse))),
+    }
+}
+
+/// The earliest delimiter a later closer of another kind leaves open — `(`
+/// met by `}` with a `{` below it — as **E0202 at the opener**: "a boundary
+/// sits at its opener" (`[proto.record.first]`'s named consequence;
+/// wolf-interp#175, `rows/negative/first_boundary_before_lex.lu`, where the
+/// unterminated string swallows the `)`). A closer that matches nothing
+/// open is the parser's to report, and a delimiter still open at the end of
+/// the file keeps the parser's own report.
+fn unclosed_delimiter(tokens: &[Token]) -> Option<Diag> {
+    let mut open: Vec<(char, Span)> = Vec::new();
+    let mut earliest: Option<Span> = None;
+    for token in tokens {
+        let want = match &token.tok {
+            Tok::LParen => {
+                open.push(('(', token.span));
+                continue;
+            }
+            Tok::LBracket | Tok::HashBracket | Tok::HashBangBracket => {
+                open.push(('[', token.span));
+                continue;
+            }
+            Tok::LBrace => {
+                open.push(('{', token.span));
+                continue;
+            }
+            Tok::RParen => '(',
+            Tok::RBracket => '[',
+            Tok::RBrace => '{',
+            _ => continue,
+        };
+        let Some(at) = open.iter().rposition(|(kind, _)| *kind == want) else {
+            continue;
+        };
+        for (_, span) in open.drain(at..).skip(1) {
+            if earliest.is_none_or(|e| span.start < e.start) {
+                earliest = Some(span);
             }
         }
     }
+    earliest.map(|span| {
+        let opener = Span::new(span.start, span.start + 1);
+        Diag::new(
+            diag::E_UNEXPECTED_EOF,
+            opener,
+            "gram.lex.newline",
+            "this delimiter is never closed: a later closer of another kind ends the \
+             group it opens",
+        )
+    })
 }
 
 /// The origin a node's attributes put in force, when the marker is exactly
@@ -382,6 +467,9 @@ struct Parser<'a> {
     /// Inside a `trait` body, where `fn_item`'s bodyless form is legal without
     /// `extern` — see [`CHOICES`].
     in_trait_body: bool,
+    /// Inside an impl or trait body, where a token that starts no member keeps
+    /// the generic E0201 (E0203 is the top level's, wolf-interp#175).
+    in_members: bool,
     /// Current syntactic nesting, against [`MAX_NESTING`].
     depth: usize,
     /// The tail of a comma-grouped binding (`[gram.item.let]`, D63) parsed
@@ -469,6 +557,22 @@ impl<'a> Parser<'a> {
 
     fn error(&self, code: &'static str, anchor: &'static str, message: impl Into<String>) -> Diag {
         Diag::new(code, self.span(), anchor, message)
+    }
+
+    /// A token that cannot begin a pattern where one starts (`let = 1`,
+    /// `let mut f`): **E0207**, the compiler's "expected a pattern" on all
+    /// three lanes (wolf-interp#175, `rows/negative/first_keyword_pattern.lu`,
+    /// `first_parse_before_resolve.lu`). The file ending here stays E0202.
+    fn expected_pattern(&self, anchor: &'static str) -> Diag {
+        match self.tok() {
+            Some(tok) => Diag::new(
+                diag::E_EXPECTED_PATTERN,
+                self.span(),
+                anchor,
+                format!("expected a pattern, found {}", tok.describe()),
+            ),
+            None => self.unexpected(anchor, "a pattern"),
+        }
     }
 
     fn unexpected(&self, anchor: &'static str, wanted: &str) -> Diag {
@@ -1010,6 +1114,14 @@ impl<'a> Parser<'a> {
                     "gram.item.error",
                 )
             }
+            // A top-level token that starts no declaration is **E0203** at
+            // the token, the compiler's number (wolf-interp#175, kw00's
+            // `union` pair); a member list keeps the generic E0201.
+            _ if !self.in_members && self.tok().is_some() => {
+                let mut diag = self.unexpected("gram.item.unit", "a declaration");
+                diag.code = diag::E_EXPECTED_DECLARATION;
+                return Err(diag);
+            }
             _ => return Err(self.unexpected("gram.item.unit", "an item")),
         };
 
@@ -1507,6 +1619,13 @@ impl<'a> Parser<'a> {
 
     /// `trait_member`/`impl_member ::= fn_item | type_item | const_item`.
     fn parse_members(&mut self) -> PResult<Vec<Item>> {
+        let outer = std::mem::replace(&mut self.in_members, true);
+        let members = self.parse_members_inner();
+        self.in_members = outer;
+        members
+    }
+
+    fn parse_members_inner(&mut self) -> PResult<Vec<Item>> {
         let mut members = Vec::new();
         loop {
             // The tail of a comma-grouped binding (D63), in order.
@@ -1654,6 +1773,38 @@ impl<'a> Parser<'a> {
                 open = true;
                 self.eat(&Tok::Comma);
                 break;
+            }
+            // A declaration keyword where a tag should start ends the row:
+            // the `{` was never closed — `-> int ! {` meant as "fallible,
+            // then the body". E0202 at the `{`, which starts before the
+            // keyword (`[proto.record.first]`; wolf-interp#175).
+            if matches!(
+                self.tok(),
+                Some(Tok::Kw(
+                    "fn" | "let"
+                        | "var"
+                        | "const"
+                        | "struct"
+                        | "enum"
+                        | "type"
+                        | "trait"
+                        | "impl"
+                        | "use"
+                        | "import"
+                        | "pub"
+                        | "extern"
+                        | "export"
+                        | "comptime"
+                ))
+            ) {
+                return Err(Diag::new(
+                    diag::E_UNEXPECTED_EOF,
+                    Span::new(start, start + 1),
+                    anchor,
+                    "this error row's `{` is never closed: a declaration keyword cannot name \
+                     a tag. A fallible function's row comes before its body — \
+                     `-> int ! {e} {` — or is left to inference with `-> !int {`",
+                ));
             }
             let path = self.parse_path(anchor)?;
             let estart = path.span.start;
@@ -2061,7 +2212,7 @@ impl<'a> Parser<'a> {
                     PatKind::Path(path)
                 }
             }
-            _ => return Err(self.unexpected(anchor, "a pattern")),
+            _ => return Err(self.expected_pattern(anchor)),
         };
         Ok(Pattern {
             kind: Box::new(kind),
@@ -5194,11 +5345,16 @@ mod tests {
     }
 
     #[test]
-    fn a_list_literal_left_open_is_e0201_where_the_element_list_stops() {
-        assert_eq!(
-            rejects("fn f() -> int { [1, 2 }\n").code,
-            diag::E_UNEXPECTED_TOKEN
-        );
+    fn a_list_literal_left_open_is_e0202_at_its_opener() {
+        // `[proto.record.first]` (wolf-interp#175): a `[` a later `}` leaves
+        // open is E0202 at the `[`, which starts before the `}` the parser
+        // stops at — the compiler's answer, measured. Until is70, E0201 at
+        // the `}`.
+        let source = "fn f() -> int { [1, 2 }\n";
+        let diag = rejects(source);
+        assert_eq!(diag.code, diag::E_UNEXPECTED_EOF);
+        assert_eq!(&source[diag.span.start..diag.span.end], "[");
+        // A list that closes later keeps E0201 at the token that stops it.
         assert_eq!(
             rejects("fn f() -> int { [1 2] }\n").code,
             diag::E_UNEXPECTED_TOKEN
@@ -5252,11 +5408,12 @@ mod tests {
         assert_eq!(diag.code, diag::E_UNEXPECTED_TOKEN);
         assert_eq!(&source[diag.span.start..diag.span.end], "..");
         assert_eq!(diag.anchor, "gram.item.error");
-        // `error` with no `=` after the name is not the item — the identifier.
-        assert_eq!(
-            rejects("error Loose {none}\n").code,
-            diag::E_UNEXPECTED_TOKEN
-        );
+        // `error` with no `=` after the name is not the item — the identifier,
+        // which starts no declaration at the top level: E0203 since is70
+        // (wolf-interp#175), the compiler's answer at [0,5], measured.
+        let diag = rejects("error Loose {none}\n");
+        assert_eq!(diag.code, diag::E_EXPECTED_DECLARATION);
+        assert_eq!(diag.span, Span::new(0, 5));
     }
 
     #[test]
