@@ -1,6 +1,49 @@
 # Changelog
 
-## Unreleased
+## 0.1.46 — 2026-10-04
+
+THE FORTY-SIXTH (s208's lupin half, is70, and r28's re-pin), the lupin
+half of wolf 0.2.23. **Pin: `8e36bc1a` (wolf-lang v0.2.22 — the TAG)**,
+one release forward of 0.1.45's `dfcc2f13` (v0.2.21). Fifty-two commits
+since 0.1.45 in two lanes, then the re-pin. It closes the gaps the PAX
+and compiler lanes filed against lupin (#174, #175, #178, #179, #180,
+#181, #182, #184): on every row they pinned, lupin now answers what the
+compiler answers, so the 0.2.23 pairing drops 25 of the 26 pins 0.2.22
+kept and kw06's 7. **One place lupin was looser than the compiler is
+closed: `*p` outside `unsafe` is E1301.** And it mirrors ruling #34: an
+else-less `if` is `()` whatever its taken block answered.
+
+**The re-pin** (r28; `60b93e3`). `vendor/upstream/{spec,corpus}` and the
+`upstream` gitlink move to `8e36bc1a`, an ancestor of the released line
+(`merge-base --is-ancestor dfcc2f13 8e36bc1a` holds); the two trees are
+byte-identical to wolf-lang's at the tag. The census moves (every count
+asserted by a test): corpus files 892 → 947 (55 new, none leaves),
+entries 846 → 900, members 46 → 47 (kw02's `membrane/geo/geo.lu`;
+`09779e8`, `87d8792`); anchors 546 → 569 (23 added, none dropped, the key
+sets diffed both ways); distinct `conforms:` anchors 379 → 392; the
+coverage ratchet 276 → 290; the bundle 930/884 → 985/938 programs and
+records (`ff55678`). Thirty-four of the fifty-four new entries reach
+`run` (`3037ef1`): twenty-three match their `check:` and eleven are the
+dynamic counterparts of s207's E1010 rows (`region-fault` at run time).
+kw03's three narrowing-cast traps gain fault snapshots (`1bdb791`).
+**The three rows is70 ruled ahead of the pin retire** (`0f2e540`,
+`3037ef1`, `b0fbceb`): `memory/unsafe_sig.lu`'s `peek` is `pub` now
+(be13b445), so it fails E1302 at resolve as pinned and leaves the run
+ledger; `comptime.lu` drops its `#[noalloc]` (e951afbb) and resolves;
+`ffi.lu` carries an aarch64 twin of its asm, so every host keeps one and
+declines it by name, and the CI ladder's check has one answer again. The
+walk's mismatch count is 3 on every host: DIV-2026-019 and DIV-2026-027's
+two rows. s203's `first_*` rows pin E0107 and E0207, so both numbers
+leave `UNPINNED_CODES` (`0cc24c1`; the not-UTF-8 and nesting-rail sites
+ride them); E0817 and E0818 are resolve-rung codes in
+`tests/conformance.rs`; and a `phase: lex` row may carry a lexical fault
+after the parse refusal it pins (ruling #28; `0f2e540`, `fa60f85`).
+
+**An else-less `if` is `()`** (s208, ruling #34 = A; #179's `if` half;
+`3ec58bc`). Whatever its taken block answered, a raise included, the
+value of an `if` with no `else` is `()`: `rows/unit_discard_if_value.lu`
+prints `() ()`. s208 left no changelog text; this paragraph is written
+from its commits (`54d6c3f..8d82031`, PR #186).
 
 **is70 — the gaps the PAX lanes filed.** lupin now answers what the
 compiler at wolf-lang `50830027` answers on the rows the KWC and
