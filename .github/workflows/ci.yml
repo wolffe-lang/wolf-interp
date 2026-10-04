@@ -388,9 +388,21 @@ jobs:
           echo "$out" | grep -q '"verdict":"trap(region-fault)"'
           # `ffi.lu` now *executes* its unsafe block — the C intrinsics are
           # modelled (docs/approximation-contract.md §8) — and stops at the
-          # inline `asm`, which no pinned document gives a meaning.
+          # inline `asm`, which no pinned document gives a meaning. Since
+          # is70 (wolf-interp#174, `[gram.item.attr.cfg]`) that asm is read
+          # as `#[cfg(target = "x86_64")]`: on an aarch64 host it is dropped
+          # and the row runs to `exit(1)`, ruled ahead of the 0.2.21 pin
+          # until wolf-lang e951afbb's aarch64 twin arrives
+          # (`tests/run_corpus.rs` RULED_AHEAD_OF_PIN).
           out=$(cargo run --quiet -- conform-run vendor/upstream/corpus/ffi.lu --json)
-          echo "$out" | grep -q '"verdict":"unsupported",.*asm'
+          case "$(uname -m)" in
+            arm64|aarch64)
+              echo "$out" | grep -q '"phase_reached":"run".*"verdict":"exit(1)"' \
+                || { echo "::error::ffi.lu on aarch64 drops its x86_64 asm and runs to exit(1): $out"; exit 1; } ;;
+            *)
+              echo "$out" | grep -q '"verdict":"unsupported",.*asm' \
+                || { echo "::error::ffi.lu keeps its x86_64 asm and declines it by name: $out"; exit 1; } ;;
+          esac
           # `regions.lu` RUNS at pin 8b04edf: the tail now uses only specified
           # semantics (frozen data readable forever, [mem.region.freeze.1]),
           # closing the rest of is03's §5.5 finding. The seed corpus's flagship
