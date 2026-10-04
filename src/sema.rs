@@ -1366,6 +1366,9 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         // for the same reason.
         .or_else(|| tier_late_check(program))
         .or_else(|| scalar_wide_check(program))
+        // is70: `errdefer` in a function that cannot fail is E0607
+        // (wolf-interp#179's second half), last for the same reason.
+        .or_else(|| crate::rowmatch::errdefer_unit_check(program))
 }
 
 /// `[type.list.lit]` (s158, wolf-lang#154; wolf-interp#106) — the list

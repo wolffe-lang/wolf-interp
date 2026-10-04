@@ -493,6 +493,115 @@ pub fn defer_try_check(program: &Program) -> Option<Diag> {
     None
 }
 
+/// `[err.errdefer]` (wolf-interp#179's second half): `errdefer` runs only
+/// when its function leaves by raising, so in a function whose result cannot
+/// carry a row it is **E0607** at the `errdefer` keyword — the compiler's
+/// code and span on all three lanes (measured at wolf-lang `50830027`:
+/// `tests/rulings_is70/errdefer_*`), and the vendored corpus's
+/// `rows/negative/errdefer_infallible.lu`. A function can fail when its declared
+/// result is `!T`, `T ! {…}` or carries a row; an omitted result is `()`.
+///
+/// Read where the compiler reads it: the body of every fn item and impl
+/// method, down through blocks and expressions, but not into a nested fn or
+/// a closure — the compiler's native lanes run an `errdefer` in a nested
+/// `-> int` fn inside a fallible one, so that body is not judged here.
+#[must_use]
+pub fn errdefer_unit_check(program: &Program) -> Option<Diag> {
+    for module in program.modules.values() {
+        for unit in &module.units {
+            for item in &unit.unit.items {
+                let decls: Vec<&FnDecl> = match &item.kind {
+                    ItemKind::Fn(decl) => vec![&**decl],
+                    ItemKind::Impl(def) => def
+                        .members
+                        .iter()
+                        .filter_map(|m| match &m.kind {
+                            ItemKind::Fn(decl) => Some(&**decl),
+                            _ => None,
+                        })
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                for decl in decls {
+                    if can_fail(decl) {
+                        continue;
+                    }
+                    let Some(body) = &decl.body else {
+                        continue;
+                    };
+                    if let Some(at) = first_errdefer_in_block(body) {
+                        return Some(
+                            Diag::new(
+                                "E0607",
+                                Span::new(at, at + "errdefer".len()),
+                                "err.errdefer",
+                                format!(
+                                    "`errdefer` only runs in a function that can fail: `{}` \
+                                     returns no error row, so this never runs. Use `defer` to \
+                                     run it on every exit, or give the function a fallible \
+                                     result (`-> !T` or `-> T ! {{…}}`)",
+                                    decl.name.name
+                                ),
+                            )
+                            .in_file(unit.file.clone()),
+                        );
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Whether a function's declared result can carry an error row.
+fn can_fail(decl: &FnDecl) -> bool {
+    let Some(ret) = &decl.ret else {
+        return false;
+    };
+    ret.row.is_some()
+        || matches!(
+            &*ret.ty.kind,
+            TypeKind::ErrorUnion(_) | TypeKind::Fallible { .. }
+        )
+}
+
+/// The byte offset of the first `errdefer` statement in a body, not looking
+/// into nested fns or closures.
+fn first_errdefer_in_block(block: &Block) -> Option<usize> {
+    for stmt in &block.stmts {
+        let found = match &stmt.kind {
+            StmtKind::Defer { on_error: true, .. } => Some(stmt.span.start),
+            StmtKind::Defer { expr, .. } | StmtKind::Expr(expr) => first_errdefer_in_expr(expr),
+            StmtKind::Binding(binding) => first_errdefer_in_expr(&binding.value),
+            StmtKind::Assign { place, value, .. } => {
+                first_errdefer_in_expr(place).or_else(|| first_errdefer_in_expr(value))
+            }
+            StmtKind::AssumeNoalias(operands) => operands.iter().find_map(first_errdefer_in_expr),
+            StmtKind::Item(_) => None,
+        };
+        if found.is_some() {
+            return found;
+        }
+    }
+    block.tail.as_deref().and_then(first_errdefer_in_expr)
+}
+
+fn first_errdefer_in_expr(expr: &Expr) -> Option<usize> {
+    if let ExprKind::Closure { .. } = &*expr.kind {
+        return None;
+    }
+    let mut found = None;
+    each_child_with_blocks(expr, &mut |child| {
+        if found.is_none() {
+            found = match child {
+                Child::Expr(child) => first_errdefer_in_expr(child),
+                Child::Block(block) => first_errdefer_in_block(block),
+            };
+        }
+    });
+    found
+}
+
 /// The first `?` lexically inside `expr`, not counting a closure's body.
 fn first_try(expr: &Expr) -> Option<Span> {
     if let ExprKind::Try(_) = &*expr.kind {
