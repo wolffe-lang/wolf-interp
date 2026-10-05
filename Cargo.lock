@@ -538,7 +538,7 @@ dependencies = [
 
 [[package]]
 name = "wolf-interp"
-version = "0.1.46"
+version = "0.1.47"
 dependencies = [
  "clap",
  "insta",
