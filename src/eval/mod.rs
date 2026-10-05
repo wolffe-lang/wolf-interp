@@ -4345,7 +4345,7 @@ impl Machine {
     /// copied, anything else moves out (`[mem.tier0.move.1]`/`.3`).
     fn consume_place(&mut self, path: &Path, span: Span) -> EResult<Value> {
         let value = self.read_whole(path, span)?;
-        if is_copy(&value) {
+        if is_copy(&value) && self.shared.place_trace.is_none() {
             self.fire(Rule::ValueSemantics, span, "copy (Copy-shaped value)");
             self.trace_copy(path, CopyBy::Plain, span);
             Ok(value)
