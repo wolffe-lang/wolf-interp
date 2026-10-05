@@ -185,6 +185,8 @@ pub fn cfg_keeps(attrs: &[Attribute]) -> bool {
 enum Position {
     Fn,
     Struct,
+    /// A module `let` or `var` — module state with storage (`[mem.static]`).
+    State,
     OtherItem,
     Stmt,
     Field,
@@ -195,6 +197,9 @@ impl Position {
         match &item.kind {
             ItemKind::Fn(_) => Position::Fn,
             ItemKind::Struct(_) => Position::Struct,
+            ItemKind::Binding(binding) if binding.kind != crate::ast::BindingKind::Const => {
+                Position::State
+            }
             _ => Position::OtherItem,
         }
     }
@@ -203,6 +208,7 @@ impl Position {
         match self {
             Position::Fn => "a function",
             Position::Struct => "a struct",
+            Position::State => "a module `let` or `var`",
             Position::OtherItem => "this item",
             Position::Stmt => "a statement",
             Position::Field => "a field",
@@ -275,31 +281,205 @@ fn judge(attrs: &[Attribute], at: Position, out: &mut Vec<Diag>) {
                         AttrArg::Nested(inner) => (inner.span, attr_name(inner)),
                         AttrArg::Literal(lit) => (lit.span, "a literal".to_owned()),
                     };
-                    let fine = matches!(arg, AttrArg::Nested(inner)
-                        if is_named(inner, "c") && inner.input.is_none());
-                    if !fine {
+                    if !implemented_repr(arg) {
                         out.push(e0817(
                             span,
                             format!(
-                                "`repr({item})` is not implemented: `#[repr(c)]` is the one \
-                                 layout attribute in force; `packed`, `align(N)` and \
-                                 `transparent` are refused by name until the lane that \
-                                 implements them ([gram.item.attr.set])"
+                                "`repr({item})` is not implemented: `#[repr(c)]`, \
+                                 `#[repr(c, packed)]` and `#[repr(c, align(N))]` are the \
+                                 layouts in force; `transparent` and a packing bound \
+                                 `packed(N)` are refused by name until a lane rules them \
+                                 ([gram.item.attr.set])"
                             ),
                         ));
                     }
                 }
             }
+            // `[abi.link.section]` (kw09): one section name, on a function
+            // or a module `let`/`var`; the program is then refused by name
+            // (`statics::section_placement`), this machine having no image.
+            "section" => {
+                if !matches!(at, Position::Fn | Position::State) {
+                    out.push(misplaced("a function or a module `let`/`var`"));
+                } else if section_name(attr).is_none() {
+                    out.push(e0817(
+                        attr.span,
+                        "`#[section]` takes one section name, a string of printable ASCII with \
+                         no space, quote or comma: `#[section(\".text.boot\")]` \
+                         ([abi.link.section])"
+                            .to_owned(),
+                    ));
+                }
+            }
+            "link_section" => out.push(e0817(
+                attr.span,
+                "`#[link_section]` is Rust's spelling: wolf places a section with \
+                 `#[section(\"…\")]` ([abi.link.section])"
+                    .to_owned(),
+            )),
             _ => out.push(e0817(
                 attr.span,
                 format!(
                     "`#[{name}]` is not an attribute wolf implements: the set is closed \
-                     (`trusted`, `consttime`, `allow`, `index`, `budget`, `repr(c)`, \
-                     `cfg(target = \"…\")`), and an attribute nothing reads is refused, \
-                     never ignored ([gram.item.attr.set])"
+                     (`trusted`, `consttime`, `allow`, `index`, `budget`, `repr(c)` with \
+                     `packed` or `align(N)`, `section`, `cfg(target = \"…\")`), and an \
+                     attribute nothing reads is refused, never ignored ([gram.item.attr.set])"
                 ),
             )),
         }
+    }
+}
+
+/// A `repr` item the closed set implements: `c`, `packed`, or `align(…)`
+/// (whose argument E0820 judges, [`judge_layout`]).
+fn implemented_repr(arg: &AttrArg) -> bool {
+    let AttrArg::Nested(inner) = arg else {
+        return false;
+    };
+    (is_named(inner, "c") || is_named(inner, "packed")) && inner.input.is_none()
+        || is_named(inner, "align")
+}
+
+/// `#[section("NAME")]`'s name, when it is exactly one plain string of
+/// printable ASCII with no space, quote or comma.
+fn section_name(attr: &Attr) -> Option<String> {
+    let Some(AttrInput::Args(args)) = &attr.input else {
+        return None;
+    };
+    let [AttrArg::Literal(lit)] = args.as_slice() else {
+        return None;
+    };
+    let text = plain_string(lit)?;
+    (!text.is_empty()
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_graphic() && !matches!(b, b'"' | b',')))
+    .then_some(text)
+}
+
+fn e0820(span: crate::diag::Span, message: String) -> Diag {
+    Diag::new("E0820", span, "abi.layout.c", message)
+}
+
+/// E0820 (`[abi.layout.align]`, `[abi.layout.packed]`; kw08): a
+/// representation the closed set implements but that cannot be laid out as
+/// written — one per struct, at the compiler's spans (measured with wolf
+/// 0.2.23, `tests/rulings_is73/`): an `align` item whose argument is not one
+/// power of two from 1 to 2^28 at that item; a generic struct, a repeated
+/// item, `packed` beside `align`, or either without `c` at the `repr` list's
+/// first item; and an `align(N)` struct held by value in a packed one, at
+/// the packed struct's field. A struct whose `repr` already earned an E0817
+/// is not judged twice.
+fn judge_layout(
+    attrs: &[Attribute],
+    def: &crate::ast::StructDef,
+    decls: &std::collections::BTreeMap<String, crate::layout::StructDecl<'_>>,
+    out: &mut Vec<Diag>,
+) {
+    let items: Vec<&AttrArg> = attrs
+        .iter()
+        .flat_map(|attribute| &attribute.attrs)
+        .filter(|attr| is_named(attr, "repr"))
+        .filter_map(|attr| match &attr.input {
+            Some(AttrInput::Args(args)) => Some(args),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let Some(first) = items.first() else {
+        return;
+    };
+    if !items.iter().all(|arg| implemented_repr(arg)) {
+        return;
+    }
+    let nested = |name: &str| {
+        items
+            .iter()
+            .filter_map(|arg| match arg {
+                AttrArg::Nested(inner) if is_named(inner, name) => Some(inner),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let (cs, packs, aligns) = (nested("c"), nested("packed"), nested("align"));
+    for align in &aligns {
+        let fine = crate::layout::align_value(align.input.as_ref())
+            .is_some_and(crate::layout::admissible_align);
+        if !fine {
+            out.push(e0820(
+                align.span,
+                format!(
+                    "`{}` cannot be laid out: `align(N)` takes one power of two from 1 to 2^28 \
+                     (gcc's ceiling) ([abi.layout.align])",
+                    attr_display(align)
+                ),
+            ));
+            return;
+        }
+    }
+    let first_span = match first {
+        AttrArg::Nested(inner) => inner.span,
+        AttrArg::Literal(lit) => lit.span,
+    };
+    let modified = !packs.is_empty() || !aligns.is_empty();
+    let why = if modified && !def.generics.is_empty() {
+        Some("`packed` and `align(N)` do not apply to a generic struct")
+    } else if cs.len() > 1 || packs.len() > 1 || aligns.len() > 1 {
+        Some("a representation item is written twice")
+    } else if !packs.is_empty() && !aligns.is_empty() {
+        Some("a struct is not both packed (alignment 1) and aligned (alignment N)")
+    } else if modified && cs.is_empty() {
+        Some(
+            "`packed` and `align(N)` modify the C layout, so they are spelled beside `c`: `#[repr(c, packed)]`",
+        )
+    } else {
+        None
+    };
+    if let Some(why) = why {
+        out.push(e0820(
+            first_span,
+            format!("this representation cannot be laid out: {why} ([abi.layout.align])"),
+        ));
+        return;
+    }
+    if !packs.is_empty()
+        && let Some(field) = def
+            .fields
+            .iter()
+            .find(|field| crate::layout::holds_aligned(decls, &field.ty, 0))
+    {
+        out.push(e0820(
+            field.name.span,
+            format!(
+                "`{}` holds an `align(N)` struct inside a packed one, which has no single C \
+                 layout (SysV and Apple pack it at the next byte, the MSVC ABI keeps its \
+                 alignment) and wolf does not pick one ([abi.layout.packed])",
+                field.name.name
+            ),
+        ));
+    }
+}
+
+fn attr_display(attr: &Attr) -> String {
+    match &attr.input {
+        Some(AttrInput::Args(args)) => format!("{}({} argument(s))", attr_name(attr), args.len()),
+        _ => attr_name(attr),
+    }
+}
+
+/// E0818 for an `extern "S" let` (`[abi.c.seams]`).
+fn judge_extern_abi(abi: &crate::ast::StrLit, out: &mut Vec<Diag>) {
+    let text = abi.as_plain_text().unwrap_or_default();
+    if text != "c" {
+        out.push(Diag::new(
+            "E0818",
+            abi.span,
+            "abi.c.seams",
+            format!(
+                "`extern \"{text}\"` names no ABI wolf has: the only ABI string is `\"c\"` \
+                 ([abi.c.seams])"
+            ),
+        ));
     }
 }
 
@@ -324,16 +504,20 @@ fn judge_abi(decl: &FnDecl, out: &mut Vec<Diag>) {
     }
 }
 
-struct Walk {
+struct Walk<'a> {
     out: Vec<Diag>,
+    /// The module's structs, for E0820's aligned-inside-packed rule.
+    decls: std::collections::BTreeMap<String, crate::layout::StructDecl<'a>>,
 }
 
-impl Walk {
+impl Walk<'_> {
     fn item(&mut self, item: &Item) {
         judge(&item.attrs, Position::of(item), &mut self.out);
         match &item.kind {
             ItemKind::Fn(decl) => self.decl(decl),
+            ItemKind::ExternLet(def) => judge_extern_abi(&def.abi, &mut self.out),
             ItemKind::Struct(def) => {
+                judge_layout(&item.attrs, def, &self.decls, &mut self.out);
                 for field in &def.fields {
                     judge(&field.attrs, Position::Field, &mut self.out);
                 }
@@ -421,7 +605,10 @@ pub fn check(program: &Program) -> Vec<Diag> {
     );
     for module in modules {
         for unit in &module.units {
-            let mut walk = Walk { out: Vec::new() };
+            let mut walk = Walk {
+                out: Vec::new(),
+                decls: crate::layout::structs(module),
+            };
             for item in &unit.unit.items {
                 walk.item(item);
             }
