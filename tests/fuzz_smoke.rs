@@ -341,6 +341,29 @@ fn mutated_corpus_files_never_crash() {
     }
 }
 
+/// wolf-interp#197: at the v0.2.23 pin (r29's probe, is73's overlay) this
+/// seed's mutant of `memory/raw_repr_packed_layout.lu` — `=>` spliced into a
+/// comment — reached the resolve rung as `fail(E0817)` with two diagnostics,
+/// one per `#[repr(c, packed)]`. The mutant is kept byte for byte
+/// (sha256 `337c4ae0…`), so the seed's record is checked at every pin.
+#[test]
+fn the_v0_2_23_seed_mutant_is_a_well_formed_record() {
+    println!("seed = {SEED:#x}");
+    exercise(include_bytes!("fuzz_seeds/seed_1001f43a57eed01.lu"));
+}
+
+/// wolf-interp#197: a rejection that lists several diagnostics — two refused
+/// attributes, each its own E0817 (is70, `[gram.item.attr.set]`) — is one
+/// well-formed record, at every rung `exercise` asks for.
+#[test]
+fn a_rejection_with_several_diagnostics_is_a_well_formed_record() {
+    const TWO: &str = "#[noalloc]\nfn helper() -> int {\n    1\n}\n\n\
+                       #[nopanic]\nfn main() -> int {\n    helper() - 1\n}\n";
+    let observation = frontend::observe(TWO.as_bytes(), None);
+    assert_eq!(observation.diagnostics.len(), 2, "{observation:?}");
+    exercise(TWO.as_bytes());
+}
+
 #[test]
 fn pathological_nesting_terminates() {
     // Deep nesting is where a recursive-descent parser goes to die. This test
