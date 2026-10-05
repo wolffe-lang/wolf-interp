@@ -270,6 +270,59 @@ fn is_filed_divergence(path: &str) -> bool {
     wolf_interp::differ::filed(path).is_some()
 }
 
+/// Rows whose pinned `check:` a later ruling changed upstream, which this
+/// machine already follows. Each names the clause and the wolf-lang commit
+/// that re-spells the row; the entry leaves when the re-pin carries that
+/// commit, and [`a_row_ruled_ahead_of_the_pin_answers_as_ruled`] asserts what
+/// the row does meanwhile, so the list hides nothing.
+const RULED_AHEAD_OF_PIN: &[(&str, Verdict, &str)] = &[
+    (
+        "grammar/attr_repr_unimplemented.lu",
+        Verdict::Pass,
+        "kw08's `[abi.layout.packed]` (K4; wolf-interp#188, is73): `#[repr(c, packed)]` \
+         is implemented, so the row's struct resolves and runs. wolf 0.2.23 (8edac3ee) \
+         re-spells the row `#[repr(c, transparent)]`, which this machine refuses E0817 \
+         (tests/rulings_is70/attr_repr_unimplemented).",
+    ),
+    (
+        "grammar/attr_section.lu",
+        Verdict::Unsupported,
+        "kw09's `[abi.link.section]` (K6; wolf-interp#190, is73): `#[section]` on a fn \
+         is implemented, and a placed section is refused by name here (no image). wolf \
+         0.2.23 (8edac3ee) re-spells the row: `#[section]` on a `const` and \
+         `#[link_section]`, both E0817 (tests/rulings_is73/attr_section).",
+    ),
+];
+
+/// Pinned rows this machine declines by name at resolve (is73,
+/// wolf-interp#190), whatever the row pins: module state of a type that is
+/// not static data (`[mem.static.3]`), and a declared link-time symbol
+/// (`[abi.link.extern]`: the machines model no link). The last two arrive
+/// with the v0.2.23 re-pin; listing them now is harmless before it.
+const DECLINED_AT_RESOLVE: &[&str] = &[
+    "memory/read_param_escape_static.lu",
+    "memory/static_list_let.lu",
+    "membrane/extern_let_image.lu",
+];
+
+fn is_ruled_ahead_of_pin(path: &str) -> bool {
+    RULED_AHEAD_OF_PIN
+        .iter()
+        .any(|(row, _, _)| path.ends_with(row))
+}
+
+#[test]
+fn a_row_ruled_ahead_of_the_pin_answers_as_ruled() {
+    for (row, want, why) in RULED_AHEAD_OF_PIN {
+        let case = cases()
+            .into_iter()
+            .find(|case| case.path.ends_with(row))
+            .unwrap_or_else(|| panic!("{row} is in the pinned corpus ({why})"));
+        let observation = frontend::observe(&case.source, Some(Phase::Resolve));
+        assert_eq!(&observation.verdict, want, "{row}: {why}");
+    }
+}
+
 // (is70's `RULED_AHEAD_OF_PIN` stood here: `memory/unsafe_sig.lu`, which
 // this machine ran (kw02's `[mem.unsafe.sig]` admits `*T` in a private fn's
 // signature) while the vendored 0.2.21 row pinned E1302 on a private `peek`,
@@ -550,6 +603,7 @@ fn every_parseable_file_resolves_under_sema_lite() {
         if case.ledger_phase.is_some_and(|p| p < Phase::Parse)
             || is_filed_divergence(&case.path)
             || is_member_of_filed_module(&case)
+            || is_ruled_ahead_of_pin(&case.path)
         {
             continue;
         }
@@ -578,10 +632,31 @@ fn every_parseable_file_resolves_under_sema_lite() {
         // `extern_abi_interrupt.lu` rows: an attribute nothing reads, a `cfg`
         // this machine cannot read and an ABI string other than `"c"` are
         // decided from the item's syntax at resolve, like the rest.
+        // E0708, E0819, E0820 and E0821 (kw08's and kw09's `[abi.layout.*]`
+        // and `[abi.link.extern]`; is73, wolf-interp#188 and #190) join for
+        // the same reason: a layout query's type, a packed field's lend, a
+        // representation and an `extern "c" let` are decided from syntax at
+        // resolve. E0705 does not: `comptime/runtime_arg.lu` pins it for a
+        // `comptime fn` argument this machine declines by name; only a
+        // module initializer's E0705 (`[mem.static.3]`) is decided here.
+        // A module initializer's E0705 (`[mem.static.3]`; is73,
+        // wolf-interp#190) is decided at resolve; the `memory/static_*` rows
+        // arrive with the v0.2.23 re-pin.
+        if pinned_code(case.check.as_ref()) == Some("E0705") && case.path.contains("memory/static_")
+        {
+            assert_eq!(
+                observation.verdict,
+                Verdict::Fail("E0705".to_owned()),
+                "{}",
+                case.path
+            );
+            assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
+            continue;
+        }
         if let Some(
             code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E0809"
             | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102" | "E1103"
-            | "E1301" | "E1302" | "E0817" | "E0818"),
+            | "E1301" | "E1302" | "E0817" | "E0818" | "E0708" | "E0819" | "E0820" | "E0821"),
         ) = pinned_code(case.check.as_ref())
         {
             assert_eq!(
@@ -605,6 +680,17 @@ fn every_parseable_file_resolves_under_sema_lite() {
             assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
             continue;
         }
+        // is73 (wolf-interp#190): module state that is not static data and
+        // a declared link-time symbol are declined by name on the admission
+        // ladder, the same accept-set boundary as E0414 above.
+        if DECLINED_AT_RESOLVE
+            .iter()
+            .any(|row| case.path.ends_with(row))
+        {
+            assert_eq!(observation.verdict, Verdict::Unsupported, "{}", case.path);
+            assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
+            continue;
+        }
         assert_eq!(observation.verdict, Verdict::Pass, "{}", case.path);
         assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
         assert!(observation.diagnostics.is_empty(), "{}", case.path);
@@ -624,6 +710,7 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
         if case.ledger_phase.is_some_and(|p| p < Phase::Parse)
             || is_filed_divergence(&case.path)
             || is_member_of_filed_module(&case)
+            || is_ruled_ahead_of_pin(&case.path)
         {
             continue;
         }
@@ -639,10 +726,23 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
                 assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
                 continue;
             }
+            if pinned_code(case.check.as_ref()) == Some("E0705")
+                && case.path.contains("memory/static_")
+            {
+                assert_eq!(
+                    observation.verdict,
+                    Verdict::Fail("E0705".to_owned()),
+                    "{}",
+                    case.path
+                );
+                assert_eq!(observation.phase_reached, Phase::Resolve, "{}", case.path);
+                continue;
+            }
             if let Some(
                 code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
                 | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101"
-                | "E1102" | "E1103" | "E1301" | "E1302" | "E0817" | "E0818"),
+                | "E1102" | "E1103" | "E1301" | "E1302" | "E0817" | "E0818" | "E0708"
+                | "E0819" | "E0820" | "E0821"),
             ) = pinned_code(case.check.as_ref())
             {
                 assert_eq!(
