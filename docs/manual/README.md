@@ -23,6 +23,8 @@ clause and defines nothing.
    bundles, what a divergence report says.
 5. [Troubleshooting](05-troubleshooting.md): missing corpus, submodule
    problems, platform notes.
+6. [The place trace](06-place-trace.md): `--trace-places`, one JSON line
+   per statement naming every place's state; the schema.
 
 ## Commands
 
