@@ -118,6 +118,20 @@ struct Cli {
     /// would (`lupin -e '1 + 1'` = `lupin eval '1 + 1'`).
     #[arg(short = 'e', value_name = "CODE", conflicts_with = "file")]
     eval: Option<String>,
+    /// Write the place trace (`docs/manual/06-place-trace.md`): one JSON
+    /// line per statement naming every binding's and field path's state —
+    /// live, moved, uninit, re-initialized, copied. Bare, the lines go to
+    /// stderr; `--trace-places=PATH` writes them to PATH. Never stdout, and
+    /// never a change to what the program does.
+    #[arg(
+        long,
+        value_name = "PATH",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "-",
+        conflicts_with = "eval"
+    )]
+    trace_places: Option<PathBuf>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -176,6 +190,20 @@ struct RunArgs {
     /// `--std-root`/`WOLF_STD` mechanism, interpreter half).
     #[arg(long, value_name = "DIR")]
     std_root: Option<PathBuf>,
+    /// Write the place trace (`docs/manual/06-place-trace.md`): one JSON
+    /// line per statement naming every binding's and field path's state —
+    /// live, moved, uninit, re-initialized, copied. Bare, the lines go to
+    /// stderr; `--trace-places=PATH` writes them to PATH. Never stdout, and
+    /// never a change to what the program does.
+    #[arg(
+        long,
+        value_name = "PATH",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "-",
+        conflicts_with = "json"
+    )]
+    trace_places: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -467,6 +495,10 @@ fn main() -> ExitCode {
     // The front-door dispatch (is12): a subcommand name always wins; a bare
     // file runs; `-e CODE` evaluates; nothing at all opens the REPL.
     let code = match (cli.command, cli.eval, cli.file) {
+        (Some(_), _, _) if cli.trace_places.is_some() => tool_error(
+            "`--trace-places` goes with a program: `lupin --trace-places FILE` or `lupin run \
+             --trace-places FILE`",
+        ),
         (Some(command), _, _) => run_command(command),
         (None, Some(code), _) => run_eval(&EvalArgs { code }),
         (None, None, Some(file)) => run_run(&RunArgs {
@@ -474,8 +506,10 @@ fn main() -> ExitCode {
             seed: None,
             schedule: None,
             json: false,
-            // The bare front door has no flags; `LUPIN_STD` still applies.
+            // The bare front door has no flags but the place trace;
+            // `LUPIN_STD` still applies.
             std_root: None,
+            trace_places: cli.trace_places,
         }),
         (None, None, None) => run_repl(&ReplArgs {
             script: None,
@@ -619,8 +653,20 @@ fn run_run(args: &RunArgs) -> u8 {
         wolf_interp::slash_path(&args.file)
     };
     let file = (!stdin).then_some(args.file.as_path());
-    let observation =
-        wolf_interp::frontend::observe_live(file, &source, &request, args.std_root.as_deref());
+    let places = match &args.trace_places {
+        None => None,
+        Some(path) => match place_trace_sink(path, &source) {
+            Ok(places) => Some(places),
+            Err(code) => return code,
+        },
+    };
+    let observation = wolf_interp::frontend::observe_live_traced(
+        file,
+        &source,
+        &request,
+        args.std_root.as_deref(),
+        places,
+    );
     // The human fault lines carry `line:col` (`[conf.trap.render]`); the
     // lossy decode only matters for a non-UTF-8 source, which never gets
     // past the lexer's E0107 at offset zero.
@@ -662,6 +708,29 @@ fn run_run(args: &RunArgs) -> u8 {
         // Unreachable without a `--phase` cap, which `run` does not take.
         Verdict::Pass => EXIT_OK,
     }
+}
+
+/// The place trace's sink (is72): `-` is stderr, anything else a file
+/// created (or truncated) before the program runs, so a path that cannot be
+/// written is a tool error and the program never starts.
+fn place_trace_sink(path: &Path, source: &[u8]) -> Result<wolf_interp::eval::PlaceTrace, u8> {
+    let sink: Box<dyn std::io::Write + Send> = if path.as_os_str() == "-" {
+        Box::new(std::io::stderr())
+    } else {
+        match std::fs::File::create(path) {
+            Ok(file) => Box::new(file),
+            Err(e) => {
+                return Err(tool_error(&format!(
+                    "could not create the place trace `{}`: {e}",
+                    path.display()
+                )));
+            }
+        }
+    };
+    Ok(wolf_interp::eval::PlaceTrace::new(
+        sink,
+        String::from_utf8_lossy(source).into_owned(),
+    ))
 }
 
 /// `lupin eval 'CODE'` (`-e`): a fresh REPL session evaluates the snippet
