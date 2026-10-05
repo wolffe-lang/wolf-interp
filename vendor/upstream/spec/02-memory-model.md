@@ -163,7 +163,7 @@ vocabulary.
      two indices are equal at run time — `xs[i]` against `xs[k + 1]`
      with `k = i - 1`.
 
-  **Where the machines stand (wolf 0.2.22; lupin 0.1.45).** wolfgang makes moves element-granular: items
+  **Where the machines stand (wolf 0.2.23; lupin 0.1.46).** wolfgang makes moves element-granular: items
   1(a)–(c) hold for a moved element, item 3 holds (wolf-lang#460, where
   any index store revived a moved sibling and native aliased it, is
   fixed), and R3 holds for a store through the same plain local of a
@@ -182,7 +182,7 @@ vocabulary.
   lend of `m[k]` is a typing question (the read is `V ! {none}`,
   `[mem.map.absent]`, E0401 today) that this clause does not answer.
   lupin separates elements at run time and is the oracle for which
-  element a move empties and for the exclusivity trap; at 0.1.45 every
+  element a move empties and for the exclusivity trap; at 0.1.46 every
   read of a moved element traps (wolffe-lang/wolf-interp#141), a whole
   read of a place holding a moved part traps (wolffe-lang/wolf-interp#143),
   a non-`Copy` value read out of a `Map` moves out of it
@@ -530,11 +530,21 @@ fact, polymorphism defaults), `.docs/refs/papers/verona-refcaps.pdf`
   tier: they are refusals, and the builtins they name were already
   allocating — what changes is that the bytes are now attributed, so a
   region holding only string work stops being called empty by W1001.
-  The repair costs, and the second half's costs more: hoisting the
-  build out of the block is free, but `copy` — the first rung of the
-  ladder — materializes the bytes into the ambient region, one
-  allocation and one copy of the value's length, where the view cost
-  nothing. The second half is also deliberately **conservative rather
+  The repair: hoisting the build out of the block is free, and so is
+  `copy` — the first rung of the ladder — which for a `str` shares the
+  bytes rather than materializing them (`[mem.tier0.move.3]`: "a
+  `str`'s bytes are immutable and the copy shares them"). So `copy`
+  repairs what crosses between regions that both outlive the use —
+  E1004's cross-parameter-region store, below — and is no repair for
+  bytes built inside the region, whose sites it carries.
+  (Amended 2026-10-03, ruling #35 = share, by s208: this sentence said
+  `copy` "materializes the bytes into the ambient region, one
+  allocation and one copy of the value's length". No machine ever did
+  — native, release and lupin share, and s207 made the mem tier carry
+  the shared bytes' sites — and the mem clause said "shares them"; the
+  two readings refuse the same region escapes and differ only on when
+  E1004 fires, so the clause and the machines stand and the sentence
+  moved.) The second half is also deliberately **conservative rather
   than precise**: there is no per-field site tracking, so a field read
   carries the parent's whole site set and a literal-initialized field
   (`region scratch { let d = Doc { title: "static" }; d.title }`) is
@@ -580,19 +590,21 @@ fact, polymorphism defaults), `.docs/refs/papers/verona-refcaps.pdf`
   stated.** Nothing at run time on either tier — this is a refusal, and
   no lane emits an instruction for it; `[mem.str.view]`'s allocation
   commitment is unchanged, a view still allocates nothing and still
-  charges zero. The repair is the same ladder the second half of s160
-  named: hoist the build out of the block, or `copy` the view, which
-  materializes the bytes into the ambient region. Measured before it
+  charges zero. The repair is to hoist the build out of the block.
+  `copy` of the view is not one: it shares the receiver's bytes
+  (`[mem.tier0.move.3]`) and carries their sites (amended 2026-10-03,
+  ruling #35 = share, by s208; this sentence said `copy` "materializes
+  the bytes into the ambient region", which no machine did). Measured before it
   landed, pre-fix binary against post: over `corpus/` (670 files),
   wolf-std (51 module entries, 419 test and 780 upstream files), lobo
   (151) and boreutils (61) — 23,722 `.lu` files in all, every one of
   them answering with a verdict — **zero rows moved**, and wolf-lang's
   own suite stayed at 2,305 tests green.
   Witnesses `corpus/memory/region_str_view_return.lu` and its legal
-  companion `corpus/memory/region_str_view_inside.lu`. **lupin does not
-  yet follow**: 0.1.37 runs the refused shape to `exit(0)`, so the
-  wolf-interp mirror is filed and the differ will carry the row until
-  it lands.)
+  companion `corpus/memory/region_str_view_inside.lu`. **lupin
+  follows since 0.1.45** (wolffe-lang/wolf-interp#126, is68): it traps
+  `region-fault` at the escape, the dynamic counterpart of the refusal,
+  where 0.1.37 through 0.1.44 ran the refused shape to `exit(0)`.)
   (Extended 2026-10-03 by s207 for wolf-lang#540. **A `for` binding
   carries its iterable's sites.** s171 named "the pieces of
   `split`/`words`/`lines`" and the compiler refused a piece reached by
@@ -625,8 +637,8 @@ fact, polymorphism defaults), `.docs/refs/papers/verona-refcaps.pdf`
   meaning (lobo's `acc.addr = copy pl.pt.authority`, s160's one
   moved row, still compiles). s160's and s171's
   sentences that `copy` "materializes the bytes into the ambient
-  region" disagree with that clause and with the lowering; the
-  disagreement is recorded on wolf-lang#540, not decided here.
+  region" disagreed with that clause and with the lowering; ruling #35
+  (share) amended them to match, with no code change (s208).
   Measured before it landed, trunk binary against head: boreutils' 54
   binaries and lobo's two build byte-identical with no diagnostic, and
   wolf-std's `std-test` answers as it did. Witnesses
@@ -1014,8 +1026,37 @@ Simpler than the safe tier, not stricter (anti-Stacked-Borrows lesson).
 - `[mem.unsafe.raw.2]` `assume noalias p, q` asserts the pointed-to
   ranges do not overlap for the assertion's scope. A false assertion is
   UB (§7/P5) — the only *assertion-created* UB in the language.
-- `[mem.unsafe.raw.3]` Volatile reads/writes (std intrinsics) are
-  side-effecting and never elided/reordered against each other.
+- `[mem.unsafe.raw.3]` Volatile reads and writes are the two methods
+  `[mem.unsafe.volatile]` defines on `*T`, not intrinsics: they are
+  side-effecting, and never elided, split, merged or reordered against
+  each other (K3 = B, STATUS #31).
+- `[mem.unsafe.volatile]` `p.read_volatile()` yields the `T` at `p`;
+  `p.write_volatile(v)` stores `v: T` there and yields unit. Both are
+  raw-tier operations (E1301 outside `unsafe`). Ordinary raw accesses
+  (`p[i]`) stay free for the optimizer to merge, drop or move
+  (`[mem.unsafe.raw.1]`); these two are the spelling for memory whose
+  every access is observable — a device register, a boot protocol's
+  response written by firmware.
+  - `[mem.unsafe.volatile.1]` The pointee `T` is a fixed-width integer
+    (`u8`, `u16`, `u32`, `u64`, `i8`, `i16`, `i32`, `i64`) or `byte`.
+    Any other pointee — `int`, `uint`, `bool`, a float, an aggregate —
+    is E1307: its width is not one machine access, or its value set is
+    restricted (T1).
+  - `[mem.unsafe.volatile.2]` Each call is **exactly one** access of
+    `T`'s width at `p`, aligned: never elided (a read whose value is
+    unused still reads; two writes of one value both write), never
+    split into narrower accesses, never merged with a neighbour, and
+    never reordered against another volatile access. Ordering against
+    ordinary accesses and against other threads is not promised here
+    (that is F5's atomics and fences). The compiled tiers prove it in
+    the object: one load or store instruction of the width per call
+    (`volatile_disasm.rs`).
+  - `[mem.unsafe.volatile.3]` On an allocation the access is an
+    ordinary access of `T`'s width: the checked machine and lupin run
+    it under the same rows as `p[0]` (P1–P4, L1, L2, T1). An address
+    that is not a multiple of `T`'s size is UB row L3. An address no
+    allocation owns is row L2 there; device memory is F9's clause
+    (kw06), not this one's.
 - `[mem.unsafe.door]` Exactly two doors re-enter the safe world:
   1. `borrow r from ptr` — produces a region-scoped reference from a raw
      pointer. Obligation: `ptr` addresses a live allocation wholly inside
@@ -1042,6 +1083,44 @@ Simpler than the safe tier, not stricter (anti-Stacked-Borrows lesson).
   variable, call-by-reference-result. Witnesses:
   `memory/raw_ptr_private_sig.lu`, `memory/raw_ptr_mut_param.lu`,
   `memory/unsafe_sig.lu` (the `pub` control).
+
+### Module state `[mem.static]`
+
+- `[mem.static]` A module-level `const`, `let` or `var` is **module
+  state**: one value for the whole run of the program, shared by every
+  task. Its type is written (E0407) and its initializer is evaluated at
+  compile time (`.3`). K11 = A (STATUS #31): reading a `const` or `let`
+  is safe; every access to a `var` is raw-tier.
+  - `[mem.static.1]` A `const` or a `let` is immutable data, read in
+    safe code; assigning to either is E0410. A `const` is its value — it
+    has no storage, and each read is the value itself. A `let` is
+    immutable data in the image's read-only data (`.rodata`), or in the
+    section `#[section]` names (`[abi.link.section]`); a `str` `let` is
+    its literal, like a `const`.
+  - `[mem.static.2]` A `var` lives in the image's writable data: `.data`,
+    or `.bss` when its initial value is all zero bytes, or the section
+    `#[section]` names. Every read and every write of it — plain,
+    compound, or as a `mut` argument — is a raw-tier operation, E1301
+    outside `unsafe`: spec 03's data-race freedom is a property of the
+    safe tier, and a module `var` is shared by every task. The program
+    keeps its own discipline (one thread, or its own lock in the unsafe
+    ring). On the checked machine and lupin a `var` is ordinary memory:
+    a write is seen by every later read, across calls.
+  - `[mem.static.3]` Initialization is at compile time, so there is no
+    initialization order to observe: the comptime engine (D29/D33, the
+    evaluator `const` items already used) evaluates every module initializer and the result is the image's
+    initial bytes (a `let`/`var`) or the value (a `const`). An
+    initializer that is not comptime-known — a call to a runtime
+    function, ambient IO, a read of a `var` — is **E0705**, as is an
+    initializer that depends on itself; an initializer may name any
+    other `const` or `let` of its module, before or after it. The types
+    module state holds at this cut are the integers, `byte`, `bool` and
+    the floats (and `str` for a `const` or `let`); any other type (a
+    `List`, a struct) is refused by name, `unsupported`: it is not
+    static data yet (a fixed-size array is a separate type question; a
+    table a kernel needs lives in `.bss` reserved by assembly and named
+    with `extern "c" let`, `[abi.link.extern]`). Witnesses:
+    `memory/static_*.lu`.
 
 ## §6 Provenance `[mem.prov]`
 
@@ -1073,7 +1152,45 @@ the C-style pointer arithmetic and two-phase patterns SB rejects.
 - `[mem.prov.expose]` Int→ptr casts produce a pointer with **exposed**
   provenance resolved angelically among exposed tags (a defined execution
   is chosen if one exists); ptr→int casts expose the tag. Wildcard
-  pointers from FFI behave as exposed.
+  pointers from FFI behave as exposed. The methods of `*T` are the
+  strict-provenance spellings beside the casts: `p.addr()` reads the
+  address without exposing the tag, `p.with_addr(a)` is `p`'s own
+  provenance at address `a`, and `p.expose()` / `p.with_exposed(a)` are
+  the two casts; `p.is_null()` compares the address with zero.
+  **Lowering** (K9(a), STATUS #31; kw06): every cast and method lowers
+  on every compiling tier — `ptrtoint`/`inttoptr` on the release tier,
+  the identity on the native tier's 64-bit pointers — and `with_addr`
+  is an offset from `p` (a non-`inbounds` `getelementptr`), so the
+  compiled tiers keep `p`'s provenance as the checked machine does. The
+  integer side of a cast: `N as *T` widens `N` to the address word by
+  `N`'s own signedness and never traps; `*T as N` is the address's bits
+  when `N` is 64 bits wide (`int`, `i64`, `uint`, `u64`; a higher-half
+  address read as `int` is negative), and otherwise the address as
+  `uint` under `[type.numlit.cast.narrow]` (kept in range, `overflow`
+  outside). Prefix `*p` is `p[0]`, as a read and as a place (`*p = v`,
+  `*p op= v`), under the same ring (E1301); `*` on anything but a `*T`
+  is E0409. The checked machine's addresses are its own (allocation
+  bases at a fixed stride), so output that prints an address is
+  machine-specific; offsets, differences and round trips agree.
+  Witnesses: `memory/prov_cast_round_trip.lu`,
+  `memory/prov_expose_round_trip.lu`, `memory/prov_addr_with_addr.lu`,
+  `memory/prov_is_null.lu`, `memory/prov_narrow_cast.lu`,
+  `memory/raw_deref.lu`, `memory/raw_deref_signed.lu`.
+- `[mem.prov.device]` An access through a pointer whose address no
+  allocation owns is an access to **foreign memory**. On a hosted
+  target it is UB row L2, as a dangling pointer is: the checked machine
+  answers E1401 and lupin `ub(mem.ub)`, and a compiled tier does
+  whatever the address does. On the freestanding target
+  (`[abi.target]`) its meaning is the platform's — a device register, a
+  physical frame, a boot protocol's table — and the compiling tiers
+  emit the access as written: `0xb8000 as *u16` stores to `0xb8000`.
+  Neither the checked machine nor lupin models a platform, so neither
+  answers UB for one: both refuse a freestanding program by name before
+  any access (`conform-run --target x86_64-unknown-none` is
+  `unsupported` with the freestanding target named, `[abi.target]`),
+  and a kernel's logic that touches no device runs on all four machines
+  under the hosted target (K9(c), STATUS #31). Witness:
+  `crates/wolf_driver/tests/int_ptr_lanes.rs`.
 - `[mem.prov.region]` Region composition: freeing a region **Disables
   every tag tree** of every allocation it owns; `freeze` transitions all
   its tags to Frozen. Region identity partitions provenance: tags rooted
@@ -1100,6 +1217,7 @@ Detection legend: **S** static checker (s18–s23) · **O** is04 oracle ·
 | P6 | False discharge of a re-entry door (`borrow r from ptr` obligations, forged handle index laundering) | O6: safe-tier code after the door keeps **all** safe-tier entitlements (O1–O4) — the door is where trust concentrates, so safe code never re-checks | O, Q |
 | L1 | Read of uninitialized or moved-from memory via raw pointers | O7: moves lower to memcpy-and-forget; dead-store elimination on moved-from places; no zero-init of locals | O, Q |
 | L2 | Deref of a dangling raw pointer (freed C allocation, escaped stack address) | O8: escape analysis / stack promotion (`[mem.region.promote.1]`) without conservatively pinning addresses | O, Q |
+| L3 | A volatile access (`[mem.unsafe.volatile]`) through an address that is not a multiple of the pointee's size | O11: each volatile call is one aligned machine access of its width — no split into narrower accesses, no alignment check, the instruction a device register expects | O |
 | T1 | Producing an invalid value of a restricted type in unsafe code (bool ∉ {0,1}, out-of-range enum discriminant, non-UTF-8 `str` bytes) | O9: niche packing (`Option[handle T]` is one word); match jump tables without default arms; UTF-8 fast paths without re-validation | O |
 | T2 | Torn write producing a partially-updated wide value observed through another tag | O10: layout freedom — field reorder, no address identity for value fields outside `#[repr(c)]` (I9); wide stores split freely | O |
 | C1 | Data race on non-atomic memory reachable only from unsafe/FFI code (safe code cannot race — spec 03) | Licensing pairing lives in spec 03 §(DRF-SC): sync-free stretches permit store motion/combining | O (schedule-bounded), race detector |
