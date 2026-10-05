@@ -15,8 +15,9 @@
 //! 3. corpus mutations — byte flips, truncations and splices of real programs,
 //!    which is where the interesting near-miss inputs live.
 //!
-//! Every case must terminate with either a tree or one diagnostic. Nothing here
-//! asserts *which*: this is a liveness test, not a conformance one.
+//! Every case must terminate with either a tree or a well-formed rejection.
+//! Nothing here asserts *which*: this is a liveness test, not a conformance
+//! one.
 //!
 //! # is02: the run rung is in scope too
 //!
@@ -109,22 +110,39 @@ fn exercise(source: &[u8]) {
             }
             _ => {}
         }
-        // Whatever happened, the record must be well-formed: a `fail` carries
-        // exactly one diagnostic, everything else carries none.
+        // Whatever happened, the record must be well-formed. A `fail` carries
+        // one or more error diagnostics (`[proto.record.first]`, ruling #28):
+        // a rung that lists every refusal — is70's attributes, the compiler's
+        // E0705/E0820/E1301 rows — lists them by start, and the verdict is the
+        // first one's code (wolf-interp#197; the one-diagnostic contract this
+        // replaced predated both). Everything else carries none.
         match &observation.verdict {
             wolf_interp::protocol::Verdict::Fail(code) => {
-                assert_eq!(
-                    observation.diagnostics.len(),
-                    1,
-                    "no recovery, one diagnostic"
-                );
-                assert_eq!(&observation.diagnostics[0].code, code);
-                let [start, end] = observation.diagnostics[0].span;
-                assert!(start <= end, "spans are half-open and ordered");
                 assert!(
-                    end as usize <= source.len(),
-                    "a span must point inside the source: {start}..{end} of {}",
-                    source.len()
+                    !observation.diagnostics.is_empty(),
+                    "a rejection carries its diagnostic"
+                );
+                assert_eq!(
+                    &observation.diagnostics[0].code, code,
+                    "the verdict is the first diagnostic's code"
+                );
+                for diagnostic in &observation.diagnostics {
+                    assert_eq!(diagnostic.severity, "error", "{diagnostic:?}");
+                    let [start, end] = diagnostic.span;
+                    assert!(start <= end, "spans are half-open and ordered");
+                    assert!(
+                        end as usize <= source.len(),
+                        "a span must point inside the source: {start}..{end} of {}",
+                        source.len()
+                    );
+                }
+                assert!(
+                    observation
+                        .diagnostics
+                        .windows(2)
+                        .all(|pair| pair[0].span[0] <= pair[1].span[0]),
+                    "several diagnostics are listed by start: {:?}",
+                    observation.diagnostics
                 );
             }
             _ => assert!(observation.diagnostics.is_empty()),
