@@ -202,7 +202,7 @@ fn admit_with(program: &sema::Program, statics: Vec<crate::diag::Diag>) -> Optio
         return Some(Refusal::RejectAll(externs));
     }
     let initializers = crate::statics::init_check(program);
-    if !initializers.is_empty() && std::env::var_os("IS73_PLANT_NEVER_SET").is_some() {
+    if !initializers.is_empty() {
         return Some(Refusal::RejectAll(initializers));
     }
     if let Some(reason) = crate::statics::not_static_data(program) {
