@@ -1,0 +1,8 @@
+#[repr(c)]
+struct G[T] {
+    a: T,
+}
+
+fn main() -> int {
+    0
+}

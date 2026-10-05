@@ -1,0 +1,10 @@
+#[repr(c, align(268435456))]
+struct B {
+    a: u8,
+    b: u32,
+}
+fn main() -> int {
+    const A = align_of(B)
+    print("{A}")
+    0
+}

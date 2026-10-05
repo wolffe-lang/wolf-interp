@@ -1,0 +1,17 @@
+#[repr(c, packed)]
+struct Q {
+    a: u8,
+    b: u64,
+}
+
+#[repr(c, packed)]
+struct P {
+    t: u8,
+    q: Q,
+}
+fn main() -> int {
+    const S = size_of(P)
+    const O = offset_of(P, q)
+    print("{S} {O}")
+    0
+}

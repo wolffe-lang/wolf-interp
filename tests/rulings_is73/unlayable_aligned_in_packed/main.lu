@@ -1,0 +1,13 @@
+#[repr(c, align(16))]
+struct A16 {
+    x: u32,
+}
+
+#[repr(c, packed)]
+struct P {
+    t: u8,
+    a: A16,
+}
+fn main() -> int {
+    0
+}

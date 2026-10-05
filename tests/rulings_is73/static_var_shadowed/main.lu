@@ -1,0 +1,6 @@
+var ticks: int = 0
+
+fn main() -> int {
+    let ticks = 1
+    ticks - 1
+}

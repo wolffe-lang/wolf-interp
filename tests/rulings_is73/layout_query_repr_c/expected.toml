@@ -1,0 +1,14 @@
+# is73 — wolf-interp#188/#190: `layout_query_repr_c`. `[expected]` is the lupin cell this witness must answer: the
+# compiler's checked answer (wolf 0.2.23, 8edac3ee; archive 6f505eb5…), refused by name where it is unsupported.
+# `[trunk]` is what lupin 0.1.46 (the trunk binary, d13a0379…) and the compiler's three lanes answered on kasumi
+# (~/lanes/is73/scripts/mkexp.py).
+issue = "wolf-interp#188"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "C3 12 4 0 4 8\nP3 6 1 0 1 5\nGdtr 10 1 0 2\nA16 16 16 0\nOuter 48 16 0 16 32\nPNest 10 2 0 1 8\nPage 4096 4096\nscalars 1 2 8 8 1 8\n" }
+
+[trunk]
+lupin   = { verdict = "fail(E0817)", stdout = "", first = "E0817@[869,875]", all = "E0817@[869,875],E0817@[937,943],E0817@[1004,1013],E0817@[1187,1198]" }
+checked = { verdict = "exit(0)", stdout = "C3 12 4 0 4 8\nP3 6 1 0 1 5\nGdtr 10 1 0 2\nA16 16 16 0\nOuter 48 16 0 16 32\nPNest 10 2 0 1 8\nPage 4096 4096\nscalars 1 2 8 8 1 8\n" }
+native  = { verdict = "exit(0)", stdout = "C3 12 4 0 4 8\nP3 6 1 0 1 5\nGdtr 10 1 0 2\nA16 16 16 0\nOuter 48 16 0 16 32\nPNest 10 2 0 1 8\nPage 4096 4096\nscalars 1 2 8 8 1 8\n" }
+release = { verdict = "exit(0)", stdout = "C3 12 4 0 4 8\nP3 6 1 0 1 5\nGdtr 10 1 0 2\nA16 16 16 0\nOuter 48 16 0 16 32\nPNest 10 2 0 1 8\nPage 4096 4096\nscalars 1 2 8 8 1 8\n" }

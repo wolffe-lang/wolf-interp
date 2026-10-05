@@ -1,0 +1,9 @@
+let A: int = f()
+
+fn f() -> int {
+    A + 1
+}
+
+fn main() -> int {
+    A
+}

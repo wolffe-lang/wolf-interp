@@ -1,0 +1,14 @@
+#[repr(c, packed)]
+struct Gdtr {
+    limit: u16,
+    base: u64,
+}
+
+fn twice(x: u64) -> u64 {
+    x * 2
+}
+
+fn main() -> int {
+    let d = Gdtr { limit: 7, base: 21 }
+    twice(d.base) as int - 42
+}

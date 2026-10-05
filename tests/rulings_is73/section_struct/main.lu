@@ -1,0 +1,8 @@
+#[section(".x")]
+struct S {
+    a: int,
+}
+
+fn main() -> int {
+    0
+}

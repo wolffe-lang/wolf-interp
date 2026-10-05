@@ -1,0 +1,8 @@
+#[repr(c, packed)]
+struct G[T] {
+    a: T,
+}
+
+fn main() -> int {
+    0
+}

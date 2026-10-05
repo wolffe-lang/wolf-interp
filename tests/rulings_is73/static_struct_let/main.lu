@@ -1,0 +1,9 @@
+struct P {
+    x: int,
+}
+
+let ORIGIN: P = P { x: 0 }
+
+fn main() -> int {
+    ORIGIN.x
+}

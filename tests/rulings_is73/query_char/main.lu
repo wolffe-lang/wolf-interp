@@ -1,0 +1,5 @@
+fn main() -> int {
+    const S = size_of(char)
+    print("{S}")
+    0
+}

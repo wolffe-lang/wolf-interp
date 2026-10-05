@@ -1,0 +1,5 @@
+extern "c" let X: *u8 = 0 as *u8
+
+fn main() -> int {
+    0
+}

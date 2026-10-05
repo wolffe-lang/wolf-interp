@@ -1,0 +1,7 @@
+var a: int = 1
+
+var b: int = a + 1
+
+fn main() -> int {
+    0
+}

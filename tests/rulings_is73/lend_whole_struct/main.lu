@@ -1,0 +1,15 @@
+#[repr(c, packed)]
+struct Gdtr {
+    limit: u16,
+    base: u64,
+}
+
+fn grow(mut g: Gdtr) {
+    g.base += 1
+}
+
+fn main() -> int {
+    var d = Gdtr { limit: 7, base: 41 }
+    grow(mut d)
+    d.base as int - 42
+}

@@ -1,0 +1,6 @@
+#[section(".x")]
+extern "c" let X: *u8
+
+fn main() -> int {
+    0
+}

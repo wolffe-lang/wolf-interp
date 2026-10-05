@@ -1,0 +1,14 @@
+#[repr(c)]
+struct R {
+    a: bool,
+    f: f32,
+    h: i16,
+    d: f64,
+    b: byte,
+    u: uint,
+    i: i8,
+}
+fn main() -> int {
+    print("{size_of(R)} {align_of(R)} {offset_of(R, f)} {offset_of(R, h)} {offset_of(R, d)} {offset_of(R, b)} {offset_of(R, u)} {offset_of(R, i)}")
+    0
+}

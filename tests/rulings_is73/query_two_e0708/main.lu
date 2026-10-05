@@ -1,0 +1,10 @@
+struct V {
+    x: f64,
+}
+
+fn main() -> int {
+    const S = size_of(V)
+    const A = align_of(V)
+    print("{S} {A}")
+    0
+}

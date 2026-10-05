@@ -1,0 +1,15 @@
+#[repr(c)]
+struct R {
+    d: f64,
+    c: u8,
+}
+
+#[repr(c)]
+struct Arr {
+    r: R,
+    z: u8,
+}
+fn main() -> int {
+    print("{size_of(R)} {size_of(Arr)} {offset_of(Arr, z)} {align_of(Arr)}")
+    0
+}

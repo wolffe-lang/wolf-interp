@@ -1,0 +1,10 @@
+enum E {
+    a,
+    b,
+}
+
+fn main() -> int {
+    const S = size_of(E)
+    print("{S}")
+    0
+}

@@ -1,0 +1,8 @@
+#[repr(align(8), c, packed)]
+struct B {
+    a: u8,
+    b: u32,
+}
+fn main() -> int {
+    0
+}

@@ -1,0 +1,11 @@
+var ticks: int = 0
+
+fn bump(mut x: int) {
+    x += 1
+}
+
+fn main() -> int {
+    bump(mut ticks)
+    ticks += 1
+    0
+}

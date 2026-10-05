@@ -1,0 +1,22 @@
+//! check: fail(E0817)
+//! phase: resolve
+//! conforms: gram.item.attr, abi.link.section
+//!
+//! kw01 (K13; K6 — wolf-lang#519), kw09: `#[section(".name")]` places a
+//! function or a module `let`/`var` (`[abi.link.section]`, kw09). It
+//! means nothing on a `const` — a `const` is its value and has no
+//! storage — and Rust's `link_section` is not wolf's spelling, so both
+//! are E0817, never ignored. Before kw01 every one was accepted and the
+//! function landed in `.text` (kw00's `f6_section.lu`).
+
+#[section(".rodata.kw")]
+const LIMIT: int = 5
+
+#[link_section(".text.boot")]
+fn boot() -> int {
+    1
+}
+
+fn main() -> int {
+    boot() + LIMIT - 6
+}

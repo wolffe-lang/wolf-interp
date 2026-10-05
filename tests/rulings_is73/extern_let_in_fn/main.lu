@@ -1,0 +1,4 @@
+fn main() -> int {
+    extern "c" let X: *u8
+    0
+}

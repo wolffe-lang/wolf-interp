@@ -1,0 +1,14 @@
+#[repr(c, transparent)]
+struct T {
+    a: u8,
+    b: u32,
+}
+
+#[repr(c, align(3))]
+struct B {
+    a: u8,
+    b: u32,
+}
+fn main() -> int {
+    0
+}

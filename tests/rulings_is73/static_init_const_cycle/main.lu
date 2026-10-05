@@ -1,0 +1,7 @@
+const X: int = Y
+
+const Y: int = X
+
+fn main() -> int {
+    X
+}

@@ -1,0 +1,20 @@
+#[repr(c, packed)]
+struct Gdtr {
+    limit: u16,
+    base: u64,
+}
+
+#[repr(c)]
+struct S {
+    k: u8,
+    g: Gdtr,
+}
+fn bump(mut x: u64) {
+    x += 1
+}
+
+fn main() -> int {
+    var s = S { k: 1, g: Gdtr { limit: 7, base: 41 } }
+    bump(mut s.g.base)
+    s.g.base as int - 42
+}

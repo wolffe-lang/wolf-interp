@@ -1,0 +1,14 @@
+#[repr(c)]
+struct R {
+    a: u8,
+    p: *u8,
+    b: u16,
+}
+fn main() -> int {
+    const S = size_of(R)
+    const A = align_of(R)
+    const O = offset_of(R, p)
+    const B = offset_of(R, b)
+    print("{S} {A} {O} {B}")
+    0
+}

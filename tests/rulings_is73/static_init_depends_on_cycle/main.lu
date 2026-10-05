@@ -1,0 +1,9 @@
+let D: int = A + 1
+
+let A: int = B + 1
+
+let B: int = A * 2
+
+fn main() -> int {
+    D
+}

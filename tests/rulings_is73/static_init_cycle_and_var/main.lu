@@ -1,0 +1,9 @@
+var v: int = 1
+
+let A: int = B + v
+
+let B: int = A
+
+fn main() -> int {
+    0
+}

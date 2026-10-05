@@ -1,0 +1,5 @@
+extern "c" const X: *u8
+
+fn main() -> int {
+    0
+}

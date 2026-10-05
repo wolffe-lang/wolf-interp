@@ -1,0 +1,10 @@
+#[repr(c, align(2))]
+struct A {
+    x: u64,
+}
+fn main() -> int {
+    const S = size_of(A)
+    const L = align_of(A)
+    print("{S} {L}")
+    0
+}

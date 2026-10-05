@@ -1,0 +1,6 @@
+#[section(".data.kw")]
+var placed: int = 5
+
+fn main() -> int {
+    0
+}

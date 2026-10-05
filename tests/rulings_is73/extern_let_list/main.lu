@@ -1,0 +1,5 @@
+extern "c" let X: List[int]
+
+fn main() -> int {
+    0
+}

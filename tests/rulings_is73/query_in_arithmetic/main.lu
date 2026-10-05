@@ -1,0 +1,12 @@
+#[repr(c)]
+struct C3 {
+    a: u8,
+    b: u32,
+    c: u8,
+}
+
+fn main() -> int {
+    let s = size_of(C3) + offset_of(C3, b) * 100
+    print("{s}")
+    0
+}

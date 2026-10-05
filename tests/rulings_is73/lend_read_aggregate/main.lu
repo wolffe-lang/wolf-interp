@@ -1,0 +1,19 @@
+#[repr(c)]
+struct I {
+    x: u32,
+    y: u32,
+}
+
+#[repr(c, packed)]
+struct P {
+    t: u8,
+    i: I,
+}
+fn show(v: I) -> int {
+    v.x as int
+}
+
+fn main() -> int {
+    let p = P { t: 1, i: I { x: 2, y: 3 } }
+    show(p.i) - 2
+}

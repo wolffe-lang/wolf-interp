@@ -1,0 +1,5 @@
+var NAME: str = "wolf"
+
+fn main() -> int {
+    0
+}

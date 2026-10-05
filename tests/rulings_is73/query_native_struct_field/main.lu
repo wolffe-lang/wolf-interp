@@ -1,0 +1,14 @@
+struct N {
+    x: u8,
+}
+
+#[repr(c)]
+struct R {
+    a: u8,
+    n: N,
+}
+fn main() -> int {
+    const S = size_of(R)
+    print("{S}")
+    0
+}

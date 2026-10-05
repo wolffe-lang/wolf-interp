@@ -1,0 +1,5 @@
+fn main() -> int {
+    const O = offset_of(u8, x)
+    print("{O}")
+    0
+}

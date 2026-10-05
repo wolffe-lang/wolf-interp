@@ -1,0 +1,13 @@
+var n: int = 0
+
+fn peek() -> int {
+    n
+}
+
+fn main() -> int {
+    // # Safety: one thread.
+    unsafe {
+        n = 2
+    }
+    peek() - 2
+}

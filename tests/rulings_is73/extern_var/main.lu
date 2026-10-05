@@ -1,0 +1,5 @@
+extern "c" var X: *u8
+
+fn main() -> int {
+    0
+}

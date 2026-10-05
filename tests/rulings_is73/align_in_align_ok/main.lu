@@ -1,0 +1,17 @@
+#[repr(c, align(16))]
+struct A {
+    x: u8,
+}
+
+#[repr(c, align(64))]
+struct B {
+    a: A,
+    y: u8,
+}
+fn main() -> int {
+    const S = size_of(B)
+    const L = align_of(B)
+    const O = offset_of(B, y)
+    print("{S} {L} {O}")
+    0
+}

@@ -1,0 +1,5 @@
+fn main() -> int {
+    #[section(".x")]
+    let a = 1
+    a - 1
+}

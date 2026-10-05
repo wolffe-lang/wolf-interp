@@ -1,0 +1,18 @@
+#[repr(c)]
+struct I {
+    x: u32,
+}
+
+#[repr(c, packed)]
+struct P {
+    t: u8,
+    i: I,
+}
+fn eat(take v: I) -> int {
+    v.x as int
+}
+
+fn main() -> int {
+    let p = P { t: 1, i: I { x: 2 } }
+    eat(take p.i) - 2
+}

@@ -1,0 +1,15 @@
+# is73 — wolf-interp#188/#190: `static_init_through_fn`. `[expected]` is the lupin cell this witness must answer: the
+# compiler's checked answer (wolf 0.2.23, 8edac3ee; archive 6f505eb5…), refused by name where it is unsupported.
+# `[trunk]` is what lupin 0.1.46 (the trunk binary, d13a0379…) and the compiler's three lanes answered on kasumi
+# (~/lanes/is73/scripts/mkexp.py).
+# Parts from the checked cell by design: the compiler follows the reference into `f`'s body (E0705 there); this machine's static walk reads the initializer only, and the evaluator declines the cycle by name rather than recurse.
+issue = "wolf-interp#190"
+
+[expected]
+lupin   = { verdict = "unsupported", stdout = "", named = "depends on its own value" }
+
+[trunk]
+lupin   = { verdict = "unsupported", stdout = "", named = "call depth exceeded 512 frames" }
+checked = { verdict = "fail(E0705)", stdout = "", first = "E0705@[38,39]" }
+native  = { verdict = "fail(E0705)", stdout = "", first = "E0705@[38,39]" }
+release = { verdict = "fail(E0705)", stdout = "", first = "E0705@[38,39]" }

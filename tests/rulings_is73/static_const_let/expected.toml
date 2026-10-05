@@ -1,0 +1,14 @@
+# is73 — wolf-interp#188/#190: `static_const_let`. `[expected]` is the lupin cell this witness must answer: the
+# compiler's checked answer (wolf 0.2.23, 8edac3ee; archive 6f505eb5…), refused by name where it is unsupported.
+# `[trunk]` is what lupin 0.1.46 (the trunk binary, d13a0379…) and the compiler's three lanes answered on kasumi
+# (~/lanes/is73/scripts/mkexp.py).
+issue = "wolf-interp#190"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "5 11 4095 true 2.5 kw09\n-7 255 4294967296\n" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "5 11 4095 true 2.5 kw09\n-7 255 4294967296\n" }
+checked = { verdict = "exit(0)", stdout = "5 11 4095 true 2.5 kw09\n-7 255 4294967296\n" }
+native  = { verdict = "exit(0)", stdout = "5 11 4095 true 2.5 kw09\n-7 255 4294967296\n" }
+release = { verdict = "exit(0)", stdout = "5 11 4095 true 2.5 kw09\n-7 255 4294967296\n" }

@@ -1,0 +1,14 @@
+# is73 — wolf-interp#188/#190: `lend_take_field`. `[expected]` is the lupin cell this witness must answer: the
+# compiler's checked answer (wolf 0.2.23, 8edac3ee; archive 6f505eb5…), refused by name where it is unsupported.
+# `[trunk]` is what lupin 0.1.46 (the trunk binary, d13a0379…) and the compiler's three lanes answered on kasumi
+# (~/lanes/is73/scripts/mkexp.py).
+issue = "wolf-interp#188"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "" }
+
+[trunk]
+lupin   = { verdict = "fail(E0817)", stdout = "", first = "E0817@[47,53]" }
+checked = { verdict = "exit(0)", stdout = "" }
+native  = { verdict = "exit(0)", stdout = "" }
+release = { verdict = "exit(0)", stdout = "" }
