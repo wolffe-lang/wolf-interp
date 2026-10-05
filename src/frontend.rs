@@ -235,6 +235,7 @@ pub fn observe(source: &[u8], requested: Option<Phase>) -> Observation {
         &SchedRequest::Default,
         false,
         None,
+        None,
     )
 }
 
@@ -257,6 +258,7 @@ pub fn observe_file(
         request,
         false,
         std_root,
+        None,
     )
 }
 
@@ -271,6 +273,21 @@ pub fn observe_live(
     request: &SchedRequest,
     std_root: Option<&Path>,
 ) -> Observation {
+    observe_live_traced(file, source, request, std_root, None)
+}
+
+/// [`observe_live`] with the place trace (is72, `lupin --trace-places`):
+/// `places` receives one JSON line per statement, on its own sink and never
+/// on the program's stdout. The observation is the one [`observe_live`]
+/// makes; the trace decides nothing in it.
+#[must_use]
+pub fn observe_live_traced(
+    file: Option<&Path>,
+    source: &[u8],
+    request: &SchedRequest,
+    std_root: Option<&Path>,
+    places: Option<crate::eval::PlaceTrace>,
+) -> Observation {
     observe_with(
         file,
         source,
@@ -279,6 +296,7 @@ pub fn observe_live(
         request,
         true,
         std_root,
+        places,
     )
 }
 
@@ -298,6 +316,28 @@ pub fn observe_buffer(
         request,
         false,
         None,
+        None,
+    )
+}
+
+/// [`observe_file`] at the `run` rung with the place trace on (is72): the
+/// in-process door `tests/place_trace.rs` holds against [`observe_file`]
+/// over the corpus, so "the trace never changes behaviour" is a test.
+#[must_use]
+pub fn observe_file_traced(
+    file: &Path,
+    source: &[u8],
+    places: crate::eval::PlaceTrace,
+) -> Observation {
+    observe_with(
+        Some(file),
+        source,
+        None,
+        crate::eval::Trace::Off,
+        &SchedRequest::Default,
+        false,
+        None,
+        Some(places),
     )
 }
 
@@ -312,9 +352,11 @@ fn observe_with(
     request: &SchedRequest,
     live: bool,
     std_root: Option<&Path>,
+    places: Option<crate::eval::PlaceTrace>,
 ) -> Observation {
-    let mut observation =
-        observe_with_spans(file, source, requested, trace, request, live, std_root);
+    let mut observation = observe_with_spans(
+        file, source, requested, trace, request, live, std_root, places,
+    );
     if let Some(entry) = file {
         attribute_files(&mut observation, entry, std_root);
     }
@@ -408,6 +450,7 @@ fn observe_with_spans(
     request: &SchedRequest,
     live: bool,
     std_root: Option<&Path>,
+    places: Option<crate::eval::PlaceTrace>,
 ) -> Observation {
     if requested == Some(Phase::None) {
         return Observation::clean(Phase::None, Verdict::Pass);
@@ -521,6 +564,9 @@ fn observe_with_spans(
 
     // -- run ---------------------------------------------------------------
     let mut machine = Machine::with_request(&program, request).tracing(trace);
+    if let Some(places) = places {
+        machine = machine.trace_places(places);
+    }
     if live {
         machine = machine.live_stdout();
         // The same front door also means the program is standing in the
