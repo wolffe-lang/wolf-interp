@@ -1048,6 +1048,13 @@ impl<'a> Parser<'a> {
         }
 
         let (kind, anchor) = match self.tok() {
+            // `extern "c" let NAME: *T` (`[abi.link.extern]`, kw09): the
+            // binding keyword after the ABI string decides the form; the
+            // `var`/`const` misspellings are read too, for E0821.
+            Some(Tok::Kw("extern")) if self.extern_binding_ahead() => (
+                ItemKind::ExternLet(Box::new(self.parse_extern_let()?)),
+                "gram.item.let",
+            ),
             Some(Tok::Kw("comptime" | "extern" | "export" | "fn")) => (
                 ItemKind::Fn(Box::new(self.parse_fn_decl()?)),
                 "gram.item.fn",
@@ -1136,6 +1143,78 @@ impl<'a> Parser<'a> {
             kind,
             span: Span::new(start, self.prev_span().end),
             anchor,
+        })
+    }
+
+    /// At `extern`: whether the ABI string is followed by `let`, `var` or
+    /// `const` — an `extern_let_item`, not a bodyless fn. The string is
+    /// skipped token by token (its interpolations nest).
+    fn extern_binding_ahead(&self) -> bool {
+        if !matches!(self.tok_at(1), Some(Tok::StrStart(_))) {
+            return false;
+        }
+        let mut depth = 0usize;
+        let mut offset = 1;
+        while let Some(tok) = self.tok_at(offset) {
+            match tok {
+                Tok::StrStart(_) => depth += 1,
+                Tok::StrEnd => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return matches!(
+                            self.tok_at(offset + 1),
+                            Some(Tok::Kw("let" | "var" | "const"))
+                        );
+                    }
+                }
+                _ => {}
+            }
+            offset += 1;
+        }
+        false
+    }
+
+    /// `extern STRING ('let'|'var'|'const') IDENT (':' type)? ('=' expr)?
+    /// TERM` — the production's `let` and `: type` and no initializer are
+    /// the checker's to demand (E0821), so the misuses parse.
+    fn parse_extern_let(&mut self) -> PResult<ExternLet> {
+        let anchor = "gram.item.let";
+        let start = self.expect_kw("extern", anchor)?.start;
+        let abi = self.parse_string_literal(anchor)?;
+        let kind = match self.tok() {
+            Some(Tok::Kw("var")) => BindingKind::Var,
+            Some(Tok::Kw("const")) => BindingKind::Const,
+            _ => BindingKind::Let,
+        };
+        let kind_span = self.advance();
+        let name = self.expect_ident(anchor)?;
+        let ty = if self.eat(&Tok::Colon) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+        let value = if self.eat(&Tok::Assign) {
+            Some(self.with_struct_lit(true, Parser::parse_expr)?)
+        } else {
+            None
+        };
+        // The item runs through its line terminator — the compiler's E0821
+        // span for the form inside a body (`[23,45]` on `extern "c" let X:
+        // *u8\n` four spaces in; wolf 0.2.23).
+        let end = match self.tok() {
+            Some(Tok::Term { explicit: false }) => self.span().start + 1,
+            Some(Tok::Term { explicit: true }) => self.span().end,
+            _ => self.prev_span().end,
+        };
+        self.expect_term(anchor)?;
+        Ok(ExternLet {
+            abi,
+            kind,
+            kind_span,
+            name,
+            ty,
+            value,
+            span: Span::new(start, end),
         })
     }
 
@@ -4122,6 +4201,7 @@ fn trace_item(out: &mut String, depth: usize, item: &Item) {
         ItemKind::Impl(_) => "impl".to_owned(),
         ItemKind::Use(decl) => format!("use {}", join_path(&decl.path)),
         ItemKind::ImportC(_) => "import c".to_owned(),
+        ItemKind::ExternLet(def) => format!("extern let {}", def.name.name),
     };
     line(out, depth, item.span, item.anchor, &label);
 

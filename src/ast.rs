@@ -168,6 +168,26 @@ pub enum ItemKind {
     /// type (`[type.err.alias]`). `error` is contextual: the keyword only
     /// here, before an `IDENT` and an `=`.
     ErrorAlias(Box<ErrorAliasDef>),
+    /// `extern "c" let NAME: *T` — a symbol the link defines, its value the
+    /// symbol's address (`[abi.link.extern]`, kw09; wolf-interp#190). The
+    /// parser also reads `var`/`const`, a missing type and an initializer
+    /// here, so the checker can refuse each by name (E0821).
+    ExternLet(Box<ExternLet>),
+}
+
+/// `extern_let_item ::= 'extern' STRING 'let' IDENT ':' type TERM`
+/// (`[gram.item.let]`), read wider than the production so every misuse
+/// reaches E0821 rather than a parse error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternLet {
+    pub abi: StrLit,
+    /// The keyword written after the ABI string: only `let` is the form.
+    pub kind: BindingKind,
+    pub kind_span: Span,
+    pub name: Ident,
+    pub ty: Option<Type>,
+    pub value: Option<Expr>,
+    pub span: Span,
 }
 
 /// `error_item ::= 'error' IDENT '=' error_row TERM?` (`[gram.item.error]`).
