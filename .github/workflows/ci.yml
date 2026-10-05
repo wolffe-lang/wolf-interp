@@ -507,6 +507,21 @@ jobs:
           out=$(cargo run --quiet -- fuzz --count 100 --seed 5381 --compiler does/not/exist 2>&1)
           echo "$out" | grep -q '0 finding(s)'
 
+      # is72: the place trace never changes a program. Every vendored corpus
+      # file runs through the RELEASE binary with `--trace-places` off and
+      # on, and stdout, stderr and the exit code must be byte-identical
+      # (a debug build took 25 minutes for memory/ alone in process). The
+      # script prints the counts and a digest of its per-file ledger.
+      - name: place trace identity (release, whole corpus)
+        if: matrix.shard == 'ladder'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release --quiet
+          bin=target/release/lupin
+          [ -f "$bin.exe" ] && bin="$bin.exe"
+          ci/place-trace-identity.sh "$bin"
+
       # is09: the conformance bundle. Determinism is the artifact's whole
       # warranty (docs/conformance-bundle.md), so it is asserted three ways:
       # export twice and byte-compare; run the consumption dry-run (the full
