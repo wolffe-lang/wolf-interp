@@ -111,6 +111,42 @@ pub struct Event {
     pub to: Option<String>,
 }
 
+/// How many elements of one container a line lists, at most. A loop that
+/// addresses every element of a 65,536-element list would otherwise write
+/// the whole list after every statement: quadratic output, and
+/// `memory/byte_list_ledger.lu` ran past a 120-second timeout with the
+/// trace on (ci/place-trace-identity.sh, kasumi, 2026-10-05).
+pub const MAX_ELEMENTS: usize = 16;
+
+/// One addressed element of a container, ordered so a line lists the
+/// lowest indices (or keys) first.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum Elem {
+    Index(i128),
+    /// A map key: its kind's rank, then its value, so `int` keys sort as
+    /// numbers.
+    Key(u8, i128, String),
+}
+
+impl Elem {
+    fn of(step: &Proj) -> Option<Elem> {
+        match step {
+            Proj::Index(i) => Some(Elem::Index(*i)),
+            Proj::Key(MapKey::Bool(b)) => Some(Elem::Key(0, i128::from(*b), String::new())),
+            Proj::Key(MapKey::Int(i)) => Some(Elem::Key(1, *i, String::new())),
+            Proj::Key(MapKey::Char(c)) => {
+                Some(Elem::Key(2, i128::from(u32::from(*c)), String::new()))
+            }
+            Proj::Key(MapKey::Str(text)) => Some(Elem::Key(3, 0, text.clone())),
+            _ => None,
+        }
+    }
+
+    fn names(&self, key: &MapKey) -> bool {
+        Elem::of(&Proj::Key(key.clone())).as_ref() == Some(self)
+    }
+}
+
 /// A place's identity across statements: the task, the activation's
 /// never-reused frame serial, and the path's spelling.
 type Key = (usize, u64, String);
@@ -124,8 +160,9 @@ struct Records {
     by_span: HashMap<(usize, usize), MoveBy>,
     /// Places live again after a move, and where.
     reinit: BTreeMap<Key, Span>,
-    /// List elements and map values the program addressed.
-    touched: BTreeSet<Key>,
+    /// List elements and map values the program addressed (moving one
+    /// addresses it), by container.
+    touched: BTreeMap<Key, BTreeSet<Elem>>,
     /// Source texts by file name, read once, for `line:col`.
     texts: BTreeMap<String, Option<String>>,
 }
@@ -203,8 +240,15 @@ impl PlaceTrace {
         forget_below(&mut records.touched, key);
     }
 
-    pub(super) fn note_touch(&self, key: Key) {
-        self.records().touched.insert(key);
+    /// `step` of the container `container` was addressed.
+    pub(super) fn note_touch(&self, container: Key, step: &Proj) {
+        if let Some(elem) = Elem::of(step) {
+            self.records()
+                .touched
+                .entry(container)
+                .or_default()
+                .insert(elem);
+        }
     }
 
     /// Writes one line. A failed write is dropped (a side channel never
@@ -262,12 +306,6 @@ fn is_below(candidate: &Key, key: &Key) -> bool {
 impl<V> Forget<V> for BTreeMap<Key, V> {
     fn forget_below(&mut self, key: &Key) {
         self.retain(|candidate, _| !is_below(candidate, key));
-    }
-}
-
-impl Forget<()> for BTreeSet<Key> {
-    fn forget_below(&mut self, key: &Key) {
-        self.retain(|candidate| !is_below(candidate, key));
     }
 }
 
@@ -350,6 +388,10 @@ struct Pending {
     at: Option<Span>,
     of: Option<String>,
     reinit: Option<Span>,
+    /// A `List`'s or `Map`'s element count, and how many addressed
+    /// elements past [`MAX_ELEMENTS`] the line leaves out.
+    len: Option<usize>,
+    elided: usize,
 }
 
 impl Pending {
@@ -362,6 +404,12 @@ impl Pending {
         );
         if let Some(value) = &self.value {
             let _ = write!(line, ",\"value\":{}", json_str(value));
+        }
+        if let Some(len) = self.len {
+            let _ = write!(line, ",\"len\":{len}");
+        }
+        if self.elided > 0 {
+            let _ = write!(line, ",\"elided\":{}", self.elided);
         }
         if let Some(of) = &self.of {
             let _ = write!(line, ",\"of\":{}", json_str(of));
@@ -405,6 +453,8 @@ fn walk(
             at: Some(at),
             of: Some(of.to_owned()),
             reinit: None,
+            len: None,
+            elided: 0,
         },
         (None, SlotState::Moved(at)) => {
             let by = match records.moves.get(&key) {
@@ -420,6 +470,8 @@ fn walk(
                 at: Some(at),
                 of: None,
                 reinit: None,
+                len: None,
+                elided: 0,
             }
         }
         (None, SlotState::Live) => Pending {
@@ -431,8 +483,25 @@ fn walk(
             at: None,
             of: None,
             reinit: records.reinit.get(&key).copied(),
+            len: None,
+            elided: 0,
         },
     };
+    let mut pending = pending;
+    let addressed = records.touched.get(&key);
+    let mut listed: Vec<&Elem> = Vec::new();
+    if let Value::List(..) | Value::Map(_) = &slot.value {
+        let count = match &slot.value {
+            Value::List(items, _, _) => items.len(),
+            Value::Map(pairs) => pairs.len(),
+            _ => 0,
+        };
+        pending.len = Some(count);
+        if let Some(addressed) = addressed {
+            listed = addressed.iter().take(MAX_ELEMENTS).collect();
+            pending.elided = addressed.len().saturating_sub(MAX_ELEMENTS);
+        }
+    }
     out.push(pending);
     // Below a moved place every part is uninitialized: its storage went
     // with the move, and `resolve` names this place as the move site.
@@ -456,50 +525,33 @@ fn walk(
                 walk(records, view, &child, item, below, out);
             }
         }
+        // Only the addressed elements, lowest first and at most
+        // MAX_ELEMENTS: every way an element stops being live (a move, a
+        // `mut` write-back) addresses it, so no element walk is needed.
         Value::List(items, _, _) => {
-            for (index, item) in items.iter().enumerate() {
-                let child = path
-                    .clone()
-                    .project(Proj::Index(i128::try_from(index).unwrap_or(i128::MAX)));
-                if shown(records, view, &child, item) {
-                    walk(records, view, &child, item, below, out);
-                }
+            for elem in listed {
+                let Elem::Index(index) = elem else { continue };
+                let Some(item) = usize::try_from(*index).ok().and_then(|i| items.get(i)) else {
+                    continue;
+                };
+                let child = path.clone().project(Proj::Index(*index));
+                walk(records, view, &child, item, below, out);
             }
         }
         Value::Map(pairs) => {
-            for (key, value) in pairs {
-                let Some(map_key) = MapKey::of(key) else {
+            for elem in listed {
+                let Some((map_key, value)) = pairs.iter().find_map(|(key, value)| {
+                    MapKey::of(key)
+                        .filter(|map_key| elem.names(map_key))
+                        .map(|map_key| (map_key, value))
+                }) else {
                     continue;
                 };
                 let child = path.clone().project(Proj::Key(map_key));
-                if shown(records, view, &child, value) {
-                    walk(records, view, &child, value, below, out);
-                }
+                walk(records, view, &child, value, below, out);
             }
         }
         _ => {}
-    }
-}
-
-/// Whether a list element or map value earns its own entries: the program
-/// addressed it, or something in it is not live.
-fn shown(records: &Records, view: &FrameView<'_>, path: &Path, slot: &Slot) -> bool {
-    records
-        .touched
-        .contains(&(view.task, view.serial, path.to_string()))
-        || !all_live(slot)
-}
-
-fn all_live(slot: &Slot) -> bool {
-    if !slot.is_live() {
-        return false;
-    }
-    match &slot.value {
-        Value::Struct { fields, .. } => fields.iter().all(|(_, s)| all_live(s)),
-        Value::Tuple(items) => items.iter().all(all_live),
-        Value::List(items, _, _) => items.iter().all(all_live),
-        Value::Map(pairs) => pairs.iter().all(|(_, s)| all_live(s)),
-        _ => true,
     }
 }
 
@@ -614,11 +666,10 @@ impl Machine {
         };
         let mut prefix = Path::local(path.frame, path.base.clone());
         for step in &path.projections {
-            let element = matches!(step, Proj::Index(_) | Proj::Key(_));
-            prefix = prefix.project(step.clone());
-            if element {
-                trace.note_touch((self.task, frame.serial, prefix.to_string()));
+            if matches!(step, Proj::Index(_) | Proj::Key(_)) {
+                trace.note_touch((self.task, frame.serial, prefix.to_string()), step);
             }
+            prefix = prefix.project(step.clone());
         }
     }
 
@@ -756,7 +807,8 @@ mod tests {
         let trace = PlaceTrace::new(Box::new(std::io::sink()), String::new());
         let key = |p: &str| (0usize, 1u64, p.to_owned());
         trace.note_write(key("x"), Some(Span::new(0, 1)));
-        trace.note_touch(key("x[3]"));
+        trace.note_touch(key("x"), &Proj::Index(3));
+        trace.note_touch(key("x[0]"), &Proj::Index(1));
         trace.note_declare(&key("x"));
         let records = trace.records();
         assert!(records.reinit.is_empty());
