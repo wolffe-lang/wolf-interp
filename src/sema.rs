@@ -42,6 +42,9 @@ use crate::ast::{
 };
 use crate::diag::{Diag, Help, Span};
 
+/// The [`Def::Opaque`] kind of an `extern "c" let` (`[abi.link.extern]`).
+pub const LINK_SYMBOL: &str = "link-time symbol";
+
 /// What a name in a module denotes.
 #[derive(Debug, Clone)]
 pub enum Def {
@@ -981,6 +984,19 @@ fn collect(unit: &Unit, module: &mut Module, file: &str, source: &str) {
                     );
                     module.bindings.push(ident.name.clone());
                 }
+            }
+            ItemKind::ExternLet(def) => {
+                // `[abi.link.extern]` (kw09): the name is defined, so a
+                // reference resolves; the machines model no link, so
+                // evaluating it is refused by name (`eval::value_of_def`).
+                define(
+                    module,
+                    def.name.name.clone(),
+                    Def::Opaque(LINK_SYMBOL),
+                    visible,
+                    Some(def.name.span),
+                    file,
+                );
             }
             ItemKind::ErrorAlias(alias) => {
                 // `[gram.item.error]`: an item like any other — the name is
@@ -2197,6 +2213,11 @@ impl RowRewriter<'_> {
                 }
             }
             ItemKind::ErrorAlias(alias) => self.row(&mut alias.row),
+            ItemKind::ExternLet(def) => {
+                if let Some(ty) = &mut def.ty {
+                    self.ty(ty);
+                }
+            }
             ItemKind::Use(_) | ItemKind::ImportC(_) => {}
         }
     }
@@ -2713,6 +2734,9 @@ struct TierWalk<'a> {
     /// The module's bodyless `extern` fn items: a call to one is a C call,
     /// the ring's op (`[abi.c.import]`; wolf-interp#181).
     externs: BTreeSet<String>,
+    /// The module's `var` items: every read and write of one is the ring's
+    /// op (`[mem.static.2]`, K11 = A; wolf-interp#190).
+    module_vars: BTreeSet<String>,
 }
 
 impl TierWalk<'_> {
@@ -2815,6 +2839,20 @@ impl TierWalk<'_> {
         self.c_member_name(callee)
             .filter(|name| matches!(name.as_str(), "malloc" | "calloc"))
     }
+}
+
+/// The names of a module's `var` items (`[mem.static.2]`).
+fn module_vars(module: &Module) -> BTreeSet<String> {
+    module
+        .items
+        .iter()
+        .filter_map(|(name, (def, _))| match def {
+            Def::Binding(binding) if binding.kind == crate::ast::BindingKind::Var => {
+                Some(name.clone())
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// The names of a module's bodyless `extern` fn items.
@@ -3018,6 +3056,7 @@ fn tier_check(program: &Program) -> Option<Diag> {
                 declared: &declared,
                 late: None,
                 externs,
+                module_vars: module_vars(module),
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
@@ -3040,6 +3079,7 @@ fn tier_check(program: &Program) -> Option<Diag> {
                     declared: &declared,
                     late: None,
                     externs: extern_fns(module),
+                    module_vars: module_vars(module),
                 };
                 if let Some(diag) = walk.expr(&binding.value) {
                     return Some(diag);
@@ -3097,6 +3137,7 @@ fn tier_late_check(program: &Program) -> Option<Diag> {
                 // The late walk types unit tails only; the ring was judged
                 // by [`tier_check`]'s walk.
                 externs: BTreeSet::new(),
+                module_vars: BTreeSet::new(),
             };
             walk.late_fn_body(decl)
         };
@@ -3501,6 +3542,27 @@ impl TierWalk<'_> {
             | ExprKind::Bool(_)
             | ExprKind::Char(_)
             | ExprKind::Wildcard => None,
+            // `[mem.static.2]` (K11 = A; wolf-interp#190): a module `var` is
+            // shared by every task, so a read or a write of it — plain,
+            // compound, or a `mut` argument — is the ring's, at the name.
+            ExprKind::Path(path)
+                if !self.in_unsafe()
+                    && self.module_vars.contains(&path.segments[0].name)
+                    && !self.is_local(&path.segments[0].name) =>
+            {
+                Some(Diag::new(
+                    "E1301",
+                    path.segments[0].span,
+                    "mem.unsafe.scope",
+                    format!(
+                        "the module `var` `{}` is read or written only in an `unsafe` block: \
+                         it is shared by every task, and the safe tier's data-race freedom \
+                         does not reach it ([mem.static.2]). State what keeps it race-free in \
+                         a `# Safety:` comment; a module `let` or `const` reads freely",
+                        path.segments[0].name
+                    ),
+                ))
+            }
             ExprKind::Path(_) => None,
             // The late walk's unit contexts (is68, [`tier_late_check`]).
             ExprKind::If {
@@ -5054,6 +5116,14 @@ fn collect_item_refs(item: &Item, scope: &mut FileScope) {
         // one (`error All = {IoErrors, gone}` after `use disk.IoErrors`)
         // survives and is a use of its import, as it is in any other row.
         ItemKind::ErrorAlias(alias) => collect_row_refs(&alias.row, scope),
+        ItemKind::ExternLet(def) => {
+            if let Some(ty) = &def.ty {
+                collect_type_refs(ty, scope);
+            }
+            if let Some(value) = &def.value {
+                collect_expr_refs(value, scope);
+            }
+        }
         ItemKind::Binding(binding) => {
             if let Some(ty) = &binding.ty {
                 collect_type_refs(ty, scope);
