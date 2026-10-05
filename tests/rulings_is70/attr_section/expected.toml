@@ -2,10 +2,14 @@
 # `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
 # (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
 # `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+# is73 (wolf-interp#190): kw09 implemented `#[section]`; at wolf 0.2.23 (8edac3ee) the checked
+# machine refuses this program `unsupported` (section placement) and native/release run it,
+# `exit(0)` (kasumi ~/lanes/is73/px/sec); lupin 0.1.46 still answered E0817@[356,377]. The
+# `[trunk]` cells below are is70's, at wolf-lang 50830027.
 issue = "wolf-interp#174"
 
 [expected]
-lupin   = { verdict = "fail(E0817)", stdout = "", first = "E0817@[356,377]" }
+lupin   = { verdict = "unsupported", stdout = "", named = "section placement" }
 
 [trunk]
 lupin   = { verdict = "exit(0)", stdout = "" }

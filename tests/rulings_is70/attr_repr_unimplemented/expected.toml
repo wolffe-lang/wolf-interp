@@ -2,13 +2,17 @@
 # `[expected]` is the lupin cell this row must answer. `[trunk]` is what lupin trunk `8d82031`
 # (s208's head; 0.1.45 plus ruling #34) and the compiler at wolf-lang trunk `50830027`
 # `conform-run --json` answered on kasumi (probe: ~/lanes/is70/scripts/mkexp.py).
+# is73 (wolf-interp#188): kw08 implemented `packed`, so the witness asks for `transparent`, as
+# wolf 0.2.23's corpus row does; `[trunk]` below is the compiler's answer at 0.2.23 (8edac3ee) on
+# kasumi (~/lanes/is73/px/aru), every lane E0817 at `transparent`, and lupin 0.1.46 (the trunk
+# binary) the same; the row reds only against a lupin that drops `transparent` from the set.
 issue = "wolf-interp#174"
 
 [expected]
-lupin   = { verdict = "fail(E0817)", stdout = "", first = "E0817@[401,407]" }
+lupin   = { verdict = "fail(E0817)", stdout = "", first = "E0817@[514,525]" }
 
 [trunk]
-lupin   = { verdict = "exit(0)", stdout = "" }
-checked = { verdict = "fail(E0817)", stdout = "", first = "E0817@[401,407]" }
-native  = { verdict = "fail(E0817)", stdout = "", first = "E0817@[401,407]" }
-release = { verdict = "fail(E0817)", stdout = "", first = "E0817@[401,407]" }
+lupin   = { verdict = "fail(E0817)", stdout = "", first = "E0817@[514,525]" }
+checked = { verdict = "fail(E0817)", stdout = "", first = "E0817@[514,525]" }
+native  = { verdict = "fail(E0817)", stdout = "", first = "E0817@[514,525]" }
+release = { verdict = "fail(E0817)", stdout = "", first = "E0817@[514,525]" }
