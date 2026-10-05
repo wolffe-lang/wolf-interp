@@ -1,0 +1,23 @@
+//! A container lists only the elements the program addressed, lowest
+//! first and at most sixteen; `len` counts them all, `elided` the rest.
+fn main() -> !int {
+    var xs = List[int]()
+    var i = 0
+    while i < 20 {
+        (mut xs).push(i)
+        i = i + 1
+    }
+    var total = 0
+    var j = 19
+    while j >= 0 {
+        xs[j] = j * 2
+        total = total + xs[j]
+        j = j - 1
+    }
+    var m = Map[str, int]()
+    m["b"] = 2
+    m["a"] = 1
+    let k = m["a"] else 0
+    print("{total} {k}")
+    0
+}

@@ -115,7 +115,7 @@ fn goldens() -> Vec<(String, PathBuf)> {
 fn the_goldens_hold() {
     let bless = std::env::var_os("PLACE_TRACE_BLESS").is_some();
     let all = goldens();
-    assert!(all.len() >= 8, "the goldens went missing: {all:?}");
+    assert!(all.len() >= 9, "the goldens went missing: {all:?}");
     let mut failures = Vec::new();
     for (name, program) in &all {
         let (_, trace) = traced(program);
@@ -235,8 +235,11 @@ fn every_golden_line_is_schema_version_1() {
                 let place = place.as_object().expect("a place is an object");
                 for key in place.keys() {
                     assert!(
-                        ["path", "state", "type", "value", "of", "by", "at", "reinit"]
-                            .contains(&key.as_str()),
+                        [
+                            "path", "state", "type", "value", "len", "elided", "of", "by", "at",
+                            "reinit"
+                        ]
+                        .contains(&key.as_str()),
                         "{name}: unknown place key {key}"
                     );
                 }
