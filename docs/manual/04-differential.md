@@ -134,9 +134,9 @@ $ lupin conformance export --out target/bundle --json
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
 differential: 940 entries compared, 0 member(s) exercised through their entries
 divergences: 0
-conservatism ledger: 136 entries
-  unsupported(counterparty): 68
-  unsupported(interp): 68
+conservatism ledger: 138 entries
+  unsupported(counterparty): 69
+  unsupported(interp): 69
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
 notice: bundle target/bundle at pin 8e36bc1a0f92bbbbc6861b10d5b2638f76412d6a verified (bundle_sha256 …)
 ```
