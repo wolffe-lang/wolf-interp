@@ -594,6 +594,13 @@ pub struct Machine {
     /// a channel this machine provides (the compiler's E1101 rejects the
     /// shape statically; `docs/approximation-contract.md` records the choice).
     globals: BTreeMap<String, Slot>,
+    /// The module initializers being evaluated, outermost first
+    /// (`[mem.static.3]`; wolf-interp#190). An initializer that reaches one
+    /// of these again depends on its own value, which the static check
+    /// refuses E0705 where it can see the reference; one it cannot see (a
+    /// call into a fn that reads the item) is declined here by name, never
+    /// a recursion into the stack's end.
+    initializing: Vec<String>,
     /// How many `unsafe { }` blocks are open. `[mem.ub]`'s enumeration is
     /// Tier-3-reachable only, so the rows that need "in unsafe code" in their
     /// wording (T1) ask this.
@@ -765,6 +772,7 @@ impl Machine {
             frames: Vec::new(),
             access: AccessSet::new(),
             globals,
+            initializing: Vec::new(),
             unsafe_depth: 0,
             when_held: Vec::new(),
             pending_retags: Vec::new(),
@@ -1001,7 +1009,11 @@ impl Machine {
             else {
                 continue;
             };
-            match self.eval(&binding.value) {
+            if self.globals.contains_key(&name) {
+                // An earlier initializer read it first.
+                continue;
+            }
+            match self.initialize(&name, &binding) {
                 Ok(value) => {
                     self.globals.insert(name, Slot::live(value));
                 }
@@ -1027,6 +1039,35 @@ impl Machine {
             .call_fn(&main, "", args, main.span)
             .map(|applied| applied.value);
         self.finish(result)
+    }
+
+    /// Evaluates the module initializer of `name` once (`[mem.static.3]`),
+    /// refusing by name an initializer that reaches its own item again or
+    /// nests past the machine's frame rail (wolf-interp#190: 0.1.46 recursed
+    /// until the stack overflowed, SIGABRT and no record).
+    fn initialize(&mut self, name: &str, binding: &crate::ast::Binding) -> EResult<Value> {
+        if self.initializing.iter().any(|open| open == name) {
+            let chain = self
+                .initializing
+                .iter()
+                .map(|open| format!("`{open}`"))
+                .collect::<Vec<_>>()
+                .join(" -> ");
+            return unsupported(format!(
+                "the module initializer of `{name}` depends on its own value ({chain} -> \
+                 `{name}`): an initializer that needs itself is the compiler's E0705 \
+                 ([mem.static.3])"
+            ));
+        }
+        if self.initializing.len() >= 512 {
+            return unsupported(
+                "module initializers nested past 512 items ([mem.static.3])".to_owned(),
+            );
+        }
+        self.initializing.push(name.to_owned());
+        let value = self.eval(&binding.value);
+        self.initializing.pop();
+        value
     }
 
     fn finish(&mut self, result: EResult<Value>) -> Outcome {
@@ -5819,11 +5860,18 @@ impl Machine {
                     return Ok(slot.value.clone());
                 }
                 let binding = binding.clone();
-                let value = self.eval(&binding.value)?;
+                let value = self.initialize(name, &binding)?;
                 self.globals
                     .insert(name.to_owned(), Slot::live(value.clone()));
                 Ok(value)
             }
+            // `[abi.link.extern]`: the symbol's address is the link's, and
+            // this machine models no link (the checked machine's answer).
+            Def::Opaque(crate::sema::LINK_SYMBOL) => unsupported(format!(
+                "a link-time symbol (`extern \"c\" let {name}`): the link-time symbol `{name}` \
+                 is defined by the image's link, which this machine does not model \
+                 ([abi.link.extern])"
+            )),
             Def::Opaque(what) => unsupported(format!(
                 "`{name}` is a {what}; traits, enums and type-level items have no dynamic semantics here"
             )),
@@ -7504,6 +7552,30 @@ impl Machine {
             && !self.local_exists("assert")
         {
             return self.eval_assert(args, span);
+        }
+
+        // `size_of`, `align_of`, `offset_of` (`[abi.layout.query]`; is73,
+        // wolf-interp#188): comptime folds from the clause's layout, read
+        // before the arguments are — the arguments are a type and a field
+        // NAME, not values. A local of the same name shadows the query.
+        if let ExprKind::Path(path) = &*callee.kind
+            && path.is_single()
+            && !self.local_exists(&path.segments[0].name)
+        {
+            let module = self
+                .frames
+                .last()
+                .map(|f| f.module.clone())
+                .unwrap_or_default();
+            let program = std::sync::Arc::clone(&self.shared.program);
+            if let Some(module) = program.modules.get(&module)
+                && let Some((query, args)) = crate::layout::as_query(module, callee, args)
+            {
+                return match crate::layout::query(module, query, args, span) {
+                    Ok(n) => Ok(Value::Int(i128::from(n), IntTy::INT)),
+                    Err(reason) => unsupported(reason),
+                };
+            }
         }
 
         // `Speak.speak(d)` — the trait-qualified call reaches the trait's
