@@ -1623,7 +1623,10 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/read_param_escape_generic.lu", "exit(0)"),
     ("memory/read_param_escape_local.lu", "exit(0)"),
     ("memory/read_param_escape_mut.lu", "exit(0)"),
-    ("memory/read_param_escape_static.lu", "exit(0)"),
+    // (`memory/read_param_escape_static.lu` stood here: its module `var
+    // keep: List[int]` is not static data, which is73 refuses by name before
+    // the module-`var` E1301 — `[mem.static.3]`, wolf-interp#190 — so the
+    // row is out of scope, never a second code beside the pinned E1002.)
     ("memory/read_param_move_legal.lu", "exit(0)"),
     ("memory/read_param_rebind_take.lu", "exit(0)"),
     ("memory/read_param_rebind_write.lu", "exit(0)"),
@@ -2144,6 +2147,13 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("rows/unit_discard_unit_main.lu", "exit(0)"),
     ("typecheck/cast_narrow_in_range.lu", "exit(0)"),
     ("typecheck/cast_narrow_wrapping_truncates.lu", "exit(0)"),
+    // is73: kw08's `[abi.layout.packed]` (wolf-interp#188) implements
+    // `#[repr(c, packed)]`, so `attr_repr_unimplemented.lu`'s struct runs.
+    // The pinned header still says `fail(E0817)` until the re-pin carries
+    // wolf 0.2.23, which re-spells the row `#[repr(c, transparent)]`; the
+    // census counts it static-conservatism meanwhile (is70 ledgered
+    // `memory/unsafe_sig.lu` the same way, r28 retired it).
+    ("grammar/attr_repr_unimplemented.lu", "exit(0)"),
 ];
 
 // (is70's `RULED_AHEAD_OF_PIN` stood here: `comptime.lu`, whose `#[noalloc]`
