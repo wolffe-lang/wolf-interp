@@ -1,0 +1,13 @@
+//! Regions and handles report their kind, not a value.
+struct Node { value: int }
+fn main() -> !int {
+    let r = region()
+    region q: pool(Node) {
+        var p = Pool[Node]()
+        let h = (mut p).reserve()
+        (mut p).init(h, Node { value: 1 })
+        print("{p[h].value}")
+    }
+    let s = r
+    0
+}

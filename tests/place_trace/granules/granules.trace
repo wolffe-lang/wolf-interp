@@ -1,0 +1,7 @@
+{"trace":1,"task":0,"fn":"main","depth":1,"at":"4:5","places":[{"path":"r","state":"live","type":"region"}],"events":[]}
+{"trace":1,"task":0,"fn":"main","depth":1,"at":"6:9","places":[{"path":"r","state":"live","type":"region"},{"path":"q","state":"live","type":"region"},{"path":"p","state":"live","type":"Pool"}],"events":[]}
+{"trace":1,"task":0,"fn":"main","depth":1,"at":"7:9","places":[{"path":"r","state":"live","type":"region"},{"path":"q","state":"live","type":"region"},{"path":"p","state":"live","type":"Pool"},{"path":"h","state":"live","type":"handle"}],"events":[]}
+{"trace":1,"task":0,"fn":"main","depth":1,"at":"8:9","places":[{"path":"r","state":"live","type":"region"},{"path":"q","state":"live","type":"region"},{"path":"p","state":"live","type":"Pool"},{"path":"h","state":"live","type":"handle"}],"events":[]}
+{"trace":1,"task":0,"fn":"main","depth":1,"at":"5:5","places":[{"path":"r","state":"live","type":"region"}],"events":[]}
+{"trace":1,"task":0,"fn":"main","depth":1,"at":"11:5","places":[{"path":"r","state":"moved","type":"region","by":"plain","at":"11:13"},{"path":"s","state":"live","type":"region"}],"events":[{"ev":"move","path":"r","by":"plain","at":"11:13","to":"s"}]}
+{"trace":1,"task":0,"fn":"main","depth":1,"at":"12:5","tail":true,"places":[{"path":"r","state":"moved","type":"region","by":"plain","at":"11:13"},{"path":"s","state":"live","type":"region"}],"events":[]}

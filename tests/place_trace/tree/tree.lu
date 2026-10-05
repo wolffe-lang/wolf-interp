@@ -1,0 +1,10 @@
+//! chapter 7 §7.2 (wolf-book e7772338): values are trees; one leaf moves.
+struct Meta { author: str, words: int }
+struct Doc { title: str, meta: Meta }
+fn main() -> !int {
+    var d = Doc { title: "regions", meta: Meta { author: "ada", words: 900 } }
+    let who = move d.meta.author
+    print("{who} wrote it")
+    print("{d.title}, {d.meta.words} words")
+    0
+}

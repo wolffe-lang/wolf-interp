@@ -1,0 +1,18 @@
+//! check: run(exit=0)
+//! phase: run
+
+struct Pack { lead: str, tail: str }
+
+fn adopt(take w: str) -> str { w }
+
+fn main() -> !int {
+	var p = Pack { lead: "ada", tail: "grace" }
+	let a = adopt(take p.lead)
+	p.lead = "lin"
+	let c = p.lead
+	print("{a} {c} {p.tail}")
+	print("{p.lead}")
+
+
+	0
+}

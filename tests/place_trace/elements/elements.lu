@@ -1,0 +1,12 @@
+//! List elements are places named by index; only the addressed ones show.
+fn main() -> !int {
+    var xs = List[List[int]]()
+    (mut xs).push([1])
+    (mut xs).push([2, 3])
+    (mut xs).push([4])
+    let t = move xs[1]
+    print("{t.len}")
+    xs[1] = take t
+    print("{xs[1].len} {xs.len}")
+    0
+}

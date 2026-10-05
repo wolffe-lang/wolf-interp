@@ -1,0 +1,11 @@
+//! A whole struct given away with `take`, then re-initialized.
+struct Meta { author: str, words: int }
+fn weigh(take m: Meta) -> int { m.words }
+fn main() -> !int {
+    var a = Meta { author: "ada", words: 900 }
+    let n = weigh(take a)
+    print("{n}")
+    a = Meta { author: "lin", words: 3 }
+    print("{a.author} {a.words}")
+    0
+}

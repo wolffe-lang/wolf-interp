@@ -1,0 +1,10 @@
+//! `copy` keeps the source; a Copy-shaped value copies without being asked.
+struct Meta { author: str, words: int }
+fn main() -> !int {
+    let a = Meta { author: "ada", words: 900 }
+    let b = copy a
+    let n = a.words
+    let s = b.author
+    print("{a.words} {b.words} {n} {s}")
+    0
+}

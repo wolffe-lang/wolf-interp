@@ -1,0 +1,10 @@
+//! chapter 7 §7.2's moved-leaf variant: the read of the emptied leaf traps.
+struct Meta { author: str, words: int }
+struct Doc { title: str, meta: Meta }
+fn main() -> !int {
+    var d = Doc { title: "regions", meta: Meta { author: "ada", words: 900 } }
+    let who = move d.meta.author
+    print("{who} wrote it")
+    print("{d.meta.author} wrote it")
+    0
+}
