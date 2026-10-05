@@ -39,6 +39,7 @@ mod net;
 #[cfg(not(target_family = "wasm"))]
 mod os;
 pub mod place;
+mod placetrace;
 pub mod prov;
 pub mod region;
 pub mod repl;
@@ -60,6 +61,8 @@ use crate::sema::{Def, Program};
 use crate::trap::TrapKind;
 
 use place::{Access, AccessSet, CallId, Held, HeldWhy, MapKey, Path, Proj, Reach};
+pub use placetrace::PlaceTrace;
+use placetrace::{CopyBy, MoveBy};
 use prov::{AccessKind, Prov, Provenance, RawPtr, RetagKind, UbFinding, UbRow};
 use region::{Edge, Ref, RegionId, RegionState, Store, Strategy};
 use rules::Rule;
@@ -468,6 +471,12 @@ struct Frame {
     /// this list: a write through one traps `exclusivity`. Each entry
     /// carries the parameter's declaration span, the trap's second span.
     read_params: Vec<(String, Span)>,
+    /// The function this activation runs, by its declared name — kept only
+    /// while the place trace is on (is72), empty otherwise.
+    name: String,
+    /// The span of the function body this activation runs, when it runs
+    /// one: the block whose tail the place trace reports (is72).
+    body: Option<Span>,
 }
 
 /// The state every task of one program run shares, behind locks.
@@ -510,6 +519,9 @@ struct Shared {
     /// The sim scheduler (is06): tasks, channels, procs, virtual time.
     sched: Arc<sched::Sched>,
     tracing: Trace,
+    /// is72: `--trace-places`' tracer, when the front door asked for one.
+    /// Read by nothing that decides an outcome.
+    place_trace: Option<Arc<PlaceTrace>>,
     /// is12: the front door's live pass-through. When set, every byte the
     /// program prints reaches the process stdout the moment it is produced,
     /// in addition to the buffered copy the observation keeps — `lupin
@@ -628,6 +640,9 @@ pub struct Machine {
     /// captured bindings a run actually writes.
     capture_gens: BTreeMap<(u64, String), (u64, Span)>,
     tracing: Trace,
+    /// is72: what the statements now executing did to their places, for
+    /// the place trace's `events`. Empty unless the trace is on.
+    place_events: Vec<placetrace::Event>,
 }
 
 /// Set by [`Machine::set_fuel_limit`]; zero means [`Machine::FUEL`].
@@ -723,6 +738,7 @@ impl Machine {
             steps: Arc::new(AtomicU64::new(0)),
             sched: Arc::new(sched),
             tracing: Trace::Off,
+            place_trace: None,
             live_stdout: false,
             #[cfg(not(target_family = "wasm"))]
             fs_user_cwd: false,
@@ -758,6 +774,7 @@ impl Machine {
             captured_places: BTreeSet::new(),
             capture_gens: BTreeMap::new(),
             tracing,
+            place_events: Vec::new(),
         }
     }
 
@@ -771,6 +788,16 @@ impl Machine {
     pub fn tracing(mut self, trace: Trace) -> Machine {
         self.tracing = trace;
         self.shared.tracing = trace;
+        self
+    }
+
+    /// Writes the place trace (is72, `--trace-places`) to `trace`'s sink:
+    /// one JSON line per statement. Set before the run starts; spawned tasks
+    /// inherit it.
+    #[must_use]
+    pub fn trace_places(mut self, mut trace: PlaceTrace) -> Machine {
+        trace.set_entry_name(&self.shared.program.entry);
+        self.shared.place_trace = Some(Arc::new(trace));
         self
     }
 
@@ -963,6 +990,8 @@ impl Machine {
             scopes: vec![Scope::default()],
             row: Vec::new(),
             read_params: Vec::new(),
+            name: String::new(),
+            body: None,
         });
 
         // Item-level `let`/`var`/`const` evaluate once, in declaration order.
@@ -1445,6 +1474,7 @@ impl Machine {
             scope.locals.push((name.to_owned(), slot));
             scope.known.push((name.to_owned(), None));
         }
+        self.trace_declare(name);
     }
 
     /// Records what the live binding of `name` statically holds (is67): the
@@ -1766,6 +1796,7 @@ impl Machine {
                     return self.region_freed_fault(&format!("`{display}`"), freed, span);
                 }
                 self.fire(Rule::PlacePath, span, &format!("read `{display}`"));
+                self.trace_touch(path);
                 self.access_place(path, AccessKind::Read, span)
             }
             Some((_, Some((moved_at, depth)))) => {
@@ -1834,6 +1865,12 @@ impl Machine {
     /// Moves out of a path: the source place becomes uninitialized
     /// (`[mem.tier0.move.1]`).
     fn move_path(&mut self, path: &Path, span: Span) -> EResult<Value> {
+        self.move_path_by(path, span, MoveBy::Plain)
+    }
+
+    /// [`move_path`](Machine::move_path), naming the spelling that moved the
+    /// place for the place trace (is72). The spelling decides nothing here.
+    fn move_path_by(&mut self, path: &Path, span: Span, by: MoveBy) -> EResult<Value> {
         self.check_access(path, Access::Exclusive, span)?;
         let display = path.to_string();
         let moved = match self.resolve(path) {
@@ -1871,6 +1908,7 @@ impl Machine {
         };
         let value = slot.take_value(span);
         self.note_part_moved(path);
+        self.trace_move(path, by, span);
         self.fire(Rule::Move, span, &format!("move out of `{display}`"));
         // A move ends the captured place's life as surely as a write ends
         // its loan (#36): the generation advances either way.
@@ -2224,6 +2262,7 @@ impl Machine {
         let was_moved = !slot.is_live();
         slot.state = SlotState::Live;
         slot.value = value;
+        self.trace_write(path, was_moved, span);
         let rule = if was_moved {
             Rule::Reinit
         } else {
@@ -2732,7 +2771,7 @@ impl Machine {
         // `freeze r` *consumes* the region value (`[mem.region.create.2]`), so
         // the operand moves rather than being read.
         let value = match self.live_place(operand)? {
-            Some(path) => self.move_path(&path, span)?,
+            Some(path) => self.move_path_by(&path, span, MoveBy::Freeze)?,
             None => self.eval(operand)?,
         };
         let id = self.region_id_of(&value, span, "`freeze`")?;
@@ -3126,6 +3165,12 @@ impl Machine {
             scopes: vec![Scope::default()],
             row: crate::sema::declared_raise_tags(decl),
             read_params,
+            name: if self.shared.place_trace.is_some() {
+                decl.name.name.clone()
+            } else {
+                String::new()
+            },
+            body: Some(body.span),
         });
         let retags = std::mem::take(&mut self.pending_retags);
         let frame = self.frames.len() - 1;
@@ -3711,12 +3756,18 @@ impl Machine {
                 continue;
             };
             let moved = final_moved.get(*index).copied().flatten();
+            let mut was_moved = false;
             if let Some(slot) = self.slot_mut(path) {
+                was_moved = !slot.is_live();
                 slot.state = moved.map_or(SlotState::Live, SlotState::Moved);
                 slot.value = value.clone();
             }
             if moved.is_some() {
                 self.note_part_moved(path);
+            }
+            match moved {
+                Some(at) => self.trace_move(path, MoveBy::Mut, at),
+                None => self.trace_write(path, was_moved, span),
             }
         }
         if !writebacks.is_empty() {
@@ -3791,7 +3842,20 @@ impl Machine {
         match &block.tail {
             // `[gram.expr.block]`: the block's value is its tail expression.
             Some(tail) => {
-                let value = self.eval(tail)?;
+                let mark = self.place_events.len();
+                let value = self.eval(tail);
+                // is72: a function body's tail is that activation's last
+                // word, so the place trace reports it like a statement.
+                if self.shared.place_trace.is_some()
+                    && self
+                        .frames
+                        .last()
+                        .is_some_and(|frame| frame.body == Some(block.span))
+                {
+                    let frame = self.frame();
+                    self.trace_line(mark, frame, tail.span, true, &value, None);
+                }
+                let value = value?;
                 self.fire(Rule::Block, block.span, "block yields its tail");
                 Ok(value)
             }
@@ -3825,6 +3889,25 @@ impl Machine {
     }
 
     fn exec(&mut self, stmt: &Stmt) -> EResult<()> {
+        if self.shared.place_trace.is_none() {
+            return self.exec_stmt(stmt);
+        }
+        // is72: one place-trace line per statement, after it ran.
+        let mark = self.place_events.len();
+        let frame = self.frame();
+        let result = self.exec_stmt(stmt);
+        let to = match &stmt.kind {
+            StmtKind::Binding(binding) => match &*binding.pattern.kind {
+                PatKind::Binding(ident) => Some((binding.value.span, ident.name.as_str())),
+                _ => None,
+            },
+            _ => None,
+        };
+        self.trace_line(mark, frame, stmt.span, false, &result, to);
+        result
+    }
+
+    fn exec_stmt(&mut self, stmt: &Stmt) -> EResult<()> {
         self.step()?;
         match &stmt.kind {
             StmtKind::Binding(binding) => self.exec_binding(binding),
@@ -4264,6 +4347,7 @@ impl Machine {
         let value = self.read_whole(path, span)?;
         if is_copy(&value) {
             self.fire(Rule::ValueSemantics, span, "copy (Copy-shaped value)");
+            self.trace_copy(path, CopyBy::Plain, span);
             Ok(value)
         } else {
             self.move_path(path, span)
@@ -4467,7 +4551,7 @@ impl Machine {
             );
         }
         self.fire(Rule::ModeTake, span, &format!("`take {path}`"));
-        self.move_path(&path, span)
+        self.move_path_by(&path, span, MoveBy::Take)
     }
 
     /// The right-hand side of a plain `=`, consumed the way its place says.
@@ -5149,7 +5233,7 @@ impl Machine {
                             && self.scope_bound_a_non_copy()
                         {
                             let path = path.clone();
-                            self.move_path(&path, scrutinee.span)?;
+                            self.move_path_by(&path, scrutinee.span, MoveBy::Match)?;
                         }
                         let result = self.eval(&arm.body);
                         self.pop_scope();
@@ -5759,7 +5843,11 @@ impl Machine {
                 // `copy x` produces an independent value from any type
                 // (`[mem.tier0.move.3]`) — and does NOT move the source.
                 let value = match self.live_place(operand)? {
-                    Some(path) => self.read_whole(&path, span)?,
+                    Some(path) => {
+                        let value = self.read_whole(&path, span)?;
+                        self.trace_copy(&path, CopyBy::Copy, span);
+                        value
+                    }
                     None => self.eval(operand)?,
                 };
                 self.fire(Rule::Copy, span, "explicit copy");
@@ -5767,7 +5855,7 @@ impl Machine {
             }
             UnOp::Move => {
                 let path = self.place_of(operand)?;
-                let value = self.move_path(&path, span)?;
+                let value = self.move_path_by(&path, span, MoveBy::Move)?;
                 // `[mem.region.freeze.2]` transfers the region value, and
                 // `[mem.region.freeze.3]` refuses to transfer an open one —
                 // "the forest transfers as closed subtrees only". E1005's
@@ -7822,6 +7910,12 @@ impl Machine {
                     // Closure parameters carry no declared modes; D39's
                     // barrier watches `fn` parameters only.
                     read_params: Vec::new(),
+                    name: if self.shared.place_trace.is_some() {
+                        "<closure>".to_owned()
+                    } else {
+                        String::new()
+                    },
+                    body: None,
                 });
                 for (name, value) in &closure.captures {
                     self.declare(name, Slot::live(value.clone()));
@@ -8393,7 +8487,7 @@ impl Machine {
         let written = match (&path, &result) {
             (Some(path), Ok(_)) if mode == Some(ParamMode::Take) => {
                 self.fire(Rule::ModeTake, span, &format!("`take {path}` (receiver)"));
-                self.move_path(path, span).map(|_| ())
+                self.move_path_by(path, span, MoveBy::Take).map(|_| ())
             }
             (Some(path), result) if lend.is_some() => {
                 let mutated = result.is_ok()
@@ -8437,6 +8531,7 @@ impl Machine {
                 slot.state = SlotState::Moved(at);
             }
             self.note_part_moved(path);
+            self.trace_move(path, MoveBy::Mut, at);
         }
         if let Some((key, _, child)) = receiver_tag {
             self.prov().unprotect(child, span);

@@ -471,6 +471,8 @@ impl Machine {
             scopes: vec![Scope::default()],
             row: Vec::new(),
             read_params: Vec::new(),
+            name: String::new(),
+            body: None,
         });
         let result = self.par_chunk_body(chunk);
         self.finish_task_thread(result);
@@ -515,6 +517,8 @@ impl Machine {
             scopes: vec![Scope::default()],
             row: Vec::new(),
             read_params: Vec::new(),
+            name: String::new(),
+            body: None,
         });
         for (name, value) in &closure.captures {
             self.declare(name, Slot::live(value.clone()));
@@ -676,6 +680,8 @@ impl Machine {
             scopes: vec![Scope::default()],
             row: Vec::new(),
             read_params: Vec::new(),
+            name: String::new(),
+            body: None,
         });
         let result = self
             .call_fn(decl, module, args, span)
