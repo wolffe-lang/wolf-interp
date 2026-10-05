@@ -688,6 +688,14 @@ impl Session {
                 }
                 out.push(format!("imported C header `{name}` (host intrinsics)"));
             }
+            ItemKind::ExternLet(def) => {
+                // `[abi.link.extern]`: the machines model no link.
+                out.push(format!(
+                    "`extern \"c\" let {}` names a link-time symbol; this machine models no \
+                     link, so naming it is refused ([abi.link.extern])",
+                    def.name.name
+                ));
+            }
             ItemKind::Binding(binding) => {
                 // Item-level bindings arrive as statements from the wrapper;
                 // this arm is for completeness.

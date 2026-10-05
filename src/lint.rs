@@ -272,6 +272,7 @@ pub fn analyze(program: &Program) -> Analysis {
                     ItemKind::Trait(def) => Some(def.name.span),
                     ItemKind::TypeAlias(alias) => Some(alias.name.span),
                     ItemKind::ErrorAlias(alias) => Some(alias.name.span),
+                    ItemKind::ExternLet(def) => Some(def.name.span),
                     ItemKind::Binding(binding) => match &*binding.pattern.kind {
                         PatKind::Binding(ident) => Some(ident.span),
                         _ => None,
@@ -901,6 +902,9 @@ impl Walk<'_> {
             }
             ItemKind::ErrorAlias(alias) => {
                 self.shadow_check(&alias.name.name, alias.name.span);
+            }
+            ItemKind::ExternLet(def) => {
+                self.shadow_check(&def.name.name, def.name.span);
             }
             ItemKind::Trait(_) | ItemKind::Use(_) | ItemKind::ImportC(_) => {}
         }
