@@ -1,6 +1,36 @@
 # Changelog
 
-## Unreleased
+## 0.1.47 — 2026-10-05
+
+THE FORTY-SEVENTH (s209's lupin half), the lupin half of wolf 0.2.24.
+**Pin: `8e36bc1a` (wolf-lang v0.2.22, the TAG). This is the same pin as
+0.1.46: there is no re-pin in this release.** Eleven commits since 0.1.46,
+all in one lane. lupin now answers ruling #36's row L4 the way the
+checked machine does, so the 0.2.24 pairing drops the six L4 pins s209
+set in `raw_align_lanes.rs`.
+
+**The re-pin on v0.2.23 (`8edac3ee`) waits** (r29, measured at the
+unshipped `c3f1dab`, the vendor trees byte-equal to the tag's; the
+orchestrator ruled to ship without it). Its census would move corpus
+files 947 → 982 and anchors 569 → 586 (17 added, none dropped). Three
+things block it:
+- **#190.** `memory/static_init_cycle.lu` (`let A: int = B + 1` over
+  `let B: int = A * 2`) overflows lupin's stack. The crash aborts the
+  corpus walk itself. `extern "c" let` has no grammar here, so
+  `membrane/extern_let_{image,not_ptr}.lu` fail E0201 at parse.
+- **#188.** Four layout rows answer E0817 where the corpus runs them:
+  `comptime/layout_query_repr_c.lu`, `memory/packed_fields_at_offset_of.lu`
+  and `memory/raw_repr_{align,packed}_layout.lu`. Two answer E0817 where
+  the corpus pins E0820 (`grammar/attr_repr_unlayable.lu`) or E0819
+  (`memory/packed_field_lend.lu`).
+- **#196.** With those rows in the corpus, `fuzz_smoke`'s mutated-corpus
+  test finds a `fail` record carrying two diagnostics (seed
+  `0x1001f43a57eed01`).
+
+Every other new row matched or was out of scope; kw07's volatile rows
+(#185) do not mismatch. L4's own clause, `[mem.unsafe.raw.4]`, is not at
+v0.2.23 either: it lands at wolf-lang `a3465f87`, after the tag, so a
+re-pin on v0.2.23 still would not carry it.
 
 ### Row L4: a misaligned ordinary raw access (s209, ruling #36 = A, #192)
 
@@ -16,7 +46,7 @@
   pre-mirror.
 - `tests/ub/l4_misaligned.lu` and its twin `ok/l4_aligned_ok.lu`; the
   enumeration has twelve rows. The pin does not move (the clause's
-  anchor arrives with the next one).
+  anchor is not at v0.2.23 either; see above).
 
 ## 0.1.46 — 2026-10-04
 
