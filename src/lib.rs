@@ -40,6 +40,7 @@ pub mod fmtspec;
 pub mod frontend;
 pub mod fuzz;
 pub mod json;
+pub mod layout;
 pub mod ledger;
 pub mod lex;
 pub mod lint;
@@ -51,6 +52,7 @@ pub mod rowmatch;
 pub mod schema;
 pub mod sema;
 pub mod sha256;
+pub mod statics;
 pub mod trap;
 
 use std::collections::BTreeMap;

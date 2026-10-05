@@ -192,8 +192,34 @@ fn admit_with(program: &sema::Program, statics: Vec<crate::diag::Diag>) -> Optio
     if !attributes.is_empty() {
         return Some(Refusal::RejectAll(attributes));
     }
+    // is73 (wolf-interp#190): `extern "c" let`'s shape (E0821), then the
+    // module initializers as the comptime engine reads them (E0705), then
+    // module state that is not static data, refused by name — before the
+    // module-`var` E1301 the tier walk reports (`statics::not_static_data`
+    // says why the order matters).
+    let externs = crate::statics::extern_let_check(program);
+    if !externs.is_empty() {
+        return Some(Refusal::RejectAll(externs));
+    }
+    let initializers = crate::statics::init_check(program);
+    if !initializers.is_empty() {
+        return Some(Refusal::RejectAll(initializers));
+    }
+    if let Some(reason) = crate::statics::not_static_data(program) {
+        return Some(Refusal::Unsupported(reason));
+    }
     if let Some(diag) = sema::resolve_check(program) {
         return Some(Refusal::Reject(Box::new(diag)));
+    }
+    // is73 (wolf-interp#188): the layout queries' static half (E0708,
+    // E0403) and a lent packed field (E0819), every site listed.
+    let queries = crate::layout::query_check(program);
+    if !queries.is_empty() {
+        return Some(Refusal::RejectAll(queries));
+    }
+    let lends = crate::layout::lend_check(program);
+    if !lends.is_empty() {
+        return Some(Refusal::RejectAll(lends));
     }
     if let Some(diag) = statics.into_iter().next() {
         return Some(Refusal::Reject(Box::new(diag)));
@@ -205,6 +231,15 @@ fn admit_with(program: &sema::Program, statics: Vec<crate::diag::Diag>) -> Optio
     // or-pattern mixing the halves, an `@` at the top of an arm — are refused
     // before anything runs; the checker spends no code on them either.
     if let Some(reason) = crate::rowmatch::by_name_refusal(program) {
+        return Some(Refusal::Unsupported(reason));
+    }
+    // is73 (`[abi.link.section]`): a placed section needs an image, which
+    // this machine does not have — refused by name after every refusal
+    // with a code, as the checked machine orders them.
+    if let Some(reason) = crate::statics::section_placement(program) {
+        return Some(Refusal::Unsupported(reason));
+    }
+    if let Some(reason) = crate::statics::link_symbol(program) {
         return Some(Refusal::Unsupported(reason));
     }
     // wolf-interp#57: what `main` may return is a declaration fact, so it is
