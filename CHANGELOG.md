@@ -48,6 +48,54 @@ re-pin on v0.2.23 still would not carry it.
   enumeration has twelve rows. The pin does not move (the clause's
   anchor is not at v0.2.23 either; see above).
 
+### The re-pin blockers: module state, the link, exact layout (is73, #190, #188, #197)
+
+r29 found lupin could not re-pin on wolf v0.2.23: kw09's
+`memory/static_init_cycle.lu` overflowed the interpreter's stack (SIGABRT,
+no record) and aborted the corpus walk, and kw08's and kw09's rows parted
+eight times. On every row lupin now answers what the compiler's three lanes
+answer (90 witnesses in `tests/rulings_is73/`, measured against wolf 0.2.23),
+or refuses by name where the clause says the machines do.
+
+- **#190, module state** (`[mem.static]`). A module initializer is
+  comptime: one that reads a module `var`, or needs its own value, is
+  **E0705** at the reference, as many times as the compiler's engine meets
+  it (`statics::init_check`). A cycle the static walk cannot see — through
+  a fn's body — is declined by name at run time; no initializer graph
+  recurses into the stack's end (`Machine::initialize`, a 512-item rail).
+  Every read and write of a module `var` outside `unsafe` is **E1301**.
+  Module state of a type that is not static data (a `List`, a struct, a
+  `str` `var`) is refused by name, before the E1301, so
+  `memory/read_param_escape_static.lu` is out of scope rather than a second
+  code beside its pinned E1002.
+- **#190, the link** (`[abi.link.extern]`, `[abi.link.section]`).
+  `extern "c" let NAME: *T` parses; a non-pointer type, an initializer,
+  `var`/`const`, or the form inside a body is **E0821** at the compiler's
+  span, another ABI string E0818; a program that declares one is refused by
+  name (`a link-time symbol`). `#[section("…")]` on a fn or a module
+  `let`/`var` leaves the closed set's refusals; a program that places one is
+  refused by name (`section placement`).
+- **#188, exact layout** (`[abi.layout.packed]`, `[abi.layout.align]`,
+  `[abi.layout.query]`). `#[repr(c, packed)]` and `#[repr(c, align(N))]`
+  are in the closed set; a representation that cannot be laid out is
+  **E0820** (one per struct, the compiler's spans). `size_of`, `align_of`
+  and `offset_of(T, field)` answer the clause's C layout at comptime for
+  scalars and `#[repr(c)]` structs (`src/layout.rs`), **E0708** for a native
+  layout and **E0403** for a field the struct lacks. A `mut` lend of a packed
+  field, or a `read` lend of an aggregate one, is **E0819**. The
+  whole-aggregate raw store stays refused by name.
+- **#197, the fuzz record.** `fuzz_smoke` held a rejection to one
+  diagnostic, a contract older than is70's every-E0817 records and
+  `[proto.record.first]`; seed `0x1001f43a57eed01` at the v0.2.23 pin found
+  it. The harness checks `[proto.record.first]`'s record now, and the
+  seed's mutant is kept (`tests/fuzz_seeds/`).
+- At this pin (v0.2.22) two rows are ruled ahead of it until the re-pin
+  re-spells them: `grammar/attr_repr_unimplemented.lu` (packed, now
+  implemented) and `grammar/attr_section.lu` (`#[section]` on a fn, now
+  refused by name). Proven on an overlay of wolf-lang v0.2.23 (`8edac3ee`):
+  the walk completes, 982 files, 935 entries, 3 mismatches, each a standing
+  DIV entry (DIV-2026-019, DIV-2026-027).
+
 ## 0.1.46 — 2026-10-04
 
 THE FORTY-SIXTH (s208's lupin half, is70, and r28's re-pin), the lupin
