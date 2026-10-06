@@ -177,6 +177,13 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // `[os.proc.inherit]` (s137, wolf-lang#235): the program named apart
     // from its arguments, and the descriptors it hands down.
     "os_spawn_with",
+    // s215 (pelt's H2): the spawn with a descriptor map, the pipe, the
+    // working directory's write half and the terminal question
+    // (`[os.proc.fds]`, `[os.proc.pipe]`, `[os.fs.chdir]`, `[os.fs.isatty]`).
+    "os_spawn_fds",
+    "os_pipe",
+    "os_chdir",
+    "os_isatty",
     "os_wait",
     "os_kill",
     "time_now_ms",
@@ -456,7 +463,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // {signal, io} on wait (which REAPS), {io} on kill (which never
         // tombstones). No `std::process` on wasm: the tier declines there.
         #[cfg(target_family = "wasm")]
-        "os_spawn" | "os_spawn_with" | "os_wait" | "os_kill" => unsupported(format!(
+        "os_spawn" | "os_spawn_with" | "os_spawn_fds" | "os_pipe" | "os_chdir" | "os_isatty"
+        | "os_wait" | "os_kill" => unsupported(format!(
             "`{name}` is the s40 process trio; this wasm build has no processes to spawn, \
              so the tier is declined rather than mocked"
         )),
@@ -506,7 +514,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 };
                 argv.push(part.text.clone());
             }
-            let spawned = machine.children().spawn(&argv);
+            let cwd = machine.files().moved_cwd();
+            let spawned = machine.children().spawn_in(&argv, cwd.as_deref());
             match spawned {
                 Ok(handle) => Ok(Value::Int(handle, IntTy::INT)),
                 Err(tag) => {
@@ -517,6 +526,85 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                     );
                     Ok(error_value("os_spawn_with", tag))
                 }
+            }
+        }
+        // s215 (`[os.proc.pipe]`, `[os.fs.chdir]`, `[os.fs.isatty]`): the fs
+        // tier's own table and working directory (`eval::fs`).
+        #[cfg(not(target_family = "wasm"))]
+        "os_pipe" => machine.os_pipe(span),
+        #[cfg(not(target_family = "wasm"))]
+        "os_chdir" => {
+            let Some(Value::Str(path)) = args.first() else {
+                return unsupported("`os_chdir` takes a `str` path".to_owned());
+            };
+            let path = path.text.clone();
+            machine.os_chdir(&path, span)
+        }
+        #[cfg(not(target_family = "wasm"))]
+        "os_isatty" => {
+            let Some(Value::Int(fd, _)) = args.first() else {
+                return unsupported("`os_isatty` takes an integer handle".to_owned());
+            };
+            let fd = *fd;
+            machine.os_isatty(fd, span)
+        }
+        // s215 (`[os.proc.fds]`): the spawn with a descriptor map. The map's
+        // rules and their order are the clause's: SHAPE (`invalid`), HOST
+        // (windows refuses a non-empty map with the `unsupported` row), then
+        // this machine's own limit, by name — a target above 2 or a `-1`
+        // ("closed in the child") needs a descriptor placed or closed between
+        // fork and exec, which std offers no safe call for and this crate
+        // admits no `unsafe` to make — then the SOURCES (`io`), then the
+        // program. Targets 0, 1 and 2 are served from this machine's own fs
+        // table (a pipe end, an open file) or its standard streams; an
+        // unmapped one keeps this machine's spawn posture, the null device.
+        #[cfg(not(target_family = "wasm"))]
+        "os_spawn_fds" => {
+            let (
+                Some(Value::Str(exe)),
+                Some(Value::List(args_list, _, _)),
+                Some(Value::List(map, _, _)),
+            ) = (args.first(), args.get(1), args.get(2))
+            else {
+                return unsupported(
+                    "`os_spawn_fds` takes an executable `str`, a `List[str]` of arguments \
+                     and a `List[int]` descriptor map"
+                        .to_owned(),
+                );
+            };
+            let mut flat = Vec::with_capacity(map.len());
+            for slot in map.iter() {
+                let Value::Int(n, _) = &slot.value else {
+                    return unsupported(format!(
+                        "`os_spawn_fds`'s map holds {}, not `int`",
+                        slot.value.kind()
+                    ));
+                };
+                flat.push(*n);
+            }
+            let mut argv = Vec::with_capacity(args_list.len() + 1);
+            argv.push(exe.text.clone());
+            for slot in args_list.iter() {
+                let Value::Str(part) = &slot.value else {
+                    return unsupported(format!(
+                        "`os_spawn_fds`'s arguments hold {}, not `str`",
+                        slot.value.kind()
+                    ));
+                };
+                argv.push(part.text.clone());
+            }
+            let answer = spawn_fds_answer(machine, &argv, &flat);
+            match answer {
+                Ok(Ok(handle)) => Ok(Value::Int(handle, IntTy::INT)),
+                Ok(Err(tag)) => {
+                    machine.note(
+                        Rule::ErrUnion,
+                        span,
+                        &format!("`os_spawn_fds` yields the `{tag}` row"),
+                    );
+                    Ok(error_value("os_spawn_fds", tag))
+                }
+                Err(reason) => unsupported(reason),
             }
         }
         #[cfg(not(target_family = "wasm"))]
@@ -538,7 +626,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 };
                 argv.push(part.text.clone());
             }
-            let spawned = machine.children().spawn(&argv);
+            let cwd = machine.files().moved_cwd();
+            let spawned = machine.children().spawn_in(&argv, cwd.as_deref());
             match spawned {
                 Ok(handle) => Ok(Value::Int(handle, IntTy::INT)),
                 Err(tag) => {
@@ -2612,6 +2701,11 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // machine) refusing the handoff BY NAME; the rest is `os_spawn`'s
         // own row.
         "os_spawn_with" => &["unsupported", "not_found", "denied", "io"],
+        // s215: the map's shape is `invalid` and windows' refusal of a
+        // non-empty map `unsupported`, before any program is looked for.
+        "os_spawn_fds" => &["unsupported", "invalid", "not_found", "denied", "io"],
+        "os_pipe" | "os_isatty" => &["io"],
+        "os_chdir" => &["not_found", "denied", "io"],
         // The env pair and the json query tier: mint-site closures.
         "env_get" => &["invalid", "missing"],
         "env_set" => &["invalid"],
@@ -2686,4 +2780,64 @@ fn two_phase_args(args: &[Value], name: &str) -> Result<(HandleValue, Value), Si
              (`[mem.shared.handle.1]`)"
         ))),
     }
+}
+
+/// s215 (`[os.proc.fds]`): `os_spawn_fds` past its argument shapes. The
+/// outer `Err` is this machine's by-name refusal (a target above 2, or a
+/// close); the inner one a row of the call's own.
+#[cfg(not(target_family = "wasm"))]
+fn spawn_fds_answer(
+    machine: &mut Machine,
+    argv: &[String],
+    flat: &[i128],
+) -> Result<Result<i128, &'static str>, String> {
+    let Some(pairs) = fd_map_of(flat) else {
+        return Ok(Err("invalid"));
+    };
+    if cfg!(windows) && !pairs.is_empty() {
+        return Ok(Err("unsupported"));
+    }
+    if let Some(&(target, _)) = pairs.iter().find(|(t, s)| *t > 2 || s.is_none()) {
+        return Err(format!(
+            "a descriptor map that {} in os_spawn_fds: this machine admits no `unsafe`, and \
+             placing or closing a child's descriptor between fork and exec has no safe call \
+             in std ([os.proc.fds])",
+            if target > 2 {
+                "names a descriptor above 2"
+            } else {
+                "closes a descriptor"
+            }
+        ));
+    }
+    let mut stdio: [Option<std::fs::File>; 3] = [None, None, None];
+    for &(target, source) in &pairs {
+        let Some(file) = source.and_then(|h| machine.files().duplicate(h)) else {
+            return Ok(Err("io"));
+        };
+        let at = usize::try_from(target).expect("a target in 0..=2");
+        stdio[at] = Some(file);
+    }
+    let cwd = machine.files().moved_cwd();
+    let spawned = machine.children().spawn_fds(argv, stdio, cwd.as_deref());
+    Ok(spawned)
+}
+
+/// s215 (`[os.proc.fds]`): the flat `[target, source, …]` map as pairs, or
+/// `None` for a list that is not a map — the `invalid` row: an odd length, a
+/// target outside `0..=255`, a target named twice, a source below `-1`, more
+/// than 64 pairs. A source of `-1` ("closed in the child") is `None`.
+#[cfg(not(target_family = "wasm"))]
+fn fd_map_of(flat: &[i128]) -> Option<Vec<(i128, Option<i128>)>> {
+    if !flat.len().is_multiple_of(2) || flat.len() / 2 > 64 {
+        return None;
+    }
+    let mut out: Vec<(i128, Option<i128>)> = Vec::with_capacity(flat.len() / 2);
+    for pair in flat.chunks_exact(2) {
+        let (target, source) = (pair[0], pair[1]);
+        if !(0..=255).contains(&target) || source < -1 || out.iter().any(|&(t, _)| t == target) {
+            return None;
+        }
+        out.push((target, (source >= 0).then_some(source)));
+    }
+    Some(out)
 }
