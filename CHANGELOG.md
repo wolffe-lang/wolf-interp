@@ -97,6 +97,31 @@ ruled by the maintainer on 2026-10-07 as implemented (rulings #50 and
   body holding a `return`, or whose tail is `()` by shape, is **E0401** at
   the `return` or the tail.
 
+### A child's descriptors, a pipe, the working directory, isatty (s215, pelt's H2)
+
+wolf-lang s215 adds four host builtins (`[os.proc.fds]`, `[os.proc.pipe]`,
+`[os.fs.chdir]`, `[os.fs.isatty]`); lupin mirrors them, witnessed by the
+compiler's own rows and fixtures in `tests/proc_fd_s215.rs`.
+
+- **`os_pipe() -> (int, int) ! {io}`**: a pipe's read and write ends as two
+  handles of the fs table (3 and up), close-on-exec; every handle call
+  serves them.
+- **`os_chdir(str) -> () ! {denied, io, not_found}`** moves this machine's
+  working directory — never the process's, which runs many programs at
+  once. Relative fs and unix-socket paths, `os_cwd` and every spawn follow
+  it; containment stays the served tree, so a directory outside it is
+  declined by name, as an open there is.
+- **`os_isatty(int) -> bool ! {io}`**: 0..2 ask the process's streams, 3
+  and up the table; closed or forged is `io`.
+- **`os_spawn_fds(str, List[str], List[int]) -> int ! {denied, invalid, io,
+  not_found, unsupported}`** for child descriptors 0, 1 and 2 from the
+  table or the standard streams, in the clause's order of refusal (shape
+  `invalid`, windows `unsupported`, sources `io`, then the program). A
+  target above 2 or a close (`-1`) is **refused by name**: placing or
+  closing a child's descriptor between fork and exec needs `unsafe`, which
+  this crate forbids, and stable Rust 1.97 has no safe call for it. An
+  unmapped 0..2 keeps this machine's spawn posture, the null device.
+
 ## 0.1.48 — 2026-10-06
 
 THE FORTY-EIGHTH (is72 and is73), the lupin half of wolf 0.2.25.
