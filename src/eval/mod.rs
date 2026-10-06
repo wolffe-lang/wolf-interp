@@ -650,6 +650,11 @@ pub struct Machine {
     /// is72: what the statements now executing did to their places, for
     /// the place trace's `events`. Empty unless the trace is on.
     place_events: Vec<placetrace::Event>,
+    /// s200 (wolf-lang#407, `[os.fs.error]`): the host's error number for
+    /// this TASK's most recent fallible fs call, 0 when it succeeded or its
+    /// failure was decided before the host. Per machine, so per task: no
+    /// other task's call can move it, and a spawned task starts at 0.
+    last_os_error: i128,
 }
 
 /// Set by [`Machine::set_fuel_limit`]; zero means [`Machine::FUEL`].
@@ -783,6 +788,7 @@ impl Machine {
             capture_gens: BTreeMap::new(),
             tracing,
             place_events: Vec::new(),
+            last_os_error: 0,
         }
     }
 
@@ -2374,23 +2380,42 @@ impl Machine {
     }
 
     fn write_out(&mut self, text: &str) {
+        self.write_out_bytes(text.as_bytes());
+    }
+
+    /// [`Machine::write_out`] for BYTES: `print`'s text and, since s200
+    /// (wolf-lang#405, `[os.fs.std]`), a program's `fs_write*` on descriptor
+    /// 1 — one capture, so the two land in program order and the record
+    /// sees both.
+    pub(crate) fn write_out_bytes(&mut self, bytes: &[u8]) {
         self.shared
             .stdout
             .lock()
             .expect("stdout lock")
-            .extend_from_slice(text.as_bytes());
+            .extend_from_slice(bytes);
         if self.shared.live_stdout {
             // The is12 pass-through: the bytes reach the terminal now, not
             // at program exit. A failed write is the pipe's condition, never
             // the program's fault — the buffered copy remains authoritative.
             use std::io::Write;
             let mut out = std::io::stdout();
-            let _ = out.write_all(text.as_bytes());
+            let _ = out.write_all(bytes);
             let _ = out.flush();
         }
         // Printed bytes fold into the scheduler's canonical-state digest, so
         // observably-diverged schedules never merge under state hashing.
-        self.shared.sched.stdout_mark(text.as_bytes());
+        self.shared.sched.stdout_mark(bytes);
+    }
+
+    /// `[os.fs.error]` (s200): the task's word, for `os_error()`.
+    pub(crate) fn last_os_error(&self) -> i128 {
+        self.last_os_error
+    }
+
+    /// `[os.fs.error]` (s200): set by `Machine::fs_call` after each
+    /// fallible fs call.
+    pub(crate) fn set_last_os_error(&mut self, code: i128) {
+        self.last_os_error = code;
     }
 
     // -- Tier 1: the region machine (§3) -----------------------------------
@@ -9913,10 +9938,16 @@ impl Machine {
     /// stderr, so the write follows the same live gate as stdout's
     /// pass-through.
     pub(crate) fn err_out(&mut self, text: &str) {
+        self.err_out_bytes(text.as_bytes());
+    }
+
+    /// [`Machine::err_out`] for bytes: `eprint`'s text and, since s200, a
+    /// program's `fs_write*` on descriptor 2.
+    pub(crate) fn err_out_bytes(&mut self, bytes: &[u8]) {
         if self.shared.live_stdout {
             use std::io::Write;
             let mut err = std::io::stderr();
-            let _ = err.write_all(text.as_bytes());
+            let _ = err.write_all(bytes);
             let _ = err.flush();
         }
     }
