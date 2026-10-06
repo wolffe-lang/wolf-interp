@@ -45,7 +45,18 @@ impl ChildTable {
     ///
     /// `not_found` (empty argv, or a program path naming nothing),
     /// `denied`, `io`.
+    #[cfg(test)]
     pub(crate) fn spawn(&mut self, argv: &[String]) -> Result<i128, Row> {
+        self.spawn_in(argv, None)
+    }
+
+    /// [`ChildTable::spawn`] in `cwd` — the program's moved working
+    /// directory (s215, `[os.fs.chdir]`: a spawned child starts in it).
+    pub(crate) fn spawn_in(
+        &mut self,
+        argv: &[String],
+        cwd: Option<&std::path::Path>,
+    ) -> Result<i128, Row> {
         let Some(program) = argv.first() else {
             // An empty argv names no program (the witnessed row).
             return Err("not_found");
@@ -56,6 +67,9 @@ impl ChildTable {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        if let Some(dir) = cwd {
+            command.current_dir(dir);
+        }
         match command.spawn() {
             Ok(child) => {
                 self.slots.push(Some(child));
@@ -77,6 +91,50 @@ impl ChildTable {
     /// `signal` for a child that died without an exit code (the reap still
     /// happened — the slot is spent either way); `io` for a forged or
     /// already-reaped handle, or a wait the host refuses.
+    /// s215 (`[os.proc.fds]`): spawn `argv` with the child's descriptors
+    /// 0, 1 and 2 set from `stdio` — `Some(file)` the child receives that
+    /// file AS the descriptor, `None` this machine's posture for an
+    /// unmapped one (the null device: a child's output never leaks into a
+    /// record's stdout) — in `cwd` when the program has moved its working
+    /// directory. A map that names a descriptor above 2, or closes one,
+    /// never reaches here: the builtin refuses it by name, because placing
+    /// either needs `unsafe` this crate forbids.
+    pub(crate) fn spawn_fds(
+        &mut self,
+        argv: &[String],
+        stdio: [Option<std::fs::File>; 3],
+        cwd: Option<&std::path::Path>,
+    ) -> Result<i128, Row> {
+        let Some(program) = argv.first() else {
+            return Err("not_found");
+        };
+        if program.is_empty() {
+            return Err("not_found");
+        }
+        let [zero, one, two] = stdio;
+        let wire = |f: Option<std::fs::File>| f.map_or_else(Stdio::null, Stdio::from);
+        let mut command = Command::new(program);
+        command
+            .args(&argv[1..])
+            .stdin(wire(zero))
+            .stdout(wire(one))
+            .stderr(wire(two));
+        if let Some(dir) = cwd {
+            command.current_dir(dir);
+        }
+        match command.spawn() {
+            Ok(child) => {
+                self.slots.push(Some(child));
+                Ok(self.slots.len() as i128)
+            }
+            Err(error) => Err(match error.kind() {
+                std::io::ErrorKind::NotFound => "not_found",
+                std::io::ErrorKind::PermissionDenied => "denied",
+                _ => "io",
+            }),
+        }
+    }
+
     pub(crate) fn wait(&mut self, handle: i128) -> Result<i128, Row> {
         let slot = self.slot(handle)?;
         let Some(child) = slot.as_mut() else {
