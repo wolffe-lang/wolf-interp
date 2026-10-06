@@ -110,6 +110,31 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### DIV-2026-028 — `conc/atomic_race_plain.lu` — **OPEN, filed at the 294d626d pin (r30, lupin 0.1.48); resolves with wolffe-lang/wolf-lang#603**
+
+kw11's plain racy counter (`check: pass`, `phase: wir`, conforms
+`conc.mm.race.1`) arrives at the 294d626d pin (wolf-lang v0.2.24). Four
+tasks write one `*u64` word with no happens-before: a data race on
+non-atomic memory, which is UB. This machine detects it and traps `race`.
+The walk reads `pass` as "a clean program", so the answer is a `MISMATCH`
+(kasumi `~/lanes/r30/logs/repin-1-walk.txt`). lupin 0.1.46 and 0.1.47
+answered the same way.
+
+Triage (`[proto.cmp.triage]`, the spec is the defendant first).
+`[conc.mm.race.3]` permits an implementation to detect the race. The row's
+own header says it "promises only that it compiles", and it names lupin's
+`trap(race)`. wolf-interp#194 calls the answer correct. So lupin's answer
+is the permitted detection, and the row's `pass` cannot spell it. The
+defect is the row's header, not either machine. Filed upstream as
+wolffe-lang/wolf-lang#603, which names the ways out. Neither machine
+changes in this release.
+
+Added to `differ::FILED_DIVERGENCES`. That stops `tests/run_corpus.rs`
+asserting on this row only, and the differential report keeps it visible
+as `x-filed`. The run ledger keeps the row (`trap(race)`). The entry
+retires on the first pin where the row admits `trap(race)`.
+`retired-waiver` in `diff-run` is the check.
+
 ### DIV-2026-027 — two failing `assert_msg_*` rows — **OPEN, filed at the dfcc2f13 pin (r27, lupin 0.1.45); resolves with wolffe-lang/wolf-lang#556**
 
 `faults/assert_msg_effect_fails.lu` (`check: run(exit=trap(assert),
