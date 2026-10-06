@@ -238,7 +238,8 @@ fn chdir_out_of_the_served_tree_is_declined_by_name() {
     // refused for an unknown name, which also says `os_chdir` (green for
     // the wrong reason: lupin-red-trunk-e9d2a204.log 72ba481e…).
     assert!(
-        words.contains("os_chdir(\"..\")") && words.contains("resolves outside the working directory"),
+        words.contains("os_chdir(\"..\")")
+            && words.contains("resolves outside the working directory"),
         "{words}"
     );
 }
