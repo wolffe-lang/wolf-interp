@@ -500,6 +500,10 @@ pub struct RawPtr {
     pub signed: bool,
     /// The pointee's class, for the volatile and atomic methods.
     pub kind: Pointee,
+    /// s213 (`[mem.unsafe.raw.5]`, wolf-lang#577): when the pointee is a
+    /// `#[repr(c)]` struct, its index in the machine's struct table — what
+    /// `p[i].f` lays the field out by. `elem` is then the struct's C size.
+    pub strukt: Option<u32>,
 }
 
 impl RawPtr {
@@ -512,6 +516,7 @@ impl RawPtr {
             elem: 1,
             signed: false,
             kind: Pointee::Other,
+            strukt: None,
         }
     }
 
@@ -543,6 +548,7 @@ impl RawPtr {
             elem,
             signed,
             kind,
+            strukt: None,
         }
     }
 }
@@ -815,6 +821,7 @@ impl Provenance {
             elem: 1,
             signed: false,
             kind: Pointee::Other,
+            strukt: None,
         }
     }
 
@@ -945,6 +952,7 @@ impl Provenance {
             elem: 1,
             signed: false,
             kind: Pointee::Other,
+            strukt: None,
         };
         self.access(ptr, 1, kind, span)
     }
@@ -1724,6 +1732,7 @@ mod tests {
             elem: 1,
             signed: false,
             kind: Pointee::Other,
+            strukt: None,
         }
     }
 

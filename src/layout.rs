@@ -268,6 +268,72 @@ fn struct_layout(
     })
 }
 
+/// Where a field path through a `#[repr(c)]` struct lands (s213,
+/// `[mem.unsafe.raw.5]`): the byte offset from the element's start, the
+/// leaf's size and signedness, and the element struct's own alignment —
+/// the one row L4 asks of the element (`[mem.unsafe.raw.4]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FieldAt {
+    pub offset: u64,
+    pub size: u64,
+    pub signed: bool,
+    pub struct_align: u64,
+}
+
+/// The leaf of `path` through the struct `name` of `module`, when every
+/// step names a field of a `#[repr(c)]` struct and the leaf is an integer
+/// (`i8`…`i64`, `u8`…`u64`, `int`, `uint`): the clause's layout, read from
+/// the declarations. `Err` names, for a refusal by name, why not.
+pub fn field_path(module: &Module, name: &str, path: &[String]) -> Result<FieldAt, String> {
+    let decls = structs(module);
+    let top =
+        layout_named(module, &decls, name, 0).map_err(|_| format!("`{name}` has no C layout"))?;
+    let mut offset = 0u64;
+    let mut current = name.to_owned();
+    for (i, field) in path.iter().enumerate() {
+        let decl = decls
+            .get(&current)
+            .ok_or_else(|| format!("`{current}` is not a struct of this module"))?;
+        let layout = layout_named(module, &decls, &current, 0)
+            .map_err(|_| format!("`{current}` has no C layout"))?;
+        let (_, at) = layout
+            .fields
+            .iter()
+            .find(|(n, _)| n == field)
+            .ok_or_else(|| format!("`{current}` has no field `{field}`"))?;
+        offset += at;
+        let def = decl
+            .def
+            .fields
+            .iter()
+            .find(|f| f.name.name == *field)
+            .expect("the layout's fields are the declaration's");
+        let TypeKind::Path { path: tpath, args } = &*def.ty.kind else {
+            return Err(format!("the field `{field}` is not an integer"));
+        };
+        if !args.is_empty() || !tpath.is_single() {
+            return Err(format!("the field `{field}` is not an integer"));
+        }
+        let tname = tpath.segments[0].name.as_str();
+        if i + 1 < path.len() {
+            current = tname.to_owned();
+            continue;
+        }
+        let signed = matches!(tname, "i8" | "i16" | "i32" | "i64" | "int");
+        let integer = signed || matches!(tname, "u8" | "u16" | "u32" | "u64" | "uint");
+        if !integer {
+            return Err(format!("the field `{field}` is not an integer (`{tname}`)"));
+        }
+        return Ok(FieldAt {
+            offset,
+            size: scalar(tname).expect("an integer has a size"),
+            signed,
+            struct_align: top.align,
+        });
+    }
+    Err("an empty field path".to_owned())
+}
+
 /// Whether a value of type `ty` holds an `align(N)` struct by value, at any
 /// depth — what a packed struct may not hold (`[abi.layout.packed]`, E0820).
 #[must_use]
