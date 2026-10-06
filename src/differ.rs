@@ -212,6 +212,18 @@ pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
          which [conf.trap.assert] permits; the row's stdout pins the dropped \
          rendering (wolf-lang#556)",
     ),
+    // DIV-2026-028 FILED at the 294d626d pin (r30, wolf-lang v0.2.24;
+    // wolffe-lang/wolf-lang#603): kw11's plain racy counter is `check: pass`
+    // at phase wir; this machine detects the race and traps `race`, which
+    // `[conc.mm.race.3]` permits, and `pass` cannot spell it.
+    (
+        "conc/atomic_race_plain.lu",
+        "DIV-2026-028",
+        "a data race on non-atomic memory: this machine detects it and traps \
+         race, which [conc.mm.race.3] permits; the row's `check: pass` \
+         promises only that it compiles and cannot spell the permitted \
+         detection (wolf-lang#603)",
+    ),
 ];
 
 // DIV-2026-022 (`wordcount.lu`) and DIV-2026-023
@@ -1757,7 +1769,15 @@ mod tests {
         // s202's two failing `assert_msg_*` rows pin the dropped rendering
         // of the message; this machine renders the line, which
         // `[conf.trap.assert]` permits (wolf-lang#556). One became three.
-        assert_eq!(FILED_DIVERGENCES.len(), 3);
+        // DIV-2026-028 FILED at the 294d626d pin (r30, wolf-lang v0.2.24):
+        // kw11's plain racy counter is `check: pass`; this machine traps
+        // `race`, which `[conc.mm.race.3]` permits (wolf-lang#603). Three
+        // became four.
+        assert_eq!(FILED_DIVERGENCES.len(), 4);
+        let (id, _) = filed("upstream/corpus/conc/atomic_race_plain.lu")
+            .expect("DIV-2026-028 is filed against the plain racy counter");
+        assert_eq!(id, "DIV-2026-028");
+        assert_eq!(filed("upstream/corpus/conc/atomic_counter.lu"), None);
         for row in [
             "upstream/corpus/faults/assert_msg_effect_fails.lu",
             "upstream/corpus/faults/assert_msg_name_fails.lu",
