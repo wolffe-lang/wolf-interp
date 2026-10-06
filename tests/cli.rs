@@ -308,7 +308,12 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // `region_str_*` and `unit_discard_*` rows); the fifty-fifth is kw02's
     // `membrane/geo/geo.lu`, a member. `members` 46 -> 47; the registry
     // 546 -> 569.
-    assert!(stdout.contains("947 file(s)"), "{stdout}");
+    // 947 -> 1002 at 294d626d (r30, wolf-lang **v0.2.24** — the TAG, two
+    // releases forward): FIFTY-FIVE new files, none leaves, every one an
+    // entry (kw07's volatile, kw08's layout, kw09's static and link rows,
+    // s209's L4 rows, kw11's `conc/atomic_*`). `members` holds at 47; the
+    // registry 569 -> 595.
+    assert!(stdout.contains("1002 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -317,7 +322,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 947);
+    assert_eq!(value["total"], 1002);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
