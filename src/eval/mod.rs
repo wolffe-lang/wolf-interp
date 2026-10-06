@@ -10774,9 +10774,11 @@ fn is_copy(value: &Value) -> bool {
 /// the complement there (`x & !0xfff`), and an annotated binding adopts it
 /// first ([`Machine::complement_adopt`]).
 fn int_complement(v: i128, ty: IntTy) -> i128 {
-    // PLANT (to be reverted): `!` on an integer is the identity again.
-    let _ = ty;
-    v
+    if ty.literal || ty.signed {
+        -v - 1
+    } else {
+        ty.range().1 - v
+    }
 }
 
 /// `[type.int.not]` (s213): a literal operand adopts the type its context
