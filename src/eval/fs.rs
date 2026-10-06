@@ -141,6 +141,13 @@ pub(crate) struct FsTable {
     /// against. See [`FsTable::observation_root`]. `None` until first use,
     /// and never used at all by a live `lupin run`.
     root: Option<PathBuf>,
+    /// s215 (`[os.fs.chdir]`): the program's working directory once it has
+    /// moved it, canonical and absolute — `None` until the first
+    /// `os_chdir`. It is this machine's, never the process's: the process
+    /// runs many programs at once (the root's own reason), and the served
+    /// tree stays the root, so a directory change cannot carry a program
+    /// out of it.
+    cwd: Option<PathBuf>,
 }
 
 /// Removes the private root when the observation ends. Best effort: a
@@ -460,6 +467,57 @@ impl FsTable {
             return Err(FsErr::Row("io"));
         }
         Ok(())
+    }
+
+    /// s215 (`[os.proc.pipe]`): a new pipe's read and write ends, as two
+    /// handles of this table (both close-on-exec — std makes them so).
+    pub(crate) fn pipe(&mut self) -> FsResult<(i128, i128)> {
+        let (reader, writer) = std::io::pipe().map_err(|_| FsErr::Row("io"))?;
+        #[cfg(unix)]
+        let (r, w) = (
+            File::from(std::os::fd::OwnedFd::from(reader)),
+            File::from(std::os::fd::OwnedFd::from(writer)),
+        );
+        #[cfg(windows)]
+        let (r, w) = (
+            File::from(std::os::windows::io::OwnedHandle::from(reader)),
+            File::from(std::os::windows::io::OwnedHandle::from(writer)),
+        );
+        Ok((self.mint(r), self.mint(w)))
+    }
+
+    /// s215 (`[os.proc.fds]`): an owned duplicate of the file a handle
+    /// names — for 0, 1 and 2 the process's standard stream — for a child
+    /// to receive. `None` is a closed or forged handle (`io`).
+    pub(crate) fn duplicate(&mut self, handle: i128) -> Option<File> {
+        if (0..FIRST_HANDLE as i128).contains(&handle) {
+            return std_stream(handle);
+        }
+        self.file(handle).ok()?.try_clone().ok()
+    }
+
+    /// s215 (`[os.fs.isatty]`): whether a handle names a terminal. 0..2 ask
+    /// the process's own streams (std answers that on every host, windows
+    /// included); 3 and up the table. `None` is a closed or forged handle.
+    pub(crate) fn is_terminal(&mut self, handle: i128) -> Option<bool> {
+        use std::io::IsTerminal as _;
+        match handle {
+            0 => Some(std::io::stdin().is_terminal()),
+            1 => Some(std::io::stdout().is_terminal()),
+            2 => Some(std::io::stderr().is_terminal()),
+            _ => self.file(handle).ok().map(|f| f.is_terminal()),
+        }
+    }
+
+    /// s215 (`[os.fs.chdir]`): the moved working directory, if any.
+    pub(crate) fn moved_cwd(&self) -> Option<PathBuf> {
+        self.cwd.clone()
+    }
+
+    /// s215: move the working directory to `dir`, already resolved,
+    /// contained and canonical.
+    pub(crate) fn set_cwd(&mut self, dir: PathBuf) {
+        self.cwd = Some(dir);
     }
 }
 
@@ -1376,6 +1434,10 @@ impl Machine {
     /// this would be dead code and `-D warnings` red.
     #[cfg(unix)]
     pub(crate) fn fs_observation_base(&self) -> Result<Option<PathBuf>, Row> {
+        // s215: a unix-socket path resolves against the moved directory too.
+        if let Some(dir) = self.files().moved_cwd() {
+            return Ok(Some(dir));
+        }
         if self.is_live() {
             return Ok(None);
         }
@@ -1395,6 +1457,11 @@ impl Machine {
     /// `Err(())` when neither a private root nor the process cwd can be had;
     /// the caller turns that into `os_cwd`'s `io` row.
     pub(crate) fn fs_working_dir(&self) -> Result<PathBuf, ()> {
+        // s215 (`[os.fs.chdir]`): once the program has moved it, the moved
+        // directory is the answer.
+        if let Some(dir) = self.files().moved_cwd() {
+            return Ok(dir);
+        }
         if self.is_live() {
             return std::env::current_dir().map_err(|_| ());
         }
@@ -1402,6 +1469,54 @@ impl Machine {
         // separator — `os_cwd` would answer ".../wolf-obs/1f4-0/" where no
         // host's cwd ever carries a trailing one. Ask for the root itself.
         self.files().observation_root_path().map_err(|_| ())
+    }
+
+    /// s215 (`[os.fs.chdir]`): `os_chdir(path)`. The path is resolved and
+    /// contained exactly as an fs call's (`[os.fs.path.domain]`: a directory
+    /// outside the served tree is declined by name, as an open there is),
+    /// canonicalized — the path `getcwd` would report — and must be a
+    /// directory (`io` otherwise, the host's `ENOTDIR`). Search permission is
+    /// not asked separately: this machine has no `unsafe` for `access(2)`,
+    /// so a directory it may not enter answers `denied` only where the
+    /// canonicalization itself is refused.
+    pub(crate) fn os_chdir(&mut self, path: &str, span: Span) -> EvalOut {
+        let name = "os_chdir";
+        let answer = self.fs_contained(path, name).and_then(|candidate| {
+            let canon = std::fs::canonicalize(&candidate).map_err(|e| {
+                FsErr::Row(match e.kind() {
+                    std::io::ErrorKind::NotFound => "not_found",
+                    std::io::ErrorKind::PermissionDenied => "denied",
+                    _ => "io",
+                })
+            })?;
+            if !canon.is_dir() {
+                return Err(FsErr::Row("io"));
+            }
+            self.files().set_cwd(canon);
+            Ok(Value::Unit)
+        });
+        self.fs_answer(name, answer, span)
+    }
+
+    /// s215 (`[os.proc.pipe]`): `os_pipe()` — the pair as a tuple.
+    pub(crate) fn os_pipe(&mut self, span: Span) -> EvalOut {
+        let answer = self.shared_fs().pipe().map(|(r, w)| {
+            Value::Tuple(vec![
+                super::value::Slot::live(Value::Int(r, IntTy::INT)),
+                super::value::Slot::live(Value::Int(w, IntTy::INT)),
+            ])
+        });
+        self.fs_answer("os_pipe", answer, span)
+    }
+
+    /// s215 (`[os.fs.isatty]`): `os_isatty(fd)`.
+    pub(crate) fn os_isatty(&mut self, fd: i128, span: Span) -> EvalOut {
+        let answer = self
+            .shared_fs()
+            .is_terminal(fd)
+            .map(Value::Bool)
+            .ok_or(FsErr::Row("io"));
+        self.fs_answer("os_isatty", answer, span)
     }
 
     /// Containment AND resolution, as one method so every arm reads the same:
@@ -1417,6 +1532,13 @@ impl Machine {
     /// never leaves the tree, and served a symlink that does.
     fn fs_contained(&self, path: &str, name: &str) -> FsResult<PathBuf> {
         let candidate = contained(path, name)?;
+        // s215 (`[os.fs.chdir]`): a relative path resolves against the moved
+        // directory once there is one; containment is still decided against
+        // the served tree, which a directory change does not move.
+        let candidate = match self.files().moved_cwd() {
+            Some(dir) if candidate.is_relative() && !path.is_empty() => dir.join(candidate),
+            _ => candidate,
+        };
         let live = self.is_live();
         let root = if live {
             std::env::current_dir().map_err(|_| {
