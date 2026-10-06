@@ -507,6 +507,29 @@ struct Access {
     write: bool,
 }
 
+/// The first access in `history` that conflicts with an access by `me` to
+/// `[lo, hi)` — overlapping, one of the two a write, by another task — and
+/// that `me`'s clock does not order: a data race (`[conc.mm.race.3]`).
+fn unordered_conflict(
+    history: &[Access],
+    me: TaskId,
+    my_vc: &[u64],
+    lo: usize,
+    hi: usize,
+    write: bool,
+) -> Option<(TaskId, bool)> {
+    history
+        .iter()
+        .find(|prior| {
+            prior.task != me
+                && (prior.write || write)
+                && prior.lo < hi
+                && prior.hi > lo
+                && my_vc.get(prior.task).copied().unwrap_or(0) < prior.tick
+        })
+        .map(|prior| (prior.task, prior.write))
+}
+
 /// What raced with what, for the trap message.
 #[derive(Debug, Clone)]
 pub struct RaceReport {
@@ -579,6 +602,17 @@ struct State {
     pending: Vec<PendingExit>,
     /// Race-detector memory (`[conc.mm.race.3]`).
     accesses: std::collections::BTreeMap<RaceKey, Vec<Access>>,
+    /// The latest atomic access of each task to each range (is74): two
+    /// atomic accesses never race (`[conc.mm.atomic.raw]`), but a plain
+    /// access unordered with an atomic one still does (`[conc.mm.race.1]`).
+    /// One entry per (task, range, kind), so the record stays as small as
+    /// the program's distinct atomic words however long it loops.
+    atomic_accesses: std::collections::BTreeMap<RaceKey, Vec<Access>>,
+    /// One vector clock per atomic location — an allocation and a byte
+    /// offset. This machine runs every order as `seq_cst`
+    /// (`[conc.mm.atomic.raw.5]`), so every atomic operation acquires its
+    /// location's clock and releases into it (is74).
+    atomic_clocks: std::collections::BTreeMap<(RaceKey, usize), Vec<u64>>,
     /// More than one task has ever existed — the race detector's fast path.
     concurrent: bool,
     /// The root supervisor is reaping; scheduling is shutdown's alone.
@@ -798,6 +832,16 @@ impl State {
                 let _ = write!(s, "({},{},{},{},{})", a.task, a.tick, a.lo, a.hi, a.write);
             }
             s.push(';');
+        }
+        for (key, history) in &self.atomic_accesses {
+            let _ = write!(s, "atom{key:?}=");
+            for a in history {
+                let _ = write!(s, "({},{},{},{},{})", a.task, a.tick, a.lo, a.hi, a.write);
+            }
+            s.push(';');
+        }
+        for ((key, lo), vc) in &self.atomic_clocks {
+            let _ = write!(s, "aclk{key:?}+{lo}={vc:?};");
         }
         s
     }
@@ -1450,6 +1494,8 @@ impl Sched {
             notes: Vec::new(),
             pending: Vec::new(),
             accesses: std::collections::BTreeMap::new(),
+            atomic_accesses: std::collections::BTreeMap::new(),
+            atomic_clocks: std::collections::BTreeMap::new(),
             concurrent: false,
             shutdown: false,
         };
@@ -2531,18 +2577,11 @@ impl Sched {
         }
         state.op(me, ObjKey::Mem(key), write);
         let my_vc = state.task_vc(me);
-        let found = state.accesses.get(&key).and_then(|history| {
-            history
-                .iter()
-                .find(|prior| {
-                    prior.task != me
-                        && (prior.write || write)
-                        && prior.lo < hi
-                        && prior.hi > lo
-                        && my_vc.get(prior.task).copied().unwrap_or(0) < prior.tick
-                })
-                .map(|prior| (prior.task, prior.write))
-        });
+        // A plain access races a prior plain access and a prior atomic one
+        // alike (is74): only two ATOMIC accesses never race.
+        let found = [&state.accesses, &state.atomic_accesses]
+            .into_iter()
+            .find_map(|memory| unordered_conflict(memory.get(&key)?, me, &my_vc, lo, hi, write));
         if let Some((other, other_write)) = found {
             let report = RaceReport {
                 other_task: format!("`{}` (task {other})", state.tasks[other].name),
@@ -2562,6 +2601,70 @@ impl Sched {
             hi,
             write,
         });
+        None
+    }
+
+    /// One atomic operation on `[lo, hi)` of `key` (`[conc.mm.atomic.raw]`;
+    /// is74). This machine runs every order as `seq_cst`
+    /// (`[conc.mm.atomic.raw.5]`): the operation first acquires its
+    /// location's clock, then is checked against the PLAIN accesses — two
+    /// atomic accesses never race, an atomic and an unordered plain one do
+    /// (`[conc.mm.race.1]`) — and last releases into the location's clock.
+    /// Every earlier atomic operation on a location therefore happens before
+    /// every later one, the reads-from edges of a `seq_cst` execution and
+    /// more: the detector may miss a race a weaker order allows, as the
+    /// interleaving may miss its outcomes (`[conc.mm.atomic.raw.5]`), and
+    /// never invents one.
+    pub fn atomic_access(
+        &self,
+        me: TaskId,
+        key: RaceKey,
+        lo: usize,
+        hi: usize,
+        write: bool,
+    ) -> Option<RaceReport> {
+        let mut state = self.lock();
+        if !state.concurrent {
+            return None;
+        }
+        state.op(me, ObjKey::Mem(key), write);
+        if let Some(clock) = state.atomic_clocks.get(&(key, lo)).cloned() {
+            State::merge_vc(&mut state.tasks[me].vc, &clock);
+        }
+        let my_vc = state.task_vc(me);
+        let found = state
+            .accesses
+            .get(&key)
+            .and_then(|history| unordered_conflict(history, me, &my_vc, lo, hi, write));
+        if let Some((other, other_write)) = found {
+            let report = RaceReport {
+                other_task: format!("`{}` (task {other})", state.tasks[other].name),
+                other_write,
+            };
+            state.note(
+                Rule::RaceDetect,
+                format!("RACE on {key:?}: atomic access by task {me} and a plain one by task {other} unordered"),
+            );
+            return Some(report);
+        }
+        let tick = my_vc.get(me).copied().unwrap_or(0);
+        let history = state.atomic_accesses.entry(key).or_default();
+        match history
+            .iter_mut()
+            .find(|a| a.task == me && a.lo == lo && a.hi == hi && a.write == write)
+        {
+            Some(entry) => entry.tick = tick,
+            None => history.push(Access {
+                task: me,
+                tick,
+                lo,
+                hi,
+                write,
+            }),
+        }
+        let released = state.task_vc(me);
+        State::merge_vc(state.atomic_clocks.entry((key, lo)).or_default(), &released);
+        state.tick(me);
         None
     }
 
