@@ -1803,12 +1803,15 @@ mod tests {
             assert!(matches!(table.read_text(forged, 4), Err(FsErr::Row("io"))));
         }
         // s199 (`[os.fs.std]`, wolf-lang#424): 0, 1 and 2 are the standard
-        // streams — no open answers them, so `close` and the reads stay `io`
-        // there (#405 is the reading half); `fstat` is not asserted here,
-        // because what the test runner wired to them is the runner's.
+        // streams — no open answers them, so `close` stays `io` there.
+        // Since s200 (wolf-lang#405) the reads SERVE them: a read of zero
+        // bytes answers the empty text without touching the stream, whatever
+        // the test runner wired; `fstat` and the bytes themselves are not
+        // asserted here, because what is on the descriptors is the runner's
+        // (`tests/byte_surface.rs` wires them).
         for stream in 0..3 {
             assert!(matches!(table.close(stream), Err(FsErr::Row("io"))));
-            assert!(matches!(table.read_text(stream, 4), Err(FsErr::Row("io"))));
+            assert!(matches!(table.read_text(stream, 0), Ok(text) if text.is_empty()));
         }
 
         let fd = table.open(&path, 0).expect("opens");
