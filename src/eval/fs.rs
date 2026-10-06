@@ -330,8 +330,17 @@ impl FsTable {
     }
 
     /// `fs_read_chunk(fd, n) -> List[byte]`: the byte twin of [`Self::read_text`].
+    /// `0`, `1` and `2` read the standard stream itself (`[os.fs.std]`, s200,
+    /// wolf-lang#405) through a duplicate, so the offset is the one the
+    /// process shares with whoever started it.
     pub(crate) fn read_bytes(&mut self, handle: i128, want: i128) -> FsResult<Vec<u8>> {
-        let file = self.file(handle)?;
+        let mut std_file;
+        let file: &mut File = if (0..FIRST_HANDLE as i128).contains(&handle) {
+            std_file = std_stream(handle).ok_or(FsErr::Row("io"))?;
+            &mut std_file
+        } else {
+            self.file(handle)?
+        };
         // A zero-length read is the empty answer and never touches the file:
         // asking the host for zero bytes would forge `eof` (probed — the
         // compiled lane answers `""` here, at end of file or not).
@@ -355,16 +364,29 @@ impl FsTable {
 
     /// `fs_write(fd, text)`: the handle's own write, at the handle's cursor.
     pub(crate) fn write(&mut self, handle: i128, text: &str) -> FsResult<()> {
-        let file = self.file(handle)?;
-        file.write_all(text.as_bytes()).map_err(io_row)
+        self.write_bytes(handle, text.as_bytes())
     }
 
     /// `fs_write_chunk(fd, bytes)`: [`Self::write`]'s byte twin, at the
     /// handle's cursor (wolf-interp#112). A read-only, closed or forged handle
     /// is `io` (probed on wolf 0.2.14, both tiers).
+    ///
+    /// A standard stream (s200, `[os.fs.std]`) is written through a duplicate
+    /// here; `Machine::fs_call` routes `1` and `2` to the machine's capture
+    /// before they reach this table, so only `0` arrives.
     pub(crate) fn write_bytes(&mut self, handle: i128, bytes: &[u8]) -> FsResult<()> {
+        if (0..FIRST_HANDLE as i128).contains(&handle) {
+            let mut file = std_stream(handle).ok_or(FsErr::Row("io"))?;
+            return file.write_all(bytes).map_err(io_row);
+        }
         let file = self.file(handle)?;
         file.write_all(bytes).map_err(io_row)
+    }
+
+    /// Is `handle` a live handle, or one of the three standard streams? The
+    /// copy checks both sides before it moves a byte (`[os.fs.copy]`).
+    pub(crate) fn names_a_stream(&mut self, handle: i128) -> bool {
+        (0..FIRST_HANDLE as i128).contains(&handle) || self.file(handle).is_ok()
     }
 
     /// `fs_fstat(fd) -> [kind, size, modified_ms]` (`[os.fs.fstat]`): ONE
@@ -415,6 +437,7 @@ impl FsTable {
         let file = self.handle_file(handle)?;
         windows_unseekable(&file)?;
         let at = (&*file).stream_position().map_err(|e| {
+            note_host_error(&e);
             if e.kind() == std::io::ErrorKind::NotSeekable {
                 FsErr::Row("unseekable")
             } else {
@@ -439,6 +462,7 @@ impl FsTable {
         let want = usize::try_from(want).unwrap_or(usize::MAX).min(READ_CAP);
         let mut buf = vec![0u8; want];
         let got = positional_read(&file, &mut buf, off).map_err(|e| {
+            note_host_error(&e);
             if e.kind() == std::io::ErrorKind::NotSeekable {
                 FsErr::Row("unseekable")
             } else {
@@ -477,6 +501,37 @@ fn read_retrying(reader: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usiz
 /// The first handle an open answers (`[os.fs.std]`): `0`, `1` and `2` are the
 /// standard streams.
 const FIRST_HANDLE: usize = 3;
+
+thread_local! {
+    /// s200 (wolf-lang#407, `[os.fs.error]`): the host's number for the fs
+    /// call in flight. `Machine::fs_call` clears it on entry and copies it
+    /// into the task's word on the way out; the row mappers
+    /// ([`open_row`], [`io_row`], [`path_row`], [`seek_row`]) set it when the
+    /// host refuses. One call runs start to finish on one thread, so the
+    /// transport cannot carry one task's number into another's word.
+    static HOST_ERROR: std::cell::Cell<i128> = const { std::cell::Cell::new(0) };
+}
+
+/// Note the host's number for `error` (0 when std built the error itself).
+fn note_host_error(error: &std::io::Error) {
+    HOST_ERROR.with(|c| c.set(error.raw_os_error().map_or(0, i128::from)));
+}
+
+/// `os_error_text(code)` (`[os.fs.error]`): the host's words for a number as
+/// the Rust standard library renders them, without its ` (os error N)`
+/// suffix — the compiler's runtime's answer, word for word — and `""` for a
+/// code at or below zero or outside the host's `i32`.
+pub(crate) fn host_error_text(code: i128) -> String {
+    let Some(n) = i32::try_from(code).ok().filter(|n| *n > 0) else {
+        return String::new();
+    };
+    let full = std::io::Error::from_raw_os_error(n).to_string();
+    let suffix = format!(" (os error {n})");
+    full.strip_suffix(&suffix)
+        .unwrap_or(&full)
+        .trim_end()
+        .to_string()
+}
 
 /// The file a handle-only call reads through: a standard stream duplicated
 /// for the call, or a slot of the table.
@@ -534,6 +589,7 @@ fn std_stream(handle: i128) -> Option<File> {
 /// as out of range (`EINVAL`, a result below zero) is `invalid`, the rest
 /// `io` — the handle calls' posture ([`io_row`]).
 fn seek_row(error: std::io::Error) -> FsErr {
+    note_host_error(&error);
     FsErr::Row(match error.kind() {
         std::io::ErrorKind::NotSeekable => "unseekable",
         std::io::ErrorKind::InvalidInput => "invalid",
@@ -727,6 +783,7 @@ fn in_int_domain(value: i128) -> Result<i128, Row> {
 /// The open family's rows (`[os.fs.open]`): `not_found`, `denied`, `exists`,
 /// `io`. `invalid` never reaches here — it is decided before the open.
 fn open_row(error: std::io::Error) -> FsErr {
+    note_host_error(&error);
     FsErr::Row(match error.kind() {
         std::io::ErrorKind::NotFound => "not_found",
         std::io::ErrorKind::PermissionDenied => "denied",
@@ -750,7 +807,8 @@ fn open_row(error: std::io::Error) -> FsErr {
 ///
 /// The path calls keep their kinds — see [`path_row`]. There the entry is
 /// what is being resolved, so `not_found` and `denied` are the ANSWER.
-fn io_row(_error: std::io::Error) -> FsErr {
+fn io_row(error: std::io::Error) -> FsErr {
+    note_host_error(&error);
     FsErr::Row("io")
 }
 
@@ -766,6 +824,7 @@ fn io_row(_error: std::io::Error) -> FsErr {
 /// (probed at this pin), so `io` is the compatible row as well as the only
 /// declared one.
 pub(crate) fn path_row(error: &std::io::Error) -> FsErr {
+    note_host_error(error);
     FsErr::Row(match error.kind() {
         std::io::ErrorKind::NotFound => "not_found",
         std::io::ErrorKind::PermissionDenied => "denied",
@@ -1078,6 +1137,20 @@ impl Machine {
     /// property, and turning one into a row would hand a program's handler an
     /// arm the call never declared.
     pub(crate) fn fs_call(&mut self, name: &str, args: &[Value], span: Span) -> EvalOut {
+        // `[os.fs.error]` (s200, wolf-lang#407): every fallible call leaves
+        // the task its host number — 0 for a success or a failure decided
+        // before the host; the three total predicates leave it alone.
+        if matches!(name, "fs_exists" | "fs_is_dir" | "fs_is_file") {
+            return self.fs_call_served(name, args, span);
+        }
+        HOST_ERROR.with(|c| c.set(0));
+        let answer = self.fs_call_served(name, args, span);
+        let code = HOST_ERROR.with(std::cell::Cell::get);
+        self.set_last_os_error(code);
+        answer
+    }
+
+    fn fs_call_served(&mut self, name: &str, args: &[Value], span: Span) -> EvalOut {
         match name {
             // -- the open family: one call, three spellings ----------------
             "fs_open" | "fs_create" | "fs_open_mode" => {
@@ -1122,6 +1195,12 @@ impl Machine {
                 // machine's consistency and not an observable of a program.
                 let fd = int_arg(args, 0, name)?;
                 let answer = match fs_bytes_arg(args, 1, name)? {
+                    // s200 (`[os.fs.std]`): 1 and 2 are this machine's
+                    // capture, in program order with `print`.
+                    Ok(bytes) if fd == 1 || fd == 2 => {
+                        self.std_capture(fd, &bytes);
+                        Ok(Value::Unit)
+                    }
                     Ok(bytes) => self
                         .shared_fs()
                         .write_bytes(fd, &bytes)
@@ -1136,6 +1215,10 @@ impl Machine {
             "fs_write" => {
                 let text = self.fs_str_arg(args, 1, name)?;
                 let fd = int_arg(args, 0, name)?;
+                if fd == 1 || fd == 2 {
+                    self.std_capture(fd, text.as_bytes());
+                    return Ok(Value::Unit);
+                }
                 let answer = self.shared_fs().write(fd, &text).map(|()| Value::Unit);
                 self.fs_answer(name, answer, span)
             }
@@ -1161,6 +1244,41 @@ impl Machine {
                         ))
                     }
                     Err(err) => Err(err),
+                };
+                self.fs_answer(name, answer, span)
+            }
+            // `[os.fs.copy]` (s200, wolf-lang#417): one read and one write
+            // through this machine's buffer — the bytes and offsets of the
+            // compiled rungs, with the capture standing in for 1 and 2. Both
+            // handles first, then `max`; zero bytes at a positive `max` is
+            // `eof`.
+            "fs_copy_chunk" => {
+                let src = int_arg(args, 0, name)?;
+                let dst = int_arg(args, 1, name)?;
+                let max = int_arg(args, 2, name)?;
+                let both = {
+                    let mut fs = self.shared_fs();
+                    fs.names_a_stream(src) && fs.names_a_stream(dst)
+                };
+                if !both {
+                    return self.fs_answer(name, Err(FsErr::Row("io")), span);
+                }
+                if max <= 0 {
+                    return Ok(Value::Int(0, IntTy::INT));
+                }
+                let read = self.shared_fs().read_bytes(src, max);
+                let answer = match read {
+                    Err(err) => Err(err),
+                    Ok(bytes) => {
+                        let moved = bytes.len() as i128;
+                        let wrote = if dst == 1 || dst == 2 {
+                            self.std_capture(dst, &bytes);
+                            Ok(())
+                        } else {
+                            self.shared_fs().write_bytes(dst, &bytes)
+                        };
+                        wrote.map(|()| Value::Int(moved, IntTy::INT))
+                    }
                 };
                 self.fs_answer(name, answer, span)
             }
@@ -1437,6 +1555,16 @@ impl Machine {
     /// A row becomes an error VALUE with a note; a by-name refusal becomes
     /// the honest `unsupported`. [`super::net`]'s `net_answer`, for the same
     /// reason it exists there: one funnel, so no arm can forget the note.
+    /// Bytes a program writes to descriptor 1 or 2 (`[os.fs.std]`, s200): the
+    /// machine's own capture, the one `print` and `eprint` write.
+    fn std_capture(&mut self, fd: i128, bytes: &[u8]) {
+        if fd == 1 {
+            self.write_out_bytes(bytes);
+        } else {
+            self.err_out_bytes(bytes);
+        }
+    }
+
     fn fs_answer(&mut self, name: &str, answer: FsResult<Value>, span: Span) -> EvalOut {
         match answer {
             Ok(value) => Ok(value),
