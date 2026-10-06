@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### The kernel papercuts, lupin's half (s213, #200; wolf-lang #572, #575, #577, #579)
+
+wolf-lang s213 closes four gaps the PAX kernel worked around; lupin now
+answers each of its rows as the compiler's checked machine does (22
+witnesses in `tests/rulings_s213/`, 19 of them the s213 corpus rows
+verbatim). Two of the four spellings — `-> never` and `!` on an integer —
+are proposals with the maintainer's ruling owed; they move with it.
+
+- **#579, a module item through its module's name** (`[mem.static.4]`).
+  `counter.COUNT` reads, and inside `unsafe` writes, another module's
+  `var`; a qualified `var` access outside `unsafe` is **E1301** at the
+  qualified name. Module state is now keyed by its module, so a non-root
+  module's `var` written by its own fn before any read of it runs (it was
+  "not a local place"), and two modules' items of one name are two items.
+- **#577, a field of a raw element** (`[mem.unsafe.raw.5]`). A `*S` to a
+  `#[repr(c)]` struct carries the struct's C layout: `p[i]` steps by
+  `size_of(S)` (it stepped one byte), and `p[i].f`, `(*p).f` and nested
+  paths read and store the field's bytes at its offset, a compound operator
+  reading first. Row L4 is asked of the element at `align_of(S)` (1 when
+  packed). A whole `#[repr(c)]` element through `p[i]` is refused by name
+  (it read one byte).
+- **#575, `!` on an integer** (`[type.int.not]`, ruling owed). The bitwise
+  complement at the operand's width — `-x - 1` signed, `max - x` unsigned —
+  never a trap; a byte widens to `int`; a complemented literal adopts an
+  unsigned binding's type first (`const M: u32 = !0xfff`). `!` on a float or
+  a `str` is **E0409** at the operand.
+- **#572, `-> never`** (`[type.fn.never]`, ruling owed). `never` resolves as
+  a type; a call to a `never` fn needs nothing at run time. A `-> never`
+  body holding a `return`, or whose tail is `()` by shape, is **E0401** at
+  the `return` or the tail.
+
 ### The re-pin blockers: module state, the link, exact layout (is73, #190, #188, #197)
 
 r29 found lupin could not re-pin on wolf v0.2.23: kw09's
