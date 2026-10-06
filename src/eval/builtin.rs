@@ -59,6 +59,11 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // shape ("`reserve()` yields a handle; `init(h, v)` fills it") and the
     // corpus locks the spelling, so is03 implements it.
     "Pool",
+    // `fence(o)` (`[conc.mm.fence]`, kw11; is74): the one prelude name kw11
+    // adds. Its call is the evaluator's (`eval::rawop`), read before the
+    // operand, which is a mark; naming it here is what makes a user `fn
+    // fence` shadow it (W0304).
+    "fence",
     // In the stub, and deliberately not implemented: their semantics are
     // not in any pinned document, so this machine declines rather than
     // guesses. Naming them still resolves the *name*, which keeps the

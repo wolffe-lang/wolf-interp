@@ -41,6 +41,7 @@ mod os;
 pub mod place;
 mod placetrace;
 pub mod prov;
+pub(crate) mod rawop;
 pub mod region;
 pub mod repl;
 pub mod rules;
@@ -7527,6 +7528,20 @@ impl Machine {
         self.consumed_views.contains(&span)
     }
 
+    /// Whether the running frame's module declares an item named `name`.
+    fn module_declares(&self, name: &str) -> bool {
+        let module = self
+            .frames
+            .last()
+            .map(|f| f.module.clone())
+            .unwrap_or_default();
+        self.shared
+            .program
+            .modules
+            .get(&module)
+            .is_some_and(|m| m.items.contains_key(name))
+    }
+
     fn eval_call(&mut self, callee: &Expr, args: &[Arg], span: Span) -> EResult<Value> {
         // A method call is a call whose callee projects a member out of a
         // *value*. `[gram.item.use]`'s `path` production swallows the dots, so
@@ -7552,6 +7567,18 @@ impl Machine {
             && !self.local_exists("assert")
         {
             return self.eval_assert(args, span);
+        }
+
+        // `fence(o)` (`[conc.mm.fence]`; is74, wolf-interp#194): a prelude
+        // name, so a local or a module fn of the name shadows it; its operand
+        // is a mark, read before any argument would be evaluated.
+        if let ExprKind::Path(path) = &*callee.kind
+            && path.is_single()
+            && path.segments[0].name == "fence"
+            && !self.local_exists("fence")
+            && !self.module_declares("fence")
+        {
+            return self.fence(args, span);
         }
 
         // `size_of`, `align_of`, `offset_of` (`[abi.layout.query]`; is73,
@@ -8287,6 +8314,15 @@ impl Machine {
             }
             Receiver::Expr(expr) => (None, Some(self.eval_projected(expr)?)),
         };
+        // is74 (wolf-interp#185, #194): the volatile and atomic methods of a
+        // raw receiver. A `*T` is a copy — no retag, no claim, no write-back
+        // — and the order operands are marks, not expressions, so the call is
+        // run here before the general path would evaluate them.
+        if let Some(Value::Raw(ptr)) = &value
+            && rawop::is_raw_method(method)
+        {
+            return self.raw_method(*ptr, method, args, span);
+        }
         // Every method but the header reads takes its receiver WHOLE (the
         // maintainer's ruling of 2026-09-30, wolffe-lang/wolf-interp#149):
         // `push`, `get`, `pop`, an impl or home-module method's `self`, in any
