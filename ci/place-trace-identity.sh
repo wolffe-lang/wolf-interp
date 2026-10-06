@@ -36,15 +36,23 @@ trap 'rm -rf "$work"' EXIT
 ledger="$work/ledger.txt"
 : > "$ledger"
 
+# The per-run wall clock: GNU `timeout` (linux, git-bash), `gtimeout` where
+# coreutils is prefixed, nothing on a bare macOS runner. Run 37373503496
+# (macOS ladder job 111976563720) went red on the first try because
+# `timeout` is absent there: bash's "command not found" names the script
+# LINE, and the off and on runs were spelled on two different lines.
+if command -v timeout >/dev/null; then limit=(timeout 120)
+elif command -v gtimeout >/dev/null; then limit=(gtimeout 120)
+else limit=(); fi
+
 # One run: $1 = program, $2 = output prefix, $3 = trace file or empty.
+# Both spellings go through ONE command line, so nothing but the flag differs.
 run_one() {
   local cwd
+  local -a flag=()
+  [ -n "$3" ] && flag=("--trace-places=$3")
   cwd=$(mktemp -d "$work/cwd.XXXXXX")
-  if [ -n "$3" ]; then
-    (cd "$cwd" && timeout 120 "$bin" run "--trace-places=$3" "$1" < /dev/null > "$2.out" 2> "$2.err"; echo $? > "$2.rc")
-  else
-    (cd "$cwd" && timeout 120 "$bin" run "$1" < /dev/null > "$2.out" 2> "$2.err"; echo $? > "$2.rc")
-  fi
+  (cd "$cwd" && ${limit[@]+"${limit[@]}"} "$bin" run ${flag[@]+"${flag[@]}"} "$1" < /dev/null > "$2.out" 2> "$2.err"; echo $? > "$2.rc")
   rm -rf "$cwd"
 }
 
