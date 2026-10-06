@@ -1078,7 +1078,11 @@ impl Machine {
         self.initializing.push(name.to_owned());
         let value = self.eval(&binding.value);
         self.initializing.pop();
-        value
+        Ok(complement_adopt(
+            &binding.value,
+            value?,
+            binding.ty.as_ref(),
+        ))
     }
 
     fn finish(&mut self, result: EResult<Value>) -> Outcome {
@@ -4280,6 +4284,7 @@ impl Machine {
             )
             .map(|_: Value| ());
         }
+        let value = complement_adopt(&binding.value, value, binding.ty.as_ref());
         let was_literal = matches!(&value, Value::Int(_, ty) if ty.literal);
         let value = coerce(value, binding.ty.as_ref());
         // A literal meets its context HERE (issue #14): the annotation types
@@ -6056,7 +6061,16 @@ impl Machine {
             }
             UnOp::Not => match self.eval(operand)? {
                 Value::Bool(b) => Ok(Value::Bool(!b)),
-                other => unsupported(format!("`!` needs a bool, got {}", other.kind())),
+                // `[type.int.not]` (s213, wolf-lang#575, ruling owed): `!` on
+                // an integer flips every bit at its own width — total, so
+                // it never traps. A byte widens to `int` first
+                // (`[type.byte.op]`).
+                Value::Byte(b) => Ok(Value::Int(-i128::from(b) - 1, IntTy::INT)),
+                Value::Int(v, ty) => Ok(Value::Int(int_complement(v, ty), ty)),
+                other => unsupported(format!(
+                    "`!` needs a bool or an integer, got {}",
+                    other.kind()
+                )),
             },
             UnOp::Neg => match self.eval(operand)? {
                 // `[type.trait.op]`: prefix `-` on a user type is `Neg.neg`.
@@ -10749,6 +10763,48 @@ fn is_copy(value: &Value) -> bool {
             | Value::Proc(_)
             | Value::Duration(_)
     )
+}
+
+/// `[type.int.not]` (s213): the bitwise complement of `v` at `ty`'s width.
+/// A signed width's is `-v - 1`; an unsigned width's is `max - v`; both
+/// stay inside the type's range, so no mode (checked, wrapping,
+/// saturating) has anything to do. An unconstrained literal is
+/// complemented at the machine's signed computing width and stays a
+/// literal: where it meets an unsigned type its two's-complement bits are
+/// the complement there (`x & !0xfff`), and an annotated binding adopts it
+/// first ([`Machine::complement_adopt`]).
+fn int_complement(v: i128, ty: IntTy) -> i128 {
+    if ty.literal || ty.signed {
+        -v - 1
+    } else {
+        ty.range().1 - v
+    }
+}
+
+/// `[type.int.not]` (s213): a literal operand adopts the type its context
+/// expects FIRST, then complements — so `const MASK: u32 = !0xfff` is
+/// `0xffff_f000`, not the literal `-4096` the machine's computing width
+/// holds. The evaluator has no expected type at the `!`, so the binding
+/// that annotates one re-reads its complemented literal at that width: the
+/// two's-complement bits of `-v - 1` at an unsigned width ARE `max - v`.
+/// Only a complement (through parentheses) is re-read; any other negative
+/// literal keeps the binding's range check.
+fn complement_adopt(init: &Expr, value: Value, ty: Option<&Type>) -> Value {
+    let mut inner = init;
+    while let ExprKind::Group(e) = &*inner.kind {
+        inner = e;
+    }
+    let ExprKind::Unary { op: UnOp::Not, .. } = &*inner.kind else {
+        return value;
+    };
+    match (value, ty.and_then(int_of_type)) {
+        (Value::Int(v, lit), Some(named))
+            if lit.literal && !named.signed && named.bits < 127 && v < 0 =>
+        {
+            Value::Int(v.rem_euclid(1i128 << named.bits), named)
+        }
+        (value, _) => value,
+    }
 }
 
 /// A compound-assignment operator's binary operator.
