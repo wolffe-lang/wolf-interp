@@ -1,0 +1,20 @@
+//! counter — a public `var`, written and read by its own functions.
+
+/// The count.
+pub var COUNT: int = 40
+
+/// Add two.
+pub fn bump() {
+    // # Safety: one thread.
+    unsafe {
+        COUNT += 2
+    }
+}
+
+/// Read it.
+pub fn read() -> int {
+    // # Safety: one thread.
+    unsafe {
+        COUNT
+    }
+}

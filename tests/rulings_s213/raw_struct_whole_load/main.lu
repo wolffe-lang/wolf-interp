@@ -1,0 +1,20 @@
+// s213 probe (wolf-interp#200): a whole `#[repr(c)]` element read through a
+// raw pointer — the checked machine refuses the aggregate by name; this
+// machine now steps `p[i]` by the struct's size and refuses it by name too.
+import c "stdlib.h"
+
+#[repr(c)]
+struct Pair {
+    a: u64,
+    b: u64,
+}
+
+fn main() -> int {
+    // # Safety: one zeroed Pair from calloc; freed once.
+    unsafe {
+        let p = c.calloc(1, 16) as *Pair
+        let v = p[0]
+        c.free(p as *u8)
+        v.a as int
+    }
+}

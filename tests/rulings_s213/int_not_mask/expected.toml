@@ -1,0 +1,12 @@
+# s213 — wolf-lang#575: `int_not_mask` (wolf-lang 13b5315a corpus row, verbatim). `[expected]` is the lupin cell this witness
+# must answer: the compiler's checked answer (wolf-lang s213 head build d53e801b…), a ub record without its diagnostic.
+# `[trunk]` is what lupin 0.1.47 (4b60bea5…) and the compiler's checked machine answered (its native and release
+# rows are wolf-lang s213's gate) on kasumi (lupin-side/mkexp.py).
+issue = "wolf-lang#575"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "73728 77824 4294892730 4294967295 4096 57344\n" }
+
+[trunk]
+lupin   = { verdict = "unsupported", stdout = "", named = "`!` needs a bool, got i32" }
+checked = { verdict = "exit(0)", stdout = "73728 77824 4294892730 4294967295 4096 57344\n" }

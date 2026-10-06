@@ -1,0 +1,9 @@
+// s213 probe (wolf-interp#200, [type.int.not]): a complemented literal adopts
+// an unsigned binding's type first — a `let`, a module `const`, a `u16`.
+const LOW: u16 = !0xff
+
+fn main() {
+    let y: u32 = !0xfff
+    let z: u8 = !(0x0f)
+    print("{y} {LOW} {z}")
+}
