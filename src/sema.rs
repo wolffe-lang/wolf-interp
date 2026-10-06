@@ -3661,6 +3661,29 @@ impl TierWalk<'_> {
             } if self.raw_local(operand) && !self.in_unsafe() => {
                 Some(ring_diag("a raw pointer read", expr.span))
             }
+            // `[type.int.not]` (s213, wolf-lang#575, ruling owed): `!` reads
+            // `bool` and the integer types; on an operand this walk knows is
+            // a float or a `str` it is E0409 at the operand, the compiler's
+            // code and span.
+            ExprKind::Unary {
+                op: crate::ast::UnOp::Not,
+                operand,
+            } if matches!(self.classify(operand), LitClass::Float | LitClass::Str) => {
+                let what = if self.classify(operand) == LitClass::Float {
+                    "a float"
+                } else {
+                    "a `str`"
+                };
+                Some(Diag::new(
+                    "E0409",
+                    operand.span,
+                    "type.int.not",
+                    format!(
+                        "`!` cannot be applied to {what}: `!` works on `bool` (logical not) and \
+                         on the integer types (the bitwise complement, `[type.int.not]`)"
+                    ),
+                ))
+            }
             ExprKind::Unary { operand, .. } => self.expr(operand),
             ExprKind::Binary { lhs, rhs, .. } => self.expr(lhs).or_else(|| self.expr(rhs)),
             ExprKind::Cast { expr: operand, ty } => {
