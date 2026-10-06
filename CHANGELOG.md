@@ -1,6 +1,42 @@
 # Changelog
 
-## Unreleased
+## 0.1.48 — 2026-10-06
+
+THE FORTY-EIGHTH (is72 and is73), the lupin half of wolf 0.2.25.
+**Pin: `294d626d` (wolf-lang v0.2.24, the TAG), two releases forward of
+0.1.47's `8e36bc1a` (v0.2.22).** Thirty-four commits since 0.1.47, in
+two lanes: is72 (14, the place trace) and is73 (20, the re-pin
+blockers). lupin now carries the spec and corpus of the compiler it
+pairs with, and the 0.2.25 pairing drops the sixteen wolf-lang gate pins
+that waited on #190 and #188.
+
+### The re-pin: 8e36bc1a → 294d626d (r30)
+
+- **Census.** Corpus files 947 → 1002 (55 new, every one an entry; none
+  leaves), entries 900 → 955, members 47. Anchors 569 → 595: 26 added
+  (`abi.interrupt`, `abi.layout.*`, `abi.link*`, `conc.mm.atomic.*`,
+  `conc.mm.fence`, `mem.prov.device`, `mem.static*`, `mem.unsafe.raw.4`,
+  `mem.unsafe.volatile*`), none dropped. s209's L4 clause
+  (`mem.unsafe.raw.4`), which 0.1.47 answered ahead of its anchor, is in
+  the vendored registry now.
+- **The walk.** 749 entries reach `run`: 704 match, 94 are dynamic
+  counterparts, 64 conservatism, 89 out of scope, 4 mismatch, every one
+  filed. The bundle: 1042 programs, 995 records, 313 anchors covered (the
+  ratchet 290 → 313).
+- **DIV-2026-028, new** (wolf-lang#603). kw11's
+  `conc/atomic_race_plain.lu` is `check: pass` at phase `wir`: four tasks
+  race on one non-atomic word, UB that the row "promises only compiles".
+  This machine detects the race and traps `race`, which
+  `[conc.mm.race.3]` permits, and `pass` cannot spell it. Filed as a
+  known divergence; neither machine changes.
+- **Not mirrored yet, by name.** kw11's other nine `conc/atomic_*` rows
+  (raw-pointer atomics and `fence`, wolf-interp#194) decline at resolve
+  and count out of scope; `conc/atomic_outside_unsafe.lu` and kw07's
+  `memory/volatile_outside_unsafe.lu` (#185) pin E1301 on a surface this
+  machine does not resolve, and the conformance gate names both.
+- is73's two rows ruled ahead of the old pin (`grammar/attr_repr_unimplemented.lu`,
+  `grammar/attr_section.lu`) are re-spelled at this pin; both waivers
+  retired by name.
 
 ### The re-pin blockers: module state, the link, exact layout (is73, #190, #188, #197)
 
@@ -43,12 +79,51 @@ or refuses by name where the clause says the machines do.
   `[proto.record.first]`; seed `0x1001f43a57eed01` at the v0.2.23 pin found
   it. The harness checks `[proto.record.first]`'s record now, and the
   seed's mutant is kept (`tests/fuzz_seeds/`).
-- At this pin (v0.2.22) two rows are ruled ahead of it until the re-pin
-  re-spells them: `grammar/attr_repr_unimplemented.lu` (packed, now
-  implemented) and `grammar/attr_section.lu` (`#[section]` on a fn, now
-  refused by name). Proven on an overlay of wolf-lang v0.2.23 (`8edac3ee`):
-  the walk completes, 982 files, 935 entries, 3 mismatches, each a standing
-  DIV entry (DIV-2026-019, DIV-2026-027).
+- At the old pin (v0.2.22) two rows were ruled ahead of it until the
+  re-pin re-spelled them: `grammar/attr_repr_unimplemented.lu` and
+  `grammar/attr_section.lu`. The re-pin to v0.2.24 above carries both.
+  is73 proved the walk on an overlay of v0.2.23 (`8edac3ee`): 982 files,
+  935 entries, 3 mismatches, each a standing DIV entry; r30 re-measured
+  that overlay byte for byte before choosing v0.2.24.
+
+### The place trace: `lupin --trace-places` (is72)
+
+The book's chapter 7 asked what a plain `=` on a `str` field does (it
+copies: `str` is `Copy`). lupin now shows it. `--trace-places` writes one
+JSON line after every statement of every function activation, and after a
+body's tail, naming the state of every place in the executing frame: each
+binding and every struct field, tuple element, and the list elements and map
+values the program addressed.
+
+- **Spelling.** `lupin --trace-places FILE` and `lupin run --trace-places
+  FILE` write the trace to stderr; `--trace-places=PATH` writes it to PATH.
+  Stdout is never used. `--json` refuses the flag, and so does any position
+  before a subcommand.
+- **Schema version 1** (`"trace":1`, manual chapter 6,
+  `docs/manual/06-place-trace.md`). A line carries `task`, `fn`, `depth`,
+  `at` (`"line:col"`), `tail:true` after a body's tail, `trap:<kind>` when
+  the statement trapped, then `places` and `events`. A place has `path`
+  (`p.lead`, `t[0]`, `xs[2]`, `m["k"]`), `state` (`live`, `moved`,
+  `uninit`), `type`; `value` for a live scalar or `str`; `reinit` on a place
+  written after a move; `by` (`take`, `move`, `plain`, `match`, `freeze`,
+  `mut`) and `at` on a moved one. An event is a `move`, `reinit` or `copy`
+  (`by` `plain` or `copy`, and `to` when the value went into a `let`). A
+  container lists at most 16 addressed elements, lowest first, with `len`
+  and `elided` (`memory/byte_list_ledger.lu` wrote 65,536 per line before
+  the cap).
+- **The trace and the trap cannot disagree.** A place's state is read from
+  `SlotState`, the field the `use-after-move` trap checks; which spelling
+  moved it, and what was copied, live in side records that exist only while
+  the trace is on.
+- **The trace changes nothing.** `ci/place-trace-identity.sh` runs every
+  vendored corpus file through the release binary with the flag off and on
+  and byte-compares stdout, stderr (trace lines aside) and exit, on every CI
+  ladder (ubuntu, macOS, windows). Nine goldens (`tests/place_trace/`:
+  `examples/pack.lu`, the book's ch07 §7.2 tree and its moved leaf, take,
+  copy, plain move, elements, granules, the 16-element cap). A planted break
+  (a `Copy`-shaped initializer moving under the flag) was seen red in CI
+  and reverted.
+
 
 ## 0.1.47 — 2026-10-05
 
