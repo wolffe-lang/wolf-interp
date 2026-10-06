@@ -1,0 +1,12 @@
+// s213 probe (wolf-interp#200): a `pub var` written by its own non-root
+// module's fn before any read of it, then read through that module.
+use counter
+
+fn main() -> int {
+    // # Safety: one thread.
+    unsafe {
+        counter.bump()
+        print("{counter.read()}")
+    }
+    0
+}
