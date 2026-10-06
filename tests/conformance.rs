@@ -275,30 +275,36 @@ fn is_filed_divergence(path: &str) -> bool {
 /// that re-spells the row; the entry leaves when the re-pin carries that
 /// commit, and [`a_row_ruled_ahead_of_the_pin_answers_as_ruled`] asserts what
 /// the row does meanwhile, so the list hides nothing.
-const RULED_AHEAD_OF_PIN: &[(&str, Verdict, &str)] = &[
+const RULED_AHEAD_OF_PIN: &[(&str, Verdict, &str)] = &[];
+
+/// Pinned rows whose resolve-rung code belongs to a surface this machine
+/// does not mirror yet, each naming its open issue. The surface does not
+/// resolve here, so the row takes the default path — the resolve rung
+/// completes and every deeper rung is declined by name — instead of
+/// answering the pinned code. A row leaves when its mirror lands and the
+/// code is answered; the run walk counts the same rows out of scope.
+const AWAITING_MIRROR: &[(&str, &str)] = &[
     (
-        "grammar/attr_repr_unimplemented.lu",
-        Verdict::Pass,
-        "kw08's `[abi.layout.packed]` (K4; wolf-interp#188, is73): `#[repr(c, packed)]` \
-         is implemented, so the row's struct resolves and runs. wolf 0.2.23 (8edac3ee) \
-         re-spells the row `#[repr(c, transparent)]`, which this machine refuses E0817 \
-         (tests/rulings_is70/attr_repr_unimplemented).",
+        "memory/volatile_outside_unsafe.lu",
+        "kw07's `read_volatile`/`write_volatile` outside `unsafe` pins E1301 \
+         (`[mem.unsafe.volatile]`); lupin's half is wolf-interp#185",
     ),
     (
-        "grammar/attr_section.lu",
-        Verdict::Unsupported,
-        "kw09's `[abi.link.section]` (K6; wolf-interp#190, is73): `#[section]` on a fn \
-         is implemented, and a placed section is refused by name here (no image). wolf \
-         0.2.23 (8edac3ee) re-spells the row: `#[section]` on a `const` and \
-         `#[link_section]`, both E0817 (tests/rulings_is73/attr_section).",
+        "conc/atomic_outside_unsafe.lu",
+        "kw11's raw-pointer atomics and `fence` outside `unsafe` pin E1301 \
+         (`[conc.mm.atomic.raw]`); lupin's half is wolf-interp#194",
     ),
 ];
+
+fn is_awaiting_mirror(path: &str) -> bool {
+    AWAITING_MIRROR.iter().any(|(row, _)| path.ends_with(row))
+}
 
 /// Pinned rows this machine declines by name at resolve (is73,
 /// wolf-interp#190), whatever the row pins: module state of a type that is
 /// not static data (`[mem.static.3]`), and a declared link-time symbol
-/// (`[abi.link.extern]`: the machines model no link). The last two arrive
-/// with the v0.2.23 re-pin; listing them now is harmless before it.
+/// (`[abi.link.extern]`: the machines model no link). The last two arrived
+/// with the 294d626d re-pin (r30).
 const DECLINED_AT_RESOLVE: &[&str] = &[
     "memory/read_param_escape_static.lu",
     "memory/static_list_let.lu",
@@ -322,6 +328,15 @@ fn a_row_ruled_ahead_of_the_pin_answers_as_ruled() {
         assert_eq!(&observation.verdict, want, "{row}: {why}");
     }
 }
+
+// (is73's `RULED_AHEAD_OF_PIN` stood here: `grammar/attr_repr_unimplemented.lu`,
+// whose `#[repr(c, packed)]` this machine implements since is73
+// (wolf-interp#188) while the vendored v0.2.22 row pinned E0817, and
+// `grammar/attr_section.lu`, whose `#[section]` on a fn is refused by name
+// since is73 (#190). The 294d626d pin (r30, wolf-lang v0.2.24) carries
+// both re-spellings (`#[repr(c, transparent)]`; `#[section]` on a `const`
+// and `#[link_section]`, E0817), and both waivers retired by name when
+// `a_row_ruled_ahead_of_the_pin_answers_as_ruled` went red.)
 
 // (is70's `RULED_AHEAD_OF_PIN` stood here: `memory/unsafe_sig.lu`, which
 // this machine ran (kw02's `[mem.unsafe.sig]` admits `*T` in a private fn's
@@ -657,7 +672,7 @@ fn every_parseable_file_resolves_under_sema_lite() {
             code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E0809"
             | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102" | "E1103"
             | "E1301" | "E1302" | "E0817" | "E0818" | "E0708" | "E0819" | "E0820" | "E0821"),
-        ) = pinned_code(case.check.as_ref())
+        ) = pinned_code(case.check.as_ref()).filter(|_| !is_awaiting_mirror(&case.path))
         {
             assert_eq!(
                 observation.verdict,
@@ -743,7 +758,7 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
                 | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101"
                 | "E1102" | "E1103" | "E1301" | "E1302" | "E0817" | "E0818" | "E0708"
                 | "E0819" | "E0820" | "E0821"),
-            ) = pinned_code(case.check.as_ref())
+            ) = pinned_code(case.check.as_ref()).filter(|_| !is_awaiting_mirror(&case.path))
             {
                 assert_eq!(
                     observation.verdict,
