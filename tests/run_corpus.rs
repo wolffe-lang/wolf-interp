@@ -2147,13 +2147,51 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("rows/unit_discard_unit_main.lu", "exit(0)"),
     ("typecheck/cast_narrow_in_range.lu", "exit(0)"),
     ("typecheck/cast_narrow_wrapping_truncates.lu", "exit(0)"),
-    // is73: kw08's `[abi.layout.packed]` (wolf-interp#188) implements
-    // `#[repr(c, packed)]`, so `attr_repr_unimplemented.lu`'s struct runs.
-    // The pinned header still says `fail(E0817)` until the re-pin carries
-    // wolf 0.2.23, which re-spells the row `#[repr(c, transparent)]`; the
-    // census counts it static-conservatism meanwhile (is70 ledgered
-    // `memory/unsafe_sig.lu` the same way, r28 retired it).
-    ("grammar/attr_repr_unimplemented.lu", "exit(0)"),
+    //
+    // The 294d626d pin (r30, wolf-lang **v0.2.24** — the TAG, two releases
+    // forward of 8e36bc1a): TWENTY-SIX entries newly reach `run`, and
+    // `grammar/attr_repr_unimplemented.lu` leaves (is73 ledgered it here
+    // while the v0.2.22 row's `#[repr(c, packed)]` ran; v0.2.24 re-spells it
+    // `#[repr(c, transparent)]`, refused E0817 at resolve).
+    //
+    // TWENTY-FIVE match their `check:` byte for byte: kw08's
+    // `comptime/layout_query_repr_c.lu` and
+    // `memory/packed_fields_at_offset_of.lu` (is73, #188); kw09's
+    // `memory/static_{const_let,var,str_literals}.lu` (is73, #190); the
+    // provenance rows `memory/prov_*` and `memory/raw_deref{,_signed}.lu`;
+    // s210's five `rows/unit_discard_tail_if*` rows; s209's
+    // `memory/raw_aligned_control.lu` and its six L4 rows, which this
+    // machine answers `ub(mem.ub)` at row L4 since 0.1.47 (s209's mirror).
+    // ONE is FILED (DIV-2026-028, wolf-lang#603): kw11's
+    // `conc/atomic_race_plain.lu` is `check: pass`, and this machine traps
+    // `race` as `[conc.mm.race.3]` permits. kw11's nine other rows decline
+    // by name at resolve (wolf-interp#194) and do not reach `run`.
+    ("comptime/layout_query_repr_c.lu", "exit(0)"),
+    ("conc/atomic_race_plain.lu", "trap(race)"),
+    ("memory/packed_fields_at_offset_of.lu", "exit(0)"),
+    ("memory/prov_addr_with_addr.lu", "exit(0)"),
+    ("memory/prov_cast_round_trip.lu", "exit(0)"),
+    ("memory/prov_expose_round_trip.lu", "exit(0)"),
+    ("memory/prov_is_null.lu", "exit(0)"),
+    ("memory/prov_narrow_cast.lu", "exit(0)"),
+    ("memory/prov_narrow_cast_trap.lu", "trap(overflow)"),
+    ("memory/raw_aligned_control.lu", "exit(0)"),
+    ("memory/raw_deref.lu", "exit(0)"),
+    ("memory/raw_deref_signed.lu", "exit(0)"),
+    ("memory/raw_ub_misaligned_u16_read.lu", "ub(mem.ub)"),
+    ("memory/raw_ub_misaligned_u16_write.lu", "ub(mem.ub)"),
+    ("memory/raw_ub_misaligned_u32_read.lu", "ub(mem.ub)"),
+    ("memory/raw_ub_misaligned_u32_write.lu", "ub(mem.ub)"),
+    ("memory/raw_ub_misaligned_u64_read.lu", "ub(mem.ub)"),
+    ("memory/raw_ub_misaligned_u64_write.lu", "ub(mem.ub)"),
+    ("memory/static_const_let.lu", "exit(0)"),
+    ("memory/static_str_literals.lu", "exit(0)"),
+    ("memory/static_var.lu", "exit(0)"),
+    ("rows/unit_discard_tail_if.lu", "exit(0)"),
+    ("rows/unit_discard_tail_if_chain.lu", "exit(0)"),
+    ("rows/unit_discard_tail_if_closure.lu", "exit(0)"),
+    ("rows/unit_discard_tail_if_leaves.lu", "exit(0)"),
+    ("rows/unit_discard_tail_if_value_row.lu", "exit(0)"),
 ];
 
 // (is70's `RULED_AHEAD_OF_PIN` stood here: `comptime.lu`, whose `#[noalloc]`
