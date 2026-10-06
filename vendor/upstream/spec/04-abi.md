@@ -122,7 +122,7 @@ AAPCS64, win64, Apple arm64 deltas).
   other `S` is **E0818**, naming it (K7, STATUS #31 — wolf-lang#524).
   In particular wolf has no interrupt calling convention: an interrupt
   or exception enters through an assembly trampoline that calls an
-  `export fn` with the C convention (KWC F7); before the rule
+  `export fn` with the C convention (`[abi.interrupt]`); before the rule
   `extern "x86-interrupt" fn` compiled as an ordinary function
   returning with `ret`.
 - `[abi.c.export]` `export fn f(…) { … }`, and `extern "c" fn f(…)`
@@ -178,16 +178,71 @@ AAPCS64, win64, Apple arm64 deltas).
   (`[abi.native.layout]`). Padding is never read or written. The
   checked machine and the reference interpreter refuse a
   whole-aggregate raw load or store by name (they have no byte-level
-  aggregate) rather than model a layout. `packed`, `align(N)`,
-  `transparent` and the comptime `size_of` / `align_of` / `offset_of`
-  are KWC F4's later half: E0817 and E0708 until then. Witnesses:
-  `memory/raw_repr_c_layout.lu`, and `repr_c_raw_layout.rs`, which
-  holds a C compiler to both directions on both compiling tiers.
+  aggregate) rather than model a layout; a field read or written as a
+  scalar at its `offset_of` (`[abi.layout.query]`) is an ordinary raw
+  access every machine runs. `transparent` is refused by name (E0817)
+  until a lane rules it. Witnesses: `memory/raw_repr_c_layout.lu`, and
+  `repr_c_raw_layout.rs`, which holds gcc and clang to both directions
+  on both compiling tiers.
+- `[abi.layout.packed]` `#[repr(c, packed)]` (K4, kw08) is the C
+  layout with every field at the next byte: alignment 1, no padding
+  anywhere, the size the sum of the fields' — gcc's and clang's
+  `__attribute__((packed))`. A packed struct as a field of another
+  struct is placed at alignment 1; a struct field inside a packed
+  struct sits at whatever offset the bytes before it leave — except an
+  `align(N)` struct, which a packed struct may not hold, directly or
+  inside a field (E0820): gcc and clang on SysV and Apple targets pack
+  it at the next byte, the MSVC ABI keeps its alignment, and wolf does
+  not pick one. Through a
+  raw pointer the fields are loaded and stored with the alignment their
+  offset guarantees (`align 1` for a `u64` at offset 2), never the
+  natural one, so no tier assumes an aligned address it does not have,
+  and a packed field access is never UB row L4 (`[mem.unsafe.raw.4]`:
+  the struct's alignment, 1, is the one the access needs).
+  A packed field may be read and written but **not lent**: a `mut`
+  argument or receiver, or an aggregate passed or received `read`,
+  hands the callee the field's address, which may be misaligned for its
+  type, so it is a compile error naming the field (E0819); copy the
+  field out, lend the copy, write it back. Witnesses:
+  `memory/raw_repr_packed_layout.lu`, `memory/packed_field_lend.lu`.
+- `[abi.layout.align]` `#[repr(c, align(N))]` (K4, kw08), `N` a power
+  of two from 1 to 2^28 (gcc's ceiling), is the C layout with the
+  struct's alignment raised to at least `N` and its size rounded up to
+  that alignment — gcc's and clang's `__attribute__((aligned(N)))`. As
+  a field it lands on the next multiple of its alignment and raises its
+  container's. `packed` and `align(N)` are spelled beside `c` (the
+  layout they modify is the C one); a struct is not both; neither
+  applies to a generic struct; any of these, or an `N` that is not such
+  a power, is E0820. A packed or aligned struct does not cross the C
+  membrane **by value** (`[abi.c.types]`): its psABI classification
+  differs per target and is not lowered, so the compiling tiers refuse
+  the parameter or result by name; a pointer to it crosses. A local, a
+  value's field and a `List` element keep wolf's own layout
+  (`[abi.native.layout]`): no address of one exists, so its bytes are
+  never observed. Witness: `memory/raw_repr_align_layout.lu`.
+- `[abi.layout.query]` `size_of(T)`, `align_of(T)` and
+  `offset_of(T, field)` (K4, kw08) answer at compile time for every
+  scalar and every `#[repr(c)]` struct — packed and aligned included —
+  from this clause's layout, never codegen's: a scalar is its natural
+  size and alignment (a raw pointer field is 8, aligned 8), a struct's
+  numbers are `[abi.layout.c]`'s as `packed` and `align(N)` modify
+  them. `offset_of`'s second argument is a field name, not an
+  expression; a name the struct lacks is E0403. Every other type — a
+  struct without `#[repr(c)]` or one with a native-layout field, an
+  enum, a tuple, `str`, a container — has the native layout, which
+  `[abi.native.layout]` leaves free, so a query on it is E0708. The
+  answers are comptime folds, identical on every machine; the compiling
+  tiers' raw accesses use the same layout, and `repr_c_raw_layout.rs`
+  holds each number to what gcc and clang print for `sizeof`,
+  `_Alignof` and `offsetof`. Witnesses: `comptime/layout_query_repr_c.lu`,
+  `comptime/size_of_layout.lu`, `comptime/align_of_layout.lu`,
+  `comptime/offset_of_layout.lu`, `memory/packed_fields_at_offset_of.lu`.
 - `[abi.c.types]` Only repr(c)-compatible types cross a membrane by
   value: scalars (the sized integers, `int`/`uint` as 64-bit, `byte`,
   `bool`, `f32`, `f64`), raw pointers (`*T` stands in a membrane
   signature by `[mem.unsafe.sig]`), and non-generic `#[repr(c)]`
-  aggregates whose fields cross. Anything else — `str`, a container, a
+  aggregates whose fields cross and which are neither packed nor
+  aligned (`[abi.layout.align]`). Anything else — `str`, a container, a
   struct without `#[repr(c)]`, an error union (`[abi.err.row]`) — is a
   compile error with a fix-it naming the nearest compatible shape
   (E1201). E1201 is not built yet: until it is, the compiling tiers
@@ -271,9 +326,10 @@ AAPCS64, win64, Apple arm64 deltas).
   nothing and emits objects only (`--emit=obj`, or the IR and WIR
   dumps); `bin` and `wolf run` are refused by name, as are `--checked`
   and `--profile-gen`, which are the hosted runtime's. The object has no
-  `main` shim, no runtime library, no ambient-region allocation, and
-  imports only the hook list (`[abi.target.none.hooks]`) and the
-  program's own `extern "c"` declarations. A construct that needs more
+  `main` shim and no hosted runtime, and imports only the hook list
+  (`[abi.target.none.hooks]`), the freestanding runtime's symbols when
+  it allocates (`[abi.target.none.alloc]`), and the program's own
+  `extern "c"` declarations. A construct that needs more
   is refused BY NAME at the construct, on both compiling tiers alike,
   before any backend runs: `` `print` needs the hosted runtime (target
   x86_64-unknown-none) `` — and likewise `env_args`, `read_line`, a `str`
@@ -293,20 +349,54 @@ AAPCS64, win64, Apple arm64 deltas).
   has no site; it must not return, and the compiler emits `ud2` after
   the call; (b) `memcpy`, `memmove`, `memset` and `memcmp` with C's
   meaning, which a tier may emit for an aggregate copy; (c) the
-  program's own `extern "c"` declarations. The program supplies (a) and
-  (b), in wolf (`export fn`) or assembly. On a hosted target
+  program's own `extern "c"` declarations; (d) for a program that
+  allocates, the allocator pair `wolf_alloc(size: i64, align: i64) ->
+  *u8` and `wolf_free(p: *u8, size: i64, align: i64)` (K8(b) = B),
+  which only the freestanding runtime calls (`[abi.target.none.alloc]`).
+  The program supplies (a), (b) and (d), in wolf (`export fn`) or
+  assembly; the freestanding runtime defines (b) as weak symbols, so a
+  program that defines its own wins at the link. On a hosted target
   `wolf_trap` is the runtime's own report-and-exit: a hosted program
   that imports it (a freestanding module's logic under a hosted test,
   say) links it as an alias of the runtime's sited reporter. The alias
   is made at the link and only for a program that imports the hook,
   and hosted code keeps calling the runtime's own reporters, so no
   other hosted program changes by a byte.
-- `[abi.target.none.alloc]` No allocating construct compiles for the
-  freestanding target (K8(b) = A): `List`, `Map`, `Pool`, string
-  interpolation, a capturing closure, `region` and a boxed channel
-  payload are each refused by name (`` `List` allocates, and target
-  x86_64-unknown-none has no allocator ``). An allocator hook lifts this
-  in its own lane (KWC kw12).
+- `[abi.target.none.alloc]` On the freestanding target `List`, `Map`,
+  string interpolation (every hole but a float, which is refused as the
+  float it is), a capturing closure and `region` (its budget, its ledger
+  and `live_region_bytes` included) compile as on a hosted target, with
+  the same meaning, against the freestanding runtime: the `no_std`
+  build of the region runtime, shipped beside `wolf` as
+  `libwolf_rt_none.a` (the same ELF archive from every host). It defines
+  the hosted runtime's symbols for those constructs, with their
+  signatures and layouts, and imports exactly `wolf_alloc`, `wolf_free`
+  and `wolf_trap`. A build whose object calls into it writes the archive
+  beside the object, `K.rt-none.a` for `-o K.o`; the boot code's link
+  takes it after the object. The hook contract: `wolf_alloc` returns
+  `size` writable bytes, not necessarily zeroed, at a multiple of
+  `align` (a power of two; this runtime asks for 16, with `size` a
+  positive multiple of 16), and must not return null — a null is
+  `alloc-contract` through `wolf_trap`, and running out is the hook's
+  own policy; `wolf_free` is called exactly once per block the runtime
+  is done with, with the `size` and `align` it was allocated with,
+  never with null — a region's chunks and header when the region is
+  freed, an interpolation's build buffer when it finishes. A block
+  allocated outside every `region` (the process root) is never freed.
+  The runtime keeps one ambient-region slot and takes no lock: the
+  target has no threads, and a program that runs wolf code on several
+  CPUs must not allocate from two at once. A fault inside the runtime (a
+  breached budget, a negative size) reaches `wolf_trap` with its kind
+  and no site, `(null, 0, 0, 0)`. Still refused by name, as constructs
+  the freestanding runtime does not carry: `Pool`, `freeze`, a boxed
+  channel payload, and — with no scheduler — `spawn`, `spawn proc`
+  (`Proc`), channels and `par` (`` `Pool` allocates, and the
+  freestanding runtime (libwolf_rt_none.a) does not carry it (target
+  x86_64-unknown-none) ``). Witness:
+  `crates/wolf_driver/tests/freestanding_alloc.rs`, which builds one
+  report through the hosted runtime and through this one over a bump
+  allocator written in wolf, linked `-nostdlib`, and compares the
+  bytes.
 - `[abi.target.none.codegen]` Code generated for `x86_64-unknown-none`
   uses no red zone, no x87/MMX/SSE/AVX register and no stack protector,
   keeps frame pointers, and is position-independent under the small
@@ -374,6 +464,98 @@ AAPCS64, win64, Apple arm64 deltas).
   release tier, outlined to a generated assembly file on the native tier,
   which has none). **Not yet implemented**: until then every machine
   answers an `asm` block `unsupported` by name.
+
+## §7 Linker control `[abi.link]`
+
+- `[abi.link.section]` `#[section(".name")]` on a function or on a
+  module `let`/`var` (`[mem.static]`) places its code or data in the
+  object section `.name`, on both compiling tiers, hosted and
+  freestanding (K6(a), STATUS #31). The name is one string of printable
+  ASCII with no space, quote or comma; anything else, a second argument,
+  and the attribute on a `const` (which has no storage) or any other
+  position are E0817. Section names are the object format's: this cut
+  places sections in ELF objects (the linux hosts and
+  `x86_64-unknown-none`); on a Mach-O or COFF target `#[section]` is
+  refused by name on both tiers (`section placement on a Mach-O
+  target`). Module state is emitted whether or not anything reads it,
+  so a placed `let`/`var` is in its section; an `export fn` is kept by
+  every tier, and a placed function that is not exported lands in its
+  section wherever a tier emits it (the release tier may inline it and
+  drop the body). `link_section`, Rust's spelling, is E0817 naming
+  `section`. The checked machine and lupin have no image: a program
+  with `#[section]` is `unsupported` there with the construct `section
+  placement`, never run as if the attribute were absent. Witness:
+  `crates/wolf_driver/tests/static_sections.rs` (the sections by
+  `objdump`, both tiers, hosted and freestanding).
+- `[abi.link.extern]` `extern "c" let NAME: *T`, a module item with no
+  initializer, declares that the symbol `NAME` is defined at link time —
+  by a linker script (`__kernel_end`), an assembly label, or the C
+  library. Its value is the symbol's **address**, as a `*T`: naming it
+  is free and safe, and using the pointer is raw-tier like any `*T`
+  (`[mem.unsafe.raw.1]`). A type that is not a raw pointer, an
+  initializer, or the form anywhere but a module's top level is
+  **E0821**. The checked machine and lupin model no link: a program that
+  names one is `unsupported` with the construct `the link-time symbol
+  NAME`.
+- `[abi.link.script]` The link of a freestanding image is the consuming
+  build's (K6(b) = A): wolf emits objects (`--emit=obj`, with any listed
+  assembly beside them, `[abi.asm.link]`), and the image's linker
+  script, boot header and link line belong to the build that consumes
+  them. A script places module state's sections (`.rodata`, `.data`,
+  `.bss`, and every `#[section]` name) and `.got` (the native tier
+  reaches an `extern "c" let` through it). Each module item is defined
+  in exactly one of a build's objects, global, under its mangled name;
+  the others refer to it.
+
+## §8 Interrupts `[abi.interrupt]`
+
+- `[abi.interrupt]` Wolf has no interrupt calling convention (K7 = B,
+  STATUS #31): no ABI string names one (E0818, `[abi.c.seams]`) and no
+  function wolf compiles returns with `iretq`. An interrupt or
+  exception enters through an assembly trampoline the root `wolf.pkg`
+  lists (`[abi.asm.link]`) and reaches wolf as an ordinary `export fn`
+  under the C convention (`[abi.c.export]`). On `x86_64-unknown-none`
+  the trampoline keeps this contract with its handler:
+  (1) the CPU has aligned the stack to 16 bytes and pushed SS, RSP,
+  RFLAGS, CS and RIP, and an error code for the vectors that carry one
+  — 8, 10, 11, 12, 13, 14, 17 and 21 (Intel SDM vol. 3A §6.13 and Table
+  6-1) and 29 and 30 (AMD64 APM vol. 2 §8.2, Table 8-1); for every
+  other vector the trampoline pushes a zero in its place, so every
+  frame has one shape, and then it pushes the vector number;
+  (2) it pushes the fifteen general registers, %rax first and %r15
+  last, and passes the frame's address as the handler's one argument
+  (%rdi), with %rsp 16-aligned at the call and the direction flag clear
+  (the psABI's state at a function's entry); (3) the frame is a
+  `#[repr(c)]` struct of 22 `u64` fields, lowest address first: `r15
+  r14 r13 r12 r11 r10 r9 r8 rbp rdi rsi rdx rcx rbx rax vector error
+  rip cs rflags rsp ss`, so `size_of` is 176 and `offset_of` is 120 for
+  `vector`, 128 for `error` and 136 for `rip` (`[abi.layout.query]`);
+  (4) the handler is `export fn h(f: *Frame)` and may rewrite the frame
+  through `f` — resuming past a faulting instruction is a store to its
+  `rip`; when `h` returns, the trampoline reloads the registers from
+  the frame, drops the vector and the error code and returns with
+  `iretq` (SDM vol. 3A §6.14.2–§6.14.3, APM vol. 2 §8.9). No x87, SSE or
+  AVX state is saved, because the freestanding target generates none,
+  and an interrupt taken in kernel code overwrites nothing live below
+  %rsp, because it keeps no red zone (`[abi.target.none.codegen]`).
+  The interrupt descriptor table is data the program builds: its
+  16-byte gates live in a table assembly reserves in `.bss` and wolf
+  names with `extern "c" let` (module state holds scalars only,
+  `[mem.static.3]`), filled through that pointer and loaded by a `lidt`
+  routine on the roster (`[abi.asm.roster]`). A handler that must not
+  return ends in a halting routine. The checked machine and lupin have
+  no interrupts and refuse the freestanding program as a whole
+  (`[abi.target]`); a handler's body is ordinary wolf and runs hosted on
+  a frame in memory. **Not yet:** a store to a field of a raw element,
+  `f[0].rip = v`, is refused on both compiling tiers and the checked
+  machine (`assignment through this place shape`, wolf-lang#577), so a
+  handler writes the word at `offset_of(Frame, rip) / 8` through `f as
+  *u64`. Witness: `crates/wolf_driver/tests/freestanding_interrupt.rs`,
+  an image QEMU boots whose IDT wolf builds: an `int3` (a trap) returns,
+  and a `ud2` and a `#GP` with error code 0x1234 (faults) are resumed
+  past the instruction, on both tiers, the frame's layout read back
+  from `size_of` and `offset_of`; PAX's kernel routes all 32
+  exceptions and its timer this way (wolffe-lang/pax, kw10).
 
 ---
 
