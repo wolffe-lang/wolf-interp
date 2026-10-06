@@ -57,10 +57,12 @@ The corpus walk at the end checks every pinned conformance file against
 this implementation and prints the ledger. Its last line counts
 mismatches; on a healthy checkout every mismatch it counts is one that
 is already triaged and filed in `docs/divergence-log.md` (the count is
-`3` at the current pin: DIV-2026-019, the broken-sibling parse-code
-disagreement, and DIV-2026-027's two failing `assert_msg_*` rows, whose
+`4` at the current pin: DIV-2026-019, the broken-sibling parse-code
+disagreement, DIV-2026-027's two failing `assert_msg_*` rows, whose
 `stdout=` pins the dropped rendering of an assert message this machine
-renders as a line (wolf-lang#556); DIV-2026-026, `memory/list_session_struct.lu` reading the
+renders as a line (wolf-lang#556), and DIV-2026-028, kw11's plain racy
+counter, whose `check: pass` cannot spell the `trap(race)` this machine
+answers and `[conc.mm.race.3]` permits (wolf-lang#603); DIV-2026-026, `memory/list_session_struct.lu` reading the
 element its `let` moved, retired at the `ec56a08f` bump, where the row
 copies the element instead; DIV-2026-022 and -023 retired at the `a7f517e` bump, where
 wolf-lang#341 re-pinned the two seed headers that had gone stale against
@@ -71,10 +73,10 @@ set):
 $ lupin corpus
 …
 
-947 file(s) under upstream/corpus: 900 entries, 47 member(s), 0 failure(s)
-392 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
+1002 file(s) under upstream/corpus: 955 entries, 47 member(s), 0 failure(s)
+417 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 724 entries reach the `run` rung; 669 match their `check:` expectation, 94 are the dynamic counterpart of the static code the corpus pins, 65 are static-conservatism entries (the compiler rejects statically what this machine never checks), 69 are out of scope, 3 mismatch
+lupin: 749 entries reach the `run` rung; 704 match their `check:` expectation, 94 are the dynamic counterpart of the static code the corpus pins, 64 are static-conservatism entries (the compiler rejects statically what this machine never checks), 89 are out of scope, 4 mismatch
 ```
 
 ## Bumping the pin
