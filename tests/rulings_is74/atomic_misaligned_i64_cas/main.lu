@@ -1,0 +1,18 @@
+//! check: run(exit=trap(ub))
+//! phase: wir
+//! conforms: conc.mm.atomic.raw.4, mem.unsafe.raw.4, mem.ub
+//!
+//! is74 probe: an `*i64` compare-and-swap four bytes off: row L4.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: DELIBERATELY UNSOUND — the misaligned atomic is the row.
+    unsafe {
+        let p = c.calloc(2, 8) as *i64
+        let q = p.with_addr(p.addr() + 4)
+        let r = q.atomic_cas(0, 1, Order.seq_cst, Order.seq_cst)
+        c.free(p as *u8)
+    }
+    0
+}

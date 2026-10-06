@@ -1,0 +1,12 @@
+//! check: fail(E1301)
+//! phase: typecheck
+//! conforms: conc.mm.fence, mem.unsafe.scope
+//!
+//! is74 probe: a `acq_rel` fence is reasoned about only beside raw accesses
+//! and needs the ring.
+
+fn main() -> int {
+    fence(Order.seq_cst)
+    fence(Order.acq_rel)
+    0
+}

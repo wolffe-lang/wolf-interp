@@ -1,0 +1,29 @@
+//! check: run(exit=0, stdout="0 0 0 1\n")
+//! phase: run
+//! conforms: conc.mm.atomic.raw.4
+//!
+//! is74 probe, L4's atomic near-miss twin: each width at a multiple of its
+//! size past an aligned base, and a `*u8` at an odd address. Defined.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: one live, zeroed 16-byte allocation; every access at a
+    // multiple of its width, in bounds; freed once.
+    unsafe {
+        let m = c.calloc(2, 8)
+        let p = m as *u8
+        let h = (m as *u16).with_addr(p.addr() + 2)
+        let w = (m as *u32).with_addr(p.addr() + 4)
+        let d = (m as *i64).with_addr(p.addr() + 8)
+        let b = p.with_addr(p.addr() + 7)
+        let x = h.atomic_add(1, Order.relaxed)
+        let y = w.atomic_or(1, Order.acq_rel)
+        let (z, ok) = d.atomic_cas(0, 1, Order.seq_cst, Order.relaxed)
+        let k = b.atomic_xor(1, Order.release)
+        let back = b.atomic_load(Order.seq_cst)
+        print("{x} {y} {z} {back}")
+        c.free(m)
+    }
+    0
+}

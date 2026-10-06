@@ -1,0 +1,17 @@
+//! check: fail(E1309)
+//! phase: resolve
+//! conforms: conc.mm.atomic.order
+//!
+//! is74 probe: `consume` is C++'s and not one of the five marks.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: one live 8-byte allocation, aligned, one task.
+    unsafe {
+        let p = c.calloc(1, 8) as *u64
+        let a = p.atomic_or(1, Order.consume)
+        c.free(p as *u8)
+    }
+    0
+}

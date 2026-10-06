@@ -1,0 +1,33 @@
+//! check: run(exit=0, stdout="513 67305985 1\n")
+//! phase: run
+//! conforms: mem.unsafe.volatile.3
+//!
+//! is74 probe, L3's near-miss twin: the same `with_addr` at a multiple of
+//! each width — a `*u16` two bytes in, a `*u32` four bytes in — and a
+//! `*u8` at an odd address, whose width is one byte. Defined.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: one live, zeroed 8-byte allocation; every access is in
+    // bounds at a multiple of its width; freed once.
+    unsafe {
+        let p = c.calloc(1, 8) as *u8
+        p[2] = 1
+        p[3] = 2
+        p[4] = 1
+        p[5] = 2
+        p[6] = 3
+        p[7] = 4
+        let h = (p as *u16).with_addr(p.addr() + 2)
+        let w = (p as *u32).with_addr(p.addr() + 4)
+        let b = p.with_addr(p.addr() + 7)
+        let x = h.read_volatile()
+        let y = w.read_volatile()
+        b.write_volatile(1)
+        let z = b.read_volatile()
+        print("{x} {y} {z}")
+        c.free(p)
+    }
+    0
+}

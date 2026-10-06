@@ -1,0 +1,24 @@
+//! check: fail(E1308)
+//! phase: resolve
+//! conforms: conc.mm.atomic.raw.1
+//!
+//! is74 probe: a parameter's declared `*int`, with no cast in sight.
+
+import c "stdlib.h"
+
+fn bump(p: *int) -> int {
+    // # Safety: the caller passes a live, aligned pointer.
+    unsafe {
+        p.atomic_add(1, Order.seq_cst)
+    }
+}
+
+fn main() -> int {
+    // # Safety: one live 8-byte allocation, freed once.
+    unsafe {
+        let m = c.calloc(1, 8)
+        let v = bump(m as *int)
+        c.free(m)
+        v
+    }
+}

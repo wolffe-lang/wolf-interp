@@ -1,0 +1,17 @@
+//! check: fail(E1309)
+//! phase: resolve
+//! conforms: conc.mm.atomic.raw.2, conc.mm.atomic.order
+//!
+//! is74 probe: a load has no release half, so not `acq_rel` either.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: one live 8-byte allocation, aligned, one task.
+    unsafe {
+        let p = c.calloc(1, 8) as *u64
+        let a = p.atomic_load(Order.acq_rel)
+        c.free(p as *u8)
+    }
+    0
+}

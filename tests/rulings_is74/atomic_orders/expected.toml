@@ -1,0 +1,14 @@
+# is74 — wolf-interp#185/#194: `atomic_orders`. `[expected]` is the lupin cell this witness must answer: the
+# compiler's checked answer (wolf 0.2.24, 294d626d; archive 501d6d3f…) unless noted.
+# `[trunk]` is what lupin at trunk 5f8715e (lupin-trunk 335b575d…) and the compiler's three lanes answered on kasumi
+# (~/lanes/is74/scripts/mkexp.py).
+issue = "wolf-interp#194"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "load 5 5 5\nstore 1 2 3\nswap 3 4 5 6 7\nadd 8 9 10 11 12\nsub 13 12 11 10 9\nand 8 8 8 8 8\nor 8 9 9 9 9\nxor 9 8 9 8 9\ncas 8 true 9 true 10 true 11 true 12 true 13 true 14 true 15 true 16 true\ncas 17 false 17 false\n" }
+
+[trunk]
+lupin   = { verdict = "unsupported", stdout = "", named = "`Order.seq_cst` does not resolve" }
+checked = { verdict = "exit(0)", stdout = "load 5 5 5\nstore 1 2 3\nswap 3 4 5 6 7\nadd 8 9 10 11 12\nsub 13 12 11 10 9\nand 8 8 8 8 8\nor 8 9 9 9 9\nxor 9 8 9 8 9\ncas 8 true 9 true 10 true 11 true 12 true 13 true 14 true 15 true 16 true\ncas 17 false 17 false\n" }
+native  = { verdict = "exit(0)", stdout = "load 5 5 5\nstore 1 2 3\nswap 3 4 5 6 7\nadd 8 9 10 11 12\nsub 13 12 11 10 9\nand 8 8 8 8 8\nor 8 9 9 9 9\nxor 9 8 9 8 9\ncas 8 true 9 true 10 true 11 true 12 true 13 true 14 true 15 true 16 true\ncas 17 false 17 false\n" }
+release = { verdict = "exit(0)", stdout = "load 5 5 5\nstore 1 2 3\nswap 3 4 5 6 7\nadd 8 9 10 11 12\nsub 13 12 11 10 9\nand 8 8 8 8 8\nor 8 9 9 9 9\nxor 9 8 9 8 9\ncas 8 true 9 true 10 true 11 true 12 true 13 true 14 true 15 true 16 true\ncas 17 false 17 false\n" }

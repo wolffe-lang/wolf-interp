@@ -1,0 +1,23 @@
+//! check: run(exit=0, stdout="7\n")
+//! phase: run
+//! conforms: mem.unsafe.volatile.2
+//!
+//! is74 probe: a volatile read whose value is unused still reads, and two
+//! writes of one value both write (one machine sees no difference; the
+//! answer is the value).
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: one live, zeroed 8-byte allocation; freed once.
+    unsafe {
+        let p = c.calloc(1, 8) as *i32
+        p.write_volatile(7)
+        p.write_volatile(7)
+        p.read_volatile()
+        let v = p.read_volatile()
+        print("{v}")
+        c.free(p as *u8)
+    }
+    0
+}

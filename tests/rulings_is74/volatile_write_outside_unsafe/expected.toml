@@ -1,0 +1,14 @@
+# is74 — wolf-interp#185/#194: `volatile_write_outside_unsafe`. `[expected]` is the lupin cell this witness must answer: the
+# compiler's checked answer (wolf 0.2.24, 294d626d; archive 501d6d3f…) unless noted.
+# `[trunk]` is what lupin at trunk 5f8715e (lupin-trunk 335b575d…) and the compiler's three lanes answered on kasumi
+# (~/lanes/is74/scripts/mkexp.py).
+issue = "wolf-interp#185"
+
+[expected]
+lupin   = { verdict = "fail(E1301)", stdout = "", first = "E1301@[243,262]" }
+
+[trunk]
+lupin   = { verdict = "unsupported", stdout = "", named = "`*T` has no method `write_volatile` in this machine's std subset" }
+checked = { verdict = "fail(E1301)", stdout = "", first = "E1301@[243,262]" }
+native  = { verdict = "fail(E1301)", stdout = "", first = "E1301@[243,262]" }
+release = { verdict = "fail(E1301)", stdout = "", first = "E1301@[243,262]" }

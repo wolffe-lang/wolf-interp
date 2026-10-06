@@ -1,0 +1,14 @@
+//! check: fail(E1301)
+//! phase: typecheck
+//! conforms: conc.mm.atomic.raw, mem.unsafe.scope
+//!
+//! is74 probe: a compare-and-swap outside the ring.
+
+fn grab(p: *u8) -> bool {
+    let (seen, ok) = p.atomic_cas(0, 1, Order.acquire, Order.relaxed)
+    ok
+}
+
+fn main() -> int {
+    0
+}

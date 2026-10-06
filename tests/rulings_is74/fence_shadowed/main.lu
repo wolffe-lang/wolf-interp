@@ -1,0 +1,16 @@
+//! check: run(exit=0, stdout="shadow 2\n")
+//! phase: run
+//! conforms: conc.mm.fence
+//!
+//! is74 probe: `fence` is a prelude name, so a module fn of the same name
+//! shadows it (W0304's territory) and is called as written.
+
+fn fence(k: int) -> int {
+    k + 1
+}
+
+fn main() -> int {
+    let v = fence(1)
+    print("shadow {v}")
+    0
+}

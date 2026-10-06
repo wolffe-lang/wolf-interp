@@ -1,0 +1,19 @@
+//! check: run(exit=trap(ub))
+//! phase: wir
+//! conforms: mem.unsafe.volatile.3, mem.ub
+//!
+//! is74 probe: a volatile WRITE through a `*u16` one byte past an aligned
+//! base is row L3 too.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: DELIBERATELY UNSOUND — the misaligned write is the row.
+    unsafe {
+        let p = c.calloc(1, 8) as *u16
+        let q = p.with_addr(p.addr() + 1)
+        q.write_volatile(9)
+        c.free(p as *u8)
+    }
+    0
+}

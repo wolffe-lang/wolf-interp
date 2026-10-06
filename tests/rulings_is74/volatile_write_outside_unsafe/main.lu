@@ -1,0 +1,19 @@
+//! check: fail(E1301)
+//! phase: typecheck
+//! conforms: mem.unsafe.volatile, mem.unsafe.scope
+//!
+//! is74 probe: a volatile WRITE outside the ring is E1301 at the whole call,
+//! as the read is.
+
+import c "stdlib.h"
+
+fn poke(p: *u32) {
+    p.write_volatile(7)
+}
+
+fn main() -> int {
+    // # Safety: one live 8-byte allocation, leaked (the row is the write).
+    let p = unsafe { c.calloc(1, 8) as *u32 }
+    poke(p)
+    0
+}

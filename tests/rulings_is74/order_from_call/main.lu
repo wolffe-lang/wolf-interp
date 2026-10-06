@@ -1,0 +1,21 @@
+//! check: fail(E1309)
+//! phase: resolve
+//! conforms: conc.mm.atomic.order
+//!
+//! is74 probe: an order operand that is a call.
+
+import c "stdlib.h"
+
+fn pick() -> int {
+    5
+}
+
+fn main() -> int {
+    // # Safety: one live 8-byte allocation, aligned, one task.
+    unsafe {
+        let p = c.calloc(1, 8) as *u64
+        let a = p.atomic_swap(1, pick())
+        c.free(p as *u8)
+    }
+    0
+}

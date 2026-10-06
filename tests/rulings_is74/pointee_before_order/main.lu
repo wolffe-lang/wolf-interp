@@ -1,0 +1,18 @@
+//! check: fail(E1308)
+//! phase: resolve
+//! conforms: conc.mm.atomic.raw.1, conc.mm.atomic.raw.2
+//!
+//! is74 probe: an E1308 pointee and an E1309 order on one call; the method
+//! name comes first in the source.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: one live 8-byte allocation, aligned, one task.
+    unsafe {
+        let p = c.calloc(1, 8) as *int
+        let a = p.atomic_load(Order.release)
+        c.free(p as *u8)
+    }
+    0
+}

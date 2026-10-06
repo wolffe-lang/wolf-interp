@@ -1,0 +1,25 @@
+//! check: fail(E1307)
+//! phase: resolve
+//! conforms: mem.unsafe.volatile.1, mem.codes
+//!
+//! is74 probe: a parameter's declared `*int` is a pointee the walk can see
+//! without a cast; `int` is not a width, so E1307 on the method.
+
+import c "stdlib.h"
+
+fn peek(p: *int) -> int {
+    // # Safety: the caller passes a live, aligned pointer.
+    unsafe {
+        p.read_volatile()
+    }
+}
+
+fn main() -> int {
+    // # Safety: one live 8-byte allocation, freed once.
+    unsafe {
+        let m = c.calloc(1, 8)
+        let v = peek(m as *int)
+        c.free(m)
+        v
+    }
+}

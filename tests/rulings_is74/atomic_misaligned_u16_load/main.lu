@@ -1,0 +1,18 @@
+//! check: run(exit=trap(ub))
+//! phase: wir
+//! conforms: conc.mm.atomic.raw.4, mem.unsafe.raw.4, mem.ub
+//!
+//! is74 probe: a `*u16` load one byte off: row L4.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: DELIBERATELY UNSOUND — the misaligned atomic is the row.
+    unsafe {
+        let p = c.calloc(2, 8) as *u16
+        let q = p.with_addr(p.addr() + 1)
+        let v = q.atomic_load(Order.acquire)
+        c.free(p as *u8)
+    }
+    0
+}

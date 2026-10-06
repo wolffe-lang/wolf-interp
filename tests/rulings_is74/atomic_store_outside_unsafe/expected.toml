@@ -1,0 +1,14 @@
+# is74 — wolf-interp#185/#194: `atomic_store_outside_unsafe`. `[expected]` is the lupin cell this witness must answer: the
+# compiler's checked answer (wolf 0.2.24, 294d626d; archive 501d6d3f…) unless noted.
+# `[trunk]` is what lupin at trunk 5f8715e (lupin-trunk 335b575d…) and the compiler's three lanes answered on kasumi
+# (~/lanes/is74/scripts/mkexp.py).
+issue = "wolf-interp#194"
+
+[expected]
+lupin   = { verdict = "fail(E1301)", stdout = "", first = "E1301@[191,223]" }
+
+[trunk]
+lupin   = { verdict = "exit(0)", stdout = "" }
+checked = { verdict = "fail(E1301)", stdout = "", first = "E1301@[191,223]" }
+native  = { verdict = "fail(E1301)", stdout = "", first = "E1301@[191,223]" }
+release = { verdict = "fail(E1301)", stdout = "", first = "E1301@[191,223]" }

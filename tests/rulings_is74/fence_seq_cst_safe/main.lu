@@ -1,0 +1,16 @@
+//! check: run(exit=0, stdout="3\n")
+//! phase: run
+//! conforms: conc.mm.fence
+//!
+//! is74 probe: `fence(Order.seq_cst)` is safe to write anywhere, in a fn
+//! with no unsafe at all.
+
+fn main() -> int {
+    var n = 0
+    while n < 3 {
+        fence(Order.seq_cst)
+        n = n + 1
+    }
+    print("{n}")
+    0
+}

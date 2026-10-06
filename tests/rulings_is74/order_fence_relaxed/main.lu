@@ -1,0 +1,17 @@
+//! check: fail(E1309)
+//! phase: resolve
+//! conforms: conc.mm.fence
+//!
+//! is74 probe: a relaxed fence orders nothing and is E1309.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: one live 8-byte allocation, aligned, one task.
+    unsafe {
+        let p = c.calloc(1, 8) as *u64
+        fence(Order.relaxed)
+        c.free(p as *u8)
+    }
+    0
+}

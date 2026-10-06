@@ -1,0 +1,19 @@
+//! check: run(exit=trap(ub))
+//! phase: wir
+//! conforms: mem.unsafe.volatile.3, mem.ub
+//!
+//! is74 probe: on an allocation a volatile access is an ordinary access, so
+//! one past the end is row P3 as `p[2]` is.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: DELIBERATELY UNSOUND — the read past the end is the row.
+    unsafe {
+        let p = c.calloc(2, 4) as *u32
+        let q = p.with_addr(p.addr() + 8)
+        let v = q.read_volatile()
+        c.free(p as *u8)
+        v as int
+    }
+}

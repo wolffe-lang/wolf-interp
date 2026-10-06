@@ -1,0 +1,25 @@
+//! check: run(exit=0, stdout="200 255 0\n")
+//! phase: run
+//! conforms: mem.unsafe.volatile.1
+//!
+//! is74 probe: `*byte` is a volatile pointee: a `byte` written, read back
+//! and seen through `*u8`.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: one live, zeroed 8-byte allocation; freed once.
+    unsafe {
+        let p = c.calloc(1, 8) as *byte
+        p.write_volatile(200 as byte)
+        let a = p.read_volatile() as int
+        let q = p.with_addr(p.addr() + 1)
+        q.write_volatile(255 as byte)
+        let u = (p as *u8).with_addr(p.addr() + 1)
+        let b = u.read_volatile()
+        let z = (p as *u8).with_addr(p.addr() + 2).read_volatile()
+        print("{a} {b} {z}")
+        c.free(p as *u8)
+    }
+    0
+}

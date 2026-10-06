@@ -1,0 +1,15 @@
+# is74 — wolf-interp#185/#194: `atomic_ub_misaligned`. `[expected]` is the lupin cell this witness must answer: the
+# compiler's checked answer (wolf 0.2.24, 294d626d; archive 501d6d3f…) unless noted.
+# `[trunk]` is what lupin at trunk 5f8715e (lupin-trunk 335b575d…) and the compiler's three lanes answered on kasumi
+# (~/lanes/is74/scripts/mkexp.py).
+# Parts from the checked cell by design: a ub record carries no diagnostic on lupin (raw_align_lanes.rs L4_LUPIN); the checked record adds E1401.
+issue = "wolf-interp#194"
+
+[expected]
+lupin   = { verdict = "ub(mem.ub)", stdout = "", row = "L4", clause = "mem.unsafe.raw.4" }
+
+[trunk]
+lupin   = { verdict = "unsupported", stdout = "", named = "`Order.seq_cst` does not resolve" }
+checked = { verdict = "ub(mem.ub)", stdout = "", first = "E1401@[808,838]", row = "L4", clause = "mem.unsafe.raw.4" }
+native  = { verdict = "exit(0)", stdout = "" }
+release = { verdict = "exit(0)", stdout = "" }

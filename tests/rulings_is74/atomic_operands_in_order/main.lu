@@ -1,0 +1,29 @@
+//! check: run(exit=0, stdout="r e n 10 true 11\n")
+//! phase: run
+//! conforms: conc.mm.atomic.raw, mem.model.order
+//!
+//! is74 probe: operands evaluate left to right after the receiver
+//! (`[conc.mm.atomic.raw]`, `[mem.model.order]`): the receiver, then
+//! `expected`, then `new`.
+
+import c "stdlib.h"
+
+fn tag(s: str, v: u64) -> u64 {
+    print(s)
+    v
+}
+
+fn main() -> int {
+    // # Safety: one live, zeroed 8-byte allocation; freed once.
+    unsafe {
+        let m = c.calloc(1, 8)
+        let p = m as *u64
+        print("r")
+        p.atomic_store(10, Order.seq_cst)
+        let (seen, ok) = p.atomic_cas(tag("e", 10), tag("n", 11), Order.seq_cst, Order.seq_cst)
+        let now = p.atomic_load(Order.seq_cst)
+        print("{seen} {ok} {now}")
+        c.free(m)
+    }
+    0
+}

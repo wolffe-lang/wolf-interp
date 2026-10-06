@@ -1,0 +1,17 @@
+//! check: fail(E1309)
+//! phase: resolve
+//! conforms: conc.mm.fence, conc.mm.atomic.order
+//!
+//! is74 probe: an unknown mark in a fence.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: one live 8-byte allocation, aligned, one task.
+    unsafe {
+        let p = c.calloc(1, 8) as *u64
+        fence(Order.sequential)
+        c.free(p as *u8)
+    }
+    0
+}

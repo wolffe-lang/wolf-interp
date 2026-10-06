@@ -1,0 +1,15 @@
+# is74 — wolf-interp#185/#194: `atomic_order_misuse`. `[expected]` is the lupin cell this witness must answer: the
+# compiler's checked answer (wolf 0.2.24, 294d626d; archive 501d6d3f…) unless noted.
+# `[trunk]` is what lupin at trunk 5f8715e (lupin-trunk 335b575d…) and the compiler's three lanes answered on kasumi
+# (~/lanes/is74/scripts/mkexp.py).
+# Parts from the checked cell by design: the compiler lists every site (16); this machine reports the first, the comparable one ([proto.record.first]).
+issue = "wolf-interp#194"
+
+[expected]
+lupin   = { verdict = "fail(E1309)", stdout = "", first = "E1309@[792,805]" }
+
+[trunk]
+lupin   = { verdict = "unsupported", stdout = "", named = "`Order.release` does not resolve" }
+checked = { verdict = "fail(E1309)", stdout = "", first = "E1309@[792,805]", all = "E1309@[792,805],E1309@[861,874],E1309@[958,971],E1309@[1044,1057],E1309@[1103,1116],E1309@[1178,1191],E1309@[1274,1275],E1309@[1367,1377]" }
+native  = { verdict = "fail(E1309)", stdout = "", first = "E1309@[792,805]", all = "E1309@[792,805],E1309@[861,874],E1309@[958,971],E1309@[1044,1057],E1309@[1103,1116],E1309@[1178,1191],E1309@[1274,1275],E1309@[1367,1377]" }
+release = { verdict = "fail(E1309)", stdout = "", first = "E1309@[792,805]", all = "E1309@[792,805],E1309@[861,874],E1309@[958,971],E1309@[1044,1057],E1309@[1103,1116],E1309@[1178,1191],E1309@[1274,1275],E1309@[1367,1377]" }

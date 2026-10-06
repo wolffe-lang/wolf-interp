@@ -1,0 +1,17 @@
+//! check: fail(E1307)
+//! phase: resolve
+//! conforms: mem.unsafe.volatile.1, mem.codes
+//!
+//! is74 probe: `uint` names the platform's unsigned integer, not a width.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: one live 8-byte allocation, freed once.
+    unsafe {
+        let p = c.calloc(1, 8) as *uint
+        let v = p.read_volatile()
+        c.free(p as *u8)
+        v as int
+    }
+}

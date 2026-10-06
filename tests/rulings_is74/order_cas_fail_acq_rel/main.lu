@@ -1,0 +1,17 @@
+//! check: fail(E1309)
+//! phase: resolve
+//! conforms: conc.mm.atomic.raw.2, conc.mm.atomic.order
+//!
+//! is74 probe: `acq_rel` is a release order, never a failure order.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: one live 8-byte allocation, aligned, one task.
+    unsafe {
+        let p = c.calloc(1, 8) as *u64
+        let r = p.atomic_cas(0, 1, Order.seq_cst, Order.acq_rel)
+        c.free(p as *u8)
+    }
+    0
+}

@@ -1,0 +1,14 @@
+# is74 — wolf-interp#185/#194: `order_load_acq_rel`. `[expected]` is the lupin cell this witness must answer: the
+# compiler's checked answer (wolf 0.2.24, 294d626d; archive 501d6d3f…) unless noted.
+# `[trunk]` is what lupin at trunk 5f8715e (lupin-trunk 335b575d…) and the compiler's three lanes answered on kasumi
+# (~/lanes/is74/scripts/mkexp.py).
+issue = "wolf-interp#194"
+
+[expected]
+lupin   = { verdict = "fail(E1309)", stdout = "", first = "E1309@[359,372]" }
+
+[trunk]
+lupin   = { verdict = "unsupported", stdout = "", named = "`Order.acq_rel` does not resolve" }
+checked = { verdict = "fail(E1309)", stdout = "", first = "E1309@[359,372]" }
+native  = { verdict = "fail(E1309)", stdout = "", first = "E1309@[359,372]" }
+release = { verdict = "fail(E1309)", stdout = "", first = "E1309@[359,372]" }

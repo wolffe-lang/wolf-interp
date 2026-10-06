@@ -1,0 +1,38 @@
+//! check: pass
+//! phase: wir
+//! conforms: conc.mm.race.1, conc.mm.atomic.raw
+//!
+//! is74 probe: an atomic store and a PLAIN read of the same word in two tasks
+//! with nothing between them: a data race on non-atomic memory
+//! (`[conc.mm.race.1]` — only two ATOMIC accesses never race), UB, so this
+//! header promises only that it compiles.
+
+import c "stdlib.h"
+
+fn store(p: *u64) {
+    // # Safety: DELIBERATELY UNSOUND — the plain read races this store.
+    unsafe {
+        p.atomic_store(1, Order.seq_cst)
+    }
+}
+
+fn peek(p: *u64) {
+    // # Safety: DELIBERATELY UNSOUND — the race is the row.
+    unsafe {
+        let v = p[0]
+    }
+}
+
+fn main() -> int {
+    // # Safety: one live, zeroed 8-byte allocation, freed after the join.
+    unsafe {
+        let m = c.calloc(1, 8)
+        let a = m as *u64
+        scope s {
+            s.spawn(fn() { store(a) })
+            s.spawn(fn() { peek(a) })
+        }
+        c.free(m)
+    }
+    0
+}

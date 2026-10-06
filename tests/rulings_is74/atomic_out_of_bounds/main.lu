@@ -1,0 +1,19 @@
+//! check: run(exit=trap(ub))
+//! phase: wir
+//! conforms: conc.mm.atomic.raw, mem.ub
+//!
+//! is74 probe: an atomic is an access through `p` for every `[mem.ub]` row,
+//! so one word past the end is row P3.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: DELIBERATELY UNSOUND — the add past the end is the row.
+    unsafe {
+        let p = c.calloc(1, 8) as *u64
+        let q = p.with_addr(p.addr() + 8)
+        let v = q.atomic_add(1, Order.seq_cst)
+        c.free(p as *u8)
+        v as int
+    }
+}

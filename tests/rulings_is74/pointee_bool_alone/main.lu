@@ -1,0 +1,17 @@
+//! check: fail(E1308)
+//! phase: resolve
+//! conforms: conc.mm.atomic.raw.1
+//!
+//! is74 probe: `*bool` alone.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: one live 8-byte allocation, aligned, one task.
+    unsafe {
+        let p = c.calloc(1, 8) as *bool
+        p.atomic_store(true, Order.seq_cst)
+        c.free(p as *u8)
+    }
+    0
+}

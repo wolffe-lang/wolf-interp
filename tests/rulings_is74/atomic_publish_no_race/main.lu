@@ -1,0 +1,45 @@
+//! check: run(exit=0, stdout="ok\n")
+//! phase: run
+//! conforms: conc.mm.atomic.order, conc.mm.race.1
+//!
+//! is74 probe: a plain write published by a release store and read after an
+//! acquire load that saw it is ordered by happens-before, so it is not a
+//! race; the reader reads the data only when it saw the flag, so the
+//! program is race-free on every schedule. The checked machine runs no
+//! tasks (C1).
+
+import c "stdlib.h"
+
+fn publish(data: *u64, flag: *u64) {
+    // # Safety: two live, aligned words `main` frees after the join.
+    unsafe {
+        data[0] = 42
+        flag.atomic_store(1, Order.release)
+    }
+}
+
+fn consume(data: *u64, flag: *u64) {
+    // # Safety: as `publish`; the data is read only after the flag.
+    unsafe {
+        if flag.atomic_load(Order.acquire) == 1 {
+            assert(data[0] == 42)
+        }
+    }
+}
+
+fn main() -> int {
+    // # Safety: one live, zeroed 16-byte allocation, freed after the
+    // scope joined.
+    unsafe {
+        let m = c.calloc(2, 8)
+        let data = m as *u64
+        let flag = data.with_addr(data.addr() + 8)
+        scope s {
+            s.spawn(fn() { publish(data, flag) })
+            s.spawn(fn() { consume(data, flag) })
+        }
+        c.free(m)
+    }
+    print("ok")
+    0
+}

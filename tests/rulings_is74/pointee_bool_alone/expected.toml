@@ -1,0 +1,14 @@
+# is74 — wolf-interp#185/#194: `pointee_bool_alone`. `[expected]` is the lupin cell this witness must answer: the
+# compiler's checked answer (wolf 0.2.24, 294d626d; archive 501d6d3f…) unless noted.
+# `[trunk]` is what lupin at trunk 5f8715e (lupin-trunk 335b575d…) and the compiler's three lanes answered on kasumi
+# (~/lanes/is74/scripts/mkexp.py).
+issue = "wolf-interp#194"
+
+[expected]
+lupin   = { verdict = "fail(E1308)", stdout = "", first = "E1308@[280,292]" }
+
+[trunk]
+lupin   = { verdict = "unsupported", stdout = "", named = "`Order.seq_cst` does not resolve" }
+checked = { verdict = "fail(E1308)", stdout = "", first = "E1308@[280,292]" }
+native  = { verdict = "fail(E1308)", stdout = "", first = "E1308@[280,292]" }
+release = { verdict = "fail(E1308)", stdout = "", first = "E1308@[280,292]" }

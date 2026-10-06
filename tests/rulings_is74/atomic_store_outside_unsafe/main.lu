@@ -1,0 +1,13 @@
+//! check: fail(E1301)
+//! phase: typecheck
+//! conforms: conc.mm.atomic.raw, mem.unsafe.scope
+//!
+//! is74 probe: an atomic store outside the ring, at the whole call.
+
+fn put(p: *u32) {
+    p.atomic_store(1, Order.release)
+}
+
+fn main() -> int {
+    0
+}

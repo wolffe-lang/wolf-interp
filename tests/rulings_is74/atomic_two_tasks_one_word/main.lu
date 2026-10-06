@@ -1,0 +1,44 @@
+//! check: run(exit=0, stdout="6 6\n")
+//! phase: run
+//! conforms: conc.mm.atomic.raw, conc.mm.race.1
+//!
+//! is74 probe: two tasks' atomics on one word — loads, adds, ors, subs and
+//! a CAS loop — never race (`[conc.mm.atomic.raw]`); after the join the plain
+//! read is ordered.
+
+import c "stdlib.h"
+
+fn churn(p: *u32) {
+    // # Safety: a live, aligned word `main` frees after the join.
+    unsafe {
+        let a = p.atomic_load(Order.relaxed)
+        p.atomic_add(1, Order.relaxed)
+        p.atomic_or(0, Order.acq_rel)
+        p.atomic_sub(0, Order.release)
+        var cur = p.atomic_load(Order.acquire)
+        loop {
+            let (seen, ok) = p.atomic_cas(cur, cur + 2, Order.acq_rel, Order.acquire)
+            if ok {
+                break
+            }
+            cur = seen
+        }
+    }
+}
+
+fn main() -> int {
+    // # Safety: one live, zeroed 8-byte allocation, freed after the join.
+    unsafe {
+        let m = c.calloc(1, 8)
+        let w = m as *u32
+        scope s {
+            s.spawn(fn() { churn(w) })
+            s.spawn(fn() { churn(w) })
+        }
+        let v = w[0]
+        let x = w.atomic_load(Order.seq_cst)
+        print("{v} {x}")
+        c.free(m)
+    }
+    0
+}

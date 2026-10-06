@@ -1,0 +1,15 @@
+# is74 — wolf-interp#185/#194: `atomic_two_tasks_one_word`. `[expected]` is the lupin cell this witness must answer: the
+# compiler's checked answer (wolf 0.2.24, 294d626d; archive 501d6d3f…) unless noted.
+# `[trunk]` is what lupin at trunk 5f8715e (lupin-trunk 335b575d…) and the compiler's three lanes answered on kasumi
+# (~/lanes/is74/scripts/mkexp.py).
+# Parts from the checked cell by design: the checked machine runs no tasks (C1, refused by name), so the cell is the compiled tiers' answer.
+issue = "wolf-interp#194"
+
+[expected]
+lupin   = { verdict = "exit(0)", stdout = "6 6\n" }
+
+[trunk]
+lupin   = { verdict = "unsupported", stdout = "", named = "`Order.relaxed` does not resolve" }
+checked = { verdict = "unsupported", stdout = "", named = "structured concurrency in checked execution (C1 deferred)" }
+native  = { verdict = "exit(0)", stdout = "6 6\n" }
+release = { verdict = "exit(0)", stdout = "6 6\n" }

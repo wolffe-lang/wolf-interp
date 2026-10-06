@@ -1,0 +1,17 @@
+//! check: fail(E1307)
+//! phase: resolve
+//! conforms: mem.unsafe.volatile.1, mem.codes
+//!
+//! is74 probe: a float is not a volatile pointee (`[mem.unsafe.volatile.1]`).
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: one live 8-byte allocation, freed once.
+    unsafe {
+        let p = c.calloc(1, 8) as *f64
+        p.write_volatile(1.5)
+        c.free(p as *u8)
+    }
+    0
+}
