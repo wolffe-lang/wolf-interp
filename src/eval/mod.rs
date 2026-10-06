@@ -4778,6 +4778,63 @@ impl Machine {
 
     // -- places ------------------------------------------------------------
 
+    /// The current module's key, `""` for the root.
+    fn current_module(&self) -> String {
+        self.frames
+            .last()
+            .map(|f| f.module.clone())
+            .unwrap_or_default()
+    }
+
+    /// The [`Machine::globals`] key of `name` as the current module's state,
+    /// when it has been initialized: module state is keyed by its module
+    /// (s213), the root's by its bare name.
+    fn global_key(&self, name: &str) -> Option<String> {
+        let key = qualify(&self.current_module(), name);
+        self.globals.contains_key(&key).then_some(key)
+    }
+
+    /// The current module's own `let`/`var`/`const` named `name`, touched
+    /// (initialized if first) — its key; `None` when `name` is no such item.
+    fn module_global(&mut self, name: &str, span: Span) -> EResult<Option<String>> {
+        let module = self.current_module();
+        match self.shared.program.lookup(&module, name, false) {
+            Some(Def::Binding(_)) => self.touch_global(&module, name, span).map(Some),
+            _ => Ok(None),
+        }
+    }
+
+    /// `[mem.static.4]` (s213, wolf-lang#579): a path `m.X…` whose head names
+    /// a module (no local or state of this module shadows it) and whose
+    /// second segment is one of that module's `let`/`var`/`const` items.
+    fn qualified_global(&self, path: &crate::ast::Path) -> Option<(String, String)> {
+        let [head, item, ..] = path.segments.as_slice() else {
+            return None;
+        };
+        if self.local_exists(&head.name) || self.global_key(&head.name).is_some() {
+            return None;
+        }
+        if !self.shared.program.modules.contains_key(&head.name) {
+            return None;
+        }
+        match self.shared.program.lookup(&head.name, &item.name, true) {
+            Some(Def::Binding(_)) => Some((head.name.clone(), item.name.clone())),
+            _ => None,
+        }
+    }
+
+    /// Initializes `module`'s item `name` if this is its first touch, and
+    /// answers its [`Machine::globals`] key.
+    fn touch_global(&mut self, module: &str, name: &str, span: Span) -> EResult<String> {
+        let key = qualify(module, name);
+        if !self.globals.contains_key(&key)
+            && let Some(def) = self.shared.program.lookup(module, name, true).cloned()
+        {
+            self.value_of_def(&def, module, name, span)?;
+        }
+        Ok(key)
+    }
+
     /// The path an expression denotes, or `Unsupported` if it denotes no place.
     ///
     /// `Unsupported` here is a *control* answer, not a verdict: callers that
@@ -4791,18 +4848,37 @@ impl Machine {
             // told apart here, by what the head turned out to be.
             ExprKind::Path(path) => {
                 let name = &path.segments[0].name;
+                let mut rest = 1;
                 let mut base = if self.local_exists(name) {
                     Path::local(self.frame(), name.clone())
-                } else if self.globals.contains_key(name) {
+                } else if let Some(key) = self.global_key(name) {
                     Path {
                         frame: usize::MAX,
-                        base: name.clone(),
+                        base: key,
+                        projections: Vec::new(),
+                    }
+                } else if let Some(key) = self.module_global(name, expr.span)? {
+                    // A module item of this module not yet initialized —
+                    // a write is its first touch (wolf-interp#200: a
+                    // non-root module's `var` written by its own fn).
+                    Path {
+                        frame: usize::MAX,
+                        base: key,
+                        projections: Vec::new(),
+                    }
+                } else if let Some((module, item)) = self.qualified_global(path) {
+                    // `[mem.static.4]` (s213, wolf-lang#579): `m.V` is the
+                    // other module's item, initialized on first touch.
+                    rest = 2;
+                    Path {
+                        frame: usize::MAX,
+                        base: self.touch_global(&module, &item, expr.span)?,
                         projections: Vec::new(),
                     }
                 } else {
                     return unsupported(format!("`{name}` is not a local place"));
                 };
-                for segment in &path.segments[1..] {
+                for segment in &path.segments[rest..] {
                     base = base.project(Proj::Field(segment.name.clone()));
                 }
                 Ok(base)
@@ -5552,7 +5628,10 @@ impl Machine {
             unreachable!("caller checked")
         };
         let head = &path.segments[0].name;
-        if self.local_exists(head) || self.globals.contains_key(head) {
+        if self.local_exists(head)
+            || self.global_key(head).is_some()
+            || self.qualified_global(path).is_some()
+        {
             let place = self.place_of(expr)?;
             if self.slot_mut(&place).is_some() {
                 return match how {
@@ -5882,13 +5961,15 @@ impl Machine {
             Def::Fn(_) => Ok(Value::Fn(qualify(module, name))),
             Def::Struct(_) => Ok(Value::Fn(qualify(module, name))),
             Def::Binding(binding) => {
-                if let Some(slot) = self.globals.get(name) {
+                // Module state is keyed by its module (s213): `COUNT` in
+                // `counter` and a `COUNT` of the root are two items.
+                let key = qualify(module, name);
+                if let Some(slot) = self.globals.get(&key) {
                     return Ok(slot.value.clone());
                 }
                 let binding = binding.clone();
                 let value = self.initialize(name, &binding)?;
-                self.globals
-                    .insert(name.to_owned(), Slot::live(value.clone()));
+                self.globals.insert(key, Slot::live(value.clone()));
                 Ok(value)
             }
             // `[abi.link.extern]`: the symbol's address is the link's, and
@@ -7637,7 +7718,7 @@ impl Machine {
         if let ExprKind::Path(path) = &*callee.kind
             && (path.segments.len() == 2 || path.segments.len() == 3)
             && !self.local_exists(&path.segments[0].name)
-            && !self.globals.contains_key(&path.segments[0].name)
+            && self.global_key(&path.segments[0].name).is_none()
         {
             let module = self
                 .frames
@@ -7908,7 +7989,7 @@ impl Machine {
             }
             ExprKind::Path(path) if path.segments.len() >= 2 => {
                 let head = &path.segments[0].name;
-                if !self.local_exists(head) && !self.globals.contains_key(head) {
+                if !self.local_exists(head) && self.global_key(head).is_none() {
                     return Ok(None);
                 }
                 let Ok(mut place) = self.place_of(callee) else {
@@ -8860,7 +8941,7 @@ impl Machine {
             return None;
         };
         let head = &path.segments[0].name;
-        if !(self.local_exists(head) || self.globals.contains_key(head)) {
+        if !(self.local_exists(head) || self.global_key(head).is_some()) {
             return None;
         }
         let place = self.place_of(base).ok()?;

@@ -2883,6 +2883,23 @@ fn module_vars(module: &Module) -> BTreeSet<String> {
         .collect()
 }
 
+/// s213 (`[mem.static.4]`, wolf-lang#579): every module's `var` items,
+/// spelled as another module reads them — `counter.COUNT`. A dotted
+/// string never collides with a bare name in [`module_vars`]' set, so
+/// the two share one field.
+fn qualified_vars(program: &Program) -> BTreeSet<String> {
+    program
+        .modules
+        .iter()
+        .filter(|(key, _)| !key.is_empty())
+        .flat_map(|(key, module)| {
+            module_vars(module)
+                .into_iter()
+                .map(move |name| format!("{key}.{name}"))
+        })
+        .collect()
+}
+
 /// The names of a module's bodyless `extern` fn items.
 fn extern_fns(module: &Module) -> BTreeSet<String> {
     module
@@ -3019,6 +3036,7 @@ fn unsafe_sig_check(program: &Program) -> Option<Diag> {
 /// `bool` column), E0411 (`s[i]` char indexing), E0412/E0413 (format specs,
 /// s38). One deterministic pass per function body; the first finding wins.
 fn tier_check(program: &Program) -> Option<Diag> {
+    let qualified = qualified_vars(program);
     for module in program.modules.values() {
         // The E0809 signature map: every function item's declared closed row.
         // An open row (`..`) is never judged — a handler cannot enumerate it.
@@ -3106,7 +3124,10 @@ fn tier_check(program: &Program) -> Option<Diag> {
                 declared: &declared,
                 late: None,
                 externs,
-                module_vars: module_vars(module),
+                module_vars: module_vars(module)
+                    .into_iter()
+                    .chain(qualified.iter().cloned())
+                    .collect(),
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
@@ -3129,7 +3150,10 @@ fn tier_check(program: &Program) -> Option<Diag> {
                     declared: &declared,
                     late: None,
                     externs: extern_fns(module),
-                    module_vars: module_vars(module),
+                    module_vars: module_vars(module)
+                        .into_iter()
+                        .chain(qualified.iter().cloned())
+                        .collect(),
                 };
                 if let Some(diag) = walk.expr(&binding.value) {
                     return Some(diag);
@@ -3595,6 +3619,31 @@ impl TierWalk<'_> {
             // `[mem.static.2]` (K11 = A; wolf-interp#190): a module `var` is
             // shared by every task, so a read or a write of it — plain,
             // compound, or a `mut` argument — is the ring's, at the name.
+            // s213 (`[mem.static.4]`, wolf-lang#579): `m.V`, another
+            // module's `var` read through its name, is the same op — at
+            // the qualified name, as the compiler reports it.
+            ExprKind::Path(path)
+                if !self.in_unsafe()
+                    && path.segments.len() >= 2
+                    && self.module_vars.contains(&format!(
+                        "{}.{}",
+                        path.segments[0].name, path.segments[1].name
+                    ))
+                    && !self.is_local(&path.segments[0].name) =>
+            {
+                let name = format!("{}.{}", path.segments[0].name, path.segments[1].name);
+                Some(Diag::new(
+                    "E1301",
+                    path.segments[0].span.join(path.segments[1].span),
+                    "mem.unsafe.scope",
+                    format!(
+                        "the module `var` `{name}` is read or written only in an `unsafe` block: \
+                         it is shared by every task, and the safe tier's data-race freedom \
+                         does not reach it ([mem.static.2], [mem.static.4]). State what keeps it \
+                         race-free in a `# Safety:` comment; a module `let` or `const` reads freely"
+                    ),
+                ))
+            }
             ExprKind::Path(path)
                 if !self.in_unsafe()
                     && self.module_vars.contains(&path.segments[0].name)
