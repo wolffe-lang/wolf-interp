@@ -1367,6 +1367,7 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| scalar_check(program))
         .or_else(|| list_lit_check(program))
         .or_else(|| tail_check(program))
+        .or_else(|| never_check(program))
         .or_else(|| bound_check(program))
         .or_else(|| row_operand_check(program))
         .or_else(|| annotation_check(program))
@@ -6901,6 +6902,93 @@ fn tail_check(program: &Program) -> Option<Diag> {
     None
 }
 
+/// `[type.fn.never]` (s213, wolf-lang#572, ruling owed): a fn declared
+/// `-> never` never returns. Its body holds no `return` — the first one is
+/// E0401 at the `return` — and its tail is not `()`: a tail [`unit_tail`]
+/// swears is unit is E0401 at the tail, the compiler's code and spans on its
+/// three lanes (`tests/rulings_s213/`). Every other tail is left to run: a
+/// call to a `never` fn, `assert(false)` and a `loop` with no `break` are
+/// bottom, and a shape this walk cannot spell is not refused on a guess.
+/// A call to a `never` fn needs nothing at run time: it does not come back.
+fn never_check(program: &Program) -> Option<Diag> {
+    for module in program.modules.values() {
+        let unit_fns = unit_returning(module);
+        for decl in each_fn(module) {
+            let Some(body) = &decl.body else { continue };
+            let Some(ret) = &decl.ret else { continue };
+            if !declares_never(ret) {
+                continue;
+            }
+            let name = &decl.name.name;
+            if let Some(span) = first_return_in_block(body) {
+                return Some(never_diag(span, name, "a `return`"));
+            }
+            if let Some(span) = unit_tail(body, &unit_fns) {
+                return Some(never_diag(span, name, "`()`"));
+            }
+        }
+    }
+    None
+}
+
+/// Whether a signature's result is the bottom type's name, `never`.
+fn declares_never(ret: &crate::ast::RetType) -> bool {
+    ret.row.is_none()
+        && matches!(&*ret.ty.kind, TypeKind::Path { path, args }
+            if args.is_empty() && path.is_single() && path.segments[0].name == "never")
+}
+
+fn never_diag(span: Span, name: &str, what: &str) -> Diag {
+    Diag::new(
+        "E0401",
+        span,
+        "type.fn.never",
+        format!(
+            "this is {what}, but `{name}` must return `never` — a fn declared `-> never` \
+             never returns ([type.fn.never]): its body must not reach its end and holds no \
+             `return`. End it in a call to another `never` fn, in `assert(false)`, or in a \
+             `loop` with no `break`"
+        ),
+    )
+}
+
+/// The first `return` lexically in `block`, a closure's body not counted.
+fn first_return_in_block(block: &Block) -> Option<Span> {
+    for stmt in &block.stmts {
+        let found = match &stmt.kind {
+            StmtKind::Binding(binding) => first_return(&binding.value),
+            StmtKind::Assign { place, value, .. } => {
+                first_return(place).or_else(|| first_return(value))
+            }
+            StmtKind::Defer { expr, .. } | StmtKind::Expr(expr) => first_return(expr),
+            StmtKind::AssumeNoalias(operands) => operands.iter().find_map(first_return),
+            StmtKind::Item(_) => None,
+        };
+        if found.is_some() {
+            return found;
+        }
+    }
+    block.tail.as_deref().and_then(first_return)
+}
+
+fn first_return(expr: &Expr) -> Option<Span> {
+    match &*expr.kind {
+        ExprKind::Return(_) => return Some(expr.span),
+        ExprKind::Closure { .. } => return None,
+        _ => {}
+    }
+    let mut found = None;
+    crate::rowmatch::each_child_with_blocks(expr, &mut |child| {
+        if found.is_none() {
+            found = match child {
+                crate::rowmatch::Child::Expr(child) => first_return(child),
+                crate::rowmatch::Child::Block(block) => first_return_in_block(block),
+            };
+        }
+    });
+    found
+}
+
 /// The functions of `module` whose value is `()` by declaration — no return
 /// type at all, or `-> ()` — plus the ambient writers, which are the only
 /// prelude names with a pinned unit result. A module item of the same name
@@ -8792,7 +8880,7 @@ fn unresolved_expr_type_name<'a>(
 /// `Scope` and takes no argument; a proc handle is `Proc[T]`, `T` the value
 /// its join collects. Their arity is [`handle_arity_check`]'s.
 const PRELUDE_TYPE_NAMES: &[&str] = &[
-    "List", "Map", "Option", "Proc", "Scope", "Self", "Set", "range", "wrapping",
+    "List", "Map", "Option", "Proc", "Scope", "Self", "Set", "never", "range", "wrapping",
 ];
 
 /// `[conc.proc.handle]`'s arity, which is the ruling's substance: `Scope`
