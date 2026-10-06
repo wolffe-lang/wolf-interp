@@ -234,5 +234,11 @@ fn chdir_out_of_the_served_tree_is_declined_by_name() {
     );
     assert_eq!(rec["verdict"], "unsupported", "{rec}");
     let words = rec["x-unsupported"].as_str().unwrap_or_default();
-    assert!(words.contains("os_chdir"), "{words}");
+    // The containment decline's own words — at trunk this program was
+    // refused for an unknown name, which also says `os_chdir` (green for
+    // the wrong reason: lupin-red-trunk-e9d2a204.log 72ba481e…).
+    assert!(
+        words.contains("os_chdir(\"..\")") && words.contains("resolves outside the working directory"),
+        "{words}"
+    );
 }
