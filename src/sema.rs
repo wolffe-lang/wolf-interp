@@ -1363,6 +1363,9 @@ pub fn resolve_check(program: &Program) -> Option<Diag> {
         .or_else(|| mode_check(program))
         .or_else(|| move_check(program))
         .or_else(|| unsafe_sig_check(program))
+        // is74: E1307, E1308, E1309 — kw07's and kw11's resolve-phase codes,
+        // before the ring's E1301 (typecheck) in the tier walk.
+        .or_else(|| crate::rawops::raw_op_check(program))
         .or_else(|| tier_check(program))
         .or_else(|| scalar_check(program))
         .or_else(|| list_lit_check(program))
@@ -2761,6 +2764,31 @@ impl TierWalk<'_> {
         self.unsafe_depth > 0
     }
 
+    /// Whether a local of this name is in scope, whatever its class.
+    fn binds(&self, name: &str) -> bool {
+        self.scopes
+            .iter()
+            .any(|scope| scope.iter().any(|(n, _)| n == name))
+    }
+
+    /// The volatile or atomic method a call's callee names on a receiver
+    /// this walk knows is a raw pointer (is74): `p.read_volatile` with `p` a
+    /// raw local, or `(m as *u64).atomic_load` and the like.
+    fn raw_method_call<'e>(&self, callee: &'e Expr) -> Option<&'e str> {
+        let (receiver_raw, method) = match &*callee.kind {
+            ExprKind::Path(path) if path.segments.len() == 2 => (
+                self.lookup(&path.segments[0].name) == LitClass::Raw,
+                path.segments[1].name.as_str(),
+            ),
+            ExprKind::Member {
+                base,
+                member: crate::ast::Member::Named(name),
+            } => (self.classify(base) == LitClass::Raw, name.name.as_str()),
+            _ => return None,
+        };
+        (receiver_raw && crate::eval::rawop::is_raw_method(method)).then_some(method)
+    }
+
     /// A single-name local the walk knows holds a raw pointer.
     fn raw_local(&self, expr: &Expr) -> bool {
         match &*expr.kind {
@@ -3035,7 +3063,29 @@ fn tier_check(program: &Program) -> Option<Diag> {
         // both arrive as `Opaque` — so the set is names, not kinds. Used
         // only to decline judging a name that *does* resolve.
         let declared: BTreeSet<String> = module.items.keys().cloned().collect();
-        for decl in each_fn(module) {
+        // Items in source order — by file, then by offset — and the impl
+        // methods after them, as [`each_fn`] had them: the first finding is
+        // the one that starts first (`[proto.record.first]`), and two fns'
+        // E1301s are reported by the compiler in that order
+        // (`conc/atomic_outside_unsafe.lu`: `peek`'s before `main`'s; is74).
+        // [`each_fn`]'s item order is the map's, by name.
+        let mut items: Vec<(&str, &FnDecl)> = module
+            .items
+            .iter()
+            .filter_map(|(name, (def, _))| match def {
+                Def::Fn(decl) => Some((
+                    module.item_files.get(name).map_or("", String::as_str),
+                    &**decl,
+                )),
+                _ => None,
+            })
+            .collect();
+        items.sort_by_key(|(file, decl)| (*file, decl.span.start));
+        let methods = module
+            .methods
+            .values()
+            .flat_map(|methods| methods.values().flatten().map(|m| &*m.decl));
+        for decl in items.into_iter().map(|(_, decl)| decl).chain(methods) {
             // A `comptime` fn's call into an `extern` fn is the sandbox's
             // E0701 (`comptime/sandbox_ffi.lu`, same span), never the ring's
             // E1301: the compiler answers E0701 there on all three lanes.
@@ -3748,6 +3798,34 @@ impl TierWalk<'_> {
                         &format!("the provenance operation `{}`", path.segments[1].name),
                         expr.span,
                     ));
+                } else if let Some(method) = self.raw_method_call(callee)
+                    && !self.in_unsafe()
+                {
+                    // is74: a volatile access and an atomic operation are
+                    // accesses through the pointer — the ring's op at the
+                    // whole call, as `p[0]` is (`[mem.unsafe.volatile]`,
+                    // `[conc.mm.atomic.raw]`; the compiler's span on all
+                    // three lanes, `volatile_outside_unsafe.lu`,
+                    // `atomic_outside_unsafe.lu`).
+                    let what = if method.starts_with("atomic_") {
+                        "the atomic operation"
+                    } else {
+                        "the volatile access"
+                    };
+                    return Some(ring_diag(&format!("{what} `{method}`"), expr.span));
+                } else if let ExprKind::Path(path) = &*callee.kind
+                    && path.is_single()
+                    && path.segments[0].name == "fence"
+                    && !self.binds("fence")
+                    && !self.declared.contains("fence")
+                    && let [arg] = args.as_slice()
+                    && crate::eval::rawop::mark_of(&arg.expr) != Some("seq_cst")
+                    && !self.in_unsafe()
+                {
+                    // is74: every fence weaker than `seq_cst` is reasoned
+                    // about only beside raw accesses and needs the ring
+                    // (`[conc.mm.fence]`), at the whole call.
+                    return Some(ring_diag("a fence weaker than `seq_cst`", expr.span));
                 }
                 if let Some(diag) = self.expr(callee) {
                     return Some(diag);

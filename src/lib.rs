@@ -47,6 +47,7 @@ pub mod lint;
 pub mod parse;
 pub mod phase;
 pub mod protocol;
+pub mod rawops;
 pub mod rowinfer;
 pub mod rowmatch;
 pub mod schema;
