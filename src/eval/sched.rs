@@ -2662,8 +2662,9 @@ impl Sched {
                 write,
             }),
         }
-        let released = state.task_vc(me);
-        State::merge_vc(state.atomic_clocks.entry((key, lo)).or_default(), &released);
+        // PLANT (is74): the release into the location's clock is skipped,
+        // so no atomic orders anything — atomic_publish_no_race must go red.
+        let _released = state.task_vc(me);
         state.tick(me);
         None
     }
