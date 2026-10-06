@@ -2192,6 +2192,23 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("rows/unit_discard_tail_if_closure.lu", "exit(0)"),
     ("rows/unit_discard_tail_if_leaves.lu", "exit(0)"),
     ("rows/unit_discard_tail_if_value_row.lu", "exit(0)"),
+    //
+    // is74 (wolf-interp#185, #194), at the same pin: NINE more reach `run`
+    // and match their `check:` — kw07's `memory/volatile_widths.lu` and its
+    // two UB rows (P1 after `c.free`, L3 misaligned), and kw11's
+    // `conc/atomic_{widths,orders,fence,counter}.lu` and its two UB rows (P1,
+    // L4). The counter prints the compiled tiers' `400000 100000`. kw07's
+    // and kw11's static rows (E1301, E1307, E1308, E1309) fail at resolve
+    // and do not reach `run`; the paragraph above predates is74.
+    ("conc/atomic_counter.lu", "exit(0)"),
+    ("conc/atomic_fence.lu", "exit(0)"),
+    ("conc/atomic_orders.lu", "exit(0)"),
+    ("conc/atomic_ub_misaligned.lu", "ub(mem.ub)"),
+    ("conc/atomic_ub_uaf.lu", "ub(mem.ub)"),
+    ("conc/atomic_widths.lu", "exit(0)"),
+    ("memory/volatile_ub_misaligned.lu", "ub(mem.ub)"),
+    ("memory/volatile_ub_uaf.lu", "ub(mem.ub)"),
+    ("memory/volatile_widths.lu", "exit(0)"),
 ];
 
 // (is70's `RULED_AHEAD_OF_PIN` stood here: `comptime.lu`, whose `#[noalloc]`

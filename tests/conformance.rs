@@ -283,18 +283,11 @@ const RULED_AHEAD_OF_PIN: &[(&str, Verdict, &str)] = &[];
 /// completes and every deeper rung is declined by name — instead of
 /// answering the pinned code. A row leaves when its mirror lands and the
 /// code is answered; the run walk counts the same rows out of scope.
-const AWAITING_MIRROR: &[(&str, &str)] = &[
-    (
-        "memory/volatile_outside_unsafe.lu",
-        "kw07's `read_volatile`/`write_volatile` outside `unsafe` pins E1301 \
-         (`[mem.unsafe.volatile]`); lupin's half is wolf-interp#185",
-    ),
-    (
-        "conc/atomic_outside_unsafe.lu",
-        "kw11's raw-pointer atomics and `fence` outside `unsafe` pin E1301 \
-         (`[conc.mm.atomic.raw]`); lupin's half is wolf-interp#194",
-    ),
-];
+///
+/// Empty since is74: kw07's `memory/volatile_outside_unsafe.lu` and kw11's
+/// `conc/atomic_outside_unsafe.lu` (r30 listed them for wolf-interp#185 and
+/// #194) answer their pinned E1301 now.
+const AWAITING_MIRROR: &[(&str, &str)] = &[];
 
 fn is_awaiting_mirror(path: &str) -> bool {
     AWAITING_MIRROR.iter().any(|(row, _)| path.ends_with(row))
@@ -654,6 +647,11 @@ fn every_parseable_file_resolves_under_sema_lite() {
         // resolve. E0705 does not: `comptime/runtime_arg.lu` pins it for a
         // `comptime fn` argument this machine declines by name; only a
         // module initializer's E0705 (`[mem.static.3]`) is decided here.
+        // E1307, E1308 and E1309 (kw07's `[mem.unsafe.volatile.1]`, kw11's
+        // `[conc.mm.atomic.raw.1]` and `[conc.mm.atomic.order]`; is74,
+        // wolf-interp#185 and #194) join at the 294d626d pin (r30), which
+        // carries the `memory/volatile_*` and `conc/atomic_*` rows: a pointee
+        // and an order operand are read off the syntax at resolve.
         // A module initializer's E0705 (`[mem.static.3]`; is73,
         // wolf-interp#190) is decided at resolve; the `memory/static_*` rows
         // arrive with the v0.2.23 re-pin.
@@ -671,7 +669,8 @@ fn every_parseable_file_resolves_under_sema_lite() {
         if let Some(
             code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004" | "E0809"
             | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102" | "E1103"
-            | "E1301" | "E1302" | "E0817" | "E0818" | "E0708" | "E0819" | "E0820" | "E0821"),
+            | "E1301" | "E1302" | "E0817" | "E0818" | "E0708" | "E0819" | "E0820" | "E0821"
+            | "E1307" | "E1308" | "E1309"),
         ) = pinned_code(case.check.as_ref()).filter(|_| !is_awaiting_mirror(&case.path))
         {
             assert_eq!(
@@ -757,7 +756,7 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
                 code @ ("E0410" | "E1007" | "E0805" | "E0411" | "E0412" | "E0413" | "E0004"
                 | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101"
                 | "E1102" | "E1103" | "E1301" | "E1302" | "E0817" | "E0818" | "E0708"
-                | "E0819" | "E0820" | "E0821"),
+                | "E0819" | "E0820" | "E0821" | "E1307" | "E1308" | "E1309"),
             ) = pinned_code(case.check.as_ref()).filter(|_| !is_awaiting_mirror(&case.path))
             {
                 assert_eq!(

@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+### Volatile access and atomics on `*T` (is74, #185, #194)
+
+kw07 (K3 = B) and kw11 (K5 = A) gave wolf `read_volatile`/`write_volatile`
+and nine raw-pointer atomics with `Order` as syntax; lupin answered
+`unsupported` on every row. On every row lupin now answers what the
+compiler's lanes answer (64 witnesses in `tests/rulings_is74/`, measured
+against wolf 0.2.24), the counts of tasks running atomics included.
+
+- **Volatile** (`[mem.unsafe.volatile]`). `p.read_volatile()` and
+  `p.write_volatile(v)` on a `*T` whose `T` is `u8`…`u64`, `i8`…`i64` or
+  `byte`: one access of the width, on an allocation an ordinary one (P1,
+  P3 as `p[0]`). Any other pointee is **E1307** at the method; outside
+  `unsafe`, **E1301**. A misaligned address is the new §7 row **L3**
+  (clause `mem.unsafe.volatile`, O11).
+- **Atomics** (`[conc.mm.atomic.raw]`, `[conc.mm.atomic.order]`,
+  `[conc.mm.fence]`). `atomic_load`, `_store`, `_swap`, `_add`, `_sub`,
+  `_and`, `_or`, `_xor` (the old value, wrapping at the width) and
+  `atomic_cas` (`(T, bool)`); `fence(o)`, a prelude name (W0304 when
+  shadowed). Every order runs as `seq_cst` and is read as a mark, never
+  evaluated. A pointee that is not a fixed-width integer is **E1308**; an
+  order the operation does not admit, an operand that is not a mark, an
+  unknown mark, and `Order` as a value are **E1309**, each at the
+  compiler's span; an atomic outside `unsafe`, or a fence weaker than
+  `seq_cst`, is **E1301**. A misaligned atomic is row **L4**. The tier walk
+  now reports the first E1301 in source order (it walked fns by name).
+- **Tasks**: every atomic acquires and releases its location's clock, so
+  `atomic_counter.lu` prints `400000 100000` as the compiled tiers do; two
+  atomics never race, and an atomic beside an unordered plain access does.
+  The plain-increment twin still traps `race`. Atomics are not schedule
+  points, so a spin-wait whose writer has not run does not terminate here
+  (`docs/approximation-contract.md` §10.7).
+
 ## 0.1.48 — 2026-10-06
 
 THE FORTY-EIGHTH (is72 and is73), the lupin half of wolf 0.2.25.
@@ -37,38 +71,6 @@ that waited on #190 and #188.
 - is73's two rows ruled ahead of the old pin (`grammar/attr_repr_unimplemented.lu`,
   `grammar/attr_section.lu`) are re-spelled at this pin; both waivers
   retired by name.
-
-### Volatile access and atomics on `*T` (is74, #185, #194)
-
-kw07 (K3 = B) and kw11 (K5 = A) gave wolf `read_volatile`/`write_volatile`
-and nine raw-pointer atomics with `Order` as syntax; lupin answered
-`unsupported` on every row. On every row lupin now answers what the
-compiler's lanes answer (64 witnesses in `tests/rulings_is74/`, measured
-against wolf 0.2.24), the counts of tasks running atomics included.
-
-- **Volatile** (`[mem.unsafe.volatile]`). `p.read_volatile()` and
-  `p.write_volatile(v)` on a `*T` whose `T` is `u8`…`u64`, `i8`…`i64` or
-  `byte`: one access of the width, on an allocation an ordinary one (P1,
-  P3 as `p[0]`). Any other pointee is **E1307** at the method; outside
-  `unsafe`, **E1301**. A misaligned address is the new §7 row **L3**
-  (clause `mem.unsafe.volatile`, O11).
-- **Atomics** (`[conc.mm.atomic.raw]`, `[conc.mm.atomic.order]`,
-  `[conc.mm.fence]`). `atomic_load`, `_store`, `_swap`, `_add`, `_sub`,
-  `_and`, `_or`, `_xor` (the old value, wrapping at the width) and
-  `atomic_cas` (`(T, bool)`); `fence(o)`, a prelude name (W0304 when
-  shadowed). Every order runs as `seq_cst` and is read as a mark, never
-  evaluated. A pointee that is not a fixed-width integer is **E1308**; an
-  order the operation does not admit, an operand that is not a mark, an
-  unknown mark, and `Order` as a value are **E1309**, each at the
-  compiler's span; an atomic outside `unsafe`, or a fence weaker than
-  `seq_cst`, is **E1301**. A misaligned atomic is row **L4**. The tier walk
-  now reports the first E1301 in source order (it walked fns by name).
-- **Tasks**: every atomic acquires and releases its location's clock, so
-  `atomic_counter.lu` prints `400000 100000` as the compiled tiers do; two
-  atomics never race, and an atomic beside an unordered plain access does.
-  The plain-increment twin still traps `race`. Atomics are not schedule
-  points, so a spin-wait whose writer has not run does not terminate here
-  (`docs/approximation-contract.md` §10.7).
 
 ### The re-pin blockers: module state, the link, exact layout (is73, #190, #188, #197)
 
