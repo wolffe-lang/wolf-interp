@@ -987,8 +987,10 @@ about the quarantine allocator's coverage.
 "Torn write producing a partially-updated wide value observed through another
 tag" needs a second observer of a store in flight. This machine runs at most one
 task at a time (§10.1) and every store is whole-value (`[mem.model.value]`), and
-the language surface has no split or volatile wide-store form to spell a tear
-with. The row is therefore listed as `Coverage::Unreachable` with that reason
+the language surface has no split wide-store form to spell a tear with: kw07's
+volatile methods are one access of the pointee's width per call
+(`[mem.unsafe.volatile.2]`) and kw11's atomics one indivisible operation each
+(is74). The row is therefore listed as `Coverage::Unreachable` with that reason
 instead of silently absent, and ic03's interleavings make it reachable.
 §7/C1 carries the sprint's `deferred(concurrency)` mark for the same reason, one
 campaign further out.
@@ -1204,6 +1206,43 @@ same binary refuses to run. The choices it rests on, named:
   refinements beyond the classic algorithm, stateful checkpointing, and
   any relaxed-memory exploration (SC only, because `[conc.mm]`'s
   unsafe-tier relaxed orderings wait for stable clauses).
+
+### 10.7 Atomics and volatile access (is74, kw07 and kw11)
+
+`read_volatile`/`write_volatile` and the nine raw-pointer atomics run in
+`eval::rawop`; E1307, E1308 and E1309 are `rawops`' (sema), E1301 the tier
+walk's. Four choices, each the clause's or written down here:
+
+- **Every order runs as `seq_cst`** (`[conc.mm.atomic.raw.5]`): this machine
+  interleaves whole operations, so an order chooses nothing and its operand —
+  a mark, `Order.<mark>`, never an expression — is never evaluated. Every
+  fence is in force already (`[conc.mm.fence]`). Outcomes only a weaker order
+  allows (store buffering, load buffering, IRIW) never happen here, as the
+  clause says of both interleaving machines.
+- **Every atomic operation acquires its location's clock and releases into
+  it** (`Sched::atomic_access`). A location is an allocation and a byte
+  offset. That orders every earlier atomic operation on a location before
+  every later one — a `seq_cst` execution's reads-from edges, and more — so
+  the race detector may miss a race only a weaker order permits (a plain
+  write published by a `relaxed` store), and never reports one that is not
+  there. Two atomic accesses never race (`[conc.mm.atomic.raw]`); an atomic
+  and an unordered plain access do (`[conc.mm.race.1]`,
+  `tests/rulings_is74/atomic_vs_plain_race`).
+- **Atomics are not schedule points.** `[sched.point.set]` is closed, and a
+  task keeps the baton through any number of atomics. Counters and CAS loops
+  give the compiled tiers' exact counts (`atomic_counter.lu`, 400000 100000);
+  a task that spins on an atomic another task must change never yields here,
+  so a spin-wait whose writer has not run yet does not terminate on this
+  machine. The checked machine runs no tasks at all (C1).
+- **The pointee is read off the syntax.** A cast to `*T`, a `*T` parameter or
+  annotation, a local bound to one, and `with_addr` of one carry it; anywhere
+  else sema says nothing and the evaluator declines a refused pointee by name,
+  citing the compiler's code (`RawPtr::kind`, `Pointee::Other` for a C
+  allocation's untyped result). A misaligned volatile access is §7/L3
+  (clause `mem.unsafe.volatile`), a misaligned atomic §7/L4
+  (`mem.unsafe.raw.4`), each asked before the provenance rows as the
+  compiler's checked machine asks it. A UB record carries no diagnostic here;
+  the checked machine's carries E1401.
 
 ## 11. Observability
 
