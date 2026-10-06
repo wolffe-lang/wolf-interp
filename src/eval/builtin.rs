@@ -117,6 +117,8 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "fs_seek",
     "fs_tell",
     "fs_read_at",
+    // s200 (wolf-lang#417): the fused chunk copy, `[os.fs.copy]`.
+    "fs_copy_chunk",
     // `read_line` is NOT part of that landing and stays declined: stdin is
     // not a file, no clause names an injectable one, and nothing in the
     // pinned corpus calls it. Named here so the refusal still reads
@@ -194,6 +196,15 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // and it validates; its refusal is the `utf8` row, never a trap and
     // never a cast. Pure — no capability, no sandbox category.
     "str_from_utf8",
+    // s200 (wolf-lang#411, `[mem.list.bytes]`): the bulk byte scan — `str`'s
+    // `find` and `count` over a `List[byte]`. Pure.
+    "bytes_find",
+    "bytes_count",
+    // s200 (wolf-lang#407, `[os.fs.error]`): the host's number for the
+    // task's most recent fallible fs call, and its words. Beside the row,
+    // never on it.
+    "os_error",
+    "os_error_text",
 ];
 
 /// Ambient single-segment names. `None` means "not in the stub", which the
@@ -330,7 +341,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_close" | "fs_remove" | "fs_rename" | "fs_exists" | "fs_is_dir" | "fs_is_file"
         | "fs_size" | "fs_modified_ms" | "fs_read_dir" | "fs_create_dir_all"
         | "fs_remove_dir_all" | "fs_create_dir" | "fs_remove_dir" | "fs_write_chunk"
-        | "fs_seek" | "fs_tell" | "fs_read_at" => unsupported(format!(
+        | "fs_seek" | "fs_tell" | "fs_read_at" | "fs_copy_chunk" => unsupported(format!(
             "`{name}` is the s38/s90 fs tier; this wasm build has no filesystem to open, so \
              the tier is declined rather than mocked"
         )),
@@ -340,7 +351,56 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_close" | "fs_remove" | "fs_rename" | "fs_exists" | "fs_is_dir" | "fs_is_file"
         | "fs_size" | "fs_modified_ms" | "fs_read_dir" | "fs_create_dir_all"
         | "fs_remove_dir_all" | "fs_create_dir" | "fs_remove_dir" | "fs_write_chunk"
-        | "fs_seek" | "fs_tell" | "fs_read_at" => machine.fs_call(name, &args, span),
+        | "fs_seek" | "fs_tell" | "fs_read_at" | "fs_copy_chunk" => {
+            machine.fs_call(name, &args, span)
+        }
+        // `[os.fs.error]` (s200, wolf-lang#407): the number the task's last
+        // fallible fs call left (`Machine::fs_call` keeps it), and the
+        // host's words for a number — std's rendering without its
+        // ` (os error N)` suffix, the compiler's runtime word for word.
+        "os_error" => Ok(Value::Int(machine.last_os_error(), IntTy::INT)),
+        "os_error_text" => {
+            let Some(Value::Int(code, _)) = args.first() else {
+                return unsupported("`os_error_text` takes an `int`".to_owned());
+            };
+            produced_str(
+                machine,
+                super::fs::host_error_text(*code),
+                "os_error_text",
+                span,
+            )
+        }
+        // `[mem.list.bytes]` (s200, wolf-lang#411): the scalar definition,
+        // element for element — the compiled tiers vectorise the same
+        // answer.
+        "bytes_find" | "bytes_count" => {
+            let Some(Value::List(items, _, _)) = args.first() else {
+                return unsupported(format!("`{name}` takes a `List[byte]`"));
+            };
+            let Some(Value::Byte(needle)) = args.get(1) else {
+                return unsupported(format!("`{name}`'s second argument is a `byte`"));
+            };
+            let needle = *needle;
+            let is_needle = |slot: &Slot| matches!(slot.value, Value::Byte(b) if b == needle);
+            if name == "bytes_count" {
+                let n = items.iter().filter(|&slot| is_needle(slot)).count();
+                return Ok(Value::Int(n as i128, IntTy::INT));
+            }
+            let Some(Value::Int(from, _)) = args.get(2) else {
+                return unsupported("`bytes_find`'s third argument is an `int`".to_owned());
+            };
+            let hit = usize::try_from(*from)
+                .ok()
+                .filter(|&f| f < items.len())
+                .and_then(|f| items.iter().skip(f).position(is_needle).map(|i| f + i));
+            match hit {
+                Some(i) => Ok(Value::Int(i as i128, IntTy::INT)),
+                None => {
+                    machine.note(Rule::ErrUnion, span, "`bytes_find` yields the `none` row");
+                    Ok(error_value("bytes_find", "none"))
+                }
+            }
+        }
         // -- the s40 os/env/time tier (0.1.7) ------------------------------
         //
         // env v0: the machine-local OVERLAY — `env_set` writes here and
@@ -2618,6 +2678,11 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "json_get" | "json_type" | "json_len" => &["parse", "missing", "kind"],
         // s81: the one str-construction border (`utf8`, never a trap).
         "str_from_utf8" => &["utf8"],
+        // `[os.fs.copy]` (s200): the chunk pair's rows — `eof` from the
+        // read, `io` from either side.
+        "fs_copy_chunk" => &["eof", "io"],
+        // `[mem.list.bytes]` (s200): absence, as `xs.get(i)` answers it.
+        "bytes_find" => &["none"],
         _ => &[],
     }
 }
