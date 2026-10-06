@@ -1856,7 +1856,7 @@ pub fn method(
                 return unsupported("`with_exposed` takes one integer address".to_owned());
             };
             let word = super::prov::address_word(*a);
-            let made = machine.pointer_at(word, ptr.elem, ptr.signed);
+            let made = machine.pointer_at(word, ptr.elem, ptr.signed, ptr.kind);
             machine.note(
                 Rule::ProvExpose,
                 span,

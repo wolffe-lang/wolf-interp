@@ -1,0 +1,23 @@
+//! check: run(exit=trap(ub))
+//! phase: resolve
+//! conforms: mem.unsafe.volatile.3, mem.ub
+//! §7/L3 (kw07, K3 = B; `[mem.unsafe.volatile.3]` at the pin that carries
+//! kw07): a `*u32` volatile read at an address that is not a multiple of the
+//! pointee's size. `with_addr` keeps the allocation's provenance two bytes
+//! past an aligned base, so every other row is clean — in bounds,
+//! initialized by `calloc`, the tag live — and only the address is wrong.
+//! O11 is the pairing: the compiled tiers emit one aligned access of the
+//! width per call, with no check.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: DELIBERATELY UNSOUND — the misaligned read is the row.
+    unsafe {
+        let p = c.calloc(1, 16) as *u32
+        let q = p.with_addr(p.addr() + 2)
+        let v = q.read_volatile() as int
+        c.free(p as *u8)
+        v
+    }
+}

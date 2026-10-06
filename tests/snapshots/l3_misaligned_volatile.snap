@@ -1,0 +1,15 @@
+---
+source: tests/prov_machine.rs
+---
+program:   l3_misaligned_volatile.lu
+verdict:   ub(mem.ub)
+row:       §7/L3
+clause:    [mem.unsafe.volatile]
+what:      a volatile access through an address that is not a multiple of the pointee's size
+licenses:  O11: each volatile call is one aligned machine access of its width — no split into narrower accesses, no alignment check
+message:   `read_volatile` of a 4-byte pointee at address 0x10002, which is not a multiple of 4: the compiled tiers emit one aligned access of the width and no check (O11)
+access:    `q.read_volatile()`
+tag from:  `c.calloc(1, 16)`
+tree:
+  alloc#0 `c.malloc(16)` 16 byte(s), live, owned by region #0
+    tag#0 c.malloc(16)#root Active exposed

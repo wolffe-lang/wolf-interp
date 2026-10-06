@@ -27,6 +27,7 @@ lenses, and `ledger::ub_is_the_oracle_verdict` is where that is argued.
 | P6 | `p6_false_door.lu` | `borrow r from ptr` where `ptr` is not in `r`'s footprint | O6 the door concentrates trust |
 | L1 | `l1_uninitialized.lu` | a read of `malloc`'d storage nothing wrote | O7 no zero-init of locals |
 | L2 | `l2_dangling.lu` | an int→ptr round trip across a `free` | O8 escape analysis without pinning addresses |
+| L3 | `l3_misaligned_volatile.lu` | a `*u32` volatile read two bytes past an aligned base, through `with_addr` (is74, kw07) | O11 one aligned access of the width per volatile call |
 | L4 | `l4_misaligned.lu` | a `*u32` read one byte past an aligned base, through `with_addr` (s209, ruling #36 = A) | O12 every ordinary raw access at its natural alignment |
 | T1 | `t1_invalid_bool.lu` | `7 as bool` in unsafe code | O9 niche packing, default-free jump tables |
 

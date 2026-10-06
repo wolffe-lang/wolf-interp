@@ -9310,7 +9310,13 @@ impl Machine {
     /// The pointer an address word names: into the allocation it lands in,
     /// with wildcard provenance (resolved at the access), or a pointer no
     /// allocation owns that keeps the address (`[mem.prov.expose]`).
-    pub(crate) fn pointer_at(&mut self, word: i128, elem: usize, signed: bool) -> RawPtr {
+    pub(crate) fn pointer_at(
+        &mut self,
+        word: i128,
+        elem: usize,
+        signed: bool,
+        kind: prov::Pointee,
+    ) -> RawPtr {
         match self.prov().resolve_address(word) {
             Some((alloc, offset)) => RawPtr {
                 alloc: Some(alloc),
@@ -9318,8 +9324,9 @@ impl Machine {
                 prov: Prov::Wildcard,
                 elem,
                 signed,
+                kind,
             },
-            None => RawPtr::foreign(word, elem, signed),
+            None => RawPtr::foreign(word, elem, signed, kind),
         }
     }
 
@@ -9398,7 +9405,7 @@ impl Machine {
             }
         }
         if let TypeKind::RawPointer(inner) = &*ty.kind {
-            let (elem, signed) = pointee(inner);
+            let (elem, signed, kind) = pointee(inner);
             return match value {
                 // A cast between raw pointer types keeps the tag:
                 // `[mem.unsafe.raw.1]` makes casts of raw pointers unrestricted.
@@ -9411,6 +9418,7 @@ impl Machine {
                     Ok(Value::Raw(RawPtr {
                         elem,
                         signed,
+                        kind,
                         ..ptr
                     }))
                 }
@@ -9423,7 +9431,7 @@ impl Machine {
                     // The integer side (kw06, wolf-interp#184): `N` widens to
                     // the address word by its own signedness and never traps,
                     // and an address no allocation owns keeps its value.
-                    let ptr = self.pointer_at(prov::address_word(address), elem, signed);
+                    let ptr = self.pointer_at(prov::address_word(address), elem, signed, kind);
                     self.fire(
                         Rule::ProvExpose,
                         span,
@@ -10327,16 +10335,23 @@ fn assign_binop(op: AssignOp) -> BinOp {
     }
 }
 
-/// A raw pointer's pointee size in bytes and signedness — `*u8` is `(1, false)`,
-/// `*int` is `(8, true)`. What `p[i]` addresses, and what `assume noalias`
-/// compares (`[mem.unsafe.raw.2]` asserts about *ranges*).
-fn pointee(ty: &Type) -> (usize, bool) {
+/// A raw pointer's pointee size in bytes, signedness and class — `*u8` is
+/// `(1, false, Width)`, `*int` is `(8, true, Platform)`. What `p[i]`
+/// addresses, what `assume noalias` compares (`[mem.unsafe.raw.2]` asserts
+/// about *ranges*), and whether the volatile and atomic methods admit it.
+fn pointee(ty: &Type) -> (usize, bool, prov::Pointee) {
+    // Only a plain path names a pointee class; `**T`, a tuple or a wrapper
+    // is `Other`, whatever its last segment says.
+    let kind = match &*ty.kind {
+        TypeKind::Path { args, .. } if args.is_empty() => prov::Pointee::of_name(&type_name(ty)),
+        _ => prov::Pointee::Other,
+    };
     let name = type_name(ty);
     match IntTy::named(&name) {
-        Some(int) => ((int.bits / 8).max(1) as usize, int.signed),
+        Some(int) => ((int.bits / 8).max(1) as usize, int.signed, kind),
         // An unknown pointee is one byte: the conservative choice, since a
         // narrower range can only *miss* an overlap, never invent one.
-        None => (1, false),
+        None => (1, false, kind),
     }
 }
 

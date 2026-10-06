@@ -1,0 +1,22 @@
+//! check: run(exit=0)
+//! phase: resolve
+//! conforms: mem.unsafe.volatile.3
+//! L3's near-miss twin: the same `with_addr` one element past the base —
+//! four bytes, a multiple of the `*u32`'s size — and a `*u8` one byte past
+//! it, whose size is 1. Same machinery, one property changed: the address
+//! is aligned, so the volatile reads are defined.
+
+import c "stdlib.h"
+
+fn main() -> int {
+    // # Safety: 16 zeroed bytes from calloc; both reads are in bounds at
+    // multiples of their pointee's size; freed once.
+    unsafe {
+        let p = c.calloc(1, 16) as *u32
+        let q = p.with_addr(p.addr() + 4)
+        let b = (p as *u8).with_addr(p.addr() + 1)
+        let v = q.read_volatile() as int + b.read_volatile() as int
+        c.free(p as *u8)
+        v
+    }
+}

@@ -5,8 +5,8 @@ program:   l4_misaligned.lu
 verdict:   ub(mem.ub)
 row:       §7/L4
 clause:    [mem.unsafe.raw.4]
-what:      an ordinary raw access through an address that is not a multiple of the pointee's alignment
-licenses:  O12: every ordinary raw access is emitted at the pointee's natural alignment — no alignment check, no split into narrower accesses
+what:      an ordinary raw access or an atomic operation through an address that is not a multiple of the pointee's alignment
+licenses:  O12: every ordinary raw access is emitted at the pointee's natural alignment — no alignment check, no split into narrower accesses; every atomic operation as its aligned atomic instruction(s), with no check
 message:   a raw read of a 4-byte pointee at address 0x10001, which is not a multiple of 4: the compiled tiers emit the access at its natural alignment (O12)
 access:    `q[0]`
 tag from:  `c.calloc(1, 16)`

@@ -360,6 +360,7 @@ fn every_ub_report_carries_two_spans_a_tree_and_the_optimization_it_licenses() {
         "p6_false_door.lu",
         "l1_uninitialized.lu",
         "l2_dangling.lu",
+        "l3_misaligned_volatile.lu",
         "l4_misaligned.lu",
     ] {
         let source = if name == "unsafe_ub_uaf.lu" {

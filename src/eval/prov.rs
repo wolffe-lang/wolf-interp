@@ -89,6 +89,10 @@ pub enum UbRow {
     P6,
     L1,
     L2,
+    /// is74 (kw07, K3 = B; wolf-interp#185): a volatile access through an
+    /// address that is not a multiple of the pointee's size
+    /// (`[mem.unsafe.volatile.3]`).
+    L3,
     /// s209 (ruling #36 = A, wolf-lang#574): an ordinary raw access
     /// through an address not aligned to its pointee
     /// (`[mem.unsafe.raw.4]`).
@@ -115,7 +119,7 @@ pub enum Coverage {
 
 impl UbRow {
     /// Every row, in `[mem.ub]`'s order.
-    pub const ALL: [UbRow; 12] = [
+    pub const ALL: [UbRow; 13] = [
         UbRow::P1,
         UbRow::P2,
         UbRow::P3,
@@ -124,6 +128,7 @@ impl UbRow {
         UbRow::P6,
         UbRow::L1,
         UbRow::L2,
+        UbRow::L3,
         UbRow::L4,
         UbRow::T1,
         UbRow::T2,
@@ -142,6 +147,7 @@ impl UbRow {
             UbRow::P6 => "P6",
             UbRow::L1 => "L1",
             UbRow::L2 => "L2",
+            UbRow::L3 => "L3",
             UbRow::L4 => "L4",
             UbRow::T1 => "T1",
             UbRow::T2 => "T2",
@@ -167,9 +173,12 @@ impl UbRow {
             UbRow::P6 => "false discharge of a re-entry door",
             UbRow::L1 => "read of uninitialized or moved-from memory via raw pointers",
             UbRow::L2 => "deref of a dangling raw pointer",
+            UbRow::L3 => {
+                "a volatile access through an address that is not a multiple of the pointee's size"
+            }
             UbRow::L4 => {
-                "an ordinary raw access through an address that is not a multiple of the \
-                 pointee's alignment"
+                "an ordinary raw access or an atomic operation through an address that is not a \
+                 multiple of the pointee's alignment"
             }
             UbRow::T1 => "producing an invalid value of a restricted type in unsafe code",
             UbRow::T2 => {
@@ -212,8 +221,11 @@ impl UbRow {
             UbRow::L2 => {
                 "O8: escape analysis / stack promotion without conservatively pinning addresses"
             }
+            UbRow::L3 => {
+                "O11: each volatile call is one aligned machine access of its width — no split into narrower accesses, no alignment check"
+            }
             UbRow::L4 => {
-                "O12: every ordinary raw access is emitted at the pointee's natural alignment — no alignment check, no split into narrower accesses"
+                "O12: every ordinary raw access is emitted at the pointee's natural alignment — no alignment check, no split into narrower accesses; every atomic operation as its aligned atomic instruction(s), with no check"
             }
             UbRow::T1 => {
                 "O9: niche packing; match jump tables without default arms; UTF-8 fast paths without re-validation"
@@ -239,6 +251,7 @@ impl UbRow {
             UbRow::P5 => "mem.unsafe.raw.2",
             UbRow::P6 => "mem.unsafe.door",
             UbRow::L2 => "mem.unsafe.raw.1",
+            UbRow::L3 => "mem.unsafe.volatile",
             UbRow::L4 => "mem.unsafe.raw.4",
             UbRow::C1 => "conc.mm.race.3",
             UbRow::P3 | UbRow::L1 | UbRow::T1 | UbRow::T2 => "mem.ub",
@@ -254,6 +267,7 @@ impl UbRow {
             UbRow::P5 => Rule::AssumeNoalias,
             UbRow::P6 => Rule::UnsafeDoor,
             UbRow::L2 | UbRow::L4 => Rule::UnsafeRaw,
+            UbRow::L3 => Rule::Volatile,
             UbRow::P3 | UbRow::L1 | UbRow::T1 | UbRow::T2 | UbRow::C1 => Rule::Ub,
         }
     }
@@ -270,6 +284,7 @@ impl UbRow {
             | UbRow::P6
             | UbRow::L1
             | UbRow::L2
+            | UbRow::L3
             | UbRow::L4 => Coverage::Detected,
             // T1's only modelled production door was `int as bool`, and the
             // cast matrix's bool column closed statically at pin f0da6e6
@@ -432,6 +447,38 @@ impl fmt::Display for Prov {
     }
 }
 
+/// What a raw pointer's pointee is, as far as the volatile and atomic
+/// methods ask (`[mem.unsafe.volatile.1]`, `[conc.mm.atomic.raw.1]`; is74).
+/// The width and signedness beside it say how an access reads; this says
+/// whether the methods admit the pointee at all, which width cannot: `*int`
+/// and `*i64` have one width, `*bool`, `*byte` and `*u8` another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pointee {
+    /// `u8`…`u64`, `i8`…`i64`: one machine access of a fixed width.
+    Width,
+    /// `byte`: a volatile pointee, never an atomic one (no arithmetic).
+    Byte,
+    /// `int`, `uint`: the platform's integer, not a width.
+    Platform,
+    /// Anything else — `bool`, a float, an aggregate, a name this machine
+    /// cannot read as one of the above (an alias), and a C allocation's
+    /// untyped result — so the methods decline it rather than guess.
+    Other,
+}
+
+impl Pointee {
+    /// The class a pointee type's name spells.
+    #[must_use]
+    pub fn of_name(name: &str) -> Pointee {
+        match name {
+            "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" => Pointee::Width,
+            "byte" => Pointee::Byte,
+            "int" | "uint" => Pointee::Platform,
+            _ => Pointee::Other,
+        }
+    }
+}
+
 /// A raw pointer value: `(address, tag)` with the address split into the
 /// allocation it names and a byte offset, because a reference interpreter that
 /// invented numeric addresses would be inventing the one thing
@@ -451,6 +498,8 @@ pub struct RawPtr {
     pub elem: usize,
     /// Whether the pointee is a signed integer, so a load sign-extends.
     pub signed: bool,
+    /// The pointee's class, for the volatile and atomic methods.
+    pub kind: Pointee,
 }
 
 impl RawPtr {
@@ -462,6 +511,7 @@ impl RawPtr {
             prov: Prov::Wildcard,
             elem: 1,
             signed: false,
+            kind: Pointee::Other,
         }
     }
 
@@ -485,13 +535,14 @@ impl RawPtr {
     /// `N` lands in none (`[mem.prov.device]`: an access through it is
     /// foreign memory, UB row L2 on a hosted target).
     #[must_use]
-    pub const fn foreign(word: i128, elem: usize, signed: bool) -> RawPtr {
+    pub const fn foreign(word: i128, elem: usize, signed: bool, kind: Pointee) -> RawPtr {
         RawPtr {
             alloc: None,
             offset: word,
             prov: Prov::Wildcard,
             elem,
             signed,
+            kind,
         }
     }
 }
@@ -763,6 +814,7 @@ impl Provenance {
             prov: Prov::Tag(root),
             elem: 1,
             signed: false,
+            kind: Pointee::Other,
         }
     }
 
@@ -892,6 +944,7 @@ impl Provenance {
             prov: Prov::Tag(tag),
             elem: 1,
             signed: false,
+            kind: Pointee::Other,
         };
         self.access(ptr, 1, kind, span)
     }
@@ -1670,6 +1723,7 @@ mod tests {
             prov: Prov::Tag(tag),
             elem: 1,
             signed: false,
+            kind: Pointee::Other,
         }
     }
 
@@ -1967,7 +2021,7 @@ mod tests {
         assert_eq!(address_word(4_294_967_295), 4_294_967_295);
         assert_eq!(address_word(0), 0);
         let (prov, _) = machine();
-        let foreign = RawPtr::foreign(0xb8000, 2, false);
+        let foreign = RawPtr::foreign(0xb8000, 2, false, Pointee::Width);
         assert!(!foreign.is_null());
         assert_eq!(prov.address_of(foreign), 0xb8000);
         assert_eq!(foreign.to_string(), "*addr 0xb8000");
@@ -2098,6 +2152,7 @@ mod tests {
             assert!(!row.optimization().is_empty(), "{row}");
             assert!(!row.what().is_empty(), "{row}");
         }
-        assert_eq!(UbRow::ALL.len(), 12);
+        // is74 added L3, kw07's misaligned volatile access.
+        assert_eq!(UbRow::ALL.len(), 13);
     }
 }
