@@ -34,6 +34,37 @@ against wolf 0.2.24), the counts of tasks running atomics included.
   points, so a spin-wait whose writer has not run does not terminate here
   (`docs/approximation-contract.md` §10.7).
 
+### The byte surface, mirrored (s200; wolf-lang#405, #411, #417, #407)
+
+wolf-lang's s200 gives a program its standard streams as bytes, a bulk
+byte scan, a copy the host makes, and the host's error number beside the
+row. lupin answers each one as the compiler's three lanes do
+(`tests/byte_surface.rs`: wolf-lang's four corpus rows and two stdin
+fixtures, standard input a file, a pipe and an offset the test shares).
+
+- **`[os.fs.std]`, the byte calls.** `fs_read`, `fs_read_chunk`, `fs_write`
+  and `fs_write_chunk` serve descriptors 0, 1 and 2, where they answered
+  `io`. A read of 0 reads the process's descriptor through a safe
+  duplicate, so the offset is the one the process shares. A write to 1 or
+  2 goes into the machine's capture, the one `print` and `eprint` write,
+  in program order. Unlike the offset calls, these four serve the
+  standard streams on windows too: a read or a write needs no
+  `GetFileType`. `fs_close` on 0..2 stays `io`.
+- **`[os.fs.copy]`, `fs_copy_chunk(src, dst, max) -> int ! {eof, io}`.**
+  One read and one write through this machine's buffer: the bytes and
+  offsets the compiled rungs move. Both handles are checked first, then
+  `max`; `eof` at the end.
+- **`[mem.list.bytes]`, `bytes_find(xs, b, from) -> int ! {none}` and
+  `bytes_count(xs, b) -> int`.** The scalar definition, element for
+  element. `from` outside `0..len` is `none`.
+- **`[os.fs.error]`, `os_error()` and `os_error_text(code)`.** Each task's
+  machine keeps the host's number for its last fallible fs call, 0 for a
+  success or a failure decided before the host; the total predicates
+  (`fs_exists`, `fs_is_file`, `fs_is_dir`) leave it alone. The text is std's rendering without its
+  ` (os error N)` suffix, the compiler's runtime word for word. The row
+  mappers record the host error even where the row stays `io` (`io_row`
+  keeps its uniform row).
+
 ## 0.1.48 — 2026-10-06
 
 THE FORTY-EIGHTH (is72 and is73), the lupin half of wolf 0.2.25.
