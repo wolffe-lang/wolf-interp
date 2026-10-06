@@ -451,6 +451,10 @@ pub struct RawPtr {
     pub elem: usize,
     /// Whether the pointee is a signed integer, so a load sign-extends.
     pub signed: bool,
+    /// s213 (`[mem.unsafe.raw.5]`, wolf-lang#577): when the pointee is a
+    /// `#[repr(c)]` struct, its index in the machine's struct table — what
+    /// `p[i].f` lays the field out by. `elem` is then the struct's C size.
+    pub strukt: Option<u32>,
 }
 
 impl RawPtr {
@@ -462,6 +466,7 @@ impl RawPtr {
             prov: Prov::Wildcard,
             elem: 1,
             signed: false,
+            strukt: None,
         }
     }
 
@@ -492,6 +497,7 @@ impl RawPtr {
             prov: Prov::Wildcard,
             elem,
             signed,
+            strukt: None,
         }
     }
 }
@@ -763,6 +769,7 @@ impl Provenance {
             prov: Prov::Tag(root),
             elem: 1,
             signed: false,
+            strukt: None,
         }
     }
 
@@ -892,6 +899,7 @@ impl Provenance {
             prov: Prov::Tag(tag),
             elem: 1,
             signed: false,
+            strukt: None,
         };
         self.access(ptr, 1, kind, span)
     }
@@ -1670,6 +1678,7 @@ mod tests {
             prov: Prov::Tag(tag),
             elem: 1,
             signed: false,
+            strukt: None,
         }
     }
 

@@ -547,6 +547,9 @@ struct Shared {
     /// *current* generation (`Point#2`), so values created before a
     /// redefinition keep their old nominal identity exactly.
     repl_types: Arc<Mutex<BTreeMap<String, u32>>>,
+    /// s213 (`[mem.unsafe.raw.5]`): the `#[repr(c)]` structs a raw pointer
+    /// points at, by `(module, name)`; a [`RawPtr`]'s `strukt` indexes it.
+    raw_structs: Arc<Mutex<Vec<(String, String)>>>,
     /// s40 env v0: the machine-local environment OVERLAY — `env_set` writes
     /// here and `env_get` reads here, never the host's real environment
     /// (the checked-lane posture: the same program observes the same
@@ -750,6 +753,7 @@ impl Machine {
             #[cfg(not(target_family = "wasm"))]
             fs_user_cwd: false,
             repl_types: Arc::new(Mutex::new(BTreeMap::new())),
+            raw_structs: Arc::new(Mutex::new(Vec::new())),
             env: Arc::new(Mutex::new(BTreeMap::new())),
             #[cfg(not(target_family = "wasm"))]
             children: Arc::new(Mutex::new(os::ChildTable::default())),
@@ -4621,6 +4625,11 @@ impl Machine {
         take: bool,
         span: Span,
     ) -> EResult<()> {
+        // s213 (`[mem.unsafe.raw.5]`, wolf-lang#577): `p[i].f = v` — a field
+        // of a raw element is bytes in the allocation too.
+        if let Some((root, path)) = self.raw_field_shape(place) {
+            return self.raw_field_store(root, &path, op, value, span);
+        }
         // `p[0] = 1` / `*p = 1`: the destination is bytes in an allocation, not
         // a slot in the value tree, so the provenance machine takes it.
         let raw_base = match self.raw_target(place)? {
@@ -5160,6 +5169,16 @@ impl Machine {
                 self.eval_bracket(base, args, *origin, expr.span, ReadAs::Whole)
             }
             ExprKind::Member { base, member } => {
+                // s213 (`[mem.unsafe.raw.5]`): a field of a raw element.
+                if let Some((root, path)) = self.raw_field_shape(expr) {
+                    let index = evaluated
+                        .as_ref()
+                        .and_then(|p| match p.projections.first() {
+                            Some(Proj::Index(i)) => Some(*i),
+                            _ => None,
+                        });
+                    return self.raw_field_read(root, &path, index, expr.span);
+                }
                 // The member's own path, when `live_place` evaluated it: its
                 // base is that path's parent, operands already run.
                 let base_place = evaluated.map(|mut path| {
@@ -7587,6 +7606,9 @@ impl Machine {
             }
             ExprKind::Member { base, member } => {
                 self.step()?;
+                if let Some((root, path)) = self.raw_field_shape(expr) {
+                    return self.raw_field_read(root, &path, None, expr.span);
+                }
                 self.eval_member(base, member, expr.span, ReadAs::Projected)
             }
             _ => self.eval_consumed(expr),
@@ -9399,6 +9421,7 @@ impl Machine {
                 prov: Prov::Wildcard,
                 elem,
                 signed,
+                strukt: None,
             },
             None => RawPtr::foreign(word, elem, signed),
         }
@@ -9479,7 +9502,7 @@ impl Machine {
             }
         }
         if let TypeKind::RawPointer(inner) = &*ty.kind {
-            let (elem, signed) = pointee(inner);
+            let (elem, signed, strukt) = self.raw_pointee(inner);
             return match value {
                 // A cast between raw pointer types keeps the tag:
                 // `[mem.unsafe.raw.1]` makes casts of raw pointers unrestricted.
@@ -9492,6 +9515,7 @@ impl Machine {
                     Ok(Value::Raw(RawPtr {
                         elem,
                         signed,
+                        strukt,
                         ..ptr
                     }))
                 }
@@ -9504,7 +9528,10 @@ impl Machine {
                     // The integer side (kw06, wolf-interp#184): `N` widens to
                     // the address word by its own signedness and never traps,
                     // and an address no allocation owns keeps its value.
-                    let ptr = self.pointer_at(prov::address_word(address), elem, signed);
+                    let ptr = RawPtr {
+                        strukt,
+                        ..self.pointer_at(prov::address_word(address), elem, signed)
+                    };
                     self.fire(
                         Rule::ProvExpose,
                         span,
@@ -9823,7 +9850,19 @@ impl Machine {
     /// sit at `Provenance::STRIDE` multiples, so the address alone decides
     /// it); a pointer no allocation owns keeps its own rows (L2).
     fn raw_align(&mut self, ptr: RawPtr, kind: AccessKind, span: Span) -> EResult<()> {
-        let align = ptr.elem;
+        self.raw_align_to(ptr, ptr.elem, kind, span)
+    }
+
+    /// [`Machine::raw_align`] at an explicit alignment: s213's field access
+    /// asks the element struct's (`align_of(S)`, 1 when packed), not the
+    /// field's width.
+    fn raw_align_to(
+        &mut self,
+        ptr: RawPtr,
+        align: usize,
+        kind: AccessKind,
+        span: Span,
+    ) -> EResult<()> {
         if align <= 1 || ptr.alloc.is_none() {
             return Ok(());
         }
@@ -9846,8 +9885,251 @@ impl Machine {
         )
     }
 
+    /// s213 (`[mem.unsafe.raw.4]`): the pointee a `*T` cast names — its
+    /// size, its signedness, and, for a `#[repr(c)]` struct of the current
+    /// module, the struct's entry in the machine's table (its size is then
+    /// the stride `p[i]` steps by). Any other pointee reads as it always
+    /// did ([`pointee`]).
+    fn raw_pointee(&mut self, inner: &Type) -> (usize, bool, Option<u32>) {
+        if let TypeKind::Path { path, args } = &*inner.kind
+            && args.is_empty()
+            && path.is_single()
+        {
+            let name = path.segments[0].name.clone();
+            let module = self.current_module();
+            let program = Arc::clone(&self.shared.program);
+            if let Some(m) = program.modules.get(&module)
+                && let Ok(layout) = crate::layout::layout_of_name(m, &name)
+                && !layout.fields.is_empty()
+            {
+                let mut table = self.shared.raw_structs.lock().expect("raw structs lock");
+                let key = (module, name);
+                let id = match table.iter().position(|k| *k == key) {
+                    Some(i) => i,
+                    None => {
+                        table.push(key);
+                        table.len() - 1
+                    }
+                };
+                return (
+                    usize::try_from(layout.size).unwrap_or(1),
+                    false,
+                    u32::try_from(id).ok(),
+                );
+            }
+        }
+        let (elem, signed) = pointee(inner);
+        (elem, signed, None)
+    }
+
+    /// s213 (`[mem.unsafe.raw.5]`, wolf-lang#577): a member chain rooted at
+    /// a raw element — `p[i].f`, `(*p).f`, `p[i].a.b` — whose pointer is a
+    /// place holding a pointer to a `#[repr(c)]` struct: the element
+    /// expression and the field names, root-outward. Decided before any
+    /// operand runs.
+    fn raw_field_shape<'e>(&mut self, expr: &'e Expr) -> Option<(&'e Expr, Vec<String>)> {
+        let mut path = Vec::new();
+        let mut cur = expr;
+        loop {
+            match &*cur.kind {
+                ExprKind::Member {
+                    base,
+                    member: Member::Named(ident),
+                } => {
+                    path.push(ident.name.clone());
+                    cur = base;
+                }
+                ExprKind::Group(inner) => cur = inner,
+                _ => break,
+            }
+        }
+        if path.is_empty() {
+            return None;
+        }
+        path.reverse();
+        let ptr_expr = match &*cur.kind {
+            ExprKind::BracketApply { base, args, .. }
+                if matches!(args.as_slice(), [IndexArg::Value(_)]) =>
+            {
+                base
+            }
+            ExprKind::Unary {
+                op: UnOp::Deref,
+                operand,
+            } => operand,
+            _ => return None,
+        };
+        let ExprKind::Path(p) = &*ptr_expr.kind else {
+            return None;
+        };
+        if !p.is_single() {
+            return None;
+        }
+        let place = self.place_of(ptr_expr).ok()?;
+        match self.slot_mut(&place).map(|slot| &slot.value) {
+            Some(Value::Raw(ptr)) if ptr.strukt.is_some() => Some((cur, path)),
+            _ => None,
+        }
+    }
+
+    /// The element a raw field path is rooted at: the pointer is read, then
+    /// the index runs (`[mem.model.place.rhs]`; `index` is the value a
+    /// caller's place walk already took), and the element is `p + i *
+    /// size_of(S)`.
+    fn raw_field_elem(&mut self, root: &Expr, index: Option<i128>) -> EResult<RawPtr> {
+        let (ptr_expr, index_expr) = match &*root.kind {
+            ExprKind::BracketApply { base, args, .. } => match args.as_slice() {
+                [IndexArg::Value(arg)] => (base, Some(&arg.expr)),
+                _ => return unsupported("a raw field path's element".to_owned()),
+            },
+            ExprKind::Unary { operand, .. } => (operand, None),
+            _ => return unsupported("a raw field path's element".to_owned()),
+        };
+        let place = self.place_of(ptr_expr)?;
+        let Value::Raw(ptr) = self.read_path(&place, ptr_expr.span)? else {
+            return unsupported("a raw field path through a non-pointer".to_owned());
+        };
+        let i = match (index_expr, index) {
+            (Some(_), Some(i)) => i,
+            (Some(expr), None) => match self.eval(expr)? {
+                Value::Int(i, _) => i,
+                other => {
+                    return unsupported(format!(
+                        "a raw pointer is indexed by an integer, got {}",
+                        other.kind()
+                    ));
+                }
+            },
+            (None, _) => 0,
+        };
+        Ok(ptr.offset_by(i))
+    }
+
+    /// The access to a field path at the element `elem`
+    /// (`[mem.unsafe.raw.4]`, `.5`): row L4 is asked of the ELEMENT at the
+    /// struct's alignment (1 when packed), then the field's bytes are
+    /// provenance-checked at its offset. The pointer answered addresses the
+    /// field, its `elem` the field's width.
+    fn raw_field_at(
+        &mut self,
+        elem: RawPtr,
+        path: &[String],
+        kind: AccessKind,
+        span: Span,
+    ) -> EResult<RawPtr> {
+        let Some(id) = elem.strukt else {
+            return unsupported("a raw field path through a non-struct pointee".to_owned());
+        };
+        let (module, name) =
+            self.shared.raw_structs.lock().expect("raw structs lock")[id as usize].clone();
+        let program = Arc::clone(&self.shared.program);
+        let Some(m) = program.modules.get(&module) else {
+            return unsupported(format!("the module of `{name}`"));
+        };
+        let field = match crate::layout::field_path(m, &name, path) {
+            Ok(field) => field,
+            Err(why) => {
+                return unsupported(format!(
+                    "a raw field access this machine does not model: {why}"
+                ));
+            }
+        };
+        self.raw_align_to(
+            elem,
+            usize::try_from(field.struct_align).unwrap_or(1),
+            kind,
+            span,
+        )?;
+        let at = RawPtr {
+            offset: elem.offset + i128::from(field.offset),
+            elem: usize::try_from(field.size).unwrap_or(1),
+            signed: field.signed,
+            strukt: None,
+            ..elem
+        };
+        self.prov_access(at, at.elem, kind, span)?;
+        Ok(at)
+    }
+
+    /// The integer a field's bytes hold, at its width and signedness.
+    fn raw_field_value(&mut self, at: RawPtr) -> Value {
+        let raw = self.prov().load(at, at.elem);
+        let bits = u32::try_from(at.elem * 8).unwrap_or(8);
+        Value::Int(
+            raw,
+            IntTy {
+                bits,
+                signed: at.signed,
+                mode: ArithMode::Checked,
+                literal: false,
+            },
+        )
+    }
+
+    /// `p[i].f` read (s213; s209's row on the compiler).
+    fn raw_field_read(
+        &mut self,
+        root: &Expr,
+        path: &[String],
+        index: Option<i128>,
+        span: Span,
+    ) -> EResult<Value> {
+        let elem = self.raw_field_elem(root, index)?;
+        let at = self.raw_field_at(elem, path, AccessKind::Read, span)?;
+        self.fire(
+            Rule::UnsafeRaw,
+            span,
+            &format!("raw field read `.{}` at {at}", path.join(".")),
+        );
+        Ok(self.raw_field_value(at))
+    }
+
+    /// `p[i].f = v` / `p[i].f op= v` (s213, `[mem.unsafe.raw.5]`): pointer,
+    /// index, then the right-hand side; a compound operator reads the field
+    /// first; one store of the field's width.
+    fn raw_field_store(
+        &mut self,
+        root: &Expr,
+        path: &[String],
+        op: AssignOp,
+        value: &Expr,
+        span: Span,
+    ) -> EResult<()> {
+        let elem = self.raw_field_elem(root, None)?;
+        let rhs = self.eval(value)?;
+        let rhs = if op == AssignOp::Assign {
+            rhs
+        } else {
+            let at = self.raw_field_at(elem, path, AccessKind::Read, span)?;
+            let current = self.raw_field_value(at);
+            self.binary(assign_binop(op), current, rhs, span)?
+        };
+        let Value::Int(v, _) = rhs else {
+            return unsupported(format!(
+                "a raw field store writes an integer, got {}",
+                rhs.kind()
+            ));
+        };
+        let at = self.raw_field_at(elem, path, AccessKind::Write, span)?;
+        self.fire(
+            Rule::UnsafeRaw,
+            span,
+            &format!("raw field store `.{}` at {at}", path.join(".")),
+        );
+        self.prov().store(at, at.elem, v);
+        Ok(())
+    }
+
     /// `p[i]` / `*p` — a provenance-checked load.
     fn raw_load(&mut self, ptr: RawPtr, span: Span) -> EResult<Value> {
+        if ptr.strukt.is_some() {
+            return unsupported(
+                "a whole-aggregate raw load of a `#[repr(c)]` struct (`p[i]` of a `*S`): this \
+                 machine models the struct's fields through the pointer (`p[i].f`, \
+                 `[mem.unsafe.raw.5]`), not the aggregate"
+                    .to_owned(),
+            );
+        }
         self.raw_align(ptr, AccessKind::Read, span)?;
         self.prov_access(ptr, ptr.elem, AccessKind::Read, span)?;
         let raw = self.prov().load(ptr, ptr.elem);
