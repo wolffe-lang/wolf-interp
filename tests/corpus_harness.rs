@@ -761,10 +761,21 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //  `gram.item.attr.set`, `mem.unsafe.sig`, `os.fs.*`,
     //  `proto.record.first`, `type.numlit.cast.narrow`), none dropped, key
     //  sets diffed both ways, and no new namespace.)
+    // (947 -> 1002 at 294d626d, r30, wolf-lang v0.2.24 — two releases
+    //  forward: FIFTY-FIVE new files, every one an entry (kw07's volatile,
+    //  kw08's layout, kw09's static and link, kw10's, s209's L4 rows and
+    //  kw11's ten `conc/atomic_*`); none leaves. THREE files are edited:
+    //  `grammar/attr_repr_unimplemented.lu` (re-spelled
+    //  `#[repr(c, transparent)]`), `grammar/attr_section.lu` and
+    //  `rows/unit_discard_fallible_body_stmt.lu`. The registry gains
+    //  TWENTY-SIX anchors, 569 -> 595 (`abi.interrupt`, `abi.layout.*`,
+    //  `abi.link*`, `conc.mm.atomic.*`, `conc.mm.fence`, `mem.prov.device`,
+    //  `mem.static*`, `mem.unsafe.raw.4`, `mem.unsafe.volatile*`), none
+    //  dropped, key sets diffed both ways, and no new namespace.)
     let report = report();
     assert_eq!(
         report.total(),
-        947,
+        1002,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
@@ -792,7 +803,9 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     // 846 -> 900 at 8e36bc1a (r28, wolf-lang v0.2.22): fifty-five new
     // files, fifty-four of them entries; `members` moves 46 -> 47 with
     // kw02's `membrane/geo/geo.lu`.
-    assert_eq!(report.entries(), 900);
+    // 900 -> 955 at 294d626d (r30, wolf-lang v0.2.24): fifty-five new
+    // files, every one an entry. `members` holds at 47.
+    assert_eq!(report.entries(), 955);
     assert_eq!(report.members(), 47);
 }
 
