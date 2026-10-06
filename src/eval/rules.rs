@@ -153,6 +153,9 @@ pub enum Rule {
     /// `assume noalias p, q` asserts the pointed-to ranges are disjoint; a
     /// false assertion is UB.
     AssumeNoalias,
+    /// `p.read_volatile()` / `p.write_volatile(v)`: one access of the
+    /// pointee's width per call (is74, kw07).
+    Volatile,
     /// `borrow r from ptr` and the checked `handle` are the only two doors back
     /// into the safe world.
     UnsafeDoor,
@@ -337,6 +340,9 @@ pub enum Rule {
     // -- races -------------------------------------------------------------
     /// A detected data race halts with trap kind `race`.
     RaceDetect,
+    /// A raw-pointer atomic or a fence: one indivisible operation, run as
+    /// `seq_cst` whatever its order (is74, kw11).
+    Atomic,
     /// Record/replay/free — the conforming runtime's three modes.
     DetMode,
 }
@@ -547,6 +553,13 @@ impl Rule {
             Rule::UnsafeRaw => (
                 "mem.unsafe.raw.1",
                 "raw pointers carry no aliasing assumptions; their arithmetic, casts and copies are unrestricted",
+            ),
+            Rule::Volatile => (
+                // `[mem.unsafe.raw.3]` names the two methods at every pin
+                // this machine has carried since kw07; `[mem.unsafe.volatile]`
+                // states them in full (x-ub-clause of row L3).
+                "mem.unsafe.raw.3",
+                "volatile reads and writes are the two methods on `*T`, each exactly one access of the pointee's width, never elided, split, merged or reordered against each other",
             ),
             Rule::AssumeNoalias => (
                 "mem.unsafe.raw.2",
@@ -836,6 +849,12 @@ impl Rule {
                 "conc.proc.join",
                 "`p.join()` blocks until `p` exits and yields `T ! {error, killed, cancelled, fault}` — `normal(value)` read as a VALUE, each abnormal class a payload-free tag; a join after the exit answers at once",
             ),
+            Rule::Atomic => (
+                // `[conc.mm.atomic]` is the section at every pin; its
+                // `.raw`, `.order` and `[conc.mm.fence]` clauses are kw11's.
+                "conc.mm.atomic",
+                "a raw-pointer atomic is one indivisible operation; this machine runs every order as `seq_cst` and treats every fence as in force, and two atomic accesses never race",
+            ),
             Rule::RaceDetect => (
                 "conc.mm.race.3",
                 "an implementation may detect a data race and halt with trap kind `race`; the sim scheduler detects exactly at realized interleavings",
@@ -891,7 +910,7 @@ impl Rule {
     }
 
     /// Every rule, in declaration order. The registry.
-    pub const ALL: [Rule; 119] = [
+    pub const ALL: [Rule; 121] = [
         Rule::ValueSemantics,
         Rule::PlacePath,
         Rule::PathDisjoint,
@@ -940,6 +959,7 @@ impl Rule {
         Rule::HandleAccess,
         Rule::UnsafeRaw,
         Rule::AssumeNoalias,
+        Rule::Volatile,
         Rule::UnsafeDoor,
         Rule::UnsafeScope,
         Rule::BoundaryFfi,
@@ -1010,6 +1030,7 @@ impl Rule {
         Rule::ProcRoot,
         Rule::ProcJoin,
         Rule::RaceDetect,
+        Rule::Atomic,
         Rule::DetMode,
     ];
 }
