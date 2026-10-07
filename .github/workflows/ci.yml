@@ -1,18 +1,112 @@
 name: CI
 
+# THE SLOT BUDGET (is75). The org is on GitHub's free plan: 20 concurrent
+# jobs org-wide, 5 of them macOS, public repos included. The full matrix
+# below is 17 jobs, 12 of them long (about 21 slot-hours and 3 h a run;
+# ci/is75/before.tsv), and on 2026-10-06 four PR runs held all 20 slots for
+# hours while every other repo's CI queued. So the EVENT picks the matrix:
+#
+#   push to trunk, the nightly `schedule`, `workflow_dispatch`
+#       -> the FULL matrix: ubuntu, macOS and windows, three test shards
+#          and the ladder each, exactly as before is75.
+#   pull_request carrying the `full-matrix` label
+#       -> the FULL matrix, on demand (release lanes, before tagging).
+#   any other pull_request
+#       -> ubuntu's three shards and ladder in full, plus ONE windows and
+#          ONE macOS `smoke` job (the build, fmt, clippy, every test target
+#          except the heavy ones SMOKE_OMITS names, and the fast ladder
+#          rungs), each capped at 20 minutes.
+#
+# Nothing a test checks changed: every test that ran before runs on every
+# trunk push and nightly on every OS. What a PR run no longer proves is that
+# the heavy targets pass on windows and macOS; the trunk push after the
+# merge does, and the label buys it before the merge.
 on:
   push:
     branches: [trunk, main]
   pull_request:
+    # `labeled` so adding `full-matrix` starts the full run at once; any
+    # other label's run is a no-op (the `plan` job alone, then nothing).
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    # Nightly, full matrix, on trunk.
+    - cron: "23 4 * * *"
+  workflow_dispatch:
 
+# PR runs: one group per branch and per mode, cancel-in-progress, so a push
+# to a lane branch frees its old slots. The full-matrix run and the reduced
+# run live in SEPARATE groups: adding the label must not cancel the reduced
+# run at the same head (lane-audit.sh reads a cancelled run at the head as a
+# FAIL), and an unrelated label's no-op run gets a group of its own so it
+# cancels nothing. Every other event shares one group per ref (a trunk push
+# and the nightly never hold 24 slots together) and queues rather than
+# cancels: a trunk push's full run is the coverage a merge is owed.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}-{1}', github.head_ref, (github.event.action == 'labeled' && github.event.label.name != 'full-matrix') && format('noop-{0}', github.run_id) || (contains(github.event.pull_request.labels.*.name, 'full-matrix') && 'full' || 'reduced')) || format('ref-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
+  # The PR smoke's omissions, by target name: the seven targets that carry
+  # the suite's time on windows (trunk run 37447610923, from log timestamps:
+  # doc_truth 6,189 s, run_corpus 5,828, export 5,417, cli 4,797,
+  # region_machine 2,271, rule_registry 2,091, divergence 1,311). Every
+  # other target — 59 integration tests, the lib and bin unit tests and the
+  # doc-tests, each 20 s or less there, fuzz_smoke 178 s — runs in the smoke.
+  # `ci/test-shards.sh smoke-args` refuses a name here that is not a target.
+  SMOKE_OMITS: doc_truth run_corpus export cli region_machine rule_registry divergence
 
 jobs:
+  # Which matrix this run gets, decided once from the event (see THE SLOT
+  # BUDGET above) and printed, so a run's log says why it has the jobs it
+  # has. `mode` is `full`, `pr` or `noop`.
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      shard_oses: ${{ steps.plan.outputs.shard_oses }}
+    steps:
+      - id: plan
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          LABEL: ${{ github.event.label.name }}
+          HAS_FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-matrix') }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = pull_request ] && [ "$ACTION" = labeled ] && [ "$LABEL" != full-matrix ]; then
+            mode=noop
+          elif [ "$EVENT" != pull_request ] || [ "$HAS_FULL_LABEL" = true ]; then
+            mode=full
+          else
+            mode=pr
+          fi
+          entries=()
+          add() { entries+=("{\"os\":\"$1-latest\",\"osid\":\"$1\",\"shard\":\"$2\"}"); }
+          for s in 1 2 3 ladder; do add ubuntu "$s"; done
+          if [ "$mode" = full ]; then
+            for s in 1 2 3 ladder; do add macos "$s"; done
+            for s in 1 2 3 ladder; do add windows "$s"; done
+            shard_oses="ubuntu macos windows"
+          else
+            add macos smoke
+            add windows smoke
+            shard_oses="ubuntu"
+          fi
+          matrix="[$(IFS=,; echo "${entries[*]}")]"
+          echo "event=$EVENT action=${ACTION:-none} label=${LABEL:-none} full-matrix label on the PR=$HAS_FULL_LABEL"
+          echo "mode=$mode; shard coverage checks: $shard_oses"
+          echo "matrix: $matrix"
+          {
+            echo "mode=$mode"
+            echo "matrix=$matrix"
+            echo "shard_oses=$shard_oses"
+          } >> "$GITHUB_OUTPUT"
+
   # Primary gate: linux/x86-64 runs the whole ladder, including the corpus walk.
   # macOS/aarch64 and windows/x86-64 build and test (D35 posture).
   #
@@ -40,84 +134,40 @@ jobs:
   # EVERY JOB HAS `timeout-minutes`. A cancelled job reads as infrastructure;
   # a failed one reads as "this leg does not fit", which is the thing a
   # reader needs to know. 330 is under the 6 h ceiling and about three times
-  # the widest shard.
+  # the widest shard. A smoke's 20 is its budget (is75), not a guess.
+  #
+  # The entries come from `plan` (is75): on a full run, os × {1, 2, 3,
+  # ladder} for ubuntu, macOS and windows — the twelve entries and job names
+  # of before —
+  # and on a PR run ubuntu's four plus `smoke` on macOS and windows.
+  #
+  # Measured whole-job times, kept from before the matrix moved into `plan`:
+  # linux at 0cfc0cf (job 108596027245): 5,691 / 5,654 / 5,137 s of
+  # test time for shards 1 / 2 / 3; 4,578 s of ladder steps.
+  # macOS at 0cfc0cf (job 108596027284): 6,405 / 4,892 / 5,161 s;
+  # 3,941 s of ladder steps.
+  # windows at 0cfc0cf (run 36310738129): 170.7 / 113.7 / 155.1 min
+  # whole-job for shards 1 / 2 / 3 and 135.6 min for the ladder.
+  # A ladder entry runs the steps after `cargo test`: the corpus walk, the
+  # conform-run rungs, the explorer, the fixtures, the differential lane,
+  # the fuzz smoke, the place-trace identity and the bundle. A smoke runs
+  # the build-and-test step over the smoke's targets and the five fast
+  # ladder steps (the rungs, explorer, fixtures, differential lane, fuzz
+  # smoke); never the corpus walk, the place-trace identity or the bundle,
+  # which are 40 + 7 + 40 minutes on windows.
   test:
-    name: test (${{ matrix.label }})
+    name: >-
+      test (${{ matrix.os }}, ${{ matrix.shard == 'ladder' && 'the ladder and the bundle'
+      || matrix.shard == 'smoke' && 'smoke'
+      || format('test shard {0} of 3', matrix.shard) }})
+    needs: plan
+    if: needs.plan.outputs.mode != 'noop'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.timeout }}
+    timeout-minutes: ${{ matrix.shard == 'smoke' && 20 || 330 }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # linux at 0cfc0cf (job 108596027245): 5,691 / 5,654 / 5,137 s of
-          # test time for shards 1 / 2 / 3; 4,578 s of ladder steps.
-          - os: ubuntu-latest
-            label: ubuntu-latest, test shard 1 of 3
-            id: ubuntu-shard-1
-            shard: 1
-            timeout: 330
-          - os: ubuntu-latest
-            label: ubuntu-latest, test shard 2 of 3
-            id: ubuntu-shard-2
-            shard: 2
-            timeout: 330
-          - os: ubuntu-latest
-            label: ubuntu-latest, test shard 3 of 3
-            id: ubuntu-shard-3
-            shard: 3
-            timeout: 330
-          - os: ubuntu-latest
-            label: ubuntu-latest, the ladder and the bundle
-            id: ubuntu-ladder
-            shard: ladder
-            timeout: 330
-          # macOS at 0cfc0cf (job 108596027284): 6,405 / 4,892 / 5,161 s;
-          # 3,941 s of ladder steps.
-          - os: macos-latest
-            label: macos-latest, test shard 1 of 3
-            id: macos-shard-1
-            shard: 1
-            timeout: 330
-          - os: macos-latest
-            label: macos-latest, test shard 2 of 3
-            id: macos-shard-2
-            shard: 2
-            timeout: 330
-          - os: macos-latest
-            label: macos-latest, test shard 3 of 3
-            id: macos-shard-3
-            shard: 3
-            timeout: 330
-          - os: macos-latest
-            label: macos-latest, the ladder and the bundle
-            id: macos-ladder
-            shard: ladder
-            timeout: 330
-          # windows at 0cfc0cf (run 36310738129): 170.7 / 113.7 / 155.1 min
-          # whole-job for shards 1 / 2 / 3 and 135.6 min for the ladder.
-          - os: windows-latest
-            label: windows-latest, test shard 1 of 3
-            id: windows-shard-1
-            shard: 1
-            timeout: 330
-          - os: windows-latest
-            label: windows-latest, test shard 2 of 3
-            id: windows-shard-2
-            shard: 2
-            timeout: 330
-          - os: windows-latest
-            label: windows-latest, test shard 3 of 3
-            id: windows-shard-3
-            shard: 3
-            timeout: 330
-          # The steps after `cargo test`: the corpus walk, the conform-run
-          # rungs, the explorer, the fixtures, the differential lane, the fuzz
-          # smoke and the bundle.
-          - os: windows-latest
-            label: windows-latest, the ladder and the bundle
-            id: windows-ladder
-            shard: ladder
-            timeout: 330
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v5
           # `upstream/` is the pinned wolf-lang submodule (PRIVATE — CI uses
@@ -159,6 +209,9 @@ jobs:
       # output. That measurement, not the table in the script, is what the
       # coverage job compares; the per-test count is reconciled against
       # cargo's `test result:` totals before it is uploaded.
+      #
+      # A smoke (is75) passes every target except SMOKE_OMITS, through the
+      # same script, and runs the doc-tests unless `doc` is omitted.
       - name: test
         if: matrix.shard != 'ladder'
         shell: bash
@@ -166,10 +219,17 @@ jobs:
           set -euo pipefail
           echo "the shard key, for the whole crate:"
           ci/test-shards.sh plan
-          args=$(ci/test-shards.sh args '${{ matrix.shard }}')
+          if [ '${{ matrix.shard }}' = smoke ]; then
+            echo "the smoke omits (SMOKE_OMITS): $SMOKE_OMITS"
+            args=$(ci/test-shards.sh smoke-args $SMOKE_OMITS)
+            case " $SMOKE_OMITS " in *" doc "*) doc=no ;; *) doc=yes ;; esac
+          else
+            args=$(ci/test-shards.sh args '${{ matrix.shard }}')
+            if ci/test-shards.sh has-doc '${{ matrix.shard }}'; then doc=yes; else doc=no; fi
+          fi
           echo "shard ${{ matrix.shard }} runs: $args"
           cargo test $args 2>&1 | tee test-output.log
-          if ci/test-shards.sh has-doc '${{ matrix.shard }}'; then
+          if [ "$doc" = yes ]; then
             echo "shard ${{ matrix.shard }} runs the doc-tests: cargo test --doc"
             cargo test --doc 2>&1 | tee -a test-output.log
           fi
@@ -179,11 +239,13 @@ jobs:
           echo "this job ran $(wc -l < test-binaries.txt) test binaries:"
           cat test-binaries.txt
 
+      # A smoke's listing is printed above and not uploaded: it is not a
+      # shard, and `shards cover the suite` checks shards.
       - name: upload the test binaries and tests this job ran
-        if: matrix.shard != 'ladder'
+        if: matrix.shard != 'ladder' && matrix.shard != 'smoke'
         uses: actions/upload-artifact@v4
         with:
-          name: test-binaries-${{ matrix.id }}
+          name: test-binaries-${{ matrix.osid }}-shard-${{ matrix.shard }}
           path: |
             test-binaries.txt
             test-names.txt
@@ -214,7 +276,7 @@ jobs:
       # writer's flush then races the close and aborts with EPIPE. Every check
       # below assigns to a variable first.
       - name: conform-run rungs
-        if: matrix.shard == 'ladder'
+        if: matrix.shard == 'ladder' || matrix.shard == 'smoke'
         shell: bash
         run: |
           set -euxo pipefail
@@ -427,7 +489,7 @@ jobs:
       # library tests pin the exact schedule counts); here the process-level
       # half: green exit, a stable report, and the replay doors.
       - name: schedule explorer (bounded)
-        if: matrix.shard == 'ladder'
+        if: matrix.shard == 'ladder' || matrix.shard == 'smoke'
         shell: bash
         run: |
           set -euxo pipefail
@@ -470,7 +532,7 @@ jobs:
 
       # The fixtures are the protocol's own tests ([proto.harness.fixtures]).
       - name: protocol fixtures
-        if: matrix.shard == 'ladder'
+        if: matrix.shard == 'ladder' || matrix.shard == 'smoke'
         run: |
           cargo run -- protocol validate vendor/upstream/corpus/protocol/valid.json vendor/upstream/corpus/protocol/with-extensions.json
 
@@ -482,7 +544,7 @@ jobs:
       # that promise a compiler (nightly local runs; the wolf-lang side from
       # s23). Both behaviors are asserted, not assumed.
       - name: differential lane (SKIP without a counterparty)
-        if: matrix.shard == 'ladder'
+        if: matrix.shard == 'ladder' || matrix.shard == 'smoke'
         shell: bash
         run: |
           set -euxo pipefail
@@ -500,7 +562,7 @@ jobs:
       # ub. The full campaign (10k+, against a built counterparty) is a
       # local/nightly affair — its record lives in docs/divergence-log.md.
       - name: fuzz smoke (self-oracle)
-        if: matrix.shard == 'ladder'
+        if: matrix.shard == 'ladder' || matrix.shard == 'smoke'
         shell: bash
         run: |
           set -euxo pipefail
@@ -568,11 +630,17 @@ jobs:
   # 47 = 50, made automatic for every OS. The self-test plants a hole and a
   # double in a copy of the artifacts and passes only if both are refused by
   # name, so this gate is seen red on every run.
+  #
+  # On a PR run only ubuntu is sharded (is75), so the plan names the OSes to
+  # check; on every full run it is all three, as before.
   shard-coverage:
     name: shards cover the suite
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: test
+    needs: [plan, test]
+    if: needs.plan.outputs.mode != 'noop'
+    env:
+      SHARD_OSES: ${{ needs.plan.outputs.shard_oses }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
@@ -589,11 +657,15 @@ jobs:
   # one assertion. The manifests carry a sha256 per file, so on mismatch the
   # diff below names the exact files that differ, and the per-OS job logs
   # above carry the full hash listings.
+  #
+  # Full runs only (is75): a PR run exports the bundle on ubuntu alone, and
+  # one manifest has nothing to be identical to. Skipped by design there.
   bundle-identical:
     name: bundle identical across OSes
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: test
+    needs: [plan, test]
+    if: needs.plan.outputs.mode == 'full'
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -617,6 +689,8 @@ jobs:
     name: independence
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: plan
+    if: needs.plan.outputs.mode != 'noop'
     steps:
       - uses: actions/checkout@v5
 
@@ -672,6 +746,8 @@ jobs:
   # release job re-measures on the archive it uploads.
   dist-floor:
     name: dist floor (${{ matrix.os }})
+    needs: plan
+    if: needs.plan.outputs.mode != 'noop'
     strategy:
       fail-fast: false
       matrix:
