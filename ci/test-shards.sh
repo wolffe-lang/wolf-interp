@@ -42,6 +42,8 @@
 #   ran LOGFILE        the test binaries a `cargo test` log says actually RAN
 #   tests LOGFILE      every test that log says ran: binary, test, outcome
 #   tests-check LOGFILE  the per-test count reconciled with cargo's totals
+#   smoke-args OMIT...   the `cargo test` arguments for every target EXCEPT the
+#                      named ones (the PR smoke on windows and macOS, is75)
 set -euo pipefail
 
 SHARDS=3
@@ -119,6 +121,38 @@ args() {
   # passed quickly while actually being the thing we are sharding.
   if [ -z "$out" ]; then
     echo "::error::shard $n of $SHARDS has no test target; refusing to emit an empty argument list" >&2
+    exit 1
+  fi
+  printf '%s\n' "${out# }"
+}
+
+# is75: the PR smoke on windows and macOS. Every target the crate has, minus
+# the heavy ones the workflow NAMES (its `SMOKE_OMITS`), so a target a later
+# lane adds is in the smoke by default and the omissions are written in one
+# place, in the workflow, where a reader of a smoke job looks. An omitted
+# name that is not a target is refused: a stale omission list would otherwise
+# go on "omitting" nothing while saying it omits something. The doc-tests are
+# a separate invocation (`--doc` shares none), run unless `doc` is omitted.
+smoke_args() {
+  local t o out="" all
+  all=$(targets)
+  for o in "$@"; do
+    if ! printf '%s\n' "$all" | grep -qxF "$o"; then
+      echo "::error::smoke omits '$o', which is not a test target of this crate" >&2
+      exit 1
+    fi
+  done
+  for t in $all; do
+    case " $* " in *" $t "*) continue ;; esac
+    case "$t" in
+      doc)  continue ;;
+      lib)  out="$out --lib" ;;
+      bins) out="$out --bins" ;;
+      *)    out="$out --test $t" ;;
+    esac
+  done
+  if [ -z "$out" ]; then
+    echo "::error::the smoke omits every target; refusing to emit an empty argument list" >&2
     exit 1
   fi
   printf '%s\n' "${out# }"
@@ -203,5 +237,6 @@ case "${1:-}" in
   ran)      ran "$2" ;;
   tests)    tests "$2" ;;
   tests-check) tests_check "$2" ;;
-  *) echo "usage: $0 {targets|shard-of NAME|args N|has-doc N|plan|ran LOGFILE|tests LOGFILE|tests-check LOGFILE}" >&2; exit 2 ;;
+  smoke-args) shift; smoke_args "$@" ;;
+  *) echo "usage: $0 {targets|shard-of NAME|args N|has-doc N|plan|ran LOGFILE|tests LOGFILE|tests-check LOGFILE|smoke-args OMIT...}" >&2; exit 2 ;;
 esac
