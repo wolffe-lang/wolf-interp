@@ -1035,7 +1035,12 @@ pub(crate) fn resolves_inside(root: &Path, path: &Path) -> bool {
             }
         }
     }
-    cursor.starts_with(&root)
+    // s215: compared in the host's plain spelling. On windows `root`
+    // canonicalizes to a verbatim path (`\\?\C:\…`) while an absolute
+    // candidate — `os_cwd`'s own answer handed back to `os_chdir` — walks
+    // from a plain `C:` prefix, and `Path::starts_with` tells the two
+    // prefixes apart; elsewhere `plain_path` is the identity.
+    plain_path(cursor).starts_with(plain_path(root))
 }
 
 // -- the path calls -------------------------------------------------------
@@ -1610,7 +1615,7 @@ impl Machine {
             if !canon.is_dir() {
                 return Err(FsErr::Row("io"));
             }
-            self.files().set_cwd(canon);
+            self.files().set_cwd(plain_path(canon));
             Ok(Value::Unit)
         });
         self.fs_answer(name, answer, span)
@@ -1820,6 +1825,27 @@ fn fs_bytes_arg(args: &[Value], at: usize, name: &str) -> Result<Result<Vec<u8>,
         }
     }
     Ok(Ok(bytes))
+}
+
+/// s215: `canonicalize`'s answer as the host's `getcwd` spells it. On
+/// windows the call answers a verbatim path (`\\?\C:\…`, `\\?\UNC\…`)
+/// the host's current-directory call never reports, so `os_cwd` after a
+/// change back to the first directory would compare unequal (the compiler's
+/// checked machine met exactly that: wolf-lang run 37555223637, windows job
+/// 112579792864); the prefix is dropped. Elsewhere the path is the host's.
+fn plain_path(p: PathBuf) -> PathBuf {
+    if cfg!(windows) {
+        let s = p.to_string_lossy();
+        if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{rest}"));
+        }
+        if let Some(rest) = s.strip_prefix(r"\\?\")
+            && rest.as_bytes().get(1) == Some(&b':')
+        {
+            return PathBuf::from(rest);
+        }
+    }
+    p
 }
 
 #[cfg(test)]
