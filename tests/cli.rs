@@ -1231,3 +1231,12 @@ fn a_diagnostic_in_a_sibling_module_names_its_file_and_an_entry_one_does_not() {
     let value = observe(&hello);
     assert!(value.get("files").is_none(), "{value}");
 }
+
+/// is75 PLANT — reverted in the next commit. A windows-only failure in a
+/// target the PR smoke omits (`cli`, in SMOKE_OMITS): it must be red in the
+/// full matrix's windows shard 3 and absent from the PR run's windows smoke.
+#[cfg(windows)]
+#[test]
+fn is75_planted_windows_only_failure() {
+    panic!("is75 plant: a windows-only test the smoke omits");
+}
