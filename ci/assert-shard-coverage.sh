@@ -121,7 +121,7 @@ check() {
 
   [ "$fail" -eq 0 ] || return 1
 
-  echo "every OS's three shards ran the $(wc -l < "$work/declared" | tr -d ' ') test binaries"
+  echo "each OS checked ($OSES): its three shards ran the $(wc -l < "$work/declared" | tr -d ' ') test binaries"
   echo "ci/test-shards.sh declares, each in exactly one shard, and no test in two."
   echo
   for os in $OSES; do
