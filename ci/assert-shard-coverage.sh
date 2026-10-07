@@ -10,7 +10,7 @@
 # job, so the reference is the repository's own target list, and every OS
 # is held to it separately.
 #
-# For each of ubuntu, macos and windows:
+# For each of ubuntu, macos and windows (or the OSes SHARD_OSES names):
 #
 #   1. exactly three shard listings, none empty;
 #   2. no test binary in two shards (the shards are a partition);
@@ -27,7 +27,15 @@
 # name — the gate seen red on every run, not once.
 set -euo pipefail
 
-OSES="ubuntu macos windows"
+# The OSes whose shards this run carries. Every trunk push, nightly and
+# dispatch run, and a PR labelled `full-matrix`, shards all three; a plain PR
+# run shards ubuntu alone (is75: windows and macOS run a smoke there, which
+# is not a partition and is not checked here). The workflow says which with
+# SHARD_OSES; unset means all three, so a local run checks everything.
+OSES="${SHARD_OSES:-ubuntu macos windows}"
+if [ -z "${OSES// /}" ]; then
+  echo "::error::SHARD_OSES is set but names no OS"; exit 1
+fi
 base="$(mktemp -d)"
 trap 'rm -rf "$base"' EXIT
 
@@ -129,6 +137,8 @@ check() {
   # Informational, not a gate: tests behind a `#[cfg]` differ by OS.
   echo
   for os in macos windows; do
+    case " $OSES " in *" $os "*) ;; *) continue ;; esac
+    case " $OSES " in *" ubuntu "*) ;; *) continue ;; esac
     echo "per-test, ubuntu against $os (cfg-gated tests; informational):"
     LC_ALL=C comm -23 "$work/ubuntu-tests" "$work/$os-tests" | sed 's/^/  ubuntu only: /'
     LC_ALL=C comm -13 "$work/ubuntu-tests" "$work/$os-tests" | sed "s/^/  $os only: /"
@@ -170,18 +180,21 @@ self_test() {
   echo "self-test: planted hole '$victim' (ubuntu shard 2) refused by name:"
   printf '%s\n' "$out" | grep -A1 'NOT run' | planted | sed 's/^/    /'
 
-  # Plant 2, a double: macOS shard 1's first test also listed by shard 3.
+  # Plant 2, a double: macOS shard 1's first test also listed by shard 3
+  # (the first OS checked when this run carries no macOS shards).
+  local dos=macos
+  case " $OSES " in *" macos "*) ;; *) dos=$(set -- $OSES; echo "$1") ;; esac
   cp -R "$dir" "$p/double"
-  test1=$(head -1 "$p/double/test-binaries-macos-shard-1/test-names.txt")
-  printf '%s\n' "$test1" >> "$p/double/test-binaries-macos-shard-3/test-names.txt"
-  printf '%s\n' "${test1%%	*}" >> "$p/double/test-binaries-macos-shard-3/test-binaries.txt"
+  test1=$(head -1 "$p/double/test-binaries-$dos-shard-1/test-names.txt")
+  printf '%s\n' "$test1" >> "$p/double/test-binaries-$dos-shard-3/test-names.txt"
+  printf '%s\n' "${test1%%	*}" >> "$p/double/test-binaries-$dos-shard-3/test-binaries.txt"
   if out=$(check "$p/double" 2>&1); then
     printf '%s\n' "$out"; echo "::error::self-test: a planted double was not refused"; return 1
   fi
   if ! printf '%s\n' "$out" | grep -q 'more than one shard'; then
     printf '%s\n' "$out"; echo "::error::self-test: the double was refused for another reason"; return 1
   fi
-  echo "self-test: planted double (macOS shards 1 and 3) refused:"
+  echo "self-test: planted double ($dos shards 1 and 3) refused:"
   printf '%s\n' "$out" | grep -A1 'more than one shard' | planted | sed 's/^/    /'
   echo "self-test: the clean set is green and both plants are red."
 }
