@@ -2837,7 +2837,7 @@ impl Machine {
     /// the compiler's E1010 at the block: `region-fault`.
     fn copy_out(&mut self, value: Value, block: RegionId, span: Span) -> EResult<Value> {
         match value {
-            Value::Str(s) => Ok(Value::Str(s)),
+            Value::Str(s) => Ok(Value::Str(self.built_str(s.text, span)?)),
             Value::List(items, elem, _) => {
                 let mut copied = Vec::with_capacity(items.len());
                 for slot in items.iter() {
