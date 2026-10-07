@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### `copy region { … }` (wolf-lang s216, #612)
+
+wolf-lang's `[mem.region.copyout]`: a region block whose value is copied
+into the region the block was entered from before the block's region is
+freed, so a long-running loop keeps each turn's result and frees the
+rest. lupin read the spelling as a plain `copy` of a plain block and
+trapped `region-fault` at the `}` on every such program (0.1.47, 0.1.48).
+
+- A third sugar exit beside free and freeze. On the closing brace's edge
+  only, after the enclosing region is current again, the value is copied
+  and re-homed there: every `str` rebuilt (charged to that region), lists
+  and structs re-allocated, tuples, maps and error/enum payloads rebuilt.
+  Then the block's region is freed. A `return`, `?` or `break` leaving the
+  block copies nothing, as before.
+- A fn value, closure, region, pool, cell, raw pointer or conc handle has
+  no copy independent of the region: `region-fault`, the dynamic half of
+  the compiler's E1010 at the block.
+- `tests/region_copyout.rs` carries wolf-lang's rows until the re-pin
+  brings them into the corpus walk.
+
 ### Volatile access and atomics on `*T` (is74, #185, #194)
 
 kw07 (K3 = B) and kw11 (K5 = A) gave wolf `read_volatile`/`write_volatile`
