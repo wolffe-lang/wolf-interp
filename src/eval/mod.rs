@@ -319,6 +319,10 @@ enum SugarExit {
     /// `freeze region { … }`: promote instead of free, and the block's value
     /// is `imm` forever (`[mem.region.freeze.1]`).
     Freeze,
+    /// `copy region { … }` (wolf-lang s216, `[mem.region.copyout]`): copy the
+    /// block's value into the region the block was entered from, then free
+    /// wholesale as [`SugarExit::Free`] does.
+    CopyOut,
 }
 
 fn unsupported<T>(reason: impl Into<String>) -> EResult<T> {
@@ -2701,12 +2705,22 @@ impl Machine {
             }
             Err(signal) => Err(signal),
         };
+        // `[mem.region.copyout]` (wolf-lang s216): the block's own value, on
+        // the closing brace's edge only, is copied into the region current
+        // NOW — the one the block was entered from, `leave_region` having
+        // just restored it — while the block's region is still live. Every
+        // other edge (`return`, `?`, `break`, a trap) carries its value out
+        // uncopied and meets the free below exactly as the plain block's does.
+        let result = match (finish, result) {
+            (SugarExit::CopyOut, Ok(value)) => self.copy_out(value, id, span),
+            (_, other) => other,
+        };
 
         // The exit action runs on the trap path too: a region whose block
         // faulted is still freed, which is the invariant is06's crash-cleanup
         // oracle checks.
         match finish {
-            SugarExit::Free => {
+            SugarExit::Free | SugarExit::CopyOut => {
                 let freed = self.store().free(id);
                 // `[mem.prov.region]`: the wholesale free Disables every tag
                 // tree of every allocation the region owned.
@@ -2776,6 +2790,115 @@ impl Machine {
         self.pop_scope();
         self.assert_forest(span);
         result
+    }
+
+    /// The copy `copy region { … }` hands out (wolf-lang s216,
+    /// `[mem.region.copyout]`): a deep copy of `value` homed in the CURRENT
+    /// region, with every `str` re-materialized there (a plain `copy` of a
+    /// `str` shares its bytes, `[mem.tier0.move.3]`; this one cannot, since
+    /// the bytes' region is about to be freed), every list and struct a
+    /// fresh allocation charged there, and tuples, maps and error/enum
+    /// payloads rebuilt around their copied parts. A value with no copy that
+    /// is independent of the region — a fn value or closure, a region, a
+    /// pool, a cell, a raw pointer, a conc handle — is the dynamic half of
+    /// the compiler's E1010 at the block: `region-fault`.
+    fn copy_out(&mut self, value: Value, block: RegionId, span: Span) -> EResult<Value> {
+        match value {
+            Value::Str(s) => Ok(Value::Str(self.built_str(s.text, span)?)),
+            Value::List(items, elem, _) => {
+                let mut copied = Vec::with_capacity(items.len());
+                for slot in items.iter() {
+                    copied.push(Slot {
+                        state: slot.state,
+                        value: self.copy_out(slot.value.clone(), block, span)?,
+                    });
+                }
+                let home = self.allocate(
+                    span,
+                    "a copied-out List",
+                    region::ledger::container_bytes(copied.len() as u64),
+                )?;
+                Ok(Value::list(copied, elem, Some(home)))
+            }
+            Value::Struct { name, fields, .. } => {
+                let mut copied = Vec::with_capacity(fields.len());
+                for (field, slot) in fields {
+                    copied.push((
+                        field,
+                        Slot {
+                            state: slot.state,
+                            value: self.copy_out(slot.value, block, span)?,
+                        },
+                    ));
+                }
+                let home = self.allocate(
+                    span,
+                    &format!("a copied-out `{name}`"),
+                    region::ledger::alloc_bytes(copied.len() as u64),
+                )?;
+                Ok(Value::Struct {
+                    name,
+                    fields: copied,
+                    home: Some(home),
+                })
+            }
+            Value::Tuple(slots) => {
+                let mut copied = Vec::with_capacity(slots.len());
+                for slot in slots {
+                    copied.push(Slot {
+                        state: slot.state,
+                        value: self.copy_out(slot.value, block, span)?,
+                    });
+                }
+                Ok(Value::Tuple(copied))
+            }
+            Value::Map(entries) => {
+                let mut copied = Vec::with_capacity(entries.len());
+                for (key, slot) in entries {
+                    let key = self.copy_out(key, block, span)?;
+                    copied.push((
+                        key,
+                        Slot {
+                            state: slot.state,
+                            value: self.copy_out(slot.value, block, span)?,
+                        },
+                    ));
+                }
+                Ok(Value::Map(copied))
+            }
+            Value::Error(mut err) => {
+                let payload = std::mem::take(&mut err.payload);
+                let mut copied = Vec::with_capacity(payload.len());
+                for p in payload {
+                    copied.push(self.copy_out(p, block, span)?);
+                }
+                err.payload = copied;
+                Ok(Value::Error(err))
+            }
+            plain @ (Value::Unit
+            | Value::Bool(_)
+            | Value::Int(..)
+            | Value::Float(_)
+            | Value::Char(_)
+            | Value::Byte(_)
+            | Value::Range { .. }
+            | Value::Handle(_)
+            | Value::Duration(_)) => Ok(plain),
+            other => {
+                let label = self.store().label(block);
+                self.region_fault(
+                    Rule::RegionFree,
+                    span,
+                    format!(
+                        "the block's value cannot be copied out of {label}: a {} has no copy \
+                         independent of the region it names (the compiler's E1010, \
+                         [mem.region.copyout])",
+                        other.kind()
+                    ),
+                    None,
+                )
+            }
+        }
     }
 
     /// `in r { … }` — set the current region for the block
@@ -5887,6 +6010,27 @@ impl Machine {
     }
 
     fn eval_unary(&mut self, op: UnOp, operand: &Expr, span: Span) -> EResult<Value> {
+        // `copy region { … }` (wolf-lang s216, `[mem.region.copyout]`): not a
+        // `copy` of the block's value after the fact — by then the region is
+        // freed and the value with it — but the block's own exit, the third
+        // beside free and freeze.
+        if op == UnOp::Copy
+            && let ExprKind::RegionSugar {
+                name,
+                cap,
+                strategy,
+                body,
+            } = &*operand.kind
+        {
+            return self.eval_region_sugar(
+                name.as_ref(),
+                cap.as_ref(),
+                strategy.as_ref(),
+                body,
+                span,
+                SugarExit::CopyOut,
+            );
+        }
         match op {
             UnOp::Copy => {
                 // `copy x` produces an independent value from any type
