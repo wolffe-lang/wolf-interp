@@ -6061,7 +6061,7 @@ impl Machine {
             }
             UnOp::Not => match self.eval(operand)? {
                 Value::Bool(b) => Ok(Value::Bool(!b)),
-                // `[type.int.not]` (s213, wolf-lang#575, ruling owed): `!` on
+                // `[type.int.not]` (s213, wolf-lang#575, ruling #51 = A): `!` on
                 // an integer flips every bit at its own width — total, so
                 // it never traps. A byte widens to `int` first
                 // (`[type.byte.op]`).

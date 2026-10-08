@@ -3712,7 +3712,7 @@ impl TierWalk<'_> {
             } if self.raw_local(operand) && !self.in_unsafe() => {
                 Some(ring_diag("a raw pointer read", expr.span))
             }
-            // `[type.int.not]` (s213, wolf-lang#575, ruling owed): `!` reads
+            // `[type.int.not]` (s213, wolf-lang#575, ruling #51 = A): `!` reads
             // `bool` and the integer types; on an operand this walk knows is
             // a float or a `str` it is E0409 at the operand, the compiler's
             // code and span.
@@ -6980,7 +6980,7 @@ fn tail_check(program: &Program) -> Option<Diag> {
     None
 }
 
-/// `[type.fn.never]` (s213, wolf-lang#572, ruling owed): a fn declared
+/// `[type.fn.never]` (s213, wolf-lang#572, ruling #50 = A): a fn declared
 /// `-> never` never returns. Its body holds no `return` — the first one is
 /// E0401 at the `return` — and its tail is not `()`: a tail [`unit_tail`]
 /// swears is unit is E0401 at the tail, the compiler's code and spans on its
