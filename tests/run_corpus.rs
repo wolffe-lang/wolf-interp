@@ -2209,6 +2209,16 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/volatile_ub_misaligned.lu", "ub(mem.ub)"),
     ("memory/volatile_ub_uaf.lu", "ub(mem.ub)"),
     ("memory/volatile_widths.lu", "exit(0)"),
+    //
+    // s213 over is74 (r31's integration, wolf-interp#200, #205), at the same
+    // pin: TWO more reach `run` and match their `check:`. A `*S` to a
+    // `#[repr(c)]` struct now carries its layout, so
+    // `memory/packed_field_raw_read.lu` reads its packed fields (it declined
+    // the struct pointee, #205) and s209's
+    // `memory/raw_ub_misaligned_repr_c_field.lu` reaches row L4. At trunk
+    // `1f71d47` (is74 + s200) both declined by name at resolve.
+    ("memory/packed_field_raw_read.lu", "exit(0)"),
+    ("memory/raw_ub_misaligned_repr_c_field.lu", "ub(mem.ub)"),
 ];
 
 // (is70's `RULED_AHEAD_OF_PIN` stood here: `comptime.lu`, whose `#[noalloc]`
