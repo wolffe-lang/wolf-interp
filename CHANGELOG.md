@@ -70,8 +70,9 @@ fixtures, standard input a file, a pipe and an offset the test shares).
 wolf-lang s213 closes four gaps the PAX kernel worked around; lupin now
 answers each of its rows as the compiler's checked machine does (22
 witnesses in `tests/rulings_s213/`, 19 of them the s213 corpus rows
-verbatim). Two of the four spellings — `-> never` and `!` on an integer —
-are proposals with the maintainer's ruling owed; they move with it.
+verbatim). Two of the four spellings — `-> never` and `!` on an integer — were
+ruled by the maintainer on 2026-10-07 as implemented (rulings #50 and
+#51, A each).
 
 - **#579, a module item through its module's name** (`[mem.static.4]`).
   `counter.COUNT` reads, and inside `unsafe` writes, another module's
@@ -86,12 +87,12 @@ are proposals with the maintainer's ruling owed; they move with it.
   reading first. Row L4 is asked of the element at `align_of(S)` (1 when
   packed). A whole `#[repr(c)]` element through `p[i]` is refused by name
   (it read one byte).
-- **#575, `!` on an integer** (`[type.int.not]`, ruling owed). The bitwise
+- **#575, `!` on an integer** (`[type.int.not]`, ruling #51 = A). The bitwise
   complement at the operand's width — `-x - 1` signed, `max - x` unsigned —
   never a trap; a byte widens to `int`; a complemented literal adopts an
   unsigned binding's type first (`const M: u32 = !0xfff`). `!` on a float or
   a `str` is **E0409** at the operand.
-- **#572, `-> never`** (`[type.fn.never]`, ruling owed). `never` resolves as
+- **#572, `-> never`** (`[type.fn.never]`, ruling #50 = A). `never` resolves as
   a type; a call to a `never` fn needs nothing at run time. A `-> never`
   body holding a `return`, or whose tail is `()` by shape, is **E0401** at
   the `return` or the tail.
