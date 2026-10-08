@@ -1,26 +1,24 @@
 # Changelog
 
-## Unreleased
+## 0.1.49 — 2026-10-08
 
-### `copy region { … }` (wolf-lang s216, #612)
+THE FORTY-NINTH, the lupin half of wolf 0.2.26. **Pin unchanged:
+`294d626d` (wolf-lang v0.2.24).** Fifty-three commits since 0.1.48, in
+six lanes: is74 (11, volatile and atomics), is75 (9, the CI slot
+budget), and the lupin halves of wolf-lang's s200 (5, the byte surface),
+s213 (13, the kernel papercuts, with r31's four), s215 (9, a child's
+descriptors) and s216 (6, `copy region`). Integrated by r31 one lane at
+a time. The 0.2.26 pairing drops the wolf-lang gate pins that waited on
+#185, #194, #200 and each lane's mirror.
 
-wolf-lang's `[mem.region.copyout]`: a region block whose value is copied
-into the region the block was entered from before the block's region is
-freed, so a long-running loop keeps each turn's result and frees the
-rest. lupin read the spelling as a plain `copy` of a plain block and
-trapped `region-fault` at the `}` on every such program (0.1.47, 0.1.48).
-
-- A third sugar exit beside free and freeze. On the closing brace's edge
-  only, after the enclosing region is current again, the value is copied
-  and re-homed there: every `str` rebuilt (charged to that region), lists
-  and structs re-allocated, tuples, maps and error/enum payloads rebuilt.
-  Then the block's region is freed. A `return`, `?` or `break` leaving the
-  block copies nothing, as before.
-- A fn value, closure, region, pool, cell, raw pointer or conc handle has
-  no copy independent of the region: `region-fault`, the dynamic half of
-  the compiler's E1010 at the block.
-- `tests/region_copyout.rs` carries wolf-lang's rows until the re-pin
-  brings them into the corpus walk.
+- **The walk at this release:** 1002 files, 955 entries, 47 members;
+  760 reach `run`, 721 match, 94 dynamic, 64 conservatism, 72 out of
+  scope, 4 mismatch, every one filed. Two rows newly run and match
+  (`memory/packed_field_raw_read.lu`, `memory/raw_ub_misaligned_repr_c_field.lu`):
+  s213's struct pointee over is74's pointee class, which also answers
+  wolf-interp#205.
+- **Rulings now made** that lanes implemented ahead of them: #50
+  (`-> never`), #51 (`!` on integers), #56 (`copy region`), each A.
 
 ### Volatile access and atomics on `*T` (is74, #185, #194)
 
@@ -53,6 +51,25 @@ against wolf 0.2.24), the counts of tasks running atomics included.
   The plain-increment twin still traps `race`. Atomics are not schedule
   points, so a spin-wait whose writer has not run does not terminate here
   (`docs/approximation-contract.md` §10.7).
+
+### CI: the slot budget (is75)
+
+The org's free plan runs 20 jobs at once, five of them macOS, across every
+repo, and a full wolf-interp run is 17 jobs and about 21 slot-hours. The
+`plan` job in `.github/workflows/ci.yml` now decides the matrix by event:
+a push to `trunk`, the nightly, `workflow_dispatch` and a pull request
+labelled **`full-matrix`** run the full matrix as before; any other pull
+request runs ubuntu's three shards and ladder in full plus one windows and
+one macOS **smoke** (build, fmt, clippy, every test target but the heavy
+ones `SMOKE_OMITS` names, and the fast ladder rungs; a 20-minute cap,
+which r31 found at its edge: one windows smoke timed out at 20.2
+minutes with nothing failed, wolf-interp#215).
+`ci/test-shards.sh` gains `smoke-args`; `ci/assert-shard-coverage.sh`
+checks the OSes `SHARD_OSES` names (all three when unset) and says which.
+`CONTRIBUTING.md` documents the budget and how to ask for the full matrix
+before a merge. The plant (a windows-only failing test in `cli`) went red
+in the full matrix (run 37549965195, windows shard 3) and was absent from
+the smoke, as designed; reverted.
 
 ### The byte surface, mirrored (s200; wolf-lang#405, #411, #417, #407)
 
@@ -141,6 +158,26 @@ compiler's own rows and fixtures in `tests/proc_fd_s215.rs`.
   closing a child's descriptor between fork and exec needs `unsafe`, which
   this crate forbids, and stable Rust 1.97 has no safe call for it. An
   unmapped 0..2 keeps this machine's spawn posture, the null device.
+
+### `copy region { … }` (wolf-lang s216, #612)
+
+wolf-lang's `[mem.region.copyout]`: a region block whose value is copied
+into the region the block was entered from before the block's region is
+freed, so a long-running loop keeps each turn's result and frees the
+rest. lupin read the spelling as a plain `copy` of a plain block and
+trapped `region-fault` at the `}` on every such program (0.1.47, 0.1.48).
+
+- A third sugar exit beside free and freeze. On the closing brace's edge
+  only, after the enclosing region is current again, the value is copied
+  and re-homed there: every `str` rebuilt (charged to that region), lists
+  and structs re-allocated, tuples, maps and error/enum payloads rebuilt.
+  Then the block's region is freed. A `return`, `?` or `break` leaving the
+  block copies nothing, as before.
+- A fn value, closure, region, pool, cell, raw pointer or conc handle has
+  no copy independent of the region: `region-fault`, the dynamic half of
+  the compiler's E1010 at the block.
+- `tests/region_copyout.rs` carries wolf-lang's rows until the re-pin
+  brings them into the corpus walk.
 
 ## 0.1.48 — 2026-10-06
 
