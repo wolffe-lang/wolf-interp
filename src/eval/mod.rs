@@ -6740,7 +6740,22 @@ impl Machine {
         let computed = match op {
             Add => a.checked_add(b),
             Sub => a.checked_sub(b),
-            Mul => a.checked_mul(b),
+            // s220 (wolf-lang#538's sweep): two 64-bit operands can
+            // multiply past i128 (`(2^64 - 2) * 2^63` does), which is no
+            // overflow of a WRAPPING type — its answer is the product's
+            // low bits, and i128's own wrapping product keeps all 128 of
+            // them, so `reduce` reads the right residue. A saturating
+            // product that large saturates by its sign; a checked one
+            // still traps (it left every range this machine holds).
+            Mul => a.checked_mul(b).or(match ty.mode {
+                ArithMode::Wrapping => Some(a.wrapping_mul(b)),
+                ArithMode::Saturating => Some(if (a < 0) == (b < 0) {
+                    i128::MAX
+                } else {
+                    i128::MIN
+                }),
+                ArithMode::Checked => None,
+            }),
             Div => a.checked_div(b),
             Rem => a.checked_rem(b),
             BitAnd => Some(a & b),
