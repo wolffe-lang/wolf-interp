@@ -191,6 +191,22 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "os_pipe",
     "os_chdir",
     "os_isatty",
+    // s219 (wolf-lang#622, pelt's H3): Ctrl-C and jobs. This machine
+    // serves what std reaches without `unsafe` — a spawn into a process
+    // group, a child's pid and its status by signal number, the poll and
+    // the dispositions' SHAPE rows — and refuses the rest by name
+    // (`[os.term.note]` R8): no `sigaction`, `tcsetpgrp` or `tcsetattr`.
+    "os_signal_ignore",
+    "os_signal_default",
+    "os_signal_poll",
+    "os_spawn_job",
+    "os_proc_pid",
+    "os_wait_status",
+    "os_pgid",
+    "os_term_foreground",
+    "os_term_set_foreground",
+    "os_term_mode",
+    "os_term_set_mode",
     "os_wait",
     "os_kill",
     "time_now_ms",
@@ -528,8 +544,25 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // {signal, io} on wait (which REAPS), {io} on kill (which never
         // tombstones). No `std::process` on wasm: the tier declines there.
         #[cfg(target_family = "wasm")]
-        "os_spawn" | "os_spawn_with" | "os_spawn_fds" | "os_pipe" | "os_chdir" | "os_isatty"
-        | "os_wait" | "os_kill" => unsupported(format!(
+        "os_spawn"
+        | "os_spawn_with"
+        | "os_spawn_fds"
+        | "os_pipe"
+        | "os_chdir"
+        | "os_isatty"
+        | "os_wait"
+        | "os_kill"
+        | "os_signal_ignore"
+        | "os_signal_default"
+        | "os_signal_poll"
+        | "os_spawn_job"
+        | "os_proc_pid"
+        | "os_wait_status"
+        | "os_pgid"
+        | "os_term_foreground"
+        | "os_term_set_foreground"
+        | "os_term_mode"
+        | "os_term_set_mode" => unsupported(format!(
             "`{name}` is the s40 process trio; this wasm build has no processes to spawn, \
              so the tier is declined rather than mocked"
         )),
@@ -612,6 +645,173 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             };
             let fd = *fd;
             machine.os_isatty(fd, span)
+        }
+        // s219 (`[os.signal.disp]`, `[os.signal.poll]`): a set's SHAPE is
+        // every machine's — an empty set, or a bit outside the nine
+        // meanings, is the `io` row. A well-formed disposition needs
+        // `sigaction`, which this machine has no safe call for: refused by
+        // name. A poll of a well-formed set answers 0 — this machine never
+        // listens (`os_signal_listen` is declined), so nothing is ever
+        // queued, which is the clause's own answer for a program that has
+        // not listened.
+        #[cfg(not(target_family = "wasm"))]
+        "os_signal_ignore" | "os_signal_default" | "os_signal_poll" => {
+            let Some(Value::Int(set, _)) = args.first() else {
+                return unsupported(format!("`{name}` takes an integer meaning set"));
+            };
+            let set = *set;
+            let bad = if name == "os_signal_poll" {
+                set & 511 == 0
+            } else {
+                set == 0 || set & !511 != 0
+            };
+            if bad {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`{name}` yields the `io` row"),
+                );
+                return Ok(error_value(name, "io"));
+            }
+            if name == "os_signal_poll" {
+                return Ok(Value::Int(0, IntTy::INT));
+            }
+            if cfg!(windows) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`{name}` yields the `unsupported` row"),
+                );
+                return Ok(error_value(name, "unsupported"));
+            }
+            unsupported(format!(
+                "`{name}` sets a signal's disposition: this machine admits no `unsafe` and \
+                 std has no `sigaction` ([os.signal.disp], [os.term.note] R8)"
+            ))
+        }
+        // s219 (`[os.proc.status]`): the child's pid, and how it ended.
+        #[cfg(not(target_family = "wasm"))]
+        "os_proc_pid" | "os_wait_status" => {
+            let Some(Value::Int(handle, _)) = args.first() else {
+                return unsupported(format!("`{name}` takes an integer child handle"));
+            };
+            let handle = *handle;
+            let answer = if name == "os_proc_pid" {
+                machine.children().pid(handle)
+            } else {
+                machine.children().wait_status(handle)
+            };
+            match answer {
+                Ok(v) => Ok(Value::Int(v, IntTy::INT)),
+                Err(tag) => {
+                    machine.note(
+                        Rule::ErrUnion,
+                        span,
+                        &format!("`{name}` yields the `{tag}` row"),
+                    );
+                    Ok(error_value(name, tag))
+                }
+            }
+        }
+        // s219 (`[os.term]`): the terminal needs `tcgetpgrp`, `tcsetpgrp`,
+        // `tcgetattr` and `tcsetattr`, and the group `getpgrp` — none in
+        // std, so each is refused by name (R8). A mode's SHAPE is read
+        // first, as on every machine: `invalid`.
+        #[cfg(not(target_family = "wasm"))]
+        "os_pgid"
+        | "os_term_foreground"
+        | "os_term_set_foreground"
+        | "os_term_mode"
+        | "os_term_set_mode" => {
+            if name == "os_term_set_mode"
+                && let Some(Value::Int(m, _)) = args.get(1)
+                && (*m < 0 || *m & !0x00FF_FF07 != 0)
+            {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_term_set_mode` yields the `invalid` row",
+                );
+                return Ok(error_value(name, "invalid"));
+            }
+            if cfg!(windows) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`{name}` yields the `unsupported` row"),
+                );
+                return Ok(error_value(name, "unsupported"));
+            }
+            unsupported(format!(
+                "`{name}` asks the terminal or the process group: this machine admits no \
+                 `unsafe` and std has no call for it ([os.term], [os.term.note] R8)"
+            ))
+        }
+        // s219 (`[os.proc.job]`): the job spawn — SHAPE (`invalid`), HOST
+        // (windows: any option or a non-empty map is `unsupported`), then
+        // this machine's limits by name (a `tty` handoff or `defaults` need
+        // `tcsetpgrp`/`sigaction` in the child; the map's own limits are
+        // `os_spawn_fds`'s), then the sources and the program. A group goes
+        // through std's `process_group`.
+        #[cfg(not(target_family = "wasm"))]
+        "os_spawn_job" => {
+            let (
+                Some(Value::Str(exe)),
+                Some(Value::List(args_list, _, _)),
+                Some(Value::List(map, _, _)),
+                Some(Value::Int(group, _)),
+                Some(Value::Int(tty, _)),
+                Some(Value::Int(defaults, _)),
+            ) = (
+                args.first(),
+                args.get(1),
+                args.get(2),
+                args.get(3),
+                args.get(4),
+                args.get(5),
+            )
+            else {
+                return unsupported(
+                    "`os_spawn_job` takes an executable `str`, a `List[str]` of arguments, a \
+                     `List[int]` descriptor map and three integers"
+                        .to_owned(),
+                );
+            };
+            let (group, tty, defaults) = (*group, *tty, *defaults);
+            let mut flat = Vec::with_capacity(map.len());
+            for slot in map.iter() {
+                let Value::Int(n, _) = &slot.value else {
+                    return unsupported(format!(
+                        "`os_spawn_job`'s map holds {}, not `int`",
+                        slot.value.kind()
+                    ));
+                };
+                flat.push(*n);
+            }
+            let mut argv = Vec::with_capacity(args_list.len() + 1);
+            argv.push(exe.text.clone());
+            for slot in args_list.iter() {
+                let Value::Str(part) = &slot.value else {
+                    return unsupported(format!(
+                        "`os_spawn_job`'s arguments hold {}, not `str`",
+                        slot.value.kind()
+                    ));
+                };
+                argv.push(part.text.clone());
+            }
+            let answer = spawn_job_answer(machine, &argv, &flat, group, tty, defaults);
+            match answer {
+                Ok(Ok(handle)) => Ok(Value::Int(handle, IntTy::INT)),
+                Ok(Err(tag)) => {
+                    machine.note(
+                        Rule::ErrUnion,
+                        span,
+                        &format!("`os_spawn_job` yields the `{tag}` row"),
+                    );
+                    Ok(error_value("os_spawn_job", tag))
+                }
+                Err(reason) => unsupported(reason),
+            }
         }
         // s215 (`[os.proc.fds]`): the spawn with a descriptor map. The map's
         // rules and their order are the clause's: SHAPE (`invalid`), HOST
@@ -2770,6 +2970,13 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // non-empty map `unsupported`, before any program is looked for.
         "os_spawn_fds" => &["unsupported", "invalid", "not_found", "denied", "io"],
         "os_pipe" | "os_isatty" => &["io"],
+        // s219 (`[os.host.sigs]`'s eleven lines).
+        "os_signal_ignore" | "os_signal_default" => &["unsupported", "io"],
+        "os_signal_poll" | "os_proc_pid" | "os_wait_status" => &["io"],
+        "os_spawn_job" => &["unsupported", "invalid", "not_found", "denied", "io"],
+        "os_pgid" => &["unsupported"],
+        "os_term_foreground" | "os_term_mode" | "os_term_set_foreground" => &["unsupported", "io"],
+        "os_term_set_mode" => &["unsupported", "invalid", "io"],
         "os_chdir" => &["not_found", "denied", "io"],
         // The env pair and the json query tier: mint-site closures.
         "env_get" => &["invalid", "missing"],
@@ -2890,6 +3097,63 @@ fn spawn_fds_answer(
     let cwd = machine.files().moved_cwd();
     let spawned = machine.children().spawn_fds(argv, stdio, cwd.as_deref());
     Ok(spawned)
+}
+
+/// s219 (`[os.proc.job]`): `os_spawn_job` past its argument shapes; the
+/// outer `Err` is this machine's by-name refusal, the inner a row.
+#[cfg(not(target_family = "wasm"))]
+fn spawn_job_answer(
+    machine: &mut Machine,
+    argv: &[String],
+    flat: &[i128],
+    group: i128,
+    tty: i128,
+    defaults: i128,
+) -> Result<Result<i128, &'static str>, String> {
+    let Some(pairs) = fd_map_of(flat) else {
+        return Ok(Err("invalid"));
+    };
+    if group < -1 || tty < -1 || defaults < 0 || defaults & !511 != 0 {
+        return Ok(Err("invalid"));
+    }
+    let plain = group == -1 && tty == -1 && defaults == 0;
+    if cfg!(windows) && !(plain && pairs.is_empty()) {
+        return Ok(Err("unsupported"));
+    }
+    if tty >= 0 || defaults != 0 {
+        return Err(format!(
+            "an os_spawn_job that {}: this machine admits no `unsafe`, and std has no call to \
+             make that change in the child before exec ([os.proc.job], [os.term.note] R8)",
+            if tty >= 0 {
+                "hands the child the terminal"
+            } else {
+                "sets dispositions back to default"
+            }
+        ));
+    }
+    if let Some(&(target, _)) = pairs.iter().find(|(t, s)| *t > 2 || s.is_none()) {
+        return Err(format!(
+            "a descriptor map that {} in os_spawn_job: this machine admits no `unsafe`, and \
+             placing or closing a child's descriptor between fork and exec has no safe call \
+             in std ([os.proc.fds])",
+            if target > 2 {
+                "names a descriptor above 2"
+            } else {
+                "closes a descriptor"
+            }
+        ));
+    }
+    let mut stdio: [Option<std::fs::File>; 3] = [None, None, None];
+    for &(target, source) in &pairs {
+        let Some(file) = source.and_then(|h| machine.files().duplicate(h)) else {
+            return Ok(Err("io"));
+        };
+        let at = usize::try_from(target).expect("a target in 0..=2");
+        stdio[at] = Some(file);
+    }
+    let g = (group >= 0).then(|| i32::try_from(group).unwrap_or(i32::MAX));
+    let cwd = machine.files().moved_cwd();
+    Ok(machine.children().spawn_job(argv, stdio, cwd.as_deref(), g))
 }
 
 /// s215 (`[os.proc.fds]`): the flat `[target, source, …]` map as pairs, or
