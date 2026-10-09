@@ -1167,6 +1167,160 @@ pub(crate) fn modified_ms_of(path: &Path) -> FsResult<i128> {
     Ok(modified_ms(&meta)?)
 }
 
+// -- s218: the full stat record, the link's target, the typed listing ------
+//
+// Written from `[os.fs.stat]`, `[os.fs.readlink]` and `[os.fs.readdir]`
+// (wolf-lang#625, #626; spec/11-os.md §6 at the s218 head), never from
+// `wolf_rt::fs`.
+
+/// `[os.fs.stat]`'s kind word: 0 file, 1 directory, 2 anything else, 3 link,
+/// 4 fifo, 5 socket, 6 character device, 7 block device.
+fn record_kind(ft: std::fs::FileType) -> i128 {
+    if ft.is_symlink() {
+        return 3;
+    }
+    if ft.is_dir() {
+        return 1;
+    }
+    if ft.is_file() {
+        return 0;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileTypeExt as _;
+        if ft.is_fifo() {
+            return 4;
+        }
+        if ft.is_socket() {
+            return 5;
+        }
+        if ft.is_char_device() {
+            return 6;
+        }
+        if ft.is_block_device() {
+            return 7;
+        }
+    }
+    2
+}
+
+/// A time as the clause's `timespec`: whole seconds floored, nanoseconds in
+/// `0..1e9`, before the epoch too. `None` outside `int`.
+fn timespec(t: std::time::SystemTime) -> Option<(i128, i128)> {
+    let (s, ns) = match t.duration_since(UNIX_EPOCH) {
+        Ok(d) => (i128::from(d.as_secs()), i128::from(d.subsec_nanos())),
+        Err(before) => {
+            let d = before.duration();
+            let (s, ns) = (i128::from(d.as_secs()), i128::from(d.subsec_nanos()));
+            if ns == 0 {
+                (-s, 0)
+            } else {
+                (-s - 1, 1_000_000_000 - ns)
+            }
+        }
+    };
+    in_int_domain(s).ok().map(|s| (s, ns))
+}
+
+/// The host's unsigned 64-bit word carried in `int`'s 64 bits (`[os.fs.stat]`:
+/// "an identity to compare for equality, never to order").
+#[cfg(unix)]
+fn word_bits(v: u64) -> i128 {
+    i128::from(v.cast_signed())
+}
+
+/// `[os.fs.stat]`'s twenty words for one metadata answer; `io` for a size or
+/// modification time outside `int`. A word the host does not answer stays 0
+/// with its `have` bit (word 3) clear.
+pub(crate) fn stat_record(meta: &Metadata) -> Result<Vec<i128>, Row> {
+    let mut words = vec![0i128; 20];
+    let mut have: i128 = 0;
+    let mut put = |words: &mut Vec<i128>, at: usize, v: i128| {
+        words[at] = v;
+        have |= 1 << at;
+    };
+    put(&mut words, 0, record_kind(meta.file_type()));
+    put(&mut words, 1, size_of(meta)?);
+    put(&mut words, 2, modified_ms(meta)?);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        put(&mut words, 4, i128::from(meta.mode() & 0o7777));
+        put(&mut words, 5, word_bits(meta.nlink()));
+        put(&mut words, 6, i128::from(meta.uid()));
+        put(&mut words, 7, i128::from(meta.gid()));
+        put(&mut words, 8, word_bits(meta.blocks()));
+        put(&mut words, 9, word_bits(meta.dev()));
+        put(&mut words, 10, word_bits(meta.ino()));
+        put(&mut words, 11, word_bits(meta.rdev()));
+        put(&mut words, 12, i128::from(meta.atime()));
+        put(&mut words, 13, i128::from(meta.atime_nsec()));
+        put(&mut words, 14, i128::from(meta.mtime()));
+        put(&mut words, 15, i128::from(meta.mtime_nsec()));
+        put(&mut words, 16, i128::from(meta.ctime()));
+        put(&mut words, 17, i128::from(meta.ctime_nsec()));
+    }
+    #[cfg(not(unix))]
+    {
+        if let Some((s, ns)) = meta.accessed().ok().and_then(timespec) {
+            put(&mut words, 12, s);
+            put(&mut words, 13, ns);
+        }
+        if let Some((s, ns)) = meta.modified().ok().and_then(timespec) {
+            put(&mut words, 14, s);
+            put(&mut words, 15, ns);
+        }
+    }
+    if let Some((s, ns)) = meta.created().ok().and_then(timespec) {
+        put(&mut words, 18, s);
+        put(&mut words, 19, ns);
+    }
+    words[3] = have | (1 << 3);
+    Ok(words)
+}
+
+/// `fs_stat` (follow) and `fs_lstat`: one host call, then the record.
+pub(crate) fn stat_path(path: &Path, follow: bool) -> FsResult<Vec<i128>> {
+    let meta = if follow {
+        std::fs::metadata(path)
+    } else {
+        std::fs::symlink_metadata(path)
+    }
+    .map_err(|e| path_row(&e))?;
+    Ok(stat_record(&meta)?)
+}
+
+/// `fs_read_link`: the target's bytes as the host stored them; a path that
+/// is not a link is `invalid` (`EINVAL`; windows' 4390).
+pub(crate) fn read_link(path: &Path) -> FsResult<Vec<u8>> {
+    match std::fs::read_link(path) {
+        Ok(target) => Ok(target.as_os_str().as_encoded_bytes().to_vec()),
+        Err(e)
+            if e.kind() == std::io::ErrorKind::InvalidInput
+                || (cfg!(windows) && e.raw_os_error() == Some(4390)) =>
+        {
+            note_host_error(&e);
+            Err(FsErr::Row("invalid"))
+        }
+        Err(e) => Err(path_row(&e)),
+    }
+}
+
+/// `fs_read_dir_entries`: the host's order, no sort, each entry its own kind
+/// (2 when the host gives none) followed by the name's bytes.
+pub(crate) fn read_dir_entries(path: &Path) -> FsResult<Vec<Vec<u8>>> {
+    let mut rows = Vec::new();
+    for entry in std::fs::read_dir(path).map_err(|e| path_row(&e))? {
+        let entry = entry.map_err(|e| path_row(&e))?;
+        let kind = entry.file_type().map_or(2, record_kind);
+        let name = entry.file_name();
+        let mut row = vec![u8::try_from(kind).unwrap_or(2)];
+        row.extend_from_slice(name.as_encoded_bytes());
+        rows.push(row);
+    }
+    Ok(rows)
+}
+
 /// `fs_exists(path) -> bool`. INFALLIBLE: the witnesses call it with no `?`
 /// (`corpus/fs/roundtrip.lu`'s `gone: {!fs_exists(path)}`), so an
 /// unreadable parent answers `false` rather than raising.
@@ -1442,6 +1596,75 @@ impl Machine {
                 });
                 self.fs_answer(name, answer, span)
             }
+            // s218 (`[os.fs.stat]`): the twenty-word record. `fs_stat`
+            // follows, so its containment is the family's resolved check;
+            // `fs_lstat` follows no final link, so only the parent must
+            // resolve inside the tree (`fs_contained_link`).
+            "fs_stat" | "fs_lstat" => {
+                let path = self.fs_path_arg(args, 0, name)?;
+                let follow = name == "fs_stat";
+                let answer = if follow {
+                    self.fs_contained(&path, name)
+                } else {
+                    self.fs_contained_link(&path, name)
+                }
+                .and_then(|path| stat_path(&path, follow));
+                let answer = match answer {
+                    Ok(words) => {
+                        let home = self.allocate(
+                            span,
+                            name,
+                            super::region::ledger::container_bytes(words.len() as u64),
+                        )?;
+                        Ok(Value::list(
+                            words
+                                .into_iter()
+                                .map(|w| super::value::Slot::live(Value::Int(w, IntTy::INT)))
+                                .collect(),
+                            Some(ElemTy::Int(IntTy::INT)),
+                            Some(home),
+                        ))
+                    }
+                    Err(err) => Err(err),
+                };
+                self.fs_answer(name, answer, span)
+            }
+            // s218 (`[os.fs.readlink]`): reading a link follows nothing.
+            "fs_read_link" => {
+                let path = self.fs_path_arg(args, 0, name)?;
+                let answer = self
+                    .fs_contained_link(&path, name)
+                    .and_then(|path| read_link(&path));
+                let answer = self.fs_byte_list(answer, name, span)?;
+                self.fs_answer(name, answer, span)
+            }
+            // s218 (`[os.fs.readdir]`): one byte list per entry, kind first.
+            "fs_read_dir_entries" => {
+                let path = self.fs_path_arg(args, 0, name)?;
+                let answer = self
+                    .fs_contained(&path, name)
+                    .and_then(|path| read_dir_entries(&path));
+                let answer = match answer {
+                    Ok(rows) => {
+                        let home = self.allocate(
+                            span,
+                            name,
+                            super::region::ledger::container_bytes(rows.len() as u64),
+                        )?;
+                        let mut slots = Vec::with_capacity(rows.len());
+                        for row in rows {
+                            let inner = self.fs_byte_list(Ok(row), name, span)?;
+                            match inner {
+                                Ok(v) => slots.push(super::value::Slot::live(v)),
+                                Err(_) => unreachable!("an Ok row mints"),
+                            }
+                        }
+                        Ok(Value::list(slots, None, Some(home)))
+                    }
+                    Err(err) => Err(err),
+                };
+                self.fs_answer(name, answer, span)
+            }
             "fs_size" | "fs_modified_ms" => {
                 let path = self.fs_path_arg(args, 0, name)?;
                 let answer = self
@@ -1677,6 +1900,26 @@ impl Machine {
             return Err(FsErr::Outside(outside_reason(name, path)));
         }
         self.files().resolve(&candidate, live).map_err(FsErr::Row)
+    }
+
+    /// s218: containment for a call that does NOT follow the path's final
+    /// component (`fs_lstat`, `fs_read_link`): the parent must resolve
+    /// inside the served tree, and the last name is taken as written — a
+    /// link inside the tree is served wherever it points, since reading it
+    /// leaves nothing. A path whose last component is not a plain name
+    /// (`..`, `.`, a root) takes the family's check.
+    fn fs_contained_link(&self, path: &str, name: &str) -> FsResult<PathBuf> {
+        let p = Path::new(path);
+        match (p.parent(), p.file_name()) {
+            (Some(parent), Some(last))
+                if matches!(p.components().next_back(), Some(Component::Normal(_))) =>
+            {
+                let parent = parent.to_str().unwrap_or("");
+                let parent = if parent.is_empty() { "." } else { parent };
+                Ok(self.fs_contained(parent, name)?.join(last))
+            }
+            _ => self.fs_contained(path, name),
+        }
     }
 
     /// A row becomes an error VALUE with a note; a by-name refusal becomes
@@ -2417,5 +2660,78 @@ mod tests {
         let stat = answered.expect("a handle, not a row");
         // `[os.fs.fstat]`: a fifo is `kind` 2, "anything else".
         assert_eq!(stat[0], 2, "a fifo classifies as kind 2");
+    }
+
+    /// s218 (`[os.fs.stat]`, `[os.fs.readlink]`): a link against its target
+    /// — lstat answers the link (kind 3, its size the target's length),
+    /// stat the target; a dangling link is `not_found` to stat only; the
+    /// record's unix words agree with the host's metadata.
+    #[cfg(unix)]
+    #[test]
+    fn stat_and_lstat_and_readlink() {
+        use std::os::unix::fs::MetadataExt as _;
+        let dir = scratch("fs-s218-stat");
+        write_text(&dir.join("a"), "12345").expect("written");
+        let _ = std::fs::remove_file(dir.join("ln"));
+        let _ = std::fs::remove_file(dir.join("dangling"));
+        std::os::unix::fs::symlink("a", dir.join("ln")).expect("linked");
+        std::os::unix::fs::symlink("nope", dir.join("dangling")).expect("linked");
+        let l = stat_path(&dir.join("ln"), false).expect("lstat");
+        let t = stat_path(&dir.join("ln"), true).expect("stat");
+        assert_eq!((l[0], l[1], t[0], t[1]), (3, 1, 0, 5));
+        assert_eq!(l.len(), 20);
+        assert_eq!(l[3] & 0x3ffff, 0x3ffff, "unix answers words 0..17");
+        let md = std::fs::metadata(dir.join("a")).expect("meta");
+        assert_eq!(t[10], i128::from(md.ino().cast_signed()));
+        assert_eq!(t[4], i128::from(md.mode() & 0o7777));
+        assert_eq!(
+            (t[14], t[15]),
+            (i128::from(md.mtime()), i128::from(md.mtime_nsec()))
+        );
+        assert!(matches!(
+            stat_path(&dir.join("dangling"), true),
+            Err(FsErr::Row("not_found"))
+        ));
+        assert_eq!(
+            stat_path(&dir.join("dangling"), false).expect("lstat")[1],
+            4
+        );
+        assert_eq!(read_link(&dir.join("ln")).expect("target"), b"a");
+        assert!(matches!(
+            read_link(&dir.join("a")),
+            Err(FsErr::Row("invalid"))
+        ));
+        assert!(matches!(
+            read_link(&dir.join("gone")),
+            Err(FsErr::Row("not_found"))
+        ));
+    }
+
+    /// s218 (`[os.fs.readdir]`): the listing carries each entry's own kind
+    /// and its name's bytes; the set is pinned, the order is the host's.
+    #[cfg(unix)]
+    #[test]
+    fn entries_carry_kinds_and_names() {
+        let dir = scratch("fs-s218-entries");
+        create_dir_all(&dir.join("d")).expect("made");
+        write_text(&dir.join("f"), "x").expect("written");
+        let _ = std::fs::remove_file(dir.join("ln"));
+        std::os::unix::fs::symlink("f", dir.join("ln")).expect("linked");
+        let mut got = read_dir_entries(&dir).expect("lists");
+        got.sort();
+        assert_eq!(
+            got,
+            vec![b"\x00f".to_vec(), b"\x01d".to_vec(), b"\x03ln".to_vec()]
+        );
+    }
+
+    #[test]
+    fn timespec_floors_before_the_epoch() {
+        use std::time::Duration;
+        assert_eq!(timespec(UNIX_EPOCH + Duration::new(5, 7)), Some((5, 7)));
+        assert_eq!(
+            timespec(UNIX_EPOCH - Duration::new(0, 1)),
+            Some((-1, 999_999_999))
+        );
     }
 }
