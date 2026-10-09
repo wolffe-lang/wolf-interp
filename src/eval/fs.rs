@@ -1281,8 +1281,12 @@ pub(crate) fn stat_record(meta: &Metadata) -> Result<Vec<i128>, Row> {
 
 /// `fs_stat` (follow) and `fs_lstat`: one host call, then the record.
 pub(crate) fn stat_path(path: &Path, follow: bool) -> FsResult<Vec<i128>> {
-    let _ = follow;
-    let meta = std::fs::metadata(path).map_err(|e| path_row(&e))?;
+    let meta = if follow {
+        std::fs::metadata(path)
+    } else {
+        std::fs::symlink_metadata(path)
+    }
+    .map_err(|e| path_row(&e))?;
     Ok(stat_record(&meta)?)
 }
 
