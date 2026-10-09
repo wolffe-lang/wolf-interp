@@ -105,6 +105,21 @@ impl ChildTable {
         stdio: [Option<std::fs::File>; 3],
         cwd: Option<&std::path::Path>,
     ) -> Result<i128, Row> {
+        self.spawn_job(argv, stdio, cwd, None)
+    }
+
+    /// s219 (`[os.proc.job]`): `spawn_fds` with a process group — `Some(0)`
+    /// leads a new group, `Some(g)` joins `g` — through std's own
+    /// `process_group`, the one job-control step stable Rust offers without
+    /// `unsafe`. The terminal handoff and the default dispositions are the
+    /// caller's to refuse by name before this is reached.
+    pub(crate) fn spawn_job(
+        &mut self,
+        argv: &[String],
+        stdio: [Option<std::fs::File>; 3],
+        cwd: Option<&std::path::Path>,
+        group: Option<i32>,
+    ) -> Result<i128, Row> {
         let Some(program) = argv.first() else {
             return Err("not_found");
         };
@@ -121,6 +136,15 @@ impl ChildTable {
             .stderr(wire(two));
         if let Some(dir) = cwd {
             command.current_dir(dir);
+        }
+        #[cfg(unix)]
+        if let Some(g) = group {
+            use std::os::unix::process::CommandExt as _;
+            command.process_group(g);
+        }
+        #[cfg(not(unix))]
+        if group.is_some() {
+            return Err("unsupported");
         }
         match command.spawn() {
             Ok(child) => {
@@ -161,6 +185,41 @@ impl ChildTable {
     /// # Errors
     ///
     /// `io` for a forged, reaped, or already-exited handle.
+    /// s219 (`[os.proc.status]`): the child's process id; `io` for a forged
+    /// or reaped handle.
+    pub(crate) fn pid(&mut self, handle: i128) -> Result<i128, Row> {
+        match self.slot(handle)?.as_ref() {
+            Some(child) => Ok(i128::from(child.id())),
+            None => Err("io"),
+        }
+    }
+
+    /// s219 (`[os.proc.status]`): `wait`, but a death by signal N answers
+    /// `-N` (the platform's number) where `wait` raises `signal`.
+    pub(crate) fn wait_status(&mut self, handle: i128) -> Result<i128, Row> {
+        let slot = self.slot(handle)?;
+        let Some(child) = slot.as_mut() else {
+            return Err("io");
+        };
+        match child.wait() {
+            Ok(status) => {
+                *slot = None;
+                if let Some(code) = status.code() {
+                    return Ok(i128::from(code));
+                }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::process::ExitStatusExt as _;
+                    if let Some(sig) = status.signal() {
+                        return Ok(-i128::from(sig));
+                    }
+                }
+                Err("io")
+            }
+            Err(_) => Err("io"),
+        }
+    }
+
     pub(crate) fn kill(&mut self, handle: i128) -> Result<(), Row> {
         match self.slot(handle)?.as_mut() {
             Some(child) => child.kill().map_err(|_| "io"),
@@ -240,5 +299,31 @@ mod tests {
         );
         // Reaped now: spent handle.
         assert_eq!(table.wait(handle), Err("io"));
+    }
+
+    /// s219: a child that exits has its code; one killed has -N; a second
+    /// wait and a forged handle are `io`; the pid is the child's.
+    #[cfg(unix)]
+    #[test]
+    fn wait_status_and_pid() {
+        let mut t = ChildTable::default();
+        let h = t
+            .spawn_job(&["false".to_owned()], [None, None, None], None, Some(0))
+            .expect("false spawns");
+        assert!(t.pid(h).expect("a pid") > 0);
+        assert_eq!(t.wait_status(h), Ok(1));
+        assert_eq!(t.wait_status(h), Err("io"));
+        assert_eq!(t.pid(h), Err("io"));
+        let k = t
+            .spawn_job(
+                &["sleep".to_owned(), "30".to_owned()],
+                [None, None, None],
+                None,
+                None,
+            )
+            .expect("sleep spawns");
+        t.kill(k).expect("kill");
+        assert_eq!(t.wait_status(k), Ok(-9));
+        assert_eq!(t.pid(4096), Err("io"));
     }
 }
