@@ -211,7 +211,7 @@ impl ChildTable {
                 {
                     use std::os::unix::process::ExitStatusExt as _;
                     if let Some(sig) = status.signal() {
-                        return Ok(i128::from(sig));
+                        return Ok(-i128::from(sig));
                     }
                 }
                 Err("io")
