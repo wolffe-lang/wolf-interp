@@ -18,6 +18,29 @@ headers; lupin answered the other seventeen already. wolf-lang's
 `int_truth_lanes` gate pins 0.1.48 and 0.1.49 by version and commit on
 this row until a lupin release carries the fix.
 
+### Ctrl-C and jobs: what lupin can mirror (wolf-lang s219, #622)
+
+wolf-lang's `[os.signal.disp]`, `[os.signal.poll]`, `[os.proc.job]`,
+`[os.proc.status]` and `[os.term]` add eleven builtins. lupin forbids
+`unsafe` and links no libc, so it serves what std reaches and refuses the
+rest by name (`[os.term.note]` R8):
+
+- **Served:** `os_spawn_job` with a process group and no terminal or
+  defaults (std's `CommandExt::process_group`; a map as `os_spawn_fds`'s,
+  0..2), `os_proc_pid`, `os_wait_status` (the exit code, or `-N` for a
+  death by signal N), `os_signal_poll` (0 for every well-formed set — this
+  machine never listens, so nothing is queued), and every SHAPE row in the
+  compiler's order: a bad map, group, tty or defaults is `invalid`, a bad
+  meaning set `io`, a bad terminal mode `invalid`.
+- **Refused by name:** `os_signal_ignore`/`os_signal_default` of a
+  well-formed set (no `sigaction`), `os_pgid` and the four `os_term_*`
+  calls (no `getpgrp`, `tcgetpgrp`, `tcsetpgrp`, `tcgetattr`,
+  `tcsetattr`), and a job spawn that hands the child the terminal or
+  sets dispositions back to default. Whether lupin may take a safe
+  syscall crate for the terminal half is the maintainer's ruling (R8).
+- `tests/job_s219.rs` runs wolf-lang's `job_rows.lu` and `status.lu` byte
+  for byte and asserts each refusal names its call.
+
 ## 0.1.49 — 2026-10-08
 
 THE FORTY-NINTH, the lupin half of wolf 0.2.26. **Pin unchanged:
