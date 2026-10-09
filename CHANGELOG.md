@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### A wrapping product past `i128` keeps its low bits (wolf-lang s220)
+
+wolf-lang s220's four-machine integer sweep found that lupin multiplied
+every integer in `i128` with `checked_mul`, so a `wrapping[u64]`
+product whose exact value passes 2^127 — `(2^64 - 2)^2`, or
+`(2^64 - 2) * 16648325558172019491` — trapped `overflow` where its
+answer is the product's low 64 bits (4 and 3596837031075064250) on
+every compiler machine. A wrapping product now falls back to `i128`'s
+wrapping product, whose low 128 bits `reduce` reads; a saturating one
+saturates by sign; a checked one still traps. Red at `f516a5f`
+(0.1.49): `tests/int_truth_s220.rs`, which holds all eighteen of
+wolf-lang s220's `int_truth_*` corpus rows (copied verbatim) to their
+headers; lupin answered the other seventeen already. wolf-lang's
+`int_truth_lanes` gate pins 0.1.48 and 0.1.49 by version and commit on
+this row until a lupin release carries the fix.
+
 ## 0.1.49 — 2026-10-08
 
 THE FORTY-NINTH, the lupin half of wolf 0.2.26. **Pin unchanged:
