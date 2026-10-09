@@ -124,6 +124,13 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "fs_read_at",
     // s200 (wolf-lang#417): the fused chunk copy, `[os.fs.copy]`.
     "fs_copy_chunk",
+    // s218 (wolf-lang#625, #626): the full stat record by path, the link's
+    // target and the unsorted typed listing — `[os.fs.stat]`,
+    // `[os.fs.readlink]`, `[os.fs.readdir]`.
+    "fs_stat",
+    "fs_lstat",
+    "fs_read_link",
+    "fs_read_dir_entries",
     // `read_line` is NOT part of that landing and stays declined: stdin is
     // not a file, no clause names an injectable one, and nothing in the
     // pinned corpus calls it. Named here so the refusal still reads
@@ -369,24 +376,76 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // `eval::fs`. No filesystem on wasm — the tier declines there, as
         // the net tier does.
         #[cfg(target_family = "wasm")]
-        "fs_read_text" | "fs_write_text" | "fs_read_bytes" | "fs_write_bytes" | "fs_open"
-        | "fs_create" | "fs_open_mode" | "fs_read" | "fs_read_chunk" | "fs_write" | "fs_fstat"
-        | "fs_close" | "fs_remove" | "fs_rename" | "fs_exists" | "fs_is_dir" | "fs_is_file"
-        | "fs_size" | "fs_modified_ms" | "fs_read_dir" | "fs_create_dir_all"
-        | "fs_remove_dir_all" | "fs_create_dir" | "fs_remove_dir" | "fs_write_chunk"
-        | "fs_seek" | "fs_tell" | "fs_read_at" | "fs_copy_chunk" => unsupported(format!(
+        "fs_read_text"
+        | "fs_write_text"
+        | "fs_read_bytes"
+        | "fs_write_bytes"
+        | "fs_open"
+        | "fs_create"
+        | "fs_open_mode"
+        | "fs_read"
+        | "fs_read_chunk"
+        | "fs_write"
+        | "fs_fstat"
+        | "fs_close"
+        | "fs_remove"
+        | "fs_rename"
+        | "fs_exists"
+        | "fs_is_dir"
+        | "fs_is_file"
+        | "fs_size"
+        | "fs_modified_ms"
+        | "fs_read_dir"
+        | "fs_create_dir_all"
+        | "fs_remove_dir_all"
+        | "fs_create_dir"
+        | "fs_remove_dir"
+        | "fs_write_chunk"
+        | "fs_seek"
+        | "fs_tell"
+        | "fs_read_at"
+        | "fs_copy_chunk"
+        | "fs_stat"
+        | "fs_lstat"
+        | "fs_read_link"
+        | "fs_read_dir_entries" => unsupported(format!(
             "`{name}` is the s38/s90 fs tier; this wasm build has no filesystem to open, so \
              the tier is declined rather than mocked"
         )),
         #[cfg(not(target_family = "wasm"))]
-        "fs_read_text" | "fs_write_text" | "fs_read_bytes" | "fs_write_bytes" | "fs_open"
-        | "fs_create" | "fs_open_mode" | "fs_read" | "fs_read_chunk" | "fs_write" | "fs_fstat"
-        | "fs_close" | "fs_remove" | "fs_rename" | "fs_exists" | "fs_is_dir" | "fs_is_file"
-        | "fs_size" | "fs_modified_ms" | "fs_read_dir" | "fs_create_dir_all"
-        | "fs_remove_dir_all" | "fs_create_dir" | "fs_remove_dir" | "fs_write_chunk"
-        | "fs_seek" | "fs_tell" | "fs_read_at" | "fs_copy_chunk" => {
-            machine.fs_call(name, &args, span)
-        }
+        "fs_read_text"
+        | "fs_write_text"
+        | "fs_read_bytes"
+        | "fs_write_bytes"
+        | "fs_open"
+        | "fs_create"
+        | "fs_open_mode"
+        | "fs_read"
+        | "fs_read_chunk"
+        | "fs_write"
+        | "fs_fstat"
+        | "fs_close"
+        | "fs_remove"
+        | "fs_rename"
+        | "fs_exists"
+        | "fs_is_dir"
+        | "fs_is_file"
+        | "fs_size"
+        | "fs_modified_ms"
+        | "fs_read_dir"
+        | "fs_create_dir_all"
+        | "fs_remove_dir_all"
+        | "fs_create_dir"
+        | "fs_remove_dir"
+        | "fs_write_chunk"
+        | "fs_seek"
+        | "fs_tell"
+        | "fs_read_at"
+        | "fs_copy_chunk"
+        | "fs_stat"
+        | "fs_lstat"
+        | "fs_read_link"
+        | "fs_read_dir_entries" => machine.fs_call(name, &args, span),
         // `[os.fs.error]` (s200, wolf-lang#407): the number the task's last
         // fallible fs call left (`Machine::fs_call` keeps it), and the
         // host's words for a number — std's rendering without its
@@ -3001,6 +3060,11 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // serves both spellings"; on a handle the hosts answer `io` for
         // nearly everything, the entry being already resolved.
         "fs_fstat" | "fs_size" | "fs_modified_ms" => &["not_found", "denied", "io"],
+        // s218: the record's row set is `fs_size`'s (`[os.fs.stat]`);
+        // `invalid` is a path that is not a link (`[os.fs.readlink]`); a
+        // listing of bytes has no `utf8` (`[os.fs.readdir]`).
+        "fs_stat" | "fs_lstat" | "fs_read_dir_entries" => &["not_found", "denied", "io"],
+        "fs_read_link" => &["not_found", "denied", "invalid", "io"],
         // `eof` is the read's own row — a read that wanted bytes and got
         // none. No corpus file reads twice, so it is pinned by `eval::fs`'s
         // unit tests rather than by the census; `[os.fs.open]`'s mode-5
