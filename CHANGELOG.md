@@ -86,6 +86,22 @@ rest by name (`[os.term.note]` R8):
 - `tests/job_s219.rs` runs wolf-lang's `job_rows.lu` and `status.lu` byte
   for byte and asserts each refusal names its call.
 
+### The full stat record, `lstat`, `readlink` and the typed listing (s218, wolf-lang#625, #626)
+
+lupin's half of wolf-lang s218, written from `[os.fs.stat]`,
+`[os.fs.readlink]` and `[os.fs.readdir]`. `fs_stat` and `fs_lstat`
+answer the twenty-word record (kind with links, fifos, sockets and
+devices told apart; size; modified_ms; the `have` mask; mode, nlink,
+uid, gid, blocks, dev, ino, rdev; access, modification, change and birth
+times to the nanosecond) from one host call; `fs_read_link` the
+target's bytes, `invalid` on a non-link; `fs_read_dir_entries` the
+directory in the host's order, each entry its own kind and its name's
+bytes, a non-UTF-8 name included. Containment: `fs_stat` keeps the
+family's resolved check, so a link whose target leaves the served tree
+is refused by name; `fs_lstat` and `fs_read_link` check the parent only,
+since they follow nothing. No `unsafe`. Every row of wolf-lang's
+`fs_stat_lanes` gate agrees.
+
 ## 0.1.49 — 2026-10-08
 
 THE FORTY-NINTH, the lupin half of wolf 0.2.26. **Pin unchanged:
