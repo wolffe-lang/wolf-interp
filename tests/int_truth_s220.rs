@@ -67,5 +67,11 @@ fn every_int_truth_row_answers_its_header() {
             bad.push(format!("{name}: want {verdict} {stdout:?}; got {got:?}"));
         }
     }
-    assert!(bad.is_empty(), "{} of {} rows:\n{}", bad.len(), names.len(), bad.join("\n"));
+    assert!(
+        bad.is_empty(),
+        "{} of {} rows:\n{}",
+        bad.len(),
+        names.len(),
+        bad.join("\n")
+    );
 }
