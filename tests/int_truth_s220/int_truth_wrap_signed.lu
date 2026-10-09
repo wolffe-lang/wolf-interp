@@ -13,8 +13,8 @@ fn main() {
     let d8: int = 200
     let a = d8 as wrapping[i8]
     let b = 5 as wrapping[i16]
-    let c = b - (11 as wrapping[i16])
-    let x = b ^ (-1 as wrapping[i16])
+    let c = b - 11 as wrapping[i16]
+    let x = b ^ -1 as wrapping[i16]
     let d32: int = 3000000000
     let w32 = d32 as wrapping[i32]
     let n32: int = -2147483648

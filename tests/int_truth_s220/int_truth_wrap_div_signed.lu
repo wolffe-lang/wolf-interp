@@ -18,13 +18,21 @@ fn main() {
     let m32 = n32 as wrapping[i32]
     let m64 = n64 as wrapping[i64]
     let n1: int = -1
-    print("{m8 / (n1 as wrapping[i8])} {m8 % (n1 as wrapping[i8])} {m16 / (n1 as wrapping[i16])} {m16 % (n1 as wrapping[i16])}")
-    print("{m32 / (n1 as wrapping[i32])} {m32 % (n1 as wrapping[i32])} {m64 / (n1 as wrapping[i64])} {m64 % (n1 as wrapping[i64])}")
+    print(
+        "{m8 / (n1 as wrapping[i8])} {m8 % (n1 as wrapping[i8])} {m16 / (n1 as wrapping[i16])} {m16 % (n1 as wrapping[i16])}",
+    )
+    print(
+        "{m32 / (n1 as wrapping[i32])} {m32 % (n1 as wrapping[i32])} {m64 / (n1 as wrapping[i64])} {m64 % (n1 as wrapping[i64])}",
+    )
     let s8 = -7 as wrapping[i8]
     let s16 = -7 as wrapping[i16]
     let s32 = 7 as wrapping[i32]
     let s64 = 7 as wrapping[i64]
-    print("{s8 / (2 as wrapping[i8])} {s8 % (2 as wrapping[i8])} {s16 / (2 as wrapping[i16])} {s16 % (2 as wrapping[i16])}")
-    print("{s32 / (-2 as wrapping[i32])} {s32 % (-2 as wrapping[i32])} {s64 / (-2 as wrapping[i64])} {s64 % (-2 as wrapping[i64])}")
+    print(
+        "{s8 / (2 as wrapping[i8])} {s8 % (2 as wrapping[i8])} {s16 / (2 as wrapping[i16])} {s16 % (2 as wrapping[i16])}",
+    )
+    print(
+        "{s32 / (-2 as wrapping[i32])} {s32 % (-2 as wrapping[i32])} {s64 / (-2 as wrapping[i64])} {s64 % (-2 as wrapping[i64])}",
+    )
     print("{m8 / (n1 as wrapping[i8]) < 0} {m64 / -1} {m64 % -1}")
 }
