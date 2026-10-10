@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### The std beside the binary is the last std root (wolf-lang s204, ruling #29)
+
+wolf-lang ruling #29 makes the compiler's default std root a `std`
+directory beside the `wolf` binary, where its release archive now ships
+wolf-std at a pin. lupin reads the same default beside its own binary,
+last: `--std-root`, then `LUPIN_STD`, then a `std/` beside the entry
+(s166's fixture rule), then `std/` beside `lupin`. A lupin unpacked
+beside such a `wolf` (the pairing's sibling layout) therefore reads the
+very tree the compiler reads, and `use std.env` runs there with nothing
+set, where it answered `unsupported`. A lupin with nothing beside it
+answers as before. lupin's own archive ships no std (the ruling owed
+is named in wolf-lang's s204 PR). The no-std refusal for a home-module
+method now names the `std/` beside `lupin` as a third way to configure
+a root.
+
 ### A repeated json object key is last-wins (wolf-lang s224, #124)
 
 Ruling B22 (2026-09-11) made a repeated object name last-wins, and
