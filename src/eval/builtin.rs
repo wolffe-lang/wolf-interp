@@ -172,6 +172,8 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "net_close",
     "net_deadline",
     "env_set",
+    // s225 (wolf-lang#534, `[os.env.unset]`): the removal `env_set` lacked.
+    "env_unset",
     "os_cwd",
     // `[os.cpus]` (s137, wolf-lang#233): the machine's size. Named beside
     // `os_cwd` because it is the same capability — host state a running
@@ -191,6 +193,9 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "os_pipe",
     "os_chdir",
     "os_isatty",
+    // s225 (wolf-lang#534, `[os.proc.exec]`): replace the running program —
+    // through std's safe `CommandExt::exec`, for descriptors 0..2.
+    "os_exec",
     // s219 (wolf-lang#622, pelt's H3): Ctrl-C and jobs. This machine
     // serves what std reaches without `unsafe` — a spawn into a process
     // group, a child's pid and its status by signal number, the poll and
@@ -468,6 +473,20 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             machine.env_write(name, value);
             Ok(Value::Unit)
         }
+        // s225 (`[os.env.unset]`): a tombstone in the overlay; absent is
+        // not an error (POSIX `unsetenv`), and `env_set`'s names are
+        // `invalid` here too.
+        "env_unset" => {
+            let Some(Value::Str(name)) = args.first() else {
+                return unsupported("`env_unset` takes a variable name".to_owned());
+            };
+            if !env_name_valid(name) {
+                machine.note(Rule::ErrUnion, span, "`env_unset` yields the `invalid` row");
+                return Ok(error_value("env_unset", "invalid"));
+            }
+            machine.env_remove(name);
+            Ok(Value::Unit)
+        }
         // The current directory is process state like env, no file being
         // opened or observed. The corpus asserts predicates over it, never
         // paths (host independence, `corpus/os/args_cwd.lu`).
@@ -550,6 +569,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_pipe"
         | "os_chdir"
         | "os_isatty"
+        | "os_exec"
         | "os_wait"
         | "os_kill"
         | "os_signal_ignore"
@@ -645,6 +665,73 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             };
             let fd = *fd;
             machine.os_isatty(fd, span)
+        }
+        // s225 (`[os.proc.exec]`): replace the running program — here, this
+        // interpreter. The clause's order: SHAPE (`invalid`), HOST
+        // (`unsupported` on windows), then this machine's own limit, by
+        // name — a target above 2 or a `-1` needs a descriptor placed or
+        // closed with no safe call in std, as in `os_spawn_fds` — then the
+        // SOURCES (`io`), then the program (`not_found`, `denied`, asked
+        // before anything moves). Then the buffered stdout goes out and
+        // std's `CommandExt::exec` replaces the process; it returns only
+        // on a failure, `io`.
+        #[cfg(not(target_family = "wasm"))]
+        "os_exec" => {
+            let (
+                Some(Value::Str(exe)),
+                Some(Value::List(argv_list, _, _)),
+                Some(Value::List(env_list, _, _)),
+                Some(Value::List(map, _, _)),
+            ) = (args.first(), args.get(1), args.get(2), args.get(3))
+            else {
+                return unsupported(
+                    "`os_exec` takes an executable `str`, a `List[str]` argv, a `List[str]` \
+                     environment and a `List[int]` descriptor map"
+                        .to_owned(),
+                );
+            };
+            let mut words = Vec::with_capacity(argv_list.len());
+            for slot in argv_list.iter() {
+                let Value::Str(part) = &slot.value else {
+                    return unsupported(format!(
+                        "`os_exec`'s argv holds {}, not `str`",
+                        slot.value.kind()
+                    ));
+                };
+                words.push(part.text.clone());
+            }
+            let mut entries = Vec::with_capacity(env_list.len());
+            for slot in env_list.iter() {
+                let Value::Str(part) = &slot.value else {
+                    return unsupported(format!(
+                        "`os_exec`'s environment holds {}, not `str`",
+                        slot.value.kind()
+                    ));
+                };
+                entries.push(part.text.clone());
+            }
+            let mut flat = Vec::with_capacity(map.len());
+            for slot in map.iter() {
+                let Value::Int(n, _) = &slot.value else {
+                    return unsupported(format!(
+                        "`os_exec`'s map holds {}, not `int`",
+                        slot.value.kind()
+                    ));
+                };
+                flat.push(*n);
+            }
+            let exe = exe.text.clone();
+            match exec_answer(machine, &exe, &words, &entries, &flat) {
+                Ok(tag) => {
+                    machine.note(
+                        Rule::ErrUnion,
+                        span,
+                        &format!("`os_exec` yields the `{tag}` row"),
+                    );
+                    Ok(error_value("os_exec", tag))
+                }
+                Err(reason) => unsupported(reason),
+            }
         }
         // s219 (`[os.signal.disp]`, `[os.signal.poll]`): a set's SHAPE is
         // every machine's — an empty set, or a bit outside the nine
@@ -2970,6 +3057,9 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // non-empty map `unsupported`, before any program is looked for.
         "os_spawn_fds" => &["unsupported", "invalid", "not_found", "denied", "io"],
         "os_pipe" | "os_isatty" => &["io"],
+        // s225 (`[os.proc.exec]`): the spawn map's rows; it returns only
+        // with one of them.
+        "os_exec" => &["unsupported", "invalid", "not_found", "denied", "io"],
         // s219 (`[os.host.sigs]`'s eleven lines).
         "os_signal_ignore" | "os_signal_default" => &["unsupported", "io"],
         "os_signal_poll" | "os_proc_pid" | "os_wait_status" => &["io"],
@@ -2980,7 +3070,7 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "os_chdir" => &["not_found", "denied", "io"],
         // The env pair and the json query tier: mint-site closures.
         "env_get" => &["invalid", "missing"],
-        "env_set" => &["invalid"],
+        "env_set" | "env_unset" => &["invalid"],
         "json_get" | "json_type" | "json_len" => &["parse", "missing", "kind"],
         // s81: the one str-construction border (`utf8`, never a trap).
         "str_from_utf8" => &["utf8"],
@@ -3097,6 +3187,177 @@ fn spawn_fds_answer(
     let cwd = machine.files().moved_cwd();
     let spawned = machine.children().spawn_fds(argv, stdio, cwd.as_deref());
     Ok(spawned)
+}
+
+/// s225 (`[os.proc.exec]`): the search path a bare program name falls back
+/// to when the handed environment names no `PATH` — the clause's.
+#[cfg(not(target_family = "wasm"))]
+const EXEC_DEFAULT_PATH: &str = "/usr/bin:/bin";
+
+/// s225 (`[os.proc.exec]`): `os_exec` past its argument shapes. `Ok(tag)`
+/// is the row a failed exec answers (a successful one never returns); the
+/// `Err` is this machine's by-name refusal.
+#[cfg(not(target_family = "wasm"))]
+fn exec_answer(
+    machine: &mut Machine,
+    exe: &str,
+    argv: &[String],
+    env: &[String],
+    flat: &[i128],
+) -> Result<&'static str, String> {
+    let entry_ok = |e: &String| match e.split_once('=') {
+        None => false,
+        Some((name, _)) => !name.is_empty() && !e.contains('\0'),
+    };
+    if argv.is_empty()
+        || exe.contains('\0')
+        || argv.iter().any(|w| w.contains('\0'))
+        || !env.iter().all(entry_ok)
+    {
+        return Ok("invalid");
+    }
+    let Some(pairs) = fd_map_of(flat) else {
+        return Ok("invalid");
+    };
+    if cfg!(windows) {
+        return Ok("unsupported");
+    }
+    if let Some(&(target, _)) = pairs.iter().find(|(t, s)| *t > 2 || s.is_none()) {
+        return Err(format!(
+            "a descriptor map that {} in os_exec: this machine admits no `unsafe`, and placing \
+             or closing a descriptor across an exec has no safe call in std ([os.proc.exec])",
+            if target > 2 {
+                "names a descriptor above 2"
+            } else {
+                "closes a descriptor"
+            }
+        ));
+    }
+    let mut stdio: [Option<std::fs::File>; 3] = [None, None, None];
+    for &(target, source) in &pairs {
+        let Some(file) = source.and_then(|h| machine.files().duplicate(h)) else {
+            return Ok("io");
+        };
+        let at = usize::try_from(target).expect("a target in 0..=2");
+        stdio[at] = Some(file);
+    }
+    let Ok(dir) = machine.fs_working_dir() else {
+        return Ok("io");
+    };
+    let search = env
+        .iter()
+        .find_map(|e| e.strip_prefix("PATH="))
+        .unwrap_or(EXEC_DEFAULT_PATH);
+    let program = match exec_resolve(exe, search, &dir) {
+        Ok(p) => p,
+        Err(tag) => return Ok(tag),
+    };
+    machine.flush_for_exec();
+    Ok(exec_replace(&program, argv, env, stdio, &dir))
+}
+
+/// s225 (`[os.proc.exec]`): the program `exe` names, asked before anything
+/// moves — std's exec changes this process's descriptors before it tries
+/// the program, so a refusal this machine can see coming must come first.
+/// A name with `/` is used as written (relative to `dir`, the machine's
+/// working directory): missing is `not_found`, a directory or a file with
+/// no execute bit `denied`. A bare name is searched along `path`, an empty
+/// component `dir`; the first regular file with an execute bit wins; none
+/// is `not_found`, or `denied` when a candidate was a file without one.
+#[cfg(not(target_family = "wasm"))]
+fn exec_resolve(exe: &str, path: &str, dir: &std::path::Path) -> Result<String, &'static str> {
+    #[cfg(unix)]
+    fn runnable(md: &std::fs::Metadata) -> bool {
+        use std::os::unix::fs::PermissionsExt as _;
+        md.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    fn runnable(_md: &std::fs::Metadata) -> bool {
+        false
+    }
+    if exe.is_empty() {
+        return Err("not_found");
+    }
+    if exe.contains('/') {
+        return match std::fs::metadata(dir.join(exe)) {
+            Err(e) => Err(match e.kind() {
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory => "not_found",
+                std::io::ErrorKind::PermissionDenied => "denied",
+                _ => "io",
+            }),
+            Ok(md) if !md.is_file() || !runnable(&md) => Err("denied"),
+            Ok(_) => Ok(exe.to_owned()),
+        };
+    }
+    let mut saw_unrunnable = false;
+    for component in path.split(':') {
+        let cand = if component.is_empty() {
+            format!("./{exe}")
+        } else {
+            format!("{}/{exe}", component.trim_end_matches('/'))
+        };
+        let Ok(md) = std::fs::metadata(dir.join(&cand)) else {
+            continue;
+        };
+        if !md.is_file() {
+            continue;
+        }
+        if runnable(&md) {
+            return Ok(cand);
+        }
+        saw_unrunnable = true;
+    }
+    Err(if saw_unrunnable { "denied" } else { "not_found" })
+}
+
+/// s225: the exec itself — std's `CommandExt::exec` (safe), with argv[0]
+/// given, the environment exactly the handed one, 0..2 placed from
+/// `stdio` (an unmapped one is this process's own, `Stdio::inherit`) and
+/// `dir` the working directory. It returns only on a failure.
+#[cfg(all(unix, not(target_family = "wasm")))]
+fn exec_replace(
+    program: &str,
+    argv: &[String],
+    env: &[String],
+    stdio: [Option<std::fs::File>; 3],
+    dir: &std::path::Path,
+) -> &'static str {
+    use std::os::unix::process::CommandExt as _;
+    use std::process::{Command, Stdio};
+    let [zero, one, two] = stdio;
+    let wire = |f: Option<std::fs::File>| f.map_or_else(Stdio::inherit, Stdio::from);
+    let mut command = Command::new(program);
+    command
+        .arg0(&argv[0])
+        .args(&argv[1..])
+        .env_clear()
+        .stdin(wire(zero))
+        .stdout(wire(one))
+        .stderr(wire(two))
+        .current_dir(dir);
+    for entry in env {
+        if let Some((name, value)) = entry.split_once('=') {
+            command.env(name, value);
+        }
+    }
+    let error = command.exec();
+    match error.kind() {
+        std::io::ErrorKind::NotFound => "not_found",
+        std::io::ErrorKind::PermissionDenied => "denied",
+        _ => "io",
+    }
+}
+
+/// s225: windows answered `unsupported` before anything reached here.
+#[cfg(all(not(unix), not(target_family = "wasm")))]
+fn exec_replace(
+    _program: &str,
+    _argv: &[String],
+    _env: &[String],
+    _stdio: [Option<std::fs::File>; 3],
+    _dir: &std::path::Path,
+) -> &'static str {
+    "unsupported"
 }
 
 /// s219 (`[os.proc.job]`): `os_spawn_job` past its argument shapes; the
