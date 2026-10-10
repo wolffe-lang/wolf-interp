@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Exec and env unset: the mirror (wolf-lang s225, #534)
+
+wolf-lang's `[os.proc.exec]` and `[os.env.unset]` add two builtins.
+
+- **`env_unset(name)`** removes a name from this machine's environment
+  overlay as a tombstone: `env_get` answers `missing` after it, absent
+  is not an error, and `env_set`'s names are `invalid`. **A spawned
+  child is now handed the host environment with the overlay applied**
+  — every `env_set` set and every `env_unset` removed — where before a
+  lupin child inherited the host's environment untouched, so an
+  `env_set` never reached it (a parting nothing witnessed: lupin
+  children are null-wired; the new witness asks through an exit
+  status).
+- **`os_exec(exe, argv, env, map)`** replaces this interpreter through
+  std's `CommandExt::exec`, which is safe code: argv[0] as given, the
+  handed environment as the whole one, the machine's working directory,
+  and descriptors 0..2 from the map (an unmapped one is this process's
+  own). The program is resolved first — along the handed environment's
+  `PATH`, or `/usr/bin:/bin` — because std's exec moves descriptors
+  before it tries the program; a refusal this machine can see coming
+  never reaches it. Under `conform-run` the buffered stdout is written
+  before the exec and no record follows. A map that names a descriptor
+  above 2, or closes one, is refused BY NAME, as `os_spawn_fds`'s is.
+  Witnesses: `tests/exec_s225.rs` over wolf-lang s225's rows and
+  fixtures, byte for byte (the new image's pid is the pid the test
+  started). Red at `51cb491`: neither name resolves (`unsupported`).
+
 ### A wrapping product past `i128` keeps its low bits (wolf-lang s220)
 
 wolf-lang s220's four-machine integer sweep found that lupin multiplied
