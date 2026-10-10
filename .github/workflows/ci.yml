@@ -15,7 +15,7 @@ name: CI
 #       -> ubuntu's three shards and ladder in full, plus ONE windows and
 #          ONE macOS `smoke` job (the build, fmt, clippy, every test target
 #          except the heavy ones SMOKE_OMITS names, and the fast ladder
-#          rungs), each capped at 20 minutes.
+#          rungs), each capped at 30 minutes.
 #
 # Nothing a test checks changed: every test that ran before runs on every
 # trunk push and nightly on every OS. What a PR run no longer proves is that
@@ -134,7 +134,9 @@ jobs:
   # EVERY JOB HAS `timeout-minutes`. A cancelled job reads as infrastructure;
   # a failed one reads as "this leg does not fit", which is the thing a
   # reader needs to know. 330 is under the 6 h ceiling and about three times
-  # the widest shard. A smoke's 20 is its budget (is75), not a guess.
+  # the widest shard. A smoke's 30 is its budget: is75 set 20, and the
+  # windows smoke grew to 19 m 40 s and was cancelled at it twice with
+  # nothing failed (wolf-interp#215, #226), so r32 raised it.
   #
   # The entries come from `plan` (is75): on a full run, os × {1, 2, 3,
   # ladder} for ubuntu, macOS and windows — the twelve entries and job names
@@ -163,7 +165,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.mode != 'noop'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.shard == 'smoke' && 20 || 330 }}
+    timeout-minutes: ${{ matrix.shard == 'smoke' && 30 || 330 }}
     strategy:
       fail-fast: false
       matrix:

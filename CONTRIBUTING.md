@@ -249,7 +249,7 @@ decided by the `plan` job in `.github/workflows/ci.yml` (is75):
 |---|---|
 | push to `trunk`, the nightly `schedule` (04:23 UTC), `workflow_dispatch` | **full**: all three OSes, every shard and ladder, exactly as before |
 | a pull request carrying the **`full-matrix`** label | **full**, on demand |
-| any other pull request | ubuntu's three shards and ladder in full, plus one **windows** and one **macOS smoke** (build, fmt, clippy, every test target except the heavy ones `SMOKE_OMITS` names, and the fast ladder rungs; 20-minute cap) |
+| any other pull request | ubuntu's three shards and ladder in full, plus one **windows** and one **macOS smoke** (build, fmt, clippy, every test target except the heavy ones `SMOKE_OMITS` names, and the fast ladder rungs; 30-minute cap) |
 
 A pull-request run therefore does not prove that the heavy targets
 (`SMOKE_OMITS` in the workflow) pass on windows or macOS; the trunk push
