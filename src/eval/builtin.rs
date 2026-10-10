@@ -3334,7 +3334,7 @@ fn exec_replace(
     command
         .arg0(&argv[0])
         .args(&argv[1..])
-        .env_clear()
+        // PLANT (s225, reverted next): the new image inherits this process's environment.
         .stdin(wire(zero))
         .stdout(wire(one))
         .stderr(wire(two))
