@@ -946,3 +946,169 @@ fn a_std_tree_beside_the_entry_is_the_std_root_with_no_flag() {
     assert_ne!(refused.status.code(), Some(0), "{refused:?}");
     assert!(stderr_text(&refused).contains("E0301"), "{refused:?}");
 }
+
+// -- wolf-lang ruling #29 (#415, s204): the std beside the binary ----------
+//
+// The compiler's default std root is a `std` directory beside the `wolf`
+// binary, where its release archive ships wolf-std. lupin reads the same
+// default beside its own binary, last: `--std-root`, `LUPIN_STD` and a
+// `std/` beside the entry each win over it. Each tree below holds a module
+// only it has, so the answer names the root that won.
+
+/// An "installed" lupin: the test binary hard-linked (copied where a link is
+/// refused) into `<dir>/bin/`, with `std/besidemark/` beside it when
+/// `std_beside` is `Some(true)`, a plain FILE named `std` for `Some(false)`.
+fn installed_lupin(dir: &Path, std_beside: Option<bool>) -> PathBuf {
+    let bin = dir.join("bin");
+    std::fs::create_dir_all(&bin).expect("bin dir");
+    let src = Path::new(env!("CARGO_BIN_EXE_lupin"));
+    let exe = bin.join(src.file_name().expect("a file name"));
+    if std::fs::hard_link(src, &exe).is_err() {
+        std::fs::copy(src, &exe).expect("lupin copied");
+    }
+    match std_beside {
+        Some(true) => write(&bin, "std/besidemark/b.lu", "pub fn mark() -> int { 29 }\n"),
+        Some(false) => std::fs::write(bin.join("std"), "not a tree\n").expect("std file"),
+        None => {}
+    }
+    exe
+}
+
+/// `<pkg>/main.lu` printing `std.<mark>`'s mark.
+fn marked_entry(dir: &Path, mark: &str) -> PathBuf {
+    write(
+        dir,
+        "pkg/main.lu",
+        &format!(
+            "use std.{mark}\n\nfn main() -> !int {{\n    print(\"{{{mark}.mark()}}\")\n    0\n}}\n"
+        ),
+    );
+    dir.join("pkg/main.lu")
+}
+
+/// A tree at `<dir>/<name>` holding only `std.<mark>`, whose mark is `n`.
+fn marked_root(dir: &Path, name: &str, mark: &str, n: i64) -> PathBuf {
+    let root = dir.join(name);
+    write(
+        &root,
+        &format!("{mark}/m.lu"),
+        &format!("pub fn mark() -> int {{ {n} }}\n"),
+    );
+    root
+}
+
+/// `<exe> conform-run <entry> --json [extra]` with LUPIN_STD scrubbed
+/// unless given: (verdict, stdout).
+fn run_installed(
+    exe: &Path,
+    entry: &Path,
+    extra: &[&str],
+    env: &[(&str, &str)],
+) -> (String, String) {
+    let mut cmd = Command::new(exe);
+    cmd.arg("conform-run")
+        .arg(entry)
+        .arg("--json")
+        .args(extra)
+        .env_remove("LUPIN_STD");
+    for (key, value) in env {
+        cmd.env(key, value);
+    }
+    let value = record(&cmd.output().expect("lupin runs"));
+    (
+        value["verdict"].as_str().unwrap_or("").to_string(),
+        value["stdout_inline"].as_str().unwrap_or("").to_string(),
+    )
+}
+
+/// The cargo-built lupin has no `std` beside it, so every older test here
+/// still sees no default.
+#[test]
+fn the_cargo_built_lupin_has_no_std_beside_it() {
+    let dir = Path::new(env!("CARGO_BIN_EXE_lupin"))
+        .parent()
+        .expect("bin dir");
+    assert!(
+        !dir.join("std").exists(),
+        "{} has a std beside it",
+        dir.display()
+    );
+}
+
+/// Nothing configured: the std beside the binary answers. At trunk
+/// `1c1f096` (lupin 0.1.49) this was `unsupported`.
+#[test]
+fn the_std_beside_the_binary_is_the_default_root() {
+    let dir = scratch("std-root-default");
+    let exe = installed_lupin(&dir, Some(true));
+    let entry = marked_entry(&dir, "besidemark");
+    assert_eq!(
+        run_installed(&exe, &entry, &[], &[]),
+        ("exit(0)".to_string(), "29\n".to_string())
+    );
+}
+
+/// `LUPIN_STD` beats the default.
+#[test]
+fn the_environment_beats_the_default() {
+    let dir = scratch("std-root-default-env");
+    let exe = installed_lupin(&dir, Some(true));
+    let env_root = marked_root(&dir, "envstd", "envmark", 2);
+    let env = [("LUPIN_STD", env_root.to_str().expect("utf-8 path"))];
+    let entry = marked_entry(&dir, "envmark");
+    assert_eq!(run_installed(&exe, &entry, &[], &env).1, "2\n");
+    let entry = marked_entry(&dir, "besidemark");
+    assert_eq!(run_installed(&exe, &entry, &[], &env).0, "unsupported");
+}
+
+/// `--std-root` beats `LUPIN_STD` and the default.
+#[test]
+fn the_flag_beats_the_environment_and_the_default() {
+    let dir = scratch("std-root-default-flag");
+    let exe = installed_lupin(&dir, Some(true));
+    let flag_root = marked_root(&dir, "flagstd", "flagmark", 3);
+    let env_root = marked_root(&dir, "envstd", "envmark", 2);
+    let flag = ["--std-root", flag_root.to_str().expect("utf-8 path")];
+    let env = [("LUPIN_STD", env_root.to_str().expect("utf-8 path"))];
+    let entry = marked_entry(&dir, "flagmark");
+    assert_eq!(run_installed(&exe, &entry, &flag, &env).1, "3\n");
+    for loser in ["envmark", "besidemark"] {
+        let entry = marked_entry(&dir, loser);
+        assert_eq!(
+            run_installed(&exe, &entry, &flag, &env).0,
+            "unsupported",
+            "{loser}"
+        );
+    }
+}
+
+/// s166's fixture rule — a `std/` beside the ENTRY — beats the default.
+#[test]
+fn a_std_beside_the_entry_beats_the_default() {
+    let dir = scratch("std-root-default-fixture");
+    let exe = installed_lupin(&dir, Some(true));
+    let _ = marked_root(&dir.join("pkg"), "std", "fixmark", 4);
+    let entry = marked_entry(&dir, "fixmark");
+    assert_eq!(run_installed(&exe, &entry, &[], &[]).1, "4\n");
+    let entry = marked_entry(&dir, "besidemark");
+    assert_eq!(run_installed(&exe, &entry, &[], &[]).0, "unsupported");
+}
+
+/// Nothing beside, and a FILE named `std` beside: no root, the honest
+/// `unsupported` as before the ruling.
+#[test]
+fn no_std_directory_beside_keeps_no_root() {
+    for (case, beside) in [
+        ("std-root-default-none", None),
+        ("std-root-default-file", Some(false)),
+    ] {
+        let dir = scratch(case);
+        let exe = installed_lupin(&dir, beside);
+        let entry = marked_entry(&dir, "besidemark");
+        assert_eq!(
+            run_installed(&exe, &entry, &[], &[]).0,
+            "unsupported",
+            "{case}"
+        );
+    }
+}
