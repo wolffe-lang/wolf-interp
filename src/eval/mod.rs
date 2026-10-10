@@ -8531,9 +8531,10 @@ impl Machine {
                 return unsupported(format!(
                     "`{kind}.{method}` is no builtin, so it reaches `{ctor}`'s home module \
                      `std.{dir}` ([type.method.resolve] step 2), and no std root is configured: \
-                     pass `--std-root DIR` or set `LUPIN_STD` (the compiler reads `WOLF_STD` or a \
-                     `std` path dependency in `wolf.pkg`) — the counterparty's E0301 \
-                     ([type.method.root])"
+                     pass `--std-root DIR`, set `LUPIN_STD`, or put a `std/` beside the `lupin` \
+                     binary (the compiler reads `WOLF_STD`, a `std` path dependency in \
+                     `wolf.pkg`, or the `std/` its release archive ships beside `wolf`) — the \
+                     counterparty's E0301 ([type.method.root])"
                 ));
             }
             return no_method();
