@@ -558,8 +558,10 @@ struct Shared {
     /// s40 env v0: the machine-local environment OVERLAY — `env_set` writes
     /// here and `env_get` reads here, never the host's real environment
     /// (the checked-lane posture: the same program observes the same
-    /// answers on any machine).
-    env: Arc<Mutex<BTreeMap<String, String>>>,
+    /// answers on any machine). s225 (`[os.env.unset]`): `None` is a name
+    /// `env_unset` removed — a tombstone, so a child is handed the host's
+    /// environment WITHOUT it (`eval::os::ChildTable`'s overlay).
+    env: Arc<Mutex<BTreeMap<String, Option<String>>>>,
     /// is18: the s40 process trio's children, by handle — shared like the
     /// store because a handle is an `int` any task may hold. Wait reaps;
     /// kill never tombstones (`eval::os`).
@@ -1138,7 +1140,13 @@ impl Machine {
 
     /// s40 env v0: one overlay read (never the host environment).
     pub(crate) fn env_read(&self, name: &str) -> Option<String> {
-        self.shared.env.lock().expect("env lock").get(name).cloned()
+        self.shared
+            .env
+            .lock()
+            .expect("env lock")
+            .get(name)
+            .cloned()
+            .flatten()
     }
 
     /// s40 env v0: one overlay write (never the host environment).
@@ -1147,7 +1155,37 @@ impl Machine {
             .env
             .lock()
             .expect("env lock")
-            .insert(name.to_owned(), value.to_owned());
+            .insert(name.to_owned(), Some(value.to_owned()));
+        #[cfg(not(target_family = "wasm"))]
+        self.children().overlay(name, Some(value));
+    }
+
+    /// s225 (`[os.env.unset]`): one overlay removal — a tombstone, never
+    /// the host environment. A child spawned after it does not receive the
+    /// name, whether this program set it or the host did.
+    pub(crate) fn env_remove(&self, name: &str) {
+        self.shared
+            .env
+            .lock()
+            .expect("env lock")
+            .insert(name.to_owned(), None);
+        #[cfg(not(target_family = "wasm"))]
+        self.children().overlay(name, None);
+    }
+
+    /// s225 (`[os.proc.exec]`): the bytes this run has printed and not yet
+    /// written, written to descriptor 1 before an exec replaces the
+    /// process — a live run has written them already. The buffer is
+    /// emptied, so a failed exec's record does not carry them twice.
+    #[cfg(not(target_family = "wasm"))]
+    pub(crate) fn flush_for_exec(&self) {
+        let pending = std::mem::take(&mut *self.shared.stdout.lock().expect("stdout lock"));
+        if !self.shared.live_stdout {
+            use std::io::Write;
+            let mut out = std::io::stdout();
+            let _ = out.write_all(&pending);
+            let _ = out.flush();
+        }
     }
 
     /// s40 time v0: milliseconds since the process-local monotonic anchor.

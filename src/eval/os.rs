@@ -26,6 +26,7 @@
 //!   termination code where every process has one).
 //! - a forged handle is `io`, never a trap (witnessed).
 
+use std::collections::BTreeMap;
 use std::process::{Child, Command, Stdio};
 
 /// The children this run has spawned, by handle. A reaped child leaves its
@@ -33,12 +34,38 @@ use std::process::{Child, Command, Stdio};
 #[derive(Default)]
 pub(crate) struct ChildTable {
     slots: Vec<Option<Child>>,
+    /// s225 (`[os.env.unset]`): the machine's environment overlay, as a
+    /// child is handed it — the host's environment with every `env_set`
+    /// set and every `env_unset` removed, as a native child is handed its
+    /// parent's.
+    overlay: BTreeMap<String, Option<String>>,
 }
 
 /// A row tag, ready for the builtin's `error(tag)`.
 pub(crate) type Row = &'static str;
 
 impl ChildTable {
+    /// s225: record one overlay write (`Some`) or removal (`None`) for the
+    /// children spawned after it.
+    pub(crate) fn overlay(&mut self, name: &str, value: Option<&str>) {
+        self.overlay
+            .insert(name.to_owned(), value.map(str::to_owned));
+    }
+
+    /// s225: hand `command` the overlay.
+    fn hand_env(&self, command: &mut Command) {
+        for (name, value) in &self.overlay {
+            match value {
+                Some(v) => {
+                    command.env(name, v);
+                }
+                None => {
+                    command.env_remove(name);
+                }
+            }
+        }
+    }
+
     /// `os_spawn`: argv-array only, null-wired stdio.
     ///
     /// # Errors
@@ -70,6 +97,7 @@ impl ChildTable {
         if let Some(dir) = cwd {
             command.current_dir(dir);
         }
+        self.hand_env(&mut command);
         match command.spawn() {
             Ok(child) => {
                 self.slots.push(Some(child));
@@ -137,6 +165,7 @@ impl ChildTable {
         if let Some(dir) = cwd {
             command.current_dir(dir);
         }
+        self.hand_env(&mut command);
         #[cfg(unix)]
         if let Some(g) = group {
             use std::os::unix::process::CommandExt as _;
