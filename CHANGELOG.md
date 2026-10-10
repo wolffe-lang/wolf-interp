@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### A repeated json object key is last-wins (wolf-lang s224, #124)
+
+Ruling B22 (2026-09-11) made a repeated object name last-wins, and
+wolf-lang s224 writes it as `[os.json.dup]`: one member per name, at the
+position where the name first appears, holding its last value. lupin
+read the FIRST occurrence and counted every one, as the three compiler
+machines did, so `json_get("{\"a\": 1, \"a\": 2}", "a")` was `1` and
+`json_len` of that object `2`; it is now `2` and `1`. A path walks
+through the last container a repeated name holds, and a nested object
+that `json_get` re-renders carries the name once (`{"a":1,"b":2,"a":3}`
+renders `{"a":3,"b":2}`); the root's own text is unchanged. Written
+from the clause, not from wolf-lang's kernel (the track's independence
+rule). Red at `1c1f096`: `tests/json_dup_s224.rs`, which holds
+wolf-lang's seven `corpus/json/dup_*.lu` rows (copied verbatim) to their
+headers; lupin 0.1.49 answers all seven first-wins. wolf-lang's
+`json_dup_lanes` gate pins 0.1.49 (`f516a5f`) by version and commit
+until a lupin release carries this.
+
 ### Exec and env unset: the mirror (wolf-lang s225, #534)
 
 wolf-lang's `[os.proc.exec]` and `[os.env.unset]` add two builtins.
