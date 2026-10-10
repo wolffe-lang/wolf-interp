@@ -1,6 +1,38 @@
 # Changelog
 
-## Unreleased
+## 0.1.50 — 2026-10-10
+
+THE FIFTIETH, the lupin half of wolf 0.2.27. **Pin unchanged:
+`294d626d` (wolf-lang v0.2.24).** Thirty-six commits since 0.1.49, the
+lupin halves of six wolf-lang lanes: s220 (5, a wrapping product past
+`i128`), s219 (7, jobs and the signal poll), s225 (9, `env_unset` and
+`os_exec`), s224 (4, json last-wins), s218 (7, the stat record, `lstat`,
+`readlink`, the typed listing) and s204 (4, the std beside the binary).
+Every lane was merged before the release lane (r32) began; r32 adds the
+version and one CI line. wolf-lang's gates pin 0.1.49 as pre-mirror in
+`int_truth_lanes`, `json_dup_lanes`, `fs_stat_lanes`, `ctrl_c_lanes` and
+`exec_lanes`; the 0.2.27 pairing measures each against this release's
+published archive and drops what it answers.
+
+- **The walk at this release:** 1002 files, 955 entries, 47 members;
+  760 reach `run`, 721 match, 94 dynamic, 64 conservatism, 72 out of
+  scope, 4 mismatch, every one filed. Unchanged from 0.1.49 to the byte
+  (the pin did not move; the six lanes' rows live in `tests/` until a
+  re-pin brings them into the walk).
+- **Rulings now made** that lanes implemented ahead of them, each as
+  implemented: #57 (s219's surface, R8 = A: lupin refuses the terminal
+  half by name), #59 (the std beside the binary; lupin's archive ships
+  no std), #60 (s218's spellings), #61 (json: one member per name, first
+  position, last value), #62 (`env_unset`, the execve shape).
+- **lupin's archive still ships no std** (ruling #59 B(1)). A `lupin`
+  installed alone answers `unsupported` for `use std.…` with nothing
+  set, where a `wolf` from the 0.2.27 archive runs it; a `lupin` placed
+  beside that `wolf` reads the `std/` wolf ships.
+- **CI:** the PR smoke's cap goes from 20 to 30 minutes. The windows
+  smoke had grown to about 19 m 40 s across these lanes and was
+  cancelled at the cap twice with nothing failed (r31's #214, s224's
+  #225; wolf-interp#215, #226). The cap is a budget, not a fix: trimming
+  the smoke's targets stays open in #215.
 
 ### The std beside the binary is the last std root (wolf-lang s204, ruling #29)
 
