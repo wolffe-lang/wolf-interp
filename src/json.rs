@@ -27,8 +27,17 @@
 //!   indexes (leading zeros read as the plain number — probed: `"01"` on
 //!   `[1,2,3]` answers `2`; anything non-digit is [`Error::Missing`]); on
 //!   an OBJECT any segment keys, digits included (probed: `"0"` on
-//!   `{"0":5}` answers `5`), first occurrence winning over a duplicate key
-//!   (probed). A segment into a scalar is [`Error::Missing`].
+//!   `{"0":5}` answers `5`). A segment into a scalar is
+//!   [`Error::Missing`].
+//! - **A repeated object name is last-wins** (wolf `[os.json.dup]`,
+//!   ruling B22, wolf-lang#124 — written from the clause, not probed):
+//!   an object holds ONE member per name, where the name first appears,
+//!   with the value of its last occurrence. So `get`/`kind` and a path
+//!   segment see the last value, `len` counts distinct names, and a
+//!   nested object renders compactly without the repeat; the root
+//!   container still renders as its own trimmed text. (Before this,
+//!   lupin answered the FIRST occurrence and counted every one, as
+//!   probed from the compiled lanes then.)
 //! - **Rendering** (`get`): a string DECODES (escapes resolved, surrogate
 //!   pairs combined); a number keeps its SOURCE spelling exactly (no
 //!   i64/f64 rounding is introduced by the tier — `1e999` and
@@ -67,7 +76,8 @@ pub enum Error {
 /// One parsed value, spanned into the source text.
 #[derive(Debug)]
 enum Node {
-    /// Decoded key → value, in source order, duplicates kept.
+    /// Decoded key → value: one entry per distinct key, ordered by each
+    /// key's first appearance, holding its last value (`[os.json.dup]`).
     Object(Vec<(String, Node)>),
     Array(Vec<Node>),
     /// The decoded text.
@@ -127,7 +137,8 @@ pub fn kind(text: &str, path: &str) -> Result<&'static str, Error> {
     })
 }
 
-/// `json_len`: element count of an array, member count of an object.
+/// `json_len`: element count of an array, member count of an object
+/// (distinct keys — a repeated key is one member, `[os.json.dup]`).
 ///
 /// # Errors
 ///
@@ -274,7 +285,11 @@ impl Parser<'_> {
             return Err(Error::Parse);
         }
         self.at += 1; // '{'
-        let mut members = Vec::new();
+        let mut members: Vec<(String, Node)> = Vec::new();
+        // Key → its slot in `members`, so a repeat overwrites in place
+        // without rescanning a wide object.
+        let mut slots: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
         self.skip_ws();
         if self.eat(b'}') {
             return Ok(Node::Object(members));
@@ -291,7 +306,15 @@ impl Parser<'_> {
             }
             self.skip_ws();
             let value = self.value(depth)?;
-            members.push((key, value));
+            // `[os.json.dup]`: a repeated key keeps its first slot and
+            // takes the later value.
+            match slots.get(&key) {
+                Some(&slot) => members[slot].1 = value,
+                None => {
+                    slots.insert(key.clone(), members.len());
+                    members.push((key, value));
+                }
+            }
             self.skip_ws();
             if self.eat(b',') {
                 continue;
@@ -555,8 +578,37 @@ mod tests {
         assert_eq!(get("[1]", "x"), Err(Error::Missing));
         assert_eq!(get("5", "0"), Err(Error::Missing));
         assert_eq!(get(r#"{ "a" : 1 }"#, "a.b"), Err(Error::Missing));
-        // A duplicate key answers its FIRST occurrence (probed).
-        assert_eq!(get(r#"{ "a" : 1, "a" : 2 }"#, "a").as_deref(), Ok("1"));
+        // A duplicate key answers its LAST occurrence ([os.json.dup]).
+        assert_eq!(get(r#"{ "a" : 1, "a" : 2 }"#, "a").as_deref(), Ok("2"));
+    }
+
+    /// `[os.json.dup]` (ruling B22, wolf-lang#124): last value, first
+    /// slot, one member per key — at the root, nested, three times,
+    /// across kinds, through a path, and in a compact re-render.
+    #[test]
+    fn a_repeated_key_is_last_wins_in_its_first_slot() {
+        assert_eq!(len(r#"{"a": 1, "a": 2}"#, ""), Ok(1));
+        let thrice = r#"{"a": 1, "b": 2, "a": 3, "c": 4, "a": 5, "b": 6}"#;
+        assert_eq!(get(thrice, "a").as_deref(), Ok("5"));
+        assert_eq!(get(thrice, "b").as_deref(), Ok("6"));
+        assert_eq!(len(thrice, ""), Ok(3));
+        let nested = r#"{"o": {"k": "first", "k": "last"}, "n": [{"z": 1, "z": 9}]}"#;
+        assert_eq!(get(nested, "o.k").as_deref(), Ok("last"));
+        assert_eq!(len(nested, "o"), Ok(1));
+        assert_eq!(get(nested, "n.0.z").as_deref(), Ok("9"));
+        let kinds = r#"{"a": 1, "a": "s", "b": "t", "b": [1, 2, 3]}"#;
+        assert_eq!(kind(kinds, "a").as_deref(), Ok("str"));
+        assert_eq!(kind(kinds, "b").as_deref(), Ok("array"));
+        assert_eq!(len(kinds, "b"), Ok(3));
+        assert_eq!(
+            get(r#"{"o": {"a": 1, "b": 2, "a": 3}}"#, "o").as_deref(),
+            Ok(r#"{"a":3,"b":2}"#)
+        );
+        let path = r#"{"a": {"x": 1}, "a": {"y": 2}}"#;
+        assert_eq!(get(path, "a.y").as_deref(), Ok("2"));
+        assert_eq!(get(path, "a.x"), Err(Error::Missing));
+        // The root is its own text, repeats included.
+        assert_eq!(get(r#" {"a":1,"a":2} "#, "").as_deref(), Ok(r#"{"a":1,"a":2}"#));
     }
 
     #[test]
