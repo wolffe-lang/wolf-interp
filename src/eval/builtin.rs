@@ -3307,7 +3307,11 @@ fn exec_resolve(exe: &str, path: &str, dir: &std::path::Path) -> Result<String, 
         }
         saw_unrunnable = true;
     }
-    Err(if saw_unrunnable { "denied" } else { "not_found" })
+    Err(if saw_unrunnable {
+        "denied"
+    } else {
+        "not_found"
+    })
 }
 
 /// s225: the exec itself — std's `CommandExt::exec` (safe), with argv[0]
