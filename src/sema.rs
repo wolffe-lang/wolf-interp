@@ -343,6 +343,19 @@ pub fn load(entry: &Path) -> Result<Program, LoadError> {
     load_with(entry, None)
 }
 
+/// The default std root (wolf-lang ruling #29, #415): a `std` directory
+/// beside the running `lupin` binary — the compiler's own default, found the
+/// same way (the directory of `current_exe`, no PATH search, no ancestor
+/// walk), so a lupin unpacked beside a `wolf` whose release archive carries
+/// wolf-std as `std/` reads the very tree the compiler reads. It answers only
+/// when nothing else did: `--std-root`, `LUPIN_STD` and a `std/` beside the
+/// entry each win over it. A `std` that is not a directory is not a root.
+pub fn default_std_root() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let root = exe.parent()?.join("std");
+    root.is_dir().then_some(root)
+}
+
 /// As [`load`], with an explicit std root — `--std-root DIR`, falling back to
 /// the `LUPIN_STD` environment variable (issue #6, wolf-std F-0010; the
 /// mechanism mirrors the compiler's s26 `--std-root`/`WOLF_STD` loader).
@@ -372,12 +385,14 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
     // `corpus/typecheck/method_home_no_std.lu`, with no `std/` beside it,
     // stays E0301. An explicit `--std-root`/`LUPIN_STD` still wins, and the
     // search is exactly one directory: never an ancestor walk that could
-    // adopt a stranger's `std/`.
+    // adopt a stranger's `std/`. Last of all, the std beside the binary
+    // (ruling #29, [`default_std_root`]).
     let beside = package_root.join("std");
+    let default = default_std_root();
     let std_root: Option<&Path> = match std_root {
         Some(root) => Some(root),
         None if beside.is_dir() => Some(beside.as_path()),
-        None => None,
+        None => default.as_deref(),
     };
 
     let mut program = Program {

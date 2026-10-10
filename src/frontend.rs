@@ -419,6 +419,7 @@ fn attribute_files(observation: &mut Observation, entry: &Path, std_root: Option
     let std_root = std_root
         .map(Path::to_path_buf)
         .or(env_root)
+        .or_else(crate::sema::default_std_root)
         .map(|root| strip_dot(&root));
     let relative = |raw: &str| -> String {
         let path = strip_dot(Path::new(raw));
