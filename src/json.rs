@@ -288,8 +288,7 @@ impl Parser<'_> {
         let mut members: Vec<(String, Node)> = Vec::new();
         // Key → its slot in `members`, so a repeat overwrites in place
         // without rescanning a wide object.
-        let mut slots: std::collections::HashMap<String, usize> =
-            std::collections::HashMap::new();
+        let mut slots: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
         self.skip_ws();
         if self.eat(b'}') {
             return Ok(Node::Object(members));
@@ -608,7 +607,10 @@ mod tests {
         assert_eq!(get(path, "a.y").as_deref(), Ok("2"));
         assert_eq!(get(path, "a.x"), Err(Error::Missing));
         // The root is its own text, repeats included.
-        assert_eq!(get(r#" {"a":1,"a":2} "#, "").as_deref(), Ok(r#"{"a":1,"a":2}"#));
+        assert_eq!(
+            get(r#" {"a":1,"a":2} "#, "").as_deref(),
+            Ok(r#"{"a":1,"a":2}"#)
+        );
     }
 
     #[test]
