@@ -234,6 +234,17 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "os_term_set_foreground",
     "os_term_mode",
     "os_term_set_mode",
+    // s232 (wolf-lang#679, #681, #691, #141; pelt's trap, kill, $$ and
+    // $PPID): this machine serves this process's id and its parent's
+    // (std's `process::id` and unix `parent_id`) and a meaning's number
+    // (a per-OS table), reads every set's SHAPE, and refuses the send and
+    // the disposition read by name — std has no `kill(pid, sig)` and no
+    // `sigaction`.
+    "os_signal_ignored",
+    "os_signal_send",
+    "os_signal_number",
+    "os_pid",
+    "os_ppid",
     "os_wait",
     "os_kill",
     "time_now_ms",
@@ -671,7 +682,12 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_term_foreground"
         | "os_term_set_foreground"
         | "os_term_mode"
-        | "os_term_set_mode" => unsupported(format!(
+        | "os_term_set_mode"
+        | "os_signal_ignored"
+        | "os_signal_send"
+        | "os_signal_number"
+        | "os_pid"
+        | "os_ppid" => unsupported(format!(
             "`{name}` is the s40 process trio; this wasm build has no processes to spawn, \
              so the tier is declined rather than mocked"
         )),
@@ -862,11 +878,11 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 return unsupported(format!("`{name}` takes an integer meaning set"));
             };
             let set = *set;
-            let bad = if name == "os_signal_poll" {
-                set & 511 == 0
-            } else {
-                set == 0 || set & !511 != 0
-            };
+            // s232 (wolf-lang#679, `[os.signal.set]`): one shape rule for
+            // every set — non-empty, and every bit one of the twenty
+            // listenable meanings (a poll refused only an ALL-unmapped set
+            // before).
+            let bad = set == 0 || set & !SIG_LISTENABLE != 0;
             if bad {
                 machine.note(
                     Rule::ErrUnion,
@@ -890,6 +906,118 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 "`{name}` sets a signal's disposition: this machine admits no `unsafe` and \
                  std has no `sigaction` ([os.signal.disp], [os.term.note] R8)"
             ))
+        }
+        // s232 (wolf-lang#141, `[os.proc.self]`): this process's id —
+        // the interpreter's, which is the program's here — and its
+        // parent's, through std alone.
+        #[cfg(not(target_family = "wasm"))]
+        "os_pid" => Ok(Value::Int(i128::from(std::process::id()), IntTy::INT)),
+        #[cfg(not(target_family = "wasm"))]
+        "os_ppid" => {
+            #[cfg(unix)]
+            {
+                Ok(Value::Int(
+                    i128::from(std::os::unix::process::parent_id()),
+                    IntTy::INT,
+                ))
+            }
+            #[cfg(not(unix))]
+            {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_ppid` yields the `unsupported` row",
+                );
+                Ok(error_value(name, "unsupported"))
+            }
+        }
+        // s232 (wolf-lang#681, `[os.signal.ignored]`): reading a
+        // disposition is `sigaction` with no new action — std has no such
+        // call, so a unix host refuses by name; windows answers its row.
+        #[cfg(not(target_family = "wasm"))]
+        "os_signal_ignored" => {
+            if cfg!(windows) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_signal_ignored` yields the `unsupported` row",
+                );
+                return Ok(error_value(name, "unsupported"));
+            }
+            unsupported(
+                "`os_signal_ignored` reads a signal's disposition: this machine admits no \
+                 `unsafe` and std has no `sigaction` ([os.signal.ignored], [os.term.note] R8)"
+                    .to_owned(),
+            )
+        }
+        // s232 (wolf-lang#141, `[os.signal.send]`): the SHAPE is every
+        // machine's (`invalid`: a pid not above 0 or past a pid's width, a
+        // meaning that is neither 0 nor one of the 28); then the HOST
+        // (windows `unsupported`); then this machine's limit by name — std
+        // sends no signal but SIGKILL, and only to a child it holds.
+        #[cfg(not(target_family = "wasm"))]
+        "os_signal_send" => {
+            let (Some(Value::Int(pid, _)), Some(Value::Int(m, _))) = (args.first(), args.get(1))
+            else {
+                return unsupported("`os_signal_send` takes a pid and a meaning".to_owned());
+            };
+            let (pid, m) = (*pid, *m);
+            if pid <= 0 || pid > i128::from(i32::MAX) || (m != 0 && !sig_one_sendable(m)) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_signal_send` yields the `invalid` row",
+                );
+                return Ok(error_value(name, "invalid"));
+            }
+            if cfg!(windows) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_signal_send` yields the `unsupported` row",
+                );
+                return Ok(error_value(name, "unsupported"));
+            }
+            unsupported(
+                "`os_signal_send` signals a process by id: this machine admits no `unsafe` and \
+                 std has no `kill(pid, sig)` ([os.signal.send], [os.term.note] R8)"
+                    .to_owned(),
+            )
+        }
+        // s232 (`[os.signal.number]`): a meaning's number on this host,
+        // from the table the host's ABI fixes (linux, macOS); `invalid`
+        // for anything but one meaning; windows `unsupported`; any other
+        // host refuses by name rather than guess.
+        #[cfg(not(target_family = "wasm"))]
+        "os_signal_number" => {
+            let Some(Value::Int(m, _)) = args.first() else {
+                return unsupported("`os_signal_number` takes a meaning".to_owned());
+            };
+            let m = *m;
+            if !sig_one_sendable(m) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_signal_number` yields the `invalid` row",
+                );
+                return Ok(error_value(name, "invalid"));
+            }
+            if cfg!(windows) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_signal_number` yields the `unsupported` row",
+                );
+                return Ok(error_value(name, "unsupported"));
+            }
+            match host_signal_number(m) {
+                Some(n) => Ok(Value::Int(n, IntTy::INT)),
+                None => unsupported(
+                    "`os_signal_number` on this host: lupin carries the linux and macOS \
+                     numberings only ([os.signal.number])"
+                        .to_owned(),
+                ),
+            }
         }
         // s219 (`[os.proc.status]`): the child's pid, and how it ended.
         #[cfg(not(target_family = "wasm"))]
@@ -3199,6 +3327,10 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "os_signal_poll" | "os_proc_pid" | "os_wait_status" => &["io"],
         "os_spawn_job" => &["unsupported", "invalid", "not_found", "denied", "io"],
         "os_pgid" => &["unsupported"],
+        // s232 (`[os.host.sigs]`'s five lines; `os_pid` has no row).
+        "os_ppid" | "os_signal_ignored" => &["unsupported"],
+        "os_signal_send" => &["unsupported", "invalid", "not_found", "denied", "io"],
+        "os_signal_number" => &["unsupported", "invalid"],
         "os_term_foreground" | "os_term_mode" | "os_term_set_foreground" => &["unsupported", "io"],
         "os_term_set_mode" => &["unsupported", "invalid", "io"],
         "os_chdir" => &["not_found", "denied", "io"],
@@ -3514,7 +3646,7 @@ fn spawn_job_answer(
     let Some(pairs) = fd_map_of(flat) else {
         return Ok(Err("invalid"));
     };
-    if group < -1 || tty < -1 || defaults < 0 || defaults & !511 != 0 {
+    if group < -1 || tty < -1 || defaults < 0 || defaults & !SIG_LISTENABLE != 0 {
         return Ok(Err("invalid"));
     }
     let plain = group == -1 && tty == -1 && defaults == 0;
@@ -3575,4 +3707,56 @@ fn fd_map_of(flat: &[i128]) -> Option<Vec<(i128, Option<i128>)>> {
         out.push((target, (source >= 0).then_some(source)));
     }
     Some(out)
+}
+
+/// s232 (wolf-lang#679, `[os.signal.set]`): the twenty listenable meanings
+/// (bits 0..19).
+const SIG_LISTENABLE: i128 = (1 << 20) - 1;
+
+/// s232: one meaning of the whole table — the twenty, `KILL`, `STOP` and
+/// the six fault signals (bits 0..27).
+fn sig_one_sendable(m: i128) -> bool {
+    m > 0 && m & (m - 1) == 0 && m & !((1 << 28) - 1) == 0
+}
+
+/// s232 (`[os.signal.number]`): a meaning's signal number, by bit index,
+/// as the host's ABI fixes it — linux (the generic numbering x86-64 and
+/// aarch64 share) and macOS. `None` on any other host: this machine links
+/// no libc to ask, and does not guess.
+fn host_signal_number(m: i128) -> Option<i128> {
+    // RELOAD TERMINATE QUIT UPGRADE INTERRUPT SUSPEND BG_READ BG_WRITE CHILD
+    // USER ALARM BROKEN_PIPE ABORT CONTINUE RESIZE URGENT VIRTUAL_ALARM
+    // PROFILE_ALARM CPU_LIMIT FILE_LIMIT KILL STOP SEGMENT_FAULT BUS_ERROR
+    // ARITHMETIC ILLEGAL BREAKPOINT BAD_SYSCALL
+    #[cfg(all(
+        target_os = "linux",
+        any(
+            target_arch = "x86_64",
+            target_arch = "aarch64",
+            target_arch = "riscv64"
+        )
+    ))]
+    const TABLE: Option<[i128; 28]> = Some([
+        1, 15, 3, 12, 2, 20, 21, 22, 17, 10, 14, 13, 6, 18, 28, 23, 26, 27, 24, 25, 9, 19, 11, 7,
+        8, 4, 5, 31,
+    ]);
+    #[cfg(target_os = "macos")]
+    const TABLE: Option<[i128; 28]> = Some([
+        1, 15, 3, 31, 2, 18, 21, 22, 20, 30, 14, 13, 6, 19, 28, 16, 26, 27, 24, 25, 9, 17, 11, 10,
+        8, 4, 5, 12,
+    ]);
+    #[cfg(not(any(
+        all(
+            target_os = "linux",
+            any(
+                target_arch = "x86_64",
+                target_arch = "aarch64",
+                target_arch = "riscv64"
+            )
+        ),
+        target_os = "macos"
+    )))]
+    const TABLE: Option<[i128; 28]> = None;
+    let i = usize::try_from(m.trailing_zeros()).ok()?;
+    TABLE.map(|t| t[i])
 }
