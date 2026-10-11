@@ -1,5 +1,52 @@
 # Changelog
 
+## Unreleased
+
+### The calls that change a file, and `os_error()` after `exists` (s230, wolf-lang#346, #698, #699, #700, #702, #704; #235)
+
+lupin's half of wolf-lang s230, written from `[os.fs.mode]`,
+`[os.fs.create.mode]`, `[os.fs.symlink]`, `[os.fs.link]`,
+`[os.fs.times]`, `[os.fs.truncate]` and `[os.fs.umask]`. Eight names
+resolve. Seven are served through the standard library's own calls, no
+`unsafe`: `fs_set_mode` (`chmod`, a final link followed),
+`fs_open_perm` and `fs_create_dir_mode` (a creation's permission bits,
+less the umask), `fs_symlink` (the target verbatim, an empty one
+`invalid`), `fs_link` (a second name; never replaces, never follows),
+`fs_truncate` (a length on a handle, the offset unmoved) and
+`fs_set_times`. Every shape row (`invalid`) is answered before
+containment and before the host, in the compiler's order; windows
+answers the clause's `unsupported` row for the mode, the moded
+creations, the symbolic link and the mask.
+
+What the standard library does not reach is refused BY NAME, never
+answered with a row the host would not give:
+
+- **`os_umask`**, whole: there is no `umask` in the standard library. A
+  mask outside `0o777` is still `invalid`.
+- **`fs_set_times` on a link itself** (`follow` false and the path a
+  link): that is `utimensat` with `AT_SYMLINK_NOFOLLOW`, and the
+  library sets times only on an open handle. On a path that is not a
+  link the flag changes nothing and the call is served. "Now" is this
+  machine's clock, read once per call; a path this process can open
+  neither for reading nor for writing, and a "now" the host refuses for
+  want of ownership, are refused by name too (the host's own call
+  needs neither).
+
+Whether lupin may take a safe system-call crate for these two is
+wolf-lang's `[os.fs.change.note]` R10, the question ruling #57's R8
+answered "no" for the terminal calls.
+
+**`os_error()` is the host's number after `exists` and `cross_device`
+(#235).** `fs_create_dir` and `fs_rename` matched those two kinds
+ahead of the one place the number was noted, so it read 0 after
+exactly those rows where every compiler machine answers `EEXIST` and
+`EXDEV`. Both old rows are fixed, and every new row notes it.
+
+`tests/fs_change_s230.rs` runs wolf-lang's six corpus rows and five
+unix fixtures byte for byte and asserts each refusal on its words;
+every row of wolf-lang's `fs_change_lanes` gate agrees with this lupin
+as the sibling.
+
 ## 0.1.50 — 2026-10-10
 
 THE FIFTIETH, the lupin half of wolf 0.2.27. **Pin unchanged:
