@@ -131,6 +131,17 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "fs_lstat",
     "fs_read_link",
     "fs_read_dir_entries",
+    // s230 (wolf-lang#346, #698, #699, #700, #702): the calls that change a
+    // file without writing its bytes — `[os.fs.mode]`, `[os.fs.create.mode]`,
+    // `[os.fs.symlink]`, `[os.fs.link]`, `[os.fs.times]`, `[os.fs.truncate]`
+    // — each through the standard library's own call, no `unsafe`.
+    "fs_set_mode",
+    "fs_open_perm",
+    "fs_create_dir_mode",
+    "fs_symlink",
+    "fs_link",
+    "fs_set_times",
+    "fs_truncate",
     // `read_line` is NOT part of that landing and stays declined: stdin is
     // not a file, no clause names an injectable one, and nothing in the
     // pinned corpus calls it. Named here so the refusal still reads
@@ -203,6 +214,10 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // s225 (wolf-lang#534, `[os.proc.exec]`): replace the running program —
     // through std's safe `CommandExt::exec`, for descriptors 0..2.
     "os_exec",
+    // s230 (wolf-lang#704, `[os.fs.umask]`): the file mode creation mask.
+    // The name resolves and its SHAPE row is answered; a well-formed call
+    // is refused by name — the standard library has no `umask`.
+    "os_umask",
     // s219 (wolf-lang#622, pelt's H3): Ctrl-C and jobs. This machine
     // serves what std reaches without `unsafe` — a spawn into a process
     // group, a child's pid and its status by signal number, the poll and
@@ -408,7 +423,14 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_stat"
         | "fs_lstat"
         | "fs_read_link"
-        | "fs_read_dir_entries" => unsupported(format!(
+        | "fs_read_dir_entries"
+        | "fs_set_mode"
+        | "fs_open_perm"
+        | "fs_create_dir_mode"
+        | "fs_symlink"
+        | "fs_link"
+        | "fs_set_times"
+        | "fs_truncate" => unsupported(format!(
             "`{name}` is the s38/s90 fs tier; this wasm build has no filesystem to open, so \
              the tier is declined rather than mocked"
         )),
@@ -445,7 +467,14 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_stat"
         | "fs_lstat"
         | "fs_read_link"
-        | "fs_read_dir_entries" => machine.fs_call(name, &args, span),
+        | "fs_read_dir_entries"
+        | "fs_set_mode"
+        | "fs_open_perm"
+        | "fs_create_dir_mode"
+        | "fs_symlink"
+        | "fs_link"
+        | "fs_set_times"
+        | "fs_truncate" => machine.fs_call(name, &args, span),
         // `[os.fs.error]` (s200, wolf-lang#407): the number the task's last
         // fallible fs call left (`Machine::fs_call` keeps it), and the
         // host's words for a number — std's rendering without its
@@ -629,6 +658,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_chdir"
         | "os_isatty"
         | "os_exec"
+        | "os_umask"
         | "os_wait"
         | "os_kill"
         | "os_signal_ignore"
@@ -724,6 +754,38 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             };
             let fd = *fd;
             machine.os_isatty(fd, span)
+        }
+        // s230 (`[os.fs.umask]`): the process's file mode creation mask. The
+        // clause's order: SHAPE (`invalid`, a mask outside 0o777), HOST
+        // (windows has no mask: the `unsupported` row), and then this
+        // machine's own limit, by name — the mask is set by the host's
+        // `umask` call, the standard library has none, and this machine has
+        // no `unsafe` to make one. It leaves `os_error()` alone, as the
+        // clause says of an os call.
+        #[cfg(not(target_family = "wasm"))]
+        "os_umask" => {
+            let Some(Value::Int(mask, _)) = args.first() else {
+                return unsupported("`os_umask` takes an integer mask".to_owned());
+            };
+            if !(0..=0o777).contains(mask) {
+                machine.note(Rule::ErrUnion, span, "`os_umask` yields the `invalid` row");
+                return Ok(error_value("os_umask", "invalid"));
+            }
+            if cfg!(not(unix)) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_umask` yields the `unsupported` row",
+                );
+                return Ok(error_value("os_umask", "unsupported"));
+            }
+            unsupported(
+                "`os_umask` sets the process's file mode creation mask, which is the host's \
+                 `umask` call; the standard library has none and this machine has no `unsafe` \
+                 to make one, so the call is refused by name ([os.fs.umask], \
+                 [os.fs.change.note] R10)"
+                    .to_owned(),
+            )
         }
         // s225 (`[os.proc.exec]`): replace the running program — here, this
         // interpreter. The clause's order: SHAPE (`invalid`), HOST
@@ -3065,6 +3127,20 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // listing of bytes has no `utf8` (`[os.fs.readdir]`).
         "fs_stat" | "fs_lstat" | "fs_read_dir_entries" => &["not_found", "denied", "io"],
         "fs_read_link" => &["not_found", "denied", "invalid", "io"],
+        // s230: the changers' rows, as `[os.host.sigs]` lists them.
+        // `unsupported` is windows' answer to a mode and a symbolic link.
+        "fs_set_mode" => &["not_found", "denied", "invalid", "unsupported", "io"],
+        "fs_open_perm" | "fs_create_dir_mode" | "fs_symlink" => &[
+            "not_found",
+            "denied",
+            "exists",
+            "invalid",
+            "unsupported",
+            "io",
+        ],
+        "fs_link" => &["not_found", "denied", "exists", "cross_device", "io"],
+        "fs_set_times" => &["not_found", "denied", "invalid", "io"],
+        "fs_truncate" => &["invalid", "io"],
         // `eof` is the read's own row — a read that wanted bytes and got
         // none. No corpus file reads twice, so it is pinned by `eval::fs`'s
         // unit tests rather than by the census; `[os.fs.open]`'s mode-5
@@ -3135,6 +3211,8 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // The env pair and the json query tier: mint-site closures.
         "env_get" => &["invalid", "missing"],
         "env_set" | "env_unset" => &["invalid"],
+        // s230 (`[os.fs.umask]`).
+        "os_umask" => &["invalid", "unsupported"],
         "json_get" | "json_type" | "json_len" => &["parse", "missing", "kind"],
         // s81: the one str-construction border (`utf8`, never a trap).
         "str_from_utf8" => &["utf8"],
