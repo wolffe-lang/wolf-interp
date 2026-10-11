@@ -329,6 +329,30 @@ impl FsTable {
         Ok(self.mint(file))
     }
 
+    /// s230 (`[os.fs.create.mode]`): `fs_open_perm(path, open, mode)` — the
+    /// open, with the permission bits a creation uses (less the umask, the
+    /// host's doing). The open mode is judged by [`open_options`] and the
+    /// bits by the caller, both before this is reached.
+    #[cfg(unix)]
+    pub(crate) fn open_perm(&mut self, path: &Path, open: i128, mode: u32) -> FsResult<i128> {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        let mut options = open_options(open)?;
+        let file = options.mode(mode).open(path).map_err(open_row)?;
+        Ok(self.mint(file))
+    }
+
+    /// s230 (`[os.fs.truncate]`): `fs_truncate(fd, len)` — the file behind
+    /// the handle becomes exactly `len` bytes; the offset does not move.
+    /// A negative length is `invalid` before the handle is looked at; every
+    /// host refusal is `io` ([`io_row`], which notes the host's number).
+    pub(crate) fn truncate(&mut self, handle: i128, len: i128) -> FsResult<()> {
+        let Ok(len) = u64::try_from(len) else {
+            return Err(FsErr::Row("invalid"));
+        };
+        let file = self.handle_file(handle)?;
+        file.set_len(len).map_err(io_row)
+    }
+
     /// `fs_read(fd, n) -> str`: up to `n` bytes, decoded. `eof` at the end,
     /// `utf8` for bytes that are not text.
     pub(crate) fn read_text(&mut self, handle: i128, want: i128) -> FsResult<String> {
@@ -1337,6 +1361,238 @@ pub(crate) fn read_dir_entries(path: &Path) -> FsResult<Vec<Vec<u8>>> {
     Ok(rows)
 }
 
+// -- s230: the calls that change a file -----------------------------------
+//
+// `[os.fs.mode]`, `[os.fs.create.mode]`, `[os.fs.symlink]`, `[os.fs.link]`,
+// `[os.fs.times]`. Each is the ONE call the Rust standard library makes for
+// it, with no `unsafe`: `chmod`, `mkdir` with a mode, `symlink`, `linkat`
+// (no flag), and — for the times — `futimens` on a handle, which is where
+// this machine parts from the compiler's `utimensat` and says so by name.
+// The SHAPE rows (`invalid`) are decided by the caller before any of these
+// runs; the host posture (windows: `unsupported`) is decided here.
+
+/// The widest mode `fs_set_mode` takes: permission, set-id and sticky bits.
+pub(crate) const MODE_MAX: i128 = 0o7777;
+
+/// The widest mode a creation takes: the nine permission bits.
+pub(crate) const PERM_MAX: i128 = 0o777;
+
+/// `fs_set_mode(path, mode)`: the bits become exactly `mode`; a final link
+/// is followed.
+#[cfg(unix)]
+pub(crate) fn set_mode(path: &Path, mode: u32) -> FsResult<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).map_err(|e| path_row(&e))
+}
+
+/// `fs_create_dir_mode(path, mode)`: one directory, `mode` less the umask.
+#[cfg(unix)]
+pub(crate) fn create_dir_mode(path: &Path, mode: u32) -> FsResult<()> {
+    use std::os::unix::fs::DirBuilderExt as _;
+    std::fs::DirBuilder::new()
+        .mode(mode)
+        .create(path)
+        .map_err(|e| named_row(&e))
+}
+
+/// `fs_symlink(target, path)`: the target stored verbatim.
+#[cfg(unix)]
+pub(crate) fn symlink(target: &str, path: &Path) -> FsResult<()> {
+    std::os::unix::fs::symlink(target, path).map_err(|e| named_row(&e))
+}
+
+/// `fs_link(existing, path)`: a second name; `linkat` with no flag, so a
+/// final link in `existing` is not followed. Every host.
+pub(crate) fn hard_link(existing: &Path, path: &Path) -> FsResult<()> {
+    std::fs::hard_link(existing, path).map_err(|e| named_row(&e))
+}
+
+/// One of `fs_set_times`'s two times (`[os.fs.times]`'s table).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TimeArg {
+    /// Seconds from the epoch (negative before it) and nanoseconds.
+    At(i128, i128),
+    /// The clock, at the call.
+    Now,
+    /// Unchanged.
+    Leave,
+}
+
+/// A `(seconds, nanoseconds)` pair decoded: nanoseconds `0..=999999999` with
+/// the seconds, `-1` "now", `-2` "leave"; `None` is the `invalid` row.
+pub(crate) fn time_arg(s: i128, ns: i128) -> Option<TimeArg> {
+    match ns {
+        -1 => Some(TimeArg::Now),
+        -2 => Some(TimeArg::Leave),
+        0..=999_999_999 => Some(TimeArg::At(s, ns)),
+        _ => None,
+    }
+}
+
+/// A `timespec` as the standard library's clock value, or `None` where it
+/// cannot hold one.
+fn system_time(s: i128, ns: i128) -> Option<std::time::SystemTime> {
+    let ns = u32::try_from(ns).ok()?;
+    if s >= 0 {
+        UNIX_EPOCH.checked_add(std::time::Duration::new(u64::try_from(s).ok()?, ns))
+    } else {
+        UNIX_EPOCH
+            .checked_sub(std::time::Duration::from_secs(u64::try_from(-s).ok()?))?
+            .checked_add(std::time::Duration::new(0, ns))
+    }
+}
+
+/// The two times as the library's `FileTimes`, and whether "now" was read
+/// from this machine's clock for either. An unset time is left alone
+/// (`UTIME_OMIT` on unix). `None` is a time the library cannot hold.
+fn file_times(a: TimeArg, m: TimeArg) -> Option<(std::fs::FileTimes, bool)> {
+    let now = std::time::SystemTime::now();
+    let mut times = std::fs::FileTimes::new();
+    let mut clock = false;
+    match a {
+        TimeArg::At(s, ns) => times = times.set_accessed(system_time(s, ns)?),
+        TimeArg::Now => {
+            clock = true;
+            times = times.set_accessed(now);
+        }
+        TimeArg::Leave => {}
+    }
+    match m {
+        TimeArg::At(s, ns) => times = times.set_modified(system_time(s, ns)?),
+        TimeArg::Now => {
+            clock = true;
+            times = times.set_modified(now);
+        }
+        TimeArg::Leave => {}
+    }
+    Some((times, clock))
+}
+
+/// `fs_set_times(path, …, follow)` on unix, WITHOUT `utimensat`: the
+/// standard library sets times only on an open handle (`futimens`), so this
+/// machine opens the path and sets them there. What that reaches is served;
+/// what it cannot reach is refused BY NAME, never answered with a row the
+/// host itself would not give:
+///
+/// - `follow` false on a path that IS a link — a link cannot be opened as
+///   itself, and its own times need `AT_SYMLINK_NOFOLLOW`. On a path that is
+///   not a link the flag changes nothing, and the call is served.
+/// - a path this process may neither read nor write (the host's call needs
+///   neither, only ownership) — unless the path cannot be SEARCHED, which is
+///   the host's own `denied`.
+/// - a "now" the host refuses for want of ownership: this machine handed it
+///   a clock reading, and the host's own "now" asks only write permission.
+///
+/// "Now" is this machine's clock read once per call — the same instant for
+/// both times, within the call of the host's own.
+///
+/// `shown` is the path as the program wrote it, for the refusal.
+#[cfg(unix)]
+pub(crate) fn set_times(
+    path: &Path,
+    shown: &str,
+    a: TimeArg,
+    m: TimeArg,
+    follow: bool,
+) -> FsResult<()> {
+    if !follow {
+        match std::fs::symlink_metadata(path) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(FsErr::Outside(format!(
+                    "`fs_set_times(\"{shown}\", …, false)` sets a symbolic link's OWN times, \
+                     which is `utimensat` with `AT_SYMLINK_NOFOLLOW`; the standard library \
+                     sets times only on an open handle, a link cannot be opened as itself, \
+                     and this machine has no `unsafe` for the host call — refused by name \
+                     ([os.fs.times], [os.fs.change.note] R10)"
+                )));
+            }
+            Ok(_) => {}
+            Err(e) => return Err(path_row(&e)),
+        }
+    }
+    let Some((times, clock)) = file_times(a, m) else {
+        return Err(FsErr::Row("io"));
+    };
+    let file = open_for_times(path, shown)?;
+    match file.set_times(times) {
+        Ok(()) => Ok(()),
+        Err(e) if clock && e.kind() == std::io::ErrorKind::PermissionDenied => {
+            Err(FsErr::Outside(format!(
+                "`fs_set_times(\"{shown}\", …)` asked for \"now\" on a file this process does \
+                 not own; the host's own \"now\" (`UTIME_NOW`) needs only write permission, \
+                 and this machine, which has no `unsafe` for `utimensat`, could only hand the \
+                 host a clock reading — refused by name rather than answered `denied` \
+                 ([os.fs.times])"
+            )))
+        }
+        Err(e) => Err(path_row(&e)),
+    }
+}
+
+/// A handle to set times on: read-only first (a directory opens no other
+/// way), then write-only; neither parks on a fifo (`O_NONBLOCK`).
+#[cfg(unix)]
+fn open_for_times(path: &Path, shown: &str) -> FsResult<File> {
+    let open = |write: bool| {
+        let mut options = OpenOptions::new();
+        options.read(!write).write(write);
+        if let Some(flag) = nonblock_flag() {
+            set_custom_flags(&mut options, flag);
+        }
+        options.open(path)
+    };
+    let denied = |e: &std::io::Error| e.kind() == std::io::ErrorKind::PermissionDenied;
+    match open(false) {
+        Ok(file) => Ok(file),
+        Err(e) if denied(&e) => match open(true) {
+            Ok(file) => Ok(file),
+            Err(_) => match std::fs::metadata(path) {
+                // The entry is there and this process may open it neither
+                // way: the host's `utimensat` would not have asked.
+                Ok(_) => Err(FsErr::Outside(format!(
+                    "`fs_set_times(\"{shown}\", …)` names a file this process may neither \
+                     read nor write; the host's call needs neither, and this machine, which \
+                     sets times on an open handle (no `unsafe` for `utimensat`), cannot open \
+                     it — refused by name ([os.fs.times])"
+                ))),
+                // The path cannot be searched: the host's own answer.
+                Err(e) => Err(path_row(&e)),
+            },
+        },
+        Err(e) => Err(path_row(&e)),
+    }
+}
+
+/// `fs_set_times` on windows: the compiler's own shape — the path opened for
+/// `FILE_WRITE_ATTRIBUTES` alone (a directory too, the link itself when
+/// `follow` is off) and the times set on the handle. Every case is served.
+#[cfg(windows)]
+pub(crate) fn set_times(
+    path: &Path,
+    _shown: &str,
+    a: TimeArg,
+    m: TimeArg,
+    follow: bool,
+) -> FsResult<()> {
+    use std::os::windows::fs::OpenOptionsExt as _;
+    const FILE_WRITE_ATTRIBUTES: u32 = 0x0100;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    let Some((times, _)) = file_times(a, m) else {
+        return Err(FsErr::Row("io"));
+    };
+    let mut flags = FILE_FLAG_BACKUP_SEMANTICS;
+    if !follow {
+        flags |= FILE_FLAG_OPEN_REPARSE_POINT;
+    }
+    let file = OpenOptions::new()
+        .access_mode(FILE_WRITE_ATTRIBUTES)
+        .custom_flags(flags)
+        .open(path)
+        .map_err(|e| path_row(&e))?;
+    file.set_times(times).map_err(|e| path_row(&e))
+}
+
 /// `fs_exists(path) -> bool`. INFALLIBLE: the witnesses call it with no `?`
 /// (`corpus/fs/roundtrip.lu`'s `gone: {!fs_exists(path)}`), so an
 /// unreadable parent answers `false` rather than raising.
@@ -1733,6 +1989,98 @@ impl Machine {
                 };
                 self.fs_answer(name, answer, span)
             }
+            // s230 (`[os.fs.mode]`, `[os.fs.create.mode]`): a mode set and
+            // a mode at creation. The clause's order: SHAPE (`invalid`, the
+            // bits — and for the open, its open mode first), then the HOST
+            // (windows has no permission bits: the `unsupported` row), then
+            // containment, then the host's one call.
+            "fs_set_mode" | "fs_create_dir_mode" => {
+                let path = self.fs_path_arg(args, 0, name)?;
+                let mode = int_arg(args, 1, name)?;
+                let top = if name == "fs_set_mode" {
+                    MODE_MAX
+                } else {
+                    PERM_MAX
+                };
+                let answer = if (0..=top).contains(&mode) {
+                    self.fs_mode_call(name, &path, mode)
+                } else {
+                    Err(FsErr::Row("invalid"))
+                };
+                self.fs_answer(name, answer.map(|()| Value::Unit), span)
+            }
+            "fs_open_perm" => {
+                let path = self.fs_path_arg(args, 0, name)?;
+                let open = int_arg(args, 1, name)?;
+                let mode = int_arg(args, 2, name)?;
+                let answer = match open_options(open) {
+                    Err(row) => Err(FsErr::Row(row)),
+                    Ok(_) if !(0..=PERM_MAX).contains(&mode) => Err(FsErr::Row("invalid")),
+                    Ok(_) => self.fs_open_perm_call(name, &path, open, mode),
+                };
+                self.fs_answer(name, answer, span)
+            }
+            // s230 (`[os.fs.symlink]`): the target is stored verbatim and
+            // is no path of this machine's — only `path` is contained, and
+            // as a call that follows no final link (the link is made AT the
+            // name, whatever is there). An empty target is `invalid`.
+            "fs_symlink" => {
+                let target = self.fs_str_arg(args, 0, name)?;
+                let path = self.fs_path_arg(args, 1, name)?;
+                let answer = if target.is_empty() {
+                    Err(FsErr::Row("invalid"))
+                } else {
+                    self.fs_symlink_call(name, &target, &path)
+                };
+                self.fs_answer(name, answer.map(|()| Value::Unit), span)
+            }
+            // s230 (`[os.fs.link]`): a second name. Neither path's final
+            // component is followed (`linkat`, no flag), so each is
+            // contained by its parent.
+            "fs_link" => {
+                let existing = self.fs_path_arg(args, 0, name)?;
+                let path = self.fs_path_arg(args, 1, name)?;
+                let answer = self
+                    .fs_contained_link(&existing, name)
+                    .and_then(|existing| {
+                        self.fs_contained_link(&path, name)
+                            .and_then(|path| hard_link(&existing, &path))
+                    });
+                self.fs_answer(name, answer.map(|()| Value::Unit), span)
+            }
+            // s230 (`[os.fs.times]`): the two times, each one of three by
+            // its nanosecond word; any other word is `invalid` before
+            // anything else is looked at.
+            "fs_set_times" => {
+                let path = self.fs_path_arg(args, 0, name)?;
+                let a_s = int_arg(args, 1, name)?;
+                let a_ns = int_arg(args, 2, name)?;
+                let m_s = int_arg(args, 3, name)?;
+                let m_ns = int_arg(args, 4, name)?;
+                let Some(Value::Bool(follow)) = args.get(5) else {
+                    return Err(Signal::Unsupported(format!(
+                        "`{name}`'s argument 5 (`follow`) must be a `bool`"
+                    )));
+                };
+                let follow = *follow;
+                let answer = match (time_arg(a_s, a_ns), time_arg(m_s, m_ns)) {
+                    (Some(a), Some(m)) => if follow {
+                        self.fs_contained(&path, name)
+                    } else {
+                        self.fs_contained_link(&path, name)
+                    }
+                    .and_then(|resolved| set_times(&resolved, &path, a, m, follow)),
+                    _ => Err(FsErr::Row("invalid")),
+                };
+                self.fs_answer(name, answer.map(|()| Value::Unit), span)
+            }
+            // s230 (`[os.fs.truncate]`): the length, on a handle.
+            "fs_truncate" => {
+                let fd = int_arg(args, 0, name)?;
+                let len = int_arg(args, 1, name)?;
+                let answer = self.shared_fs().truncate(fd, len).map(|()| Value::Unit);
+                self.fs_answer(name, answer, span)
+            }
             // The three infallible predicates: the witnesses call them with
             // no `?` (`corpus/fs/roundtrip.lu`'s `gone: {!fs_exists(path)}`),
             // so they answer a bool and never a row. A path this machine
@@ -1879,6 +2227,60 @@ impl Machine {
             .map(Value::Bool)
             .ok_or(FsErr::Row("io"));
         self.fs_answer("os_isatty", answer, span)
+    }
+
+    /// s230: `fs_set_mode` / `fs_create_dir_mode` past their shape — the
+    /// host posture, then containment, then the call.
+    #[cfg(unix)]
+    fn fs_mode_call(&self, name: &str, path: &str, mode: i128) -> FsResult<()> {
+        let bits = u32::try_from(mode).map_err(|_| FsErr::Row("invalid"))?;
+        let resolved = self.fs_contained(path, name)?;
+        if name == "fs_set_mode" {
+            set_mode(&resolved, bits)
+        } else {
+            create_dir_mode(&resolved, bits)
+        }
+    }
+
+    /// windows has no permission bits: `unsupported`, by name, whatever the
+    /// path (`[os.fs.mode]`, `[os.fs.create.mode]`).
+    #[cfg(not(unix))]
+    fn fs_mode_call(&self, _name: &str, _path: &str, _mode: i128) -> FsResult<()> {
+        Err(FsErr::Row("unsupported"))
+    }
+
+    /// s230: `fs_open_perm` past its shape.
+    #[cfg(unix)]
+    fn fs_open_perm_call(&self, name: &str, path: &str, open: i128, mode: i128) -> FsResult<Value> {
+        let bits = u32::try_from(mode).map_err(|_| FsErr::Row("invalid"))?;
+        let resolved = self.fs_contained(path, name)?;
+        self.shared_fs()
+            .open_perm(&resolved, open, bits)
+            .map(|fd| Value::Int(fd, IntTy::INT))
+    }
+
+    #[cfg(not(unix))]
+    fn fs_open_perm_call(
+        &self,
+        _name: &str,
+        _path: &str,
+        _open: i128,
+        _mode: i128,
+    ) -> FsResult<Value> {
+        Err(FsErr::Row("unsupported"))
+    }
+
+    /// s230: `fs_symlink` past its shape.
+    #[cfg(unix)]
+    fn fs_symlink_call(&self, name: &str, target: &str, path: &str) -> FsResult<()> {
+        let resolved = self.fs_contained_link(path, name)?;
+        symlink(target, &resolved)
+    }
+
+    /// windows: `unsupported`, by name (`[os.fs.symlink]`).
+    #[cfg(not(unix))]
+    fn fs_symlink_call(&self, _name: &str, _target: &str, _path: &str) -> FsResult<()> {
+        Err(FsErr::Row("unsupported"))
     }
 
     /// Containment AND resolution, as one method so every arm reads the same:
@@ -2743,6 +3145,157 @@ mod tests {
             assert!(matches!(named_row(&exdev), FsErr::Row("cross_device")));
             assert_eq!(HOST_ERROR.with(std::cell::Cell::get), 18);
         }
+    }
+
+    /// s230 (`[os.fs.times]`): the nanosecond word chooses among three.
+    #[test]
+    fn the_time_words_decode() {
+        assert_eq!(time_arg(5, 0), Some(TimeArg::At(5, 0)));
+        assert_eq!(
+            time_arg(-5, 999_999_999),
+            Some(TimeArg::At(-5, 999_999_999))
+        );
+        assert_eq!(time_arg(77, -1), Some(TimeArg::Now));
+        assert_eq!(time_arg(77, -2), Some(TimeArg::Leave));
+        assert_eq!(time_arg(0, 1_000_000_000), None);
+        assert_eq!(time_arg(0, -3), None);
+        // One nanosecond before the epoch is a time the library holds
+        // (in 100 ns steps on windows, so the witness there is 100).
+        let before = system_time(-1, 999_999_900).expect("held");
+        assert_eq!(
+            UNIX_EPOCH
+                .duration_since(before)
+                .expect("before")
+                .as_nanos(),
+            100
+        );
+    }
+
+    /// s230 (`[os.fs.link]`, `[os.fs.truncate]`), every host: a second name
+    /// is the same file and never replaces; a length is set on a handle and
+    /// a negative one is `invalid` before the handle is looked at.
+    #[test]
+    fn a_hard_link_and_a_length() {
+        let dir = scratch("fs-s230-link-truncate");
+        let (a, b) = (dir.join("a"), dir.join("b"));
+        write_text(&a, "wolves").expect("written");
+        hard_link(&a, &b).expect("linked");
+        assert!(matches!(hard_link(&a, &b), Err(FsErr::Row("exists"))));
+        assert!(matches!(
+            hard_link(&dir.join("gone"), &dir.join("c")),
+            Err(FsErr::Row("not_found"))
+        ));
+        write_text(&a, "more wolves").expect("rewritten");
+        assert_eq!(read_text(&b).expect("read"), "more wolves");
+
+        let mut table = FsTable::default();
+        let fd = table.open(&dir.join("f"), 3).expect("opened");
+        table.write(fd, "0123456789").expect("written");
+        table.truncate(fd, 4).expect("shorter");
+        assert_eq!(read_bytes(&dir.join("f")).expect("read"), b"0123");
+        assert_eq!(table.tell(fd).expect("told"), 10, "the offset stays");
+        table.truncate(fd, 6).expect("longer");
+        assert_eq!(read_bytes(&dir.join("f")).expect("read"), b"0123\0\0");
+        assert!(matches!(table.truncate(fd, -1), Err(FsErr::Row("invalid"))));
+        assert!(matches!(
+            table.truncate(999, -1),
+            Err(FsErr::Row("invalid"))
+        ));
+        assert!(matches!(table.truncate(999, 0), Err(FsErr::Row("io"))));
+        table.close(fd).expect("closed");
+        assert!(matches!(table.truncate(fd, 0), Err(FsErr::Row("io"))));
+    }
+
+    /// s230 (`[os.fs.mode]`, `[os.fs.symlink]`, `[os.fs.times]`), unix: the
+    /// bits become exactly the mode and a link is followed; a link stores
+    /// its target verbatim and is never made over an entry; times are set
+    /// to the nanosecond, one left alone; and a link's OWN times are
+    /// refused by name, never answered with a row.
+    #[cfg(unix)]
+    #[test]
+    fn a_mode_a_symlink_and_the_times() {
+        use std::os::unix::fs::MetadataExt as _;
+        let dir = scratch("fs-s230-mode-link-times");
+        let a = dir.join("a");
+        write_text(&a, "12345").expect("written");
+        symlink("a", &dir.join("ln")).expect("linked");
+        symlink("../no/such/place", &dir.join("dangling")).expect("linked");
+        assert_eq!(
+            read_link(&dir.join("dangling")).expect("target"),
+            b"../no/such/place"
+        );
+        assert!(matches!(
+            symlink("b", &dir.join("dangling")),
+            Err(FsErr::Row("exists"))
+        ));
+        assert!(matches!(
+            symlink("a", &dir.join("no-dir").join("ln")),
+            Err(FsErr::Row("not_found"))
+        ));
+        let mode = |p: &Path| std::fs::metadata(p).expect("meta").mode() & 0o7777;
+        for bits in [0o600, 0o755, 0o4711, 0o644] {
+            set_mode(&a, bits).expect("set");
+            assert_eq!(mode(&a), bits);
+        }
+        set_mode(&dir.join("ln"), 0o640).expect("through the link");
+        assert_eq!(mode(&a), 0o640);
+        assert!(matches!(
+            set_mode(&dir.join("dangling"), 0o600),
+            Err(FsErr::Row("not_found"))
+        ));
+
+        let at = TimeArg::At(1_000_000_000, 123_456_789);
+        set_times(&a, "a", at, TimeArg::At(1_500_000_000, 7), true).expect("both");
+        set_times(
+            &a,
+            "a",
+            TimeArg::Leave,
+            TimeArg::At(1_600_000_000, 0),
+            false,
+        )
+        .expect("one");
+        let md = std::fs::metadata(&a).expect("meta");
+        assert_eq!((md.atime(), md.atime_nsec()), (1_000_000_000, 123_456_789));
+        assert_eq!((md.mtime(), md.mtime_nsec()), (1_600_000_000, 0));
+        set_times(&a, "a", TimeArg::Leave, TimeArg::Now, true).expect("now");
+        assert!(std::fs::metadata(&a).expect("meta").mtime() > 1_577_836_800);
+        set_times(
+            &dir,
+            "d",
+            TimeArg::Leave,
+            TimeArg::At(1_400_000_000, 0),
+            true,
+        )
+        .expect("a directory");
+        assert_eq!(
+            std::fs::metadata(&dir).expect("meta").mtime(),
+            1_400_000_000
+        );
+        assert!(matches!(
+            set_times(&dir.join("gone"), "gone", at, at, true),
+            Err(FsErr::Row("not_found"))
+        ));
+        // The link itself: refused by name.
+        match set_times(&dir.join("ln"), "ln", at, at, false) {
+            Err(FsErr::Outside(reason)) => {
+                assert!(reason.contains("AT_SYMLINK_NOFOLLOW"), "{reason}");
+            }
+            other => panic!(
+                "a link's own times are refused by name: {:?}",
+                other.is_ok()
+            ),
+        }
+        // Followed, the same path sets the target.
+        set_times(
+            &dir.join("ln"),
+            "ln",
+            TimeArg::Leave,
+            TimeArg::At(900_000_000, 3),
+            true,
+        )
+        .expect("followed");
+        let md = std::fs::metadata(&a).expect("meta");
+        assert_eq!((md.mtime(), md.mtime_nsec()), (900_000_000, 3));
     }
 
     /// s218 (`[os.fs.readdir]`): the listing carries each entry's own kind
