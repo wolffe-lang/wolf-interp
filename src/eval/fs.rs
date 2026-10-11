@@ -890,6 +890,29 @@ pub(crate) fn path_row(error: &std::io::Error) -> FsErr {
     })
 }
 
+/// [`path_row`] with the two kinds a caller answers differently:
+/// `exists` (`EEXIST`) and `cross_device` (`EXDEV`). For the calls whose row
+/// declares one of them — `fs_rename`, `fs_create_dir`, and s230's links and
+/// moded creations; `fs_answer` coarsens a tag the call does not declare.
+///
+/// The host's number is noted HERE, for every kind (wolf-interp#235): until
+/// s230 the two arms were matched by `fs_rename` and `fs_create_dir`
+/// themselves, ahead of `path_row`, so `os_error()` read 0 after exactly
+/// those two rows where every compiler machine answers `EEXIST` and `EXDEV`.
+pub(crate) fn named_row(error: &std::io::Error) -> FsErr {
+    match error.kind() {
+        std::io::ErrorKind::AlreadyExists => {
+            note_host_error(error);
+            FsErr::Row("exists")
+        }
+        std::io::ErrorKind::CrossesDevices => {
+            note_host_error(error);
+            FsErr::Row("cross_device")
+        }
+        _ => path_row(error),
+    }
+}
+
 /// The lexical half of containment: the windows device names, refused BY
 /// NAME wherever they appear. Everything else about where a path lands is
 /// decided by [`resolves_inside`], against the tree, after resolution.
@@ -1085,11 +1108,7 @@ pub(crate) fn remove(path: &Path) -> FsResult<()> {
 /// non-empty directory, a file over a directory and a directory over a file
 /// are `io` (probed on wolf 0.2.14, both tiers, macOS).
 pub(crate) fn rename(from: &Path, to: &Path) -> FsResult<()> {
-    std::fs::rename(from, to).map_err(|e| match e.kind() {
-        std::io::ErrorKind::CrossesDevices => FsErr::Row("cross_device"),
-        std::io::ErrorKind::AlreadyExists => FsErr::Row("exists"),
-        _ => path_row(&e),
-    })
+    std::fs::rename(from, to).map_err(|e| named_row(&e))
 }
 
 /// `fs_create_dir_all(path)`: the whole chain, and an existing directory is
@@ -1103,10 +1122,7 @@ pub(crate) fn create_dir_all(path: &Path) -> FsResult<()> {
 /// contract is that it created the directory; `not_found` for a missing
 /// parent. Both probed on wolf 0.2.14, both tiers.
 pub(crate) fn create_dir(path: &Path) -> FsResult<()> {
-    std::fs::create_dir(path).map_err(|e| match e.kind() {
-        std::io::ErrorKind::AlreadyExists => FsErr::Row("exists"),
-        _ => path_row(&e),
-    })
+    std::fs::create_dir(path).map_err(|e| named_row(&e))
 }
 
 /// `fs_remove_dir(path)`: one EMPTY directory (wolf-interp#112). A non-empty
@@ -2705,6 +2721,28 @@ mod tests {
             read_link(&dir.join("gone")),
             Err(FsErr::Row("not_found"))
         ));
+    }
+
+    /// wolf-interp#235: `exists` and `cross_device` leave the host's number
+    /// behind like every other host refusal. Until s230 `fs_create_dir` and
+    /// `fs_rename` matched those two kinds ahead of `path_row`, the only
+    /// place the number was noted, so `os_error()` read 0 after them.
+    #[test]
+    fn exists_and_cross_device_note_the_hosts_number() {
+        let dir = scratch("fs-235-os-error");
+        HOST_ERROR.with(|c| c.set(0));
+        assert!(matches!(create_dir(&dir), Err(FsErr::Row("exists"))));
+        assert_ne!(HOST_ERROR.with(std::cell::Cell::get), 0, "EEXIST is noted");
+        #[cfg(unix)]
+        {
+            // `EXDEV` is 18 on linux, macOS and freebsd; a second file
+            // system is not a thing a unit test can make, so the mapping is
+            // asked directly.
+            HOST_ERROR.with(|c| c.set(0));
+            let exdev = std::io::Error::from_raw_os_error(18);
+            assert!(matches!(named_row(&exdev), FsErr::Row("cross_device")));
+            assert_eq!(HOST_ERROR.with(std::cell::Cell::get), 18);
+        }
     }
 
     /// s218 (`[os.fs.readdir]`): the listing carries each entry's own kind
