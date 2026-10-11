@@ -78,7 +78,11 @@ fn row(name: &str) {
     let (out, _) = observe(&entry, &dir);
     let rec = record(&out);
     assert_eq!(rec["verdict"], "exit(0)", "{name}: {rec}");
-    assert_eq!(rec["stdout_inline"], declared_stdout(&entry), "{name}: {rec}");
+    assert_eq!(
+        rec["stdout_inline"],
+        declared_stdout(&entry),
+        "{name}: {rec}"
+    );
 }
 
 /// A program this machine declines by `name`: `unsupported`, and the
