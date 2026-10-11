@@ -756,12 +756,14 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             machine.os_isatty(fd, span)
         }
         // s230 (`[os.fs.umask]`): the process's file mode creation mask. The
-        // clause's order: SHAPE (`invalid`, a mask outside 0o777), HOST
-        // (windows has no mask: the `unsupported` row), and then this
-        // machine's own limit, by name — the mask is set by the host's
-        // `umask` call, the standard library has none, and this machine has
-        // no `unsafe` to make one. It leaves `os_error()` alone, as the
-        // clause says of an os call.
+        // SHAPE row first, as the clause orders it (`invalid`, a mask
+        // outside 0o777); then this machine's own limit, by name and on
+        // every host alike — the mask is set by the host's `umask` call,
+        // the standard library has none, and this machine has no `unsafe`
+        // to make one. (On windows the clause's answer is the `unsupported`
+        // ROW; this machine refuses there too rather than serve the call on
+        // the one host that has no mask.) It leaves `os_error()` alone, as
+        // the clause says of an os call.
         #[cfg(not(target_family = "wasm"))]
         "os_umask" => {
             let Some(Value::Int(mask, _)) = args.first() else {
@@ -770,14 +772,6 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             if !(0..=0o777).contains(mask) {
                 machine.note(Rule::ErrUnion, span, "`os_umask` yields the `invalid` row");
                 return Ok(error_value("os_umask", "invalid"));
-            }
-            if cfg!(not(unix)) {
-                machine.note(
-                    Rule::ErrUnion,
-                    span,
-                    "`os_umask` yields the `unsupported` row",
-                );
-                return Ok(error_value("os_umask", "unsupported"));
             }
             unsupported(
                 "`os_umask` sets the process's file mode creation mask, which is the host's \

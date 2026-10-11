@@ -179,16 +179,11 @@ a success clears it: ok host_number=0\n",
     );
 }
 
-/// `os_umask`: on unix this machine refuses a well-formed call by name (it
-/// has no host call for it); on windows the clause's own answer is the
-/// `unsupported` ROW, which the program handles, so the row runs.
+/// `os_umask`: a well-formed call is refused by name on every host — this
+/// machine has no host call for it — and the refusal comes at that call.
 #[test]
-fn the_mask_is_refused_by_name_or_unsupported() {
-    if cfg!(unix) {
-        refuses("umask_row.lu", "os_umask");
-    } else {
-        the_row_runs("umask_row.lu");
-    }
+fn the_mask_is_refused_by_name() {
+    refuses("umask_row.lu", "os_umask");
 }
 
 // ------------------------------------------------------- the unix fixtures

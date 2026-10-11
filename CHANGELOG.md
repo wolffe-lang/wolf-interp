@@ -16,13 +16,13 @@ less the umask), `fs_symlink` (the target verbatim, an empty one
 `fs_set_times`. Every shape row (`invalid`) is answered before
 containment and before the host, in the compiler's order; windows
 answers the clause's `unsupported` row for the mode, the moded
-creations, the symbolic link and the mask.
+creations and the symbolic link.
 
 What the standard library does not reach is refused BY NAME, never
 answered with a row the host would not give:
 
-- **`os_umask`**, whole: there is no `umask` in the standard library. A
-  mask outside `0o777` is still `invalid`.
+- **`os_umask`**, whole and on every host: there is no `umask` in the
+  standard library. A mask outside `0o777` is still `invalid`.
 - **`fs_set_times` on a link itself** (`follow` false and the path a
   link): that is `utimensat` with `AT_SYMLINK_NOFOLLOW`, and the
   library sets times only on an open handle. On a path that is not a
