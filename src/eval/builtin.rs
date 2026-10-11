@@ -3711,10 +3711,12 @@ fn fd_map_of(flat: &[i128]) -> Option<Vec<(i128, Option<i128>)>> {
 
 /// s232 (wolf-lang#679, `[os.signal.set]`): the twenty listenable meanings
 /// (bits 0..19).
+#[cfg(not(target_family = "wasm"))]
 const SIG_LISTENABLE: i128 = (1 << 20) - 1;
 
 /// s232: one meaning of the whole table — the twenty, `KILL`, `STOP` and
 /// the six fault signals (bits 0..27).
+#[cfg(not(target_family = "wasm"))]
 fn sig_one_sendable(m: i128) -> bool {
     m > 0 && m & (m - 1) == 0 && m & !((1 << 28) - 1) == 0
 }
@@ -3723,6 +3725,7 @@ fn sig_one_sendable(m: i128) -> bool {
 /// as the host's ABI fixes it — linux (the generic numbering x86-64 and
 /// aarch64 share) and macOS. `None` on any other host: this machine links
 /// no libc to ask, and does not guess.
+#[cfg(not(target_family = "wasm"))]
 fn host_signal_number(m: i128) -> Option<i128> {
     // RELOAD TERMINATE QUIT UPGRADE INTERRUPT SUSPEND BG_READ BG_WRITE CHILD
     // USER ALARM BROKEN_PIPE ABORT CONTINUE RESIZE URGENT VIRTUAL_ALARM
