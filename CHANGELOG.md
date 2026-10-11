@@ -34,6 +34,32 @@ merged before the release lane (r33) began; r33 adds the version.
   installed alone answers `unsupported` for `use std.…` with nothing
   set; one placed beside a 0.2.28 `wolf` reads the `std/` wolf ships.
 
+### The shell's signals: the mirror (wolf-lang s232, #679, #681, #141)
+
+wolf-lang s232 gives every signal POSIX names a bit (twenty a program may
+catch, eight it may only send), one shape rule for every set, a read of
+the ignored set, a send to any pid, a meaning's number and this
+process's id and its parent's. This machine mirrors what std reaches
+without `unsafe` (ruling owed, wolf-lang `[os.signal.shell.note]` R9):
+
+- **Served:** `os_pid` (std's `process::id`), `os_ppid` (unix
+  `parent_id`; windows its `unsupported` row) and `os_signal_number`
+  (the linux and macOS numberings, by bit; windows `unsupported`; any
+  other host refuses by name rather than guess).
+- **Shape rows everywhere:** `os_signal_poll`, `ignore` and `default`
+  refuse an empty set or any bit outside the twenty listenable meanings
+  with `io` (a poll refused only an all-unmapped set before; `512` is
+  `USER` now); `os_signal_send` is `invalid` for a pid not above 0 or
+  wider than a process id and a meaning that is neither 0 nor one of
+  the 28; `os_signal_number` is `invalid` for anything but one meaning.
+  `os_spawn_job`'s `defaults` take the twenty.
+- **Refused by name:** `os_signal_send` (std sends no signal but
+  SIGKILL, and only to a child it holds) and `os_signal_ignored` (no
+  `sigaction`) on unix; windows answers their `unsupported` row. lupin
+  still never listens.
+- `tests/signal_shell_s232.rs` runs wolf-lang s232's corpus row, the row
+  it moved and its nine fixtures, byte for byte.
+
 ### The calls that change a file, and `os_error()` after `exists` (s230, wolf-lang#346, #698, #699, #700, #702, #704; #235)
 
 lupin's half of wolf-lang s230, written from `[os.fs.mode]`,
