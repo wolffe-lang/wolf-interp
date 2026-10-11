@@ -1,0 +1,34 @@
+//! member: false
+//! wolf-interp#235 — `os_error()` after the two rows this machine used to
+//! answer with no host number: `fs_create_dir`'s `exists` and (the same
+//! arm) `fs_rename`'s. `[os.fs.error]`: "every machine answers the same
+//! number for the same call on the same host". A directory made twice, and
+//! a directory made where a file is, are both `exists` with the host's
+//! number beside the row (`EEXIST`, 17, on unix; windows has its own).
+
+fn mkdir_row(path: str) -> str {
+    fs_create_dir(path) else |e| {
+        return match e {
+            exists => "exists",
+            not_found => "not_found",
+            denied => "denied",
+            io => "io",
+        }
+    }
+    "ok"
+}
+
+fn main() -> !int {
+    let dir = "target/s230-os-error"
+    fs_remove_dir_all(dir) else |_| { }
+    fs_create_dir_all(dir)?
+    let again = mkdir_row(dir)
+    print("mkdir again: {again} host_number={os_error() != 0}")
+    fs_write_text(dir + "/f", "x")?
+    let over = mkdir_row(dir + "/f")
+    print("mkdir over a file: {over} host_number={os_error() != 0}")
+    let made = mkdir_row(dir + "/d")
+    print("a success clears it: {made} host_number={os_error()}")
+    fs_remove_dir_all(dir)?
+    0
+}
