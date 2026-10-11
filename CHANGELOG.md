@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+## 0.1.51 — 2026-10-11
+
+THE FIFTY-FIRST, the lupin half of wolf 0.2.28. **Pin unchanged:
+`294d626d` (wolf-lang v0.2.24).** Nine commits since 0.1.50, all the
+lupin half of one wolf-lang lane, s230 (the calls that change a file;
+a planted break, `71014ec`, and its revert among them). Every lane was
+merged before the release lane (r33) began; r33 adds the version.
+
+- **The other lanes in wolf 0.2.28 have no lupin half.** wolf-lang's
+  s226 (the checked machine runs tasks), s227 and s229 (E1010 at a call
+  that keeps or sends what it is handed: wolf-lang#660, #665) and s228
+  (the runtime residue) changed only the compiler. Where lupin answers
+  their programs differently, the difference is filed and still open,
+  and wolf-lang's gates pin it by version: wolf-interp#227 (no
+  rendezvous back-edge in the race detector) and #230 (`when` through a
+  closure holding the mutex is `trap(exclusivity)`), #228 and #229
+  (a UB finding inside a proc; tasks' module state), #232 (a freed
+  region's bytes reached through a `List` element, a `Map` key or a
+  channel payload run to `exit(0)`), #233 (a sound `copy` of a scalar
+  struct under `in r { }` traps) and #234 (a `net_read` result returned
+  out of its region runs). The 0.2.28 pairing
+  measures each against this release's published archive.
+- **The walk at this release:** 1002 files, 955 entries, 47 members;
+  760 reach `run`, 721 match, 94 dynamic, 64 conservatism, 72 out of
+  scope, 4 mismatch, every one filed. Unchanged from 0.1.50 to the byte
+  (the pin did not move; s230's rows live in `tests/` until a re-pin
+  brings them into the walk).
+- **Ruling now made** that the lane implemented ahead of it, as
+  implemented: #67 (s230's spellings and shapes; R10 = A: lupin serves
+  what the Rust standard library reaches and refuses the rest by name).
+- **lupin's archive still ships no std** (ruling #59 B(1)): a `lupin`
+  installed alone answers `unsupported` for `use std.…` with nothing
+  set; one placed beside a 0.2.28 `wolf` reads the `std/` wolf ships.
+
 ### The calls that change a file, and `os_error()` after `exists` (s230, wolf-lang#346, #698, #699, #700, #702, #704; #235)
 
 lupin's half of wolf-lang s230, written from `[os.fs.mode]`,
@@ -32,9 +66,10 @@ answered with a row the host would not give:
   want of ownership, are refused by name too (the host's own call
   needs neither).
 
-Whether lupin may take a safe system-call crate for these two is
+Whether lupin may take a safe system-call crate for these two was
 wolf-lang's `[os.fs.change.note]` R10, the question ruling #57's R8
-answered "no" for the terminal calls.
+answered "no" for the terminal calls. Ruling #67 answers it the same
+way (R10 = A): both stay refused by name.
 
 **`os_error()` is the host's number after `exists` and `cross_device`
 (#235).** `fs_create_dir` and `fs_rename` matched those two kinds
