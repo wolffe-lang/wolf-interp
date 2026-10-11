@@ -337,7 +337,8 @@ impl FsTable {
     pub(crate) fn open_perm(&mut self, path: &Path, open: i128, mode: u32) -> FsResult<i128> {
         use std::os::unix::fs::OpenOptionsExt as _;
         let mut options = open_options(open)?;
-        let file = options.mode(mode).open(path).map_err(open_row)?;
+        // PLANT (s230, reverted next): every creation is widened to 0o666.
+        let file = options.mode(mode | 0o666).open(path).map_err(open_row)?;
         Ok(self.mint(file))
     }
 
