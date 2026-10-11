@@ -1,7 +1,5 @@
 # Changelog
 
-## Unreleased
-
 ## 0.1.51 — 2026-10-11
 
 THE FIFTY-FIRST, the lupin half of wolf 0.2.28. **Pin unchanged:
