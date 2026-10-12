@@ -139,11 +139,13 @@ fn what_needs_unsafe_is_refused_by_name() {
 }
 
 /// A mode's shape is read before the refusal, as on every machine.
+/// (s234: the outside bit moves from 8 — `FLOW` now, as 16 is
+/// `EXTENDED` — to 32, still no field: the same check.)
 #[test]
 fn a_bad_mode_is_invalid_first() {
     let rec = observe_text(
         "s219-badmode",
-        "fn main() -> !int {\n    var t = \"ok\"\n    os_term_set_mode(0, 8) else |e| {\n        \
+        "fn main() -> !int {\n    var t = \"ok\"\n    os_term_set_mode(0, 32) else |e| {\n        \
 t = match e {\n            invalid => \"invalid\",\n            io => \"io\",\n            \
 unsupported => \"unsupported\",\n        }\n    }\n    print(t)\n    0\n}\n",
     );
