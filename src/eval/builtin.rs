@@ -245,6 +245,13 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "os_signal_number",
     "os_pid",
     "os_ppid",
+    // s234 (wolf-lang#719, W05; pelt's line editor): the window's size,
+    // the special characters and the wait on a descriptor and a signal
+    // set need `ioctl`, `tcgetattr` and `poll` — none in std — so each is
+    // refused by name after its shape (a refused set is `io`).
+    "os_term_size",
+    "os_term_chars",
+    "os_signal_wait_fd",
     "os_wait",
     "os_kill",
     "time_now_ms",
@@ -687,7 +694,10 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_signal_send"
         | "os_signal_number"
         | "os_pid"
-        | "os_ppid" => unsupported(format!(
+        | "os_ppid"
+        | "os_term_size"
+        | "os_term_chars"
+        | "os_signal_wait_fd" => unsupported(format!(
             "`{name}` is the s40 process trio; this wasm build has no processes to spawn, \
              so the tier is declined rather than mocked"
         )),
@@ -1043,19 +1053,59 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 }
             }
         }
+        // s234 (wolf-lang#719, `[os.signal.wait.fd]`): the wait on a
+        // descriptor and a signal set — its SHAPE as every machine reads
+        // it (a set the shape rule refuses is `io`, then windows
+        // `unsupported`); a wait itself needs `poll(2)` and this machine
+        // never listens (`[os.term.note]` R8), so it is refused by name.
+        #[cfg(not(target_family = "wasm"))]
+        "os_signal_wait_fd" => {
+            let Some(Value::Int(set, _)) = args.get(1) else {
+                return unsupported(
+                    "`os_signal_wait_fd` takes a handle and an integer meaning set".to_owned(),
+                );
+            };
+            let set = *set;
+            if set == 0 || set & !SIG_LISTENABLE != 0 {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_signal_wait_fd` yields the `io` row",
+                );
+                return Ok(error_value(name, "io"));
+            }
+            if cfg!(windows) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_signal_wait_fd` yields the `unsupported` row",
+                );
+                return Ok(error_value(name, "unsupported"));
+            }
+            unsupported(
+                "`os_signal_wait_fd` waits on a descriptor and a signal set: this machine \
+                 admits no `unsafe`, std has no `poll`, and it never listens \
+                 ([os.signal.wait.fd], [os.term.editor.note] R6)"
+                    .to_owned(),
+            )
+        }
         // s219 (`[os.term]`): the terminal needs `tcgetpgrp`, `tcsetpgrp`,
         // `tcgetattr` and `tcsetattr`, and the group `getpgrp` — none in
         // std, so each is refused by name (R8). A mode's SHAPE is read
-        // first, as on every machine: `invalid`.
+        // first, as on every machine: `invalid` (s234: FLOW 8 and EXTENDED
+        // 16 are fields now). s234's window size (`ioctl`) and special
+        // characters (`tcgetattr`) likewise.
         #[cfg(not(target_family = "wasm"))]
         "os_pgid"
         | "os_term_foreground"
         | "os_term_set_foreground"
         | "os_term_mode"
-        | "os_term_set_mode" => {
+        | "os_term_set_mode"
+        | "os_term_size"
+        | "os_term_chars" => {
             if name == "os_term_set_mode"
                 && let Some(Value::Int(m, _)) = args.get(1)
-                && (*m < 0 || *m & !0x00FF_FF07 != 0)
+                && (*m < 0 || *m & !0x00FF_FF1F != 0)
             {
                 machine.note(
                     Rule::ErrUnion,
@@ -1071,6 +1121,13 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                     &format!("`{name}` yields the `unsupported` row"),
                 );
                 return Ok(error_value(name, "unsupported"));
+            }
+            if name == "os_term_size" || name == "os_term_chars" {
+                return unsupported(format!(
+                    "`{name}` reads the terminal's settings (`ioctl`, `tcgetattr`): this \
+                     machine admits no `unsafe` and std has no call for it ([os.term.size], \
+                     [os.term.chars], [os.term.editor.note] R6)"
+                ));
             }
             unsupported(format!(
                 "`{name}` asks the terminal or the process group: this machine admits no \
@@ -3333,6 +3390,8 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "os_signal_number" => &["unsupported", "invalid"],
         "os_term_foreground" | "os_term_mode" | "os_term_set_foreground" => &["unsupported", "io"],
         "os_term_set_mode" => &["unsupported", "invalid", "io"],
+        // s234 (`[os.host.sigs]`'s three lines).
+        "os_term_size" | "os_term_chars" | "os_signal_wait_fd" => &["unsupported", "io"],
         "os_chdir" => &["not_found", "denied", "io"],
         // The env pair and the json query tier: mint-site closures.
         "env_get" => &["invalid", "missing"],
