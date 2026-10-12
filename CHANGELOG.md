@@ -1,14 +1,40 @@
 # Changelog
 
-## Unreleased
+## 0.1.52 — 2026-10-12
 
-### The shell's signals: the mirror (wolf-lang s232, #679, #681, #141)
+THE FIFTY-SECOND, the lupin half of wolf 0.2.29. **Pin unchanged:
+`294d626d` (wolf-lang v0.2.24).** Eleven commits since 0.1.51, all the
+lupin half of one wolf-lang lane, s232 (the shell's signals; a planted
+break, `04f2554`, and its revert, `5dd150f`, among them). Every lane was
+merged before the release lane (r34) began; r34 adds the version.
+
+- **The other lane in wolf 0.2.29 has no lupin half.** wolf-lang's s231
+  (no cap on parked tasks, parked waits that do not poll, a dial outside
+  the socket lock, wolf-lang#713) changed only the compiled runtime.
+  lupin answers #713's witness at N = 64 as the compiled tiers do (it
+  never had the pool's cap). It stalls a program that dials more than
+  128 connections to its own listener before accepting one:
+  wolf-interp#239, open (the checked machine's twin is wolf-lang#718).
+- **The walk at this release:** 1002 files, 955 entries, 47 members;
+  760 reach `run`, 721 match, 94 dynamic, 64 conservatism, 72 out of
+  scope, 4 mismatch, every one filed. Unchanged from 0.1.51 to the byte
+  (the pin did not move; s232's rows live in `tests/` until a re-pin
+  brings them into the walk).
+- **Ruling now made** that the lane implemented ahead of it, as
+  implemented: #70 (s232's signals, R1–R9; R9: lupin serves what the
+  Rust standard library reaches and refuses the send and the
+  disposition read by name).
+- **lupin's archive still ships no std** (ruling #59 B(1)): a `lupin`
+  installed alone answers `unsupported` for `use std.…` with nothing
+  set; one placed beside a 0.2.29 `wolf` reads the `std/` wolf ships.
+
+### The shell's signals: the mirror (wolf-lang s232, #679, #681, #141; ruling #70)
 
 wolf-lang s232 gives every signal POSIX names a bit (twenty a program may
 catch, eight it may only send), one shape rule for every set, a read of
 the ignored set, a send to any pid, a meaning's number and this
 process's id and its parent's. This machine mirrors what std reaches
-without `unsafe` (ruling owed, wolf-lang `[os.signal.shell.note]` R9):
+without `unsafe` (ruling #70, R9, wolf-lang `[os.signal.shell.note]`):
 
 - **Served:** `os_pid` (std's `process::id`), `os_ppid` (unix
   `parent_id`; windows its `unsupported` row) and `os_signal_number`
