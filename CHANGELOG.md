@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### The terminal: the mirror (wolf-lang s234, #719)
+
+wolf-lang s234 adds what a line editor asks of the terminal:
+`os_term_size` (the window's rows and columns), `os_term_chars` (the
+twelve special characters, -1 for one disabled), `os_signal_wait_fd` (one
+wait that a key and a signal both end), and the mode bits `FLOW` (8,
+`IXON`) and `EXTENDED` (16, `IEXTEN`). This machine forbids `unsafe` and
+links no libc, and std has no `ioctl`, `tcgetattr` or `poll` (ruling
+owed, wolf-lang `[os.term.editor.note]` R6):
+
+- **Shape rows everywhere:** `os_signal_wait_fd` refuses an empty set or
+  any bit outside the twenty listenable meanings with `io`, then windows
+  answers its `unsupported` row; `os_term_set_mode` is `invalid` for a
+  bit that is no field — 8 and 16 are fields now, so 32 is the first
+  that is not (`tests/job_s219.rs`' bad mode moves from 8 to 32, the
+  same check).
+- **Refused by name:** `os_term_size`, `os_term_chars` and
+  `os_signal_wait_fd` on unix; windows answers their `unsupported` row.
+- `tests/term_editor_s234.rs` runs wolf-lang s234's corpus row and its
+  three pseudo-terminal fixtures, byte for byte.
+
 ## 0.1.52 — 2026-10-12
 
 THE FIFTY-SECOND, the lupin half of wolf 0.2.29. **Pin unchanged:
