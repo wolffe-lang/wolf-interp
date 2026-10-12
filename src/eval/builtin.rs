@@ -911,7 +911,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // the interpreter's, which is the program's here — and its
         // parent's, through std alone.
         #[cfg(not(target_family = "wasm"))]
-        "os_pid" => Ok(Value::Int(i128::from(std::process::id()) + 1, IntTy::INT)), // PLANT (s232)
+        "os_pid" => Ok(Value::Int(i128::from(std::process::id()), IntTy::INT)),
         #[cfg(not(target_family = "wasm"))]
         "os_ppid" => {
             #[cfg(unix)]
