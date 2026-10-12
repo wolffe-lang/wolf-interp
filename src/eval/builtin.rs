@@ -1066,7 +1066,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 );
             };
             let set = *set;
-            if set < 0 {
+            if set == 0 || set & !SIG_LISTENABLE != 0 {
                 machine.note(
                     Rule::ErrUnion,
                     span,
