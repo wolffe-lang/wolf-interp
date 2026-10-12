@@ -87,6 +87,7 @@ fn row(name: &str) {
 
 /// A program this machine declines by `name`: `unsupported`, and the
 /// refusal names it.
+#[cfg(unix)]
 fn refused(fixture_name: &str, name: &str) {
     let entry = fixture(fixture_name);
     let dir = scratch(&format!(
