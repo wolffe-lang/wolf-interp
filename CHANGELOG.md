@@ -23,6 +23,31 @@ owed, wolf-lang `[os.term.editor.note]` R6):
 - `tests/term_editor_s234.rs` runs wolf-lang s234's corpus row and its
   three pseudo-terminal fixtures, byte for byte.
 
+### Who a process runs as, a file's owner, and the drop: the mirror (wolf-lang s236, #633, #701, #742)
+
+wolf-lang s236 adds eight builtins: `os_uid`, `os_euid`, `os_gid`,
+`os_egid` and `os_groups` (who the process runs as), `fs_set_owner` and
+`fs_set_owner_fd` (`chown` by path and on a handle), and `os_set_ids`
+(the permanent drop to another user, in the one order that works,
+read back). This machine forbids `unsafe` and links no libc (ruling
+owed, wolf-lang `[os.proc.ids.note]` R10):
+
+- **Served:** `fs_set_owner` and `fs_set_owner_fd`, through the
+  standard library's `chown`, `lchown` and `fchown`, inside the served
+  tree: `-1` leaves an id alone, `follow` false changes a link itself,
+  an id outside `-1` and `0..=4294967294` is `invalid` before the host,
+  the host's `EINVAL` is `invalid`, and windows answers `unsupported`.
+- **Refused by name:** the five reads on a host that has ids (the
+  standard library has no `getuid` or `getgroups`); windows answers
+  their `unsupported` row. `os_set_ids` answers its shape rows
+  (`invalid`), then the `unsupported` row on every host but linux — the
+  compiler's own answer there — and on linux is refused by name.
+- `tests/ids_s236.rs` runs wolf-lang s236's two corpus rows and its
+  fixtures, byte for byte. Nothing in it changes an id or an owner: the
+  owner calls are asked only for changes that change nothing and for
+  refusals, and wolf-lang's three container programs are refused at
+  their first question (`os_euid`) and never start.
+
 ## 0.1.52 — 2026-10-12
 
 THE FIFTY-SECOND, the lupin half of wolf 0.2.29. **Pin unchanged:
