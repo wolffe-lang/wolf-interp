@@ -353,6 +353,30 @@ impl FsTable {
         file.set_len(len).map_err(io_row)
     }
 
+    /// s236 (`[os.fs.owner]`): `fs_set_owner_fd(fd, uid, gid)` — `fchown`
+    /// on the file behind the handle, 0, 1 and 2 the standard streams. The
+    /// host comes before the handle (windows: `unsupported`, by name).
+    #[cfg(unix)]
+    pub(crate) fn set_owner(
+        &mut self,
+        handle: i128,
+        uid: Option<u32>,
+        gid: Option<u32>,
+    ) -> FsResult<()> {
+        let file = self.handle_file(handle)?;
+        std::os::unix::fs::fchown(&*file, uid, gid).map_err(|e| owner_row(&e))
+    }
+
+    #[cfg(not(unix))]
+    pub(crate) fn set_owner(
+        &mut self,
+        _handle: i128,
+        _uid: Option<u32>,
+        _gid: Option<u32>,
+    ) -> FsResult<()> {
+        Err(FsErr::Row("unsupported"))
+    }
+
     /// `fs_read(fd, n) -> str`: up to `n` bytes, decoded. `eof` at the end,
     /// `utf8` for bytes that are not text.
     pub(crate) fn read_text(&mut self, handle: i128, want: i128) -> FsResult<String> {
@@ -1385,6 +1409,31 @@ pub(crate) fn set_mode(path: &Path, mode: u32) -> FsResult<()> {
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).map_err(|e| path_row(&e))
 }
 
+/// s236 (`[os.fs.owner]`): an owner word decoded — `Some(None)` leaves
+/// the id as it is (-1), `Some(Some(id))` sets it, `None` is the `invalid`
+/// row.
+pub(crate) fn owner_arg(v: i128) -> Option<Option<u32>> {
+    match v {
+        -1 => Some(None),
+        0..=super::builtin::ID_MAX => u32::try_from(v).ok().map(Some),
+        _ => None,
+    }
+}
+
+/// s236 (`[os.fs.owner]`): the rows of a refused owner change — the path
+/// calls' kinds, and the host's `EINVAL` (an id with no mapping in this
+/// user namespace, a handle with no owner to change) as `invalid`.
+/// `ErrorKind::InvalidInput` is how the standard library spells that
+/// number on every unix.
+#[cfg(unix)]
+fn owner_row(error: &std::io::Error) -> FsErr {
+    if error.kind() == std::io::ErrorKind::InvalidInput {
+        note_host_error(error);
+        return FsErr::Row("invalid");
+    }
+    path_row(error)
+}
+
 /// `fs_create_dir_mode(path, mode)`: one directory, `mode` less the umask.
 #[cfg(unix)]
 pub(crate) fn create_dir_mode(path: &Path, mode: u32) -> FsResult<()> {
@@ -2074,6 +2123,40 @@ impl Machine {
                 };
                 self.fs_answer(name, answer.map(|()| Value::Unit), span)
             }
+            // s236 (`[os.fs.owner]`): a file's owner and group. The clause's
+            // order: SHAPE (`invalid`: an id that is neither -1 nor in
+            // 0..=4294967294), then the HOST (windows has no owners: the
+            // `unsupported` row), then containment, then the host's one
+            // call — the standard library's `chown`, or `lchown` for the
+            // link itself.
+            "fs_set_owner" => {
+                let path = self.fs_path_arg(args, 0, name)?;
+                let uid = int_arg(args, 1, name)?;
+                let gid = int_arg(args, 2, name)?;
+                let Some(Value::Bool(follow)) = args.get(3) else {
+                    return Err(Signal::Unsupported(format!(
+                        "`{name}`'s argument 3 (`follow`) must be a `bool`"
+                    )));
+                };
+                let follow = *follow;
+                let answer = match (owner_arg(uid), owner_arg(gid)) {
+                    (Some(u), Some(g)) => self.fs_owner_call(name, &path, u, g, follow),
+                    _ => Err(FsErr::Row("invalid")),
+                };
+                self.fs_answer(name, answer.map(|()| Value::Unit), span)
+            }
+            // s236 (`[os.fs.owner]`): the same change on a handle
+            // (`fchown`); a closed or forged handle is `io`.
+            "fs_set_owner_fd" => {
+                let fd = int_arg(args, 0, name)?;
+                let uid = int_arg(args, 1, name)?;
+                let gid = int_arg(args, 2, name)?;
+                let answer = match (owner_arg(uid), owner_arg(gid)) {
+                    (Some(u), Some(g)) => self.shared_fs().set_owner(fd, u, g),
+                    _ => Err(FsErr::Row("invalid")),
+                };
+                self.fs_answer(name, answer.map(|()| Value::Unit), span)
+            }
             // s230 (`[os.fs.truncate]`): the length, on a handle.
             "fs_truncate" => {
                 let fd = int_arg(args, 0, name)?;
@@ -2246,6 +2329,44 @@ impl Machine {
     /// path (`[os.fs.mode]`, `[os.fs.create.mode]`).
     #[cfg(not(unix))]
     fn fs_mode_call(&self, _name: &str, _path: &str, _mode: i128) -> FsResult<()> {
+        Err(FsErr::Row("unsupported"))
+    }
+
+    /// s236: `fs_set_owner` past its shape — containment (the path's
+    /// final link followed or not, as the call will), then the call.
+    #[cfg(unix)]
+    fn fs_owner_call(
+        &self,
+        name: &str,
+        path: &str,
+        uid: Option<u32>,
+        gid: Option<u32>,
+        follow: bool,
+    ) -> FsResult<()> {
+        let resolved = if follow {
+            self.fs_contained(path, name)?
+        } else {
+            self.fs_contained_link(path, name)?
+        };
+        if follow {
+            std::os::unix::fs::chown(&resolved, uid, gid)
+        } else {
+            std::os::unix::fs::lchown(&resolved, uid, gid)
+        }
+        .map_err(|e| owner_row(&e))
+    }
+
+    /// windows has no owner or group of this kind: `unsupported`, by
+    /// name, whatever the path (`[os.fs.owner]`).
+    #[cfg(not(unix))]
+    fn fs_owner_call(
+        &self,
+        _name: &str,
+        _path: &str,
+        _uid: Option<u32>,
+        _gid: Option<u32>,
+        _follow: bool,
+    ) -> FsResult<()> {
         Err(FsErr::Row("unsupported"))
     }
 

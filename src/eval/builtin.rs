@@ -142,6 +142,11 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "fs_link",
     "fs_set_times",
     "fs_truncate",
+    // s236 (wolf-lang#701, `[os.fs.owner]`): a file's owner, by path and
+    // on a handle — the standard library's `chown`, `lchown` and
+    // `fchown`, no `unsafe`.
+    "fs_set_owner",
+    "fs_set_owner_fd",
     // `read_line` is NOT part of that landing and stays declined: stdin is
     // not a file, no clause names an injectable one, and nothing in the
     // pinned corpus calls it. Named here so the refusal still reads
@@ -245,6 +250,17 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "os_signal_number",
     "os_pid",
     "os_ppid",
+    // s236 (wolf-lang#633, #742; `[os.proc.ids]`, `[os.proc.ids.set]`): who
+    // the process runs as, and the drop. The names resolve and their
+    // SHAPE and HOST rows are answered; a well-formed call on a host that
+    // has ids is refused by name — the standard library reads no user or
+    // group id and sets none, and this machine has no `unsafe`.
+    "os_uid",
+    "os_euid",
+    "os_gid",
+    "os_egid",
+    "os_groups",
+    "os_set_ids",
     // s234 (wolf-lang#719, W05; pelt's line editor): the window's size,
     // the special characters and the wait on a descriptor and a signal
     // set need `ioctl`, `tcgetattr` and `poll` — none in std — so each is
@@ -448,7 +464,9 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_symlink"
         | "fs_link"
         | "fs_set_times"
-        | "fs_truncate" => unsupported(format!(
+        | "fs_truncate"
+        | "fs_set_owner"
+        | "fs_set_owner_fd" => unsupported(format!(
             "`{name}` is the s38/s90 fs tier; this wasm build has no filesystem to open, so \
              the tier is declined rather than mocked"
         )),
@@ -492,7 +510,9 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_symlink"
         | "fs_link"
         | "fs_set_times"
-        | "fs_truncate" => machine.fs_call(name, &args, span),
+        | "fs_truncate"
+        | "fs_set_owner"
+        | "fs_set_owner_fd" => machine.fs_call(name, &args, span),
         // `[os.fs.error]` (s200, wolf-lang#407): the number the task's last
         // fallible fs call left (`Machine::fs_call` keeps it), and the
         // host's words for a number — std's rendering without its
@@ -697,7 +717,13 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_ppid"
         | "os_term_size"
         | "os_term_chars"
-        | "os_signal_wait_fd" => unsupported(format!(
+        | "os_signal_wait_fd"
+        | "os_uid"
+        | "os_euid"
+        | "os_gid"
+        | "os_egid"
+        | "os_groups"
+        | "os_set_ids" => unsupported(format!(
             "`{name}` is the s40 process trio; this wasm build has no processes to spawn, \
              so the tier is declined rather than mocked"
         )),
@@ -916,6 +942,84 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 "`{name}` sets a signal's disposition: this machine admits no `unsafe` and \
                  std has no `sigaction` ([os.signal.disp], [os.term.note] R8)"
             ))
+        }
+        // s236 (wolf-lang#633, `[os.proc.ids]`): who the process runs as.
+        // The clause's order: the HOST first (windows has no such ids: the
+        // `unsupported` row), and then this machine's own limit, by name —
+        // an id is the host's `getuid` family and the group list its
+        // `getgroups`, the standard library has neither, and this machine
+        // has no `unsafe` to make one.
+        #[cfg(not(target_family = "wasm"))]
+        "os_uid" | "os_euid" | "os_gid" | "os_egid" | "os_groups" => {
+            if cfg!(not(unix)) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`{name}` yields the `unsupported` row"),
+                );
+                return Ok(error_value(name, "unsupported"));
+            }
+            unsupported(format!(
+                "`{name}` reads who the process runs as, which is the host's `getuid`, \
+                 `geteuid`, `getgid`, `getegid` or `getgroups` call; the standard library \
+                 has none of them and this machine has no `unsafe` to make one, so the call \
+                 is refused by name ([os.proc.ids], [os.proc.ids.note] R10)"
+            ))
+        }
+        // s236 (wolf-lang#742, `[os.proc.ids.set]`): the drop. The clause's
+        // order: SHAPE (`invalid`: an id outside 0..=4294967294, more than
+        // 65536 groups), HOST (`unsupported`, by name, everywhere but linux
+        // — which is the compiler's own answer on those hosts, so this
+        // machine agrees with it there), and then this machine's own limit:
+        // the three host calls and their read-back are not in the standard
+        // library. It leaves `os_error()` alone.
+        #[cfg(not(target_family = "wasm"))]
+        "os_set_ids" => {
+            let (
+                Some(Value::Int(uid, _)),
+                Some(Value::Int(gid, _)),
+                Some(Value::List(groups, _, _)),
+            ) = (args.first(), args.get(1), args.get(2))
+            else {
+                return unsupported(
+                    "`os_set_ids` takes a user id, a group id and a `List[int]` of groups"
+                        .to_owned(),
+                );
+            };
+            let id = |v: &i128| (0..=ID_MAX).contains(v);
+            let mut shaped = id(uid) && id(gid) && groups.len() <= GROUPS_MAX;
+            for slot in groups.iter() {
+                let Value::Int(g, _) = &slot.value else {
+                    return unsupported(format!(
+                        "`os_set_ids`'s groups hold {}, not `int`",
+                        slot.value.kind()
+                    ));
+                };
+                shaped = shaped && id(g);
+            }
+            if !shaped {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_set_ids` yields the `invalid` row",
+                );
+                return Ok(error_value("os_set_ids", "invalid"));
+            }
+            if cfg!(not(target_os = "linux")) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_set_ids` yields the `unsupported` row",
+                );
+                return Ok(error_value("os_set_ids", "unsupported"));
+            }
+            unsupported(
+                "`os_set_ids` changes who the process runs as, which is the host's `setgroups`, \
+                 `setresgid` and `setresuid` calls and their read-back; the standard library \
+                 has none of them and this machine has no `unsafe` to make one, so the call is \
+                 refused by name ([os.proc.ids.set], [os.proc.ids.note] R10)"
+                    .to_owned(),
+            )
         }
         // s232 (wolf-lang#141, `[os.proc.self]`): this process's id —
         // the interpreter's, which is the program's here — and its
@@ -3320,6 +3424,9 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "fs_link" => &["not_found", "denied", "exists", "cross_device", "io"],
         "fs_set_times" => &["not_found", "denied", "invalid", "io"],
         "fs_truncate" => &["invalid", "io"],
+        // s236: the owner's rows, as `[os.host.sigs]` lists them.
+        "fs_set_owner" => &["not_found", "denied", "invalid", "unsupported", "io"],
+        "fs_set_owner_fd" => &["denied", "invalid", "unsupported", "io"],
         // `eof` is the read's own row — a read that wanted bytes and got
         // none. No corpus file reads twice, so it is pinned by `eval::fs`'s
         // unit tests rather than by the census; `[os.fs.open]`'s mode-5
@@ -3386,6 +3493,10 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "os_pgid" => &["unsupported"],
         // s232 (`[os.host.sigs]`'s five lines; `os_pid` has no row).
         "os_ppid" | "os_signal_ignored" => &["unsupported"],
+        // s236 (`[os.host.sigs]`'s six lines).
+        "os_uid" | "os_euid" | "os_gid" | "os_egid" => &["unsupported"],
+        "os_groups" => &["unsupported", "io"],
+        "os_set_ids" => &["denied", "invalid", "unsupported", "io"],
         "os_signal_send" => &["unsupported", "invalid", "not_found", "denied", "io"],
         "os_signal_number" => &["unsupported", "invalid"],
         "os_term_foreground" | "os_term_mode" | "os_term_set_foreground" => &["unsupported", "io"],
@@ -3753,6 +3864,15 @@ fn spawn_job_answer(
 /// target outside `0..=255`, a target named twice, a source below `-1`, more
 /// than 64 pairs. A source of `-1` ("closed in the child") is `None`.
 #[cfg(not(target_family = "wasm"))]
+/// s236 (`[os.proc.ids.set]`, `[os.fs.owner]`): the largest user or group
+/// id — one below the all-ones word every host call reads as "leave this
+/// id alone".
+pub(crate) const ID_MAX: i128 = 0xFFFF_FFFE;
+
+/// s236 (`[os.proc.ids.set]`): the most supplementary groups one drop takes.
+#[cfg(not(target_family = "wasm"))]
+const GROUPS_MAX: usize = 65536;
+
 fn fd_map_of(flat: &[i128]) -> Option<Vec<(i128, Option<i128>)>> {
     if !flat.len().is_multiple_of(2) || flat.len() / 2 > 64 {
         return None;
