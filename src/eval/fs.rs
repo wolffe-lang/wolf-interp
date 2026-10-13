@@ -2348,12 +2348,9 @@ impl Machine {
         } else {
             self.fs_contained_link(path, name)?
         };
-        if follow {
-            std::os::unix::fs::chown(&resolved, uid, gid)
-        } else {
-            std::os::unix::fs::lchown(&resolved, uid, gid)
-        }
-        .map_err(|e| owner_row(&e))
+        // PLANT (s236, reverted next): `follow` is ignored — a link is
+        // always followed, so a dangling link's own owner is `not_found`.
+        std::os::unix::fs::chown(&resolved, uid, gid).map_err(|e| owner_row(&e))
     }
 
     /// windows has no owner or group of this kind: `unsupported`, by
