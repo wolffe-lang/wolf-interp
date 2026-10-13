@@ -1,0 +1,26 @@
+//! member: false
+//! s236 (wolf-lang's `[os.proc.ids.set]`) — lupin's own witness of the
+//! drop's posture past its shape: a well-formed `os_set_ids` is the
+//! `unsupported` ROW on every host but linux (the compiler's own answer
+//! there), and on linux this machine refuses it BY NAME — it has no
+//! `setgroups`, `setresgid` or `setresuid` without `unsafe`. Nothing
+//! here is ever carried out: no machine that runs this file can set an
+//! id. (It is not one of wolf-lang's fixtures: there a well-formed drop
+//! runs only inside a container.)
+
+fn set_row(uid: int, gid: int, groups: List[int]) -> str {
+    os_set_ids(uid, gid, groups) else |e| {
+        return match e {
+            denied => "denied",
+            invalid => "invalid",
+            unsupported => "unsupported",
+            io => "io",
+        }
+    }
+    "ok"
+}
+
+fn main() -> !int {
+    print("set ids: {set_row(4000000000, 4000000000, [4000000000])}")
+    0
+}
