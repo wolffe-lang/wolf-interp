@@ -250,12 +250,12 @@ decided by the `plan` job in `.github/workflows/ci.yml` (is75):
 | push to `trunk`, the nightly `schedule` (04:23 UTC), `workflow_dispatch` | **full**: all three OSes, every shard and ladder, exactly as before |
 | a pull request carrying the **`full-matrix`** label | **full**, on demand |
 | any other pull request | ubuntu's three shards and ladder in full, plus one **windows** and one **macOS smoke** (build, fmt, clippy, every test target except the heavy ones `SMOKE_OMITS` names, and the fast ladder rungs; 30-minute cap) |
+| a pull request that changes **only prose** | nothing: the plan and the verdict (`tier noop`) |
 
 A pull-request run therefore does not prove that the heavy targets
 (`SMOKE_OMITS` in the workflow) pass on windows or macOS; the trunk push
-after the merge does. **Get the full matrix before the merge when it
-matters** — release lanes before tagging, anything platform-specific
-(paths, processes, sockets, the file system) — by either:
+after the merge does. **Get the full matrix before the merge** (the merge
+rule, below, requires it of every PR since tl21) by either:
 
 ```sh
 gh pr edit <N> --add-label full-matrix          # every later push runs full too
@@ -265,7 +265,35 @@ gh workflow run CI --ref <branch>               # one full run of the branch hea
 The full run and the reduced run of a PR live in separate concurrency
 groups, so adding the label never cancels the reduced run at the same head.
 A push to a PR branch cancels that branch's older run of the same kind;
-trunk runs queue instead of cancelling.
+a trunk push, the nightly and a dispatch each run in a group of their own,
+so none is cancelled and none is replaced while it waits.
+
+### The tiers and the merge rule (tl21)
+
+Every run's last job is named for what the run was, and is red unless the
+plan succeeded, every job the plan chose succeeded and every other job
+was skipped: **`tier full`** (the full matrix), **`tier pr`** (the
+pull-request leg above), **`tier noop`** (nothing ran), `tier partial` (a
+dispatch that named jobs: `gh workflow run CI --ref <branch> -f
+jobs=plan-test`).
+
+**A PR merges only with a green `tier full` at its head.** `tier pr` is
+what a push gets; it is not the merge gate, and `lane-audit.sh` fails a
+head that has no green `tier full`. So:
+
+1. Open the PR **without** the label (`opened` and `labeled` together
+   start two full runs, and the second cancels the first).
+2. Push until the head is the one to merge; each push runs `tier pr`.
+3. Then `gh pr edit <N> --add-label full-matrix` and wait for `tier full`.
+   A push after that runs full again, so label last.
+
+Prose is narrow, and decided by path (`ci/tiers.py`, held by
+`ci/tiers-test.py`): `CHANGELOG.md`, `CONTRIBUTING.md`, `docs/*.md` and
+the lane notes `ci/*.md`. **`README.md`, `docs/manual/` and `docs/repl.md`
+are not prose**: `cargo test` runs their commands and reads their anchors.
+Nothing under `vendor/`, `upstream`, `src/` or `tests/` is prose, whatever
+its extension. A changed path no rule names runs the full matrix; add the
+rule in the same PR. A prose-only PR still needs the label's run to merge.
 
 ## Before you push
 
