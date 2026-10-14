@@ -1,8 +1,40 @@
 # Changelog
 
-## Unreleased
+## 0.1.53 — 2026-10-14
 
-### The terminal: the mirror (wolf-lang s234, #719)
+THE FIFTY-THIRD, the lupin half of wolf 0.2.30. **Pin unchanged:
+`294d626d` (wolf-lang v0.2.24).** Twenty-three commits since 0.1.52: the
+lupin halves of two wolf-lang lanes, s234 (the terminal; 8 commits, a
+planted break, `df78e26`, and its revert, `a9f94bd`, among them) and
+s236 (the ids; 7 commits, plant `8ff4012`, revert `d4a96e8`), and tl21
+(CI tiers; 8 commits, the workflow, `ci/tiers.py` and CONTRIBUTING, no
+code). Every lane was merged before the release lane (r35) began; r35
+adds the version.
+
+- **The other lanes in wolf 0.2.30 have no lupin half.** wolf-lang's
+  s233 (the must-join check, #678) is a compile-time refusal; lupin
+  0.1.52 already ran its sound shapes and logged the refused ones.
+  s755 (the 0.2.29 crash, #755) fixed the compiler's lowering; lupin
+  0.1.52 already answered all seven rows.
+- **The walk at this release:** 1002 files, 955 entries, 47 members;
+  760 reach `run`, 721 match, 94 dynamic, 64 conservatism, 72 out of
+  scope, 4 mismatch, every one filed. Unchanged from 0.1.52 to the byte
+  (the pin did not move; s234's and s236's rows live in `tests/` until a
+  re-pin brings them into the walk).
+- **Rulings:** #73 made (s234's R1–R6, each as implemented; R6: lupin
+  answers the shape rows and refuses the three by name). s236's
+  R1–R10 (R10: lupin serves the owner calls and refuses the reads and
+  the drop by name) are owed at this release, each as implemented.
+- **CI runs in tiers** (tl21): a pull request's push runs `tier pr`
+  (ubuntu's shards and ladder, a windows and a macOS smoke); the
+  `full-matrix` label, trunk, the nightly and a dispatch run `tier
+  full`; a prose-only change runs `tier noop`. A PR merges only with a
+  green `tier full` at its head (CONTRIBUTING).
+- **lupin's archive still ships no std** (ruling #59 B(1)): a `lupin`
+  installed alone answers `unsupported` for `use std.…` with nothing
+  set; one placed beside a 0.2.30 `wolf` reads the `std/` wolf ships.
+
+### The terminal: the mirror (wolf-lang s234, #719; ruling #73)
 
 wolf-lang s234 adds what a line editor asks of the terminal:
 `os_term_size` (the window's rows and columns), `os_term_chars` (the
@@ -10,7 +42,7 @@ twelve special characters, -1 for one disabled), `os_signal_wait_fd` (one
 wait that a key and a signal both end), and the mode bits `FLOW` (8,
 `IXON`) and `EXTENDED` (16, `IEXTEN`). This machine forbids `unsafe` and
 links no libc, and std has no `ioctl`, `tcgetattr` or `poll` (ruling
-owed, wolf-lang `[os.term.editor.note]` R6):
+#73, wolf-lang `[os.term.editor.note]` R6, as implemented):
 
 - **Shape rows everywhere:** `os_signal_wait_fd` refuses an empty set or
   any bit outside the twenty listenable meanings with `io`, then windows
