@@ -7532,3 +7532,5 @@ doing its job; the next campaign should turn the boundary dial harder
 (deeper nesting, adversarial-but-legal spellings) because this one found
 nothing. Replay: `lupin fuzz --count 10000 --seed 5381 --compiler
 upstream/target/debug/wolf`.
+
+<!-- tl21: a prose-only example, never merged -->

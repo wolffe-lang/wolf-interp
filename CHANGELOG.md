@@ -5414,3 +5414,5 @@ The binary is named `lupin`; the package and repository stay `wolf-interp`.
 - Observation records and bundle manifests report `"impl": "lupin"` with
   `impl_version` 0.1.0; `--version` prints the version, the package, and
   the upstream pin.
+
+<!-- tl21: a prose-only example, never merged -->
