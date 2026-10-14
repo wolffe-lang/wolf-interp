@@ -358,7 +358,8 @@ if files:
     spec = [p for p in files if p.startswith(("vendor/upstream/spec/", "vendor/upstream/corpus/"))]
     say(len(spec) > 500 and all(cls.get(p) == "pr" for p in spec),
         "T5 no tracked path of the vendored spec and corpus is prose (%d paths)" % len(spec))
-    say(all(cls.get(p) != "prose" for p in files if not p.endswith(".md")), "T5 nothing but a .md file is prose")
+    odd = [p for p in prose if not p.endswith(".md")]
+    say(not odd, "T5 nothing but a .md file is prose%s" % ("" if not odd else ": " + " ".join(odd[:10])))
     if unknown:
         print("tiers-test: WARN T5 %d tracked path(s) no rule names (a pull request touching one runs full): %s"
               % (len(unknown), " ".join(unknown[:20])))
