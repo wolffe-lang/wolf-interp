@@ -21,6 +21,33 @@ name: CI
 # trunk push and nightly on every OS. What a PR run no longer proves is that
 # the heavy targets pass on windows and macOS; the trunk push after the
 # merge does, and the label buys it before the merge.
+#
+# THE TIERS (tl21). The plan is `ci/tiers.py plan`, proven by
+# `ci/tiers-test.py` (the `plan-test` job), and the run's LAST job says
+# which tier it was and whether it held:
+#
+#   tier full     the full matrix, every job.
+#   tier pr       the pull-request leg above, unchanged.
+#   tier noop     the plan and the verdict, nothing else: a pull request
+#                 whose changed paths are ALL prose (the CHANGELOG,
+#                 CONTRIBUTING, the lane notes under ci/, the documents no
+#                 test reads; never README.md, docs/manual/ or docs/repl.md,
+#                 which tests read), or a label other than `full-matrix`.
+#   tier partial  a `workflow_dispatch` naming jobs (`-f jobs=plan-test`):
+#                 a planted break needs one job, not three hours.
+#
+# A pull request with a changed path no rule of `ci/tiers.py` names, or
+# whose change cannot be read, runs the full matrix: what is not understood
+# never shrinks a run. The `tier` job fails unless the plan succeeded, the
+# jobs it chose are that tier's, every one of them succeeded and every
+# other job was skipped; so a green `tier full` is "every job, every OS,
+# green", and a green `tier pr` is never that.
+#
+# THE MERGE RULE: a lane's PR merges only with a green `tier full` at its
+# head. Add the `full-matrix` label once the head is the one to merge
+# (never when opening the PR: `opened` and `labeled` would start two full
+# runs and the second would cancel the first). `lane-audit.sh` reads the
+# job's name.
 on:
   push:
     branches: [trunk, main]
@@ -32,17 +59,25 @@ on:
     # Nightly, full matrix, on trunk.
     - cron: "23 4 * * *"
   workflow_dispatch:
+    inputs:
+      jobs:
+        description: "the jobs to run (job ids, space-separated; a job and the jobs it needs); empty: the full matrix"
+        type: string
+        default: ""
 
 # PR runs: one group per branch and per mode, cancel-in-progress, so a push
 # to a lane branch frees its old slots. The full-matrix run and the reduced
 # run live in SEPARATE groups: adding the label must not cancel the reduced
 # run at the same head (lane-audit.sh reads a cancelled run at the head as a
 # FAIL), and an unrelated label's no-op run gets a group of its own so it
-# cancels nothing. Every other event shares one group per ref (a trunk push
-# and the nightly never hold 24 slots together) and queues rather than
-# cancels: a trunk push's full run is the coverage a merge is owed.
+# cancels nothing. Every other run (a trunk push, the nightly, a dispatch)
+# gets a group of its OWN run id (tl21): never cancelled, and never replaced
+# while it waits. In the one group per ref they shared before, GitHub keeps
+# a single pending run: a trunk push queued behind a running one is dropped
+# when the next arrives, and each trunk push's full run is the coverage that
+# merge is owed.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}-{1}', github.head_ref, (github.event.action == 'labeled' && github.event.label.name != 'full-matrix') && format('noop-{0}', github.run_id) || (contains(github.event.pull_request.labels.*.name, 'full-matrix') && 'full' || 'reduced')) || format('ref-{0}', github.ref) }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}-{1}', github.head_ref, (github.event.action == 'labeled' && github.event.label.name != 'full-matrix') && format('noop-{0}', github.run_id) || (contains(github.event.pull_request.labels.*.name, 'full-matrix') && 'full' || 'reduced')) || format('{0}-{1}', github.event_name, github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -57,55 +92,48 @@ env:
   SMOKE_OMITS: doc_truth run_corpus export cli region_machine rule_registry divergence
 
 jobs:
-  # Which matrix this run gets, decided once from the event (see THE SLOT
-  # BUDGET above) and printed, so a run's log says why it has the jobs it
-  # has. `mode` is `full`, `pr` or `noop`.
+  # Which jobs and which matrix this run gets (THE SLOT BUDGET and THE TIERS,
+  # above), decided once by `ci/tiers.py plan` from the event, the label and
+  # (for a pull request) the paths its merge commit changes, and printed path
+  # by path, so a run's log says why it has the jobs it has. Every other job
+  # reads `jobs` and runs only when it is named there.
   plan:
     name: plan
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      mode: ${{ steps.plan.outputs.mode }}
+      tier: ${{ steps.plan.outputs.tier }}
+      jobs: ${{ steps.plan.outputs.jobs }}
       matrix: ${{ steps.plan.outputs.matrix }}
       shard_oses: ${{ steps.plan.outputs.shard_oses }}
     steps:
+      # Depth 2: a pull request's run checks out its merge commit, and the
+      # plan reads that commit against its first parent.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
       - id: plan
-        shell: bash
         env:
           EVENT: ${{ github.event_name }}
           ACTION: ${{ github.event.action }}
           LABEL: ${{ github.event.label.name }}
-          HAS_FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-matrix') }}
-        run: |
-          set -euo pipefail
-          if [ "$EVENT" = pull_request ] && [ "$ACTION" = labeled ] && [ "$LABEL" != full-matrix ]; then
-            mode=noop
-          elif [ "$EVENT" != pull_request ] || [ "$HAS_FULL_LABEL" = true ]; then
-            mode=full
-          else
-            mode=pr
-          fi
-          entries=()
-          add() { entries+=("{\"os\":\"$1-latest\",\"osid\":\"$1\",\"shard\":\"$2\"}"); }
-          for s in 1 2 3 ladder; do add ubuntu "$s"; done
-          if [ "$mode" = full ]; then
-            for s in 1 2 3 ladder; do add macos "$s"; done
-            for s in 1 2 3 ladder; do add windows "$s"; done
-            shard_oses="ubuntu macos windows"
-          else
-            add macos smoke
-            add windows smoke
-            shard_oses="ubuntu"
-          fi
-          matrix="[$(IFS=,; echo "${entries[*]}")]"
-          echo "event=$EVENT action=${ACTION:-none} label=${LABEL:-none} full-matrix label on the PR=$HAS_FULL_LABEL"
-          echo "mode=$mode; shard coverage checks: $shard_oses"
-          echo "matrix: $matrix"
-          {
-            echo "mode=$mode"
-            echo "matrix=$matrix"
-            echo "shard_oses=$shard_oses"
-          } >> "$GITHUB_OUTPUT"
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          IN_JOBS: ${{ inputs.jobs }}
+        run: python3 ci/tiers.py plan --merge --github-output "$GITHUB_OUTPUT"
+
+  # The planner can say no: its tiers by event, its classes by path, the
+  # verdict's cases and this file's own wiring (ci/tiers-test.py). Seen red
+  # on a planted break before it was trusted (ci/tl21.md).
+  plan-test:
+    name: the planner's own test
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'plan-test')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - run: python3 ci/tiers-test.py
 
   # Primary gate: linux/x86-64 runs the whole ladder, including the corpus walk.
   # macOS/aarch64 and windows/x86-64 build and test (D35 posture).
@@ -163,13 +191,13 @@ jobs:
       || matrix.shard == 'smoke' && 'smoke'
       || format('test shard {0} of 3', matrix.shard) }})
     needs: plan
-    if: needs.plan.outputs.mode != 'noop'
+    if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'test')
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.shard == 'smoke' && 30 || 330 }}
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+        include: ${{ fromJSON(needs.plan.outputs.matrix || '[]') }}
     steps:
       - uses: actions/checkout@v5
           # `upstream/` is the pinned wolf-lang submodule (PRIVATE — CI uses
@@ -640,9 +668,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [plan, test]
-    if: needs.plan.outputs.mode != 'noop'
+    if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'shard-coverage')
     env:
-      SHARD_OSES: ${{ needs.plan.outputs.shard_oses }}
+      # Read with a default (all three, the script's own): an output that
+      # went missing must check more, never less.
+      SHARD_OSES: ${{ needs.plan.outputs.shard_oses || 'ubuntu macos windows' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
@@ -667,7 +697,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [plan, test]
-    if: needs.plan.outputs.mode == 'full'
+    if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'bundle-identical')
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -692,7 +722,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: plan
-    if: needs.plan.outputs.mode != 'noop'
+    if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'independence')
     steps:
       - uses: actions/checkout@v5
 
@@ -749,7 +779,7 @@ jobs:
   dist-floor:
     name: dist floor (${{ matrix.os }})
     needs: plan
-    if: needs.plan.outputs.mode != 'noop'
+    if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'dist-floor')
     strategy:
       fail-fast: false
       matrix:
@@ -799,3 +829,31 @@ jobs:
           name: dist-floor-${{ matrix.os }}
           path: target/dist/*.tar.gz
           retention-days: 14
+
+  # The verdict (tl21), last: named for the tier the plan chose, and red
+  # unless the plan succeeded, the jobs it chose are that tier's, every one
+  # of them succeeded and every other job was skipped (`ci/tiers.py
+  # verdict`). `!cancelled()`, never `always()`: under `always()` a
+  # superseded run keeps this job queued after its other jobs are cancelled,
+  # which holds the concurrency group and leaves the newer run pending
+  # behind it (pax run 38275354849).
+  tier:
+    name: tier ${{ needs.plan.outputs.tier || 'unplanned' }}
+    if: ${{ !cancelled() }}
+    needs:
+      - plan
+      - plan-test
+      - test
+      - shard-coverage
+      - bundle-identical
+      - independence
+      - dist-floor
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: every chosen job succeeded, every other was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 ci/tiers.py verdict
