@@ -77,8 +77,7 @@ PROSE, PR, FULL = "prose", "pr", "full"
 RULES = [
     # Read by a test, a gate or the bundle: never prose.
     ("README.md", PR),
-    ("docs/repl.md", PR),
-    ("docs/manual/**", PR),
+    ("docs/manual/**", PROSE),
     # Prose.
     ("CHANGELOG.md", PROSE),
     ("CONTRIBUTING.md", PROSE),
