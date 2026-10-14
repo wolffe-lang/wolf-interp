@@ -18,13 +18,14 @@ adds the version.
   0.1.52 already answered all seven rows.
 - **The walk at this release:** 1002 files, 955 entries, 47 members;
   760 reach `run`, 721 match, 94 dynamic, 64 conservatism, 72 out of
-  scope, 4 mismatch, every one filed. Unchanged from 0.1.52 to the byte
-  (the pin did not move; s234's and s236's rows live in `tests/` until a
-  re-pin brings them into the walk).
-- **Rulings:** #73 made (s234's R1–R6, each as implemented; R6: lupin
-  answers the shape rows and refuses the three by name). s236's
-  R1–R10 (R10: lupin serves the owner calls and refuses the reads and
-  the drop by name) are owed at this release, each as implemented.
+  scope, 4 mismatch, every one filed. Unchanged from 0.1.52, entry for
+  entry (the pin did not move; s234's and s236's rows live in `tests/`
+  until a re-pin brings them into the walk).
+- **Rulings now made** that the lanes implemented ahead of them, each as
+  implemented: #73 (s234's R1–R6; R6: lupin answers the shape rows and
+  refuses the three by name) and #78 (s236's R1–R10 and the std
+  spellings S1–S4; R10: lupin serves the owner calls and refuses the
+  reads and the drop by name).
 - **CI runs in tiers** (tl21): a pull request's push runs `tier pr`
   (ubuntu's shards and ladder, a windows and a macOS smoke); the
   `full-matrix` label, trunk, the nightly and a dispatch run `tier
@@ -55,14 +56,14 @@ links no libc, and std has no `ioctl`, `tcgetattr` or `poll` (ruling
 - `tests/term_editor_s234.rs` runs wolf-lang s234's corpus row and its
   three pseudo-terminal fixtures, byte for byte.
 
-### Who a process runs as, a file's owner, and the drop: the mirror (wolf-lang s236, #633, #701, #742)
+### Who a process runs as, a file's owner, and the drop: the mirror (wolf-lang s236, #633, #701, #742; ruling #78)
 
 wolf-lang s236 adds eight builtins: `os_uid`, `os_euid`, `os_gid`,
 `os_egid` and `os_groups` (who the process runs as), `fs_set_owner` and
 `fs_set_owner_fd` (`chown` by path and on a handle), and `os_set_ids`
 (the permanent drop to another user, in the one order that works,
 read back). This machine forbids `unsafe` and links no libc (ruling
-owed, wolf-lang `[os.proc.ids.note]` R10):
+#78, wolf-lang `[os.proc.ids.note]` R10, as implemented):
 
 - **Served:** `fs_set_owner` and `fs_set_owner_fd`, through the
   standard library's `chown`, `lchown` and `fchown`, inside the served
