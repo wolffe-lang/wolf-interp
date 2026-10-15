@@ -250,6 +250,19 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "os_signal_number",
     "os_pid",
     "os_ppid",
+    // s241 (wolf-lang#739, #740, #741, #762; ruling #79 R8): a signal to a
+    // group and to every process, this process into a group, the host's
+    // last signal number and real-time range, and a signal's words. The
+    // names resolve and their SHAPE and HOST rows are answered; a
+    // well-formed call is refused by name — std has no `kill(-pgid)`, no
+    // `setpgid` on itself, no `SIGRTMIN` and no `strsignal`, and this
+    // machine has no `unsafe`.
+    "os_signal_send_group",
+    "os_signal_send_all",
+    "os_set_pgid",
+    "os_signal_last",
+    "os_signal_realtime",
+    "os_signal_text",
     // s236 (wolf-lang#633, #742; `[os.proc.ids]`, `[os.proc.ids.set]`): who
     // the process runs as, and the drop. The names resolve and their
     // SHAPE and HOST rows are answered; a well-formed call on a host that
@@ -723,7 +736,13 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_gid"
         | "os_egid"
         | "os_groups"
-        | "os_set_ids" => unsupported(format!(
+        | "os_set_ids"
+        | "os_signal_send_group"
+        | "os_signal_send_all"
+        | "os_set_pgid"
+        | "os_signal_last"
+        | "os_signal_realtime"
+        | "os_signal_text" => unsupported(format!(
             "`{name}` is the s40 process trio; this wasm build has no processes to spawn, \
              so the tier is declined rather than mocked"
         )),
@@ -1076,7 +1095,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 return unsupported("`os_signal_send` takes a pid and a meaning".to_owned());
             };
             let (pid, m) = (*pid, *m);
-            if pid <= 0 || pid > i128::from(i32::MAX) || (m != 0 && !sig_one_sendable(m)) {
+            if pid <= 0 || pid > i128::from(i32::MAX) || !sig_send_shape(m, true) {
                 machine.note(
                     Rule::ErrUnion,
                     span,
@@ -1097,6 +1116,91 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                  std has no `kill(pid, sig)` ([os.signal.send], [os.term.note] R8)"
                     .to_owned(),
             )
+        }
+        // s241 (wolf-lang#739, #740, #741, #762; `[os.signal.send.group]`,
+        // `[os.signal.send.all]`, `[os.term.group]`, `[os.signal.host]`,
+        // `[os.signal.text]`): the SHAPE is every machine's (`invalid`: a
+        // group not above 1 or past a pid's width, a group to move into
+        // below 0 or past it, a meaning `[os.signal.send]` refuses, a text
+        // of 0); then the HOST (windows `unsupported`); then this machine's
+        // limit by name (ruling #79 R8).
+        #[cfg(not(target_family = "wasm"))]
+        "os_signal_send_group"
+        | "os_signal_send_all"
+        | "os_set_pgid"
+        | "os_signal_last"
+        | "os_signal_realtime"
+        | "os_signal_text" => {
+            let int = |i: usize| match args.get(i) {
+                Some(Value::Int(v, _)) => Some(*v),
+                _ => None,
+            };
+            let width = |v: i128| v <= i128::from(i32::MAX);
+            let shape_ok = match name {
+                "os_signal_send_group" => {
+                    let (Some(g), Some(m)) = (int(0), int(1)) else {
+                        return unsupported(
+                            "`os_signal_send_group` takes a group and a meaning".to_owned(),
+                        );
+                    };
+                    g > 1 && width(g) && sig_send_shape(m, true)
+                }
+                "os_signal_send_all" => {
+                    let Some(m) = int(0) else {
+                        return unsupported("`os_signal_send_all` takes a meaning".to_owned());
+                    };
+                    sig_send_shape(m, true)
+                }
+                "os_set_pgid" => {
+                    let Some(g) = int(0) else {
+                        return unsupported("`os_set_pgid` takes a group id".to_owned());
+                    };
+                    g >= 0 && width(g)
+                }
+                "os_signal_text" => {
+                    let Some(m) = int(0) else {
+                        return unsupported("`os_signal_text` takes a meaning".to_owned());
+                    };
+                    sig_send_shape(m, false)
+                }
+                _ => true,
+            };
+            if !shape_ok {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`{name}` yields the `invalid` row"),
+                );
+                return Ok(error_value(name, "invalid"));
+            }
+            if cfg!(windows) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`{name}` yields the `unsupported` row"),
+                );
+                return Ok(error_value(name, "unsupported"));
+            }
+            let why = match name {
+                "os_signal_send_group" => "signals a process group: std has no `kill(-pgid, sig)`",
+                "os_signal_send_all" => "signals every process: std has no `kill(-1, sig)`",
+                "os_set_pgid" => "moves this process into a group: std has no `setpgid` on itself",
+                "os_signal_last" | "os_signal_realtime" => {
+                    "reads the C library's signal range: std has no `SIGRTMIN` or `SIGRTMAX`"
+                }
+                _ => "reads the C library's words for a signal: std has no `strsignal`",
+            };
+            let clause = match name {
+                "os_signal_send_group" => "[os.signal.send.group]",
+                "os_signal_send_all" => "[os.signal.send.all]",
+                "os_set_pgid" => "[os.term.group]",
+                "os_signal_text" => "[os.signal.text]",
+                _ => "[os.signal.host]",
+            };
+            unsupported(format!(
+                "`{name}` {why}, and this machine admits no `unsafe` ({clause}, \
+                 [os.signal.group.note] R8)"
+            ))
         }
         // s232 (`[os.signal.number]`): a meaning's number on this host,
         // from the table the host's ABI fixes (linux, macOS); `invalid`
@@ -3499,6 +3603,13 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "os_set_ids" => &["denied", "invalid", "unsupported", "io"],
         "os_signal_send" => &["unsupported", "invalid", "not_found", "denied", "io"],
         "os_signal_number" => &["unsupported", "invalid"],
+        // s241 (`[os.host.sigs]`'s six lines).
+        "os_signal_send_group" | "os_signal_send_all" => {
+            &["unsupported", "invalid", "not_found", "denied", "io"]
+        }
+        "os_set_pgid" => &["denied", "invalid", "unsupported", "io"],
+        "os_signal_last" | "os_signal_realtime" => &["unsupported"],
+        "os_signal_text" => &["unsupported", "invalid"],
         "os_term_foreground" | "os_term_mode" | "os_term_set_foreground" => &["unsupported", "io"],
         "os_term_set_mode" => &["unsupported", "invalid", "io"],
         // s234 (`[os.host.sigs]`'s three lines).
@@ -3898,6 +4009,41 @@ const SIG_LISTENABLE: i128 = (1 << 20) - 1;
 #[cfg(not(target_family = "wasm"))]
 fn sig_one_sendable(m: i128) -> bool {
     m > 0 && m & (m - 1) == 0 && m & !((1 << 28) - 1) == 0
+}
+
+/// s241 (`[os.signal.host]`): the host's last signal number as its ABI
+/// fixes it — 64 on linux (the kernel's 64; glibc's and musl's
+/// `SIGRTMAX`), 31 on macOS. `None` on any other host, as the compiler's
+/// runtime answers.
+#[cfg(not(target_family = "wasm"))]
+fn host_last_signal() -> Option<i128> {
+    if cfg!(target_os = "linux") {
+        Some(64)
+    } else if cfg!(target_os = "macos") {
+        Some(31)
+    } else {
+        None
+    }
+}
+
+/// s241 (`[os.signal.send]`, `[os.signal.host]`): the SHAPE of a sending
+/// call's meaning (and, with `zero` false, `os_signal_text`'s): 0 where
+/// `zero` allows it, one of the 28, or `-N` for the host's signal `N`,
+/// `1 <= N <=` the host's last. Windows has no numbers: any `-N` is past
+/// the shape there (the call answers `unsupported`).
+#[cfg(not(target_family = "wasm"))]
+fn sig_send_shape(m: i128, zero: bool) -> bool {
+    if m == 0 {
+        return zero;
+    }
+    if m < 0 {
+        if cfg!(windows) {
+            return true;
+        }
+        return host_last_signal()
+            .is_some_and(|last| m.checked_neg().is_some_and(|n| (1..=last).contains(&n)));
+    }
+    sig_one_sendable(m)
 }
 
 /// s232 (`[os.signal.number]`): a meaning's signal number, by bit index,
