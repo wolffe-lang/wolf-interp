@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+- **The group send, the move, host numbers and a signal's words — the
+  mirror** (wolf-lang s241, #739, #740, #741, #762; ruling #79 R8). The
+  six names resolve with their declared rows: `os_signal_send_group` and
+  `os_signal_send_all` (`{denied, invalid, io, not_found,
+  unsupported}`), `os_set_pgid` (`{denied, invalid, io, unsupported}`),
+  `os_signal_last` and `os_signal_realtime` (`{unsupported}`) and
+  `os_signal_text` (`{invalid, unsupported}`). Each answers its SHAPE
+  rows as every machine (`invalid`: a group not above 1, a group to move
+  into below 0, past a pid's width, a meaning that is neither 0, one of
+  the 28, nor `-N` with `1 <= N <=` the host's last — 64 on linux, 31 on
+  macOS — and a text of 0); windows answers `unsupported` after the shape;
+  a well-formed call on linux and macOS is **refused by name** before any
+  host call — std has no `kill(-pgid)`, no `setpgid` on itself, no
+  `SIGRTMIN` and no `strsignal`, and this machine admits no `unsafe`.
+  `os_signal_send` takes `-N` in its shape too (a well-formed one is
+  refused by name, as before). `tests/group_s241.rs` (4 tests) holds the
+  compiler's corpus row byte for byte and its fixtures' refusals.
+
 ## 0.1.53 — 2026-10-14
 
 THE FIFTY-THIRD, the lupin half of wolf 0.2.30. **Pin unchanged:
