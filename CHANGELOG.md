@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **The job wait — the mirror** (wolf-lang s242, #680; `[os.proc.poll]`,
+  `[os.proc.wait.note]` R9, a ruling owed). `os_wait_poll` resolves with
+  its declared row (`{io}`). With no child left — none spawned, or every
+  one reaped — it answers `(-1, 0)`, as every compiler machine does,
+  decided without the host; with a child not yet reaped it is **refused
+  by name**: the answer needs `waitpid` with `WUNTRACED`, std's
+  `try_wait` sees an end but never a stop, and this machine admits no
+  `unsafe`. The compiler's witnesses that listen for `CHILD` stop earlier,
+  at `os_signal_listen`, which lupin never serves. `tests/job_wait_s242.rs`
+  (3 tests) holds the compiler's corpus row and three fixtures byte for
+  byte.
 - **The group send, the move, host numbers and a signal's words — the
   mirror** (wolf-lang s241, #739, #740, #741, #762; ruling #79 R8). The
   six names resolve with their declared rows: `os_signal_send_group` and
