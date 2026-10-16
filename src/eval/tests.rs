@@ -5482,6 +5482,8 @@ fn the_wasm_decline_names_the_hosted_tier_not_spawning() {
         assert!(why.contains("hosted-only process and signal tier"), "{why}");
         assert!(why.contains("declined rather than mocked"), "{why}");
         assert!(!why.contains("trio"), "{why}");
-        assert!(!why.contains("spawn"), "{why}");
+        // The name itself may say it (`os_spawn`); the reason around it may not.
+        let around = why.replacen(&format!("`{name}`"), "", 1);
+        assert!(!around.contains("spawn"), "{why}");
     }
 }
