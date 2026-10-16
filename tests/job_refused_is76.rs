@@ -52,11 +52,13 @@ fn alone(name: &str) -> PathBuf {
     entry
 }
 
-/// The pids whose process group is `pgid`, from `ps` (both hosts' `ps`
-/// take `-A -o pid=,pgid=`).
+/// The pids whose process group is `pgid` and that are still RUNNING, from
+/// `ps` (both hosts' `ps` take `-A -o pid=,pgid=,stat=`). A zombie is dead —
+/// only its parent's reaping is left, and an orphan's parent is whatever
+/// init or subreaper the host has — so a `Z` state is not left running.
 fn group_members(pgid: u32) -> Vec<u32> {
     let out = Command::new("ps")
-        .args(["-A", "-o", "pid=,pgid="])
+        .args(["-A", "-o", "pid=,pgid=,stat="])
         .stdin(Stdio::null())
         .output()
         .expect("ps runs");
@@ -66,7 +68,8 @@ fn group_members(pgid: u32) -> Vec<u32> {
             let mut words = line.split_whitespace();
             let pid: u32 = words.next()?.parse().ok()?;
             let group: u32 = words.next()?.parse().ok()?;
-            (group == pgid).then_some(pid)
+            let zombie = words.next().is_some_and(|stat| stat.starts_with('Z'));
+            (group == pgid && !zombie).then_some(pid)
         })
         .collect()
 }
