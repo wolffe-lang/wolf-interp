@@ -11397,10 +11397,8 @@ pub(crate) fn shift_value_right(x: i128, n: i128) -> Option<i128> {
     if n < 0 {
         return None;
     }
-    Some(match u32::try_from(n).ok().filter(|n| *n < 128) {
-        Some(n) => x >> n,
-        None => return None,
-    })
+    let n = u32::try_from(n).ok().filter(|n| *n < 128)?;
+    Some(x >> n)
 }
 
 fn adopt_numeric(left: Value, right: Value) -> (Value, Value) {
