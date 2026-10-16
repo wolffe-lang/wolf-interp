@@ -263,6 +263,12 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "os_signal_last",
     "os_signal_realtime",
     "os_signal_text",
+    // s242 (wolf-lang#680; `[os.proc.poll]`, `[os.proc.wait.note]` R9): the
+    // poll of the children. With no child left it answers `(-1, 0)` —
+    // decided without the host; with one it is refused by name: std's
+    // `try_wait` sees an end but never a stop, and this machine has no
+    // `unsafe` for a `waitpid` with `WUNTRACED`.
+    "os_wait_poll",
     // s236 (wolf-lang#633, #742; `[os.proc.ids]`, `[os.proc.ids.set]`): who
     // the process runs as, and the drop. The names resolve and their
     // SHAPE and HOST rows are answered; a well-formed call on a host that
@@ -742,7 +748,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_set_pgid"
         | "os_signal_last"
         | "os_signal_realtime"
-        | "os_signal_text" => unsupported(format!(
+        | "os_signal_text"
+        | "os_wait_poll" => unsupported(format!(
             "`{name}` is the s40 process trio; this wasm build has no processes to spawn, \
              so the tier is declined rather than mocked"
         )),
@@ -1236,6 +1243,30 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                         .to_owned(),
                 ),
             }
+        }
+        // s242 (wolf-lang#680; `[os.proc.poll]`, `[os.proc.wait.note]` R9):
+        // with no child left the poll's answer is decided without the
+        // host, `(-1, 0)`, on every machine; with one, the answer needs
+        // `waitpid(pid, WNOHANG | WUNTRACED)` — std's `try_wait` cannot see
+        // a stop, and an answer that missed one would be wrong — so it is
+        // refused by name.
+        #[cfg(not(target_family = "wasm"))]
+        "os_wait_poll" => {
+            if !args.is_empty() {
+                return unsupported("`os_wait_poll` takes no argument".to_owned());
+            }
+            if machine.children().live() == 0 {
+                return Ok(Value::Tuple(vec![
+                    Slot::live(Value::Int(-1, IntTy::INT)),
+                    Slot::live(Value::Int(0, IntTy::INT)),
+                ]));
+            }
+            unsupported(
+                "`os_wait_poll` with a live child asks the host for a stop: std's `try_wait` \
+                 sees an end but never a stop (no `waitpid` with `WUNTRACED`), and this machine \
+                 admits no `unsafe` ([os.proc.poll], [os.proc.wait.note] R9)"
+                    .to_owned(),
+            )
         }
         // s219 (`[os.proc.status]`): the child's pid, and how it ended.
         #[cfg(not(target_family = "wasm"))]
@@ -3593,6 +3624,8 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // s219 (`[os.host.sigs]`'s eleven lines).
         "os_signal_ignore" | "os_signal_default" => &["unsupported", "io"],
         "os_signal_poll" | "os_proc_pid" | "os_wait_status" => &["io"],
+        // s242 (`[os.host.sigs]`'s line).
+        "os_wait_poll" => &["io"],
         "os_spawn_job" => &["unsupported", "invalid", "not_found", "denied", "io"],
         "os_pgid" => &["unsupported"],
         // s232 (`[os.host.sigs]`'s five lines; `os_pid` has no row).

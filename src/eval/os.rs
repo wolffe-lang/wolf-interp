@@ -256,6 +256,12 @@ impl ChildTable {
         }
     }
 
+    /// s242 (`[os.proc.poll]`): the children not yet reaped — every slot
+    /// still holding one, ended or not.
+    pub(crate) fn live(&self) -> usize {
+        self.slots.iter().filter(|s| s.is_some()).count()
+    }
+
     fn slot(&mut self, handle: i128) -> Result<&mut Option<Child>, Row> {
         let index = usize::try_from(handle)
             .ok()
