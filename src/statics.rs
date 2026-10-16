@@ -512,7 +512,16 @@ impl FoldWalk<'_> {
         let Some((Def::Binding(binding), _)) = self.module.items.get(name) else {
             return Ok(None);
         };
-        if binding.kind == BindingKind::Var || self.open.iter().any(|o| o == name) {
+        // Past 64 open items the fold stops judging (`InitWalk` stops at
+        // 256; a fold's frames are wider): a chain that deep is the
+        // evaluator's rail to answer, and a fold that followed it overflowed
+        // a small stack — windows' 1 MiB main thread on `rulings_is73`'s
+        // 2000-item chain (the windows smoke of run 38975226904); 256 still
+        // overflowed 1 MiB in a debug build on kasumi, 64 does not.
+        if binding.kind == BindingKind::Var
+            || self.open.len() > 64
+            || self.open.iter().any(|o| o == name)
+        {
             return Ok(None);
         }
         let Some(ty) = binding.ty.as_ref().and_then(Plain::of) else {
