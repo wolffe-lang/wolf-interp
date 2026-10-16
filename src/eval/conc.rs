@@ -473,6 +473,7 @@ impl Machine {
             read_params: Vec::new(),
             name: String::new(),
             body: None,
+            ret_int: None,
         });
         let result = self.par_chunk_body(chunk);
         self.finish_task_thread(result);
@@ -519,6 +520,7 @@ impl Machine {
             read_params: Vec::new(),
             name: String::new(),
             body: None,
+            ret_int: None,
         });
         for (name, value) in &closure.captures {
             self.declare(name, Slot::live(value.clone()));
@@ -682,6 +684,7 @@ impl Machine {
             read_params: Vec::new(),
             name: String::new(),
             body: None,
+            ret_int: None,
         });
         let result = self
             .call_fn(decl, module, args, span)

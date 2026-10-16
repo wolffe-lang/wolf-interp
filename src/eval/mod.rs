@@ -482,6 +482,11 @@ struct Frame {
     /// The span of the function body this activation runs, when it runs
     /// one: the block whose tail the place trace reports (is72).
     body: Option<Span>,
+    /// The integer type the function's declared return names, when it names
+    /// one: the context a literal term in its tail or a `return` meets
+    /// before its operators run (is76, wolf-interp#251; `fn f() ->
+    /// wrapping[u8] { 1 << 9 }` is 2).
+    ret_int: Option<IntTy>,
 }
 
 /// The state every task of one program run shares, behind locks.
@@ -1017,6 +1022,7 @@ impl Machine {
             read_params: Vec::new(),
             name: String::new(),
             body: None,
+            ret_int: None,
         });
 
         // Item-level `let`/`var`/`const` evaluate once, in declaration order.
@@ -1082,7 +1088,17 @@ impl Machine {
             );
         }
         self.initializing.push(name.to_owned());
-        let value = self.eval(&binding.value);
+        // is76 (wolf-interp#251): a module item's annotation is its term's
+        // context, as a local binding's is.
+        let value = match binding
+            .ty
+            .as_ref()
+            .and_then(int_of_type)
+            .filter(|_| is_int_term(&binding.value))
+        {
+            Some(ty) => self.eval_int_expected(&binding.value, ty),
+            None => self.eval(&binding.value),
+        };
         self.initializing.pop();
         Ok(complement_adopt(
             &binding.value,
@@ -3407,6 +3423,7 @@ impl Machine {
                 String::new()
             },
             body: Some(body.span),
+            ret_int: decl.ret.as_ref().and_then(|ret| int_of_type(&ret.ty)),
         });
         let retags = std::mem::take(&mut self.pending_retags);
         let frame = self.frames.len() - 1;
@@ -4079,7 +4096,16 @@ impl Machine {
             // `[gram.expr.block]`: the block's value is its tail expression.
             Some(tail) => {
                 let mark = self.place_events.len();
-                let value = self.eval(tail);
+                let expected = self
+                    .frames
+                    .last()
+                    .filter(|frame| frame.body == Some(block.span))
+                    .and_then(|frame| frame.ret_int)
+                    .filter(|_| is_int_term(tail));
+                let value = match expected {
+                    Some(ty) => self.eval_int_expected(tail, ty),
+                    None => self.eval(tail),
+                };
                 // is72: a function body's tail is that activation's last
                 // word, so the place trace reports it like a statement.
                 if self.shared.place_trace.is_some()
@@ -4345,10 +4371,22 @@ impl Machine {
         // (`[type.numlit.propagate]`). Its int twin (`let n: int = 1 / 2` → `0`)
         // takes the ordinary path and defaults to int.
         let expect_float = binding.ty.as_ref().and_then(float_ty_name).is_some();
+        // The int twin of that expectation, for a TERM (is76,
+        // wolf-interp#251): `let r: wrapping[u8] = 1 << 9` meets `wrapping[u8]`
+        // before `<<` runs, so the count masks to the width and the answer is
+        // 2 — the compiler's machines', where computing the two literals wide
+        // made 512 and trapped. A bare literal keeps the range check below.
+        let expect_int = binding
+            .ty
+            .as_ref()
+            .and_then(int_of_type)
+            .filter(|_| is_int_term(&binding.value));
         // Initialization moves (`[mem.tier0.move.1]`) unless the source is a
         // `Copy`-shaped value or is not a place at all.
         let value = if expect_float {
             self.eval_float_expected(&binding.value)?
+        } else if let Some(ty) = expect_int {
+            self.eval_int_expected(&binding.value, ty)?
         } else {
             self.eval_for_init(&binding.value)?
         };
@@ -4539,6 +4577,39 @@ impl Machine {
                     other => other,
                 })
             }
+        }
+    }
+
+    /// Evaluates an integer TERM under the integer type `ty` its context
+    /// declares (is76, wolf-interp#251): every integer literal at a leaf of
+    /// the arithmetic and bitwise operators that form the term adopts `ty`
+    /// before its operator runs, so the operator computes at `ty` — a
+    /// `wrapping[T]` shift masks its count to `T`'s width (`1 << 9` at
+    /// `wrapping[u8]` is 2, `255 >> 8` is 255) and a plain type traps where
+    /// the term leaves it (`255 + 1 - 1` at `u8`), as on the compiler's
+    /// machines. The reach is [`Machine::eval_float_expected`]'s: those operators, a
+    /// `(…)` group and `-`; a call or any other shape is a leaf evaluated as
+    /// ever, and a concrete value leaf keeps its own type.
+    fn eval_int_expected(&mut self, expr: &Expr, ty: IntTy) -> EResult<Value> {
+        match &*expr.kind {
+            ExprKind::Group(inner) => self.eval_int_expected(inner, ty),
+            ExprKind::Binary { op, lhs, rhs } if is_int_term_op(*op) => {
+                let left = self.eval_int_expected(lhs, ty)?;
+                let right = self.eval_int_expected(rhs, ty)?;
+                self.binary(*op, left, right, expr.span)
+            }
+            ExprKind::Unary {
+                op: UnOp::Neg,
+                operand,
+            } => match self.eval_int_expected(operand, ty)? {
+                Value::Int(v, at) => self.checked(at, v.checked_neg(), expr.span, "negation"),
+                other => unsupported(format!("`-` needs a number, got {}", other.kind())),
+            },
+            ExprKind::Int(_) => Ok(match self.eval(expr)? {
+                Value::Int(v, at) if at.literal => Value::Int(v, ty),
+                other => other,
+            }),
+            _ => self.eval_for_init(expr),
         }
     }
 
@@ -4848,8 +4919,19 @@ impl Machine {
             }
             _ => self.place_of(place)?,
         };
+        // is76 (wolf-interp#251): an integer place is its term's context, as
+        // a binding's annotation is — `v = 1 << 10` and `v += 1 << 9` at
+        // `wrapping[u8]` compute the term at `wrapping[u8]` (4 and 2 on the
+        // compiler's machines; computed wide they were 0 and 0).
+        let place_int = match self.slot_mut(&path).map(|s| &s.value) {
+            Some(Value::Int(_, ty)) if !ty.literal && !take && is_int_term(value) => Some(*ty),
+            _ => None,
+        };
         if op == AssignOp::Assign {
-            let value = self.store_operand(place, value, take)?;
+            let value = match place_int {
+                Some(ty) => self.eval_int_expected(value, ty)?,
+                None => self.store_operand(place, value, take)?,
+            };
             // Keep the place's integer type: `x += 1` and `x = x + 1` agree.
             let value = match (self.slot_mut(&path).map(|s| s.value.clone()), value) {
                 (Some(Value::Int(_, ty)), Value::Int(v, lit)) if lit.literal => {
@@ -4932,7 +5014,10 @@ impl Machine {
         }
         let current = self.read_path(&path, place.span)?;
         let byte_place = Some(matches!(current, Value::Byte(_)));
-        let rhs = self.eval(value)?;
+        let rhs = match place_int {
+            Some(ty) => self.eval_int_expected(value, ty)?,
+            None => self.eval(value)?,
+        };
         let binop = assign_binop(op);
         // `[type.byte.op]`'s named consequence, the compound half: `b += 1` is
         // refused because `b + 1` is an `int` and the place is a `byte`. The
@@ -5639,9 +5724,15 @@ impl Machine {
                             .last()
                             .map(|frame| frame.row.clone())
                             .unwrap_or_default();
-                        match self.declared_row_tag(value, &row) {
-                            Some(tag) => tag,
-                            None => self.eval_for_init(value)?,
+                        let expected = self
+                            .frames
+                            .last()
+                            .and_then(|frame| frame.ret_int)
+                            .filter(|_| is_int_term(value));
+                        match (self.declared_row_tag(value, &row), expected) {
+                            (Some(tag), _) => tag,
+                            (None, Some(ty)) => self.eval_int_expected(value, ty)?,
+                            (None, None) => self.eval_for_init(value)?,
                         }
                     }
                     None => Value::Unit,
@@ -8369,6 +8460,7 @@ impl Machine {
                         String::new()
                     },
                     body: None,
+                    ret_int: None,
                 });
                 for (name, value) in &closure.captures {
                     self.declare(name, Slot::live(value.clone()));
@@ -11077,6 +11169,36 @@ fn arith_mode_named(name: &str) -> Option<ArithMode> {
         "wrapping" => Some(ArithMode::Wrapping),
         "saturating" => Some(ArithMode::Saturating),
         _ => None,
+    }
+}
+
+/// The operators an integer term is formed of: the arithmetic and bitwise
+/// ones, every one of which takes two operands of one type and answers it.
+fn is_int_term_op(op: BinOp) -> bool {
+    matches!(
+        op,
+        BinOp::Add
+            | BinOp::Sub
+            | BinOp::Mul
+            | BinOp::Div
+            | BinOp::Rem
+            | BinOp::Shl
+            | BinOp::Shr
+            | BinOp::BitAnd
+            | BinOp::BitOr
+            | BinOp::BitXor
+    )
+}
+
+/// Whether `expr` (through `(…)` groups) is an integer term — an operator
+/// [`is_int_term_op`] names — the shape a declared integer context reaches
+/// into ([`Machine::eval_int_expected`]). A bare literal, a call or a name
+/// is not: each keeps the path it always took.
+fn is_int_term(expr: &Expr) -> bool {
+    match &*expr.kind {
+        ExprKind::Group(inner) => is_int_term(inner),
+        ExprKind::Binary { op, .. } => is_int_term_op(*op),
+        _ => false,
     }
 }
 

@@ -126,6 +126,7 @@ impl Session {
             read_params: Vec::new(),
             name: String::new(),
             body: None,
+            ret_int: None,
         });
         Session {
             machine,
