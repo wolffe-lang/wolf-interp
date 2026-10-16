@@ -373,6 +373,22 @@ fn record_of(
             serde_json::Value::from(reason.clone()),
         );
     }
+    // is76 (wolf-interp#249): a refusal met DURING the run says so. The
+    // record's `phase_reached` is the deepest phase that completed —
+    // `resolve` here, as the checked machine answers `mem`, its own deepest
+    // static rung, for a run-time refusal — and `[proto.record.phase]`
+    // forbids naming the run that did not complete; this key names where
+    // the program was when it was refused, and which of the processes it
+    // started this machine ended on the way out.
+    if observation.refused_in_run {
+        extensions.insert(
+            "x-unsupported-at".to_owned(),
+            serde_json::Value::from("run"),
+        );
+    }
+    if !observation.ended.is_empty() {
+        extensions.insert("x-ended".to_owned(), serde_json::json!(observation.ended));
+    }
     if let Some(trap) = &observation.trap {
         extensions.insert(
             "x-trap-clause".to_owned(),

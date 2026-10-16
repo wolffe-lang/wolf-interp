@@ -104,6 +104,15 @@ pub struct Observation {
     /// The `files` index of each entry of `warnings`, for the warning-severity
     /// diagnostics the record builds from them. Empty when `files` is `None`.
     pub warning_file_index: Vec<u64>,
+    /// is76 (wolf-interp#249): the verdict is `unsupported` and the refusal
+    /// came DURING the run — the program had started (and may have printed,
+    /// spawned, written). `phase_reached` still names the deepest phase
+    /// that completed (`[proto.record.phase]`), so the record says this on
+    /// `x-unsupported-at`.
+    pub refused_in_run: bool,
+    /// is76 (wolf-interp#249): the processes the run started and this
+    /// machine ended because it refused (`eval::Run::ended`), by id.
+    pub ended: Vec<u32>,
 }
 
 impl Observation {
@@ -146,6 +155,8 @@ impl Observation {
             warning_files: Vec::new(),
             files: None,
             warning_file_index: Vec::new(),
+            refused_in_run: false,
+            ended: Vec::new(),
         }
     }
 
@@ -641,8 +652,12 @@ fn observe_with_spans(
         // The run did not complete, so `run` is not the deepest *completed*
         // phase — `resolve` is. Inflating it here is exactly the lie
         // `[proto.record.phase]` names.
-        Outcome::Unsupported(reason) => Observation::unsupported(DEEPEST_STATIC, reason),
+        Outcome::Unsupported(reason) => Observation {
+            refused_in_run: true,
+            ..Observation::unsupported(DEEPEST_STATIC, reason)
+        },
     };
+    observation.ended = run.ended;
     observation.warnings = warnings;
     observation.warning_files = warning_files;
     observation.stdout = run.stdout;

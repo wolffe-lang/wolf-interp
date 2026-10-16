@@ -703,6 +703,14 @@ fn run_run(args: &RunArgs) -> u8 {
                     .as_deref()
                     .unwrap_or("outside this implementation's scope")
             );
+            // is76 (wolf-interp#249): the processes the run started that
+            // the refusal ended, so a user sees why a job is gone.
+            if !observation.ended.is_empty() {
+                eprintln!(
+                    "{display}: ended the processes this run started: {:?}",
+                    observation.ended
+                );
+            }
             EXIT_UNSUPPORTED
         }
         // Unreachable without a `--phase` cap, which `run` does not take.
@@ -1479,6 +1487,10 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
         }
         if let Some(reason) = record.extensions.get("x-unsupported") {
             eprintln!("  unsupported: {}", reason.as_str().unwrap_or_default());
+        }
+        // is76 (wolf-interp#249): what the refusal ended on the way out.
+        if let Some(ended) = record.extensions.get("x-ended") {
+            eprintln!("  ended the processes this run started: {ended}");
         }
         if let Some(inline) = &record.stdout_inline {
             print!("{inline}");

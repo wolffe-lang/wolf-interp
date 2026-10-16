@@ -438,6 +438,10 @@ pub struct Run {
     /// The run's reified `sched-ev/0` stream and op log — what the is07
     /// explorer branches over ([`crate::explore`]).
     pub schedule: sched::SchedTrace,
+    /// is76 (wolf-interp#249): the ids of the processes this run started and
+    /// ended because the run ended in a refusal (`unsupported`) — empty for
+    /// every other outcome, which leaves children alone.
+    pub ended: Vec<u32>,
 }
 
 /// A lexical scope: its locals and its scope-exit effects.
@@ -953,6 +957,23 @@ impl Machine {
 
     fn run_on_this_stack(mut self) -> Run {
         let outcome = self.run_main();
+        // is76 (wolf-interp#249): a run this machine REFUSED ends the
+        // processes it started and has not reaped — the program would have
+        // carried on (and signalled or waited them) on the compiler's
+        // machines. An exit or a trap is the program's own end and leaves
+        // its children as a native process does.
+        #[cfg(not(target_family = "wasm"))]
+        let ended: Vec<u32> = if matches!(outcome, Outcome::Unsupported(_)) {
+            self.children()
+                .end_unreaped()
+                .into_iter()
+                .map(|ended| ended.pid)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        #[cfg(target_family = "wasm")]
+        let ended: Vec<u32> = Vec::new();
         // The root supervisor's teardown (`[conc.task.root]`): every daemon
         // proc still alive is killed per `[conc.proc.kill]`, every remaining
         // task thread is reaped one at a time, and the regions the killed
@@ -1009,6 +1030,7 @@ impl Machine {
             host_leaks,
             forest,
             schedule,
+            ended,
         }
     }
 
