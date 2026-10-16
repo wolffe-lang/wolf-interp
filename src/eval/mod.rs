@@ -6799,8 +6799,23 @@ impl Machine {
             BitAnd => Some(a & b),
             BitOr => Some(a | b),
             BitXor => Some(a ^ b),
-            Shl => shift_count().and_then(|s| a.checked_shl(s)),
-            Shr => shift_count().and_then(|s| a.checked_shr(s)),
+            Shl if ty.mode == ArithMode::Wrapping => shift_count().and_then(|s| a.checked_shl(s)),
+            Shr if ty.mode == ArithMode::Wrapping => shift_count().and_then(|s| a.checked_shr(s)),
+            // `[type.int.shift]` (ruling #77 A; is76, wolf-interp#251): on a
+            // plain integer a shift is arithmetic on the VALUE — `x << n` is
+            // `x * 2^n`, `x >> n` the floor of `x / 2^n`, a negative count
+            // traps. A count at or past the width is no case of its own, and
+            // neither is one at or past the 128 bits this machine computes
+            // in: `255 >> 200` at `u8` is 0 (0.1.53 trapped there, out of
+            // `i128` shift range), and a set bit shifted past every bit held
+            // is the overflow it is (0.1.53 lost it: `2 << 127` printed 0).
+            // `checked` below then holds the result to the operand's type;
+            // a saturating type takes `Mul`'s posture past `i128`.
+            Shl => shift_value_left(a, b).or(match (ty.mode, b >= 0) {
+                (ArithMode::Saturating, true) => Some(if a < 0 { i128::MIN } else { i128::MAX }),
+                _ => None,
+            }),
+            Shr => shift_value_right(a, b),
             _ => unreachable!("handled above"),
         };
         self.checked(ty, computed, span, &format!("`{}`", spelling(op)))
@@ -11212,6 +11227,37 @@ fn widen_byte(value: Value) -> Value {
         Value::Byte(b) => Value::Int(i128::from(b), IntTy::INT),
         other => other,
     }
+}
+
+/// `[type.int.shift]`'s `x << n` on a plain integer: `x * 2^n`, or `None`
+/// when the count is negative or the product leaves the `i128` this machine
+/// computes in (the operand's own type is the caller's `checked`). The
+/// product fits exactly when the round trip returns `x` — the clause's own
+/// cost sentence — and `0 << n` is 0 for every count.
+pub(crate) fn shift_value_left(x: i128, n: i128) -> Option<i128> {
+    if n < 0 {
+        return None;
+    }
+    if x == 0 {
+        return Some(0);
+    }
+    let n = u32::try_from(n).ok().filter(|n| *n < 128)?;
+    let shifted = x << n;
+    (shifted >> n == x).then_some(shifted)
+}
+
+/// `[type.int.shift]`'s `x >> n` on a plain integer: the floor of `x / 2^n`,
+/// or `None` for a negative count. Every bit has left at 128 or more: 0, or
+/// -1 for a negative `x`.
+pub(crate) fn shift_value_right(x: i128, n: i128) -> Option<i128> {
+    if n < 0 {
+        return None;
+    }
+    Some(match u32::try_from(n).ok().filter(|n| *n < 128) {
+        Some(n) => x >> n,
+        None if x < 0 => -1,
+        None => 0,
+    })
 }
 
 fn adopt_numeric(left: Value, right: Value) -> (Value, Value) {
