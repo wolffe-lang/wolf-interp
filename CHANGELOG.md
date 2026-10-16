@@ -31,6 +31,51 @@
   refused by name, as before). `tests/group_s241.rs` (4 tests) holds the
   compiler's corpus row byte for byte and its fixtures' refusals.
 
+- **lupin catches up** (is76; wolf-interp#251, #250, #249, #245).
+  - **Shifts, `[type.int.shift]`** (wolf-lang s237, ruling #77 A; #251).
+    A count of 128 or more on a plain integer is the value's shift, not
+    a trap (`255 >> 200` at `u8` is 0; 0.1.53 ran out of `i128` shift
+    range), and a set bit shifted past every bit this machine holds
+    traps (`2 << 127` at `u64` printed 0). A module `const` or `let`
+    with a plain integer type is folded by the rule at resolve, so
+    `const K: u8 = 200 << 1` is E0706 at the operator, the compiler's
+    span (it printed 400); the fold reads literals, `-`, groups, the
+    arithmetic and bitwise operators and other such items of the same
+    type, and says nothing of any other shape. A literal-only term meets
+    its declared integer type before its operators run — a binding's
+    annotation, a module item's, an integer place assigned or
+    compound-assigned, a function's tail and `return` — so `let r:
+    wrapping[u8] = 1 << 9` is 2 and `255 >> 8` there is 255 (both
+    computed wide and trapped); an argument is not yet such a context.
+    A shift whose two operands' declared types differ (`x << n`, `x:
+    u64`, `n: int`) is E0401 at the count where both are parameters the
+    body never rebinds, or `as` casts; an inferred binding says nothing.
+    Every vendored corpus file answers as at 3cc3f9c (1002 files;
+    verdict, phase and stdout digest, release builds, kasumi).
+    `tests/shift_is76.rs` holds wolf-lang's six shift rows byte for byte.
+  - **The net family sets `os_error()`, `[os.net.error]`** (wolf-lang
+    s239, #751; ruling #80; #250): cleared on entry, the host's number
+    where the host refused (ECONNREFUSED, EADDRINUSE, ENOENT, EPIPE,
+    EMFILE at the descriptor limit), 0 after a success, a failure
+    decided before the host, a fired budget and an end of stream. A
+    unix listen on an existing path now asks the bind (EADDRINUSE beside
+    `exists`) rather than look at the path first. Every number in
+    `tests/net_error_is76.rs` is the checked machine's on linux.
+  - **A refused run ends what it started** (#249). When the run ends in
+    this machine's own refusal (`unsupported`), every process the
+    program started and had not reaped is ended — a job that leads its
+    process group with the group, through `sh`'s `kill -s KILL --
+    -PGID` (std has no `kill(2)`; no `unsafe`), any other child by
+    `Child::kill` — and reaped. The record adds `x-ended` (their ids)
+    and `x-unsupported-at: "run"`; `phase_reached` stays `resolve`, the
+    deepest phase completed (`[proto.record.phase]`; the checked
+    machine answers `mem` for its own run-time refusal). An exit or a
+    trap leaves children alone, as a native process's are.
+  - **The wasm decline** (#245): `os_pid`, `os_ppid`,
+    `os_signal_number` and the rest of the tier are declined as the
+    hosted-only process and signal tier with no host process in a
+    page, not as "the s40 process trio" with "no processes to spawn".
+
 ## 0.1.53 — 2026-10-14
 
 THE FIFTY-THIRD, the lupin half of wolf 0.2.30. **Pin unchanged:
