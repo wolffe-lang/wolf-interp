@@ -221,6 +221,16 @@ fn admit_with(program: &sema::Program, statics: Vec<crate::diag::Diag>) -> Optio
     if !lends.is_empty() {
         return Some(Refusal::RejectAll(lends));
     }
+    // is76 (wolf-interp#251, `[type.int.shift]`): a module initialiser
+    // folded by the rule the run uses (E0706 at the operator that faults).
+    if let Some(diag) = crate::statics::fold_check(program) {
+        return Some(Refusal::Reject(Box::new(diag)));
+    }
+    // ... and a shift whose two operands' declared types differ (E0401 at the
+    // count, `[type.int.shift]` (5)).
+    if let Some(diag) = crate::lint::shift_operand_check(program) {
+        return Some(Refusal::Reject(Box::new(diag)));
+    }
     if let Some(diag) = statics.into_iter().next() {
         return Some(Refusal::Reject(Box::new(diag)));
     }

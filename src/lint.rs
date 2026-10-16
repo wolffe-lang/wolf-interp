@@ -4086,6 +4086,148 @@ fn parse_int_literal(text: &str) -> Option<i128> {
     i128::from_str_radix(digits, radix).ok()
 }
 
+// -- is76 (wolf-interp#251): a shift's two operands are one type --------------
+
+/// The integer type a type SPELLS, canonically — `u64`, `int`,
+/// `wrapping[u8]` — or `None` when it spells no integer type. `int` and
+/// `i64`, `uint` and `u64`, `wrapping[u8]` and `u8` are different types to
+/// the checker (each measured E0401 against the other on the checked
+/// machine), so the spelling is the identity.
+fn int_spelling(ty: &Type) -> Option<String> {
+    let TypeKind::Path { path, args } = &*ty.kind else {
+        return None;
+    };
+    if !path.is_single() {
+        return None;
+    }
+    let name = path.segments[0].name.as_str();
+    match name {
+        "i8" | "i16" | "i32" | "i64" | "i128" | "u8" | "u16" | "u32" | "u64" | "u128" | "int"
+        | "uint"
+            if args.is_empty() =>
+        {
+            Some(name.to_owned())
+        }
+        "wrapping" | "saturating" => match &args[..] {
+            [crate::ast::TypeArg::Type(inner)] => {
+                int_spelling(inner).map(|inner| format!("{name}[{inner}]"))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// is76 (wolf-interp#251, `[type.int.shift]` (5)): "The count has the
+/// operand's type. `<<` and `>>` take two operands of one type as `+` does
+/// (`x << n` with `x: u64` and `n: int` is E0401)". This machine has no
+/// checker, so it answers only where both types are DECLARED and certain: a
+/// parameter of the enclosing function that the body never binds anew
+/// ([`rebound_names`]), or an `as` cast. An inferred binding, a call, a
+/// field — anything else — says nothing, and the run answers as before.
+/// The span is the right operand's, the checked machine's on every
+/// witness (`tests/shift_is76.rs`).
+#[must_use]
+pub(crate) fn shift_operand_check(program: &Program) -> Option<Diag> {
+    fn operand(e: &Expr, params: &BTreeMap<String, String>) -> Option<String> {
+        match &*e.kind {
+            ExprKind::Group(inner) => operand(inner, params),
+            ExprKind::Path(path) if path.is_single() => params.get(&path.segments[0].name).cloned(),
+            ExprKind::Cast { ty, .. } => int_spelling(ty),
+            _ => None,
+        }
+    }
+    fn walk(e: &Expr, params: &BTreeMap<String, String>, out: &mut Option<Diag>) {
+        if out.is_some() {
+            return;
+        }
+        if let ExprKind::Binary { op, lhs, rhs } = &*e.kind
+            && matches!(op, BinOp::Shl | BinOp::Shr)
+            && let (Some(left), Some(right)) = (operand(lhs, params), operand(rhs, params))
+            && left != right
+        {
+            let spelling = if *op == BinOp::Shl { "<<" } else { ">>" };
+            *out = Some(Diag::new(
+                "E0401",
+                rhs.span,
+                "type.numlit.kind",
+                format!(
+                    "this is `{right}`, but the other side of `{spelling}` makes it `{left}`: \
+                     a shift's count has its operand's type ([type.int.shift] (5)), and no \
+                     number converts implicitly — spell `… as {left}`"
+                ),
+            ));
+            return;
+        }
+        crate::rowmatch::each_child_with_blocks(e, &mut |child| match child {
+            crate::rowmatch::Child::Expr(child) => walk(child, params, out),
+            crate::rowmatch::Child::Block(block) => walk_block(block, params, out),
+        });
+    }
+    fn walk_block(b: &Block, params: &BTreeMap<String, String>, out: &mut Option<Diag>) {
+        for stmt in &b.stmts {
+            match &stmt.kind {
+                StmtKind::Binding(binding) => walk(&binding.value, params, out),
+                StmtKind::Assign { place, value, .. } => {
+                    walk(place, params, out);
+                    walk(value, params, out);
+                }
+                StmtKind::Defer { expr, .. } | StmtKind::Expr(expr) => walk(expr, params, out),
+                StmtKind::AssumeNoalias(es) => es.iter().for_each(|e| walk(e, params, out)),
+                // A nested `fn` has parameters of its own: not this one's.
+                StmtKind::Item(_) => {}
+            }
+        }
+        if let Some(tail) = &b.tail {
+            walk(tail, params, out);
+        }
+    }
+    let judge = |decl: &FnDecl| -> Option<Diag> {
+        let body = decl.body.as_ref()?;
+        let rebound = rebound_names(body);
+        let params: BTreeMap<String, String> = decl
+            .params
+            .iter()
+            .filter_map(|param| match &param.kind {
+                crate::ast::ParamKind::Named { name, ty } if !rebound.contains(&name.name) => {
+                    int_spelling(ty).map(|t| (name.name.clone(), t))
+                }
+                _ => None,
+            })
+            .collect();
+        let mut out = None;
+        walk_block(body, &params, &mut out);
+        out
+    };
+    for module in std::iter::once(program.root()).chain(program.modules.values()) {
+        let mut found: Vec<(Diag, Option<&String>)> = Vec::new();
+        for (name, (def, _)) in &module.items {
+            if let Def::Fn(decl) = def
+                && let Some(diag) = judge(decl)
+            {
+                found.push((diag, module.item_files.get(name)));
+            }
+        }
+        for methods in module.methods.values() {
+            for method in methods.values().flatten() {
+                if let Some(diag) = judge(&method.decl) {
+                    found.push((diag, None));
+                }
+            }
+        }
+        if let Some((diag, file)) = found
+            .into_iter()
+            .min_by_key(|(d, _)| (d.span.start, d.span.end))
+        {
+            return Some(match file {
+                Some(file) => diag.in_file(file.clone()),
+                None => diag,
+            });
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5300,3 +5442,4 @@ mod tests {
         );
     }
 }
+
