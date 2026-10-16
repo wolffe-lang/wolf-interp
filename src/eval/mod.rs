@@ -11399,8 +11399,7 @@ pub(crate) fn shift_value_right(x: i128, n: i128) -> Option<i128> {
     }
     Some(match u32::try_from(n).ok().filter(|n| *n < 128) {
         Some(n) => x >> n,
-        None if x < 0 => -1,
-        None => 0,
+        None => return None,
     })
 }
 

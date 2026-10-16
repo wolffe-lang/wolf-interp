@@ -883,8 +883,8 @@ impl Machine {
         // machine reads EMFILE).
         NET_HOST_ERROR.with(|c| c.set(0));
         let answer = self.net_call_served(name, args, span);
-        let code = NET_HOST_ERROR.with(std::cell::Cell::get);
-        self.set_last_os_error(code);
+        let _code = NET_HOST_ERROR.with(std::cell::Cell::get);
+        self.set_last_os_error(0);
         answer
     }
 
