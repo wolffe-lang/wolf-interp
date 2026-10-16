@@ -4631,7 +4631,11 @@ impl Machine {
                 Value::Int(v, at) if at.literal => Value::Int(v, ty),
                 other => other,
             }),
-            _ => self.eval_for_init(expr),
+            // An operand, read as any operand is (`binary`'s own `eval`):
+            // never an initialiser's consume, so `i = i + 1` reads `i`
+            // without a copy event in the place trace (`tests/place_trace`'s
+            // `many` golden).
+            _ => self.eval(expr),
         }
     }
 
