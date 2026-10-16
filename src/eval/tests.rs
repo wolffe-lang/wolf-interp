@@ -5476,7 +5476,13 @@ fn a_flow_out_of_an_argument_list_withdraws_the_calls_claims_and_protectors() {
 /// on the host and read on the site's wasm module by the lane's witness.
 #[test]
 fn the_wasm_decline_names_the_hosted_tier_not_spawning() {
-    for name in ["os_pid", "os_ppid", "os_signal_number", "os_signal_send", "os_spawn"] {
+    for name in [
+        "os_pid",
+        "os_ppid",
+        "os_signal_number",
+        "os_signal_send",
+        "os_spawn",
+    ] {
         let why = builtin::hosted_tier_decline(name);
         assert!(why.starts_with(&format!("`{name}` ")), "{why}");
         assert!(why.contains("hosted-only process and signal tier"), "{why}");

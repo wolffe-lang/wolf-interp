@@ -31,10 +31,8 @@ fn fixture(name: &str) -> PathBuf {
 
 /// `name` copied alone into a fresh directory (a directory is a module).
 fn alone(name: &str) -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
-        "is76-net-{}",
-        name.trim_end_matches(".lu")
-    ));
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("is76-net-{}", name.trim_end_matches(".lu")));
     if dir.exists() {
         std::fs::remove_dir_all(&dir).expect("stale scratch removed");
     }

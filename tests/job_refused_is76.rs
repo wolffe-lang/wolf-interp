@@ -28,15 +28,12 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 fn allowed() -> bool {
-    std::env::var_os("CI").is_some()
-        || std::env::var("LUPIN_SIGNAL_TESTS").is_ok_and(|v| v == "1")
+    std::env::var_os("CI").is_some() || std::env::var("LUPIN_SIGNAL_TESTS").is_ok_and(|v| v == "1")
 }
 
 fn alone(name: &str) -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
-        "is76-job-{}",
-        name.trim_end_matches(".lu")
-    ));
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("is76-job-{}", name.trim_end_matches(".lu")));
     if dir.exists() {
         std::fs::remove_dir_all(&dir).expect("stale scratch removed");
     }
@@ -172,7 +169,11 @@ fn a_static_refusal_is_not_at_run() {
     }
     std::fs::create_dir_all(&dir).expect("scratch created");
     let entry = dir.join("static.lu");
-    std::fs::write(&entry, "fn main() {\n    let x = 1\n    print(\"{x}\")\n}\n").expect("written");
+    std::fs::write(
+        &entry,
+        "fn main() {\n    let x = 1\n    print(\"{x}\")\n}\n",
+    )
+    .expect("written");
     let out = Command::new(env!("CARGO_BIN_EXE_lupin"))
         .arg("conform-run")
         .arg(&entry)
