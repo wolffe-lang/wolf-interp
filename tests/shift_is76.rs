@@ -307,3 +307,47 @@ fn a_shift_takes_one_integer_type() {
     );
     assert_eq!(answer(&rec), ("exit(0)".into(), "8 16\n".into()), "{rec}");
 }
+
+/// The initialiser fold stops judging past 256 open items, as the E0705
+/// walk does: `rulings_is73`'s 2000-item chain overflowed windows' 1 MiB
+/// main stack through the fold (the windows smoke of run 38975226904) while
+/// linux's 8 MiB hid it. Here the chain runs under a 1 MiB stack on unix,
+/// set by `sh`'s `ulimit -s` for lupin alone, and must answer a record.
+#[cfg(unix)]
+#[test]
+fn a_deep_initialiser_chain_folds_on_a_small_stack() {
+    let n = 2000;
+    let mut text = String::new();
+    for i in 0..n {
+        let next = if i + 1 < n {
+            format!("A{} + 1", i + 1)
+        } else {
+            "1".to_owned()
+        };
+        text.push_str(&format!("let A{i}: int = {next}\n\n"));
+    }
+    text.push_str("fn main() -> int {\n    A0 - A0\n}\n");
+    let dir = scratch("is76-shift-deep_chain");
+    let entry = dir.join("deep_chain.lu");
+    std::fs::write(&entry, text).expect("written");
+    let out = Command::new("sh")
+        .arg("-c")
+        .arg("ulimit -s 1024 && exec \"$0\" conform-run \"$1\" --json")
+        .arg(env!("CARGO_BIN_EXE_lupin"))
+        .arg(&entry)
+        .current_dir(&dir)
+        .stdin(Stdio::null())
+        .output()
+        .expect("lupin observes");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "a record, not a crash: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let rec: serde_json::Value = serde_json::from_slice(&out.stdout).expect("one record");
+    assert!(
+        rec["verdict"] == "unsupported" || rec["verdict"] == "exit(0)",
+        "{rec}"
+    );
+}
