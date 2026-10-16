@@ -420,3 +420,262 @@ pub fn section_placement(program: &Program) -> Option<String> {
     }
     None
 }
+
+// -- is76 (wolf-interp#251): a module initialiser folded by the rule ----------
+
+/// A plain integer type a module item may be written with
+/// ([`static_data`]'s integers): its width and signedness.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Plain {
+    name: &'static str,
+    bits: u32,
+    signed: bool,
+}
+
+impl Plain {
+    fn of(ty: &crate::ast::Type) -> Option<Plain> {
+        let TypeKind::Path { path, args } = &*ty.kind else {
+            return None;
+        };
+        if !path.is_single() || !args.is_empty() {
+            return None;
+        }
+        let (name, bits, signed) = match path.segments[0].name.as_str() {
+            "i8" => ("i8", 8, true),
+            "i16" => ("i16", 16, true),
+            "i32" => ("i32", 32, true),
+            "i64" => ("i64", 64, true),
+            "int" => ("int", 64, true),
+            "u8" => ("u8", 8, false),
+            "u16" => ("u16", 16, false),
+            "u32" => ("u32", 32, false),
+            "u64" => ("u64", 64, false),
+            "uint" => ("uint", 64, false),
+            _ => return None,
+        };
+        Some(Plain { name, bits, signed })
+    }
+
+    fn holds(self, v: i128) -> bool {
+        if self.signed {
+            let half = 1i128 << (self.bits - 1);
+            (-half..half).contains(&v)
+        } else {
+            (0..(1i128 << self.bits)).contains(&v)
+        }
+    }
+}
+
+/// What folding one expression found.
+enum Folded {
+    /// The value, in range for the item's type.
+    Value(i128),
+    /// The comptime fault: E0706 at the operator that faulted.
+    Fault(Diag),
+    /// A shape this fold does not read — it says nothing, and the run (or a
+    /// refusal by name) answers instead.
+    Unread,
+}
+
+/// An integer literal's value, as the lexer spelled it.
+fn literal(text: &str) -> Option<i128> {
+    let cleaned: String = text.chars().filter(|c| *c != '_').collect();
+    let (radix, digits) = if let Some(rest) = cleaned.strip_prefix("0x") {
+        (16, rest)
+    } else if let Some(rest) = cleaned.strip_prefix("0o") {
+        (8, rest)
+    } else if let Some(rest) = cleaned.strip_prefix("0b") {
+        (2, rest)
+    } else {
+        (10, cleaned.as_str())
+    };
+    i128::from_str_radix(digits, radix).ok()
+}
+
+/// The fold over one module's items: each `const`/`let` with a plain integer
+/// type, its initialiser read as integer literals, `-`, `(…)` groups, the
+/// arithmetic and bitwise operators and names of other such items of the
+/// SAME type — every operator computed at the item's type by the rule the
+/// run uses (`[type.int.shift]` (7): "a constant shift is evaluated by the
+/// same rule, so `const K: u8 = 200 << 1` is E0706").
+struct FoldWalk<'a> {
+    module: &'a Module,
+    /// Each item read so far: its value (`None`: not read here), or its fault.
+    done: std::collections::BTreeMap<String, Result<Option<i128>, Diag>>,
+    open: Vec<String>,
+}
+
+impl FoldWalk<'_> {
+    /// The value of item `name` at its type, `None` when it is not read
+    /// here; `Err` carries the first fault its evaluation met.
+    fn item(&mut self, name: &str) -> Result<Option<(Plain, i128)>, Diag> {
+        let Some((Def::Binding(binding), _)) = self.module.items.get(name) else {
+            return Ok(None);
+        };
+        if binding.kind == BindingKind::Var || self.open.iter().any(|o| o == name) {
+            return Ok(None);
+        }
+        let Some(ty) = binding.ty.as_ref().and_then(Plain::of) else {
+            return Ok(None);
+        };
+        if let Some(done) = self.done.get(name) {
+            return done.clone().map(|v| v.map(|v| (ty, v)));
+        }
+        self.open.push(name.to_owned());
+        let folded = self.fold(&binding.value, ty);
+        self.open.pop();
+        match folded {
+            Folded::Value(v) => {
+                self.done.insert(name.to_owned(), Ok(Some(v)));
+                Ok(Some((ty, v)))
+            }
+            Folded::Unread => {
+                self.done.insert(name.to_owned(), Ok(None));
+                Ok(None)
+            }
+            Folded::Fault(diag) => {
+                self.done.insert(name.to_owned(), Err(diag.clone()));
+                Err(diag)
+            }
+        }
+    }
+
+    fn fold(&mut self, expr: &Expr, ty: Plain) -> Folded {
+        match &*expr.kind {
+            ExprKind::Group(inner) => self.fold(inner, ty),
+            ExprKind::Int(text) => match literal(text) {
+                // A literal that does not fit is the checker's E0415, not
+                // this fold's: say nothing.
+                Some(v) if ty.holds(v) => Folded::Value(v),
+                _ => Folded::Unread,
+            },
+            ExprKind::Unary {
+                op: crate::ast::UnOp::Neg,
+                operand,
+            } => match &*operand.kind {
+                // `-128` at `i8` is the literal -128.
+                ExprKind::Int(text) => match literal(text).map(|v| -v) {
+                    Some(v) if ty.holds(v) => Folded::Value(v),
+                    _ => Folded::Unread,
+                },
+                _ => match self.fold(operand, ty) {
+                    Folded::Value(v) => {
+                        if ty.holds(-v) {
+                            Folded::Value(-v)
+                        } else {
+                            Folded::Fault(fault(
+                                expr.span,
+                                "-",
+                                ty,
+                                &format!("-({v}) leaves `{}`'s range", ty.name),
+                            ))
+                        }
+                    }
+                    other => other,
+                },
+            },
+            ExprKind::Path(path) if path.is_single() => {
+                match self.item(&path.segments[0].name) {
+                    Ok(Some((other, v))) if other == ty => Folded::Value(v),
+                    Ok(_) => Folded::Unread,
+                    // The fault is that item's own, reported at its own
+                    // operator when the walk reaches it.
+                    Err(_) => Folded::Unread,
+                }
+            }
+            ExprKind::Binary { op, lhs, rhs } => {
+                use crate::ast::BinOp;
+                let spelling = match op {
+                    BinOp::Add => "+",
+                    BinOp::Sub => "-",
+                    BinOp::Mul => "*",
+                    BinOp::Div => "/",
+                    BinOp::Rem => "%",
+                    BinOp::Shl => "<<",
+                    BinOp::Shr => ">>",
+                    BinOp::BitAnd => "&",
+                    BinOp::BitOr => "|",
+                    BinOp::BitXor => "^",
+                    _ => return Folded::Unread,
+                };
+                let a = match self.fold(lhs, ty) {
+                    Folded::Value(v) => v,
+                    other => return other,
+                };
+                let b = match self.fold(rhs, ty) {
+                    Folded::Value(v) => v,
+                    other => return other,
+                };
+                let why = |what: &str| fault(expr.span, spelling, ty, what);
+                let computed = match op {
+                    BinOp::Add => a.checked_add(b),
+                    BinOp::Sub => a.checked_sub(b),
+                    BinOp::Mul => a.checked_mul(b),
+                    BinOp::Div | BinOp::Rem if b == 0 => {
+                        return Folded::Fault(why("division by zero"));
+                    }
+                    BinOp::Div => a.checked_div(b),
+                    BinOp::Rem => a.checked_rem(b),
+                    BinOp::Shl | BinOp::Shr if b < 0 => {
+                        return Folded::Fault(why(&format!(
+                            "a shift by {b}: the count is negative"
+                        )));
+                    }
+                    BinOp::Shl => crate::eval::shift_value_left(a, b),
+                    BinOp::Shr => crate::eval::shift_value_right(a, b),
+                    BinOp::BitAnd => Some(a & b),
+                    BinOp::BitOr => Some(a | b),
+                    _ => Some(a ^ b),
+                };
+                match computed {
+                    Some(v) if ty.holds(v) => Folded::Value(v),
+                    _ => Folded::Fault(why(&format!(
+                        "{a} {spelling} {b} leaves `{}`'s range",
+                        ty.name
+                    ))),
+                }
+            }
+            _ => Folded::Unread,
+        }
+    }
+}
+
+/// E0706 at `span`: the operator `spelling` on `ty` faults at compile time.
+fn fault(span: Span, spelling: &str, ty: Plain, what: &str) -> Diag {
+    Diag::new(
+        "E0706",
+        span,
+        "mem.static.3",
+        format!(
+            "this `{spelling}` on `{}` faults at compile time: {what}. A module item's \
+             initialiser is evaluated at compile time ([mem.static.3]) by the rule the run \
+             uses ([type.int.shift] (7)), and what would trap at run time is an error there; \
+             intended wraparound is spelled `wrapping[T]`",
+            ty.name
+        ),
+    )
+}
+
+/// is76 (wolf-interp#251): the first module initialiser whose fold faults —
+/// E0706 at the operator, in the item's own file — in declaration order
+/// within the first module that has one. An initialiser this fold does not
+/// read is left to the run.
+#[must_use]
+pub fn fold_check(program: &Program) -> Option<Diag> {
+    for module in modules(program) {
+        let mut walk = FoldWalk {
+            module,
+            done: std::collections::BTreeMap::new(),
+            open: Vec::new(),
+        };
+        for name in &module.bindings {
+            if let Err(diag) = walk.item(name) {
+                return Some(match module.item_files.get(name) {
+                    Some(file) => diag.in_file(file.clone()),
+                    None => diag,
+                });
+            }
+        }
+    }
+    None
+}
