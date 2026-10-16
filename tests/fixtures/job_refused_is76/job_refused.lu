@@ -1,0 +1,18 @@
+//! is76 (wolf-interp#249): a job started, then a call lupin refuses by name.
+//! The job leads a process group of its own (`group` 0): `sh`, waiting on a
+//! `sleep` in the same group. `os_signal_send` with TERMINATE (2) is well
+//! formed, so lupin refuses it by name (ruling #79 R8) and the run ends
+//! there. Until is76 the `sh` and its `sleep` outlived lupin (s240 measured
+//! them on 0.1.52).
+
+fn main() -> !int {
+    let h = os_spawn_job("sh", ["-c", "sleep 30; exit 0"], List[int](), 0, -1, 0)?
+    let pid = os_proc_pid(h)?
+    print("started {pid}")
+    os_signal_send(pid, 2) else |e| {
+        print("send failed")
+        return 5
+    }
+    print("sent")
+    0
+}
