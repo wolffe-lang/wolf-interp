@@ -69,20 +69,23 @@ fn stdout(rec: &serde_json::Value) -> String {
     rec["stdout_inline"].as_str().unwrap_or("").to_owned()
 }
 
-/// The descriptor-limit park: linux refuses the accept on an empty queue at
-/// the limit at once, EMFILE (24) beside the `io` row — the gate's `accept`
-/// line; macOS answers would-block, so the take waits out its budget
-/// (`timeout`, 0). The other lines read as they always did.
+/// The descriptor-limit park, on linux: linux refuses the accept on an
+/// empty queue at the limit at once, EMFILE (24) beside the `io` row — the
+/// gate's `accept` line. The other lines read as they always did.
+///
+/// Not on macOS: there this machine cannot fill the table to the limit and
+/// open past it, because its `fs_open` resolves the path against the
+/// working directory and reading that needs a descriptor of its own — at
+/// the limit the open is refused by name ("could not read the working
+/// directory"), measured on the macOS smoke of run 38964580788, before any
+/// net call. That is the fs family's posture at the limit, not the net
+/// family's number.
+#[cfg(target_os = "linux")]
 #[test]
 fn an_accept_refused_at_the_limit_leaves_emfile() {
     let rec = observe(&alone("park_at_limit.lu"), 32);
     let out = stdout(&rec);
-    let accept = if cfg!(target_os = "linux") {
-        "accept row=io errno=24"
-    } else {
-        "accept row=timeout errno=0"
-    };
-    assert!(out.contains(&format!("\n{accept}\n")), "{out}");
+    assert!(out.contains("\naccept row=io errno=24\n"), "{out}");
     assert!(out.contains("\npark row=timeout errno=0\n"), "{out}");
     assert!(out.contains("\nafter row=timeout errno=0\n"), "{out}");
     assert!(
@@ -129,23 +132,38 @@ fn each_net_row_carries_the_hosts_number_or_zero() {
 }
 
 /// The unix family: a listen on an existing path is the bind's own
-/// EADDRINUSE (98 on linux; lupin 0.1.53 answered `exists` from a look at
-/// the path and left 0), a dial of a plain file is ECONNREFUSED.
+/// EADDRINUSE beside `exists` (98 on linux; lupin 0.1.53 answered `exists`
+/// from a look at the path and left 0), a dial of a plain file is refused by
+/// the host (ECONNREFUSED, 111, on linux). On linux the lines are the checked
+/// machine's to the digit; elsewhere the host's own: macOS's dial of a plain
+/// file is not ECONNREFUSED (its row is `io` there, the macOS smoke of run
+/// 38964580788), so off linux the refused calls are held to a number that is
+/// not 0 and the rows the clause fixes (`exists`) to their row.
 #[test]
 fn the_unix_rows_carry_the_binds_and_the_dials_number() {
     let rec = observe(&alone("unix_rows.lu"), 1024);
     let out = stdout(&rec);
-    let (in_use, refused) = if cfg!(target_os = "linux") {
-        (98, 111)
-    } else {
-        (48, 61)
+    if cfg!(target_os = "linux") {
+        assert_eq!(
+            out,
+            "listen-on-file row=exists errno=98\ndial-file row=refused errno=111\n\
+             live ok errno=0\nlisten-on-live row=exists errno=98\n",
+            "{rec}"
+        );
+        return;
+    }
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines.len(), 4, "{out}");
+    let errno = |line: &str| -> i64 {
+        line.rsplit_once(" errno=")
+            .and_then(|(_, n)| n.parse().ok())
+            .unwrap_or_else(|| panic!("no number in `{line}`\n{out}"))
     };
-    assert_eq!(
-        out,
-        format!(
-            "listen-on-file row=exists errno={in_use}\ndial-file row=refused errno={refused}\n\
-             live ok errno=0\nlisten-on-live row=exists errno={in_use}\n"
-        ),
-        "{rec}"
-    );
+    assert!(lines[0].starts_with("listen-on-file row=exists "), "{out}");
+    assert_ne!(errno(lines[0]), 0, "{out}");
+    assert!(lines[1].starts_with("dial-file row="), "{out}");
+    assert_ne!(errno(lines[1]), 0, "{out}");
+    assert_eq!(lines[2], "live ok errno=0", "{out}");
+    assert!(lines[3].starts_with("listen-on-live row=exists "), "{out}");
+    assert_ne!(errno(lines[3]), 0, "{out}");
 }
