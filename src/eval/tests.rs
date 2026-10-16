@@ -5469,3 +5469,19 @@ fn a_flow_out_of_an_argument_list_withdraws_the_calls_claims_and_protectors() {
         run.trace.join("\n")
     );
 }
+
+/// is76 (wolf-interp#245): the wasm build declines the hosted-only process
+/// and signal tier by name, and the reason fits a call that spawns nothing.
+/// The arm itself is wasm-only; its words are this function, asserted here
+/// on the host and read on the site's wasm module by the lane's witness.
+#[test]
+fn the_wasm_decline_names_the_hosted_tier_not_spawning() {
+    for name in ["os_pid", "os_ppid", "os_signal_number", "os_signal_send", "os_spawn"] {
+        let why = builtin::hosted_tier_decline(name);
+        assert!(why.starts_with(&format!("`{name}` ")), "{why}");
+        assert!(why.contains("hosted-only process and signal tier"), "{why}");
+        assert!(why.contains("declined rather than mocked"), "{why}");
+        assert!(!why.contains("trio"), "{why}");
+        assert!(!why.contains("spawn"), "{why}");
+    }
+}
