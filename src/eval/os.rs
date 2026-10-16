@@ -39,6 +39,18 @@ pub(crate) struct ChildTable {
     /// set and every `env_unset` removed, as a native child is handed its
     /// parent's.
     overlay: BTreeMap<String, Option<String>>,
+    /// is76 (wolf-interp#249): the slots whose child LEADS a process group
+    /// of its own (`os_spawn_job` with group 0) — the groups this run made,
+    /// and so the only ones [`ChildTable::end_unreaped`] may end whole.
+    leaders: std::collections::BTreeSet<usize>,
+}
+
+/// One process [`ChildTable::end_unreaped`] ended: its id, and whether its
+/// process group (which it led) was ended with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Ended {
+    pub(crate) pid: u32,
+    pub(crate) group: bool,
 }
 
 /// A row tag, ready for the builtin's `error(tag)`.
@@ -177,6 +189,9 @@ impl ChildTable {
         }
         match command.spawn() {
             Ok(child) => {
+                if group == Some(0) {
+                    self.leaders.insert(self.slots.len());
+                }
                 self.slots.push(Some(child));
                 Ok(self.slots.len() as i128)
             }
@@ -186,6 +201,42 @@ impl ChildTable {
                 _ => "io",
             }),
         }
+    }
+
+    /// is76 (wolf-interp#249): end every child this run started and has not
+    /// reaped, and reap it — called when the run ends in this machine's OWN
+    /// refusal (`unsupported`), never on an exit or a trap.
+    ///
+    /// A refusal ends a program the compiler's machines would have carried
+    /// on with: the program that started a job and then called
+    /// `os_signal_send` (refused by name, ruling #79 R8) would have signalled
+    /// and waited its job there. Left alone, the job outlived the
+    /// interpreter (s240 measured a `sh` and its `sleep` running in their
+    /// group after lupin 0.1.52 exited). An exit or a trap is the program's
+    /// own end, and its children outlive it exactly as a native process's
+    /// do, so those are left alone.
+    ///
+    /// A child that leads a group this run made is ended WITH its group —
+    /// the job's own children are in it — by `kill -s KILL -- -PGID`
+    /// through `sh` (the POSIX `kill` utility; std has no `kill(2)` and this
+    /// machine admits no `unsafe`). The group is named only while its
+    /// leader is unreaped, so the id is still this run's child's and cannot
+    /// name a stranger's group. Every other child is ended alone
+    /// (`Child::kill`, SIGKILL on unix). Each is then waited, so nothing is
+    /// left a zombie of this process.
+    pub(crate) fn end_unreaped(&mut self) -> Vec<Ended> {
+        let mut ended = Vec::new();
+        for (index, slot) in self.slots.iter_mut().enumerate() {
+            let Some(mut child) = slot.take() else {
+                continue;
+            };
+            let pid = child.id();
+            let group = self.leaders.contains(&index) && end_group(pid);
+            let _ = child.kill();
+            let _ = child.wait();
+            ended.push(Ended { pid, group });
+        }
+        ended
     }
 
     pub(crate) fn wait(&mut self, handle: i128) -> Result<i128, Row> {
@@ -269,6 +320,23 @@ impl ChildTable {
             .ok_or("io")?;
         self.slots.get_mut(index).ok_or("io")
     }
+}
+
+/// SIGKILL to the process group `pgid` (its leader's pid), through the
+/// POSIX `kill` utility of `sh`: `kill -s KILL -- -PGID`. True when `sh`
+/// answered 0. No host but unix has groups; elsewhere nothing is sent.
+fn end_group(pgid: u32) -> bool {
+    if !cfg!(unix) {
+        return false;
+    }
+    Command::new("sh")
+        .arg("-c")
+        .arg(format!("kill -s KILL -- -{pgid}"))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
 }
 
 #[cfg(test)]
