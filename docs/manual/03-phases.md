@@ -83,7 +83,14 @@ Field by field:
 - `x-…`: extension keys. `x-trap-clause` and `x-trap-span` on a trap,
   `x-unsupported` with the reason, the `x-ub-*` family on an oracle
   finding. They participate in comparison only when both records carry
-  them.
+  them. Since is76 (wolf-interp#249) a refusal met while the program
+  was running adds `x-unsupported-at: "run"` — `phase_reached` still
+  names the deepest phase that completed, `resolve` — and, when the
+  program had started processes this machine had not reaped,
+  `x-ended` with their ids: a refused run ends them (a job with the
+  process group it leads) rather than leave them running after
+  lupin exits. An exit or a trap leaves a program's children alone,
+  as a native process's are.
 
 `lupin protocol validate <record.json>…` checks any record, from this
 implementation or another, against the same schema.
