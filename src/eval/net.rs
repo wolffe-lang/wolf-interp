@@ -232,10 +232,8 @@ impl NetSock {
 /// A unix-domain stream is NOT minted here on purpose. The option is TCP's,
 /// and a `UnixStream` has no Nagle to turn off.
 fn adopt_tcp(stream: TcpStream) -> NetResult<SockKind> {
-    stream
-        .set_nonblocking(true)
-        .map_err(|_| NetErr::Row("io"))?;
-    stream.set_nodelay(true).map_err(|_| NetErr::Row("io"))?;
+    stream.set_nonblocking(true).map_err(|e| host(&e, "io"))?;
+    stream.set_nodelay(true).map_err(|e| host(&e, "io"))?;
     Ok(SockKind::Stream(stream))
 }
 
@@ -274,10 +272,8 @@ impl NetTable {
                  name rather than made a collision generator"
             )));
         }
-        let listener = TcpListener::bind(parsed).map_err(|_| NetErr::Row("io"))?;
-        listener
-            .set_nonblocking(true)
-            .map_err(|_| NetErr::Row("io"))?;
+        let listener = TcpListener::bind(parsed).map_err(|e| host(&e, "io"))?;
+        listener.set_nonblocking(true).map_err(|e| host(&e, "io"))?;
         Ok(self.fd(NetSock::new(SockKind::Listener(listener))))
     }
 
@@ -338,10 +334,8 @@ impl NetTable {
         {
             return Ok(member);
         }
-        let listener = TcpListener::bind(parsed).map_err(|error| NetErr::Row(bind_row(&error)))?;
-        listener
-            .set_nonblocking(true)
-            .map_err(|_| NetErr::Row("io"))?;
+        let listener = TcpListener::bind(parsed).map_err(|error| host(&error, bind_row(&error)))?;
+        listener.set_nonblocking(true).map_err(|e| host(&e, "io"))?;
         let mut sock = NetSock::new(SockKind::Listener(listener));
         sock.reuse_port = reuse_port;
         Ok(self.fd(sock))
@@ -383,7 +377,7 @@ impl NetTable {
             SockKind::UnixListener(..) | SockKind::UnixStream(_) => return Err(NetErr::Row("io")),
         };
         addr.map(|addr| i128::from(addr.port()))
-            .map_err(|_| NetErr::Row("io"))
+            .map_err(|e| host(&e, "io"))
     }
 
     /// `net_connect`: dial loopback. Blocking is fine here — a loopback
@@ -401,11 +395,14 @@ impl NetTable {
             // `[os.net.nodelay]`: a DIALED stream carries the default too,
             // which is the half a client-side witness sees.
             Ok(stream) => Ok(self.fd(NetSock::new(adopt_tcp(stream)?))),
-            Err(error) => Err(NetErr::Row(match error.kind() {
-                std::io::ErrorKind::ConnectionRefused => "refused",
-                std::io::ErrorKind::TimedOut => "timeout",
-                _ => "io",
-            })),
+            Err(error) => Err(host(
+                &error,
+                match error.kind() {
+                    std::io::ErrorKind::ConnectionRefused => "refused",
+                    std::io::ErrorKind::TimedOut => "timeout",
+                    _ => "io",
+                },
+            )),
         }
     }
 
@@ -425,22 +422,20 @@ impl NetTable {
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     return Ok(Poll::NotYet);
                 }
-                Err(_) => return Err(NetErr::Row("io")),
+                Err(error) => return Err(host(&error, "io")),
             },
             // `[os.net.unix]`: `net_accept` serves a unix listener call for
             // call, and the stream it answers is an ordinary net stream.
             #[cfg(unix)]
             SockKind::UnixListener(listener, _) => match listener.accept() {
                 Ok((stream, _)) => {
-                    stream
-                        .set_nonblocking(true)
-                        .map_err(|_| NetErr::Row("io"))?;
+                    stream.set_nonblocking(true).map_err(|e| host(&e, "io"))?;
                     SockKind::UnixStream(stream)
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     return Ok(Poll::NotYet);
                 }
-                Err(_) => return Err(NetErr::Row("io")),
+                Err(error) => return Err(host(&error, "io")),
             },
             // A stream cannot accept: wrong-kind fd, the `io` row (probed).
             _ => return Err(NetErr::Row("io")),
@@ -487,7 +482,7 @@ impl NetTable {
                 Ok(Poll::Ready(buf))
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(Poll::NotYet),
-            Err(error) => Err(NetErr::Row(closed_or_io(&error))),
+            Err(error) => Err(host(&error, closed_or_io(&error))),
         }
     }
 
@@ -504,7 +499,7 @@ impl NetTable {
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     return Ok(Poll::NotYet);
                 }
-                Err(error) => return Err(NetErr::Row(closed_or_io(&error))),
+                Err(error) => return Err(host(&error, closed_or_io(&error))),
             }
         }
         Ok(Poll::Ready(()))
@@ -556,7 +551,7 @@ impl NetTable {
     /// them by the match falling through and the fourth by [`NetTable::sock`].
     fn nodelay(&mut self, fd: i128, on: bool) -> NetResult<()> {
         match &self.sock(fd)?.kind {
-            SockKind::Stream(stream) => stream.set_nodelay(on).map_err(|_| NetErr::Row("io")),
+            SockKind::Stream(stream) => stream.set_nodelay(on).map_err(|e| host(&e, "io")),
             _ => Err(NetErr::Row("io")),
         }
     }
@@ -585,20 +580,18 @@ impl NetTable {
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     return Ok(false);
                 }
-                Err(_) => return Err(NetErr::Row("io")),
+                Err(error) => return Err(host(&error, "io")),
             },
             #[cfg(unix)]
             SockKind::UnixListener(listener, _) => match listener.accept() {
                 Ok((stream, _)) => {
-                    stream
-                        .set_nonblocking(true)
-                        .map_err(|_| NetErr::Row("io"))?;
+                    stream.set_nonblocking(true).map_err(|e| host(&e, "io"))?;
                     SockKind::UnixStream(stream)
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     return Ok(false);
                 }
-                Err(_) => return Err(NetErr::Row("io")),
+                Err(error) => return Err(host(&error, "io")),
             },
             SockKind::Stream(stream) => return Ok(peek_is_ready(stream.peek(&mut [0u8; 1]))),
             #[cfg(unix)]
@@ -695,17 +688,16 @@ impl NetTable {
     #[cfg(unix)]
     fn listen_unix(&mut self, path: &str, base: Option<&Path>) -> NetResult<i128> {
         let path = socket_path(path, "net_listen_unix", base)?;
-        // "an existing path is `exists`" — asked BEFORE the bind, because
-        // `bind(2)` answers `EADDRINUSE` for a live socket and for a stale
-        // file alike, and the clause makes both the same row anyway.
-        if path.symlink_metadata().is_ok() {
-            return Err(NetErr::Row("exists"));
-        }
-        let listener =
-            std::os::unix::net::UnixListener::bind(&path).map_err(|e| unix_bind_row(&e))?;
-        listener
-            .set_nonblocking(true)
-            .map_err(|_| NetErr::Row("io"))?;
+        // "an existing path is `exists`": `bind(2)` answers `EADDRINUSE` for
+        // a live socket and for a stale file alike, and the clause makes
+        // both the same row. Until is76 this machine asked the path first
+        // and answered `exists` without the host — so `os_error()` read 0
+        // where every compiler machine reads the host's EADDRINUSE (98 on
+        // linux, measured on kasumi); the bind answers it now
+        // (`[os.net.error]`, wolf-interp#250).
+        let listener = std::os::unix::net::UnixListener::bind(&path)
+            .map_err(|e| host(&e, unix_bind_row(&e)))?;
+        listener.set_nonblocking(true).map_err(|e| host(&e, "io"))?;
         Ok(self.fd(NetSock::new(SockKind::UnixListener(listener, path))))
     }
 
@@ -715,11 +707,9 @@ impl NetTable {
     #[cfg(unix)]
     fn connect_unix(&mut self, path: &str, base: Option<&Path>) -> NetResult<i128> {
         let path = socket_path(path, "net_connect_unix", base)?;
-        let stream =
-            std::os::unix::net::UnixStream::connect(&path).map_err(|e| unix_dial_row(&e))?;
-        stream
-            .set_nonblocking(true)
-            .map_err(|_| NetErr::Row("io"))?;
+        let stream = std::os::unix::net::UnixStream::connect(&path)
+            .map_err(|e| host(&e, unix_dial_row(&e)))?;
+        stream.set_nonblocking(true).map_err(|e| host(&e, "io"))?;
         Ok(self.fd(NetSock::new(SockKind::UnixStream(stream))))
     }
 
@@ -795,25 +785,25 @@ fn socket_path(path: &str, name: &str, base: Option<&Path>) -> NetResult<PathBuf
 /// permission the caller lacks is `denied`, an existing path is `exists`
 /// (asked before the bind, so this arm sees it only from a race).
 #[cfg(unix)]
-fn unix_bind_row(error: &std::io::Error) -> NetErr {
-    NetErr::Row(match error.kind() {
+fn unix_bind_row(error: &std::io::Error) -> Row {
+    match error.kind() {
         std::io::ErrorKind::NotFound => "not_found",
         std::io::ErrorKind::PermissionDenied => "denied",
         std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::AddrInUse => "exists",
         _ => "io",
-    })
+    }
 }
 
 /// `[os.net.unix]`'s dial rows: no socket file is `not_found`, a file nobody
 /// listens on is `refused`, `denied` as at bind.
 #[cfg(unix)]
-fn unix_dial_row(error: &std::io::Error) -> NetErr {
-    NetErr::Row(match error.kind() {
+fn unix_dial_row(error: &std::io::Error) -> Row {
+    match error.kind() {
         std::io::ErrorKind::NotFound => "not_found",
         std::io::ErrorKind::PermissionDenied => "denied",
         std::io::ErrorKind::ConnectionRefused => "refused",
         _ => "io",
-    })
+    }
 }
 
 /// `[os.net.listen.opts]`'s bind rows: an address another socket already
@@ -841,6 +831,30 @@ fn peek_is_ready(peeked: std::io::Result<usize>) -> bool {
     }
 }
 
+thread_local! {
+    /// is76 (wolf-interp#250, `[os.net.error]`, ruling #80): the host's
+    /// number for the net call in flight — `fs.rs`'s `HOST_ERROR`, one
+    /// family over. [`Machine::net_call`] clears it on entry and copies it
+    /// into the task's word on the way out; [`host`] sets it where the host
+    /// refused. One call runs start to finish on one thread.
+    static NET_HOST_ERROR: std::cell::Cell<i128> = const { std::cell::Cell::new(0) };
+}
+
+/// The row `row` for a call the HOST refused with `error`, its number noted
+/// for `os_error()` (`[os.net.error]`: "the host's number when the host
+/// refused the call"). Everything decided before the host is asked — a
+/// forged or closed handle, a wrong kind, an unparsable address — never
+/// comes here and leaves 0, and so do the two answers that are the
+/// runtime's, not the host's: a fired budget (`timeout`) and a peer's
+/// orderly close (`closed` from a 0-byte read). A would-block is a poll's
+/// not-yet, never a row. A peer that has gone is the host's answer too
+/// (`closed` with EPIPE, 32 on linux — the checked machine's number after a
+/// write to a closed peer, measured on kasumi).
+fn host(error: &std::io::Error, row: Row) -> NetErr {
+    NET_HOST_ERROR.with(|c| c.set(error.raw_os_error().map_or(0, i128::from)));
+    NetErr::Row(row)
+}
+
 /// `closed` for the peer-finish error kinds, `io` for the rest.
 fn closed_or_io(error: &std::io::Error) -> Row {
     match error.kind() {
@@ -861,6 +875,20 @@ impl Machine {
     /// arguments no typed program produces); everything else is a row
     /// VALUE, never a trap.
     pub(crate) fn net_call(&mut self, name: &str, args: &[Value], span: Span) -> EvalOut {
+        // `[os.net.error]` (s239, ruling #80; is76, wolf-interp#250): every
+        // net call leaves the task its host number, as the fs family does —
+        // cleared on entry, the host's number when the host refused, 0
+        // otherwise. Until is76 this family left the word alone (0 after a
+        // refused accept at the descriptor limit, where every compiler
+        // machine reads EMFILE).
+        NET_HOST_ERROR.with(|c| c.set(0));
+        let answer = self.net_call_served(name, args, span);
+        let code = NET_HOST_ERROR.with(std::cell::Cell::get);
+        self.set_last_os_error(code);
+        answer
+    }
+
+    fn net_call_served(&mut self, name: &str, args: &[Value], span: Span) -> EvalOut {
         match name {
             "net_listen" | "net_connect" => {
                 let Some(Value::Str(addr)) = args.first() else {
@@ -1399,7 +1427,7 @@ fn drive_writev(
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 return Ok(Poll::NotYet);
             }
-            Err(error) => return Err(NetErr::Row(closed_or_io(&error))),
+            Err(error) => return Err(host(&error, closed_or_io(&error))),
         }
     }
 }
