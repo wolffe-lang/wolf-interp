@@ -1,0 +1,54 @@
+//! is76 (wolf-interp#250, `[os.net.error]`): the unix family's numbers.
+//! Measured on the checked machine (wolf-lang trunk 56929c63, kasumi,
+//! linux): a listen on an existing file and on a live socket `exists` 98
+//! (the bind's EADDRINUSE), a dial of a plain file `refused` 111.
+
+fn main() -> int {
+    fs_write_text("plain.tmp", "x") else |e| {
+        return 3
+    }
+    var row = "ok"
+    let l = net_listen_unix("plain.tmp") else |e| match e {
+        exists => {
+            row = "exists"
+            0
+        },
+        _ => {
+            row = "other"
+            0
+        },
+    }
+    print("listen-on-file row={row} errno={os_error()}")
+    row = "ok"
+    net_connect_unix("plain.tmp") else |e| match e {
+        refused => {
+            row = "refused"
+            0
+        },
+        _ => {
+            row = "other"
+            0
+        },
+    }
+    print("dial-file row={row} errno={os_error()}")
+    let s = net_listen_unix("live.sock") else |e| {
+        print("live listen failed errno={os_error()}")
+        return 3
+    }
+    print("live ok errno={os_error()}")
+    row = "ok"
+    net_listen_unix("live.sock") else |e| match e {
+        exists => {
+            row = "exists"
+            0
+        },
+        _ => {
+            row = "other"
+            0
+        },
+    }
+    print("listen-on-live row={row} errno={os_error()}")
+    net_close(s) else |e| {}
+    fs_remove("plain.tmp") else |e| {}
+    0
+}

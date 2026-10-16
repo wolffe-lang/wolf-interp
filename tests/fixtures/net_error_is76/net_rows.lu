@@ -1,0 +1,137 @@
+//! is76 (wolf-interp#250, `[os.net.error]`): the host's number beside each
+//! net row. Measured on the checked machine (wolf-lang trunk 56929c63,
+//! kasumi, linux): refused 111, in-use 98, unix not_found 2, a write to a
+//! closed peer 32; 0 after a success, a double close, a forged handle, an
+//! unparsable address, a fired budget and an end of stream.
+
+fn main() -> int {
+    let srv = net_listen("127.0.0.1:0") else |e| {
+        print("listen io errno={os_error()}")
+        return 3
+    }
+    print("listen ok errno={os_error()}")
+    let port = net_port(srv) else |e| {
+        return 3
+    }
+    // A listener that is closed leaves its port nobody's: the dial is refused.
+    let gone = net_listen("127.0.0.1:0") else |e| {
+        return 3
+    }
+    let gone_port = net_port(gone) else |e| {
+        return 3
+    }
+    net_close(gone) else |e| {}
+    var row = "ok"
+    net_connect("127.0.0.1:{gone_port}") else |e| match e {
+        refused => {
+            row = "refused"
+            0
+        },
+        timeout => {
+            row = "timeout"
+            0
+        },
+        io => {
+            row = "io"
+            0
+        },
+    }
+    print("refused row={row} errno={os_error()}")
+    net_port(srv) else |e| {
+        0
+    }
+    print("port-after errno={os_error()}")
+    row = "ok"
+    net_close(gone) else |e| {
+        row = "io"
+    }
+    print("double-close row={row} errno={os_error()}")
+    row = "ok"
+    net_read(99, 4) else |e| {
+        row = "err"
+        ""
+    }
+    print("forged row={row} errno={os_error()}")
+    row = "ok"
+    net_listen("garbage") else |e| {
+        row = "io"
+        0
+    }
+    print("garbage row={row} errno={os_error()}")
+    row = "ok"
+    net_listen_with("127.0.0.1:{port}", false, 0) else |e| match e {
+        exists => {
+            row = "exists"
+            0
+        },
+        _ => {
+            row = "other"
+            0
+        },
+    }
+    print("in-use row={row} errno={os_error()}")
+    row = "ok"
+    net_connect_unix("no_such_dir/x.sock") else |e| match e {
+        not_found => {
+            row = "not_found"
+            0
+        },
+        _ => {
+            row = "other"
+            0
+        },
+    }
+    print("unix-missing row={row} errno={os_error()}")
+    let cli = net_connect("127.0.0.1:{port}") else |e| {
+        return 3
+    }
+    let conn = net_accept(srv) else |e| {
+        return 3
+    }
+    net_deadline(cli, 30) else |e| {}
+    row = "bytes"
+    net_read(cli, 4) else |e| match e {
+        timeout => {
+            row = "timeout"
+            ""
+        },
+        _ => {
+            row = "other"
+            ""
+        },
+    }
+    print("budget row={row} errno={os_error()}")
+    net_close(conn) else |e| {}
+    row = "bytes"
+    net_read(cli, 4) else |e| match e {
+        closed => {
+            row = "closed"
+            ""
+        },
+        _ => {
+            row = "other"
+            ""
+        },
+    }
+    print("eof row={row} errno={os_error()}")
+    var n = 0
+    var last = "ok"
+    while n < 50 {
+        net_write(cli, "hello") else |e| match e {
+            closed => {
+                last = "closed"
+            },
+            io => {
+                last = "io"
+            },
+        }
+        if last != "ok" {
+            n = 50
+        }
+        n = n + 1
+    }
+    print("write-after-close row={last} errno={os_error()}")
+    net_close(cli) else |e| {}
+    net_close(srv) else |e| {}
+    0
+}
