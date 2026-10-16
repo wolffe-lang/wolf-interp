@@ -749,10 +749,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_signal_last"
         | "os_signal_realtime"
         | "os_signal_text"
-        | "os_wait_poll" => unsupported(format!(
-            "`{name}` is the s40 process trio; this wasm build has no processes to spawn, \
-             so the tier is declined rather than mocked"
-        )),
+        | "os_wait_poll" => unsupported(hosted_tier_decline(name)),
         // `[os.proc.inherit]` (s137, wolf-lang#235): the program named apart
         // from its arguments, and the descriptors it hands down.
         //
@@ -3944,6 +3941,24 @@ fn exec_replace(
     _dir: &std::path::Path,
 ) -> &'static str {
     "unsupported"
+}
+
+/// The wasm build's reason for declining a name of the hosted-only process
+/// and signal tier (is76, wolf-interp#245). The tier is more than the s40
+/// trio it began as: it reads this process's ids, its parent's, a signal's
+/// number on the host, and it signals and starts processes. A page has no
+/// host process for any of those, so the decline names the tier and the
+/// missing process, never "spawning" — `os_pid` spawns nothing, and until
+/// is76 the reason said it was "the s40 process trio" with "no processes to
+/// spawn" (ww42 saw it in all six cells of the site's gate).
+#[cfg(any(test, target_family = "wasm"))]
+pub(crate) fn hosted_tier_decline(name: &str) -> String {
+    format!(
+        "`{name}` belongs to the hosted-only process and signal tier ([os.proc], \
+         [os.signal]): this wasm build runs in a page, with no host process of its own to \
+         ask about, signal from or start another from, so the tier is declined rather \
+         than mocked"
+    )
 }
 
 /// s219 (`[os.proc.job]`): `os_spawn_job` past its argument shapes; the
