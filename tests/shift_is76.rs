@@ -145,19 +145,31 @@ fn a_count_past_127_is_the_value() {
          fn rint(x: int, n: int) -> int {\n    x >> n\n}\n\n\
          fn main() {\n    print(\"{r8(255, 200)} {l8(0, 200)} {r16(-5, 130)} {rint(-1, 1000)}\")\n}\n",
     );
-    assert_eq!(answer(&rec), ("exit(0)".into(), "0 0 -1 -1\n".into()), "{rec}");
+    assert_eq!(
+        answer(&rec),
+        ("exit(0)".into(), "0 0 -1 -1\n".into()),
+        "{rec}"
+    );
     let rec = run(
         "lost_127",
         "fn l64(x: u64, n: u64) -> u64 {\n    x << n\n}\n\n\
          fn main() {\n    print(\"{l64(2, 127)}\")\n}\n",
     );
-    assert_eq!(answer(&rec), ("trap(overflow)".into(), String::new()), "{rec}");
+    assert_eq!(
+        answer(&rec),
+        ("trap(overflow)".into(), String::new()),
+        "{rec}"
+    );
     let rec = run(
         "lost_200",
         "fn l8(x: u8, n: u8) -> u8 {\n    x << n\n}\n\n\
          fn main() {\n    print(\"{l8(1, 200)}\")\n}\n",
     );
-    assert_eq!(answer(&rec), ("trap(overflow)".into(), String::new()), "{rec}");
+    assert_eq!(
+        answer(&rec),
+        ("trap(overflow)".into(), String::new()),
+        "{rec}"
+    );
 }
 
 /// #251.2: a module item's initialiser is evaluated by the rule, and a
@@ -241,7 +253,11 @@ fn a_literal_term_computes_at_its_declared_type() {
         "plain_inter",
         "fn main() {\n    let x: u8 = 255 + 1 - 1\n    print(\"{x}\")\n}\n",
     );
-    assert_eq!(answer(&rec), ("trap(overflow)".into(), String::new()), "{rec}");
+    assert_eq!(
+        answer(&rec),
+        ("trap(overflow)".into(), String::new()),
+        "{rec}"
+    );
     let rec = run(
         "plain_ok",
         "fn main() {\n    let x: i8 = -128 >> 1\n    let y: int = -9223372036854775807 - 1\n    \
