@@ -323,7 +323,13 @@ impl ChildTable {
 }
 
 /// SIGKILL to the process group `pgid` (its leader's pid), through the
-/// POSIX `kill` utility of `sh`: `kill -s KILL -- -PGID`. True when `sh`
+/// POSIX `kill` utility of `sh`: `kill -s KILL -- -PGID`, then once more
+/// 50 ms later. The second send is for a child the group's members were
+/// forking while the first was delivered: a host need not hold a fork in
+/// flight against a group signal, and macOS did not — the job's `sleep`
+/// outlived the first send on the macOS runner (tier full run 39001823155,
+/// shard 2). The leader is still unreaped all the while (the caller reaps
+/// it after), so the group id stays this run's. True when the first send
 /// answered 0. No host but unix has groups; elsewhere nothing is sent.
 fn end_group(pgid: u32) -> bool {
     if !cfg!(unix) {
@@ -331,7 +337,9 @@ fn end_group(pgid: u32) -> bool {
     }
     Command::new("sh")
         .arg("-c")
-        .arg(format!("kill -s KILL -- -{pgid}"))
+        .arg(format!(
+            "kill -s KILL -- -{pgid} || exit 1; sleep 0.05; kill -s KILL -- -{pgid} 2>/dev/null; exit 0"
+        ))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
