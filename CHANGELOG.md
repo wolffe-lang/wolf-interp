@@ -1,9 +1,50 @@
 # Changelog
 
-## Unreleased
+## 0.1.54 — 2026-10-17
+
+THE FIFTY-FOURTH, the lupin half of wolf 0.2.31. **Pin unchanged:
+`294d626d` (wolf-lang v0.2.24).** Forty-one commits since 0.1.53: the
+lupin halves of two wolf-lang lanes, s241 (the group send; 5 commits)
+and s242 (the job wait; 6 commits), and is76 (lupin catches up with
+wolf 0.2.31's s237 and s239 and closes #251, #250, #249, #245; 30
+commits, two planted breaks, `e18b7c9` and `0787454`, and their revert,
+`21a7e94`, among them). Every lane was merged before the release lane
+(r36) began; r36 adds the version.
+
+- **What changes a program's answer here:** a plain shift by 128 or
+  more is the value's (it trapped), a set bit shifted past every bit
+  this machine holds traps (it printed 0), a module `const` whose plain
+  shift leaves its type is E0706 (it printed the wide value), and the
+  net family sets `os_error()` (it stayed 0). A run that ends in this
+  machine's own refusal now ends the processes it started (#249).
+- **The other lanes in wolf 0.2.31 have no lupin half of their own.**
+  wolf-lang's s239 (the readiness set before `main`) and s243 (the
+  signal hub before `main`) are the compiled runtime's start; lupin has
+  no reactor and no signal family, and is76 mirrors s239's
+  `os_error()`. s238 and s240 change no program (a test race; a note).
+- **The walk at this release:** 1002 files, 955 entries, 47 members;
+  760 reach `run`, 721 match, 94 dynamic, 64 conservatism, 72 out of
+  scope, 4 mismatch, every one filed. Unchanged from 0.1.53, entry for
+  entry (the pin did not move; s241's, s242's and is76's rows live in
+  `tests/` until a re-pin brings them into the walk; is76 checked every
+  vendored file's verdict, phase and stdout digest unchanged).
+- **Rulings now made** that the lanes implemented ahead of them, each as
+  implemented: #79 (s241's R1–R9; R8: lupin answers the shape rows and
+  refuses each well-formed call by name), #84 (s242's R1–R9; R9: lupin
+  answers `(-1, 0)` with no live child and refuses the poll by name
+  once one is live) and #77 A (the shift rule, which is76 mirrors).
+- **A row that now finishes:** wolf-std's
+  `tests/x/crypto/sha2/wycheproof_hkdf256_full.lu` runs to `exit(0)`
+  inside the 50,000,000-step budget, where 0.1.53 answered `unsupported`
+  at the budget; wolf-std's ledger records it after this release.
+- **lupin's archive still ships no std** (ruling #59 B(1)): a `lupin`
+  installed alone answers `unsupported` for `use std.…` with nothing
+  set; one placed beside a 0.2.31 `wolf` reads the `std/` wolf ships.
+
+### The mirrors
 
 - **The job wait — the mirror** (wolf-lang s242, #680; `[os.proc.poll]`,
-  `[os.proc.wait.note]` R9, a ruling owed). `os_wait_poll` resolves with
+  `[os.proc.wait.note]` R9, ruling #84). `os_wait_poll` resolves with
   its declared row (`{io}`). With no child left — none spawned, or every
   one reaped — it answers `(-1, 0)`, as every compiler machine does,
   decided without the host; with a child not yet reaped it is **refused
