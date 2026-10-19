@@ -79,6 +79,9 @@ fn observe_text(slug: &str, program: &str) -> serde_json::Value {
     record_of(&observe(&entry, &dir).stdout)
 }
 
+/// `LUPIN_CORE_REQUIRE=1`: a skip of a live row is a failure (unix only:
+/// windows has no live rows, so it never reads it).
+#[cfg(unix)]
 fn required() -> bool {
     std::env::var("LUPIN_CORE_REQUIRE").is_ok_and(|v| v == "1")
 }
