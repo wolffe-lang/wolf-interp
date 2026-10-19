@@ -164,6 +164,12 @@ def matrix_of(tier):
     def add(osid, shard):
         entries.append({"os": osid + "-latest", "osid": osid, "shard": shard})
 
+    # is77-plant (NEVER MERGE): a dispatch runs one job per OS, the new
+    # targets only (the test step below), so the planted break is cheap.
+    if tier == "partial":
+        for osid in ("ubuntu", "macos", "windows"):
+            add(osid, "1")
+        return entries, "ubuntu macos windows"
     for s in ("1", "2", "3", "ladder"):
         add("ubuntu", s)
     if tier in ("full", "partial"):

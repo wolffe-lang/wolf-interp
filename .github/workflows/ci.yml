@@ -273,6 +273,8 @@ jobs:
             args=$(ci/test-shards.sh args '${{ matrix.shard }}')
             if ci/test-shards.sh has-doc '${{ matrix.shard }}'; then doc=yes; else doc=no; fi
           fi
+          # is77-plant (NEVER MERGE): the new targets only, every one run.
+          args="--test signal_one_is77 --test signal_text_is77 --test core_is77 --test signal_listen_is77 --test group_s241 --no-fail-fast"; doc=no
           echo "shard ${{ matrix.shard }} runs: $args"
           cargo test $args 2>&1 | tee test-output.log
           if [ "$doc" = yes ]; then
