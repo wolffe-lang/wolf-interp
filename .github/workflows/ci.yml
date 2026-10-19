@@ -28,7 +28,9 @@ name: CI
 # Nothing a test checks changed: every test that ran before runs nightly on
 # trunk on every OS, and at tier release before every tag. What a merge no
 # longer proves is that the heavy targets, the corpus walk, the place-trace
-# identity and the bundle pass on windows: the nightly does.
+# identity and the bundle pass on windows: the nightly does, and a red
+# nightly opens an issue (label `nightly-red`; the `tier` job's last step)
+# that the next lane on wolf-interp owes before its own merge.
 #
 # THE TIERS (tl21, is78). The plan is `ci/tiers.py plan`, proven by
 # `ci/tiers-test.py` (the `plan-test` job), and the run's LAST job says
@@ -896,6 +898,15 @@ jobs:
   # superseded run keeps this job queued after its other jobs are cancelled,
   # which holds the concurrency group and leaves the newer run pending
   # behind it (pax run 38275354849).
+  #
+  # A red NIGHTLY opens an issue (is78, ruling #92 R2): the windows heavy
+  # shards and ladder run only there and at tier release, so the nightly's
+  # red must reach a lane, not wait in the Actions tab. `ci/nightly-red.py`
+  # names the red jobs and opens `nightly red: tier release on trunk`
+  # (label `nightly-red`), or comments on it while it is open; the next lane
+  # on wolf-interp owes it before its own merge. Only a `schedule` run: a
+  # lane's own red is its own to read. The job's token may write issues and
+  # read the run's jobs, nothing else.
   tier:
     name: tier ${{ needs.plan.outputs.tier || 'unplanned' }}
     if: ${{ !cancelled() }}
@@ -909,6 +920,10 @@ jobs:
       - dist-floor
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write
     steps:
       - uses: actions/checkout@v5
 
@@ -917,3 +932,12 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: python3 ci/tiers.py verdict
 
+      - name: a red nightly opens an issue
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+          TIER: ${{ needs.plan.outputs.tier || 'unplanned' }}
+        run: python3 ci/nightly-red.py
