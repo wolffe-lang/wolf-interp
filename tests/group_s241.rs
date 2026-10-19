@@ -6,9 +6,13 @@
 //! `tests/fixtures/group_s241/` holds wolf-lang s241's corpus row
 //! (`group_rows.lu`) and two of its fixtures (`table.lu`, `pgid.lu`), byte
 //! for byte, so the answers here are the ones the compiler's gate
-//! (`group_lanes.rs`) asserts of lupin. The gate's two other programs
-//! (`job.lu`, `all.lu`) start children before their first refused call,
-//! so they are run only by that gate, inside its throwaway container.
+//! (`group_lanes.rs`) asserts of lupin. The row is wolf-lang `98d0d16b`'s
+//! (is77): s246 (wolf-lang#787) moved its `text_zero` line out — 0 is a
+//! signal with words since, so it is no longer a shape row — to the
+//! per-machine witness `tests/signal_text_is77.rs` mirrors. The gate's
+//! two other programs (`job.lu`, `all.lu`) start children before their
+//! first refused call, so they are run only by that gate, inside its
+//! throwaway container.
 //!
 //! **Nothing here sends a signal or moves a process.** This machine
 //! answers each call's SHAPE rows and, on windows, the `unsupported` row;
