@@ -1136,15 +1136,9 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // `[os.signal.send.all]`, `[os.term.group]`, `[os.signal.host]`,
         // `[os.signal.text]`): the SHAPE is every machine's (`invalid`: a
         // group not above 1 or past a pid's width, a group to move into
-        // below 0 or past it, a meaning `[os.signal.send]` refuses); then
-        // the HOST (windows `unsupported`); then this machine's limit by
-        // name (ruling #79 R8). s246 (wolf-lang#787, wolf-interp#262): a
-        // text's meaning may be 0 — signal 0, whose words are
-        // `strsignal(0)`'s, glibc's `Unknown signal 0` — so 0 passes the
-        // shape and is refused by name with the rest: the words are the C
-        // library's, which this machine cannot ask, and a table of its own
-        // would be a guess at the host (docs/approximation-contract.md
-        // §6.20).
+        // below 0 or past it, a meaning `[os.signal.send]` refuses, a text
+        // of 0); then the HOST (windows `unsupported`); then this machine's
+        // limit by name (ruling #79 R8).
         #[cfg(not(target_family = "wasm"))]
         "os_signal_send_group"
         | "os_signal_send_all"
@@ -1182,7 +1176,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                     let Some(m) = int(0) else {
                         return unsupported("`os_signal_text` takes a meaning".to_owned());
                     };
-                    sig_send_shape(m, true)
+                    sig_send_shape(m, false)
                 }
                 _ => true,
             };
@@ -4147,9 +4141,8 @@ fn host_last_signal() -> Option<i128> {
 }
 
 /// s241 (`[os.signal.send]`, `[os.signal.host]`): the SHAPE of a sending
-/// call's meaning (and `os_signal_text`'s, which takes 0 since s246; with
-/// `zero` false, the one-meaning calls' of s246): 0 where `zero` allows
-/// it, one of the 28, or `-N` for the host's signal `N`,
+/// call's meaning (and, with `zero` false, `os_signal_text`'s): 0 where
+/// `zero` allows it, one of the 28, or `-N` for the host's signal `N`,
 /// `1 <= N <=` the host's last. Windows has no numbers: any `-N` is past
 /// the shape there (the call answers `unsupported`).
 #[cfg(not(target_family = "wasm"))]
