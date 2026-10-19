@@ -1,83 +1,110 @@
 name: CI
 
-# THE SLOT BUDGET (is75). The org is on GitHub's free plan: 20 concurrent
-# jobs org-wide, 5 of them macOS, public repos included. The full matrix
-# below is 17 jobs, 12 of them long (about 21 slot-hours and 3 h a run;
-# ci/is75/before.tsv), and on 2026-10-06 four PR runs held all 20 slots for
-# hours while every other repo's CI queued. So the EVENT picks the matrix:
+# THE SLOT BUDGET (is75, is78). The org is on GitHub's free plan: 20
+# concurrent jobs org-wide, 5 of them macOS, public repos included, shared
+# by every repo. Before is75 every run was the whole matrix (17 jobs, 12 of
+# them long, about 21 slot-hours; ci/is75/before.tsv); before is78 every
+# merge still was: 20 jobs and about 1,445 job-minutes a run, 690 of them
+# the four windows heavy jobs at 150-200 minutes each (ci/is78/before.tsv),
+# so one lane's merge held the org's slots for over three hours. So the
+# EVENT picks the matrix (ruling #92 R2):
 #
-#   push to trunk, the nightly `schedule`, `workflow_dispatch`
-#       -> the FULL matrix: ubuntu, macOS and windows, three test shards
-#          and the ladder each, exactly as before is75.
-#   pull_request carrying the `full-matrix` label
-#       -> the FULL matrix, on demand (release lanes, before tagging).
+#   the nightly `schedule`; `workflow_dispatch -f tier=release`; a pull
+#   request carrying the `release-matrix` label (a release lane, before
+#   its tag)
+#       -> tier RELEASE: ubuntu, macOS and windows, three test shards and
+#          the ladder each, and the windows smoke. Every test on every OS.
+#   a push to trunk; `workflow_dispatch`; a pull request carrying the
+#   `full-matrix` label (every lane, before its merge)
+#       -> tier FULL: ubuntu's and macOS's three shards and ladder, and ONE
+#          windows `smoke` (below). Windows's heavy shards and ladder are
+#          the nightly's and the release tier's.
 #   any other pull_request
-#       -> ubuntu's three shards and ladder in full, plus ONE windows and
-#          ONE macOS `smoke` job (the build, fmt, clippy, every test target
-#          except the heavy ones SMOKE_OMITS names, and the fast ladder
-#          rungs), each capped at 30 minutes.
+#       -> tier PR: ubuntu's three shards and ladder in full, plus ONE
+#          windows and ONE macOS `smoke` job (the build, fmt, clippy, every
+#          test target except the heavy ones SMOKE_OMITS names, and the fast
+#          ladder rungs), each capped at 30 minutes.
 #
-# Nothing a test checks changed: every test that ran before runs on every
-# trunk push and nightly on every OS. What a PR run no longer proves is that
-# the heavy targets pass on windows and macOS; the trunk push after the
-# merge does, and the label buys it before the merge.
+# Nothing a test checks changed: every test that ran before runs nightly on
+# trunk on every OS, and at tier release before every tag. What a merge no
+# longer proves is that the heavy targets, the corpus walk, the place-trace
+# identity and the bundle pass on windows: the nightly does.
 #
-# THE TIERS (tl21). The plan is `ci/tiers.py plan`, proven by
+# THE TIERS (tl21, is78). The plan is `ci/tiers.py plan`, proven by
 # `ci/tiers-test.py` (the `plan-test` job), and the run's LAST job says
 # which tier it was and whether it held:
 #
-#   tier full     the full matrix, every job.
+#   tier release  every job, every entry: the whole matrix of before is75,
+#                 and the windows smoke.
+#   tier full     every job; ubuntu's and macOS's entries and the windows
+#                 smoke.
 #   tier pr       the pull-request leg above, unchanged.
 #   tier noop     the plan and the verdict, nothing else: a pull request
 #                 whose changed paths are ALL prose (the CHANGELOG,
 #                 CONTRIBUTING, the lane notes under ci/, the documents no
 #                 test reads; never README.md, docs/manual/ or docs/repl.md,
-#                 which tests read), or a label other than `full-matrix`.
+#                 which tests read); a label other than `full-matrix` and
+#                 `release-matrix`; `full-matrix` added beside
+#                 `release-matrix`, whose run covers it.
 #   tier partial  a `workflow_dispatch` naming jobs (`-f jobs=plan-test`):
-#                 a planted break needs one job, not three hours.
+#                 a planted break needs one job, not three hours. Naming
+#                 `test`, `-f entries="windows/2 ubuntu/ladder"` keeps only
+#                 those entries (is78; empty: tier release's).
 #
 # A pull request with a changed path no rule of `ci/tiers.py` names, or
-# whose change cannot be read, runs the full matrix: what is not understood
-# never shrinks a run. The `tier` job fails unless the plan succeeded, the
-# jobs it chose are that tier's, every one of them succeeded and every
-# other job was skipped; so a green `tier full` is "every job, every OS,
-# green", and a green `tier pr` is never that.
+# whose change cannot be read, runs tier full: what is not understood never
+# shrinks a run. The `tier` job fails unless the plan succeeded, the jobs
+# it chose are that tier's, every one of them succeeded and every other job
+# was skipped; so a green `tier release` is "every job, every OS, green", a
+# green `tier full` is "every job, every ubuntu and macOS entry and the
+# windows smoke, green", and a green `tier pr` is neither.
 #
-# THE MERGE RULE: a lane's PR merges only with a green `tier full` at its
-# head. Add the `full-matrix` label once the head is the one to merge
-# (never when opening the PR: `opened` and `labeled` would start two full
-# runs and the second would cancel the first). `lane-audit.sh` reads the
-# job's name.
+# THE MERGE RULE: a lane's PR merges only with a green `tier full` (or
+# `tier release`, which runs everything `tier full` does) at its head, and
+# a release lane tags only a head with a green `tier release`. Add the
+# label once the head is the one to merge (never when opening the PR:
+# `opened` and `labeled` would start two runs and the second would cancel
+# the first). `lane-audit.sh` reads the job's name.
 on:
   push:
     branches: [trunk, main]
   pull_request:
-    # `labeled` so adding `full-matrix` starts the full run at once; any
-    # other label's run is a no-op (the `plan` job alone, then nothing).
+    # `labeled` so adding `full-matrix` or `release-matrix` starts that
+    # tier's run at once; any other label's run is a no-op (the `plan` job
+    # alone, then nothing).
     types: [opened, synchronize, reopened, labeled]
   schedule:
-    # Nightly, full matrix, on trunk.
+    # Nightly, tier release, on trunk (is78: the windows heavy shards and
+    # ladder run here and at the release tier, not at the merge).
     - cron: "23 4 * * *"
   workflow_dispatch:
     inputs:
       jobs:
-        description: "the jobs to run (job ids, space-separated; a job and the jobs it needs); empty: the full matrix"
+        description: "the jobs to run (job ids, space-separated; a job and the jobs it needs); empty: a tier"
+        type: string
+        default: ""
+      tier:
+        description: "with no jobs: full (the default; the merge gate) or release (every job on every OS)"
+        type: string
+        default: ""
+      entries:
+        description: "with jobs naming test: the test entries to run, os/shard, space-separated (windows/2 ubuntu/ladder macos/smoke); empty: tier release's"
         type: string
         default: ""
 
 # PR runs: one group per branch and per mode, cancel-in-progress, so a push
-# to a lane branch frees its old slots. The full-matrix run and the reduced
-# run live in SEPARATE groups: adding the label must not cancel the reduced
-# run at the same head (lane-audit.sh reads a cancelled run at the head as a
-# FAIL), and an unrelated label's no-op run gets a group of its own so it
-# cancels nothing. Every other run (a trunk push, the nightly, a dispatch)
+# to a lane branch frees its old slots. The release, full and reduced runs
+# live in SEPARATE groups: adding a label must not cancel the run of another
+# tier at the same head (lane-audit.sh reads a cancelled run at the head as
+# a FAIL), and a no-op run (an unrelated label, or `full-matrix` added
+# beside `release-matrix`) gets a group of its own so it cancels nothing. Every other run (a trunk push, the nightly, a dispatch)
 # gets a group of its OWN run id (tl21): never cancelled, and never replaced
 # while it waits. In the one group per ref they shared before, GitHub keeps
 # a single pending run: a trunk push queued behind a running one is dropped
 # when the next arrives, and each trunk push's full run is the coverage that
 # merge is owed.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}-{1}', github.head_ref, (github.event.action == 'labeled' && github.event.label.name != 'full-matrix') && format('noop-{0}', github.run_id) || (contains(github.event.pull_request.labels.*.name, 'full-matrix') && 'full' || 'reduced')) || format('{0}-{1}', github.event_name, github.run_id) }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}-{1}', github.head_ref, (github.event.action == 'labeled' && (github.event.label.name != 'full-matrix' && github.event.label.name != 'release-matrix' || github.event.label.name == 'full-matrix' && contains(github.event.pull_request.labels.*.name, 'release-matrix'))) && format('noop-{0}', github.run_id) || (contains(github.event.pull_request.labels.*.name, 'release-matrix') && 'release' || contains(github.event.pull_request.labels.*.name, 'full-matrix') && 'full' || 'reduced')) || format('{0}-{1}', github.event_name, github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -106,6 +133,7 @@ jobs:
       jobs: ${{ steps.plan.outputs.jobs }}
       matrix: ${{ steps.plan.outputs.matrix }}
       shard_oses: ${{ steps.plan.outputs.shard_oses }}
+      ladder_oses: ${{ steps.plan.outputs.ladder_oses }}
     steps:
       # Depth 2: a pull request's run checks out its merge commit, and the
       # plan reads that commit against its first parent.
@@ -120,6 +148,8 @@ jobs:
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           IN_JOBS: ${{ inputs.jobs }}
+          IN_TIER: ${{ inputs.tier }}
+          IN_ENTRIES: ${{ inputs.entries }}
         run: python3 ci/tiers.py plan --merge --github-output "$GITHUB_OUTPUT"
 
   # The planner can say no: its tiers by event, its classes by path, the
@@ -166,10 +196,11 @@ jobs:
   # windows smoke grew to 19 m 40 s and was cancelled at it twice with
   # nothing failed (wolf-interp#215, #226), so r32 raised it.
   #
-  # The entries come from `plan` (is75): on a full run, os × {1, 2, 3,
-  # ladder} for ubuntu, macOS and windows — the twelve entries and job names
-  # of before —
-  # and on a PR run ubuntu's four plus `smoke` on macOS and windows.
+  # The entries come from `plan` (is75, is78): on a release run, os × {1,
+  # 2, 3, ladder} for ubuntu, macOS and windows — the twelve entries and job
+  # names of before — and the windows smoke; on a full run ubuntu's and
+  # macOS's four and the windows smoke; on a PR run ubuntu's four plus
+  # `smoke` on macOS and windows.
   #
   # Measured whole-job times, kept from before the matrix moved into `plan`:
   # linux at 0cfc0cf (job 108596027245): 5,691 / 5,654 / 5,137 s of
@@ -677,8 +708,9 @@ jobs:
   # double in a copy of the artifacts and passes only if both are refused by
   # name, so this gate is seen red on every run.
   #
-  # On a PR run only ubuntu is sharded (is75), so the plan names the OSes to
-  # check; on every full run it is all three, as before.
+  # On a PR run only ubuntu is sharded (is75) and on a full run ubuntu and
+  # macOS (is78), so the plan names the OSes to check; on a release run it
+  # is all three, as every full run was before is78.
   shard-coverage:
     name: shards cover the suite
     runs-on: ubuntu-latest
@@ -706,30 +738,41 @@ jobs:
   # diff below names the exact files that differ, and the per-OS job logs
   # above carry the full hash listings.
   #
-  # Full runs only (is75): a PR run exports the bundle on ubuntu alone, and
-  # one manifest has nothing to be identical to. Skipped by design there.
+  # Full and release runs only (is75): a PR run exports the bundle on ubuntu
+  # alone, and one manifest has nothing to be identical to. Skipped by design
+  # there. The plan names the OSes whose ladder ran (is78: ubuntu and macOS
+  # on a full run, all three on a release run); read with a default of all
+  # three, so an output that went missing compares more, never less.
   bundle-identical:
     name: bundle identical across OSes
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [plan, test]
     if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'bundle-identical')
+    env:
+      LADDER_OSES: ${{ needs.plan.outputs.ladder_oses || 'ubuntu macos windows' }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: bundle-manifest-*
-      - name: compare the three manifests byte-for-byte
+      - name: compare the manifests byte-for-byte
         run: |
           set -euxo pipefail
           ls -R
-          for os in macos-latest windows-latest; do
+          set -- $LADDER_OSES
+          if [ "${1:-}" != ubuntu ] || [ "$#" -lt 2 ]; then
+            echo "::error::the ladder OSes are '$LADDER_OSES': ubuntu and at least one other, or there is nothing to compare"
+            exit 1
+          fi
+          shift
+          for os in "$@"; do
             if ! diff bundle-manifest-ubuntu-latest/MANIFEST.json \
-                      "bundle-manifest-$os/MANIFEST.json"; then
+                      "bundle-manifest-$os-latest/MANIFEST.json"; then
               echo "::error::the $os bundle differs from the linux one — a normalization regression; the per-file hashes above name the culprits"
               exit 1
             fi
           done
-          echo "linux, macOS and windows exported hash-identical bundles:"
+          echo "the bundles of $LADDER_OSES are hash-identical:"
           grep '"bundle_sha256"' bundle-manifest-ubuntu-latest/MANIFEST.json
 
   # The independence doctrine as a CI law: no wolf-lang code, ever.
@@ -873,3 +916,4 @@ jobs:
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: python3 ci/tiers.py verdict
+
