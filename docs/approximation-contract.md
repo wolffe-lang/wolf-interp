@@ -1380,3 +1380,34 @@ buffer this machine never holds (§6.15's exact-capacity rule, which
 read ends the program or the proc that made it, so the lost bytes are
 observable only from a second proc reading the same descriptor afterwards.
 `fs_fstat` and `fs_read_dir` are idempotent and unaffected.
+
+### 6.20 Signal 0's words are refused by name, as every signal's are (is77, 0.1.55)
+
+wolf 0.2.33 (s246, wolf-lang#787) made 0 a meaning of `os_signal_text`:
+signal 0, whose words are `strsignal(0)`'s — glibc's `Unknown signal 0`
+(what GNU `kill -t 0` and `kill -L` print for row 0), macOS's `Unknown
+signal: 0`. Until then 0 was outside the call's shape and every machine
+answered `invalid`, this one included (lupin 0.1.54, measured on its
+archive on linux and macOS by is77). wolf-interp#262 asked this machine to
+accept 0 in the shape and then either answer as the host does or refuse by
+name. It refuses by name, for the reason it refuses every other meaning's
+words: **the words are the host C library's, and this machine cannot ask
+the C library.** std has no `strsignal`, and lupin forbids `unsafe`, so
+it has no way to call the C library's.
+
+The other answer would need a table of this machine's own words for 0, and
+that table would be a guess at the host rather than a reading of it. The
+words differ by C library — glibc, musl and macOS each word 0 differently
+(wolf-std#76 records musl's) — and a reference machine that printed the
+glibc words on a musl host would be wrong in exactly the place the clause
+says "the host's". The refusal costs nothing a program can rely on: a
+program that prints `os_signal_text(0)` has host-dependent stdout on every
+machine, and a refusal is never a disagreement in the differential.
+
+So, in order: 0 passes the shape (it is no longer `invalid`); windows
+answers the `unsupported` row after the shape, as for every meaning
+(`[os.signal.platform]`, s246); linux and macOS refuse the call by name,
+naming `os_signal_text` and `strsignal`. `tests/signal_text_is77.rs` holds
+the compiler's witness (`text_zero.lu`, byte for byte) to that, and
+`tests/group_s241.rs` carries the compiler's corpus row as s246 left it,
+with `text_zero` moved out of the one-truth shape rows.
