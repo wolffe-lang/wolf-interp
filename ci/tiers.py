@@ -3,38 +3,50 @@
 
     ci/tiers.py plan [--event E] [--action A] [--label L] [--labels L1,L2]
                      [--merge [--head-sha SHA] | --paths-from FILE]
-                     [--jobs "J ..."] [--repo DIR]
+                     [--jobs "J ..."] [--entries "OS/SHARD ..."]
+                     [--tier T] [--repo DIR]
                      [--github-output FILE] [--json]
     ci/tiers.py verdict        (NEEDS: the `tier` job's `toJSON(needs)`)
     ci/tiers.py classify PATH...
 
 `plan` options also read an environment variable of their name in capitals
-(EVENT, ACTION, LABEL, LABELS, HEAD_SHA, IN_JOBS), which is how the
-workflow's `plan` job passes the event in.
+(EVENT, ACTION, LABEL, LABELS, HEAD_SHA, IN_JOBS, IN_ENTRIES, IN_TIER),
+which is how the workflow's `plan` job passes the event in.
 
 THE TIERS. A job is a job of .github/workflows/ci.yml other than `plan`
-and `tier`.
+and `tier`. The `test` job's entries are an OS and a shard: `1`, `2`, `3`
+(the test shards), `ladder` (the ladder and the bundle) or `smoke` (is75).
 
-  full     every job: the three-OS matrix (three test shards and the
-           ladder on ubuntu, macOS and windows), shard coverage, the
-           bundle compared across OSes, independence, dist floor, the
-           planner's own test. A push to trunk, the nightly `schedule`, a
-           `workflow_dispatch` with no `jobs` input, a pull request
-           carrying the `full-matrix` label; and a pull request with a
-           changed path no rule below names, or whose changed paths
-           cannot be read: what is not understood never shrinks a run.
+  release  every job, and every entry: three test shards and the ladder on
+           ubuntu, macOS and windows, and the windows smoke; shard
+           coverage and the bundle compared across all three OSes. The
+           nightly `schedule`, a `workflow_dispatch` with `-f tier=release`,
+           and a pull request carrying the `release-matrix` label (is78,
+           ruling #92 R2: the release lane's tier, before any tag).
+  full     every job; the entries are ubuntu's and macOS's three shards
+           and ladder, and the windows smoke: the windows heavy shards and
+           ladder are the nightly's and release's, not the merge's (is78).
+           A push to trunk, a `workflow_dispatch` with no `jobs` input (or
+           `-f tier=full`), a pull request carrying the `full-matrix` label;
+           and a pull request with a changed path no rule below names, or
+           whose changed paths cannot be read: what is not understood never
+           shrinks a run.
   pr       any other pull-request run: is75's reduced leg, unchanged
            (ubuntu's shards and ladder, one macOS and one windows smoke,
            shard coverage, independence, dist floor), and the planner's
            test. `bundle-identical` is the one job it leaves out (one
            manifest has nothing to be identical to).
   noop     nothing but the plan and the verdict: a pull request whose
-           changed paths are ALL prose, and a `labeled` event for a label
-           other than `full-matrix`.
+           changed paths are ALL prose; a `labeled` event for a label that
+           is neither `full-matrix` nor `release-matrix`; and the
+           `full-matrix` label added beside `release-matrix`, whose run
+           already covers it.
   partial  a `workflow_dispatch` that names jobs (`-f jobs="plan-test"`):
-           those jobs alone. A planted break needs one job, not three
-           hours. It is never `full`, whatever it names: `tier full` green
-           says every job ran.
+           those jobs alone, and, when they include `test`, tier release's
+           entries, or only those `-f entries="windows/2 ubuntu/ladder"`
+           names (is78: a plant on one shard needs one runner, not
+           thirteen). It is never `full` or `release`, whatever it names:
+           a green `tier full` says every job ran.
 
 PROSE IS NARROW (RULES, below): the CHANGELOG, CONTRIBUTING, the lane
 notes under ci/, and the engineering documents no test reads. README.md,
@@ -50,10 +62,12 @@ job was skipped; 1 otherwise. GitHub leaves an EMPTY output out of
 `needs`, so each is read with a default.
 
 `plan` prints `tier=`, `jobs=` (a JSON list), `matrix=` (the `test` job's
-entries) and `shard_oses=`, to --github-output (appended) and to standard
-output; with --json, one JSON object. The reasons, one line per changed
-path, go to standard error, so a run's log says why it has the jobs it
-has. Exit 0; 2 on a usage error.
+entries), `shard_oses=` (the OSes whose three shards `shard-coverage`
+checks) and `ladder_oses=` (the OSes whose bundles `bundle-identical`
+compares), to --github-output (appended) and to standard output; with
+--json, one JSON object. The reasons, one line per changed path, go to
+standard error, so a run's log says why it has the jobs it has. Exit 0;
+2 on a usage error.
 """
 import argparse
 import json
@@ -65,10 +79,19 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKFLOW = ".github/workflows/ci.yml"
 FULL_LABEL = "full-matrix"
+RELEASE_LABEL = "release-matrix"
 NOT_SELECTABLE = ("plan", "tier")
 # The jobs a pull-request run leaves to the full matrix.
 PR_SKIPS = ("bundle-identical",)
-TIERS = ("full", "pr", "noop", "partial")
+TIERS = ("release", "full", "pr", "noop", "partial")
+# What `-f tier=` may ask for (with no `jobs`).
+DISPATCH_TIERS = ("full", "release")
+# The `test` job's entries, in the matrix's order: every OS's three test
+# shards and its ladder, then the smokes. `ENTRIES` is every entry any tier
+# runs, which is what `--entries` may name.
+OSES = ("ubuntu", "macos", "windows")
+SHARDS = ("1", "2", "3", "ladder")
+ENTRIES = ["%s/%s" % (o, s) for o in OSES for s in SHARDS] + ["macos/smoke", "windows/smoke"]
 
 PROSE, PR, FULL = "prose", "pr", "full"
 
@@ -149,31 +172,44 @@ def workflow_jobs():
 
 def jobs_of(tier, every):
     """The jobs a tier runs, of `every` selectable job, in order."""
-    if tier == "full":
+    if tier in ("release", "full"):
         return list(every)
     if tier == "pr":
         return [j for j in every if j not in PR_SKIPS]
     return []
 
 
-def matrix_of(tier):
-    """The `test` job's entries (is75): os x {1, 2, 3, ladder} on a full
-    run; ubuntu's four and a smoke on macOS and windows otherwise."""
-    entries = []
+def matrix_of(tier, entries=None):
+    """-> (the `test` job's entries, the OSes whose three shards ran, the
+    OSes whose ladder ran). By tier:
 
-    def add(osid, shard):
-        entries.append({"os": osid + "-latest", "osid": osid, "shard": shard})
+      release, partial  os x {1, 2, 3, ladder} for ubuntu, macOS and
+                        windows (is75's twelve, in its order), then the
+                        windows smoke;
+      full              ubuntu's and macOS's four, then the windows smoke
+                        (is78: windows's heavy shards and ladder are the
+                        nightly's and release's);
+      pr, noop          ubuntu's four, then a smoke on macOS and windows
+                        (is75's six).
 
-    for s in ("1", "2", "3", "ladder"):
-        add("ubuntu", s)
-    if tier in ("full", "partial"):
-        for osid in ("macos", "windows"):
-            for s in ("1", "2", "3", "ladder"):
-                add(osid, s)
-        return entries, "ubuntu macos windows"
-    add("macos", "smoke")
-    add("windows", "smoke")
-    return entries, "ubuntu"
+    `entries` (a partial run's `--entries`) keeps only those, in this
+    order; `ci/tiers.py plan` has refused a name that is no entry."""
+    if tier in ("release", "partial"):
+        heavy, smokes = OSES, ("windows",)
+    elif tier == "full":
+        heavy, smokes = ("ubuntu", "macos"), ("windows",)
+    else:
+        heavy, smokes = ("ubuntu",), ("macos", "windows")
+    names = ["%s/%s" % (o, s) for o in heavy for s in SHARDS] + ["%s/smoke" % o for o in smokes]
+    if entries:
+        names = [n for n in ENTRIES if n in entries]
+    matrix = []
+    for n in names:
+        osid, shard = n.split("/")
+        matrix.append({"os": osid + "-latest", "osid": osid, "shard": shard})
+    shard_oses = [o for o in OSES if all("%s/%s" % (o, s) in names for s in ("1", "2", "3"))]
+    ladder_oses = [o for o in OSES if "%s/ladder" % o in names]
+    return matrix, " ".join(shard_oses), " ".join(ladder_oses)
 
 
 def merge_paths(repo, head_sha):
@@ -203,20 +239,35 @@ def plan(a):
         if j not in every:
             die("PR_SKIPS names %s, which is no job of %s" % (j, WORKFLOW))
     log = []
+    entries = (a.entries or "").split()
 
     def result(tier, chosen=None):
         chosen = jobs_of(tier, every) if chosen is None else [j for j in every if j in chosen]
-        matrix, shard_oses = matrix_of(tier)
-        return {"tier": tier, "jobs": chosen, "matrix": matrix, "shard_oses": shard_oses, "log": log}
+        matrix, shard_oses, ladder_oses = matrix_of(tier, entries if tier == "partial" else None)
+        return {"tier": tier, "jobs": chosen, "matrix": matrix, "shard_oses": shard_oses,
+                "ladder_oses": ladder_oses, "log": log}
 
     labels = [x for x in (a.labels or "").split(",") if x]
     asked = (a.jobs or "").split()
     ev = a.event or "workflow_dispatch"
     log.append("event=%s action=%s label=%s labels=%s" % (ev, a.action or "-", a.label or "-", ",".join(labels) or "-"))
 
-    if ev == "pull_request" and a.action == "labeled" and a.label != FULL_LABEL:
-        log.append("a label other than %s was added: noop" % FULL_LABEL)
+    if ev == "pull_request" and a.action == "labeled" and a.label not in (FULL_LABEL, RELEASE_LABEL):
+        log.append("a label other than %s and %s was added: noop" % (FULL_LABEL, RELEASE_LABEL))
         return result("noop")
+    if ev == "pull_request" and a.action == "labeled" and a.label == FULL_LABEL and RELEASE_LABEL in labels:
+        log.append("%s was added beside %s, whose run covers it: noop" % (FULL_LABEL, RELEASE_LABEL))
+        return result("noop")
+    if ev == "workflow_dispatch":
+        if asked and a.tier:
+            die("--jobs and --tier: a dispatch names jobs (partial) or a tier, not both")
+        if entries and "test" not in asked:
+            die("--entries names the test job's entries; --jobs must name test")
+        for e in entries:
+            if e not in ENTRIES:
+                die("--entries: %s is no entry of the test job (the entries: %s)" % (e, " ".join(ENTRIES)))
+        if a.tier and a.tier not in DISPATCH_TIERS:
+            die("--tier: %s is no tier a dispatch can ask for (%s)" % (a.tier, ", ".join(DISPATCH_TIERS)))
     if ev == "workflow_dispatch" and asked:
         for j in asked:
             if j not in every:
@@ -225,11 +276,20 @@ def plan(a):
             for n in needs[j]:
                 if n not in NOT_SELECTABLE and n not in asked:
                     die("--jobs: %s needs %s; name both" % (j, n))
-        log.append("dispatch naming %s: partial" % " ".join(asked))
+        log.append("dispatch naming %s%s: partial" % (" ".join(asked), " (entries %s)" % " ".join(entries) if entries else ""))
         return result("partial", asked)
+    if ev == "workflow_dispatch" and a.tier:
+        log.append("dispatch asking for tier %s: %s" % (a.tier, a.tier))
+        return result(a.tier)
+    if ev == "schedule":
+        log.append("the nightly: release")
+        return result("release")
     if ev != "pull_request":
         log.append("%s: full" % ev)
         return result("full")
+    if RELEASE_LABEL in labels:
+        log.append("the %s label: release" % RELEASE_LABEL)
+        return result("release")
     if FULL_LABEL in labels:
         log.append("the %s label: full" % FULL_LABEL)
         return result("full")
@@ -322,6 +382,8 @@ def main():
     ap.add_argument("--labels", default=env("LABELS"))
     ap.add_argument("--head-sha", default=env("HEAD_SHA"))
     ap.add_argument("--jobs", default=env("IN_JOBS"))
+    ap.add_argument("--entries", default=env("IN_ENTRIES"))
+    ap.add_argument("--tier", default=env("IN_TIER"))
     ap.add_argument("--merge", action="store_true")
     ap.add_argument("--paths-from")
     ap.add_argument("--repo")
@@ -332,10 +394,10 @@ def main():
     for line in r["log"]:
         print("tiers: " + line, file=sys.stderr)
     if a.json:
-        print(json.dumps({k: r[k] for k in ("tier", "jobs", "matrix", "shard_oses")}))
+        print(json.dumps({k: r[k] for k in ("tier", "jobs", "matrix", "shard_oses", "ladder_oses")}))
         return
-    out = "tier=%s\njobs=%s\nmatrix=%s\nshard_oses=%s\n" % (
-        r["tier"], json.dumps(r["jobs"]), json.dumps(r["matrix"], separators=(",", ":")), r["shard_oses"])
+    out = "tier=%s\njobs=%s\nmatrix=%s\nshard_oses=%s\nladder_oses=%s\n" % (
+        r["tier"], json.dumps(r["jobs"]), json.dumps(r["matrix"], separators=(",", ":")), r["shard_oses"], r["ladder_oses"])
     sys.stdout.write(out)
     if a.github_output:
         with open(a.github_output, "a", encoding="utf-8") as f:
