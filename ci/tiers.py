@@ -197,7 +197,7 @@ def matrix_of(tier, entries=None):
     if tier in ("release", "partial"):
         heavy, smokes = OSES, ("windows",)
     elif tier == "full":
-        heavy, smokes = ("ubuntu", "macos"), ("windows",)
+        heavy, smokes = OSES, ("windows",)  # PLANT (is78): the merge gate keeps the windows heavy entries
     else:
         heavy, smokes = ("ubuntu",), ("macos", "windows")
     names = ["%s/%s" % (o, s) for o in heavy for s in SHARDS] + ["%s/smoke" % o for o in smokes]

@@ -75,7 +75,7 @@ def main():
 
     issues = json.loads(gh("issue", "list", "-R", repo, "--state", "open", "--label", LABEL,
                            "--limit", "100", "--json", "number,title") or "[]")
-    same = [i["number"] for i in issues if i.get("title") == TITLE]
+    same = []  # PLANT (is78): no dedupe, every red night opens another issue
     if same:
         gh("issue", "comment", str(same[0]), "-R", repo, "--body", body)
         print("nightly-red: commented on #%d (%s)" % (same[0], TITLE))
