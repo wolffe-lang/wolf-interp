@@ -269,6 +269,14 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // `try_wait` sees an end but never a stop, and this machine has no
     // `unsafe` for a `waitpid` with `WUNTRACED`.
     "os_wait_poll",
+    // s246 (wolf-lang#783, #784; ruling #88 R1 A, R2 A; wolf-interp#261):
+    // one meaning's disposition in the sending shape, and the end by a
+    // signal. The names resolve and their SHAPE and HOST rows are
+    // answered; a well-formed call is refused by name — std has no
+    // `sigaction` and no `raise`, and this machine has no `unsafe`.
+    "os_signal_ignore_one",
+    "os_signal_default_one",
+    "os_exit_signal",
     // s236 (wolf-lang#633, #742; `[os.proc.ids]`, `[os.proc.ids.set]`): who
     // the process runs as, and the drop. The names resolve and their
     // SHAPE and HOST rows are answered; a well-formed call on a host that
@@ -749,7 +757,10 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_signal_last"
         | "os_signal_realtime"
         | "os_signal_text"
-        | "os_wait_poll" => unsupported(hosted_tier_decline(name)),
+        | "os_wait_poll"
+        | "os_signal_ignore_one"
+        | "os_signal_default_one"
+        | "os_exit_signal" => unsupported(hosted_tier_decline(name)),
         // `[os.proc.inherit]` (s137, wolf-lang#235): the program named apart
         // from its arguments, and the descriptors it hands down.
         //
@@ -1200,6 +1211,58 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 "os_set_pgid" => "[os.term.group]",
                 "os_signal_text" => "[os.signal.text]",
                 _ => "[os.signal.host]",
+            };
+            unsupported(format!(
+                "`{name}` {why}, and this machine admits no `unsafe` ({clause}, \
+                 [os.signal.group.note] R8)"
+            ))
+        }
+        // s246 (wolf-lang#783, #784; `[os.signal.disp.one]`,
+        // `[os.signal.exit]`; ruling #88 R1 A, R2 A; wolf-interp#261): the
+        // SHAPE is every machine's — the sending shape (`[os.signal.send]`:
+        // one bit of the table's 28, or a host number `-N`), never 0, and
+        // for the two dispositions never `KILL` or `STOP`, by bit or by
+        // number, which no process can catch or ignore: `invalid`. Then the
+        // HOST (windows `unsupported`); then this machine's limit, by name
+        // (ruling #79 R8): a disposition is `sigaction`, and an end by a
+        // signal is a `sigaction` back to the default and a `raise(3)`;
+        // std has neither, and this machine admits no `unsafe`. (The
+        // checked machine refuses the two fault meanings' dispositions and
+        // every well-formed end by name too — measured, is77.)
+        #[cfg(not(target_family = "wasm"))]
+        "os_signal_ignore_one" | "os_signal_default_one" | "os_exit_signal" => {
+            let Some(Value::Int(m, _)) = args.first() else {
+                return unsupported(format!("`{name}` takes a meaning"));
+            };
+            let m = *m;
+            let disposition = name != "os_exit_signal";
+            if !sig_send_shape(m, false) || (disposition && sig_uncatchable(m)) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`{name}` yields the `invalid` row"),
+                );
+                return Ok(error_value(name, "invalid"));
+            }
+            if cfg!(windows) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`{name}` yields the `unsupported` row"),
+                );
+                return Ok(error_value(name, "unsupported"));
+            }
+            let (why, clause) = if disposition {
+                (
+                    "sets one signal's disposition: std has no `sigaction`",
+                    "[os.signal.disp.one], [os.signal.gaps.note] R1",
+                )
+            } else {
+                (
+                    "ends this process by a signal, a `sigaction` back to the default and a \
+                     `raise(3)`: std has neither",
+                    "[os.signal.exit], [os.signal.gaps.note] R2",
+                )
             };
             unsupported(format!(
                 "`{name}` {why}, and this machine admits no `unsafe` ({clause}, \
@@ -3640,6 +3703,9 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "os_set_pgid" => &["denied", "invalid", "unsupported", "io"],
         "os_signal_last" | "os_signal_realtime" => &["unsupported"],
         "os_signal_text" => &["unsupported", "invalid"],
+        // s246 (`[os.host.sigs]`'s three lines, ruling #88 R1, R2).
+        "os_signal_ignore_one" | "os_signal_default_one" => &["invalid", "io", "unsupported"],
+        "os_exit_signal" => &["invalid", "unsupported"],
         "os_term_foreground" | "os_term_mode" | "os_term_set_foreground" => &["unsupported", "io"],
         "os_term_set_mode" => &["unsupported", "invalid", "io"],
         // s234 (`[os.host.sigs]`'s three lines).
@@ -4092,6 +4158,24 @@ fn sig_send_shape(m: i128, zero: bool) -> bool {
             .is_some_and(|last| m.checked_neg().is_some_and(|n| (1..=last).contains(&n)));
     }
     sig_one_sendable(m)
+}
+
+/// s246 (`[os.signal.disp.one]`): `KILL` or `STOP`, by its bit or by its
+/// host number `-N` — the two signals no process can catch or ignore, so
+/// no disposition call takes them. A host with no numbering here
+/// (windows; any host [`host_signal_number`] does not carry) names
+/// neither by a number.
+#[cfg(not(target_family = "wasm"))]
+fn sig_uncatchable(m: i128) -> bool {
+    const KILL: i128 = 1 << 20;
+    const STOP: i128 = 1 << 21;
+    if m == KILL || m == STOP {
+        return true;
+    }
+    m < 0
+        && [KILL, STOP]
+            .into_iter()
+            .any(|bit| host_signal_number(bit).is_some_and(|n| m.checked_neg() == Some(n)))
 }
 
 /// s232 (`[os.signal.number]`): a meaning's signal number, by bit index,
