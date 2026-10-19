@@ -1,5 +1,52 @@
 # Changelog
 
+## Unreleased
+
+is77 — lupin learns wolf 0.2.33's calls (wolf-lang s246, #783, #784,
+#785, #787; ruling #88 R1 A, R2 A, R3 D) and resolves the three signal
+calls it left unresolved. **Pin unchanged: `294d626d`.** Every answer
+below was measured first on the checked machine of wolf-lang `98d0d16b`
+(the 0.2.33 candidate) in a throwaway container; lupin 0.1.54's answers
+are its archive's.
+
+- **What changes a program's answer here:** eight prelude names that
+  did not resolve now do — `os_signal_ignore_one`,
+  `os_signal_default_one`, `os_exit_signal`, `os_wait_status_core`,
+  `os_wait_poll_core` (s246) and `os_signal_listen`, `os_signal_wait`,
+  `os_signal_raise` (s114) — each with its declared row, and
+  `os_signal_text(0)` is no longer `invalid`.
+- **One meaning's disposition and the end by a signal** (wolf-interp#261;
+  `[os.signal.disp.one]`, `[os.signal.exit]`). The sending shape is every
+  machine's: 0, anything `[os.signal.send]` refuses and, for the two
+  dispositions, `KILL` and `STOP` by bit or by host number, are
+  `invalid`; windows answers `unsupported`; a well-formed call is
+  refused by name (std has no `sigaction` and no `raise`). The checked
+  machine refuses the fault meanings' dispositions and every well-formed
+  end by name too. `tests/signal_one_is77.rs` holds s246's corpus row
+  (`os/signal_one_rows.lu`) byte for byte.
+- **Signal 0's words** (wolf-interp#262; `[os.signal.text]`). 0 passes
+  the shape, then windows `unsupported`, then the by-name refusal every
+  meaning gets: the words are the C library's `strsignal`, never a table
+  of lupin's own (`docs/approximation-contract.md` §6.20).
+  `tests/group_s241.rs` carries s246's `group_rows.lu`, with `text_zero`
+  moved out of the shape rows.
+- **The core siblings** (wolf-interp#263; `[os.proc.status]`,
+  `[os.proc.poll]`, ruling #88 R3 D). `os_wait_status_core(h)` is the
+  released wait with an end that dumped core answered `-(256 + N)` (std's
+  `ExitStatusExt::core_dumped()`); `os_wait_status` keeps `-N`.
+  `os_wait_poll_core()` answers and refuses as `os_wait_poll` does
+  (ruling #84 R9). `tests/core_is77.rs` runs s246's `core.lu` in a
+  container: CI's linux runner sets a file core pattern for the cores-on
+  row (`LUPIN_CORE_REQUIRE`).
+- **The listen, the wait and the raise** (wolf-interp#259;
+  `[os.signal.listen]`, `[os.signal.wait]`, `[os.signal.raise]`). Their
+  shape rows (`io`) are answered and a well-formed call is refused by
+  name on every host: this machine never listens.
+- **The walk:** every vendored file answers as at 0.1.54 (1002 files:
+  verdict, phase and stdout digest); `os/signal_loopback.lu` and
+  `os/signal_supervisor.lu` stay `unsupported`, now refused at the
+  listen by name. The counts are 0.1.54's.
+
 ## 0.1.54 — 2026-10-17
 
 THE FIFTY-FOURTH, the lupin half of wolf 0.2.31. **Pin unchanged:
