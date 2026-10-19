@@ -275,8 +275,22 @@ impl ChildTable {
     }
 
     /// s219 (`[os.proc.status]`): `wait`, but a death by signal N answers
-    /// `-N` (the platform's number) where `wait` raises `signal`.
+    /// `-N` (the platform's number) where `wait` raises `signal` — core or
+    /// not (ruling #88 R3 D).
     pub(crate) fn wait_status(&mut self, handle: i128) -> Result<i128, Row> {
+        self.wait_status_as(handle, false)
+    }
+
+    /// s246 (`[os.proc.status]`, ruling #88 R3 D; wolf-interp#263): the
+    /// same wait, every answer and row [`ChildTable::wait_status`]'s,
+    /// except that a death by signal N that dumped core (std's
+    /// `ExitStatusExt::core_dumped`, the host's `WCOREDUMP`) answers
+    /// `-(256 + N)`.
+    pub(crate) fn wait_status_core(&mut self, handle: i128) -> Result<i128, Row> {
+        self.wait_status_as(handle, true)
+    }
+
+    fn wait_status_as(&mut self, handle: i128, core: bool) -> Result<i128, Row> {
         let slot = self.slot(handle)?;
         let Some(child) = slot.as_mut() else {
             return Err("io");
@@ -291,9 +305,14 @@ impl ChildTable {
                 {
                     use std::os::unix::process::ExitStatusExt as _;
                     if let Some(sig) = status.signal() {
+                        if core && status.core_dumped() {
+                            return Ok(-(256 + i128::from(sig)));
+                        }
                         return Ok(-i128::from(sig));
                     }
                 }
+                #[cfg(not(unix))]
+                let _ = core;
                 Err("io")
             }
             Err(_) => Err("io"),
@@ -436,5 +455,31 @@ mod tests {
         t.kill(k).expect("kill");
         assert_eq!(t.wait_status(k), Ok(-9));
         assert_eq!(t.pid(4096), Err("io"));
+    }
+
+    /// s246 (wolf-interp#263): the sibling wait answers as the released one
+    /// for an exit and for a signal that writes no core (`KILL`); a second
+    /// wait and a forged handle are `io`. (The core itself is
+    /// `tests/core_is77.rs`'s, in a container.)
+    #[cfg(unix)]
+    #[test]
+    fn wait_status_core_without_a_core_is_wait_status() {
+        let mut t = ChildTable::default();
+        let h = t
+            .spawn_job(&["false".to_owned()], [None, None, None], None, Some(0))
+            .expect("false spawns");
+        assert_eq!(t.wait_status_core(h), Ok(1));
+        assert_eq!(t.wait_status_core(h), Err("io"));
+        let k = t
+            .spawn_job(
+                &["sleep".to_owned(), "30".to_owned()],
+                [None, None, None],
+                None,
+                None,
+            )
+            .expect("sleep spawns");
+        t.kill(k).expect("kill");
+        assert_eq!(t.wait_status_core(k), Ok(-9));
+        assert_eq!(t.wait_status_core(4096), Err("io"));
     }
 }
