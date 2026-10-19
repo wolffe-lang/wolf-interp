@@ -4,10 +4,10 @@ name: CI
 # concurrent jobs org-wide, 5 of them macOS, public repos included, shared
 # by every repo. Before is75 every run was the whole matrix (17 jobs, 12 of
 # them long, about 21 slot-hours; ci/is75/before.tsv); before is78 every
-# merge still was: 20 jobs and about 1,445 job-minutes a run, 690 of them
-# the four windows heavy jobs at 150-200 minutes each (ci/is78/before.tsv),
-# so one lane's merge held the org's slots for over three hours. So the
-# EVENT picks the matrix (ruling #92 R2):
+# merge still was: 20 jobs and 1,438 job-minutes a run (the median of 17),
+# 690 of them the four windows heavy jobs at 159-196 minutes each
+# (ci/is78/before.tsv), so one lane's merge held the org's slots for over
+# three hours. So the EVENT picks the matrix (ruling #92 R2):
 #
 #   the nightly `schedule`; `workflow_dispatch -f tier=release`; a pull
 #   request carrying the `release-matrix` label (a release lane, before
@@ -99,9 +99,10 @@ on:
 # live in SEPARATE groups: adding a label must not cancel the run of another
 # tier at the same head (lane-audit.sh reads a cancelled run at the head as
 # a FAIL), and a no-op run (an unrelated label, or `full-matrix` added
-# beside `release-matrix`) gets a group of its own so it cancels nothing. Every other run (a trunk push, the nightly, a dispatch)
-# gets a group of its OWN run id (tl21): never cancelled, and never replaced
-# while it waits. In the one group per ref they shared before, GitHub keeps
+# beside `release-matrix`) gets a group of its own so it cancels nothing.
+# Every other run (a trunk push, the nightly, a dispatch) gets a group of
+# its OWN run id (tl21): never cancelled, and never replaced while it
+# waits. In the one group per ref they shared before, GitHub keeps
 # a single pending run: a trunk push queued behind a running one is dropped
 # when the next arrives, and each trunk push's full run is the coverage that
 # merge is owed.
