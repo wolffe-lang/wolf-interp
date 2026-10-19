@@ -28,7 +28,9 @@
       entry for entry, is75's twelve and the windows smoke on a release
       run, ubuntu's and macOS's eight and the windows smoke on a full run
       (no windows heavy entry at the merge), is75's six on a PR run; the
-      bundle is compared across the OSes the plan says ran a ladder.
+      bundle is compared across the OSes the plan says ran a ladder; a red
+      nightly, and only a nightly, runs ci/nightly-red.py from the tier
+      job, whose token may write issues.
   T5  the tripwire: no tracked path the planner calls prose is named by a
       line of src/, tests/, build.rs or ci/*.sh that reads a file. The
       search is shown to fire on the three it must find. (A WARN, not a
@@ -42,6 +44,12 @@
   T7  the change read from git: a real merge commit against its first
       parent, with the base moved on meanwhile; red-to-full when HEAD is no
       merge or its second parent is not the pull request's head.
+  T8  the red nightly's issue (ci/nightly-red.py, against a recording
+      fake `gh`): no open issue of its title opens one, labelled, naming
+      every red job and the run; an open one of the same title is
+      commented on and none is opened; an open issue of another title
+      does not dedupe; a run with no red job says the verdict is red; a
+      `gh` that fails makes the reporter exit 1, never 0.
 
 Exit 0 when every check passes, 1 otherwise.
 """
@@ -55,6 +63,7 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLAN = os.path.join(ROOT, "ci", "tiers.py")
+NIGHTLY_RED = os.path.join(ROOT, "ci", "nightly-red.py")
 WORKFLOW = os.path.join(ROOT, ".github", "workflows", "ci.yml")
 ENV_KEYS = ("EVENT", "ACTION", "LABEL", "LABELS", "HEAD_SHA", "IN_JOBS", "IN_TIER", "IN_ENTRIES", "NEEDS")
 fails = 0
@@ -327,6 +336,14 @@ say("      LADDER_OSES: ${{ needs.plan.outputs.ladder_oses || 'ubuntu macos wind
     "T4 the bundle is compared across the OSes the plan says ran a ladder, all three when it says nothing")
 say("      SHARD_OSES: ${{ needs.plan.outputs.shard_oses || 'ubuntu macos windows' }}\n" in blocks["shard-coverage"],
     "T4 shard coverage checks the OSes the plan says were sharded, all three when it says nothing")
+steps = re.findall(r"^      - name: a red nightly opens an issue\n        if: (.*)\n((?:        .*\n)+)", t, re.M)
+say(len(steps) == 1 and steps[0][0] == "failure() && github.event_name == 'schedule'" and "run: python3 ci/nightly-red.py" in steps[0][1]
+    and "GH_TOKEN: ${{ github.token }}" in steps[0][1] and t.index("ci/tiers.py verdict") < t.index("ci/nightly-red.py"),
+    "T4 a red nightly, and only a nightly, runs ci/nightly-red.py, after the verdict")
+perms = re.search(r"^    permissions:\n((?:      .*\n)+)", t, re.M)
+say(perms is not None and sorted(perms.group(1).split()) == sorted(["contents:", "read", "actions:", "read", "issues:", "write"])
+    and wf.count("issues: write") == 1,
+    "T4 the tier job's token may read the code and the run and write issues; no other job may write issues")
 
 # --- T7 the change read from git ----------------------------------------------------
 def git(repo, *args):
@@ -387,6 +404,93 @@ except (subprocess.CalledProcessError, OSError) as e:
 finally:
     for d in made:
         shutil.rmtree(d, ignore_errors=True)
+
+# --- T8 the red nightly's issue (ci/nightly-red.py, a recording fake gh) ------------
+FAKE_GH = """#!/usr/bin/env python3
+import json, os, sys
+a = sys.argv[1:]
+with open(os.environ["FAKE_GH_LOG"], "a", encoding="utf-8") as f:
+    f.write(json.dumps(a) + "\\n")
+if os.environ.get("FAKE_GH_FAIL") and " ".join(a[:2]) == os.environ["FAKE_GH_FAIL"]:
+    sys.stderr.write("HTTP 403: the fake refuses\\n")
+    sys.exit(1)
+if a[:1] == ["api"]:
+    sys.stdout.write(os.environ.get("FAKE_GH_JOBS", ""))
+elif a[:2] == ["issue", "list"]:
+    sys.stdout.write(os.environ.get("FAKE_GH_ISSUES", "[]"))
+elif a[:2] == ["issue", "create"]:
+    print("https://github.com/o/r/issues/77")
+"""
+JOBS_TSV = "\n".join("\t".join(x) for x in [
+    ("plan", "success", "https://x/j/1"),
+    ("test (windows-latest, test shard 2 of 3)", "failure", "https://x/j/2"),
+    ("test (windows-latest, the ladder and the bundle)", "cancelled", "https://x/j/3"),
+    ("test (ubuntu-latest, test shard 1 of 3)", "success", "https://x/j/4"),
+    ("tier release", "", "https://x/j/5"),
+]) + "\n"
+RED_TITLE = "nightly red: tier release on trunk"
+
+
+def nightly_red(jobs, issues, fail=None):
+    d = tempfile.mkdtemp(prefix="tiers-test-gh-")
+    try:
+        with open(os.path.join(d, "gh"), "w", encoding="utf-8") as f:
+            f.write(FAKE_GH)
+        os.chmod(os.path.join(d, "gh"), 0o755)
+        log = os.path.join(d, "calls.jsonl")
+        env = clean_env(PATH=d + os.pathsep + os.environ.get("PATH", ""), FAKE_GH_LOG=log, FAKE_GH_JOBS=jobs,
+                        FAKE_GH_ISSUES=json.dumps(issues), REPO="o/r", RUN_ID="123456789", SHA="0e536e8f00", TIER="release")
+        if fail:
+            env["FAKE_GH_FAIL"] = fail
+        r = subprocess.run([sys.executable, NIGHTLY_RED], capture_output=True, text=True, env=env)
+        calls = [json.loads(x) for x in open(log, encoding="utf-8")] if os.path.exists(log) else []
+        return r.returncode, calls, r.stdout + r.stderr
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def call(calls, *head):
+    return [c for c in calls if c[:len(head)] == list(head)]
+
+
+def body_of(c):
+    return c[c.index("--body") + 1] if "--body" in c else ""
+
+
+if os.name == "nt":
+    say(True, "T8 skipped: the fake gh is a script with a shebang (the plan-test job runs on ubuntu)")
+else:
+    rc, calls, out = nightly_red(JOBS_TSV, [])
+    made = call(calls, "issue", "create")
+    b = body_of(made[0]) if made else ""
+    say(rc == 0 and len(made) == 1 and made[0][made[0].index("--title") + 1] == RED_TITLE
+        and made[0][made[0].index("--label") + 1] == "nightly-red" and call(calls, "label", "create", "nightly-red")
+        and "test (windows-latest, test shard 2 of 3)" in b and "the ladder and the bundle)`: cancelled" in b
+        and "test (ubuntu-latest" not in b and "`plan`" not in b and "/o/r/actions/runs/123456789" in b
+        and "owes" in b and not call(calls, "issue", "comment"),
+        "T8 no open issue: one opened, labelled, naming the red jobs (failed and cancelled) and the run, and no green job%s" % (
+            "" if rc == 0 else " (rc %d: %s)" % (rc, out.strip()[-200:])))
+    rc, calls, out = nightly_red(JOBS_TSV, [{"number": 41, "title": "something else"}, {"number": 42, "title": RED_TITLE}])
+    com = call(calls, "issue", "comment")
+    say(rc == 0 and len(com) == 1 and com[0][2] == "42" and "test shard 2 of 3" in body_of(com[0])
+        and not call(calls, "issue", "create") and not call(calls, "label", "create"),
+        "T8 an open issue of the title: commented on (#42), none opened")
+    rc, calls, out = nightly_red(JOBS_TSV, [{"number": 41, "title": RED_TITLE + " (old)"}])
+    say(rc == 0 and len(call(calls, "issue", "create")) == 1 and not call(calls, "issue", "comment"),
+        "T8 an open issue of another title does not dedupe: one opened")
+    rc, calls, out = nightly_red("plan\tsuccess\thttps://x/j/1\ntier release\t\thttps://x/j/5\n", [])
+    made = call(calls, "issue", "create")
+    say(rc == 0 and len(made) == 1 and "the `tier release` verdict is" in body_of(made[0]),
+        "T8 a run with no red job: the issue says the verdict is red")
+    lists = call(nightly_red(JOBS_TSV, [])[1], "issue", "list")
+    say(len(lists) == 1 and lists[0][lists[0].index("--state") + 1] == "open" and lists[0][lists[0].index("--label") + 1] == "nightly-red",
+        "T8 the dedupe reads the open issues labelled nightly-red")
+    for f in ("issue create", "issue list", "api repos/o/r/actions/runs/123456789/jobs?per_page=100"):
+        rc, calls, out = nightly_red(JOBS_TSV, [], fail=f.split(" ")[0] + " " + f.split(" ")[1] if f.startswith("issue") else "api --paginate")
+        say(rc == 1 and "nightly-red: gh" in out, "T8 a gh that fails (%s) makes the reporter exit 1, loudly" % f.split("?")[0])
+    env = clean_env()
+    r = subprocess.run([sys.executable, NIGHTLY_RED], capture_output=True, text=True, env=env)
+    say(r.returncode == 1 and "is not set" in r.stderr, "T8 the reporter refuses to run without REPO and RUN_ID")
 
 # --- T5 the tripwire: what the planner calls prose, nothing reads ---------------------
 READS = re.compile(r"read_to_string|include_str!|include_bytes!|File::open|fs::read\b|read_dir|\.join\(|Path::new|PathBuf::from|\bcat\b|\bcp\b|\bgrep\b|\bsed\b")
