@@ -231,14 +231,6 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "os_signal_ignore",
     "os_signal_default",
     "os_signal_poll",
-    // is77 (wolf-interp#259; `[os.signal.listen]`, `[os.signal.wait]`,
-    // `[os.signal.raise]`): the first three of the family, which this
-    // machine left unresolved. Their SHAPE rows are answered (s232's one
-    // shape rule: `io`), and a well-formed call is refused by name — this
-    // machine never listens (`[os.term.note]` R8).
-    "os_signal_listen",
-    "os_signal_wait",
-    "os_signal_raise",
     "os_spawn_job",
     "os_proc_pid",
     "os_wait_status",
@@ -743,9 +735,6 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_signal_ignore"
         | "os_signal_default"
         | "os_signal_poll"
-        | "os_signal_listen"
-        | "os_signal_wait"
-        | "os_signal_raise"
         | "os_spawn_job"
         | "os_proc_pid"
         | "os_wait_status"
@@ -994,54 +983,6 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             unsupported(format!(
                 "`{name}` sets a signal's disposition: this machine admits no `unsafe` and \
                  std has no `sigaction` ([os.signal.disp], [os.term.note] R8)"
-            ))
-        }
-        // is77 (wolf-interp#259): `[os.signal.listen]`, `[os.signal.wait]`
-        // and `[os.signal.raise]`, at last resolved. The SHAPE is every
-        // machine's (s232's one rule, `[os.signal.set]`): a listen or a wait
-        // of an empty set, or of one holding a bit that is not a listenable
-        // meaning, is `io`, and a raise of anything but ONE listenable
-        // meaning is `io`, before any host is asked. A well-formed call is
-        // refused by name, on every host: a listen arms a trampoline
-        // (`sigaction`), a raise is `raise(3)`, std has neither and this
-        // machine admits no `unsafe`, so it never listens — and a wait for
-        // what nothing could deliver is refused rather than parked forever.
-        #[cfg(not(target_family = "wasm"))]
-        "os_signal_listen" | "os_signal_wait" | "os_signal_raise" => {
-            let Some(Value::Int(m, _)) = args.first() else {
-                return unsupported(format!("`{name}` takes an integer meaning set"));
-            };
-            let m = *m;
-            let shaped = if name == "os_signal_raise" {
-                m > 0 && m & (m - 1) == 0 && m & !SIG_LISTENABLE == 0
-            } else {
-                m != 0 && m & !SIG_LISTENABLE == 0
-            };
-            if !shaped {
-                machine.note(
-                    Rule::ErrUnion,
-                    span,
-                    &format!("`{name}` yields the `io` row"),
-                );
-                return Ok(error_value(name, "io"));
-            }
-            let (why, clause) = match name {
-                "os_signal_listen" => (
-                    "arms a signal's trampoline, which is `sigaction`: std has none",
-                    "[os.signal.listen]",
-                ),
-                "os_signal_wait" => (
-                    "waits for a delivered meaning, and this machine never listens (std has no \
-                     `sigaction`), so nothing could arrive: refused rather than parked",
-                    "[os.signal.wait]",
-                ),
-                _ => (
-                    "delivers a meaning to this process, which is `raise(3)`: std has none",
-                    "[os.signal.raise]",
-                ),
-            };
-            unsupported(format!(
-                "`{name}` {why}, and this machine admits no `unsafe` ({clause}, [os.term.note] R8)"
             ))
         }
         // s236 (wolf-lang#633, `[os.proc.ids]`): who the process runs as.
@@ -3762,8 +3703,6 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "os_exec" => &["unsupported", "invalid", "not_found", "denied", "io"],
         // s219 (`[os.host.sigs]`'s eleven lines).
         "os_signal_ignore" | "os_signal_default" => &["unsupported", "io"],
-        // s114's three (`[os.host.sigs]`), resolved at is77 (#259).
-        "os_signal_listen" | "os_signal_wait" | "os_signal_raise" => &["io"],
         "os_signal_poll" | "os_proc_pid" | "os_wait_status" => &["io"],
         // s242 (`[os.host.sigs]`'s line); s246's two siblings (ruling #88 R3 D).
         "os_wait_poll" | "os_wait_status_core" | "os_wait_poll_core" => &["io"],
