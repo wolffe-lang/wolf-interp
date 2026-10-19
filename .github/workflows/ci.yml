@@ -242,9 +242,25 @@ jobs:
       #
       # A smoke (is75) passes every target except SMOKE_OMITS, through the
       # same script, and runs the doc-tests unless `doc` is omitted.
+      # is77 (wolf-interp#263): `tests/core_is77.rs`'s cores-on row needs a
+      # FILE core pattern, so a core is written in the container's working
+      # directory, the test's own, and removed there (the runner's default
+      # pipes to a program). Set on this throwaway runner only; the runner's
+      # own `ulimit -c` is left as it is, and every linux job sets
+      # LUPIN_CORE_REQUIRE below, so the row's skip is a failure here.
+      - name: a file core pattern for is77's core witness (#263)
+        if: matrix.osid == 'ubuntu' && matrix.shard != 'ladder'
+        run: |
+          echo "core_pattern was: $(cat /proc/sys/kernel/core_pattern)"
+          echo 'core.%p' | sudo tee /proc/sys/kernel/core_pattern
+          echo "ulimit -c on the runner: $(ulimit -c)"
+          docker run --rm --network none docker.io/library/ubuntu:24.04 sh -c 'echo "in a container: ulimit -c $(ulimit -c), hard $(ulimit -Hc)"'
+
       - name: test
         if: matrix.shard != 'ladder'
         shell: bash
+        env:
+          LUPIN_CORE_REQUIRE: ${{ matrix.osid == 'ubuntu' && '1' || '0' }}
         run: |
           set -euo pipefail
           echo "the shard key, for the whole crate:"
