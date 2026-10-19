@@ -49,8 +49,8 @@ fn record(out: &Output) -> serde_json::Value {
 /// `os_signal_text` that says why. Red at 0.1.54: `text_zero=invalid`.
 #[test]
 fn signal_zero_passes_the_shape_and_is_refused_by_name() {
-    let entry = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/signal_text_is77/text_zero.lu");
+    let entry =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/signal_text_is77/text_zero.lu");
     let out = Command::new(env!("CARGO_BIN_EXE_lupin"))
         .arg("conform-run")
         .arg(&entry)
@@ -70,7 +70,9 @@ fn signal_zero_passes_the_shape_and_is_refused_by_name() {
     let why = rec["x-unsupported"].as_str().unwrap_or("").to_string();
     assert_eq!(rec["verdict"], "unsupported", "0 passes the shape: {rec}");
     assert!(
-        why.contains("`os_signal_text`") && why.contains("strsignal") && why.contains("no `unsafe`"),
+        why.contains("`os_signal_text`")
+            && why.contains("strsignal")
+            && why.contains("no `unsafe`"),
         "the refusal names `os_signal_text` and says why: {why}"
     );
 }
