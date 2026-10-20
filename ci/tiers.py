@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ci/tiers.py — which jobs a CI run runs, and whether it ran them (tl21).
+"""ci/tiers.py — which jobs a CI run runs, and whether it ran them (tl21, is78, tl29).
 
     ci/tiers.py plan [--event E] [--action A] [--label L] [--labels L1,L2]
                      [--merge [--head-sha SHA] | --paths-from FILE]
@@ -23,14 +23,17 @@ and `tier`. The `test` job's entries are an OS and a shard: `1`, `2`, `3`
            nightly `schedule`, a `workflow_dispatch` with `-f tier=release`,
            and a pull request carrying the `release-matrix` label (is78,
            ruling #92 R2: the release lane's tier, before any tag).
-  full     every job; the entries are ubuntu's and macOS's three shards
-           and ladder, and the windows smoke: the windows heavy shards and
-           ladder are the nightly's and release's, not the merge's (is78).
-           A push to trunk, a `workflow_dispatch` with no `jobs` input (or
-           `-f tier=full`), a pull request carrying the `full-matrix` label;
-           and a pull request with a changed path no rule below names, or
-           whose changed paths cannot be read: what is not understood never
-           shrinks a run.
+  full     THE MERGE GATE: every job but `bundle-identical`; the entries
+           are ubuntu's three shards and ladder, the macOS smoke and the
+           windows smoke. The windows heavy shards and ladder (is78) and the
+           macOS ones (tl29) are the nightly's and release's, not the
+           merge's; with one ladder there is no bundle to compare, so the
+           comparison goes with them. Since tl29 these are the pr tier's
+           jobs and entries (ci/tl29.md, R-tl29-2). A push to trunk, a
+           `workflow_dispatch` with no `jobs` input (or `-f tier=full`), a
+           pull request carrying the `full-matrix` label; and a pull request
+           with a changed path no rule below names, or whose changed paths
+           cannot be read: what is not understood never shrinks a run.
   pr       any other pull-request run: is75's reduced leg, unchanged
            (ubuntu's shards and ladder, one macOS and one windows smoke,
            shard coverage, independence, dist floor), and the planner's
@@ -81,8 +84,10 @@ WORKFLOW = ".github/workflows/ci.yml"
 FULL_LABEL = "full-matrix"
 RELEASE_LABEL = "release-matrix"
 NOT_SELECTABLE = ("plan", "tier")
-# The jobs a pull-request run leaves to the full matrix.
+# The jobs a pull-request run leaves to the release matrix, and since tl29
+# a full run too: one ladder (ubuntu's) has no bundle to compare.
 PR_SKIPS = ("bundle-identical",)
+FULL_SKIPS = ("bundle-identical",)
 TIERS = ("release", "full", "pr", "noop", "partial")
 # What `-f tier=` may ask for (with no `jobs`).
 DISPATCH_TIERS = ("full", "release")
@@ -172,8 +177,10 @@ def workflow_jobs():
 
 def jobs_of(tier, every):
     """The jobs a tier runs, of `every` selectable job, in order."""
-    if tier in ("release", "full"):
+    if tier == "release":
         return list(every)
+    if tier == "full":
+        return [j for j in every if j not in FULL_SKIPS]
     if tier == "pr":
         return [j for j in every if j not in PR_SKIPS]
     return []
@@ -186,18 +193,15 @@ def matrix_of(tier, entries=None):
       release, partial  os x {1, 2, 3, ladder} for ubuntu, macOS and
                         windows (is75's twelve, in its order), then the
                         windows smoke;
-      full              ubuntu's and macOS's four, then the windows smoke
-                        (is78: windows's heavy shards and ladder are the
-                        nightly's and release's);
-      pr, noop          ubuntu's four, then a smoke on macOS and windows
-                        (is75's six).
+      full, pr, noop    ubuntu's four, then a smoke on macOS and windows
+                        (is75's six; full since tl29: macOS's heavy shards
+                        and ladder join windows's in the nightly and
+                        release, as is78 moved windows's).
 
     `entries` (a partial run's `--entries`) keeps only those, in this
     order; `ci/tiers.py plan` has refused a name that is no entry."""
     if tier in ("release", "partial"):
         heavy, smokes = OSES, ("windows",)
-    elif tier == "full":
-        heavy, smokes = ("ubuntu", "macos"), ("windows",)
     else:
         heavy, smokes = ("ubuntu",), ("macos", "windows")
     names = ["%s/%s" % (o, s) for o in heavy for s in SHARDS] + ["%s/smoke" % o for o in smokes]
@@ -235,9 +239,9 @@ def merge_paths(repo, head_sha):
 def plan(a):
     needs = workflow_jobs()
     every = [j for j in needs if j not in NOT_SELECTABLE]
-    for j in PR_SKIPS:
+    for j in PR_SKIPS + FULL_SKIPS:
         if j not in every:
-            die("PR_SKIPS names %s, which is no job of %s" % (j, WORKFLOW))
+            die("PR_SKIPS or FULL_SKIPS names %s, which is no job of %s" % (j, WORKFLOW))
     log = []
     entries = (a.entries or "").split()
 
