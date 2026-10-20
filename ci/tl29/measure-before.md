@@ -1,4 +1,4 @@
-| repo | period | tier | runs (cancelled) | wall med / p90 | queue med / p90 | slot wait med | job-min med (sum) | macOS-min med |
+| repo | period | tier | runs (cancelled or re-run) | wall med / p90 | queue med / p90 | slot wait med | job-min med (sum) | macOS-min med |
 |---|---|---|---:|---:|---:|---:|---:|---:|
 | boreutils | before | (cancelled before the verdict) | 1 (1) | — / — | — / — | — | — (0.1) | — |
 | boreutils | before | tier full | 6 (0) | 71 / 75 | 1.1 / 2.7 | 45 | 48 (280) | 21 |
@@ -16,15 +16,15 @@
 | lobo | before | tier full | 9 (0) | 58 / 86 | 0.5 / 8.4 | 21 | 47 (414) | 26 |
 | lobo | before | tier pr | 9 (0) | 23 / 39 | 0.6 / 3.0 | 4.8 | 18 (174) | 0.0 |
 | lobo | before | tier unplanned | 1 (0) | 2.0 / 2.0 | 0.5 / 0.5 | 1.3 | 0.2 (0.2) | 0.0 |
-| lobo | before | untiered (ci) | 8 (1) | 26 / 54 | 0.1 / 7.1 | 0.1 | 41 (293) | 23 |
-| lobo | before | (every run) | 30 (4) | 32 / 75 | 0.5 / 7.4 | 5.0 | 40 (882) | 23 |
+| lobo | before | untiered (ci) | 8 (2) | 25 / 26 | 0.1 / 1.2 | 0.1 | 41 (293) | 24 |
+| lobo | before | (every run) | 30 (5) | 31 / 75 | 0.5 / 8.4 | 5.1 | 40 (882) | 22 |
 | lope | before | (cancelled before the verdict) | 2 (2) | — / — | — / — | — | — (0.2) | — |
 | lope | before | tier full | 4 (0) | 38 / 71 | 4.6 / 7.0 | 31 | 4.9 (20) | 0.7 |
 | lope | before | tier pr | 10 (2) | 24 / 43 | 10 / 17 | 12 | 4.3 (44) | 0.0 |
 | lope | before | (every run) | 16 (4) | 26 / 52 | 6.9 / 17 | 14 | 4.8 (63) | 0.0 |
 | muzzle | before | tier full | 5 (1) | 8.1 / 63 | 2.1 / 56 | 6.7 | 0.5 (2.6) | 0.0 |
-| muzzle | before | untiered (ci) | 25 (0) | 0.5 / 23 | 0.1 / 18 | 0.1 | 0.5 (15) | 0.0 |
-| muzzle | before | (every run) | 30 (1) | 0.5 / 23 | 0.1 / 18 | 0.1 | 0.5 (17) | 0.0 |
+| muzzle | before | untiered (ci) | 25 (1) | 0.5 / 18 | 0.1 / 8.6 | 0.1 | 0.5 (15) | 0.0 |
+| muzzle | before | (every run) | 30 (2) | 0.5 / 18 | 0.1 / 8.6 | 0.1 | 0.5 (17) | 0.0 |
 | pax | before | (cancelled before the verdict) | 4 (4) | — / — | — / — | — | — (923) | — |
 | pax | before | tier full | 21 (2) | 52 / 91 | 0.1 / 0.4 | 10.0 | 421 (6010) | 0.7 |
 | pax | before | tier pr | 5 (0) | 17 / 125 | 0.1 / 2.0 | 1.5 | 95 (360) | 0.0 |
@@ -48,13 +48,13 @@
 | wolf-book | before | untiered (book-nightly) | 4 (0) | 2.9 / 7.8 | 2.3 / 7.3 | 2.3 | 0.6 (2.3) | 0.0 |
 | wolf-book | before | untiered (book-pages) | 3 (0) | 11 / 19 | 0.4 / 3.5 | 6.8 | 0.6 (2.0) | 0.0 |
 | wolf-book | before | (every run) | 30 (5) | 18 / 91 | 0.4 / 7.3 | 2.5 | 58 (1121) | 7.5 |
-| wolf-interp | before | (cancelled before the verdict) | 7 (7) | — / — | — / — | — | — (2989) | — |
+| wolf-interp | before | (cancelled before the verdict) | 6 (6) | — / — | — / — | — | — (2989) | — |
 | wolf-interp | before | tier full | 13 (0) | 200 / 230 | 0.1 / 4.5 | 9.1 | 1438 (17973) | 369 |
 | wolf-interp | before | tier partial | 3 (0) | 2.3 / 26 | 0.1 / 22 | 0.2 | 3.7 (8.8) | 1.4 |
-| wolf-interp | before | tier pr | 5 (0) | 146 / 195 | 0.5 / 5.5 | 35 | 417 (2042) | 11 |
+| wolf-interp | before | tier pr | 6 (0) | 133 / 168 | 0.4 / 4.0 | 28 | 415 (2416) | 11 |
 | wolf-interp | before | tier release | 1 (0) | 199 / 199 | 0.1 / 0.1 | 44 | 1520 (1520) | 364 |
 | wolf-interp | before | untiered (release) | 1 (0) | 2.2 / 2.2 | 0.1 / 0.1 | 0.1 | 4.8 (4.8) | 0.8 |
-| wolf-interp | before | (every run) | 30 (7) | 197 / 216 | 0.1 / 5.5 | 20 | 1396 (24538) | 358 |
+| wolf-interp | before | (every run) | 30 (6) | 196 / 216 | 0.1 / 5.5 | 15 | 1364 (24911) | 352 |
 | wolf-lang | before | (cancelled before the verdict) | 4 (4) | — / — | — / — | — | — (128) | — |
 | wolf-lang | before | tier full | 7 (1) | 62 / 140 | 4.5 / 34 | 25 | 148 (1014) | 75 |
 | wolf-lang | before | tier partial | 13 (0) | 27 / 91 | 0.5 / 16 | 9.9 | 8.4 (261) | 2.3 |
@@ -73,13 +73,13 @@
 | wolf-std | before | tier full | 4 (0) | 82 / 152 | 5.3 / 14 | 43 | 129 (511) | 40 |
 | wolf-std | before | tier pr | 3 (0) | 97 / 106 | 15 / 47 | 25 | 47 (133) | 0.0 |
 | wolf-std | before | tier unplanned | 1 (0) | 9.5 / 9.5 | 2.3 / 2.3 | 6.9 | 0.2 (0.2) | 0.0 |
-| wolf-std | before | untiered (ci) | 19 (2) | 57 / 96 | 0.1 / 3.0 | 3.2 | 140 (2407) | 43 |
+| wolf-std | before | untiered (ci) | 19 (3) | 57 / 96 | 0.1 / 3.0 | 5.4 | 140 (2407) | 43 |
 | wolf-std | before | untiered (nightly) | 2 (0) | 2.8 / 4.8 | 2.5 / 4.4 | 2.5 | 0.4 (0.8) | 0.0 |
-| wolf-std | before | (every run) | 30 (3) | 57 / 106 | 0.1 / 14 | 7.1 | 131 (3128) | 40 |
+| wolf-std | before | (every run) | 30 (4) | 57 / 103 | 0.1 / 11 | 7.3 | 131 (3128) | 40 |
 | wolf-web | before | untiered (CI) | 12 (0) | 6.8 / 19 | 3.3 / 18 | 3.2 | 2.8 (28) | 0.0 |
 | wolf-web | before | untiered (windows learner path) | 18 (3) | 2.2 / 12 | 0.5 / 8.9 | 1.9 | 1.2 (19) | 0.0 |
 | wolf-web | before | (every run) | 30 (3) | 4.4 / 12 | 1.1 / 11 | 2.7 | 1.2 (47) | 0.0 |
 | wollf | before | untiered (tests) | 30 (0) | 15 / 23 | 3.6 / 13 | 3.6 | 12 (356) | 0.0 |
 | wollf | before | (every run) | 30 (0) | 15 / 23 | 3.6 / 13 | 3.6 | 12 (356) | 0.0 |
-| yew | before | untiered (ci) | 25 (7) | 22 / 52 | 0.1 / 3.2 | 12 | 17 (578) | 4.1 |
-| yew | before | (every run) | 25 (7) | 22 / 52 | 0.1 / 3.2 | 12 | 17 (578) | 4.1 |
+| yew | before | untiered (ci) | 25 (10) | 22 / 52 | 0.7 / 5.8 | 14 | 17 (578) | 4.1 |
+| yew | before | (every run) | 25 (10) | 22 / 52 | 0.7 / 5.8 | 14 | 17 (578) | 4.1 |
