@@ -1,0 +1,33 @@
+run	created	event	branch	tier	conclusion	jobs	job_min	wall	slot_wait	macos_min	macos_jobs_min	longest_job	longest_min
+38507356299	2026-10-14T03:39	pull_request	tl21	tier pr	success	13	410.2	152.2	28.3	9.6	10	test (ubuntu-latest, test shard 1 of 3)	108.5
+38512636187	2026-10-14T04:40	pull_request	tl21	tier full	success	20	1444.8	232.5	71.5	379.7	96 111 96 77	test (windows-latest, test shard 1 of 3)	196.3
+38638889132	2026-10-14T21:15	push	trunk	tier full	success	20	1435.1	208.4	42.6	383.1	74 95 96 118	test (windows-latest, test shard 2 of 3)	195.5
+38642199409	2026-10-14T21:41	pull_request	r35-lupin	tier pr	success	13	427.1	112.5	1.5	11.0	11	test (ubuntu-latest, test shard 2 of 3)	111.8
+38655049517	2026-10-14T23:35	pull_request	r35-lupin	tier full	success	20	1410.7	199.1	5.8	371.2	103 106 92 70	test (windows-latest, test shard 1 of 3)	198.2
+38673995483	2026-10-15T03:00	push	trunk	tier full	success	20	1219.4	208.5	12.0	339.6	70 76 71 123	test (windows-latest, test shard 2 of 3)	192.7
+38711353581	2026-10-15T09:13	schedule	trunk	tier full	success	20	1499.2	229.7	0.2	376.5	95 94 99 89	test (windows-latest, test shard 1 of 3)	229.1
+38788205888	2026-10-15T18:45	pull_request	s241	tier pr	success	13	390.6	136.2	0.1	10.3	10	test (ubuntu-latest, test shard 2 of 3)	114.0
+38807677353	2026-10-15T21:09	pull_request	s241	tier full	success	20	1458.2	204.1	16.5	405.6	101 103 122 80	test (windows-latest, test shard 1 of 3)	201.9
+38878155928	2026-10-16T09:06	schedule	trunk	tier full	success	20	1521.7	195.8	0.2	384.6	125 91 81 87	test (windows-latest, test shard 1 of 3)	195.3
+38944313143	2026-10-16T18:02	push	trunk	tier full	success	20	1367.0	195.6	21.9	361.8	82 79 113 88	test (windows-latest, test shard 2 of 3)	163.9
+38950829098	2026-10-16T18:53	pull_request	s242	tier pr	success	13	400.5	111.6	37.4	11.3	11	test (ubuntu-latest, test shard 2 of 3)	108.0
+38969446331	2026-10-16T21:26	pull_request	s242	tier full	success	20	1486.0	248.7	132.4	342.7	90 109 58 86	test (windows-latest, test shard 1 of 3)	214.6
+38983004748	2026-10-16T23:44	pull_request	is76	tier pr	success	13	416.7	120.7	21.6	8.9	9	test (ubuntu-latest, test shard 1 of 3)	111.3
+39000814785	2026-10-17T03:58	push	trunk	tier full	success	20	1396.7	199.6	21.3	371.1	85 122 73 91	test (windows-latest, test shard 1 of 3)	198.9
+39010156689	2026-10-17T06:30	pull_request	is76	tier full	success	20	1438.4	197.8	0.2	370.8	72 124 85 89	test (windows-latest, test shard 1 of 3)	196.8
+39018148802	2026-10-17T08:38	schedule	trunk	tier full	success	20	1436.6	229.6	20.1	364.1	100 79 114 71	test (windows-latest, test shard 2 of 3)	194.7
+39025064318	2026-10-17T10:29	push	trunk	tier full	success	20	1449.9	196.6	0.5	363.2	83 85 75 120	test (windows-latest, test shard 2 of 3)	196.1
+39026211913	2026-10-17T10:47	pull_request	r36-lupin	tier pr	success	13	424.2	145.9	64.8	11.8	12	test (ubuntu-latest, test shard 3 of 3)	109.8
+39035984005	2026-10-17T13:17	pull_request	r36-lupin	tier full	success	20	1473.4	204.0	4.3	369.0	75 116 89 90	test (windows-latest, test shard 2 of 3)	196.0
+39050960742	2026-10-17T16:47	push	trunk	tier full	success	20	1331.9	205.6	9.1	361.8	109 90 92 71	test (windows-latest, test shard 2 of 3)	198.9
+39113301601	2026-10-18T08:55	schedule	trunk	tier full	success	20	1450.8	192.9	0.2	400.3	121 105 78 97	test (windows-latest, test shard 2 of 3)	192.4
+39234506264	2026-10-19T10:02	schedule	trunk	tier full	success	20	1396.5	198.2	5.2	392.3	101 121 78 92	test (windows-latest, test shard 2 of 3)	188.2
+39309669097	2026-10-19T19:17	pull_request	is77	tier pr	success	13	424.2	120.7	8.2	11.2	11	test (ubuntu-latest, test shard 1 of 3)	111.5
+39325777026	2026-10-19T21:13	pull_request	is78	tier pr	success	13	413.7	167.9	34.8	11.0	11	test (ubuntu-latest, test shard 1 of 3)	116.5
+39326686000	2026-10-19T21:20	pull_request	is77	tier full	success	20	1411.0	216.1	64.0	357.8	94 88 118 57	test (windows-latest, test shard 1 of 3)	197.8
+39350753756	2026-10-20T00:58	push	trunk	tier full	success	20	1514.9	207.1	97.2	391.8	92 113 81 105	test (windows-latest, test shard 1 of 3)	202.5
+39351754609	2026-10-20T01:08	pull_request	is78	tier pr	success	13	363.4	195.3	73.3	13.2	13	test (ubuntu-latest, test shard 1 of 3)	109.6
+39369409399	2026-10-20T04:24	pull_request	is78	tier full	success	17	742.6	118.2	30.4	346.3	99 94 76 77	test (ubuntu-latest, test shard 2 of 3)	112.9
+39381098823	2026-10-20T06:33	pull_request	is78	tier release	success	21	1519.6	199.1	43.6	363.7	114 89 84 77	test (windows-latest, test shard 1 of 3)	198.6
+39401118911	2026-10-20T09:30	schedule	trunk	tier full	success	20	1444.2	199.7	0.1	376.2	92 79 89 116	test (windows-latest, test shard 1 of 3)	199.2
+39461932926	2026-10-20T16:57	pull_request	r39	tier pr	success	13	373.6	111.0	0.2	10.8	11	test (ubuntu-latest, test shard 2 of 3)	110.6
