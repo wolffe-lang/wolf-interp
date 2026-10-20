@@ -1,6 +1,81 @@
 # Changelog
 
-## Unreleased
+## 0.1.55 — 2026-10-20
+
+THE FIFTY-FIFTH, the lupin half of wolf 0.2.34. **Pin unchanged:
+`294d626d` (wolf-lang v0.2.24).** Twenty-six commits since 0.1.54: is77
+(lupin learns wolf 0.2.33's calls and resolves the three signal calls
+it left unresolved; 16 commits, its prediction `a629e09` among them;
+#259, #261, #262, #263) and is78 (the matrix diet, ruling #92 R2; 10
+commits, CI only). Both were merged before the release lane (r39)
+began; r39 adds the version.
+
+- **What changes a program's answer here: wolf 0.2.33's five calls.**
+  `os_signal_ignore_one`, `os_signal_default_one` and `os_exit_signal`
+  resolve with their declared rows: the sending shape is answered as
+  every machine answers it (0, a meaning `[os.signal.send]` refuses
+  and, for the two dispositions, `KILL` and `STOP` by bit or by host
+  number are `invalid`), windows answers `unsupported`, and a
+  well-formed call is refused by name (std has no `sigaction` and no
+  `raise`). `os_wait_status_core` and `os_wait_poll_core` resolve and
+  answer: an end by signal N that dumped core is `-(256 + N)` (ruling
+  #88 R3 D) while the released `os_wait_status` keeps `-N`, and the
+  sibling poll answers and refuses as `os_wait_poll` does (ruling #84
+  R9). In 0.1.54 none of the five resolved.
+- **The signal family, refused by name.** `os_signal_listen`,
+  `os_signal_wait` and `os_signal_raise` resolve: their shape rows
+  (`io`) are answered, then a well-formed call is refused by name on
+  every host (this machine never listens); in 0.1.54 they did not
+  resolve. `os_signal_text(0)` passes the shape (0.1.54 answered
+  `invalid`), then windows answers `unsupported`, else the by-name
+  refusal every meaning gets: the words are the C library's
+  `strsignal`, never a table of lupin's own
+  (`docs/approximation-contract.md` §6.20).
+- **What 0.1.55 does not have: wolf 0.2.34's new names.** s247's
+  `os_fork` and s248's `os_term_restore_at_exit`, `os_signal_wait_fds`,
+  `fs_sync`, `fs_sync_dir`, `fs_realpath` and `os_clock_ns` do not
+  resolve here, and the mode's bits 5–7 (`RAW_CR` 32, `RAW_OUTPUT` 64,
+  `STRIP8` 128) are still `invalid` in this machine's shape of
+  `os_term_set_mode`. No lane has mirrored them yet; wolf-lang's gates
+  that read lupin hold 0.1.55 to those answers by version.
+- **Rows that move on purpose downstream.** wolf-std `11c2741` (sc66)
+  names each as red the day a lupin that answers it is pinned, and
+  each moves with 0.1.55 beside wolf 0.2.33 (measured by r39):
+  `tests/signal/text_zero.lu` printed `text_zero=false` on 0.1.54,
+  which answered `text(0)` `invalid` (its ledger's `divergent(stdout)`),
+  and is `unsupported` here, `text(0)` refused by name (wolf-std#76);
+  `tests/signal/one_rows.lu` and `tests/process/poll_core_none.lu`
+  (ledger `unsupported`) run to `exit(0)`, their shape rows and the
+  no-child poll answered; and the `signal.ignore_one` and
+  `signal.reset_one` doc examples (the doc-example gate's two
+  `LUPIN_MIRROR_LAG` entries, wolf-interp#261) run to `exit(0)`. Each is
+  one line of wolf-std's to flip at its 0.1.55 pin.
+- **The walk at this release:** 1002 files, 955 entries, 47 members;
+  760 reach `run`, 721 match, 94 dynamic, 64 conservatism, 72 out of
+  scope, 4 mismatch, every one filed. Unchanged from 0.1.54, entry for
+  entry (the pin did not move); `os/signal_loopback.lu` and
+  `os/signal_supervisor.lu` stay `unsupported`, now refused at the
+  listen by name.
+- **Rulings now made** that is77 implements, each as ruled: #88 (R1 A,
+  the two one-meaning dispositions; R2 A, the end by a signal; R3 D, the
+  core read by the sibling calls only, the released wait and poll
+  keeping `-N`).
+- **CI: the matrix diet** (is78, ruling #92 R2). The merge gate, `tier
+  full` (the `full-matrix` label and a push to trunk), is ubuntu's and
+  macOS's three shards and ladder and one windows smoke: 17 jobs and
+  about 740 job-minutes, where it was 20 jobs and 1,438. Windows's
+  three heavy shards and its ladder run at `tier release`: the nightly
+  on trunk, `workflow_dispatch -f tier=release`, and the
+  `release-matrix` label, which a release lane adds at the head it
+  tags. A partial dispatch may name test entries (`-f entries=…`); a
+  red nightly opens one `nightly-red` issue or comments on the open one
+  (`ci/nightly-red.py`); `ci/tiers-test.py` proves the plan (162
+  checks).
+- **lupin's archive still ships no std** (ruling #59 B(1)): a `lupin`
+  installed alone answers `unsupported` for `use std.…` with nothing
+  set; one placed beside a 0.2.34 `wolf` reads the `std/` wolf ships.
+
+### wolf 0.2.33's calls and the three signal calls left unresolved (is77)
 
 is77 — lupin learns wolf 0.2.33's calls (wolf-lang s246, #783, #784,
 #785, #787; ruling #88 R1 A, R2 A, R3 D) and resolves the three signal
