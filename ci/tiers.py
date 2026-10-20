@@ -202,6 +202,8 @@ def matrix_of(tier, entries=None):
     order; `ci/tiers.py plan` has refused a name that is no entry."""
     if tier in ("release", "partial"):
         heavy, smokes = OSES, ("windows",)
+    elif tier == "full":  # PLANT (tl29-plant, never merged): macOS's four back at the merge
+        heavy, smokes = ("ubuntu", "macos"), ("windows",)
     else:
         heavy, smokes = ("ubuntu",), ("macos", "windows")
     names = ["%s/%s" % (o, s) for o in heavy for s in SHARDS] + ["%s/smoke" % o for o in smokes]
