@@ -58,7 +58,10 @@ def stats(r):
     jm = sum((ts(j["completed_at"]) - ts(j["started_at"])).total_seconds() for j in js) / 60
     mm = sum((ts(j["completed_at"]) - ts(j["started_at"])).total_seconds() for j in js if os_of(j) == "macos") / 60
     # the longest any one job waited for a runner after GitHub queued it
-    waits = [(ts(j["started_at"]) - ts(j["created_at"])).total_seconds() / 60 for j in js if j.get("created_at")]
+    # a re-run attempt's carried-over jobs keep the first attempt's times
+    # under the new attempt's created_at: no wait of theirs is read
+    waits = [(ts(j["started_at"]) - ts(j["created_at"])).total_seconds() / 60 for j in js
+             if j.get("created_at") and ts(j["started_at"]) >= ts(j["created_at"])]
     return {"queue": (first - c).total_seconds() / 60, "wall": (last - c).total_seconds() / 60, "jm": jm, "mm": mm,
             "jobs": len([j for j in r["jobs"] if j.get("conclusion") != "skipped"]), "maxwait": max(waits) if waits else 0}
 
@@ -132,9 +135,10 @@ def table(runs, T, nbefore, tsv=None, md=None, only=None):
                 tiers["(every run)"] = list(sel)
             for t in sorted(tiers, key=lambda t: (t == "(every run)", t)):
                 allx = tiers[t]
-                # a cancelled run's times say when it was superseded, not how long
-                # the work takes: counted, and its job-minutes summed, never in a median
-                xs = [x for x in allx if x[0]["conclusion"] != "cancelled"] or []
+                # a cancelled run's times say when it was superseded, and a re-run's
+                # wall holds the wait before someone re-ran it: counted, their
+                # job-minutes summed, never in a median
+                xs = [x for x in allx if x[0]["conclusion"] != "cancelled" and (x[0].get("run_attempt") or 1) == 1]
                 rows.append({
                     "repo": repo, "period": period, "tier": t, "runs": len(allx), "cancelled": len(allx) - len(xs),
                     "wall": med([s["wall"] for _, s in xs]), "wall90": p90([s["wall"] for _, s in xs]),
@@ -155,7 +159,7 @@ def table(runs, T, nbefore, tsv=None, md=None, only=None):
     if tsv:
         open(tsv, "w").write("\n".join(lines) + "\n")
     if md:
-        out = ["| repo | period | tier | runs (cancelled) | wall med / p90 | queue med / p90 | slot wait med | job-min med (sum) | macOS-min med |",
+        out = ["| repo | period | tier | runs (cancelled or re-run) | wall med / p90 | queue med / p90 | slot wait med | job-min med (sum) | macOS-min med |",
                "|---|---|---|---:|---:|---:|---:|---:|---:|"]
         def f(v):
             return "—" if v != v else ("%.0f" % v if v >= 10 else "%.1f" % v)

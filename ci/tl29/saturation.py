@@ -17,7 +17,8 @@ for f in glob.glob(cache + "/runs-*.json"):
             lab = " ".join(j["labels"] or []).lower()
             o = "macos" if "macos" in lab else "windows" if "windows" in lab else "linux"
             pts += [(ts(j["started_at"]), 1, o), (ts(j["completed_at"]), -1, o)]
-            if frm <= ts(j["created_at"]) < to:
+            # a re-run's carried-over jobs keep the first attempt's times: no wait read
+            if frm <= ts(j["created_at"]) < to and ts(j["started_at"]) >= ts(j["created_at"]):
                 waits[o].append((ts(j["started_at"]) - ts(j["created_at"])).total_seconds() / 60)
 pts.sort(key=lambda x: (x[0], x[1]))
 n = {"linux": 0, "macos": 0, "windows": 0}
