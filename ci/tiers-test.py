@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""ci/tiers-test.py — the planner's own proof (tl21). python3 and git only.
+"""ci/tiers-test.py — the planner's own proof (tl21, is78, tl29). python3 and git only.
 
     ci/tiers-test.py
 
   T1  the tiers by event: the nightly, `-f tier=release` and the
       `release-matrix` label are release (is78); a trunk push, a dispatch
-      and the `full-matrix` label are full; another label's `labeled`
+      and the `full-matrix` label are full, every job but the bundle
+      comparison (tl29: one ladder), the pr tier's jobs; another label's `labeled`
       event is a noop, and so is `full-matrix` added beside
       `release-matrix`; a dispatch that names jobs is partial, keeps only
       the test entries `-f entries` names, and refuses a job that is none
@@ -26,8 +27,9 @@
       run id; the trunk push, the nightly, the label and the dispatch's
       `jobs`, `tier` and `entries` inputs are there; the `test` matrix is,
       entry for entry, is75's twelve and the windows smoke on a release
-      run, ubuntu's and macOS's eight and the windows smoke on a full run
-      (no windows heavy entry at the merge), is75's six on a PR run; the
+      run, is75's six on a full run and on a PR run (tl29: no macOS or
+      windows heavy entry at the merge; the full tier's matrix and jobs are
+      the pr tier's), and the release matrix keeps every OS's four; the
       bundle is compared across the OSes the plan says ran a ladder; a red
       nightly, and only a nightly, runs ci/nightly-red.py from the tier
       job, whose token may write issues.
@@ -39,8 +41,8 @@
       partial run; red for a chosen job failed, skipped or cancelled, a
       job that ran unasked, a failed plan, a plan with no tier, a tier
       whose jobs are not that tier's (a `full` or a `release` that chose
-      less), and green when GitHub drops an output that would have been
-      empty.
+      less, a `full` that ran the bundle comparison: is78's full), and
+      green when GitHub drops an output that would have been empty.
   T7  the change read from git: a real merge commit against its first
       parent, with the base moved on meanwhile; red-to-full when HEAD is no
       merge or its second parent is not the pull request's head.
@@ -99,6 +101,7 @@ wf = open(WORKFLOW, encoding="utf-8").read()
 JOBS = re.findall(r"^  ([A-Za-z0-9_-]+):\s*$", wf[wf.index("\njobs:\n"):], re.M)
 EVERY = [j for j in JOBS if j not in ("plan", "tier")]
 PR_JOBS = [j for j in EVERY if j != "bundle-identical"]
+FULL_JOBS = [j for j in EVERY if j != "bundle-identical"]  # tl29: one ladder, no bundle to compare
 
 
 def names(r):
@@ -107,7 +110,7 @@ def names(r):
 
 HEAVY = [o + "/" + s for o in ("ubuntu", "macos", "windows") for s in ("1", "2", "3", "ladder")]
 RELEASE_M = HEAVY + ["windows/smoke"]
-FULL_M = HEAVY[:8] + ["windows/smoke"]
+FULL_M = HEAVY[:4] + ["macos/smoke", "windows/smoke"]  # tl29
 PR_M = HEAVY[:4] + ["macos/smoke", "windows/smoke"]
 
 
@@ -124,16 +127,16 @@ def expect(name, got, tier, jobs):
 # --- T1 the tiers by event ---------------------------------------------------
 say(EVERY == ["plan-test", "test", "shard-coverage", "bundle-identical", "independence", "dist-floor"],
     "T1 the workflow's jobs between plan and tier: %s" % " ".join(EVERY))
-expect("T1 a push to trunk", plan(event="push"), "full", EVERY)
+expect("T1 a push to trunk", plan(event="push"), "full", FULL_JOBS)
 expect("T1 the nightly", plan(event="schedule"), "release", EVERY)
-expect("T1 a dispatch, no input", plan(event="workflow_dispatch"), "full", EVERY)
-expect("T1 a dispatch asking for tier full", plan(event="workflow_dispatch", tier="full"), "full", EVERY)
+expect("T1 a dispatch, no input", plan(event="workflow_dispatch"), "full", FULL_JOBS)
+expect("T1 a dispatch asking for tier full", plan(event="workflow_dispatch", tier="full"), "full", FULL_JOBS)
 expect("T1 a dispatch asking for tier release", plan(event="workflow_dispatch", tier="release"), "release", EVERY)
 for t in ("pr", "noop", "partial", "everything"):
     say(plan(event="workflow_dispatch", tier=t)["tier"].startswith("ERROR rc=2"), "T1 a dispatch asking for tier %s is refused" % t)
 say(plan(event="workflow_dispatch", tier="release", jobs="plan-test")["tier"].startswith("ERROR rc=2"),
     "T1 a dispatch naming jobs and a tier is refused")
-expect("T1 the tier input means nothing to a push", plan(event="push", tier="release"), "full", EVERY)
+expect("T1 the tier input means nothing to a push", plan(event="push", tier="release"), "full", FULL_JOBS)
 expect("T1 a dispatch naming the planner's test", plan(event="workflow_dispatch", jobs="plan-test"), "partial", ["plan-test"])
 expect("T1 a dispatch naming two jobs, in the workflow's order",
        plan(event="workflow_dispatch", jobs="shard-coverage test"), "partial", ["test", "shard-coverage"])
@@ -162,9 +165,9 @@ say(plan(event="workflow_dispatch", jobs="plan-test", entries="windows/2")["tier
 say(plan(event="workflow_dispatch", entries="windows/2")["tier"].startswith("ERROR rc=2"),
     "T1 a dispatch naming entries and no jobs is refused")
 expect("T1 a pull request labelled full-matrix, prose only",
-       plan(["ci/tl99.md"], event="pull_request", action="synchronize", labels="bug,full-matrix"), "full", EVERY)
+       plan(["ci/tl99.md"], event="pull_request", action="synchronize", labels="bug,full-matrix"), "full", FULL_JOBS)
 expect("T1 the full-matrix label added",
-       plan(["ci/tl99.md"], event="pull_request", action="labeled", label="full-matrix", labels="full-matrix"), "full", EVERY)
+       plan(["ci/tl99.md"], event="pull_request", action="labeled", label="full-matrix", labels="full-matrix"), "full", FULL_JOBS)
 expect("T1 a pull request labelled release-matrix, prose only",
        plan(["ci/tl99.md"], event="pull_request", action="synchronize", labels="release-matrix"), "release", EVERY)
 expect("T1 the release-matrix label added",
@@ -209,14 +212,14 @@ say([e["shard"] for e in r["matrix"]] == ["1", "2", "3", "ladder", "smoke", "smo
     "T2 a pull request's matrix: ubuntu's four and two smokes; shard coverage checks ubuntu")
 
 # --- T3 full wins ---------------------------------------------------------------
-expect("T3 a path no rule names", plan(["newplace/thing.rs"], **pr), "full", EVERY)
-expect("T3 a new file at the root", plan(["deny.toml"], **pr), "full", EVERY)
-expect("T3 an unknown path beside prose", plan(["CHANGELOG.md", "newplace/notes.md"], **pr), "full", EVERY)
-expect("T3 an unknown path beside code", plan(["src/eval/mod.rs", "newplace/thing.rs"], **pr), "full", EVERY)
-expect("T3 no changed paths to read", plan(**pr), "full", EVERY)
-expect("T3 a change that names no path", plan([], **pr), "full", EVERY)
+expect("T3 a path no rule names", plan(["newplace/thing.rs"], **pr), "full", FULL_JOBS)
+expect("T3 a new file at the root", plan(["deny.toml"], **pr), "full", FULL_JOBS)
+expect("T3 an unknown path beside prose", plan(["CHANGELOG.md", "newplace/notes.md"], **pr), "full", FULL_JOBS)
+expect("T3 an unknown path beside code", plan(["src/eval/mod.rs", "newplace/thing.rs"], **pr), "full", FULL_JOBS)
+expect("T3 no changed paths to read", plan(**pr), "full", FULL_JOBS)
+expect("T3 a change that names no path", plan([], **pr), "full", FULL_JOBS)
 expect("T3 a merge that cannot be read (no repository there)",
-       plan(repo=os.path.join(ROOT, "no", "such", "dir"), flags=["--merge"], **pr), "full", EVERY)
+       plan(repo=os.path.join(ROOT, "no", "such", "dir"), flags=["--merge"], **pr), "full", FULL_JOBS)
 
 # --- T6 the verdict -------------------------------------------------------------
 def verdict(needs):
@@ -242,22 +245,23 @@ def vexpect(name, needs, want):
 
 failed = {"result": "failure", "outputs": {}}
 vexpect("a green release run", run_of("release", EVERY), 0)
-vexpect("a green full run", run_of("full", EVERY), 0)
+vexpect("a green full run", run_of("full", FULL_JOBS), 0)
 vexpect("a green pr run", run_of("pr", PR_JOBS), 0)
 vexpect("a noop run", run_of("noop", []), 0)
 vexpect("a noop run whose jobs output is absent", run_of("noop", [], drop=["jobs"]), 0)
 vexpect("a green run whose other outputs are absent", run_of("pr", PR_JOBS, drop=["matrix", "shard_oses"]), 0)
 vexpect("a partial run of the planner's test", run_of("partial", ["plan-test"]), 0)
-vexpect("a chosen job failed", run_of("full", EVERY, {"test": failed}), 1)
+vexpect("a chosen job failed", run_of("full", FULL_JOBS, {"test": failed}), 1)
 vexpect("the planner's test failed", run_of("pr", PR_JOBS, {"plan-test": failed}), 1)
 vexpect("a chosen job was skipped", run_of("pr", PR_JOBS, {"shard-coverage": {"result": "skipped", "outputs": {}}}), 1)
 vexpect("a chosen job was cancelled", run_of("pr", PR_JOBS, {"test": {"result": "cancelled", "outputs": {}}}), 1)
 vexpect("a job ran unasked", run_of("pr", PR_JOBS, {"bundle-identical": {"result": "success", "outputs": {}}}), 1)
 vexpect("a job ran in a noop run", run_of("noop", [], {"independence": {"result": "success", "outputs": {}}}), 1)
-vexpect("a full run that chose less than every job", run_of("full", PR_JOBS), 1)
+vexpect("a full run that chose less than its jobs", run_of("full", ["plan-test", "test"]), 1)
+vexpect("a full run that ran the bundle comparison (is78's full)", run_of("full", list(EVERY)), 1)
 vexpect("a release run that chose less than every job", run_of("release", PR_JOBS), 1)
 vexpect("a release run whose test job failed", run_of("release", EVERY, {"test": failed}), 1)
-vexpect("a full run whose jobs output is absent", run_of("full", EVERY, drop=["jobs"]), 1)
+vexpect("a full run whose jobs output is absent", run_of("full", FULL_JOBS, drop=["jobs"]), 1)
 vexpect("a pr run that chose one job", run_of("pr", ["plan-test"]), 1)
 vexpect("a partial run that chose nothing", run_of("partial", []), 1)
 vexpect("the plan failed", {"plan": {"result": "failure", "outputs": {}}, "test": {"result": "skipped", "outputs": {}}}, 1)
@@ -319,14 +323,22 @@ smoke = {"os": "windows-latest", "osid": "windows", "shard": "smoke"}
 r = plan(event="schedule")
 say(r["matrix"] == want + [smoke] and r["shard_oses"] == "ubuntu macos windows" and r["ladder_oses"] == "ubuntu macos windows",
     "T4 the release matrix is is75's twelve entries, in its order, and the windows smoke; every OS's shards and ladder")
+macsmoke = {"os": "macos-latest", "osid": "macos", "shard": "smoke"}
 r = plan(event="push")
-say(r["matrix"] == want[:8] + [smoke] and r["shard_oses"] == "ubuntu macos" and r["ladder_oses"] == "ubuntu macos",
-    "T4 the full matrix is ubuntu's and macOS's eight entries, in is75's order, and the windows smoke; their shards and ladders")
-heavy_win = [e for e in want if e["osid"] == "windows"]
+say(r["matrix"] == want[:4] + [macsmoke, smoke] and r["shard_oses"] == "ubuntu" and r["ladder_oses"] == "ubuntu",
+    "T4 the full matrix is ubuntu's four entries, in is75's order, the macOS smoke and the windows smoke; ubuntu's shards and ladder (tl29)")
+heavy_off = [e for e in want if e["osid"] in ("macos", "windows")]
 merge = [plan(event="push"), plan(["src/main.rs"], event="pull_request", action="labeled", label="full-matrix", labels="full-matrix"),
-         plan(["src/main.rs"], event="pull_request", action="synchronize"), plan(["newplace/x.rs"], event="pull_request", action="synchronize")]
-say(all(not any(e in m["matrix"] for e in heavy_win) and smoke in m["matrix"] for m in merge),
-    "T4 no merge-gate run (a trunk push, the label, a PR, a PR with a path no rule names) has a windows heavy entry; each has the windows smoke")
+         plan(["src/main.rs"], event="pull_request", action="synchronize"), plan(["newplace/x.rs"], event="pull_request", action="synchronize"),
+         plan(event="workflow_dispatch"), plan(event="workflow_dispatch", tier="full")]
+say(all(not any(e in m["matrix"] for e in heavy_off) and smoke in m["matrix"] and macsmoke in m["matrix"] for m in merge),
+    "T4 no merge-gate run (a trunk push, the label, a PR, a PR with a path no rule names, a dispatch) has a macOS or windows heavy entry; each has both smokes (tl29)")
+rel = plan(event="schedule")
+say(all(e in rel["matrix"] for e in want if e["osid"] in ("macos", "windows")),
+    "T4 the nightly's release matrix keeps macOS's and windows's three shards and ladder (tl29: what left the merge is here)")
+f, p_ = plan(event="push"), plan(["src/main.rs"], event="pull_request", action="synchronize")
+say(f["jobs"] == p_["jobs"] and f["matrix"] == p_["matrix"] and f["shard_oses"] == p_["shard_oses"] and f["ladder_oses"] == p_["ladder_oses"],
+    "T4 the full tier's jobs and matrix are the pr tier's (tl29; ci/tl29.md R-tl29-2: the label's run repeats the pr run's jobs)")
 r = plan(["src/main.rs"], **pr)
 want = want[:4] + [{"os": "macos-latest", "osid": "macos", "shard": "smoke"}, smoke]
 say(r["matrix"] == want and r["ladder_oses"] == "ubuntu", "T4 the pull-request matrix is is75's six entries, in its order")
@@ -390,15 +402,15 @@ try:
            plan(repo=repo, head_sha=head, flags=["--merge"], **pr), "noop", [])
     expect("T7 the same merge, the head not given", plan(repo=repo, flags=["--merge"], **pr), "noop", [])
     expect("T7 the merge's second parent is not the pull request's head",
-           plan(repo=repo, head_sha="0" * 40, flags=["--merge"], **pr), "full", EVERY)
+           plan(repo=repo, head_sha="0" * 40, flags=["--merge"], **pr), "full", FULL_JOBS)
     git(repo, "checkout", "-q", "topic")
-    expect("T7 HEAD is the branch, not a merge commit", plan(repo=repo, head_sha=head, flags=["--merge"], **pr), "full", EVERY)
+    expect("T7 HEAD is the branch, not a merge commit", plan(repo=repo, head_sha=head, flags=["--merge"], **pr), "full", FULL_JOBS)
     repo, head = merged(["docs/divergence-log.md", "src/lib.rs"])
     made.append(repo)
     expect("T7 a merge that changes code and prose", plan(repo=repo, head_sha=head, flags=["--merge"], **pr), "pr", PR_JOBS)
     repo, head = merged(["CHANGELOG.md", "somewhere/new.txt"])
     made.append(repo)
-    expect("T7 a merge that adds a path no rule names", plan(repo=repo, head_sha=head, flags=["--merge"], **pr), "full", EVERY)
+    expect("T7 a merge that adds a path no rule names", plan(repo=repo, head_sha=head, flags=["--merge"], **pr), "full", FULL_JOBS)
 except (subprocess.CalledProcessError, OSError) as e:
     say(False, "T7 could not build its repositories: %s %s" % (e, getattr(e, "stderr", "")))
 finally:
