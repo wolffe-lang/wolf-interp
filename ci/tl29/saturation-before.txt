@@ -1,0 +1,6 @@
+window 2026-10-19T00:00:00+00:00 .. 2026-10-20T18:13:58+00:00, 42.2 h
+all 20 slots in use: 8.9 h (21%)
+all 5 macOS slots in use: 10.3 h (24%)
+linux   jobs 1547  runner wait median 1.0  p90 33.7  max 184.4 min  sum 13825 job-min waiting
+macos   jobs  338  runner wait median 6.7  p90 60.7  max 145.7 min  sum 5878 job-min waiting
+windows jobs  224  runner wait median 0.2  p90 10.2  max 47.5 min  sum 680 job-min waiting
