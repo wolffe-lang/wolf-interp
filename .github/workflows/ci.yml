@@ -1,13 +1,16 @@
 name: CI
 
-# THE SLOT BUDGET (is75, is78). The org is on GitHub's free plan: 20
-# concurrent jobs org-wide, 5 of them macOS, public repos included, shared
-# by every repo. Before is75 every run was the whole matrix (17 jobs, 12 of
-# them long, about 21 slot-hours; ci/is75/before.tsv); before is78 every
-# merge still was: 20 jobs and 1,438 job-minutes a run (the median of 17),
-# 690 of them the four windows heavy jobs at 159-196 minutes each
-# (ci/is78/before.tsv), so one lane's merge held the org's slots for over
-# three hours. So the EVENT picks the matrix (ruling #92 R2):
+# THE SLOT BUDGET (is75, is78, tl29). The org was on GitHub's free plan
+# until 2026-10-20 (20 concurrent jobs org-wide, 5 of them macOS) and is on
+# Team since (60, still 5 macOS), public repos included, shared by every
+# repo. Before is75 every run was the whole matrix (17 jobs, 12 of them
+# long, about 21 slot-hours; ci/is75/before.tsv); before is78 every merge
+# still was: 20 jobs and 1,438 job-minutes a run (the median of 17), 690 of
+# them the four windows heavy jobs at 159-196 minutes each
+# (ci/is78/before.tsv); before tl29 the merge held four of the org's five
+# macOS slots for 76-124 minutes (346 macOS-minutes of 743, ci/tl29.md),
+# and every macOS slot was in use a quarter of the time. So the EVENT picks
+# the matrix (ruling #92 R2, tl29):
 #
 #   the nightly `schedule`; `workflow_dispatch -f tier=release`; a pull
 #   request carrying the `release-matrix` label (a release lane, before
@@ -16,9 +19,10 @@ name: CI
 #          the ladder each, and the windows smoke. Every test on every OS.
 #   a push to trunk; `workflow_dispatch`; a pull request carrying the
 #   `full-matrix` label (every lane, before its merge)
-#       -> tier FULL: ubuntu's and macOS's three shards and ladder, and ONE
-#          windows `smoke` (below). Windows's heavy shards and ladder are
-#          the nightly's and the release tier's.
+#       -> tier FULL: ubuntu's three shards and ladder, ONE macOS and ONE
+#          windows `smoke` (below): the PR leg's jobs and entries. The
+#          macOS and windows heavy shards and ladders, and the bundle
+#          compared across OSes, are the nightly's and the release tier's.
 #   any other pull_request
 #       -> tier PR: ubuntu's three shards and ladder in full, plus ONE
 #          windows and ONE macOS `smoke` job (the build, fmt, clippy, every
@@ -28,18 +32,20 @@ name: CI
 # Nothing a test checks changed: every test that ran before runs nightly on
 # trunk on every OS, and at tier release before every tag. What a merge no
 # longer proves is that the heavy targets, the corpus walk, the place-trace
-# identity and the bundle pass on windows: the nightly does, and a red
-# nightly opens an issue (label `nightly-red`; the `tier` job's last step)
-# that the next lane on wolf-interp owes before its own merge.
+# identity and the bundle pass on windows and macOS, and that the OSes'
+# bundles are identical: the nightly does, and a red nightly opens an issue
+# (label `nightly-red`; the `tier` job's last step) that the next lane on
+# wolf-interp owes before its own merge.
 #
-# THE TIERS (tl21, is78). The plan is `ci/tiers.py plan`, proven by
+# THE TIERS (tl21, is78, tl29). The plan is `ci/tiers.py plan`, proven by
 # `ci/tiers-test.py` (the `plan-test` job), and the run's LAST job says
 # which tier it was and whether it held:
 #
 #   tier release  every job, every entry: the whole matrix of before is75,
 #                 and the windows smoke.
-#   tier full     every job; ubuntu's and macOS's entries and the windows
-#                 smoke.
+#   tier full     every job but the bundle comparison (one ladder has
+#                 nothing to compare); ubuntu's entries and the two smokes:
+#                 since tl29 the pr tier's jobs and entries.
 #   tier pr       the pull-request leg above, unchanged.
 #   tier noop     the plan and the verdict, nothing else: a pull request
 #                 whose changed paths are ALL prose (the CHANGELOG,
@@ -58,8 +64,9 @@ name: CI
 # shrinks a run. The `tier` job fails unless the plan succeeded, the jobs
 # it chose are that tier's, every one of them succeeded and every other job
 # was skipped; so a green `tier release` is "every job, every OS, green", a
-# green `tier full` is "every job, every ubuntu and macOS entry and the
-# windows smoke, green", and a green `tier pr` is neither.
+# green `tier full` is "every job but the bundle comparison, every ubuntu
+# entry and the two smokes, green", and a green `tier pr` is the same jobs
+# without the label: not the merge's record (ci/tl29.md, R-tl29-2).
 #
 # THE MERGE RULE: a lane's PR merges only with a green `tier full` (or
 # `tier release`, which runs everything `tier full` does) at its head, and
@@ -201,9 +208,9 @@ jobs:
   #
   # The entries come from `plan` (is75, is78): on a release run, os × {1,
   # 2, 3, ladder} for ubuntu, macOS and windows — the twelve entries and job
-  # names of before — and the windows smoke; on a full run ubuntu's and
-  # macOS's four and the windows smoke; on a PR run ubuntu's four plus
-  # `smoke` on macOS and windows.
+  # names of before — and the windows smoke; on a full run and a PR run
+  # ubuntu's four plus `smoke` on macOS and windows (tl29: macOS's four
+  # left the merge as windows's did in is78).
   #
   # Measured whole-job times, kept from before the matrix moved into `plan`:
   # linux at 0cfc0cf (job 108596027245): 5,691 / 5,654 / 5,137 s of
@@ -711,9 +718,9 @@ jobs:
   # double in a copy of the artifacts and passes only if both are refused by
   # name, so this gate is seen red on every run.
   #
-  # On a PR run only ubuntu is sharded (is75) and on a full run ubuntu and
-  # macOS (is78), so the plan names the OSes to check; on a release run it
-  # is all three, as every full run was before is78.
+  # On a PR run and a full run only ubuntu is sharded (is75, tl29), so the
+  # plan names the OSes to check; on a release run it is all three, as
+  # every full run was before is78.
   shard-coverage:
     name: shards cover the suite
     runs-on: ubuntu-latest
@@ -741,11 +748,11 @@ jobs:
   # diff below names the exact files that differ, and the per-OS job logs
   # above carry the full hash listings.
   #
-  # Full and release runs only (is75): a PR run exports the bundle on ubuntu
-  # alone, and one manifest has nothing to be identical to. Skipped by design
-  # there. The plan names the OSes whose ladder ran (is78: ubuntu and macOS
-  # on a full run, all three on a release run); read with a default of all
-  # three, so an output that went missing compares more, never less.
+  # Release runs only (is75, tl29): a PR run and a full run export the
+  # bundle on ubuntu alone, and one manifest has nothing to be identical
+  # to. Skipped by design there. The plan names the OSes whose ladder ran
+  # (all three on a release run); read with a default of all three, so an
+  # output that went missing compares more, never less.
   bundle-identical:
     name: bundle identical across OSes
     runs-on: ubuntu-latest
