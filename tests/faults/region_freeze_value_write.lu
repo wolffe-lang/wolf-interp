@@ -4,12 +4,15 @@
 //! The value-path half of freeze enforcement (wolf-interp#2): the struct
 //! was allocated inside the region the `freeze` sugar promoted, so the
 //! write through `cfg.limit` lands in frozen storage — E1012's shape,
-//! executed. The granule half is `region_freeze_write.lu`.
+//! executed. The granule half is `region_freeze_write.lu`. is79
+//! (wolf-interp#271): `Config` holds a `List`, so `cfg` is the frozen
+//! region's data, as s252 rewrote the corpus row; a scalar-only `Config`
+//! is its own words in `cfg`, never the region's (`[mem.region.scalar]`).
 
-struct Config { limit: int }
+struct Config { limit: int, names: List[int] }
 
 fn main() -> !int {
-    var cfg = freeze region { Config { limit: 42 } }
+    var cfg = freeze region { Config { limit: 42, names: List[int]() } }
     cfg.limit = 7
     cfg.limit
 }

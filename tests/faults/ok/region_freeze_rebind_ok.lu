@@ -4,13 +4,14 @@
 //! The legal twin of `region_freeze_value_write.lu`: rebinding the *binding*
 //! replaces which value it holds and mutates no frozen storage, and reads of
 //! the frozen data stay legal forever. Only writes through the frozen value
-//! fault.
+//! fault. is79 (wolf-interp#271): `Config` holds a `List`, as its twin's
+//! does, so the frozen data is the region's (`[mem.region.scalar]`).
 
-struct Config { limit: int }
+struct Config { limit: int, names: List[int] }
 
 fn main() -> !int {
-    var cfg = freeze region { Config { limit: 42 } }
+    var cfg = freeze region { Config { limit: 42, names: List[int]() } }
     let seen = cfg.limit
-    cfg = Config { limit: 7 }
+    cfg = Config { limit: 7, names: List[int]() }
     if seen == 42 && cfg.limit == 7 { 0 } else { 1 }
 }
