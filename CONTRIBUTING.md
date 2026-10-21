@@ -239,61 +239,66 @@ These were paid for once already. Do not re-derive them.
 
 ## CI and the slot budget
 
-The org is on GitHub's free plan: **20 concurrent jobs org-wide, 5 of them
-macOS**, shared by every repo. wolf-interp's full matrix is 17 jobs, 12 of
-them long (ubuntu, macOS and windows, three test shards and a ladder job
-each; about 21 slot-hours and 3 hours a run), so which event runs what is
-decided by the `plan` job in `.github/workflows/ci.yml` (is75):
+The org is on GitHub's Team plan since 2026-10-20: **60 concurrent jobs
+org-wide, still only 5 of them macOS**, shared by every repo. wolf-interp's
+whole matrix is 21 jobs (ubuntu, macOS and windows, three test shards and a
+ladder job each, the windows smoke, the bundle compared across the OSes;
+about 1,400 job-minutes and three hours a run), so which event runs what
+is decided by the `plan` job in `.github/workflows/ci.yml` (`ci/tiers.py`,
+held by `ci/tiers-test.py`; is75, is78, tl29, tl30b):
 
-| event | matrix |
-|---|---|
-| push to `trunk`, the nightly `schedule` (04:23 UTC), `workflow_dispatch` | **full**: all three OSes, every shard and ladder, exactly as before |
-| a pull request carrying the **`full-matrix`** label | **full**, on demand |
-| any other pull request | ubuntu's three shards and ladder in full, plus one **windows** and one **macOS smoke** (build, fmt, clippy, every test target except the heavy ones `SMOKE_OMITS` names, and the fast ladder rungs; 30-minute cap) |
-| a pull request that changes **only prose** | nothing: the plan and the verdict (`tier noop`) |
+| event | tier | what runs |
+|---|---|---|
+| **every push of a pull request that changes code** (opened, synchronize, reopened), a push to `trunk`, `workflow_dispatch` | **`tier full`**, the merge gate | ubuntu's three shards and ladder in full, one **macOS** and one **windows smoke** (build, fmt, clippy, every test target except the heavy ones `SMOKE_OMITS` names, the fast ladder rungs; 30-minute cap), shard coverage, independence, the dist floor: 13 jobs, about 400 job-minutes, two hours |
+| the nightly `schedule` (04:23 UTC), `gh workflow run CI --ref <branch> -f tier=release`, a pull request carrying the **`release-matrix`** label | **`tier release`** | every job on every OS: the macOS and windows heavy shards and ladders, and the bundle compared across all three |
+| a pull request that changes **only prose**, labelled or not | `tier noop` | nothing: the plan and the verdict |
+| any label added but `release-matrix` (**`full-matrix` included**) | `tier noop` | nothing |
+| `gh workflow run CI --ref <branch> -f jobs=plan-test` | `tier partial` | the jobs it names (a plant); with `-f entries="windows/2"`, only those test entries |
 
-A pull-request run therefore does not prove that the heavy targets
-(`SMOKE_OMITS` in the workflow) pass on windows or macOS; the trunk push
-after the merge does. **Get the full matrix before the merge** (the merge
-rule, below, requires it of every PR since tl21) by either:
+A merge therefore does not prove that the heavy targets pass on windows or
+macOS, nor that the OSes' bundles are identical: the nightly does, every
+night, and a red nightly opens a `nightly-red` issue that the next lane on
+wolf-interp owes before its own merge. A release lane runs `tier release`
+at the head it tags.
 
-```sh
-gh pr edit <N> --add-label full-matrix          # every later push runs full too
-gh workflow run CI --ref <branch>               # one full run of the branch head
-```
+A push to a pull request cancels that branch's older run of the same
+group (the gate's, or the release run's); a label's noop run has a group
+of its own and cancels nothing; a trunk push, the nightly and a dispatch
+each run in a group of their own, so none is cancelled and none is
+replaced while it waits.
 
-The full run and the reduced run of a PR live in separate concurrency
-groups, so adding the label never cancels the reduced run at the same head.
-A push to a PR branch cancels that branch's older run of the same kind;
-a trunk push, the nightly and a dispatch each run in a group of their own,
-so none is cancelled and none is replaced while it waits.
-
-### The tiers and the merge rule (tl21)
+### The tiers and the merge rule (tl21, tl30b)
 
 Every run's last job is named for what the run was, and is red unless the
 plan succeeded, every job the plan chose succeeded and every other job
-was skipped: **`tier full`** (the full matrix), **`tier pr`** (the
-pull-request leg above), **`tier noop`** (nothing ran), `tier partial` (a
-dispatch that named jobs: `gh workflow run CI --ref <branch> -f
-jobs=plan-test`).
+was skipped: **`tier full`** (the merge gate), **`tier release`** (every
+job on every OS), **`tier noop`** (nothing ran), `tier partial` (a
+dispatch that named jobs).
 
-**A PR merges only with a green `tier full` at its head.** `tier pr` is
-what a push gets; it is not the merge gate, and `lane-audit.sh` fails a
-head that has no green `tier full`. So:
+**A PR merges only with a green `tier full` (or `tier release`) at its
+head**, and that is **the pull request's own run** at its final head
+(ruling #101 C): no label is needed, and `wolf/tools/lane-audit.sh` reads
+wolf-interp as a verdict-only repository. Until tl30b the pull request's
+push ran `tier pr`, the same jobs and entries since tl29, and the
+`full-matrix` label ran them again for the merge; adding the label now
+starts a noop.
 
-1. Open the PR **without** the label (`opened` and `labeled` together
-   start two full runs, and the second cancels the first).
-2. Push until the head is the one to merge; each push runs `tier pr`.
-3. Then `gh pr edit <N> --add-label full-matrix` and wait for `tier full`.
-   A push after that runs full again, so label last.
+A PR declares its footprint on a `Footprint:` line in its body (ruling
+#104; `sprints/RULES.md` §6–§7 in the planning repo): `notes` (prose only:
+the audit alone, no CI wait), `module` (one module or the program: the
+lane's local gauntlet and the pull request's green run; the trunk push's
+run after the merge is the definitive answer), or `cross-cutting` (the
+spec, the runtime, the loader, CI itself; the default when the line is
+missing). On wolf-interp every code PR's run is the full gate, so `module`
+and `cross-cutting` wait for the same run; `notes` waits for none.
 
 Prose is narrow, and decided by path (`ci/tiers.py`, held by
 `ci/tiers-test.py`): `CHANGELOG.md`, `CONTRIBUTING.md`, `docs/*.md` and
 the lane notes `ci/*.md`. **`README.md`, `docs/manual/` and `docs/repl.md`
 are not prose**: `cargo test` runs their commands and reads their anchors.
 Nothing under `vendor/`, `upstream`, `src/` or `tests/` is prose, whatever
-its extension. A changed path no rule names runs the full matrix; add the
-rule in the same PR. A prose-only PR still needs the label's run to merge.
+its extension. A changed path no rule names runs the full gate; add the
+rule in the same PR.
 
 ## Before you push
 
