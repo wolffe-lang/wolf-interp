@@ -1122,11 +1122,35 @@ impl Machine {
             None => self.eval(&binding.value),
         };
         self.initializing.pop();
-        Ok(complement_adopt(
-            &binding.value,
-            value?,
-            binding.ty.as_ref(),
-        ))
+        let value = complement_adopt(&binding.value, value?, binding.ty.as_ref());
+        // is79 (wolf-interp#272): a bare literal initializer takes the item's
+        // declared integer type at the item, as a local binding's does — a
+        // term already did, through `eval_int_expected` above. Until then a
+        // `let SEED: wrapping[u32] = 4294967295` held an untyped literal, so
+        // `SEED + 1` was literal arithmetic and met `i32` at its binding
+        // (`trap(overflow)`) instead of wrapping to 0. A literal that does
+        // not fit is the compiler's E0415; the run's reading is the overflow
+        // trap, as for a local `let`.
+        match (value, binding.ty.as_ref().and_then(int_of_type)) {
+            (Value::Int(v, at), Some(ty)) if at.literal => {
+                if ty.holds(v) {
+                    Ok(Value::Int(v, ty))
+                } else {
+                    self.trap(
+                        TrapKind::Overflow,
+                        Rule::ArithChecked,
+                        binding.value.span,
+                        format!(
+                            "the literal {v} is outside `{}`, the item's type — checked \
+                             arithmetic traps in every profile (X3)",
+                            ty.name()
+                        ),
+                        None,
+                    )
+                }
+            }
+            (value, _) => Ok(value),
+        }
     }
 
     fn finish(&mut self, result: EResult<Value>) -> Outcome {
