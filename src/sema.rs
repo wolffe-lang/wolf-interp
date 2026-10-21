@@ -2717,6 +2717,12 @@ fn move_check(program: &Program) -> Option<Diag> {
 /// What a local is syntactically known to hold, for the tier statics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LitClass {
+    /// is79 (wolf-interp#274): a value of an adapter (`type R = distinct
+    /// bool`, `type N = distinct str`) — a parameter or binding declared
+    /// with one, or a cast into one. The adapter casts its base both ways
+    /// (D28): `r as bool`, `true as R`, `n as str`, `"a" as N`.
+    AdapterBool,
+    AdapterStr,
     Str,
     Int,
     Float,
@@ -2756,9 +2762,44 @@ struct TierWalk<'a> {
     /// The module's `var` items: every read and write of one is the ring's
     /// op (`[mem.static.2]`, K11 = A; wolf-interp#190).
     module_vars: BTreeSet<String>,
+    /// is79 (wolf-interp#274): every adapter the program declares, alias →
+    /// its base's head name ([`Module::distincts`], every module's), so an
+    /// adapter of `bool` or `str` is a class this walk can name.
+    adapters: &'a BTreeMap<String, String>,
+}
+
+/// Every module's `type A = distinct B`, alias → `B`'s head name.
+fn program_adapters(program: &Program) -> BTreeMap<String, String> {
+    program
+        .modules
+        .values()
+        .flat_map(|m| m.distincts.iter().map(|(a, b)| (a.clone(), b.clone())))
+        .collect()
 }
 
 impl TierWalk<'_> {
+    /// [`class_of_type`], with an adapter of `bool` or `str` named as one.
+    fn class_of(&self, ty: &Type) -> LitClass {
+        if let TypeKind::Path { path, args } = &*ty.kind
+            && args.is_empty()
+            && let Some(last) = path.segments.last()
+        {
+            match self.adapters.get(&last.name).map(String::as_str) {
+                Some("bool") => return LitClass::AdapterBool,
+                Some("str") => return LitClass::AdapterStr,
+                _ => {}
+            }
+        }
+        class_of_type(ty)
+    }
+
+    /// Whether some module declares an adapter whose base is `base` — the
+    /// walk then says nothing about a cast to `base` from an operand it
+    /// cannot class, which may be one.
+    fn adapts(&self, base: &str) -> bool {
+        self.adapters.values().any(|b| b == base)
+    }
+
     fn lookup(&self, name: &str) -> LitClass {
         for scope in self.scopes.iter().rev() {
             for (n, class) in scope.iter().rev() {
@@ -2845,6 +2886,14 @@ impl TierWalk<'_> {
                 }
             }
             ExprKind::Cast { ty, .. } if type_contains_raw(ty) => LitClass::Raw,
+            ExprKind::Cast { ty, .. }
+                if matches!(
+                    self.class_of(ty),
+                    LitClass::AdapterBool | LitClass::AdapterStr
+                ) =>
+            {
+                self.class_of(ty)
+            }
             ExprKind::Call { callee, .. } if self.c_alloc_name(callee).is_some() => LitClass::Raw,
             // The book's laundering shape: `let p = unsafe { … as *u8 }` —
             // the VALUE that leaves the block is raw; holding it is free,
@@ -3097,6 +3146,7 @@ fn tier_check(program: &Program) -> Option<Diag> {
         // both arrive as `Opaque` — so the set is names, not kinds. Used
         // only to decline judging a name that *does* resolve.
         let declared: BTreeSet<String> = module.items.keys().cloned().collect();
+        let adapters = program_adapters(program);
         // Items in source order — by file, then by offset — and the impl
         // methods after them, as [`each_fn`] had them: the first finding is
         // the one that starts first (`[proto.record.first]`), and two fns'
@@ -3144,10 +3194,12 @@ fn tier_check(program: &Program) -> Option<Diag> {
                     .into_iter()
                     .chain(qualified.iter().cloned())
                     .collect(),
+                adapters: &adapters,
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
-                    walk.declare(&name.name, class_of_type(ty));
+                    let class = walk.class_of(ty);
+                    walk.declare(&name.name, class);
                 }
             }
             if let Some(body) = &decl.body
@@ -3170,6 +3222,7 @@ fn tier_check(program: &Program) -> Option<Diag> {
                         .into_iter()
                         .chain(qualified.iter().cloned())
                         .collect(),
+                    adapters: &adapters,
                 };
                 if let Some(diag) = walk.expr(&binding.value) {
                     return Some(diag);
@@ -3203,6 +3256,7 @@ fn tier_check(program: &Program) -> Option<Diag> {
 /// so a file that trips an older check keeps the diagnostic it had; the
 /// diagnostic names its item's file ([`Module::item_files`]).
 fn tier_late_check(program: &Program) -> Option<Diag> {
+    let adapters = program_adapters(program);
     for module in program.modules.values() {
         let rows: BTreeMap<String, RowInfo> = BTreeMap::new();
         let declared: BTreeSet<String> = module.items.keys().cloned().collect();
@@ -3228,6 +3282,7 @@ fn tier_late_check(program: &Program) -> Option<Diag> {
                 // by [`tier_check`]'s walk.
                 externs: BTreeSet::new(),
                 module_vars: BTreeSet::new(),
+                adapters: &adapters,
             };
             walk.late_fn_body(decl)
         };
@@ -3429,7 +3484,8 @@ impl TierWalk<'_> {
         self.scopes.push(Vec::new());
         for param in &decl.params {
             if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
-                self.declare(&name.name, class_of_type(ty));
+                let class = self.class_of(ty);
+                self.declare(&name.name, class);
             }
         }
         let out = self.block_tail(body, fn_returns_unit(decl)).0;
@@ -3575,7 +3631,7 @@ impl TierWalk<'_> {
                     let class = binding
                         .ty
                         .as_ref()
-                        .map(class_of_type)
+                        .map(|ty| self.class_of(ty))
                         .filter(|c| *c != LitClass::Unknown)
                         .unwrap_or_else(|| self.classify(&binding.value));
                     self.declare(&ident.name, class);
@@ -3798,7 +3854,17 @@ impl TierWalk<'_> {
                 // is not a truthiness bridge, and the counterparty rejects
                 // in unsafe code too (observed at pin `f0da6e6`: E0805 at
                 // the whole cast expression, `ty.cast.closed-set`).
-                if is_bool_type(ty) {
+                //
+                // is79 (wolf-interp#274): save from an adapter of `bool`,
+                // which casts to its base (D28; `ready not ready` on every
+                // compiling machine) — an operand this walk classes as one,
+                // or one it cannot class where the program declares one.
+                let operand_class = self.classify(operand);
+                let from_adapter = |adapter: LitClass, base: &str| {
+                    operand_class == adapter
+                        || (operand_class == LitClass::Unknown && self.adapts(base))
+                };
+                if is_bool_type(ty) && !from_adapter(LitClass::AdapterBool, "bool") {
                     return Some(Diag::new(
                         "E0805",
                         expr.span,
@@ -3809,8 +3875,9 @@ impl TierWalk<'_> {
                     ));
                 }
                 // The other side of the bridge (`corpus/typecheck/cast_bad.lu`,
-                // the row this rung can see): a `bool` casts to nothing.
-                if self.classify(operand) == LitClass::Bool {
+                // the row this rung can see): a `bool` casts to nothing — but
+                // its adapter (is79, #274: `true as Ready`).
+                if operand_class == LitClass::Bool && self.class_of(ty) != LitClass::AdapterBool {
                     return Some(Diag::new(
                         "E0805",
                         expr.span,
@@ -3819,8 +3886,9 @@ impl TierWalk<'_> {
                          value out instead, e.g. `if b { 1 } else { 0 }`",
                     ));
                 }
-                // And `as` is not a stringifier: nothing casts to `str`.
-                if is_str_type(ty) {
+                // And `as` is not a stringifier: nothing casts to `str` —
+                // but an adapter of `str`, to its base (is79, #274).
+                if is_str_type(ty) && !from_adapter(LitClass::AdapterStr, "str") {
                     return Some(Diag::new(
                         "E0805",
                         expr.span,
@@ -4207,7 +4275,12 @@ impl TierWalk<'_> {
                 LitClass::Bool => Some(crate::fmtspec::HoleClass::Bool),
                 LitClass::Int => Some(crate::fmtspec::HoleClass::Int),
                 LitClass::Float => Some(crate::fmtspec::HoleClass::Float),
-                LitClass::Raw | LitClass::Unknown => None,
+                // An adapter's hole renders as its base would, but this walk
+                // does not judge a spec against it (is79).
+                LitClass::AdapterBool
+                | LitClass::AdapterStr
+                | LitClass::Raw
+                | LitClass::Unknown => None,
             };
             if let Some(class) = class
                 && let Err(mismatch) = crate::fmtspec::validate(&spec, class)
