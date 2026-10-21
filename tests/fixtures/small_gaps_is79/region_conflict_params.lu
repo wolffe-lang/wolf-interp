@@ -1,0 +1,30 @@
+//! check: fail(E1004)
+//! phase: typecheck
+//! conforms: mem.region.edge, mem.region.create.3
+//! The one annotation Cyclone's measurement says exists (1 per 110
+//! KLOC): storing one parameter's data into another parameter's
+//! region. Parameter regions are fresh-and-generalized by default —
+//! that independence is the zero-annotation contract — and no
+//! equality surface exists yet, so the checker demands restructuring.
+//! Dynamically the call below ties tmp-region data into a caller-
+//! region container: a region-fault once tmp is freed. s252: `Item`
+//! holds a `List` — the data this rule is about. A scalar-only `Item`
+//! names no region, and the same store is legal
+//! (`[mem.region.scalar]`, `region_scalar_store.lu`).
+
+struct Item { value: int, seen: List[int] }
+
+struct Holder { item: Item }
+
+fn stash(mut holder: Holder, take item: Item) {
+    holder.item = item             // ERROR E1004: independent regions
+}
+
+fn main() -> !int {
+    var h = Holder { item: Item { value: 1, seen: List[int]() } }
+    region tmp {
+        let i = Item { value: 2, seen: List[int]() }
+        stash(mut h, take i)
+    }
+    if h.item.value == 2 { 0 } else { 1 }
+}
