@@ -77,7 +77,10 @@ fn verdict(rec: &serde_json::Value) -> &str {
 }
 
 fn stdout(rec: &serde_json::Value) -> String {
-    rec["stdout_inline"].as_str().unwrap_or("").replace('\r', "")
+    rec["stdout_inline"]
+        .as_str()
+        .unwrap_or("")
+        .replace('\r', "")
 }
 
 fn reason(rec: &serde_json::Value) -> &str {
