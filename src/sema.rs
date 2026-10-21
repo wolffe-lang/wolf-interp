@@ -7280,6 +7280,7 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
                 trait_impls: &module.trait_impls,
                 uses: &module.uses,
                 struct_fields: &struct_fields,
+                program,
             };
             for param in &decl.params {
                 if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
@@ -7318,6 +7319,7 @@ fn row_operand_check(program: &Program) -> Option<Diag> {
                     trait_impls: &module.trait_impls,
                     uses: &module.uses,
                     struct_fields: &struct_fields,
+                    program,
                 };
                 if let Some(diag) = walk.expr(&binding.value) {
                     return Some(diag);
@@ -7664,6 +7666,10 @@ struct RowWalk<'a> {
     /// wolf-interp#94: the declared fields of each struct this module
     /// declares, in declaration order — what a literal is checked against.
     struct_fields: &'a BTreeMap<String, Vec<String>>,
+    /// is79 (wolf-interp#275): the whole program, so a literal of an
+    /// IMPORTED struct (`net.Addr { … }`) is checked against the fields its
+    /// own module declares.
+    program: &'a Program,
 }
 
 /// The operator table of `[type.trait.op]`: the trait and the method an
@@ -7855,20 +7861,46 @@ impl RowWalk<'_> {
     /// c9237c1: `this Row literal is missing the field cents`). Decided for
     /// structs this module declares, by name; a literal of an imported or
     /// shadowed name is left to the dynamic tier.
+    ///
+    /// is79 (wolf-interp#275, wolf-std sc67): and for a struct a `use`d
+    /// module declares, by its qualified name — `net.Addr { versio: 4, … }`
+    /// is E0408 over the literal for the `version` it leaves out, the
+    /// compiler's first diagnostic there (wolf 0.2.34: E0408 over the
+    /// literal, then E0403 at the misspelling). The declared fields are read
+    /// off that module's own definition.
     fn struct_literal(
         &self,
         path: &crate::ast::Path,
         fields: &[crate::ast::FieldInit],
         span: Span,
     ) -> Option<Diag> {
-        if !path.is_single() {
-            return None;
-        }
-        let name = &path.segments[0].name;
-        if self.shadows(name) {
-            return None;
-        }
-        let declared = self.struct_fields.get(name)?;
+        let imported: Vec<String>;
+        let (name, declared): (String, &Vec<String>) = match &path.segments[..] {
+            [only] => {
+                if self.shadows(&only.name) {
+                    return None;
+                }
+                (only.name.clone(), self.struct_fields.get(&only.name)?)
+            }
+            [module, item] => {
+                if self.shadows(&module.name) || !self.uses.contains(&module.name) {
+                    return None;
+                }
+                let Some((Def::Struct(def), _)) = self
+                    .program
+                    .modules
+                    .get(&module.name)?
+                    .items
+                    .get(&item.name)
+                else {
+                    return None;
+                };
+                imported = def.fields.iter().map(|f| f.name.name.clone()).collect();
+                (format!("{}.{}", module.name, item.name), &imported)
+            }
+            _ => return None,
+        };
+        let name = &name;
         let missing: Vec<&str> = declared
             .iter()
             .filter(|field| !fields.iter().any(|init| init.name.name == **field))
@@ -8777,6 +8809,16 @@ fn declare_pattern_names(pattern: &Pattern, walk: &mut RowWalk<'_>) {
 /// `unknown_cast_target` already spends it on a cast target that resolves
 /// nowhere, which is the same question one syntactic position over.
 fn annotation_check(program: &Program) -> Option<Diag> {
+    let single = single_annotation_check(program);
+    let heads = type_head_check(program);
+    match (single, heads) {
+        (Some(a), Some(b)) => Some(if b.span.start < a.span.start { b } else { a }),
+        (a, b) => a.or(b),
+    }
+}
+
+/// [`annotation_check`]'s single-segment half (#79).
+fn single_annotation_check(program: &Program) -> Option<Diag> {
     for module in program.modules.values() {
         let known = known_type_names(program, module);
         // Top-level `fn` items, then impl-block methods. A method's extra
@@ -8837,6 +8879,264 @@ fn annotation_check(program: &Program) -> Option<Diag> {
         }
     }
     None
+}
+
+/// is79 (wolf-interp#275; wolf-std sc67, wolf-std#81): the qualified and
+/// literal-head half of #79 and #94 — every name that must be a TYPE
+/// resolves where it is written:
+///
+/// - a **qualified annotation** `m.T` in a signature (a parameter or a
+///   return type, and every generic argument inside one) where `m` is a
+///   module this one `use`s and has loaded, and `m` declares nothing named
+///   `T`: `fn show(a: net.NoSuchType)` is E0301 at `NoSuchType` (wolf
+///   0.2.34, every compiling machine: 28..38 in sc67's `param_type.lu`);
+/// - a **struct literal's head**: a single name nothing in scope declares
+///   (`Fake { y: 2 }` — the compiled tiers answer `unsupported`, "this
+///   struct-literal head", at 0.2.34, where the clause's answer is E0301,
+///   resolution's), or `m.T { … }` with `m` a loaded module that declares no
+///   `T` (`net.NoSuchType { … }`: E0301 at the name, 49..59 in
+///   `no_such_type.lu`).
+///
+/// A qualified head whose first segment is not a `use`d module (an enum's
+/// variant, `Mode.Busy { … }`) and a module this program did not load are
+/// left alone, as are names a body declares itself (a nested item). The
+/// earliest site in the first module that has one is the answer, the
+/// compiler's order.
+fn type_head_check(program: &Program) -> Option<Diag> {
+    for module in program.modules.values() {
+        let mut found: Vec<Diag> = Vec::new();
+        let known = known_type_names(program, module);
+        let methods = module
+            .methods
+            .values()
+            .flat_map(|by_name| by_name.values().flatten())
+            .map(|method| (&*method.decl, method.impl_generics.as_slice()));
+        let items = module.items.values().filter_map(|(def, _)| match def {
+            Def::Fn(decl) => Some((&**decl, [].as_slice())),
+            _ => None,
+        });
+        for (decl, impl_generics) in items.chain(methods) {
+            if decl
+                .quals
+                .iter()
+                .any(|qual| matches!(qual, crate::ast::FnQual::Extern { .. }))
+            {
+                continue;
+            }
+            let annotated = decl
+                .params
+                .iter()
+                .filter_map(|param| match &param.kind {
+                    crate::ast::ParamKind::Named { ty, .. } => Some(ty),
+                    crate::ast::ParamKind::SelfParam { .. } => None,
+                })
+                .chain(decl.ret.as_ref().map(|ret| &ret.ty));
+            for ty in annotated {
+                qualified_type_heads(ty, program, module, &mut found);
+            }
+            if let Some(body) = &decl.body {
+                let mut scope = known.clone();
+                scope.extend(impl_generics.iter().cloned());
+                scope.extend(decl.generics.iter().map(|g| g.name.name.clone()));
+                nested_item_names(body, &mut scope);
+                let mut heads = Vec::new();
+                block_literal_heads(body, &mut heads);
+                for path in heads {
+                    if let Some(diag) = literal_head(path, &scope, program, module) {
+                        found.push(diag);
+                    }
+                }
+            }
+        }
+        for (def, _) in module.items.values() {
+            if let Def::Binding(binding) = def {
+                let mut heads = Vec::new();
+                expr_literal_heads(&binding.value, &mut heads);
+                for path in heads {
+                    if let Some(diag) = literal_head(path, &known, program, module) {
+                        found.push(diag);
+                    }
+                }
+            }
+        }
+        if let Some(diag) = found.into_iter().min_by_key(|d| (d.span.start, d.span.end)) {
+            return Some(diag);
+        }
+    }
+    None
+}
+
+/// Whether module `m` declares `name` at all — an item of any kind, a
+/// distinct, a variant, a trait or a sibling's name: anything that makes
+/// `m.name` something other than nothing.
+fn module_declares(m: &Module, name: &str) -> bool {
+    m.items.contains_key(name)
+        || m.distincts.contains_key(name)
+        || m.variants.contains_key(name)
+        || m.methods.contains_key(name)
+        || m.trait_defaults.contains_key(name)
+        || m.trait_members.contains_key(name)
+        || m.trait_aliases.contains_key(name)
+        || m.standalone
+            .iter()
+            .any(|s| s.names.iter().any(|n| n == name))
+}
+
+/// `m.T` where `m` is a module `module` uses and the program loaded, and
+/// `m` declares no `T`: E0301 at `T`.
+fn qualified_head(
+    path: &crate::ast::Path,
+    program: &Program,
+    module: &Module,
+    rule: &'static str,
+) -> Option<Diag> {
+    let [m, t] = &path.segments[..] else {
+        return None;
+    };
+    if !module.uses.contains(&m.name) {
+        return None;
+    }
+    let target = program.modules.get(&m.name)?;
+    if module_declares(target, &t.name) {
+        return None;
+    }
+    Some(Diag::new(
+        "E0301",
+        t.span,
+        rule,
+        format!(
+            "nothing named `{}` is in `{}` — the module is loaded and declares no such type, \
+             and resolution is the rung that answers whether a name exists ([mod])",
+            t.name, m.name
+        ),
+    ))
+}
+
+/// Every qualified type name in `ty` (recursively, generic arguments
+/// included) that [`qualified_head`] refuses.
+fn qualified_type_heads(ty: &Type, program: &Program, module: &Module, out: &mut Vec<Diag>) {
+    match &*ty.kind {
+        TypeKind::Path { path, args } => {
+            if let Some(diag) = qualified_head(path, program, module, "gram.item.fn") {
+                out.push(diag);
+            }
+            for arg in args {
+                if let TypeArg::Type(inner) = arg {
+                    qualified_type_heads(inner, program, module, out);
+                }
+            }
+        }
+        TypeKind::ErrorUnion(inner)
+        | TypeKind::Fallible { ty: inner, .. }
+        | TypeKind::Prefixed { ty: inner, .. }
+        | TypeKind::RawPointer(inner) => qualified_type_heads(inner, program, module, out),
+        TypeKind::Tuple(parts) => {
+            for part in parts {
+                qualified_type_heads(part, program, module, out);
+            }
+        }
+        TypeKind::Fn { params, ret } => {
+            for param in params {
+                qualified_type_heads(param, program, module, out);
+            }
+            if let Some(ret) = ret {
+                qualified_type_heads(&ret.ty, program, module, out);
+            }
+        }
+        TypeKind::Dyn(_) | TypeKind::TypeOfTypes | TypeKind::Region => {}
+    }
+}
+
+/// A struct literal's head that names nothing: a single name outside
+/// `scope`, or a qualified one [`qualified_head`] refuses.
+fn literal_head(
+    path: &crate::ast::Path,
+    scope: &BTreeSet<String>,
+    program: &Program,
+    module: &Module,
+) -> Option<Diag> {
+    if let [only] = &path.segments[..] {
+        if scope.contains(&only.name) {
+            return None;
+        }
+        return Some(Diag::new(
+            "E0301",
+            only.span,
+            "type.struct.literal",
+            format!(
+                "nothing named `{}` is in scope — a struct literal's head names a struct, and \
+                 resolution is the rung that answers whether a name exists ([mod]); it is \
+                 neither an item this module declares, a name a `use` binds, nor a generic \
+                 parameter in scope",
+                only.name
+            ),
+        ));
+    }
+    qualified_head(path, program, module, "type.struct.literal")
+}
+
+/// The names the items nested in `block` declare, at any depth.
+fn nested_item_names(block: &Block, scope: &mut BTreeSet<String>) {
+    for stmt in &block.stmts {
+        if let StmtKind::Item(item) = &stmt.kind {
+            match &item.kind {
+                crate::ast::ItemKind::Fn(decl) => {
+                    scope.insert(decl.name.name.clone());
+                    if let Some(body) = &decl.body {
+                        nested_item_names(body, scope);
+                    }
+                }
+                crate::ast::ItemKind::Struct(def) => {
+                    scope.extend(def.name.iter().map(|n| n.name.clone()));
+                }
+                crate::ast::ItemKind::Enum(def) => {
+                    scope.extend(def.name.iter().map(|n| n.name.clone()));
+                }
+                crate::ast::ItemKind::TypeAlias(alias) => {
+                    scope.insert(alias.name.name.clone());
+                }
+                crate::ast::ItemKind::Trait(def) => {
+                    scope.insert(def.name.name.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Every struct literal's head in `block`, nested bodies included.
+fn block_literal_heads<'a>(block: &'a Block, out: &mut Vec<&'a crate::ast::Path>) {
+    for stmt in &block.stmts {
+        match &stmt.kind {
+            StmtKind::Binding(binding) => expr_literal_heads(&binding.value, out),
+            StmtKind::Assign { place, value, .. } => {
+                expr_literal_heads(place, out);
+                expr_literal_heads(value, out);
+            }
+            StmtKind::Defer { expr, .. } | StmtKind::Expr(expr) => expr_literal_heads(expr, out),
+            StmtKind::AssumeNoalias(es) => es.iter().for_each(|e| expr_literal_heads(e, out)),
+            StmtKind::Item(item) => {
+                if let crate::ast::ItemKind::Fn(decl) = &item.kind
+                    && let Some(body) = &decl.body
+                {
+                    block_literal_heads(body, out);
+                }
+            }
+        }
+    }
+    if let Some(tail) = &block.tail {
+        expr_literal_heads(tail, out);
+    }
+}
+
+fn expr_literal_heads<'a>(expr: &'a Expr, out: &mut Vec<&'a crate::ast::Path>) {
+    if let ExprKind::StructLit { path, .. } = &*expr.kind {
+        out.push(path);
+    }
+    crate::rowmatch::each_child_with_blocks(expr, &mut |child| match child {
+        crate::rowmatch::Child::Expr(child) => expr_literal_heads(child, out),
+        crate::rowmatch::Child::Block(block) => block_literal_heads(block, out),
+    });
 }
 
 /// wolf-interp#95: a bound NAME resolves. `fn total[T: Num]` with nothing
