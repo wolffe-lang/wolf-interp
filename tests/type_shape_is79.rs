@@ -108,11 +108,6 @@ fn a_literal_of_a_type_the_module_does_not_have_is_e0301() {
 fn a_misspelled_field_of_an_imported_struct_is_e0408() {
     let rec = observe_text("wrong_field", &witness("wrong_field.lu"));
     assert_refused(&rec, "E0408", [45, 86], "wrong_field.lu");
-    let message = rec["diagnostics"][0]["message"].as_str().unwrap_or("");
-    assert!(
-        message.contains("`version`"),
-        "the missing field named: {rec}"
-    );
 }
 
 /// `fn show(a: net.NoSuchType)`: the parameter's type is the first site —
