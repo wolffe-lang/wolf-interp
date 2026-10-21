@@ -2977,10 +2977,13 @@ impl Machine {
                     &format!("a copied-out `{name}`"),
                     region::ledger::alloc_bytes(copied.len() as u64),
                 )?;
+                // `[mem.region.scalar]` (is79): a scalar-only copy names no
+                // region either.
+                let home = (!fields_scalar_only(&copied)).then_some(home);
                 Ok(Value::Struct {
                     name,
                     fields: copied,
-                    home: Some(home),
+                    home,
                 })
             }
             Value::Tuple(slots) => {
@@ -5480,10 +5483,18 @@ impl Machine {
                     &format!("struct literal `{name}`"),
                     region::ledger::alloc_bytes(built.len() as u64),
                 )?;
+                // is79 (wolf-interp#271; s252, `[mem.region.scalar]`): a
+                // value whose type reaches no storage names no region — its
+                // words are its own wherever it is held, so it carries no
+                // home to fault through when the region it was built in is
+                // freed, frozen, or another parameter's. The allocation is
+                // still the region's work (the ledger above, W1001's
+                // account, is unchanged).
+                let home = (!fields_scalar_only(&built)).then_some(owner);
                 let value = Value::Struct {
                     name,
                     fields: built,
-                    home: Some(owner),
+                    home,
                 };
                 self.check_edges(Some(owner), &value, expr.span, "struct field")?;
                 Ok(value)
@@ -11111,6 +11122,35 @@ fn moved_part(value: &Value) -> Option<(Vec<Proj>, Span)> {
     }
     let mut steps = Vec::new();
     walk(value, &mut steps).map(|at| (steps, at))
+}
+
+/// `[mem.region.scalar]` (s252, wolf-lang#816, #801, #822; is79,
+/// wolf-interp#271): a value that reaches no storage — a scalar, unit, and a
+/// tuple, struct or enum value made only of them, at any depth. An adapter
+/// of a scalar is that scalar here (D28: the cast retypes nothing). A `str`
+/// (its bytes live in the region that built them, `[mem.region.escape]`), a
+/// container, and anything reference-shaped is storage. Read off the value:
+/// a variant without a payload reaches nothing whatever its enum's other
+/// variants carry — never looser than the static rule's soundness, since a
+/// value with no storage cannot dangle.
+pub(crate) fn scalar_only(value: &Value) -> bool {
+    match value {
+        Value::Unit
+        | Value::Bool(_)
+        | Value::Int(..)
+        | Value::Float(_)
+        | Value::Char(_)
+        | Value::Byte(_) => true,
+        Value::Tuple(slots) => slots.iter().all(|slot| scalar_only(&slot.value)),
+        Value::Struct { fields, .. } => fields_scalar_only(fields),
+        Value::Error(err) if err.enum_variant => err.payload.iter().all(scalar_only),
+        _ => false,
+    }
+}
+
+/// [`scalar_only`] over a struct's fields.
+fn fields_scalar_only(fields: &[(String, Slot)]) -> bool {
+    fields.iter().all(|(_, slot)| scalar_only(&slot.value))
 }
 
 fn is_copy(value: &Value) -> bool {
