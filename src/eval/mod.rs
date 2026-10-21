@@ -4699,6 +4699,37 @@ impl Machine {
         }
     }
 
+    /// A cast's operand. is79 (wolf-interp#274; `[mem.tier0.move.3]`): an
+    /// adapter cast is a value conversion (D28: free, both ways), so a PLACE
+    /// cast by value is consumed as an initializer consumes it — a
+    /// `Copy`-shaped value copied, anything else moved. Every cast of a
+    /// non-`Copy` value the cast set admits is an adapter cast (into or out
+    /// of a `distinct` of a container or a struct). And `x as str` is one
+    /// out of an adapter of `str` — nothing else casts to `str` — which
+    /// moves although its `str` would copy: an adapter of `str` is not
+    /// Copy (s252: "a Copy `distinct str` would let region bytes escape").
+    /// `as dyn T` points AT its operand (E0810's rule) and a raw-pointer
+    /// cast retypes an address: neither consumes.
+    fn eval_cast_operand(&mut self, inner: &Expr, ty: &Type) -> EResult<Value> {
+        if matches!(&*ty.kind, TypeKind::Dyn(_) | TypeKind::RawPointer(_)) {
+            return self.eval(inner);
+        }
+        let Some(path) = self.live_place(inner)? else {
+            return self.eval(inner);
+        };
+        let out_of_str_adapter = matches!(&*ty.kind, TypeKind::Path { path, args }
+            if args.is_empty() && path.is_single() && path.segments[0].name == "str");
+        if out_of_str_adapter && matches!(self.read_whole(&path, inner.span)?, Value::Str(_)) {
+            self.fire(
+                Rule::ValueSemantics,
+                inner.span,
+                "move (an adapter of `str` is not Copy)",
+            );
+            return self.move_path(&path, inner.span);
+        }
+        self.consume_place(&path, inner.span)
+    }
+
     /// Evaluates an initializer: a bare place expression *moves*.
     fn eval_for_init(&mut self, expr: &Expr) -> EResult<Value> {
         match self.live_place(expr)? {
@@ -5491,7 +5522,7 @@ impl Machine {
                 self.binary(*op, left, right, expr.span)
             }
             ExprKind::Cast { expr: inner, ty } => {
-                let value = self.eval(inner)?;
+                let value = self.eval_cast_operand(inner, ty)?;
                 self.eval_cast(value, ty, expr.span)
             }
             ExprKind::Call { callee, args } => self.eval_call(callee, args, expr.span),
