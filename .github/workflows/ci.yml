@@ -17,17 +17,18 @@ name: CI
 #   its tag)
 #       -> tier RELEASE: ubuntu, macOS and windows, three test shards and
 #          the ladder each, and the windows smoke. Every test on every OS.
-#   a push to trunk; `workflow_dispatch`; a pull request carrying the
-#   `full-matrix` label (every lane, before its merge)
-#       -> tier FULL: ubuntu's three shards and ladder, ONE macOS and ONE
-#          windows `smoke` (below): the PR leg's jobs and entries. The
-#          macOS and windows heavy shards and ladders, and the bundle
+#   EVERY CODE PULL REQUEST'S PUSH (tl30b, ruling #101 C); a push to
+#   trunk; `workflow_dispatch`
+#       -> tier FULL, THE MERGE GATE: ubuntu's three shards and ladder in
+#          full, plus ONE windows and ONE macOS `smoke` job (the build, fmt,
+#          clippy, every test target except the heavy ones SMOKE_OMITS
+#          names, and the fast ladder rungs), each capped at 30 minutes.
+#          The macOS and windows heavy shards and ladders, and the bundle
 #          compared across OSes, are the nightly's and the release tier's.
-#   any other pull_request
-#       -> tier PR: ubuntu's three shards and ladder in full, plus ONE
-#          windows and ONE macOS `smoke` job (the build, fmt, clippy, every
-#          test target except the heavy ones SMOKE_OMITS names, and the fast
-#          ladder rungs), each capped at 30 minutes.
+#          Since tl29 this was the pull request's own run job for job, and
+#          the `full-matrix` label only ran it again: the label is no
+#          longer needed (adding it is a noop), and lane-audit reads
+#          wolf-interp as a verdict-only repository.
 #
 # Nothing a test checks changed: every test that ran before runs nightly on
 # trunk on every OS, and at tier release before every tag. What a merge no
@@ -44,16 +45,16 @@ name: CI
 #   tier release  every job, every entry: the whole matrix of before is75,
 #                 and the windows smoke.
 #   tier full     every job but the bundle comparison (one ladder has
-#                 nothing to compare); ubuntu's entries and the two smokes:
-#                 since tl29 the pr tier's jobs and entries.
-#   tier pr       the pull-request leg above, unchanged.
+#                 nothing to compare); ubuntu's entries and the two smokes.
+#                 A code pull request's every push (the merge gate), a
+#                 trunk push, a dispatch. (`tier pr`, the same jobs and
+#                 entries since tl29, is no tier since tl30b.)
 #   tier noop     the plan and the verdict, nothing else: a pull request
 #                 whose changed paths are ALL prose (the CHANGELOG,
 #                 CONTRIBUTING, the lane notes under ci/, the documents no
 #                 test reads; never README.md, docs/manual/ or docs/repl.md,
-#                 which tests read); a label other than `full-matrix` and
-#                 `release-matrix`; `full-matrix` added beside
-#                 `release-matrix`, whose run covers it.
+#                 which tests read), labelled or not; any label but
+#                 `release-matrix` added, `full-matrix` included.
 #   tier partial  a `workflow_dispatch` naming jobs (`-f jobs=plan-test`):
 #                 a planted break needs one job, not three hours. Naming
 #                 `test`, `-f entries="windows/2 ubuntu/ladder"` keeps only
@@ -63,24 +64,22 @@ name: CI
 # whose change cannot be read, runs tier full: what is not understood never
 # shrinks a run. The `tier` job fails unless the plan succeeded, the jobs
 # it chose are that tier's, every one of them succeeded and every other job
-# was skipped; so a green `tier release` is "every job, every OS, green", a
-# green `tier full` is "every job but the bundle comparison, every ubuntu
-# entry and the two smokes, green", and a green `tier pr` is the same jobs
-# without the label: not the merge's record (ci/tl29.md, R-tl29-2).
+# was skipped; so a green `tier release` is "every job, every OS, green",
+# and a green `tier full` is "every job but the bundle comparison, every
+# ubuntu entry and the two smokes, green".
 #
 # THE MERGE RULE: a lane's PR merges only with a green `tier full` (or
-# `tier release`, which runs everything `tier full` does) at its head, and
-# a release lane tags only a head with a green `tier release`. Add the
-# label once the head is the one to merge (never when opening the PR:
-# `opened` and `labeled` would start two runs and the second would cancel
-# the first). `lane-audit.sh` reads the job's name.
+# `tier release`, which runs everything `tier full` does) at its head: the
+# pull request's own run at its final head, no label (tl30b, ruling #101
+# C); a release lane adds `release-matrix` at the head it tags and tags only
+# a head with a green `tier release`. `lane-audit.sh` reads the job's name.
 on:
   push:
     branches: [trunk, main]
   pull_request:
-    # `labeled` so adding `full-matrix` or `release-matrix` starts that
-    # tier's run at once; any other label's run is a no-op (the `plan` job
-    # alone, then nothing).
+    # `labeled` so adding `release-matrix` starts the release run at once;
+    # any other label's run, `full-matrix`'s included, is a no-op (the
+    # `plan` job alone, then nothing).
     types: [opened, synchronize, reopened, labeled]
   schedule:
     # Nightly, tier release, on trunk (is78: the windows heavy shards and
@@ -102,11 +101,11 @@ on:
         default: ""
 
 # PR runs: one group per branch and per mode, cancel-in-progress, so a push
-# to a lane branch frees its old slots. The release, full and reduced runs
-# live in SEPARATE groups: adding a label must not cancel the run of another
-# tier at the same head (lane-audit.sh reads a cancelled run at the head as
-# a FAIL), and a no-op run (an unrelated label, or `full-matrix` added
-# beside `release-matrix`) gets a group of its own so it cancels nothing.
+# to a lane branch frees its old slots. The release run and the gate run
+# live in SEPARATE groups: adding `release-matrix` must not cancel the gate
+# run at the same head (lane-audit.sh reads a cancelled run at the head as
+# a FAIL), and a no-op run (any other label, `full-matrix` included) gets a
+# group of its own so it cancels nothing (tl30b).
 # Every other run (a trunk push, the nightly, a dispatch) gets a group of
 # its OWN run id (tl21): never cancelled, and never replaced while it
 # waits. In the one group per ref they shared before, GitHub keeps
@@ -114,7 +113,7 @@ on:
 # when the next arrives, and each trunk push's full run is the coverage that
 # merge is owed.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}-{1}', github.head_ref, (github.event.action == 'labeled' && (github.event.label.name != 'full-matrix' && github.event.label.name != 'release-matrix' || github.event.label.name == 'full-matrix' && contains(github.event.pull_request.labels.*.name, 'release-matrix'))) && format('noop-{0}', github.run_id) || (contains(github.event.pull_request.labels.*.name, 'release-matrix') && 'release' || contains(github.event.pull_request.labels.*.name, 'full-matrix') && 'full' || 'reduced')) || format('{0}-{1}', github.event_name, github.run_id) }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}-{1}', github.head_ref, (github.event.action == 'labeled' && github.event.label.name != 'release-matrix') && format('noop-{0}', github.run_id) || (contains(github.event.pull_request.labels.*.name, 'release-matrix') && 'release' || 'gate')) || format('{0}-{1}', github.event_name, github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
