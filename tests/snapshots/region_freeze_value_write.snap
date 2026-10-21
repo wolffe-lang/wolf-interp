@@ -6,5 +6,5 @@ trap:    region-fault
 clause:  [mem.region.freeze.1]
 rule:    RegionFreeze
 message: region #1 is frozen: `imm` data is immutable forever
-at:      13:5 `cfg.limit = 7`
+at:      16:5 `cfg.limit = 7`
 because: (single-span fault)
