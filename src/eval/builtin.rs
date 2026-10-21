@@ -147,13 +147,6 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // `fchown`, no `unsafe`.
     "fs_set_owner",
     "fs_set_owner_fd",
-    // s248 (wolf-lang#796, #797; ruling #93; wolf-interp#268): the atomic
-    // save's two syncs and the canonical path — `[os.fs.sync]`,
-    // `[os.fs.realpath]` — through the standard library's `sync_all` and
-    // `canonicalize`, no `unsafe`.
-    "fs_sync",
-    "fs_sync_dir",
-    "fs_realpath",
     // `read_line` is NOT part of that landing and stays declined: stdin is
     // not a file, no clause names an injectable one, and nothing in the
     // pinned corpus calls it. Named here so the refusal still reads
@@ -254,12 +247,6 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "os_term_set_foreground",
     "os_term_mode",
     "os_term_set_mode",
-    // s248 (wolf-lang#794, `[os.term.restore]`; wolf-interp#268): the
-    // terminal restored at every exit the runtime owns. The name resolves
-    // and its SHAPE rows are answered (and `io` for a handle that is no
-    // terminal); a registration on a terminal is refused by name — the
-    // restore is a `tcsetattr`, which std does not have.
-    "os_term_restore_at_exit",
     // s232 (wolf-lang#679, #681, #691, #141; pelt's trap, kill, $$ and
     // $PPID): this machine serves this process's id and its parent's
     // (std's `process::id` and unix `parent_id`) and a meaning's number
@@ -304,11 +291,6 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // refused by name with one, as `os_wait_poll` is.
     "os_wait_status_core",
     "os_wait_poll_core",
-    // s247 (`[os.proc.fork]`; ruling #95 R5 A; wolf-interp#269): a child
-    // that keeps running wolf code. The name resolves; a fork is refused
-    // by name on a host that has one (std has no fork, and this machine
-    // admits no `unsafe`) and windows answers the `unsupported` row.
-    "os_fork",
     // s236 (wolf-lang#633, #742; `[os.proc.ids]`, `[os.proc.ids.set]`): who
     // the process runs as, and the drop. The names resolve and their
     // SHAPE and HOST rows are answered; a well-formed call on a host that
@@ -327,19 +309,11 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "os_term_size",
     "os_term_chars",
     "os_signal_wait_fd",
-    // s248 (wolf-lang#795, `[os.signal.wait.fds]`; wolf-interp#268): one
-    // wait over several descriptors, a set and a deadline — its SHAPE rows,
-    // then `io` for a closed or forged handle, then refused by name as the
-    // one-descriptor wait is.
-    "os_signal_wait_fds",
     "os_wait",
     "os_kill",
     "time_now_ms",
     "time_sleep_ms",
     "time_unix_ms",
-    // s248 (wolf-lang#798, `[os.clock.ns]`; wolf-interp#268): the monotonic
-    // clock at nanoseconds, from `time_now_ms`'s own anchor.
-    "os_clock_ns",
     "json_valid",
     "json_get",
     "json_type",
@@ -533,10 +507,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_set_times"
         | "fs_truncate"
         | "fs_set_owner"
-        | "fs_set_owner_fd"
-        | "fs_sync"
-        | "fs_sync_dir"
-        | "fs_realpath" => unsupported(format!(
+        | "fs_set_owner_fd" => unsupported(format!(
             "`{name}` is the s38/s90 fs tier; this wasm build has no filesystem to open, so \
              the tier is declined rather than mocked"
         )),
@@ -582,10 +553,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_set_times"
         | "fs_truncate"
         | "fs_set_owner"
-        | "fs_set_owner_fd"
-        | "fs_sync"
-        | "fs_sync_dir"
-        | "fs_realpath" => machine.fs_call(name, &args, span),
+        | "fs_set_owner_fd" => machine.fs_call(name, &args, span),
         // `[os.fs.error]` (s200, wolf-lang#407): the number the task's last
         // fallible fs call left (`Machine::fs_call` keeps it), and the
         // host's words for a number — std's rendering without its
@@ -811,10 +779,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_signal_default_one"
         | "os_exit_signal"
         | "os_wait_status_core"
-        | "os_wait_poll_core"
-        | "os_term_restore_at_exit"
-        | "os_signal_wait_fds"
-        | "os_fork" => unsupported(hosted_tier_decline(name)),
+        | "os_wait_poll_core" => unsupported(hosted_tier_decline(name)),
         // `[os.proc.inherit]` (s137, wolf-lang#235): the program named apart
         // from its arguments, and the descriptors it hands down.
         //
@@ -1506,10 +1471,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // `tcgetattr` and `tcsetattr`, and the group `getpgrp` — none in
         // std, so each is refused by name (R8). A mode's SHAPE is read
         // first, as on every machine: `invalid` (s234: FLOW 8 and EXTENDED
-        // 16 are fields; s248, ruling #97: so are RAW_CR 32, RAW_OUTPUT 64
-        // and STRIP8 128, each 0 in the usual setting — [`term_mode_shape`]).
-        // s234's window size (`ioctl`) and special characters (`tcgetattr`)
-        // likewise.
+        // 16 are fields now). s234's window size (`ioctl`) and special
+        // characters (`tcgetattr`) likewise.
         #[cfg(not(target_family = "wasm"))]
         "os_pgid"
         | "os_term_foreground"
@@ -1520,7 +1483,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_term_chars" => {
             if name == "os_term_set_mode"
                 && let Some(Value::Int(m, _)) = args.get(1)
-                && !term_mode_shape(*m)
+                && (*m < 0 || *m & !0x00FF_FF1F != 0)
             {
                 machine.note(
                     Rule::ErrUnion,
@@ -1548,134 +1511,6 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 "`{name}` asks the terminal or the process group: this machine admits no \
                  `unsafe` and std has no call for it ([os.term], [os.term.note] R8)"
             ))
-        }
-        // s248 (wolf-lang#794, `[os.term.restore]`; ruling #93 R1 C, R1 A
-        // of `[os.editor.calls.note]`; wolf-interp#268): the restore
-        // registered for every exit the runtime owns. Its order of refusal
-        // is the clause's, and every step but the last needs no host call
-        // this machine lacks: the mode's SHAPE (`invalid`, before the
-        // handle), then windows (`unsupported`, as for every `[os.term]`
-        // call), then a handle that is closed, forged or not a terminal
-        // (`io` — std's `isatty` answers the last). A registration on a
-        // terminal is refused by name: the restore is a `tcsetattr` at the
-        // process's exit, std has no `tcsetattr`, and this machine admits no
-        // `unsafe` (`[os.term.note]` R8).
-        #[cfg(not(target_family = "wasm"))]
-        "os_term_restore_at_exit" => {
-            let (Some(Value::Int(fd, _)), Some(Value::Int(mode, _)), Some(Value::List(..))) =
-                (args.first(), args.get(1), args.get(2))
-            else {
-                return unsupported(
-                    "`os_term_restore_at_exit` takes a handle, a mode and a `List[byte]`"
-                        .to_owned(),
-                );
-            };
-            let row = if !term_mode_shape(*mode) {
-                Some("invalid")
-            } else if cfg!(windows) {
-                Some("unsupported")
-            } else if machine.files().is_terminal(*fd) == Some(true) {
-                None
-            } else {
-                Some("io")
-            };
-            if let Some(tag) = row {
-                machine.note(
-                    Rule::ErrUnion,
-                    span,
-                    &format!("`os_term_restore_at_exit` yields the `{tag}` row"),
-                );
-                return Ok(error_value(name, tag));
-            }
-            unsupported(
-                "`os_term_restore_at_exit` registers a restore of a terminal's mode at the \
-                 process's exit, which is `tcsetattr`: std has none, and this machine admits \
-                 no `unsafe` ([os.term.restore], [os.editor.calls.note], [os.term.note] R8)"
-                    .to_owned(),
-            )
-        }
-        // s248 (wolf-lang#795, `[os.signal.wait.fds]`; ruling #93 R2 A;
-        // wolf-interp#268): one wait over several descriptors, a set and a
-        // deadline. Its rows in the clause's order — a set the shape rule
-        // refuses is `io` (as for `os_signal_wait_fd`), a deadline below -1
-        // `invalid`, windows `unsupported`, a closed or forged handle `io` —
-        // are each decided without the host. The wait itself is `poll(2)`
-        // over the descriptors and a wake pipe a listener writes; std has no
-        // `poll` and this machine never listens (`[os.term.note]` R8), so a
-        // well-formed wait is refused by name.
-        #[cfg(not(target_family = "wasm"))]
-        "os_signal_wait_fds" => {
-            let (
-                Some(Value::List(fds, _, _)),
-                Some(Value::Int(set, _)),
-                Some(Value::Int(deadline, _)),
-            ) = (args.first(), args.get(1), args.get(2))
-            else {
-                return unsupported(
-                    "`os_signal_wait_fds` takes a `List[int]` of handles, an integer meaning set \
-                     and a deadline in ms"
-                        .to_owned(),
-                );
-            };
-            let handles: Vec<i128> = fds
-                .iter()
-                .filter_map(|slot| match &slot.value {
-                    Value::Int(h, _) => Some(*h),
-                    _ => None,
-                })
-                .collect();
-            let row = if *set == 0 || *set & !SIG_LISTENABLE != 0 {
-                Some("io")
-            } else if *deadline < -1 {
-                Some("invalid")
-            } else if cfg!(windows) {
-                Some("unsupported")
-            } else if handles.len() != fds.len() || {
-                let mut files = machine.files();
-                !handles.iter().all(|h| files.names_a_stream(*h))
-            } {
-                Some("io")
-            } else {
-                None
-            };
-            if let Some(tag) = row {
-                machine.note(
-                    Rule::ErrUnion,
-                    span,
-                    &format!("`os_signal_wait_fds` yields the `{tag}` row"),
-                );
-                return Ok(error_value(name, tag));
-            }
-            unsupported(
-                "`os_signal_wait_fds` waits on descriptors, a signal set and a deadline: this \
-                 machine admits no `unsafe`, std has no `poll`, and it never listens \
-                 ([os.signal.wait.fds], [os.editor.calls.note], [os.term.note] R8)"
-                    .to_owned(),
-            )
-        }
-        // s247 (wolf-lang `[os.proc.fork]`, `[os.proc.fork.note]`; ruling #95
-        // R5 A; wolf-interp#269): a child that keeps running wolf code. A
-        // fork needs `fork(2)`, which Rust's standard library does not have,
-        // and this machine admits no `unsafe` — so on a host that has one
-        // the call is refused by name, before `busy` (the compiled runtime's
-        // rule for its own threads, which this machine never forks). windows
-        // has no fork: the `unsupported` row, as every machine answers there.
-        #[cfg(not(target_family = "wasm"))]
-        "os_fork" => {
-            if cfg!(windows) {
-                machine.note(
-                    Rule::ErrUnion,
-                    span,
-                    "`os_fork` yields the `unsupported` row",
-                );
-                return Ok(error_value(name, "unsupported"));
-            }
-            unsupported(
-                "`os_fork` makes a child that keeps running this program: Rust's standard \
-                 library has no fork, and this machine admits no `unsafe` ([os.proc.fork], \
-                 [os.proc.fork.note] R5 A)"
-                    .to_owned(),
-            )
         }
         // s219 (`[os.proc.job]`): the job spawn — SHAPE (`invalid`), HOST
         // (windows: any option or a non-empty map is `unsupported`), then
@@ -1867,7 +1702,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // surface is declined here exactly as the process trio is declined
         // above (`[proto.record.unsupported]`).
         #[cfg(target_family = "wasm")]
-        "time_now_ms" | "time_sleep_ms" | "time_unix_ms" | "os_clock_ns" => unsupported(format!(
+        "time_now_ms" | "time_sleep_ms" | "time_unix_ms" => unsupported(format!(
             "`{name}` is s40's time v0; this wasm build has no clock to read and no way to \
              block, so the tier is declined rather than mocked"
         )),
@@ -1875,12 +1710,6 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // anchor — values compare and subtract, never wall timestamps.
         #[cfg(not(target_family = "wasm"))]
         "time_now_ms" => Ok(Value::Int(machine.monotonic_ms(), IntTy::INT)),
-        // s248 (wolf-lang#798, `[os.clock.ns]`; wolf-interp#268): the same
-        // monotonic clock at nanoseconds, from THE SAME anchor, so
-        // `os_clock_ns() / 1000000` read after a `time_now_ms()` is never
-        // smaller than it; it saturates at the largest `int`. No row.
-        #[cfg(not(target_family = "wasm"))]
-        "os_clock_ns" => Ok(Value::Int(machine.monotonic_ns(), IntTy::INT)),
         #[cfg(not(target_family = "wasm"))]
         "time_sleep_ms" => {
             let Some(Value::Int(ms, _)) = args.first() else {
@@ -3872,10 +3701,6 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // s236: the owner's rows, as `[os.host.sigs]` lists them.
         "fs_set_owner" => &["not_found", "denied", "invalid", "unsupported", "io"],
         "fs_set_owner_fd" => &["denied", "invalid", "unsupported", "io"],
-        // s248 (`[os.host.sigs]`'s three lines; wolf-interp#268).
-        "fs_sync" => &["io"],
-        "fs_sync_dir" => &["denied", "invalid", "io", "not_found", "unsupported"],
-        "fs_realpath" => &["io", "not_found"],
         // `eof` is the read's own row — a read that wanted bytes and got
         // none. No corpus file reads twice, so it is pinned by `eval::fs`'s
         // unit tests rather than by the census; `[os.fs.open]`'s mode-5
@@ -3964,9 +3789,6 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "os_exit_signal" => &["invalid", "unsupported"],
         "os_term_foreground" | "os_term_mode" | "os_term_set_foreground" => &["unsupported", "io"],
         "os_term_set_mode" => &["unsupported", "invalid", "io"],
-        // s248's two terminal-side lines; s247's fork (`busy`, ruling #95 R7 A).
-        "os_term_restore_at_exit" | "os_signal_wait_fds" => &["invalid", "io", "unsupported"],
-        "os_fork" => &["busy", "io", "unsupported"],
         // s234 (`[os.host.sigs]`'s three lines).
         "os_term_size" | "os_term_chars" | "os_signal_wait_fd" => &["unsupported", "io"],
         "os_chdir" => &["not_found", "denied", "io"],
@@ -4370,17 +4192,6 @@ fn fd_map_of(flat: &[i128]) -> Option<Vec<(i128, Option<i128>)>> {
         out.push((target, (source >= 0).then_some(source)));
     }
     Some(out)
-}
-
-/// `[os.term.mode]`'s shape: a mode is a set of fields — bits 0..7 (s219's
-/// three, s234's `FLOW` and `EXTENDED`, s248's `RAW_CR`, `RAW_OUTPUT` and
-/// `STRIP8`; ruling #97: each new bit's 0 is the usual setting), `VMIN` in
-/// bits 8..15 and `VTIME` in 16..23. A negative mode, or any bit from 24 up,
-/// is `invalid` before the handle is read, for `os_term_set_mode` and
-/// `os_term_restore_at_exit` alike.
-#[cfg(not(target_family = "wasm"))]
-fn term_mode_shape(mode: i128) -> bool {
-    mode >= 0 && mode & !0x00FF_FFFF == 0
 }
 
 /// s232 (wolf-lang#679, `[os.signal.set]`): the twenty listenable meanings

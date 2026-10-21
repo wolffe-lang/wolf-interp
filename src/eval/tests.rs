@@ -777,13 +777,10 @@ fn a_write_through_a_frozen_value_path_traps_region_fault() {
     // `[mem.region.freeze.1]` on tier-0 value paths (wolf-interp#2): the
     // struct is homed in the region the sugar froze, so the write through
     // `cfg.limit` is E1012's shape executed — a trap, never a landed write.
-    // is79 (wolf-interp#271): `Config` holds a `List`, so it is the frozen
-    // region's data; a scalar-only one names no region (`[mem.region.scalar]`)
-    // and the write lands in `cfg`'s own words (below).
     let trap = trap_of(
-        "struct Config { limit: int, names: List[int] }\n\
+        "struct Config { limit: int }\n\
          fn main() -> int {\n\
-         \x20   var cfg = freeze region { Config { limit: 42, names: List[int]() } }\n\
+         \x20   var cfg = freeze region { Config { limit: 42 } }\n\
          \x20   cfg.limit = 7\n\
          \x20   cfg.limit\n\
          }\n",
@@ -791,26 +788,14 @@ fn a_write_through_a_frozen_value_path_traps_region_fault() {
     assert_eq!(trap.kind, TrapKind::RegionFault);
     assert_eq!(trap.rule, Rule::RegionFreeze);
     assert_eq!(trap.rule.anchor(), "mem.region.freeze.1");
-    assert_eq!(
-        outcome(
-            "struct Config { limit: int }\n\
-             fn main() -> int {\n\
-             \x20   var cfg = freeze region { Config { limit: 42 } }\n\
-             \x20   cfg.limit = 7\n\
-             \x20   cfg.limit\n\
-             }\n",
-        ),
-        Outcome::Exit(7),
-        "a scalar-only value read out of a frozen region is the binding's own words"
-    );
 
     // The named-region shape: built under `in r`, frozen after — the home
     // travels with the value, not with the sugar.
     let trap = trap_of(
-        "struct Cfg { limit: int, names: List[int] }\n\
+        "struct Cfg { limit: int }\n\
          fn main() -> int {\n\
          \x20   let r = region(rc)\n\
-         \x20   var cfg = in r { Cfg { limit: 7, names: List[int]() } }\n\
+         \x20   var cfg = in r { Cfg { limit: 7 } }\n\
          \x20   let frozen = freeze r\n\
          \x20   cfg.limit = 9\n\
          \x20   0\n\
@@ -2546,36 +2531,19 @@ fn a_list_escaping_its_freed_region_faults_on_write() {
 fn a_struct_escaping_its_freed_region_faults_the_same_way() {
     // `corpus/memory/region_escape_local.lu`'s shape — the struct sibling.
     // The home machinery existed since is08; is16 makes ACCESS consult it,
-    // so the read of `keep.value` faults instead of answering 7. is79
-    // (wolf-interp#271): over a `List`-holding `Node`, as s252 rewrote the
-    // row; the scalar-only `Node` names no region (`[mem.region.scalar]`)
-    // and crosses the free as an `int` does.
+    // so the read of `keep.value` faults instead of answering 7.
     let trap = trap_of(
-        "struct Node { value: int, seen: List[int] }\n\
+        "struct Node { value: int }\n\
          fn main() -> !int {\n\
-         \x20   var keep = Node { value: 0, seen: List[int]() }\n\
+         \x20   var keep = Node { value: 0 }\n\
          \x20   region tmp {\n\
-         \x20       keep = Node { value: 7, seen: List[int]() }\n\
+         \x20       keep = Node { value: 7 }\n\
          \x20   }\n\
          \x20   if keep.value == 7 { 0 } else { 1 }\n\
          }\n",
     );
     assert_eq!(trap.kind, TrapKind::RegionFault);
     assert_eq!(trap.rule.anchor(), "mem.region.intra.2");
-    assert_eq!(
-        outcome(
-            "struct Node { value: int }\n\
-             fn main() -> !int {\n\
-             \x20   var keep = Node { value: 0 }\n\
-             \x20   region tmp {\n\
-             \x20       keep = Node { value: 7 }\n\
-             \x20   }\n\
-             \x20   if keep.value == 7 { 0 } else { 1 }\n\
-             }\n",
-        ),
-        Outcome::Exit(0),
-        "a scalar-only struct names no region"
-    );
 }
 
 #[test]

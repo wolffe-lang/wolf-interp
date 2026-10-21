@@ -757,14 +757,8 @@ impl Machine {
     fn with_sched(program: &Program, sched: sched::Sched) -> Machine {
         let store = Store::new();
         let region_teeth = store.teeth();
-        // is79 (wolf-interp#273): the machine runs its own copy of the
-        // program, whose certain `wrapping` counters are annotated
-        // (`crate::numinfer`) — after every static check read the program as
-        // written.
-        let mut owned = program.clone();
-        crate::numinfer::type_counters(&mut owned);
         let shared = Shared {
-            program: Arc::new(owned),
+            program: Arc::new(program.clone()),
             store: Arc::new(Mutex::new(store)),
             region_teeth,
             parts_moved: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -1128,35 +1122,11 @@ impl Machine {
             None => self.eval(&binding.value),
         };
         self.initializing.pop();
-        let value = complement_adopt(&binding.value, value?, binding.ty.as_ref());
-        // is79 (wolf-interp#272): a bare literal initializer takes the item's
-        // declared integer type at the item, as a local binding's does — a
-        // term already did, through `eval_int_expected` above. Until then a
-        // `let SEED: wrapping[u32] = 4294967295` held an untyped literal, so
-        // `SEED + 1` was literal arithmetic and met `i32` at its binding
-        // (`trap(overflow)`) instead of wrapping to 0. A literal that does
-        // not fit is the compiler's E0415; the run's reading is the overflow
-        // trap, as for a local `let`.
-        match (value, binding.ty.as_ref().and_then(int_of_type)) {
-            (Value::Int(v, at), Some(ty)) if at.literal => {
-                if ty.holds(v) {
-                    Ok(Value::Int(v, ty))
-                } else {
-                    self.trap(
-                        TrapKind::Overflow,
-                        Rule::ArithChecked,
-                        binding.value.span,
-                        format!(
-                            "the literal {v} is outside `{}`, the item's type — checked \
-                             arithmetic traps in every profile (X3)",
-                            ty.name()
-                        ),
-                        None,
-                    )
-                }
-            }
-            (value, _) => Ok(value),
-        }
+        Ok(complement_adopt(
+            &binding.value,
+            value?,
+            binding.ty.as_ref(),
+        ))
     }
 
     fn finish(&mut self, result: EResult<Value>) -> Outcome {
@@ -1260,14 +1230,6 @@ impl Machine {
     #[cfg(not(target_family = "wasm"))]
     pub(crate) fn monotonic_ms(&self) -> i128 {
         i128::try_from(self.shared.epoch.elapsed().as_millis()).unwrap_or(i128::MAX)
-    }
-
-    /// s248 (`[os.clock.ns]`, wolf-interp#268): the same anchor at
-    /// nanoseconds, saturating at the largest `int` (292 years in).
-    pub(crate) fn monotonic_ns(&self) -> i128 {
-        i128::try_from(self.shared.epoch.elapsed().as_nanos())
-            .unwrap_or(i128::MAX)
-            .min(i128::from(i64::MAX))
     }
 
     fn fire(&mut self, rule: Rule, span: Span, detail: &str) {
@@ -2983,13 +2945,10 @@ impl Machine {
                     &format!("a copied-out `{name}`"),
                     region::ledger::alloc_bytes(copied.len() as u64),
                 )?;
-                // `[mem.region.scalar]` (is79): a scalar-only copy names no
-                // region either.
-                let home = (!fields_scalar_only(&copied)).then_some(home);
                 Ok(Value::Struct {
                     name,
                     fields: copied,
-                    home,
+                    home: Some(home),
                 })
             }
             Value::Tuple(slots) => {
@@ -4708,37 +4667,6 @@ impl Machine {
         }
     }
 
-    /// A cast's operand. is79 (wolf-interp#274; `[mem.tier0.move.3]`): an
-    /// adapter cast is a value conversion (D28: free, both ways), so a PLACE
-    /// cast by value is consumed as an initializer consumes it — a
-    /// `Copy`-shaped value copied, anything else moved. Every cast of a
-    /// non-`Copy` value the cast set admits is an adapter cast (into or out
-    /// of a `distinct` of a container or a struct). And `x as str` is one
-    /// out of an adapter of `str` — nothing else casts to `str` — which
-    /// moves although its `str` would copy: an adapter of `str` is not
-    /// Copy (s252: "a Copy `distinct str` would let region bytes escape").
-    /// `as dyn T` points AT its operand (E0810's rule) and a raw-pointer
-    /// cast retypes an address: neither consumes.
-    fn eval_cast_operand(&mut self, inner: &Expr, ty: &Type) -> EResult<Value> {
-        if matches!(&*ty.kind, TypeKind::Dyn(_) | TypeKind::RawPointer(_)) {
-            return self.eval(inner);
-        }
-        let Some(path) = self.live_place(inner)? else {
-            return self.eval(inner);
-        };
-        let out_of_str_adapter = matches!(&*ty.kind, TypeKind::Path { path, args }
-            if args.is_empty() && path.is_single() && path.segments[0].name == "str");
-        if out_of_str_adapter && matches!(self.read_whole(&path, inner.span)?, Value::Str(_)) {
-            self.fire(
-                Rule::ValueSemantics,
-                inner.span,
-                "move (an adapter of `str` is not Copy)",
-            );
-            return self.move_path(&path, inner.span);
-        }
-        self.consume_place(&path, inner.span)
-    }
-
     /// Evaluates an initializer: a bare place expression *moves*.
     fn eval_for_init(&mut self, expr: &Expr) -> EResult<Value> {
         match self.live_place(expr)? {
@@ -5489,18 +5417,10 @@ impl Machine {
                     &format!("struct literal `{name}`"),
                     region::ledger::alloc_bytes(built.len() as u64),
                 )?;
-                // is79 (wolf-interp#271; s252, `[mem.region.scalar]`): a
-                // value whose type reaches no storage names no region — its
-                // words are its own wherever it is held, so it carries no
-                // home to fault through when the region it was built in is
-                // freed, frozen, or another parameter's. The allocation is
-                // still the region's work (the ledger above, W1001's
-                // account, is unchanged).
-                let home = (!fields_scalar_only(&built)).then_some(owner);
                 let value = Value::Struct {
                     name,
                     fields: built,
-                    home,
+                    home: Some(owner),
                 };
                 self.check_edges(Some(owner), &value, expr.span, "struct field")?;
                 Ok(value)
@@ -5539,7 +5459,7 @@ impl Machine {
                 self.binary(*op, left, right, expr.span)
             }
             ExprKind::Cast { expr: inner, ty } => {
-                let value = self.eval_cast_operand(inner, ty)?;
+                let value = self.eval(inner)?;
                 self.eval_cast(value, ty, expr.span)
             }
             ExprKind::Call { callee, args } => self.eval_call(callee, args, expr.span),
@@ -11128,35 +11048,6 @@ fn moved_part(value: &Value) -> Option<(Vec<Proj>, Span)> {
     }
     let mut steps = Vec::new();
     walk(value, &mut steps).map(|at| (steps, at))
-}
-
-/// `[mem.region.scalar]` (s252, wolf-lang#816, #801, #822; is79,
-/// wolf-interp#271): a value that reaches no storage — a scalar, unit, and a
-/// tuple, struct or enum value made only of them, at any depth. An adapter
-/// of a scalar is that scalar here (D28: the cast retypes nothing). A `str`
-/// (its bytes live in the region that built them, `[mem.region.escape]`), a
-/// container, and anything reference-shaped is storage. Read off the value:
-/// a variant without a payload reaches nothing whatever its enum's other
-/// variants carry — never looser than the static rule's soundness, since a
-/// value with no storage cannot dangle.
-pub(crate) fn scalar_only(value: &Value) -> bool {
-    match value {
-        Value::Unit
-        | Value::Bool(_)
-        | Value::Int(..)
-        | Value::Float(_)
-        | Value::Char(_)
-        | Value::Byte(_) => true,
-        Value::Tuple(slots) => slots.iter().all(|slot| scalar_only(&slot.value)),
-        Value::Struct { fields, .. } => fields_scalar_only(fields),
-        Value::Error(err) if err.enum_variant => err.payload.iter().all(scalar_only),
-        _ => false,
-    }
-}
-
-/// [`scalar_only`] over a struct's fields.
-fn fields_scalar_only(fields: &[(String, Slot)]) -> bool {
-    fields.iter().all(|(_, slot)| scalar_only(&slot.value))
 }
 
 fn is_copy(value: &Value) -> bool {

@@ -44,7 +44,6 @@ pub mod layout;
 pub mod ledger;
 pub mod lex;
 pub mod lint;
-pub(crate) mod numinfer;
 pub mod parse;
 pub mod phase;
 pub mod protocol;

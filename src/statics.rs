@@ -10,9 +10,9 @@
 //! - [`init_check`]: an initializer is comptime, so one that reads a module
 //!   `var`, or needs its own value, is E0705 at the reference (`[mem.static.3]`).
 //!   0.1.46 recursed on a cycle until the stack overflowed, with no record.
-//! - [`not_static_data`]: module state holds the integers (`wrapping[T]`
-//!   of one included, s252), `byte`, `bool`, the floats, and `str` in a
-//!   `let`/`const`; any other written type is refused by name.
+//! - [`not_static_data`]: module state holds the integers, `byte`, `bool`,
+//!   the floats, and `str` in a `let`/`const`; any other written type is
+//!   refused by name.
 //! - [`section_placement`]: a program that places a section has no meaning
 //!   without an image, so it is refused by name.
 //!
@@ -330,44 +330,18 @@ pub fn init_check(program: &Program) -> Vec<Diag> {
 /// The written type of a module binding is static data (`[mem.static.3]`):
 /// the integers, `byte`, `bool`, the floats, and `str` for a `let` or
 /// `const`. An unwritten type is not judged here.
-///
-/// s252 (wolf-lang#814, wolf-interp#272): "the integers" include
-/// `wrapping[T]` over an integer type, as they do everywhere else — its
-/// item is its width's bits, and a `const` initializer folds with the
-/// type's own wrap (the run's arithmetic, which never faults; the E0706
-/// fold reads plain integers only).
 fn static_data(kind: BindingKind, ty: &crate::ast::Type) -> bool {
     let TypeKind::Path { path, args } = &*ty.kind else {
         return false;
     };
-    if !path.is_single() {
+    if !path.is_single() || !args.is_empty() {
         return false;
     }
-    let integer = |name: &str| {
-        matches!(
-            name,
-            "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "int" | "uint"
-        )
-    };
-    let name = path.segments[0].name.as_str();
-    if name == "wrapping" {
-        return match &args[..] {
-            [crate::ast::TypeArg::Type(inner)] => match &*inner.kind {
-                TypeKind::Path { path, args } => {
-                    path.is_single() && args.is_empty() && integer(&path.segments[0].name)
-                }
-                _ => false,
-            },
-            _ => false,
-        };
-    }
-    if !args.is_empty() {
-        return false;
-    }
-    match name {
-        "byte" | "bool" | "f32" | "f64" => true,
+    match path.segments[0].name.as_str() {
+        "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "int" | "uint" | "byte"
+        | "bool" | "f32" | "f64" => true,
         "str" => kind != BindingKind::Var,
-        other => integer(other),
+        _ => false,
     }
 }
 
@@ -387,8 +361,8 @@ pub fn not_static_data(program: &Program) -> Option<String> {
             {
                 return Some(format!(
                     "module state of a type that is not static data ([mem.static.3]): `{name}` — \
-                     module state holds the integers (and `wrapping[T]` of one), `byte`, `bool` \
-                     and the floats (and `str` in a `const` or `let`) at this cut"
+                     module state holds the integers, `byte`, `bool` and the floats (and `str` \
+                     in a `const` or `let`) at this cut"
                 ));
             }
         }

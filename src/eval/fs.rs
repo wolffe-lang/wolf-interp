@@ -444,19 +444,6 @@ impl FsTable {
         (0..FIRST_HANDLE as i128).contains(&handle) || self.file(handle).is_ok()
     }
 
-    /// s248 (`[os.fs.sync]`, wolf-lang#796; wolf-interp#268): `fs_sync(fd)` —
-    /// the bytes and the metadata behind a handle on the disk, through
-    /// `File::sync_all` (`fsync(2)` on linux, `F_FULLFSYNC` on macOS,
-    /// `FlushFileBuffers` on windows: the calls the clause names). 0..2 are
-    /// the standard streams, synced through a duplicate ([`std_stream`]);
-    /// windows declines them by name, as every handle-only call does there.
-    /// A closed or forged handle is `io` with no host number, and a host
-    /// refusal (a pipe) `io` with its.
-    pub(crate) fn sync(&mut self, handle: i128) -> FsResult<()> {
-        let file = self.handle_file(handle)?;
-        file.sync_all().map_err(io_row)
-    }
-
     /// `fs_fstat(fd) -> [kind, size, modified_ms]` (`[os.fs.fstat]`): ONE
     /// metadata read on the handle the open returned — or, for `0`, `1` and
     /// `2`, on the standard stream (`[os.fs.std]`, wolf-lang#424).
@@ -1061,35 +1048,11 @@ pub(crate) fn outside_reason(name: &str, path: &str) -> String {
 /// bound — answers `false`, so the caller declines by name rather than
 /// guessing a path is safe.
 pub(crate) fn resolves_inside(root: &Path, path: &Path) -> bool {
-    walk_from(root, path) == Walk::Inside
-}
-
-/// Where [`walk_from`]'s resolution of a path ends.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Walk {
-    /// Inside the served tree.
-    Inside,
-    /// Outside it.
-    Outside,
-    /// The walk could not decide (a root that will not canonicalize, a link
-    /// that cannot be read, a chain past the `ELOOP` bound). `stayed_inside`
-    /// is whether every step it took was inside the tree — a loop of links
-    /// within it, which the host answers `ELOOP` for (is79: `fs_realpath`
-    /// answers that row, `[os.fs.realpath]`'s `loop=io`).
-    Undecided { stayed_inside: bool },
-}
-
-/// [`resolves_inside`]'s walk, with the undecided end told apart.
-pub(crate) fn walk_from(root: &Path, path: &Path) -> Walk {
     // Linux's `MAXSYMLINKS`; past it the host would answer `ELOOP`.
     const HOPS: usize = 40;
     let Ok(root) = std::fs::canonicalize(root) else {
-        return Walk::Undecided {
-            stayed_inside: false,
-        };
+        return false;
     };
-    let within = |p: &Path| plain_path(p.to_path_buf()).starts_with(plain_path(root.clone()));
-    let mut stayed_inside = true;
     // One owned component per entry, so a link's target can be spliced in
     // at the front of what is still to walk.
     let mut queue: std::collections::VecDeque<PathBuf> = path
@@ -1099,7 +1062,6 @@ pub(crate) fn walk_from(root: &Path, path: &Path) -> Walk {
     let mut cursor = root.clone();
     let mut hops = 0usize;
     while let Some(piece) = queue.pop_front() {
-        stayed_inside &= within(&cursor);
         let Some(component) = piece.components().next() else {
             continue;
         };
@@ -1130,10 +1092,10 @@ pub(crate) fn walk_from(root: &Path, path: &Path) -> Walk {
                     Ok(meta) if meta.file_type().is_symlink() => {
                         hops += 1;
                         if hops > HOPS {
-                            return Walk::Undecided { stayed_inside };
+                            return false;
                         }
                         let Ok(target) = std::fs::read_link(&next) else {
-                            return Walk::Undecided { stayed_inside };
+                            return false;
                         };
                         for part in target.components().rev() {
                             queue.push_front(PathBuf::from(part.as_os_str()));
@@ -1149,51 +1111,13 @@ pub(crate) fn walk_from(root: &Path, path: &Path) -> Walk {
     // candidate — `os_cwd`'s own answer handed back to `os_chdir` — walks
     // from a plain `C:` prefix, and `Path::starts_with` tells the two
     // prefixes apart; elsewhere `plain_path` is the identity.
-    if within(&cursor) {
-        Walk::Inside
-    } else {
-        Walk::Outside
-    }
+    plain_path(cursor).starts_with(plain_path(root))
 }
 
 // -- the path calls -------------------------------------------------------
 //
 // These take no handle and hold no state, so they are free functions rather
 // than [`FsTable`] methods. Each one names the row set it can answer.
-
-/// s248 (`[os.fs.sync]`, wolf-lang#796; wolf-interp#268): `fs_sync_dir` past
-/// windows — the directory's entries on the disk. It is opened by
-/// `read_dir` first (`opendir`, which is `O_DIRECTORY`), so a name that is
-/// no directory is the host's `ENOTDIR` — `invalid` — a missing name
-/// `not_found` and a refused search `denied`, each with the host's number;
-/// then opened for reading and `sync_all`ed, as a file is (`fsync(2)`;
-/// `F_FULLFSYNC` on macOS). Any other refusal is `io`.
-pub(crate) fn sync_dir(path: &Path) -> FsResult<()> {
-    let dir_row = |error: &std::io::Error| {
-        if error.kind() == std::io::ErrorKind::NotADirectory {
-            note_host_error(error);
-            FsErr::Row("invalid")
-        } else {
-            path_row(error)
-        }
-    };
-    drop(std::fs::read_dir(path).map_err(|e| dir_row(&e))?);
-    let dir = File::open(path).map_err(|e| dir_row(&e))?;
-    dir.sync_all().map_err(io_row)
-}
-
-/// s248 (`[os.fs.realpath]`): the rows of a canonical name the host refused —
-/// `not_found` for a missing name (a dangling link and the empty path
-/// included), `io` for everything else (a loop, a component that is not a
-/// directory, a refused search), with the host's number.
-fn realpath_row(error: &std::io::Error) -> FsErr {
-    note_host_error(error);
-    FsErr::Row(if error.kind() == std::io::ErrorKind::NotFound {
-        "not_found"
-    } else {
-        "io"
-    })
-}
 
 /// `fs_read_text(path) -> str`: the whole file, decoded. `utf8` for bytes
 /// that are not text — never lossy, never a trap.
@@ -2240,40 +2164,6 @@ impl Machine {
                 let answer = self.shared_fs().truncate(fd, len).map(|()| Value::Unit);
                 self.fs_answer(name, answer, span)
             }
-            // s248 (`[os.fs.sync]`, wolf-lang#796; ruling #93; wolf-interp#268):
-            // the atomic save's two syncs. `fs_sync` on a handle
-            // ([`FsTable::sync`]); `fs_sync_dir` answers windows
-            // `unsupported` before the path is read (its directories are not
-            // opened as files, ruling asked R4 A), then takes the path as every
-            // path call does, and the host decides the rest ([`sync_dir`]).
-            // The empty path is the host's to answer (`ENOENT`), never the
-            // tree's root, which `""` joined onto it would name.
-            "fs_sync" => {
-                let fd = int_arg(args, 0, name)?;
-                let answer = self.shared_fs().sync(fd).map(|()| Value::Unit);
-                self.fs_answer(name, answer, span)
-            }
-            "fs_sync_dir" => {
-                let path = self.fs_path_arg(args, 0, name)?;
-                let answer = if cfg!(windows) {
-                    Err(FsErr::Row("unsupported"))
-                } else if path.is_empty() {
-                    sync_dir(Path::new(""))
-                } else {
-                    self.fs_contained(&path, name).and_then(|p| sync_dir(&p))
-                };
-                self.fs_answer(name, answer.map(|()| Value::Unit), span)
-            }
-            // s248 (`[os.fs.realpath]`, wolf-lang#797; wolf-interp#268): the
-            // canonical name, `fs::canonicalize` — `realpath(3)` on unix,
-            // `GetFinalPathNameByHandleW` on windows (the `\\?\` form), the
-            // calls the clause names ([`Machine::fs_realpath`]).
-            "fs_realpath" => {
-                let path = self.fs_path_arg(args, 0, name)?;
-                let answer = self.fs_realpath(&path, name);
-                let answer = self.fs_str(answer, name, span)?;
-                self.fs_answer(name, answer, span)
-            }
             // The three infallible predicates: the witnesses call them with
             // no `?` (`corpus/fs/roundtrip.lu`'s `gone: {!fs_exists(path)}`),
             // so they answer a bool and never a row. A path this machine
@@ -2569,60 +2459,6 @@ impl Machine {
             }
             _ => self.fs_contained(path, name),
         }
-    }
-
-    /// s248 (`[os.fs.realpath]`): `fs_realpath(path)`. A query of names that
-    /// reads no file's bytes and writes nothing — and still answered only
-    /// inside the tree this machine serves (`[os.fs.path.domain]`): a path
-    /// whose resolution leaves it, or whose canonical name lies outside it,
-    /// is declined by name, as `fs_exists("/tmp")` is. Inside, the host
-    /// decides every row ([`realpath_row`]), a loop of links within the tree
-    /// included ([`Walk::Undecided`]); an answer that is not UTF-8 is `io`
-    /// with no host number (a `str` holds UTF-8; `fs_read_link` is the
-    /// byte-exact call). The empty path is the host's (`ENOENT`).
-    fn fs_realpath(&self, path: &str, name: &str) -> FsResult<String> {
-        if path.is_empty() {
-            let error = std::fs::canonicalize("")
-                .err()
-                .unwrap_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound));
-            return Err(realpath_row(&error));
-        }
-        let candidate = contained(path, name)?;
-        let candidate = match self.files().moved_cwd() {
-            Some(dir) if candidate.is_relative() => dir.join(candidate),
-            _ => candidate,
-        };
-        let live = self.is_live();
-        let root = if live {
-            std::env::current_dir().map_err(|_| {
-                FsErr::Outside(format!(
-                    "`{name}(\"{path}\")` cannot be served: this machine could not read the \
-                     working directory it would resolve the path against"
-                ))
-            })?
-        } else {
-            self.files().observation_root_path().map_err(FsErr::Row)?
-        };
-        let outside = || FsErr::Outside(outside_reason(name, path));
-        match walk_from(&root, &candidate) {
-            Walk::Inside
-            | Walk::Undecided {
-                stayed_inside: true,
-            } => {}
-            Walk::Outside
-            | Walk::Undecided {
-                stayed_inside: false,
-            } => return Err(outside()),
-        }
-        let target = self.files().resolve(&candidate, live).map_err(FsErr::Row)?;
-        let real = std::fs::canonicalize(&target).map_err(|e| realpath_row(&e))?;
-        let tree = std::fs::canonicalize(&root).map_err(|e| realpath_row(&e))?;
-        if !plain_path(real.clone()).starts_with(plain_path(tree)) {
-            return Err(outside());
-        }
-        real.into_os_string()
-            .into_string()
-            .map_err(|_| FsErr::Row("io"))
     }
 
     /// A row becomes an error VALUE with a note; a by-name refusal becomes
