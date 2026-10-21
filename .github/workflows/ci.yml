@@ -315,6 +315,14 @@ jobs:
             if ci/test-shards.sh has-doc '${{ matrix.shard }}'; then doc=yes; else doc=no; fi
           fi
           echo "shard ${{ matrix.shard }} runs: $args"
+          # is79 (never merge): wolf-std e036bec's five lupin-windows cells (sc68), this branch's lupin, this runner.
+          cargo build --quiet
+          git clone --quiet --filter=blob:none https://github.com/wolffe-lang/wolf-std ../wolf-std-is79
+          git -C ../wolf-std-is79 checkout --quiet e036bec318ad81ecd5a025612bc2c2adb17527f3
+          git -C ../wolf-std-is79 rev-parse HEAD
+          exe=target/debug/lupin; [ -f target/debug/lupin.exe ] && exe=target/debug/lupin.exe
+          python3 ci/is79-std-cells.py "$exe" ../wolf-std-is79 2>&1 | tee test-output.log
+          exit 0
           cargo test $args 2>&1 | tee test-output.log
           if [ "$doc" = yes ]; then
             echo "shard ${{ matrix.shard }} runs the doc-tests: cargo test --doc"
