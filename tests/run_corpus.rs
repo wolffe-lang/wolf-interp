@@ -272,8 +272,18 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // the X1 disagreement executing to a silently wrong answer. Since 0.1.4
     // it stops at `resolve` with E1007 (issue #15) and leaves this ledger,
     // exactly as the E0410 fail-files did.)
-    ("memory/region_conflict_params.lu", "trap(region-fault)"),
-    ("memory/region_escape_local.lu", "trap(region-fault)"),
+    //
+    // is79 (wolf-interp#271): both leave the dynamic-counterpart class for
+    // conservatism. Their `Item` and `Node` are scalar-only stand-ins, and
+    // s252's `[mem.region.scalar]` (wolf-lang PR #824, `50e8d0f8`) makes
+    // such a value name no region: it crosses the free and the parameter
+    // boundary as an `int` does, so the run is clean. s252 rewrote both rows
+    // over a `List` (still `trap(region-fault)` here, `tests/
+    // region_scalar_is79.rs`); this pin (294d626) predates the rewrite, and
+    // its `fail(E1004)`/`fail(E1010)` headers are the compilers' answers at
+    // 0.2.34, which refuse the scalar shapes statically.
+    ("memory/region_conflict_params.lu", "exit(0)"),
+    ("memory/region_escape_local.lu", "exit(0)"),
     ("memory/region_infer_list_builder.lu", "exit(0)"),
     ("memory/region_infer_request_handler.lu", "exit(0)"),
     ("memory/region_infer_tree_transform.lu", "exit(0)"),
@@ -291,7 +301,12 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("conc/proc_kill_defers.lu", "exit(0)"),
     ("memory/region_freeze_ok.lu", "exit(0)"),
     ("memory/region_freeze_open.lu", "trap(region-fault)"),
-    ("memory/region_freeze_write.lu", "trap(region-fault)"),
+    // is79 (wolf-interp#271): `region_freeze_write`'s `Config` is
+    // scalar-only, so under s252's `[mem.region.scalar]` the frozen value is
+    // `cfg`'s own words and the write lands nowhere frozen: `exit(7)`, the
+    // program's tail. s252 rewrote the row over a `List`
+    // (`trap(region-fault)` here); this pin predates it.
+    ("memory/region_freeze_write.lu", "exit(7)"),
     ("memory/region_multiopen_values_ok.lu", "exit(0)"),
     ("memory/region_open_ancestor.lu", "trap(region-fault)"),
     ("memory/region_transfer_open.lu", "trap(region-fault)"),
