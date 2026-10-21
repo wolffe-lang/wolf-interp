@@ -138,9 +138,23 @@ const RESOLVE_REFUSALS_BY_PATH: &[(&str, &str)] = &[("typecheck/generic_bind_onc
 const MEMBER_REFUSALS_BY_PATH: &[(&str, &str)] =
     &[("resolve/sibling_diag/geometry/shapes.lu", "E0302")];
 
+/// Module ENTRIES that name a type a sibling member declares, so that read
+/// ALONE — as these tests read every file, through `frontend::observe` of
+/// the file's own bytes — the name names nothing. is79 (wolf-interp#275): a
+/// struct literal's head resolves where it is written, so
+/// `typecheck/method_scope/main.lu`'s `P { x: 1 }` (`P` is `p.lu`'s) is
+/// E0301 at `P` (`[329,330]`) read alone. In its module — the corpus walk,
+/// which loads the directory — `P` resolves and the entry answers what it
+/// answered before. Measured red first: `left: Fail("E0301"), right: Pass`
+/// (`tier pr` run 39619755163, ubuntu shard 2 and the windows smoke); every
+/// other corpus file answers alone as it did at 0.1.55 (is79, kasumi
+/// `scripts/isolated.py`: 1,002 files, one moved).
+const ENTRIES_READ_ALONE: &[(&str, &str)] = &[("typecheck/method_scope/main.lu", "E0301")];
+
 fn declaration_read_code(case: &Case) -> Option<&str> {
     if let Some((_, code)) = MEMBER_REFUSALS_BY_PATH
         .iter()
+        .chain(ENTRIES_READ_ALONE)
         .find(|(path, _)| case.path.ends_with(path))
     {
         return Some(code);
