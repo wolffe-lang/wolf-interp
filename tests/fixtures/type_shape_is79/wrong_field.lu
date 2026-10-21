@@ -1,0 +1,7 @@
+use std.net
+
+fn main() -> !int {
+    let a = net.Addr { versio: 4, text: "127.0.0.1" }
+    print("built {a.versio} {a.text}")
+    0
+}

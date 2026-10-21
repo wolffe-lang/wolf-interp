@@ -1,0 +1,7 @@
+use std.net
+
+fn main() -> !int {
+    let a = net.NoSuchType { version: 4, text: "127.0.0.1" }
+    print("built {a.version} {a.text}")
+    0
+}

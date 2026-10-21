@@ -1,0 +1,10 @@
+struct Real {
+    x: int,
+}
+
+fn main() -> !int {
+    let r = Real { x: 1 }
+    let a = Fake { y: 2 }
+    print("built {r.x} {a.y}")
+    0
+}
