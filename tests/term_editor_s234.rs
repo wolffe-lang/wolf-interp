@@ -10,8 +10,10 @@
 //! own.
 //!
 //! What this machine serves: every SHAPE row — a set the shape rule
-//! refuses is `io` for the wait, a mode with a bit that is no field
-//! (32, now that 8 and 16 are) or a negative one is `invalid`. What it
+//! refuses is `io` for the wait, a mode with a bit that is no field (bit
+//! 24 and above, since s248 made bits 5..7 fields — is79 re-synced the
+//! row to wolf-lang `9da7bdcf`, sha256 `811f1fc5…`, where bit 5's row has
+//! left for `editor_wait_lanes.rs`) or a negative one is `invalid`. What it
 //! does NOT mirror is asserted on its words: lupin forbids `unsafe` and
 //! links no libc, and std has no `ioctl`, `tcgetattr` or `poll`, so the
 //! window's size, the special characters and the wait itself are refused
