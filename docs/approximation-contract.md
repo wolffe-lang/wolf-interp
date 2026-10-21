@@ -1411,3 +1411,89 @@ naming `os_signal_text` and `strsignal`. `tests/signal_text_is77.rs` holds
 the compiler's witness (`text_zero.lu`, byte for byte) to that, and
 `tests/group_s241.rs` carries the compiler's corpus row as s246 left it,
 with `text_zero` moved out of the one-truth shape rows.
+
+### 6.21 wolf 0.2.34's calls and s252's rules, where this machine reaches them (is79, 0.1.56)
+
+wolf 0.2.34 (s247, s248; rulings #90, #93, #95, #97) added seven names
+and two rules, and s252 (wolf-lang PR #824) three more rules; lupin 0.1.55
+resolved none of the names and answered none of the rules
+(wolf-interp#268, #269, #271–#275). Each is answered here as the compiled
+tiers answer it wherever this machine can reach the host through the
+standard library, and refused by name where it cannot. What it serves:
+
+- **`os_clock_ns`** (`[os.clock.ns]`): `time_now_ms`'s own anchor at
+  nanoseconds, so a nanosecond read after a millisecond one is never behind
+  it; saturating at the largest `int`.
+- **`fs_sync`, `fs_sync_dir`** (`[os.fs.sync]`): std's `sync_all`, which is
+  the clause's `fsync(2)`, `F_FULLFSYNC` and `FlushFileBuffers`. A
+  directory is first read open (`read_dir`, which is `opendir` and its
+  `O_DIRECTORY`), so a name that is no directory is the host's `ENOTDIR`
+  — `invalid` — with no hand-copied flag; then opened and synced. windows
+  answers `fs_sync_dir` with the `unsupported` row before the path is read
+  (ruling asked R4 A). The exclusive create the atomic save starts with
+  needed nothing: open mode 4 and `fs_open_perm(p, 4, perm)` answered
+  `exists` for a taken name already.
+- **`fs_realpath`** (`[os.fs.realpath]`): std's `canonicalize` — inside
+  the tree this machine serves. A name query writes nothing and reads no
+  file's bytes, but it is a path call like every other (`[os.fs.path.domain]`
+  lets a confining implementation decline the rest by name), so
+  `fs_realpath("/tmp")` is declined by name exactly as `fs_exists("/tmp")`
+  is. Inside the tree the host decides every row, a loop of links included:
+  the containment walk now tells a loop that stays inside the tree (the
+  host's `ELOOP`, `io`) from a path that leaves it.
+- **`os_term_set_mode`'s bits 5–7** (`[os.term.mode]`, ruling #97): fields
+  of the mode now, so only bit 24 and above, or a negative mode, is
+  `invalid`; past the shape the set is refused by name as before.
+
+What it refuses by name, after every row it can decide without the host:
+`os_term_restore_at_exit` (`[os.term.restore]`: the shape, windows'
+`unsupported`, and `io` for a closed, forged or non-terminal handle — std's
+`isatty` answers the last — then a registration on a terminal, which is a
+`tcsetattr` at the exit), `os_signal_wait_fds` (`[os.signal.wait.fds]`: the
+set's shape `io`, a deadline below -1 `invalid`, windows, a closed or
+forged handle `io`, then the wait, which is `poll(2)` over the descriptors
+and a listener's wake pipe this machine never arms), and `os_fork`
+(`[os.proc.fork]`, ruling #95 R5 A: std has no fork; windows answers the
+`unsupported` row, as every machine does there, before `busy`, which is the
+compiled runtime's rule for its own threads).
+
+And the rules:
+
+- **`[mem.static.3]`'s `wrapping[T]`** (s252, #814): module state of a
+  wrapping type is static data. A bare literal initializer of a module item
+  now takes the item's declared type, as a local `let`'s does — it stayed an
+  untyped literal before, so `SEED + 1` met `i32` at its binding instead of
+  wrapping.
+- **`[mem.region.scalar]`** (s252, #816, #801, #822): a value whose type
+  reaches no storage names no region. This machine reads it off the value —
+  a scalar, unit, and a tuple, struct or enum value made only of them — so
+  a scalar-only struct carries no home, built or copied out, and nothing
+  faults through it when the region it was built in is freed or frozen or is
+  another parameter's. The region is still charged for it (W1001's account
+  is unchanged). A variant without a payload reaches nothing whatever its
+  enum's other variants carry, which is never looser than the static rule's
+  soundness. Three rows of the vendored corpus at pin 294d626 move with it,
+  each the scalar-only stand-in s252 rewrote over a `List`:
+  `region_conflict_params` and `region_escape_local` run (`exit(0)`) and
+  `region_freeze_write` returns its tail (`exit(7)`), conservatism against
+  their `fail(E1004)`, `fail(E1010)`, `fail(E1012)` headers until the pin
+  passes s252.
+- **The adapter casts** (`[mem.tier0.move.3]`, #274): a cast of a place
+  consumes it as an initializer does, so a cast out of an adapter of a
+  container, a struct or `str` moves it (the second read traps
+  `use-after-move`); and an adapter of `bool` or `str` casts to its base and
+  back.
+- **A shift's count has the operand's type** (`[type.int.shift]` (5),
+  #273): an annotated local's `int` count of a `wrapping[u64]` or `u64`
+  shift is E0401 at the count, beside is76's parameters and casts. And
+  `[type.numlit.value]`'s later use types the binding in the one case this
+  machine reads statically (`numinfer`): an unannotated counter whose every
+  deciding use is one `wrapping[T]` is that type, so s252's countdown row
+  wraps for forty turns. Everywhere else an unannotated literal binding
+  keeps `[arith.literal.default]`'s `i32`, as it always had.
+- **A type name resolves where it is written** (#275, wolf-std sc67): a
+  qualified annotation (`net.NoSuchType`) and a struct literal's head (`Fake
+  { … }`, `net.NoSuchType { … }`) that name nothing are E0301 at the name,
+  and an imported struct's literal names every field (E0408). The compiled
+  tiers answer `unsupported` ("this struct-literal head") for the local
+  shape at 0.2.34; this machine answers the clause's E0301.
