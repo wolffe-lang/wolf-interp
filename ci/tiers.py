@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""ci/tiers.py — which jobs a CI run runs, and whether it ran them (tl21, is78, tl29).
+"""ci/tiers.py — which jobs a CI run runs, and whether it ran them (tl21, is78, tl29,
+tl30b: ruling #101 C).
 
     ci/tiers.py plan [--event E] [--action A] [--label L] [--labels L1,L2]
                      [--merge [--head-sha SHA] | --paths-from FILE]
@@ -28,22 +29,22 @@ and `tier`. The `test` job's entries are an OS and a shard: `1`, `2`, `3`
            windows smoke. The windows heavy shards and ladder (is78) and the
            macOS ones (tl29) are the nightly's and release's, not the
            merge's; with one ladder there is no bundle to compare, so the
-           comparison goes with them. Since tl29 these are the pr tier's
-           jobs and entries (ci/tl29.md, R-tl29-2). A push to trunk, a
-           `workflow_dispatch` with no `jobs` input (or `-f tier=full`), a
-           pull request carrying the `full-matrix` label; and a pull request
-           with a changed path no rule below names, or whose changed paths
-           cannot be read: what is not understood never shrinks a run.
-  pr       any other pull-request run: is75's reduced leg, unchanged
-           (ubuntu's shards and ladder, one macOS and one windows smoke,
-           shard coverage, independence, dist floor), and the planner's
-           test. `bundle-identical` is the one job it leaves out (one
-           manifest has nothing to be identical to).
+           comparison goes with them. EVERY CODE PULL REQUEST'S PUSH (tl30b,
+           ruling #101 C: a pull request whose changed paths are not all
+           prose, labelled or not), a push to trunk, a `workflow_dispatch`
+           with no `jobs` input (or `-f tier=full`); and a pull request with
+           a changed path no rule below names, or whose changed paths cannot
+           be read: what is not understood never shrinks a run. Since tl29
+           the pr tier ran these jobs and entries already (ci/tl29.md,
+           R-tl29-2), so a lane's `full-matrix` run repeated its pull
+           request's run job for job; the pull request's own run is the
+           merge run now, and lane-audit reads wolf-interp as a verdict-only
+           repository (no label). `pr` is no tier any more.
   noop     nothing but the plan and the verdict: a pull request whose
-           changed paths are ALL prose; a `labeled` event for a label that
-           is neither `full-matrix` nor `release-matrix`; and the
-           `full-matrix` label added beside `release-matrix`, whose run
-           already covers it.
+           changed paths are ALL prose (labelled or not: the notes diet
+           stays); and a `labeled` event for any label but
+           `release-matrix`, `full-matrix` included (the pull request's own
+           run is already the merge gate, so the label asks for nothing).
   partial  a `workflow_dispatch` that names jobs (`-f jobs="plan-test"`):
            those jobs alone, and, when they include `test`, tier release's
            entries, or only those `-f entries="windows/2 ubuntu/ladder"`
@@ -84,11 +85,11 @@ WORKFLOW = ".github/workflows/ci.yml"
 FULL_LABEL = "full-matrix"
 RELEASE_LABEL = "release-matrix"
 NOT_SELECTABLE = ("plan", "tier")
-# The jobs a pull-request run leaves to the release matrix, and since tl29
-# a full run too: one ladder (ubuntu's) has no bundle to compare.
-PR_SKIPS = ("bundle-identical",)
+# The jobs the merge gate leaves to the release matrix: one ladder
+# (ubuntu's) has no bundle to compare (tl29).
 FULL_SKIPS = ("bundle-identical",)
-TIERS = ("release", "full", "pr", "noop", "partial")
+# tl30b (ruling #101 C): no `pr` tier; a code pull request's run is `full`.
+TIERS = ("release", "full", "noop", "partial")
 # What `-f tier=` may ask for (with no `jobs`).
 DISPATCH_TIERS = ("full", "release")
 # The `test` job's entries, in the matrix's order: every OS's three test
@@ -181,8 +182,6 @@ def jobs_of(tier, every):
         return list(every)
     if tier == "full":
         return [j for j in every if j not in FULL_SKIPS]
-    if tier == "pr":
-        return [j for j in every if j not in PR_SKIPS]
     return []
 
 
@@ -193,7 +192,7 @@ def matrix_of(tier, entries=None):
       release, partial  os x {1, 2, 3, ladder} for ubuntu, macOS and
                         windows (is75's twelve, in its order), then the
                         windows smoke;
-      full, pr, noop    ubuntu's four, then a smoke on macOS and windows
+      full, noop        ubuntu's four, then a smoke on macOS and windows
                         (is75's six; full since tl29: macOS's heavy shards
                         and ladder join windows's in the nightly and
                         release, as is78 moved windows's).
@@ -239,9 +238,9 @@ def merge_paths(repo, head_sha):
 def plan(a):
     needs = workflow_jobs()
     every = [j for j in needs if j not in NOT_SELECTABLE]
-    for j in PR_SKIPS + FULL_SKIPS:
+    for j in FULL_SKIPS:
         if j not in every:
-            die("PR_SKIPS or FULL_SKIPS names %s, which is no job of %s" % (j, WORKFLOW))
+            die("FULL_SKIPS names %s, which is no job of %s" % (j, WORKFLOW))
     log = []
     entries = (a.entries or "").split()
 
@@ -256,11 +255,11 @@ def plan(a):
     ev = a.event or "workflow_dispatch"
     log.append("event=%s action=%s label=%s labels=%s" % (ev, a.action or "-", a.label or "-", ",".join(labels) or "-"))
 
-    if ev == "pull_request" and a.action == "labeled" and a.label not in (FULL_LABEL, RELEASE_LABEL):
-        log.append("a label other than %s and %s was added: noop" % (FULL_LABEL, RELEASE_LABEL))
+    if ev == "pull_request" and a.action == "labeled" and a.label == FULL_LABEL:
+        log.append("the %s label was added: noop (ruling #101 C: a code pull request's own run is the merge gate)" % FULL_LABEL)
         return result("noop")
-    if ev == "pull_request" and a.action == "labeled" and a.label == FULL_LABEL and RELEASE_LABEL in labels:
-        log.append("%s was added beside %s, whose run covers it: noop" % (FULL_LABEL, RELEASE_LABEL))
+    if ev == "pull_request" and a.action == "labeled" and a.label != RELEASE_LABEL:
+        log.append("a label other than %s was added: noop" % RELEASE_LABEL)
         return result("noop")
     if ev == "workflow_dispatch":
         if asked and a.tier:
@@ -294,9 +293,6 @@ def plan(a):
     if RELEASE_LABEL in labels:
         log.append("the %s label: release" % RELEASE_LABEL)
         return result("release")
-    if FULL_LABEL in labels:
-        log.append("the %s label: full" % FULL_LABEL)
-        return result("full")
 
     if a.paths_from:
         f = sys.stdin if a.paths_from == "-" else open(a.paths_from, encoding="utf-8")
@@ -323,8 +319,8 @@ def plan(a):
     if count[PR] == 0:
         log.append("%d path(s), every one prose: noop" % len(paths))
         return result("noop")
-    log.append("%d path(s), %d prose: pr" % (len(paths), count[PROSE]))
-    return result("pr")
+    log.append("%d path(s), %d prose: full (a code pull request runs the merge gate, ruling #101 C)" % (len(paths), count[PROSE]))
+    return result("full")
 
 
 def verdict(needs):
