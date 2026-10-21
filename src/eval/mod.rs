@@ -1232,6 +1232,14 @@ impl Machine {
         i128::try_from(self.shared.epoch.elapsed().as_millis()).unwrap_or(i128::MAX)
     }
 
+    /// s248 (`[os.clock.ns]`, wolf-interp#268): the same anchor at
+    /// nanoseconds, saturating at the largest `int` (292 years in).
+    pub(crate) fn monotonic_ns(&self) -> i128 {
+        i128::try_from(self.shared.epoch.elapsed().as_nanos())
+            .unwrap_or(i128::MAX)
+            .min(i128::from(i64::MAX))
+    }
+
     fn fire(&mut self, rule: Rule, span: Span, detail: &str) {
         if self.tracing.keeps(rule) {
             self.shared.trace.lock().expect("trace lock").push(format!(
