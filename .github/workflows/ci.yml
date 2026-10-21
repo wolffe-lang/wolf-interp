@@ -315,6 +315,11 @@ jobs:
             if ci/test-shards.sh has-doc '${{ matrix.shard }}'; then doc=yes; else doc=no; fi
           fi
           echo "shard ${{ matrix.shard }} runs: $args"
+          # PLANT (is79, never merge): src is trunk fcf2fd0's; only is79's targets run,
+          # to the end, so each red is seen.
+          args="--no-fail-fast --test editor_calls_is79 --test fork_is79 --test static_wrapping_is79 --test region_scalar_is79 --test wrapping_count_is79 --test adapter_cast_is79 --test type_shape_is79 --test term_editor_s234"
+          doc=no
+          echo "PLANT runs: $args"
           cargo test $args 2>&1 | tee test-output.log
           if [ "$doc" = yes ]; then
             echo "shard ${{ matrix.shard }} runs the doc-tests: cargo test --doc"
