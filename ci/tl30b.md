@@ -62,3 +62,19 @@ PR, and a label's noop cancels nothing.
   `plan-test` job of a `tier partial` dispatch; nothing else runs.
 - lane-audit's half (wolf-interp in `VERDICT_ONLY`) is a patch to the
   planning repo, handed to the orchestrator (`lane-audit-104.diff`).
+
+## 5. Evidence
+
+**The planner, seen red locally, then in CI.** Branch `tl30b-plant`
+(`4123795`, never merged) plants one break over `e14779b`: `ci/tiers.py`
+put back as trunk's (`b28a510`), the planner before ruling #101 (a code
+PR's run is `pr`, the `full-matrix` label runs `full`). Locally,
+`ci/tiers-test.py` failed on exactly 41 checks; unplanted it passes 168.
+The `tier partial` dispatch `gh workflow run CI --ref tl30b-plant -f
+jobs=plan-test` is **run 39686189002**: `the planner's own test` (job
+119520788888) failed on the same 41 (`tiers-test: FAIL (41)`: T1 six, T2
+thirty-two, T4 one, T6 one, T7 one), every other job skipped, and `tier
+partial` (job 119520886401) failed with it.
+
+The pull request's own run is the first `tier full` of a pull request with
+no label, and is the measurement; it is named in the pull request's body.
