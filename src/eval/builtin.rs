@@ -291,6 +291,11 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // refused by name with one, as `os_wait_poll` is.
     "os_wait_status_core",
     "os_wait_poll_core",
+    // s247 (`[os.proc.fork]`; ruling #95 R5 A; wolf-interp#269): a child
+    // that keeps running wolf code. The name resolves; a fork is refused
+    // by name on a host that has one (std has no fork, and this machine
+    // admits no `unsafe`) and windows answers the `unsupported` row.
+    "os_fork",
     // s236 (wolf-lang#633, #742; `[os.proc.ids]`, `[os.proc.ids.set]`): who
     // the process runs as, and the drop. The names resolve and their
     // SHAPE and HOST rows are answered; a well-formed call on a host that
@@ -779,7 +784,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_signal_default_one"
         | "os_exit_signal"
         | "os_wait_status_core"
-        | "os_wait_poll_core" => unsupported(hosted_tier_decline(name)),
+        | "os_wait_poll_core"
+        | "os_fork" => unsupported(hosted_tier_decline(name)),
         // `[os.proc.inherit]` (s137, wolf-lang#235): the program named apart
         // from its arguments, and the descriptors it hands down.
         //
@@ -1511,6 +1517,30 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 "`{name}` asks the terminal or the process group: this machine admits no \
                  `unsafe` and std has no call for it ([os.term], [os.term.note] R8)"
             ))
+        }
+        // s247 (wolf-lang `[os.proc.fork]`, `[os.proc.fork.note]`; ruling #95
+        // R5 A; wolf-interp#269): a child that keeps running wolf code. A
+        // fork needs `fork(2)`, which Rust's standard library does not have,
+        // and this machine admits no `unsafe` — so on a host that has one
+        // the call is refused by name, before `busy` (the compiled runtime's
+        // rule for its own threads, which this machine never forks). windows
+        // has no fork: the `unsupported` row, as every machine answers there.
+        #[cfg(not(target_family = "wasm"))]
+        "os_fork" => {
+            if cfg!(windows) {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_fork` yields the `unsupported` row",
+                );
+                return Ok(error_value(name, "unsupported"));
+            }
+            unsupported(
+                "`os_fork` makes a child that keeps running this program: Rust's standard \
+                 library has no fork, and this machine admits no `unsafe` ([os.proc.fork], \
+                 [os.proc.fork.note] R5 A)"
+                    .to_owned(),
+            )
         }
         // s219 (`[os.proc.job]`): the job spawn — SHAPE (`invalid`), HOST
         // (windows: any option or a non-empty map is `unsupported`), then
@@ -3789,6 +3819,8 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "os_exit_signal" => &["invalid", "unsupported"],
         "os_term_foreground" | "os_term_mode" | "os_term_set_foreground" => &["unsupported", "io"],
         "os_term_set_mode" => &["unsupported", "invalid", "io"],
+        // s247's fork (`busy`, ruling #95 R7 A).
+        "os_fork" => &["busy", "io", "unsupported"],
         // s234 (`[os.host.sigs]`'s three lines).
         "os_term_size" | "os_term_chars" | "os_signal_wait_fd" => &["unsupported", "io"],
         "os_chdir" => &["not_found", "denied", "io"],
