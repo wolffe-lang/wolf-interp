@@ -3733,7 +3733,7 @@ fn rebound_names(body: &Block) -> BTreeSet<String> {
 /// [`rebound_names`], counted: how many binders of each name the body
 /// holds (is79: a name bound once with an annotation has one declared type
 /// wherever it is read).
-fn bound_name_counts(body: &Block) -> BTreeMap<String, usize> {
+pub(crate) fn bound_name_counts(body: &Block) -> BTreeMap<String, usize> {
     fn pattern(pat: &Pattern, out: &mut BTreeMap<String, usize>) {
         match &*pat.kind {
             PatKind::Binding(ident) => {
@@ -4078,7 +4078,7 @@ fn tests_a_range(pattern: &Pattern) -> bool {
 }
 
 /// Parses an integer literal's spelling: underscores, `0x`/`0o`/`0b` bases.
-fn parse_int_literal(text: &str) -> Option<i128> {
+pub(crate) fn parse_int_literal(text: &str) -> Option<i128> {
     let clean: String = text.chars().filter(|c| *c != '_').collect();
     let (digits, radix) = if let Some(rest) = clean.strip_prefix("0x").or(clean.strip_prefix("0X"))
     {
@@ -4100,7 +4100,7 @@ fn parse_int_literal(text: &str) -> Option<i128> {
 /// `i64`, `uint` and `u64`, `wrapping[u8]` and `u8` are different types to
 /// the checker (each measured E0401 against the other on the checked
 /// machine), so the spelling is the identity.
-fn int_spelling(ty: &Type) -> Option<String> {
+pub(crate) fn int_spelling(ty: &Type) -> Option<String> {
     let TypeKind::Path { path, args } = &*ty.kind else {
         return None;
     };
