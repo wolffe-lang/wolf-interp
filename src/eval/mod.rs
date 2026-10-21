@@ -757,8 +757,14 @@ impl Machine {
     fn with_sched(program: &Program, sched: sched::Sched) -> Machine {
         let store = Store::new();
         let region_teeth = store.teeth();
+        // is79 (wolf-interp#273): the machine runs its own copy of the
+        // program, whose certain `wrapping` counters are annotated
+        // (`crate::numinfer`) — after every static check read the program as
+        // written.
+        let mut owned = program.clone();
+        crate::numinfer::type_counters(&mut owned);
         let shared = Shared {
-            program: Arc::new(program.clone()),
+            program: Arc::new(owned),
             store: Arc::new(Mutex::new(store)),
             region_teeth,
             parts_moved: Arc::new(std::sync::atomic::AtomicBool::new(false)),
