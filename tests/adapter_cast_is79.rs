@@ -79,10 +79,7 @@ fn declared(entry: &Path) -> (String, Option<String>) {
             Some(line[start..end].replace("\\n", "\n")),
         );
     }
-    let code = line
-        .trim_start_matches("//! check: ")
-        .trim()
-        .to_owned();
+    let code = line.trim_start_matches("//! check: ").trim().to_owned();
     (code, None)
 }
 
@@ -203,7 +200,11 @@ fn main() {
 }
 ",
     );
-    assert_eq!((verdict(&rec), stdout(&rec)), ("exit(0)".to_owned(), "2\n".to_owned()), "{rec}");
+    assert_eq!(
+        (verdict(&rec), stdout(&rec)),
+        ("exit(0)".to_owned(), "2\n".to_owned()),
+        "{rec}"
+    );
     runs_as_declared("distinct_copy_scalar.lu");
     let rec = observe_row("distinct_container_moves.lu");
     assert_eq!(verdict(&rec), "trap(use-after-move)", "{rec}");

@@ -73,10 +73,7 @@ fn declared(entry: &Path) -> (String, Option<String>) {
             Some(line[start..end].replace("\\n", "\n")),
         );
     }
-    let code = line
-        .trim_start_matches("//! check: ")
-        .trim()
-        .to_owned();
+    let code = line.trim_start_matches("//! check: ").trim().to_owned();
     (code, None)
 }
 

@@ -77,10 +77,7 @@ fn declared(entry: &Path) -> (String, Option<String>) {
             Some(line[start..end].replace("\\n", "\n")),
         );
     }
-    let code = line
-        .trim_start_matches("//! check: ")
-        .trim()
-        .to_owned();
+    let code = line.trim_start_matches("//! check: ").trim().to_owned();
     (code, None)
 }
 
@@ -122,7 +119,11 @@ fn runs_as_declared(name: &str) {
 fn refused_at_the_count(slug: &str, program: &str) {
     let rec = observe_text(slug, program);
     assert_eq!(verdict(&rec), "fail(E0401)", "{slug}: {rec}");
-    let at = program.rfind(">> n").or_else(|| program.rfind("<< n")).expect("a count") + 3;
+    let at = program
+        .rfind(">> n")
+        .or_else(|| program.rfind("<< n"))
+        .expect("a count")
+        + 3;
     assert_eq!(
         rec["diagnostics"][0]["span"],
         serde_json::json!([at, at + 1]),

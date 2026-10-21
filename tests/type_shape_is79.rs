@@ -156,9 +156,5 @@ fn main() -> !int {
 ",
     );
     assert_eq!(rec["verdict"], "exit(0)", "{rec}");
-    assert_eq!(
-        rec["stdout_inline"],
-        "1 4 127.0.0.1 127.0.0.1:0\n",
-        "{rec}"
-    );
+    assert_eq!(rec["stdout_inline"], "1 4 127.0.0.1 127.0.0.1:0\n", "{rec}");
 }

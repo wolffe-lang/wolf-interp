@@ -82,10 +82,7 @@ fn declared(entry: &Path) -> (String, Option<String>) {
             Some(line[start..end].replace("\\n", "\n")),
         );
     }
-    let code = line
-        .trim_start_matches("//! check: ")
-        .trim()
-        .to_owned();
+    let code = line.trim_start_matches("//! check: ").trim().to_owned();
     (code, None)
 }
 
@@ -94,7 +91,6 @@ fn observe_row(name: &str) -> serde_json::Value {
     let dir = scratch(&format!("{}_{}", module_path!(), name.replace('.', "_")));
     record(&observe(&row(name), &dir))
 }
-
 
 fn verdict(rec: &serde_json::Value) -> String {
     rec["verdict"].as_str().unwrap_or("").to_owned()
