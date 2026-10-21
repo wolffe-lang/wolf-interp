@@ -3727,10 +3727,17 @@ fn consumed_mut_params<'e>(
 /// parameters not. The compiler's W1002/W1003 skip such a name: shadowing
 /// makes a flat write scan unreliable (`rebound_names`, `wolf_sema`).
 fn rebound_names(body: &Block) -> BTreeSet<String> {
-    fn pattern(pat: &Pattern, out: &mut BTreeSet<String>) {
+    bound_name_counts(body).into_keys().collect()
+}
+
+/// [`rebound_names`], counted: how many binders of each name the body
+/// holds (is79: a name bound once with an annotation has one declared type
+/// wherever it is read).
+fn bound_name_counts(body: &Block) -> BTreeMap<String, usize> {
+    fn pattern(pat: &Pattern, out: &mut BTreeMap<String, usize>) {
         match &*pat.kind {
             PatKind::Binding(ident) => {
-                out.insert(ident.name.clone());
+                *out.entry(ident.name.clone()).or_default() += 1;
             }
             PatKind::Variant { fields, .. } => fields.iter().for_each(|p| pattern(p, out)),
             PatKind::Tuple(items) | PatKind::Or(items) => {
@@ -3741,19 +3748,19 @@ fn rebound_names(body: &Block) -> BTreeSet<String> {
                     match &field.pattern {
                         Some(p) => pattern(p, out),
                         None => {
-                            out.insert(field.name.name.clone());
+                            *out.entry(field.name.name.clone()).or_default() += 1;
                         }
                     }
                 }
             }
             PatKind::At { name, pattern: p } => {
-                out.insert(name.name.clone());
+                *out.entry(name.name.clone()).or_default() += 1;
                 pattern(p, out);
             }
             PatKind::Wildcard | PatKind::Literal(_) | PatKind::Path(_) | PatKind::Range { .. } => {}
         }
     }
-    fn block(b: &Block, out: &mut BTreeSet<String>) {
+    fn block(b: &Block, out: &mut BTreeMap<String, usize>) {
         for stmt in &b.stmts {
             match &stmt.kind {
                 StmtKind::Binding(binding) => {
@@ -3773,7 +3780,7 @@ fn rebound_names(body: &Block) -> BTreeSet<String> {
             expr(tail, out);
         }
     }
-    fn item_body(item: &Item, out: &mut BTreeSet<String>) {
+    fn item_body(item: &Item, out: &mut BTreeMap<String, usize>) {
         match &item.kind {
             ItemKind::Fn(decl) => {
                 if let Some(b) = &decl.body {
@@ -3787,10 +3794,10 @@ fn rebound_names(body: &Block) -> BTreeSet<String> {
             _ => {}
         }
     }
-    fn args(list: &[Arg], out: &mut BTreeSet<String>) {
+    fn args(list: &[Arg], out: &mut BTreeMap<String, usize>) {
         list.iter().for_each(|a| expr(&a.expr, out));
     }
-    fn expr(e: &Expr, out: &mut BTreeSet<String>) {
+    fn expr(e: &Expr, out: &mut BTreeMap<String, usize>) {
         match &*e.kind {
             ExprKind::Int(_)
             | ExprKind::Float(_)
@@ -3917,7 +3924,7 @@ fn rebound_names(body: &Block) -> BTreeSet<String> {
             ExprKind::Loop { body } => block(body, out),
             ExprKind::Closure { params, body, .. } => {
                 for param in params {
-                    out.insert(param.name.name.clone());
+                    *out.entry(param.name.name.clone()).or_default() += 1;
                 }
                 expr(body, out);
             }
@@ -3949,7 +3956,7 @@ fn rebound_names(body: &Block) -> BTreeSet<String> {
             ExprKind::Asm { operands, .. } => operands.iter().for_each(|o| expr(&o.value, out)),
         }
     }
-    let mut out = BTreeSet::new();
+    let mut out = BTreeMap::new();
     block(body, &mut out);
     out
 }
@@ -4118,6 +4125,48 @@ fn int_spelling(ty: &Type) -> Option<String> {
     }
 }
 
+/// is79 (wolf-interp#273): the annotated integer locals of `body` that are
+/// its ONLY binder of their name ([`bound_name_counts`], nested bodies and
+/// every pattern included), so one name means one declared type wherever
+/// the body reads it. A nested `fn`'s own locals are not this body's.
+fn annotated_once(body: &Block) -> BTreeMap<String, String> {
+    fn block(b: &Block, out: &mut BTreeMap<String, String>) {
+        for stmt in &b.stmts {
+            match &stmt.kind {
+                StmtKind::Binding(binding) => {
+                    if let PatKind::Binding(ident) = &*binding.pattern.kind
+                        && let Some(t) = binding.ty.as_ref().and_then(int_spelling)
+                    {
+                        out.insert(ident.name.clone(), t);
+                    }
+                    expr(&binding.value, out);
+                }
+                StmtKind::Assign { place, value, .. } => {
+                    expr(place, out);
+                    expr(value, out);
+                }
+                StmtKind::Defer { expr: e, .. } | StmtKind::Expr(e) => expr(e, out),
+                StmtKind::AssumeNoalias(es) => es.iter().for_each(|e| expr(e, out)),
+                StmtKind::Item(_) => {}
+            }
+        }
+        if let Some(tail) = &b.tail {
+            expr(tail, out);
+        }
+    }
+    fn expr(e: &Expr, out: &mut BTreeMap<String, String>) {
+        crate::rowmatch::each_child_with_blocks(e, &mut |child| match child {
+            crate::rowmatch::Child::Expr(child) => expr(child, out),
+            crate::rowmatch::Child::Block(b) => block(b, out),
+        });
+    }
+    let counts = bound_name_counts(body);
+    let mut typed = BTreeMap::new();
+    block(body, &mut typed);
+    typed.retain(|name, _| counts.get(name).copied() == Some(1));
+    typed
+}
+
 /// is76 (wolf-interp#251, `[type.int.shift]` (5)): "The count has the
 /// operand's type. `<<` and `>>` take two operands of one type as `+` does
 /// (`x << n` with `x: u64` and `n: int` is E0401)". This machine has no
@@ -4125,6 +4174,12 @@ fn int_spelling(ty: &Type) -> Option<String> {
 /// parameter of the enclosing function that the body never binds anew
 /// ([`rebound_names`]), or an `as` cast. An inferred binding, a call, a
 /// field — anything else — says nothing, and the run answers as before.
+///
+/// is79 (wolf-interp#273): and an ANNOTATED local — `let n: int = 1` — that
+/// is the body's only binder of its name and no parameter's
+/// ([`annotated_once`]): `h >> n` with `h: wrapping[u64]` is E0401 at `n` on
+/// every compiling machine (wolf 0.2.34, at the count's span), which this
+/// machine ran.
 /// The span is the right operand's, the checked machine's on every
 /// witness (`tests/shift_is76.rs`).
 #[must_use]
@@ -4185,7 +4240,7 @@ pub(crate) fn shift_operand_check(program: &Program) -> Option<Diag> {
     let judge = |decl: &FnDecl| -> Option<Diag> {
         let body = decl.body.as_ref()?;
         let rebound = rebound_names(body);
-        let params: BTreeMap<String, String> = decl
+        let mut params: BTreeMap<String, String> = decl
             .params
             .iter()
             .filter_map(|param| match &param.kind {
@@ -4195,6 +4250,19 @@ pub(crate) fn shift_operand_check(program: &Program) -> Option<Diag> {
                 _ => None,
             })
             .collect();
+        let param_names: BTreeSet<String> = decl
+            .params
+            .iter()
+            .filter_map(|param| match &param.kind {
+                crate::ast::ParamKind::Named { name, .. } => Some(name.name.clone()),
+                crate::ast::ParamKind::SelfParam { .. } => None,
+            })
+            .collect();
+        for (name, ty) in annotated_once(body) {
+            if !param_names.contains(&name) {
+                params.insert(name, ty);
+            }
+        }
         let mut out = None;
         walk_block(body, &params, &mut out);
         out
