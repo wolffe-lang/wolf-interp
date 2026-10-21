@@ -321,7 +321,8 @@ jobs:
           git -C ../wolf-std-is79 checkout --quiet e036bec318ad81ecd5a025612bc2c2adb17527f3
           git -C ../wolf-std-is79 rev-parse HEAD
           exe=target/debug/lupin; [ -f target/debug/lupin.exe ] && exe=target/debug/lupin.exe
-          python3 ci/is79-std-cells.py "$exe" ../wolf-std-is79 2>&1 | tee test-output.log
+          py=python3; python3 -c 1 2>/dev/null || py=python
+          $py ci/is79-std-cells.py "$exe" ../wolf-std-is79 2>&1 | tee test-output.log
           exit 0
           cargo test $args 2>&1 | tee test-output.log
           if [ "$doc" = yes ]; then
