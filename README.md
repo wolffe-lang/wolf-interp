@@ -20,9 +20,13 @@ yay -S lupin-bin                                    # Arch, prebuilt (lupin buil
 ```
 
 Or an archive from [releases](https://github.com/wolffe-lang/wolf-interp/releases).
-The linux archives (x86-64 and aarch64) need **glibc 2.35 or later**
+The GNU/Linux archives (x86-64 and aarch64) need **glibc 2.35 or later**
 (Ubuntu 22.04, Debian 12, Fedora 36+); 0.1.38's needed 2.39 and did not
 start on Ubuntu 22.04 (wolf-lang#447).
+The additional `lupin-<ver>-x86_64-unknown-linux-musl.tar.gz` archive is
+fully static: ET_EXEC, no ELF interpreter and no dynamic section. It needs
+no host libc, and can run on PAX's static ELF loader. Each release build
+checks that ELF contract and prints the binary's SHA-256 before archiving.
 Then:
 
 ```sh

@@ -27,11 +27,11 @@ env:
 
 jobs:
   dist:
-    name: dist (${{ matrix.os }})
+    name: dist (${{ matrix.target }})
     strategy:
       fail-fast: false
       matrix:
-        # tier-1 hosts: linux x86-64, linux aarch64, macOS aarch64, windows x86-64.
+        # Four tier-1 hosts, plus static musl x86-64 for PAX and libc-free hosts.
         # The two linux archives build on 22.04 — the oldest image GitHub
         # offers — so their glibc floor is 2.35 (wolf-lang#447, the lupin
         # half): 0.1.38's, built on ubuntu-latest (24.04), imported
@@ -40,8 +40,15 @@ jobs:
         # `pidfd_getpid`), and did not start on Ubuntu 22.04 LTS at all.
         # wolf 0.2.16 moved the same way (wolf-lang 0320443d). The step
         # `the glibc floor` below measures it on the binary that ships.
-        os: [ubuntu-22.04, ubuntu-22.04-arm, macos-latest, windows-latest]
+        include:
+          - {os: ubuntu-22.04, target: x86_64-unknown-linux-gnu}
+          - {os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu}
+          - {os: macos-latest, target: aarch64-apple-darwin}
+          - {os: windows-latest, target: x86_64-pc-windows-msvc}
+          - {os: ubuntu-22.04, target: x86_64-unknown-linux-musl}
     runs-on: ${{ matrix.os }}
+    env:
+      TARGET: ${{ matrix.target }}
     defaults:
       run:
         shell: bash
@@ -78,16 +85,29 @@ jobs:
 
       # The dist build is the stamped build (never a plain `cargo build` from
       # somewhere else): `build.rs` runs here, at the tag, and only here.
+      - name: Install the musl target
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: rustup target add "$TARGET"
+
       - name: build
-        run: cargo build --release --locked
+        run: |
+          if [ "$TARGET" = x86_64-unknown-linux-musl ]; then
+            ci/musl-build.sh
+          else
+            cargo build --release --locked --target "$TARGET"
+          fi
+
+      - name: the static ELF contract and digest
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: ci/musl-check.sh "target/${TARGET}/release/lupin"
 
       - name: the D57 stamp is on this binary
         run: |
           set -euxo pipefail
           if [ "${RUNNER_OS}" = "Windows" ]; then
-            bin=target/release/lupin.exe
+            bin=target/${TARGET}/release/lupin.exe
           else
-            bin=target/release/lupin
+            bin=target/${TARGET}/release/lupin
           fi
           out=$("$bin" --version)
           echo "$out"
@@ -108,8 +128,8 @@ jobs:
       # reference counts — the loader refuses a missing version node whether
       # or not the symbol is weak, which is exactly how 0.1.38 failed.
       - name: the glibc floor
-        if: runner.os == 'Linux'
-        run: ci/glibc-floor.sh target/release/lupin
+        if: runner.os == 'Linux' && matrix.target != 'x86_64-unknown-linux-musl'
+        run: ci/glibc-floor.sh "target/${TARGET}/release/lupin"
 
       # Archive layout: one directory, so an unpack cannot scatter files into
       # the user's cwd. `.zip` on Windows and `.tar.gz` everywhere else — the
@@ -119,13 +139,13 @@ jobs:
         run: |
           set -euxo pipefail
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          target=$(rustc -vV | sed -n 's/^host: //p')
+          target="$TARGET"
           stem="lupin-${version}-${target}"
           mkdir -p "target/dist/${stem}"
           if [ "${RUNNER_OS}" = "Windows" ]; then
-            cp target/release/lupin.exe "target/dist/${stem}/"
+            cp target/${TARGET}/release/lupin.exe "target/dist/${stem}/"
           else
-            cp target/release/lupin "target/dist/${stem}/"
+            cp target/${TARGET}/release/lupin "target/dist/${stem}/"
           fi
           cp README.md LICENSE CHANGELOG.md "target/dist/${stem}/"
           cd target/dist
@@ -168,9 +188,9 @@ jobs:
       # the archive, so a page can point at one URL and get a runnable file.
       - name: the bare windows executable
         if: runner.os == 'Windows'
-        run: cp target/release/lupin.exe "target/dist/lupin.exe"
+        run: cp target/${TARGET}/release/lupin.exe "target/dist/lupin.exe"
 
-      # Four jobs upload to one release, so creation is a RACE: the
+      # Five jobs upload to one release, so creation is a RACE: the
       # `upload-or-else-create` shape the upstream stub uses lets the loser of
       # that race drop its assets on the floor, which on this repo would mean
       # losing exactly the windows one this lane exists for. Create first,
