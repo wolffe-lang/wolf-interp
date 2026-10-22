@@ -173,6 +173,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: python3 ci/tiers-test.py
+      - run: python3 ci/is80/dist-test.py
 
   # Primary gate: linux/x86-64 runs the whole ladder, including the corpus walk.
   # macOS/aarch64 and windows/x86-64 build and test (D35 posture).
