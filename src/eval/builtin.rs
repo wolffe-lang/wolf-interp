@@ -591,6 +591,11 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // host's words for a number — std's rendering without its
         // ` (os error N)` suffix, the compiler's runtime word for word.
         "os_error" => Ok(Value::Int(machine.last_os_error(), IntTy::INT)),
+        #[cfg(target_family = "wasm")]
+        "os_error_text" => unsupported(
+            "`os_error_text` needs the host OS error-text tier; this wasm build has no host shim",
+        ),
+        #[cfg(not(target_family = "wasm"))]
         "os_error_text" => {
             let Some(Value::Int(code, _)) = args.first() else {
                 return unsupported("`os_error_text` takes an `int`".to_owned());
