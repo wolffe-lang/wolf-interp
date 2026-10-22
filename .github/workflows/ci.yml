@@ -870,6 +870,18 @@ jobs:
       - name: the glibc floor
         run: ci/glibc-floor.sh target/release/lupin
 
+      # The native entropy row and the wasm cfg arms are small gates on the
+      # already-allocated x86 runner: no additional job or matrix slot.
+      - name: the OS entropy witnesses
+        if: matrix.os == 'ubuntu-22.04' && !cancelled()
+        run: cargo test --release --locked --test os_random_is80 -- --nocapture
+
+      - name: the wasm library is warning-free
+        if: matrix.os == 'ubuntu-22.04' && !cancelled()
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo clippy --target wasm32-unknown-unknown --lib --locked -- -D warnings
+
       # The archive release.yml would upload, unpacked where a user would
       # unpack it, running a program. `--version` alone proves nothing
       # (wolf-lang#447's second defect was a correct version string over a
