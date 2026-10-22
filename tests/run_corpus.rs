@@ -484,6 +484,10 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // process trio and the json kernels decline honestly (exec surface /
     // the counterparty's reference parser) and stay out of scope.
     ("os/args_cwd.lu", "exit(0)"),
+    // is80: [os.random], real OS entropy, including under --seed.
+    ("os/random_differs.lu", "exit(0)"),
+    ("os/random_edges.lu", "exit(0)"),
+    ("os/random_negative_trap.lu", "trap(assert)"),
     ("os/env_roundtrip.lu", "exit(0)"),
     ("os/exit_code.lu", "exit(7)"),
     ("time/monotonic.lu", "exit(0)"),
@@ -972,9 +976,9 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // trapping twins — surrogate gap, past-0x10FFFF, negative — all
     // trap(overflow), D56's family. `boundary_battery` rides the existing
     // `get` surface; the memory/conc value witnesses ran on sight. The wave's
-    // other four entries (`os/random_*`, `comptime/sandbox_os_random`) are
-    // std/comptime surface with no pinned semantics here — declined, never
-    // run.
+    // os/random_* were declined until is80 implemented [os.random]. Their
+    // three entries now run below; comptime/sandbox_os_random stays declined
+    // with the rest of the compiler's sandboxed comptime engine.
     ("conc/spawn_cluster_split.lu", "exit(0)"),
     ("faults/char_cast_negative_trap.lu", "trap(overflow)"),
     ("faults/char_cast_range_trap.lu", "trap(overflow)"),
