@@ -1,0 +1,1 @@
+{"protocol":1,"impl":"lupin","impl_version":"0.1.55","commit":"unknown","file":"tests/fixtures/os_random_is80/random_differs.lu","phase_reached":"run","seeded":true,"diagnostics":[],"warnings":[],"verdict":"exit(0)","stdout_sha256":"3aec1c23c7135c86747008f5890462545b7af7a19aae2b89dc8a87b9b4675a01","stdout_inline":"len=32/32 range=true same=false\n","x-seed":42}

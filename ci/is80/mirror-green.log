@@ -1,0 +1,8 @@
+notice: counterparty compiler: /lane/download/wolf-0.2.34-x86_64-unknown-linux-gnu/wolf
+notice: counterparty tier: checked (conform-run --checked)
+harness profile: release
+differential: 3 entries compared, 0 member(s) exercised through their entries
+divergences: 0
+conservatism ledger: 0 entries
+differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
+os_random mirror gate: 3 rows, 0 divergences, 0 ledger entries

@@ -1,0 +1,165 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded anstream v1.0.0
+  Downloaded colorchoice v1.0.5
+  Downloaded memchr v2.8.3
+  Downloaded utf8parse v0.2.2
+  Downloaded anstyle v1.0.14
+  Downloaded clap_lex v1.1.0
+  Downloaded strsim v0.11.1
+  Downloaded cfg_aliases v0.2.2
+  Downloaded nibble_vec v0.1.0
+  Downloaded endian-type v0.2.0
+  Downloaded anstyle-query v1.1.5
+  Downloaded itoa v1.0.18
+  Downloaded heck v0.5.0
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded cfg-if v1.0.4
+  Downloaded quote v1.0.47
+  Downloaded anstyle-parse v1.0.0
+  Downloaded zmij v1.0.23
+  Downloaded clap_derive v4.6.4
+  Downloaded smallvec v1.15.2
+  Downloaded bitflags v2.13.1
+  Downloaded getrandom v0.2.16
+  Downloaded log v0.4.34
+  Downloaded serde_core v1.0.229
+  Downloaded serde_derive v1.0.229
+  Downloaded unicode-ident v1.0.24
+  Downloaded clap v4.6.6
+  Downloaded proc-macro2 v1.0.107
+  Downloaded serde v1.0.229
+  Downloaded unicode-segmentation v1.13.3
+  Downloaded clap_builder v4.6.6
+  Downloaded rustyline v18.0.1
+  Downloaded serde_json v1.0.151
+  Downloaded radix_trie v0.3.0
+  Downloaded unicode-width v0.2.2
+  Downloaded syn v3.0.3
+  Downloaded nix v0.31.3
+  Downloaded libc v0.2.189
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+   Compiling libc v0.2.189
+   Compiling utf8parse v0.2.2
+   Compiling cfg_aliases v0.2.2
+   Compiling serde_core v1.0.229
+   Compiling nix v0.31.3
+   Compiling anstyle-parse v1.0.0
+   Compiling anstyle-query v1.1.5
+   Compiling colorchoice v1.0.5
+   Compiling zmij v1.0.23
+   Compiling anstyle v1.0.14
+   Compiling smallvec v1.15.2
+   Compiling syn v3.0.3
+   Compiling cfg-if v1.0.4
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstream v1.0.0
+   Compiling nibble_vec v0.1.0
+   Compiling bitflags v2.13.1
+   Compiling clap_lex v1.1.0
+   Compiling serde_json v1.0.151
+   Compiling serde v1.0.229
+   Compiling endian-type v0.2.0
+   Compiling memchr v2.8.3
+   Compiling strsim v0.11.1
+   Compiling heck v0.5.0
+   Compiling clap_builder v4.6.6
+   Compiling radix_trie v0.3.0
+   Compiling unicode-segmentation v1.13.3
+   Compiling unicode-width v0.2.2
+   Compiling log v0.4.34
+   Compiling clap_derive v4.6.4
+   Compiling serde_derive v1.0.229
+   Compiling itoa v1.0.18
+   Compiling wolf-interp v0.1.55 (/lane/wasm-green-src)
+   Compiling clap v4.6.6
+   Compiling rustyline v18.0.1
+   Compiling getrandom v0.2.16
+    Finished `release` profile [optimized] target(s) in 49.05s
+ELF Header:
+  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 
+  Class:                             ELF64
+  Data:                              2's complement, little endian
+  Version:                           1 (current)
+  OS/ABI:                            UNIX - System V
+  ABI Version:                       0
+  Type:                              EXEC (Executable file)
+  Machine:                           Advanced Micro Devices X86-64
+  Version:                           0x1
+  Entry point address:               0x40cb7b
+  Start of program headers:          64 (bytes into file)
+  Start of section headers:          7582608 (bytes into file)
+  Flags:                             0x0
+  Size of this header:               64 (bytes)
+  Size of program headers:           56 (bytes)
+  Number of program headers:         9
+  Size of section headers:           64 (bytes)
+  Number of section headers:         21
+  Section header string table index: 20
+
+Elf file type is EXEC (Executable file)
+Entry point 0x40cb7b
+There are 9 program headers, starting at offset 64
+
+Program Headers:
+  Type           Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align
+  LOAD           0x000000 0x0000000000400000 0x0000000000400000 0x00025c 0x00025c R   0x1000
+  LOAD           0x001000 0x0000000000401000 0x0000000000401000 0x4a52d6 0x4a52d6 R E 0x1000
+  LOAD           0x4a7000 0x00000000008a7000 0x00000000008a7000 0x13a114 0x13a114 R   0x1000
+  LOAD           0x5e1480 0x00000000009e2480 0x00000000009e2480 0x004860 0x006188 RW  0x1000
+  NOTE           0x000238 0x0000000000400238 0x0000000000400238 0x000024 0x000024 R   0x4
+  TLS            0x5e1480 0x00000000009e2480 0x00000000009e2480 0x000028 0x0000b8 R   0x10
+  GNU_EH_FRAME   0x5288b0 0x00000000009288b0 0x00000000009288b0 0x00e48c 0x00e48c R   0x4
+  GNU_STACK      0x000000 0x0000000000000000 0x0000000000000000 0x000000 0x000000 RW  0x10
+  GNU_RELRO      0x5e1480 0x00000000009e2480 0x00000000009e2480 0x003b80 0x003b80 R   0x1
+
+ Section to Segment mapping:
+  Segment Sections...
+   00     .note.gnu.build-id 
+   01     .init .text .fini 
+   02     .rodata .eh_frame_hdr .eh_frame .gcc_except_table 
+   03     .tdata .init_array .fini_array .data.rel.ro .got .data .bss 
+   04     .note.gnu.build-id 
+   05     .tdata .tbss 
+   06     .eh_frame_hdr 
+   07     
+   08     .tdata .init_array .fini_array .data.rel.ro .got 
+There are 21 section headers, starting at offset 0x73b390:
+
+Section Headers:
+  [Nr] Name              Type            Address          Off    Size   ES Flg Lk Inf Al
+  [ 0]                   NULL            0000000000000000 000000 000000 00      0   0  0
+  [ 1] .note.gnu.build-id NOTE            0000000000400238 000238 000024 00   A  0   0  4
+  [ 2] .init             PROGBITS        0000000000401000 001000 000003 00  AX  0   0  1
+  [ 3] .text             PROGBITS        0000000000401010 001010 4a52c3 00  AX  0   0 16
+  [ 4] .fini             PROGBITS        00000000008a62d3 4a62d3 000003 00  AX  0   0  1
+  [ 5] .rodata           PROGBITS        00000000008a7000 4a7000 0818b0 00   A  0   0 128
+  [ 6] .eh_frame_hdr     PROGBITS        00000000009288b0 5288b0 00e48c 00   A  0   0  4
+  [ 7] .eh_frame         PROGBITS        0000000000936d40 536d40 077220 00   A  0   0  8
+  [ 8] .gcc_except_table PROGBITS        00000000009adf60 5adf60 0331b4 00   A  0   0  4
+  [ 9] .tdata            PROGBITS        00000000009e2480 5e1480 000028 00 WAT  0   0 16
+  [10] .tbss             NOBITS          00000000009e24b0 5e14a8 000088 00 WAT  0   0 16
+  [11] .init_array       INIT_ARRAY      00000000009e24b0 5e14b0 000008 08  WA  0   0  8
+  [12] .fini_array       FINI_ARRAY      00000000009e24b8 5e14b8 000008 08  WA  0   0  8
+  [13] .data.rel.ro      PROGBITS        00000000009e24c0 5e14c0 002e60 00  WA  0   0 32
+  [14] .got              PROGBITS        00000000009e5320 5e4320 000cd0 08  WA  0   0  8
+  [15] .data             PROGBITS        00000000009e6000 5e5000 000ce0 00  WA  0   0 32
+  [16] .bss              NOBITS          00000000009e6ce0 5e5ce0 001928 00  WA  0   0 32
+  [17] .comment          PROGBITS        0000000000000000 5e5ce0 00003d 01  MS  0   0  1
+  [18] .symtab           SYMTAB          0000000000000000 5e5d20 04db98 18     19 7436  8
+  [19] .strtab           STRTAB          0000000000000000 6338b8 107a1b 00      0   0  1
+  [20] .shstrtab         STRTAB          0000000000000000 73b2d3 0000bd 00      0   0  1
+Key to Flags:
+  W (write), A (alloc), X (execute), M (merge), S (strings), I (info),
+  L (link order), O (extra OS processing required), G (group), T (TLS),
+  C (compressed), x (unknown), o (OS specific), E (exclude),
+  D (mbind), l (large), p (processor specific)
+
+There is no dynamic section in this file.
+sha256 3d2813962d52e5129ae117377bae123b35aebbbcf862b28c9c8b0c00abb4bdfc  /lane/current-musl-target/x86_64-unknown-linux-musl/release/lupin
+lupin 0.1.55+dev.unknown (wolf-interp, reference interpreter at pin 294d626)
+{"protocol":1,"impl":"lupin","impl_version":"0.1.55","commit":"unknown","file":"//lane/wasm-green-src/tests/fixtures/os_random_is80/random_differs.lu","phase_reached":"run","seeded":true,"diagnostics":[],"warnings":[],"verdict":"exit(0)","stdout_sha256":"3aec1c23c7135c86747008f5890462545b7af7a19aae2b89dc8a87b9b4675a01","stdout_inline":"len=32/32 range=true same=false\n","x-seed":42}
+{"protocol":1,"impl":"lupin","impl_version":"0.1.55","commit":"unknown","file":"//lane/wasm-green-src/tests/fixtures/os_random_is80/random_edges.lu","phase_reached":"run","seeded":true,"diagnostics":[],"warnings":[],"verdict":"exit(0)","stdout_sha256":"11181cf2a3771cd6372fc0a4658697382478f43ff0eb4f2bc85882123cb98016","stdout_inline":"z=0 big=65536 range=true\n","x-seed":42}
+{"protocol":1,"impl":"lupin","impl_version":"0.1.55","commit":"unknown","file":"//lane/wasm-green-src/tests/fixtures/os_random_is80/random_negative_trap.lu","phase_reached":"run","seeded":true,"diagnostics":[],"warnings":[],"verdict":"trap(assert)","stdout_sha256":null,"stdout_inline":null,"x-seed":42,"x-trap-clause":"os.random.fill","x-trap-span":[971,984]}

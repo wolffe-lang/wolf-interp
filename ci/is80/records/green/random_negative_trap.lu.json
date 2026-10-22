@@ -1,0 +1,1 @@
+{"protocol":1,"impl":"lupin","impl_version":"0.1.55","commit":"unknown","file":"tests/fixtures/os_random_is80/random_negative_trap.lu","phase_reached":"run","seeded":true,"diagnostics":[],"warnings":[],"verdict":"trap(assert)","stdout_sha256":null,"stdout_inline":null,"x-seed":42,"x-trap-clause":"os.random.fill","x-trap-span":[971,984]}

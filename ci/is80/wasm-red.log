@@ -1,0 +1,57 @@
+{"protocol":1,"impl":"lupin","impl_version":"0.1.55","commit":"unknown","file":"-","phase_reached":"resolve","seeded":false,"diagnostics":[],"warnings":[],"verdict":"unsupported","stdout_sha256":null,"stdout_inline":null,"x-unsupported":"`os_random` does not resolve","x-unsupported-at":"run"}
+node:internal/modules/run_main:111
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: The input was expected to not match the regular expression /does not resolve/. Input:
+
+'`os_random` does not resolve'
+
+    at file:///lane/wasm-test.mjs:20:10 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: '`os_random` does not resolve',
+  expected: /does not resolve/,
+  operator: 'doesNotMatch',
+  diff: 'simple'
+}
+
+Node.js v26.10.0
+{"protocol":1,"impl":"lupin","impl_version":"0.1.55","commit":"unknown","file":"-","phase_reached":"resolve","seeded":false,"diagnostics":[],"warnings":[],"verdict":"unsupported","stdout_sha256":null,"stdout_inline":null,"x-unsupported":"`os_random` does not resolve","x-unsupported-at":"run"}
+node:internal/modules/run_main:111
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: The input was expected to not match the regular expression /does not resolve/. Input:
+
+'`os_random` does not resolve'
+
+    at file:///lane/wasm-test.mjs:20:10 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: '`os_random` does not resolve',
+  expected: /does not resolve/,
+  operator: 'doesNotMatch',
+  diff: 'simple'
+}
+
+Node.js v26.10.0
+{"protocol":1,"impl":"lupin","impl_version":"0.1.55","commit":"unknown","file":"-","phase_reached":"resolve","seeded":false,"diagnostics":[],"warnings":[],"verdict":"unsupported","stdout_sha256":null,"stdout_inline":null,"x-unsupported":"`os_random` does not resolve","x-unsupported-at":"run"}
+node:internal/modules/run_main:111
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: The input was expected to not match the regular expression /does not resolve/. Input:
+
+'`os_random` does not resolve'
+
+    at file:///lane/wasm-test.mjs:20:10 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: '`os_random` does not resolve',
+  expected: /does not resolve/,
+  operator: 'doesNotMatch',
+  diff: 'simple'
+}
+
+Node.js v26.10.0

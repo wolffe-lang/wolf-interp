@@ -1,0 +1,149 @@
+info: syncing channel updates for 1.97.1-x86_64-unknown-linux-gnu
+info: latest update on 2026-07-16 for version 1.97.1 (8bab26f4f 2026-07-14)
+info: downloading 2 components
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded aho-corasick v1.1.5
+  Downloaded thiserror v2.0.20
+  Downloaded cfg-if v1.0.4
+  Downloaded clap_lex v1.1.0
+  Downloaded heck v0.5.0
+  Downloaded colorchoice v1.0.5
+  Downloaded itoa v1.0.18
+  Downloaded errno v0.3.14
+  Downloaded endian-type v0.2.0
+  Downloaded anstyle-parse v1.0.0
+  Downloaded comma v1.0.0
+  Downloaded anstyle-query v1.1.5
+  Downloaded utf8parse v0.2.2
+  Downloaded strsim v0.11.1
+  Downloaded cfg_aliases v0.2.2
+  Downloaded console v0.16.4
+  Downloaded nibble_vec v0.1.0
+  Downloaded anstream v1.0.0
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded fastrand v2.5.0
+  Downloaded zmij v1.0.23
+  Downloaded anstyle v1.0.14
+  Downloaded thiserror-impl v2.0.20
+  Downloaded rexpect v0.7.1
+  Downloaded clap_derive v4.6.4
+  Downloaded smallvec v1.15.2
+  Downloaded once_cell v1.21.4
+  Downloaded tempfile v3.27.0
+  Downloaded quote v1.0.47
+  Downloaded bitflags v2.13.1
+  Downloaded similar v2.7.0
+  Downloaded unicode-ident v1.0.24
+  Downloaded log v0.4.34
+  Downloaded proc-macro2 v1.0.107
+  Downloaded serde_core v1.0.229
+  Downloaded getrandom v0.4.3
+  Downloaded clap v4.6.6
+  Downloaded serde_derive v1.0.229
+  Downloaded serde v1.0.229
+  Downloaded serde_json v1.0.151
+  Downloaded memchr v2.8.3
+  Downloaded unicode-segmentation v1.13.3
+  Downloaded rustyline v18.0.1
+  Downloaded insta v1.48.0
+  Downloaded clap_builder v4.6.6
+  Downloaded regex v1.13.1
+  Downloaded unicode-width v0.2.2
+  Downloaded syn v3.0.3
+  Downloaded radix_trie v0.3.0
+  Downloaded nix v0.31.3
+  Downloaded regex-syntax v0.8.11
+  Downloaded rustix v1.1.4
+  Downloaded regex-automata v0.4.18
+  Downloaded libc v0.2.189
+  Downloaded linux-raw-sys v0.12.1
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+   Compiling libc v0.2.189
+   Compiling bitflags v2.13.1
+   Compiling memchr v2.8.3
+   Compiling cfg-if v1.0.4
+   Compiling utf8parse v0.2.2
+   Compiling cfg_aliases v0.2.2
+   Compiling nix v0.31.3
+   Compiling syn v3.0.3
+   Compiling serde_core v1.0.229
+   Compiling anstyle-parse v1.0.0
+   Compiling colorchoice v1.0.5
+   Compiling smallvec v1.15.2
+   Compiling anstyle v1.0.14
+   Compiling anstyle-query v1.1.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling rustix v1.1.4
+   Compiling zmij v1.0.23
+   Compiling getrandom v0.4.3
+   Compiling anstream v1.0.0
+   Compiling nibble_vec v0.1.0
+   Compiling endian-type v0.2.0
+   Compiling strsim v0.11.1
+   Compiling heck v0.5.0
+   Compiling serde_json v1.0.151
+   Compiling clap_lex v1.1.0
+   Compiling serde v1.0.229
+   Compiling linux-raw-sys v0.12.1
+   Compiling clap_builder v4.6.6
+   Compiling serde_derive v1.0.229
+   Compiling clap_derive v4.6.4
+   Compiling radix_trie v0.3.0
+   Compiling aho-corasick v1.1.5
+   Compiling itoa v1.0.18
+   Compiling wolf-interp v0.1.55 (/lane/src)
+   Compiling log v0.4.34
+   Compiling unicode-segmentation v1.13.3
+   Compiling regex-syntax v0.8.11
+   Compiling unicode-width v0.2.2
+   Compiling fastrand v2.5.0
+   Compiling once_cell v1.21.4
+   Compiling thiserror v2.0.20
+   Compiling tempfile v3.27.0
+   Compiling regex-automata v0.4.18
+   Compiling rustyline v18.0.1
+   Compiling clap v4.6.6
+   Compiling thiserror-impl v2.0.20
+   Compiling regex v1.13.1
+   Compiling console v0.16.4
+   Compiling comma v1.0.0
+   Compiling similar v2.7.0
+   Compiling rexpect v0.7.1
+   Compiling insta v1.48.0
+    Finished `release` profile [optimized] target(s) in 3m 15s
+     Running tests/os_random_is80.rs (/lane/target/release/deps/os_random_is80-cff2fc845d1900cc)
+
+running 3 tests
+
+thread 'canonical_random_rows_match_the_checked_machine' (1260) panicked at tests/os_random_is80.rs:24:13:
+assertion `left == right` failed: random_differs, seeded=false: {"commit":"unknown","diagnostics":[],"file":"//lane/src/tests/fixtures/os_random_is80/random_differs.lu","impl":"lupin","impl_version":"0.1.55","phase_reached":"resolve","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"unsupported","warnings":[],"x-unsupported":"`os_random` does not resolve","x-unsupported-at":"run"}
+  left: String("unsupported")
+ right: "exit(0)"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test canonical_random_rows_match_the_checked_machine ... FAILED
+
+thread 'the_name_is_a_first_class_builtin' (1261) panicked at tests/os_random_is80.rs:52:5:
+assertion `left == right` failed: {"commit":"unknown","diagnostics":[],"file":"//lane/target/tmp/os_random_is80_alias/main.lu","impl":"lupin","impl_version":"0.1.55","phase_reached":"resolve","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"unsupported","warnings":[],"x-unsupported":"`os_random` does not resolve","x-unsupported-at":"run"}
+  left: String("unsupported")
+ right: "exit(0)"
+test the_name_is_a_first_class_builtin ... FAILED
+
+thread 'a_schedule_seed_never_seeds_key_material' (1259) panicked at tests/os_random_is80.rs:38:5:
+assertion `left == right` failed: {"commit":"unknown","diagnostics":[],"file":"//lane/target/tmp/os_random_is80_seed/main.lu","impl":"lupin","impl_version":"0.1.55","phase_reached":"resolve","protocol":1,"seeded":true,"stdout_inline":null,"stdout_sha256":null,"verdict":"unsupported","warnings":[],"x-seed":42,"x-unsupported":"`os_random` does not resolve","x-unsupported-at":"run"}
+  left: String("unsupported")
+ right: "exit(0)"
+test a_schedule_seed_never_seeds_key_material ... FAILED
+
+failures:
+
+failures:
+    a_schedule_seed_never_seeds_key_material
+    canonical_random_rows_match_the_checked_machine
+    the_name_is_a_first_class_builtin
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+error: test failed, to rerun pass `--test os_random_is80`

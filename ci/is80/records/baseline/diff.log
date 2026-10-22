@@ -1,0 +1,6 @@
+harness profile: release
+differential: 3 entries compared, 0 member(s) exercised through their entries
+divergences: 0
+conservatism ledger: 3 entries
+  unsupported(interp): 3
+differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate

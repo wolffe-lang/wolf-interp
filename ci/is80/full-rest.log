@@ -1,0 +1,1938 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded aho-corasick v1.1.5
+  Downloaded nibble_vec v0.1.0
+  Downloaded cfg-if v1.0.4
+  Downloaded clap_derive v4.6.4
+  Downloaded strsim v0.11.1
+  Downloaded colorchoice v1.0.5
+  Downloaded endian-type v0.2.0
+  Downloaded cfg_aliases v0.2.2
+  Downloaded comma v1.0.0
+  Downloaded errno v0.3.14
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded heck v0.5.0
+  Downloaded clap_lex v1.1.0
+  Downloaded itoa v1.0.18
+  Downloaded utf8parse v0.2.2
+  Downloaded anstyle-query v1.1.5
+  Downloaded zmij v1.0.23
+  Downloaded quote v1.0.47
+  Downloaded anstyle v1.0.14
+  Downloaded rexpect v0.7.1
+  Downloaded thiserror-impl v2.0.20
+  Downloaded anstream v1.0.0
+  Downloaded fastrand v2.5.0
+  Downloaded console v0.16.4
+  Downloaded getrandom v0.2.16
+  Downloaded anstyle-parse v1.0.0
+  Downloaded thiserror v2.0.20
+  Downloaded smallvec v1.15.2
+  Downloaded tempfile v3.27.0
+  Downloaded once_cell v1.21.4
+  Downloaded proc-macro2 v1.0.107
+  Downloaded log v0.4.34
+  Downloaded unicode-ident v1.0.24
+  Downloaded getrandom v0.4.3
+  Downloaded bitflags v2.13.1
+  Downloaded similar v2.7.0
+  Downloaded clap v4.6.6
+  Downloaded serde_core v1.0.229
+  Downloaded serde_derive v1.0.229
+  Downloaded unicode-segmentation v1.13.3
+  Downloaded memchr v2.8.3
+  Downloaded serde v1.0.229
+  Downloaded insta v1.48.0
+  Downloaded rustyline v18.0.1
+  Downloaded regex v1.13.1
+  Downloaded clap_builder v4.6.6
+  Downloaded serde_json v1.0.151
+  Downloaded nix v0.31.3
+  Downloaded radix_trie v0.3.0
+  Downloaded unicode-width v0.2.2
+  Downloaded syn v3.0.3
+  Downloaded regex-syntax v0.8.11
+  Downloaded rustix v1.1.4
+  Downloaded regex-automata v0.4.18
+  Downloaded libc v0.2.189
+  Downloaded linux-raw-sys v0.12.1
+   Compiling wolf-interp v0.1.55 (/lane/src)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 15.46s
+remaining target arguments: --test doc_truth --test editor_calls_is79 --test exec_s225 --test explore_corpus --test explore_machine --test export --test fault_snapshots --test fork_is79 --test frontend_snapshots --test fs_change_s230 --test fs_family --test fs_offset --test fuzz_smoke --test group_s241 --test ids_s236 --test index_origin --test index_store --test int_truth_s220 --test iter_str_assert --test job_refused_is76 --test job_s219 --test job_wait_s242 --test json_dup_s224 --test let_group_locus --test lex_corpus --test lint_is61 --test mode_read_iteration --test net_accept_race --test net_error_is76 --test net_family --test net_s141 --test net_unix --test os_process --test os_random_is80 --test place_trace --test proc_fd_s215 --test protocol_fixtures --test prov_machine --test region_copyout --test region_machine --test region_scalar_is79 --test repl_edit_pty --test repl_session --test resolve_ambient --test rows_option --test rule_registry --test rulings_eg00 --test rulings_is58 --test rulings_is59 --test rulings_is60 --test rulings_is62 --test rulings_is63 --test rulings_is65 --test rulings_is67 --test rulings_is68 --test rulings_is69 --test rulings_is70 --test rulings_is73 --test rulings_is74 --test rulings_s182 --test rulings_s208 --test rulings_s213 --test run_corpus --test shift_is76 --test signal_listen_is77 --test signal_one_is77 --test signal_shell_s232 --test signal_text_is77 --test snapshot_exemplar --test spec_extract --test static_wrapping_is79 --test std_root --test str_append_d62 --test str_escape_code --test str_layout_d74 --test term_editor_s234 --test to_int_range --test type_shape_is79 --test ub_coverage --test wrapping_count_is79
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running tests/doc_truth.rs (/lane/target/release/deps/doc_truth-dff0bf917e3b4aa4)
+
+running 2 tests
+test the_command_tour_matches_help ... ok
+test every_documented_output_is_the_binary_output has been running for over 60 seconds
+test every_documented_output_is_the_binary_output ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 174.04s
+
+     Running tests/editor_calls_is79.rs (/lane/target/release/deps/editor_calls_is79-5d6fd5a5ba0250fc)
+
+running 11 tests
+test a_well_formed_wait_over_descriptors_is_refused_by_name ... ok
+test the_canonical_path_inside_the_tree_answers_as_the_compiled_tiers ... ok
+test the_atomic_save_runs_whole ... ok
+test the_mode_bits_five_to_seven_pass_the_shape ... ok
+test the_canonical_path_outside_the_tree_is_declined_by_name ... ok
+test the_restore_takes_the_new_bits_and_reads_the_handle_after_them ... ok
+test the_editor_wait_fixtures_are_refused_by_name_at_their_first_host_call ... ok
+test the_restore_rows_answer_as_the_compiled_tiers ... ok
+test the_wait_fds_rows_answer_as_the_compiled_tiers ... ok
+test the_sync_rows_answer_as_the_compiled_tiers ... ok
+test the_clock_at_nanoseconds_is_never_zero_and_never_behind_the_ms_clock ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.70s
+
+     Running tests/exec_s225.rs (/lane/target/release/deps/exec_s225-e4b5cd963f20e913)
+
+running 6 tests
+test an_exec_of_a_bad_shape_is_invalid_and_returns ... ok
+test a_failed_exec_answers_its_row_and_puts_the_process_back ... ok
+test a_map_above_2_is_refused_by_name ... ok
+test env_unset_round_trips ... ok
+test exec_replaces_the_interpreter_and_keeps_the_pid ... ok
+test a_child_no_longer_sees_a_removed_variable ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/explore_corpus.rs (/lane/target/release/deps/explore_corpus-6e85d6ebadf10018)
+
+running 4 tests
+test statically_rejected_conc_files_refuse_exploration ... ok
+test the_wide_seed_corpus_stays_deterministic_under_exploration ... ok
+test the_flagged_multiopen_litmuses_hold_their_invariant_over_their_whole_space ... ok
+test every_conc_litmus_is_schedule_independent_within_a_closed_frontier ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/explore_machine.rs (/lane/target/release/deps/explore_machine-97299134a78f60a9)
+
+running 13 tests
+test a_deadlocking_program_is_counted_deadlocked_on_every_schedule ... ok
+test a_deliberately_racy_program_traps_race_on_the_schedule_that_races ... ok
+test an_exhausted_schedule_budget_reports_an_open_frontier_never_silence ... ok
+test a_planted_schedule_dependent_bug_is_found_and_its_seed_replays_it ... ok
+test no_schedule_breaks_the_multiopen_forest_invariant ... ok
+test deliberately_unregistered_nondeterminism_is_caught_as_divergence ... ok
+test ping_pong_matches_the_paper_enumeration ... ok
+test the_packed_seed_namespace_round_trips_and_declines_honestly ... ok
+test the_kill_and_cancel_defer_law_holds_on_every_schedule ... ok
+test the_preemption_bound_is_first_class_and_reports_what_it_skipped ... ok
+test paranoid_mode_verifies_every_hash_hit_and_finds_no_collision ... ok
+test the_select_coupled_lost_update_is_inside_the_closed_frontier ... ok
+test dpor_beats_naive_dfs_tenfold_with_identical_findings ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/export.rs (/lane/target/release/deps/export-ee87add3cba2ce9f)
+
+running 10 tests
+test the_anchor_registry_cross_check_holds_at_this_pin ... ok
+test a_tampered_bundle_is_refused has been running for over 60 seconds
+test coverage_is_ratcheted has been running for over 60 seconds
+test re_export_is_byte_identical has been running for over 60 seconds
+test the_bundle_opens_verified_and_its_records_reference_bundled_programs has been running for over 60 seconds
+test coverage_is_ratcheted ... ok
+test the_bundle_opens_verified_and_its_records_reference_bundled_programs ... ok
+test the_consumption_dry_run_is_green ... ok
+test the_coverage_table_is_the_honesty_document ... ok
+test the_pin_and_the_counts_are_the_ones_this_sprint_recorded ... ok
+test the_vocabularies_ship_closed ... ok
+test the_cli_speaks_the_bundle_end_to_end has been running for over 60 seconds
+test the_cli_speaks_the_bundle_end_to_end ... ok
+test re_export_is_byte_identical ... ok
+test a_tampered_bundle_is_refused ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 151.21s
+
+     Running tests/fault_snapshots.rs (/lane/target/release/deps/fault_snapshots-9ddf27677631b269)
+
+running 5 tests
+test the_use_after_free_fault_points_at_the_region_that_died ... ok
+test each_program_produces_the_trap_its_own_directive_pins ... ok
+test every_ownership_fault_prints_two_spans ... ok
+test there_is_one_program_per_trap_identity_this_tier_can_raise ... ok
+test every_fault_program_renders_its_trap ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/fork_is79.rs (/lane/target/release/deps/fork_is79-2f1ad0ae13f75855)
+
+running 2 tests
+test a_fork_from_main_is_refused_by_name ... ok
+test a_fork_beside_a_task_is_refused_by_name_too ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/frontend_snapshots.rs (/lane/target/release/deps/frontend_snapshots-e926fa359522f841)
+
+running 13 tests
+test corpus_tokens_interp_fmtcolon ... ok
+test a_leading_else_takes_no_terminator ... ok
+test corpus_tokens_hello ... ok
+test corpus_tokens_interp_nested ... ok
+test corpus_tokens_wordcount_multiline ... ok
+test corpus_trace_brackets_are_one_shape ... ok
+test every_string_mode_decomposes ... ok
+test corpus_trace_closure_extent ... ok
+test the_else_lookahead_is_keyword_exact ... ok
+test corpus_trace_else_chain ... ok
+test the_terminator_rules_insert_exactly_where_the_spec_says ... ok
+test the_terminator_fixture_also_parses ... ok
+test the_leading_else_fixture_also_parses ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/fs_change_s230.rs (/lane/target/release/deps/fs_change_s230-c682c0191f054e2c)
+
+running 12 tests
+test a_hard_link_is_a_second_name ... ok
+test a_links_own_times_are_refused_by_name ... ok
+test a_bad_shape_is_invalid_before_the_host ... ok
+test links_made_and_read_back ... ok
+test a_mode_and_a_symlink_or_unsupported ... ok
+test exists_carries_the_hosts_number ... ok
+test the_mask_a_program_sets_is_refused_by_name ... ok
+test denied_rows_inside_a_locked_directory ... ok
+test modes_under_a_known_mask ... ok
+test the_mask_is_refused_by_name ... ok
+test set_times_sets_each_time_or_leaves_it ... ok
+test truncate_sets_the_length_and_keeps_the_offset ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/fs_family.rs (/lane/target/release/deps/fs_family-5a354a9cb13969df)
+
+running 25 tests
+test a_closed_or_forged_handle_is_the_io_row_at_the_surface ... ok
+test a_conform_run_reads_what_its_harness_put_in_the_cwd ... ok
+test a_listing_is_sorted_and_a_program_can_depend_on_the_order ... ok
+test a_listing_holding_a_non_utf8_name_is_the_utf8_row ... ok
+test a_missing_file_is_the_not_found_row_on_both_the_else_and_the_try_paths ... ok
+test a_path_outside_the_working_directory_is_refused_by_name ... ok
+test a_read_past_the_end_reaches_a_program_as_the_eof_row ... ok
+test a_rename_moves_bytes_no_text_reader_could_hold ... ok
+test a_refused_path_wins_over_a_payload_the_writer_would_also_refuse ... ok
+test an_append_open_never_reads_what_was_already_there ... ok
+test an_embedded_observations_socket_lands_beside_its_files_and_not_in_the_process_cwd ... ok
+test a_write_read_remove_round_trip_over_rows ... ok
+test bytes_that_are_not_text_refuse_as_a_row_and_survive_a_byte_round_trip ... ok
+test both_front_doors_write_in_the_users_directory_and_an_embedded_observation_does_not ... ok
+test a_row_the_call_does_not_declare_never_reaches_a_handler ... ok
+test a_windows_device_name_is_refused_by_name_at_the_surface ... ok
+test mode_five_is_mode_zero_on_a_regular_file_and_fstat_classifies_the_handle ... ok
+test read_line_is_still_declined_and_says_so ... ok
+test the_file_a_program_writes_is_a_real_file_on_the_host ... ok
+test the_repl_front_door_writes_in_the_users_directory_and_keeps_the_file ... ok
+test the_row_tags_discriminate_in_a_handler_s_arms ... ok
+test the_handles_byte_write_lands_at_the_cursor_and_refuses_a_read_handle ... ok
+test the_predicates_never_raise_and_need_no_question_mark ... ok
+test the_one_level_directory_pair_answers_the_compiled_lanes_rows ... ok
+test two_concurrent_embedded_observations_of_one_program_do_not_interfere ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/fs_offset.rs (/lane/target/release/deps/fs_offset-e8451ead833095ae)
+
+running 4 tests
+test read_at_leaves_the_cursor_alone ... ok
+test the_standard_streams_with_stdin_a_file ... ok
+test the_standard_streams_with_stdin_a_pipe ... ok
+test seek_and_tell_move_and_read_the_offset ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/fuzz_smoke.rs (/lane/target/release/deps/fuzz_smoke-80b9d9e8b023060b)
+
+running 7 tests
+seed = 0x1001f43a57eed01
+seed = 0x1001f43a57eed01
+test a_rejection_with_several_diagnostics_is_a_well_formed_record ... ok
+seed = 0x1001f43a57eed01
+test pathological_nesting_terminates ... ok
+seed = 0x1001f43a57eed01
+test the_v0_2_23_seed_mutant_is_a_well_formed_record ... ok
+seed = 0x1001f43a57eed01
+test random_bytes_never_crash_the_frontend ... ok
+test token_soup_never_crashes_the_parser ... ok
+test random_bytes_biased_towards_the_syntax_never_crash ... ok
+test mutated_corpus_files_never_crash ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.56s
+
+     Running tests/group_s241.rs (/lane/target/release/deps/group_s241-840dab8ee36a953b)
+
+running 4 tests
+test the_compilers_fixtures_are_refused_at_their_first_call ... ok
+test a_host_number_past_the_last_is_invalid ... ok
+test the_shape_rows ... ok
+test each_well_formed_call_is_refused_by_name ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/ids_s236.rs (/lane/target/release/deps/ids_s236-b24167901c6c3f3e)
+
+running 6 tests
+test a_well_formed_drop_is_refused_or_unsupported ... ok
+test the_rows_that_change_nothing ... ok
+test the_drop_asked_on_a_host_is_refused_at_who_it_is ... ok
+test owner_calls_change_nothing_on_a_host ... ok
+test who_it_runs_as ... ok
+test the_container_programs_never_start ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/index_origin.rs (/lane/target/release/deps/index_origin-846e59a290ed6fef)
+
+running 16 tests
+test an_unknown_inner_attribute_is_refused_by_name ... ok
+test a_misplaced_file_wide_attribute_is_e0211_by_position ... ok
+test hash_bang_bracket_is_one_token_and_the_shebang_narrowed_around_it ... ok
+test a_shebang_script_with_a_marker_below_it_still_runs ... ok
+test indexed_writes_shift_exactly_as_reads_do ... ok
+test a_slice_bounds_trap_renders_the_writers_range ... ok
+test inclusive_is_the_coupling_and_dotdoteq_is_redundant_but_legal ... ok
+test interpolations_and_closures_are_lexically_in_scope ... ok
+test statement_scopes_nest_and_the_innermost_marker_wins ... ok
+test origin_zero_restates_the_default_and_is_inert ... ok
+test bad_marker_arguments_are_e0813_and_take_no_effect ... ok
+test subscripts_count_from_one_and_zero_is_out_of_range_by_the_shift ... ok
+test the_checked_shift_corner_traps_overflow_before_the_bounds_question ... ok
+test the_origin_free_forms_do_not_move ... ok
+test zero_cost_when_absent_a_marker_free_file_is_unchanged ... ok
+test the_worked_table_holds_on_a_five_byte_string ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/index_store.rs (/lane/target/release/deps/index_store-c4a596e15343f872)
+
+running 7 tests
+test a_moved_binding_is_usable_again_once_reinitialized ... ok
+test take_is_refused_everywhere_else_in_an_assignment ... ok
+test a_field_store_still_moves ... ok
+test a_moded_store_of_a_read_parameter_is_push_take_s_answer ... ok
+test take_of_a_value_that_is_not_a_place_is_just_the_value ... ok
+test the_copy_holds_at_any_subscript_depth_and_for_a_struct ... ok
+test the_plain_store_copies_and_the_moded_store_moves ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/int_truth_s220.rs (/lane/target/release/deps/int_truth_s220-8c26d72a74d19b5e)
+
+running 1 test
+test every_int_truth_row_answers_its_header ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/iter_str_assert.rs (/lane/target/release/deps/iter_str_assert-224ef0e8eaaa30a6)
+
+running 11 tests
+test a_module_level_assert_does_not_shadow_the_intrinsic ... ok
+test an_inherent_next_is_not_iter ... ok
+test a_holding_asserts_message_stays_cold ... ok
+test a_failing_assert_renders_its_message_then_traps ... ok
+test explicit_next_calls_advance_and_exhaust ... ok
+test break_and_continue_target_the_drive_loop ... ok
+test for_drives_a_user_iter_implementor ... ok
+test str_spaceship_and_utf8_bytes ... ok
+test one_argument_assert_still_traps_bare ... ok
+test str_ordering_is_byte_lexicographic ... ok
+test the_loop_drives_a_copy_of_the_iterator ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/job_refused_is76.rs (/lane/target/release/deps/job_refused_is76-8950e8ab4bb6bca6)
+
+running 3 tests
+SKIP: a_refusal_ends_the_job_it_left_running ends a process group lupin starts; it runs where CI is set or LUPIN_SIGNAL_TESTS=1 (a throwaway host)
+test a_refusal_ends_the_job_it_left_running ... ok
+test a_static_refusal_is_not_at_run ... ok
+test an_exit_ends_nothing ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/job_s219.rs (/lane/target/release/deps/job_s219-8617ce6e95a7aba5)
+
+running 4 tests
+test a_bad_mode_is_invalid_first ... ok
+test the_shape_rows_on_every_host ... ok
+test a_group_leader_a_joiner_and_their_status ... ok
+test what_needs_unsafe_is_refused_by_name ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/job_wait_s242.rs (/lane/target/release/deps/job_wait_s242-f74ac47b992327e3)
+
+running 3 tests
+test the_poll_with_a_live_child_is_refused_by_name ... ok
+test the_poll_with_no_child ... ok
+test the_compilers_listening_fixtures_stop_at_the_listen ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/json_dup_s224.rs (/lane/target/release/deps/json_dup_s224-4e40185f63d8d545)
+
+running 1 test
+test every_json_dup_row_answers_its_header ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/let_group_locus.rs (/lane/target/release/deps/let_group_locus-7d78b0b99476f78e)
+
+running 3 tests
+test the_waiver_is_retired_and_the_two_loci_are_one ... ok
+notice: differential lane SKIPPED — no counterparty compiler binary
+notice: tried upstream/target/debug/wolf
+notice: tried upstream/target/release/wolf
+notice: build one locally with `cargo build -p wolf_driver` inside upstream/ (integrator ruling, is05: building and executing the pinned compiler is legitimate binary acquisition; reading its source remains forbidden)
+notice: in CI the vendored snapshot has no crates/ and the private submodule cannot clone, so this skip is expected there
+notice: pass --require-counterparty to make this skip a hard failure
+test the_counterparty_points_at_the_same_comma ... ok
+test this_machine_refuses_the_bare_tuple_at_the_comma ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/lex_corpus.rs (/lane/target/release/deps/lex_corpus-9a312031e8493119)
+
+running 7 tests
+test a_shebang_at_byte_zero_is_trivia ... ok
+test a_byte_order_mark_is_stripped_at_offset_zero_and_stray_anywhere_else ... ok
+test a_shebang_only_file_is_empty_and_a_shebang_needs_no_trailing_newline ... ok
+test a_shebang_is_only_a_shebang_at_byte_zero ... ok
+test a_byte_order_mark_pushes_the_shebang_off_byte_zero ... ok
+test no_corpus_file_needs_deep_interpolation_nesting ... ok
+test every_corpus_file_tokenizes_without_a_lex_diagnostic ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/lint_is61.rs (/lane/target/release/deps/lint_is61-7a6e001862596de0)
+
+running 118 tests
+test a01_row_whole ... ok
+test a05_row_one_path ... ok
+test a04_row_map ... ok
+test a03_row_field ... ok
+test a02_row_elem ... ok
+test m01_move_tail ... ok
+test m02_move_return ... ok
+test m04_move_copy_param ... ok
+test m03_move_into_arg ... ok
+test m06_move_into_struct_lit ... ok
+test m05_move_copy_field ... ok
+test m08_move_store_back ... ok
+test m07_move_into_list_lit ... ok
+test m09_move_then_use_in_body ... ok
+test m10_move_one_branch ... ok
+test m11_move_nested_elem ... ok
+test m13_move_field_of_elem ... ok
+test m15_take_store_elem ... ok
+test m12_move_self_field ... ok
+test m14_take_store_whole ... ok
+test m16_take_arg_onward ... ok
+test m17_move_in_loop_store_back ... ok
+test m19_move_grouped ... ok
+test p01_plain_let_whole ... ok
+test m20_move_str_param ... ok
+test p02_plain_let_field ... ok
+test p03_plain_let_elem ... ok
+test p04_plain_tail ... ok
+test p07_plain_list_lit ... ok
+test p05_plain_return ... ok
+test p08_plain_read_arg ... ok
+test p06_plain_struct_lit ... ok
+test p10_plain_str ... ok
+test p09_plain_copy_field ... ok
+test p11_plain_scalar_struct ... ok
+test p15_plain_generic ... ok
+test q02_map_try ... ok
+test p12_plain_assign ... ok
+test p14_plain_field_of_elem ... ok
+test p13_plain_elem_copy ... ok
+test q05_map_else_str ... ok
+test q07_map_struct_value ... ok
+test q06_map_in_expr ... ok
+test q03_map_else_copy ... ok
+test q04_map_get ... ok
+test q09_map_member_len ... ok
+test q08_map_field ... ok
+test r01_only_member_read ... ok
+test q10_map_match ... ok
+test r04_shadow_then_move ... ok
+test r06_take_param_move_tail ... ok
+test r03_move_other_local ... ok
+test r02_copy_out ... ok
+test r05_take_param_tail ... ok
+test s01_tuple_elem ... ok
+test r08_move_len_member ... ok
+test r07_copy_then_move_copy ... ok
+test s02_if_tail_value ... ok
+test s04_interp_whole ... ok
+test s05_for_over ... ok
+test s03_eq_operand ... ok
+test s06_match_scrutinee ... ok
+test s08_push_plain_arg ... ok
+test s07_plain_index_store_rhs ... ok
+test s10_slice_read ... ok
+test s09_field_store_rhs ... ok
+test t01_type_error_beside_move ... ok
+test s11_method_receiver ... ok
+test s12_count_method ... ok
+test t04_for_pattern_rebind ... ok
+test t05_match_arm_rebind ... ok
+test t06_defer_read_after_move ... ok
+test t07_match_arm_value ... ok
+test t02_take_param_rebound ... ok
+test t10_map_readout_then_whole_read ... ok
+test t11_generic_elem ... ok
+test t16_struct_shorthand ... ok
+test t15_move_in_while_break ... ok
+test t14_self_plain_field_tail ... ok
+test t17_view_set_self ... ok
+test t20_str_elem ... ok
+test t19_move_copy_elem_list ... ok
+test t18_nested_fn_param_name ... ok
+test u04_use_in_other_branch ... ok
+test u03_same_elem_after_move ... ok
+test u02_sibling_elem_after_move ... ok
+test u01_header_after_elem_move ... ok
+test u05_move_in_loop ... ok
+test u07_use_before_move_in_loop ... ok
+test u06_double_move ... ok
+test u10_field_move_whole_read ... ok
+test u08_move_then_return_early ... ok
+test u11_move_two_params_one_used ... ok
+test u09_field_move_sibling_read ... ok
+test u12_move_after_loop_break ... ok
+test u13_move_dyn_index_then_other ... ok
+test u14_try_exit_after_move ... ok
+test u16_shadow_param_other_scope ... ok
+test u15_map_readout_then_len ... ok
+test u18_alias_int_param ... ok
+test v02_continue_after_move ... ok
+test u19_enum_param ... ok
+test u20_tuple_param_elem ... ok
+test v01_nested_loop_break_out ... ok
+test v06_self_whole_tail ... ok
+test v04_defer_after_move ... ok
+test v03_match_arm_move_other_arm_read ... ok
+test v05_try_before_move ... ok
+test v07_loop_cond_reads_moved ... ok
+test v08_two_moves_one_whole_read ... ok
+test v10_return_inside_loop ... ok
+test v12_move_then_sibling_move ... ok
+test v09_move_after_infinite_loop ... ok
+test v11_else_handler_reads ... ok
+test v13_for_body_move_break ... ok
+test v15_str_elem_copy ... ok
+test v16_move_into_map_store ... ok
+test v14_generic_param_whole ... ok
+
+test result: ok. 118 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/mode_read_iteration.rs (/lane/target/release/deps/mode_read_iteration-24c105aa2ca52401)
+
+running 20 tests
+test a_binder_covers_the_row_entire ... ok
+test a_body_local_shadowing_the_parameter_writes_freely ... ok
+test a_compound_assign_through_a_read_parameter_traps ... ok
+test a_mut_parameter_still_writes_and_writes_back ... ok
+test a_single_tag_pattern_over_a_two_tag_row_is_e0809_too ... ok
+test a_projection_write_through_a_read_parameter_traps ... ok
+test a_mutating_method_on_a_read_parameter_traps ... ok
+test a_negative_repeat_is_the_assert_trap_not_bounds ... ok
+test a_total_single_tag_pattern_passes_and_binds_the_payload ... ok
+test an_uncovering_handler_pattern_is_e0809_at_resolve ... ok
+test a_zero_repeat_answers_the_empty_string ... ok
+test a_write_to_a_read_parameter_traps_exclusivity ... ok
+test assigning_the_whole_iterated_container_traps ... ok
+test iterating_a_range_claims_nothing ... ok
+test the_caller_side_copy_read_is_two_phase ... ok
+test pushing_into_the_iterated_container_traps ... ok
+test reading_the_container_inside_the_loop_stays_legal ... ok
+test the_empty_needle_is_defined_count_split_replace ... ok
+test the_claim_ends_with_the_loop_on_every_exit ... ok
+test writing_an_element_of_the_iterated_container_traps ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/net_accept_race.rs (/lane/target/release/deps/net_accept_race-19819689eccbdb59)
+
+running 3 tests
+test the_corpus_witness_declines_by_name_and_not_by_absence ... ok
+test a_budgeted_accept_with_no_connection_answers_its_own_row ... ok
+test two_hands_on_one_listener_both_come_back_inside_one_budget ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.01s
+
+     Running tests/net_error_is76.rs (/lane/target/release/deps/net_error_is76-7e416d20018ef2f5)
+
+running 3 tests
+test the_unix_rows_carry_the_binds_and_the_dials_number ... ok
+test each_net_row_carries_the_hosts_number_or_zero ... ok
+test an_accept_refused_at_the_limit_leaves_emfile ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/net_family.rs (/lane/target/release/deps/net_family-5607c018ca8d695b)
+
+running 11 tests
+test a_handler_over_a_builtin_raised_row_discriminates_in_both_arm_orders ... ok
+test a_non_byte_element_is_the_invalid_row_and_nothing_reaches_the_wire ... ok
+test a_zero_length_byte_read_answers_the_empty_list_never_a_false_closed ... ok
+test a_zero_length_read_answers_the_empty_string_never_a_false_closed ... ok
+test shapes_outside_the_declared_surface_refuse_by_name ... ok
+test the_byte_tier_round_trips_raw_bytes_including_non_utf8 ... ok
+test the_probed_edge_rows_answer_as_the_compiled_lanes_do ... ok
+test the_probed_row_tags_are_exact_on_the_propagation_path ... ok
+test a_deadline_resolves_an_accept_park_as_the_timeout_row ... ok
+test a_lone_concurrent_sleeper_parks_the_world_for_exactly_its_duration ... ok
+test a_sleeping_sibling_does_not_starve_an_armed_deadline ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.64s
+
+     Running tests/net_s141.rs (/lane/target/release/deps/net_s141-ee916e7395fbc79f)
+
+running 5 tests
+test the_degenerate_gathers_complete_and_send_nothing ... ok
+test nodelay_on_a_unix_domain_stream_is_io_and_the_gather_still_serves_it ... ok
+test a_closed_handle_is_io_on_both_new_calls ... ok
+test the_head_gather_takes_every_degenerate_shape_and_a_multibyte_head ... ok
+test a_fired_budget_answers_the_row_the_call_declares_and_not_a_wider_tag ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s
+
+     Running tests/net_unix.rs (/lane/target/release/deps/net_unix-e01fa980c9bbedaf)
+
+running 6 tests
+test every_bind_and_dial_row_is_about_the_path ... ok
+test a_socket_path_that_climbs_out_of_the_working_directory_is_refused_by_name ... ok
+test a_stream_close_never_touches_the_path ... ok
+test the_byte_pair_serves_a_unix_stream_call_for_call ... ok
+test the_family_serves_an_echo_and_the_listener_close_unlinks_its_path ... ok
+test a_socket_path_is_judged_resolved_not_lexically ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/os_process.rs (/lane/target/release/deps/os_process-c8fcc4d58da9087e)
+
+running 3 tests
+test a_denied_or_io_spawn_answers_a_row_never_a_trap ... ok
+test kill_never_tombstones_and_the_wait_still_reaps ... ok
+test a_real_child_spawns_waits_to_its_code_and_the_handle_is_spent ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/os_random_is80.rs (/lane/target/release/deps/os_random_is80-dd5f653047640128)
+
+running 3 tests
+test the_name_is_a_first_class_builtin ... ok
+test a_schedule_seed_never_seeds_key_material ... ok
+test canonical_random_rows_match_the_checked_machine ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/place_trace.rs (/lane/target/release/deps/place_trace-68cbbb66324087ac)
+
+running 9 tests
+test pack_take_moves_the_store_revives_and_the_let_copies ... ok
+test the_flag_with_a_path_writes_the_file_and_stderr_stays_the_programs ... ok
+test the_flag_is_refused_where_it_means_nothing ... ok
+test the_trace_and_the_trap_name_the_same_move ... ok
+test the_goldens_hold ... ok
+test the_flag_writes_stderr_and_leaves_stdout_and_the_exit_code_alone ... ok
+test every_golden_line_is_schema_version_1 ... ok
+test the_trace_never_changes_a_golden_programs_behaviour ... ok
+test the_trace_never_changes_the_move_corpus ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.30s
+
+     Running tests/proc_fd_s215.rs (/lane/target/release/deps/proc_fd_s215-4c01c18e9ec17967)
+
+running 11 tests
+test a_forged_source_is_io_and_shape_comes_first ... ok
+test a_bad_map_is_invalid_before_any_child ... ok
+test a_child_starts_in_the_moved_directory ... ok
+test chdir_out_of_the_served_tree_is_declined_by_name ... ok
+test a_descriptor_above_two_or_a_close_is_refused_by_name ... ok
+test a_two_stage_pipeline_from_argv ... ok
+test a_pipe_round_trips_inside_one_process ... ok
+test isatty_is_false_under_a_pipe ... ok
+test chdir_then_a_relative_open ... ok
+test stderr_joins_stdout_on_a_pipe ... ok
+test no_descriptor_leaks_into_a_child ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/protocol_fixtures.rs (/lane/target/release/deps/protocol_fixtures-a47fcd3e09fb4688)
+
+running 12 tests
+test accepted_fixtures_round_trip_through_the_typed_record ... ok
+test clean_stop_json_is_accepted ... ok
+test missing_field_json_is_rejected ... ok
+test our_own_records_validate ... ok
+test the_fixture_set_is_the_one_the_spec_names ... ok
+test valid_json_is_accepted ... ok
+test the_extension_fixture_carries_its_extensions_through ... ok
+test with_trap_message_json_is_accepted_and_the_message_lands_in_its_field ... ok
+test with_warnings_json_is_accepted ... ok
+test with_extensions_json_is_accepted ... ok
+test with_file_index_json_is_accepted_and_the_file_index_lands_in_its_field ... ok
+test wrong_version_json_is_rejected ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/prov_machine.rs (/lane/target/release/deps/prov_machine-9c5a5cd4f9b004f2)
+
+running 14 tests
+test a_c_function_outside_the_modelled_set_is_declined_not_guessed ... ok
+test a_c_call_exposes_its_pointers_rather_than_retagging_them ... ok
+test a_reserved_reborrow_still_activates_after_several_foreign_reads ... ok
+test calloc_allocates_count_times_size_bytes_and_zeroes_all_of_them ... ok
+test references_created_but_never_used_do_not_poison_later_ones ... ok
+test the_holy_grail_litmus_freezes_its_read_parameter_for_the_whole_call ... ok
+test a_ub_record_carries_the_row_and_the_pairing_on_extension_keys ... ok
+test the_trace_filter_names_are_the_ones_the_cli_documents ... ok
+test the_retag_then_opaque_call_program_demonstrates_the_protector ... ok
+test the_two_phase_litmus_keeps_its_receiver_reserved_across_the_argument_read ... ok
+test the_unsafe_litmuses_run_and_the_uaf_one_is_the_oracle_first_verdict ... ok
+test the_prov_filter_is_exactly_the_tier_three_subset_of_the_full_trace ... ok
+test unfreed_c_allocations_are_reported_and_never_faulted ... ok
+test every_ub_report_carries_two_spans_a_tree_and_the_optimization_it_licenses ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/region_copyout.rs (/lane/target/release/deps/region_copyout-609d90d5cc9aef14)
+
+running 7 tests
+test every_other_exit_frees_and_copies_nothing ... ok
+test every_other_escape_still_faults ... ok
+test a_value_with_no_independent_copy_faults ... ok
+test the_copy_is_charged_to_the_enclosing_region ... ok
+test a_struct_of_strings_and_a_list_copies_out_deep ... ok
+test maps_and_tuples_copy_out ... ok
+test the_loop_keeps_each_turn_s_result ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/region_machine.rs (/lane/target/release/deps/region_machine-3c9d5e5e49ad2148)
+
+running 9 tests
+test a_region_that_faults_mid_block_is_still_freed_at_the_brace ... ok
+test a_shared_cell_is_released_when_its_last_strong_owner_dies ... ok
+test every_near_miss_twin_runs_clean ... ok
+test every_region_fault_class_has_a_program_and_a_twin ... ok
+test every_d3_witness_runs_and_its_trace_names_the_licensing_rule ... ok
+test the_region_family_maps_onto_one_trap_kind ... ok
+test the_memory_trace_is_a_filter_over_the_same_registry ... ok
+test the_forest_invariant_holds_over_the_whole_corpus ... ok
+test no_program_that_exits_cleanly_leaks_a_region ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 57.62s
+
+     Running tests/region_scalar_is79.rs (/lane/target/release/deps/region_scalar_is79-f069c15b4dc7a201)
+
+running 6 tests
+test a_list_this_machine_tracks_is_answered_as_before ... ok
+test a_scalar_only_value_leaves_its_region_like_an_int ... ok
+test a_scalar_only_mut_argument_gains_nothing_from_its_region ... ok
+test a_scalar_only_store_into_another_parameters_region_ties_nothing ... ok
+test a_scalar_only_value_read_out_of_a_frozen_region_is_the_bindings_own ... ok
+test storage_still_faults_at_the_access ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/repl_edit_pty.rs (/lane/target/release/deps/repl_edit_pty-b196eab8a60318bd)
+
+running 3 tests
+test up_arrow_recalls_history_instead_of_inserting_escape_bytes ... ok
+test alt_dot_yanks_the_last_arg_and_cycles_to_older_entries ... ok
+test ctrl_c_mid_continuation_abandons_the_input_and_the_session_survives ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.81s
+
+     Running tests/repl_session.rs (/lane/target/release/deps/repl_session-684c20023e004567)
+
+running 9 tests
+test a_lent_receiver_is_back_in_its_slot_after_the_trap ... ok
+test a_piped_session_is_deterministic ... ok
+test every_repl_note_in_the_doc_is_a_wellformed_tag ... ok
+test the_acceptance_topics_are_all_covered ... ok
+test a_shadowed_fn_keeps_the_old_capture_and_a_trap_keeps_the_session ... ok
+test a_doctored_transcript_fails_replay_with_the_drift_named ... ok
+test the_repl_note_namespace_classifies_as_reserved ... ok
+test the_continuation_prompt_follows_the_lexers_termination_rules ... ok
+test every_pinned_transcript_replays_byte_identically ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/resolve_ambient.rs (/lane/target/release/deps/resolve_ambient-81a210e7b3bf4943)
+
+running 3 tests
+test a_sibling_files_declaration_wins_the_ambient_call ... ok
+test assert_is_a_primitive_a_declaration_cannot_shadow ... ok
+test a_declared_host_name_wins_over_the_ambient_one ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/rows_option.rs (/lane/target/release/deps/rows_option-c8a76b0cdb487be9)
+
+running 20 tests
+test a_declared_parameter_row_resolves_a_bare_tag_argument ... ok
+test a_builtin_raised_row_discriminates_in_both_arm_orders_hermetically ... ok
+test a_local_shadows_the_declared_tag_and_the_value_is_the_locals ... ok
+test a_declared_tag_on_an_untaken_branch_runs ... ok
+test a_module_item_loses_to_the_declared_tag_at_return_position ... ok
+test an_enum_variant_returned_through_a_row_is_not_an_error ... ok
+test a_row_raised_across_a_module_boundary_still_dispatches_by_tag ... ok
+test a_tag_widened_from_a_sub_row_still_dispatches_by_name ... ok
+test an_undeclared_bare_name_keeps_its_refusal_in_both_new_positions ... ok
+test an_annotation_row_resolves_a_bare_tag_initializer ... ok
+test an_unset_name_lands_the_missing_arm_in_both_orders ... ok
+test an_untaken_unresolvable_raise_is_refused_eagerly ... ok
+test an_undeclared_tag_is_still_an_error ... ok
+test raises_and_values_stay_distinguishable_through_rows ... ok
+test ordinary_returns_pass_the_raise_check ... ok
+test declared_lowercase_tags_dispatch_in_match ... ok
+test variant_equality_does_not_depend_on_the_construction_site ... ok
+test std_option_expect_traps_on_the_miss ... ok
+test postfix_rows_in_param_and_let_positions_run ... ok
+test std_options_six_helpers_execute ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/rule_registry.rs (/lane/target/release/deps/rule_registry-9ff80ca1b35c6718)
+
+running 8 tests
+test a_planted_anchorless_rule_fails_the_same_gate ... ok
+test every_cited_memory_clause_actually_appears_in_the_document ... ok
+test every_implemented_rule_cites_a_clause_the_pinned_spec_defines ... ok
+test forward_namespace_citations_are_named_so_the_debt_is_visible ... ok
+test the_memory_model_rules_cite_the_clause_that_states_them ... ok
+test the_registry_is_one_hundred_percent_covered ... ok
+test the_trace_namespaces_are_derived_from_the_anchors_not_from_a_list ... ok
+test the_trace_only_ever_names_registered_rules has been running for over 60 seconds
+test the_trace_only_ever_names_registered_rules ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 97.50s
+
+     Running tests/rulings_eg00.rs (/lane/target/release/deps/rulings_eg00-3bf0cc8efa5d0c07)
+
+running 15 tests
+test elem_const_field_of_elem ... ok
+test elem_const_nested_mut ... ok
+test elem_const_mut_pair ... ok
+test elem_const_move_heap ... ok
+test elem_const_store_no_revive_int ... ok
+test elem_const_store_no_revive_heap ... ok
+test elem_dyn_store_no_revive_heap ... ok
+test elem_key_move_map ... ok
+test elem_dyn_store_no_revive_int ... ok
+test elem_len_after_move ... ok
+test elem_loop_induction_mut ... ok
+test elem_move_same_const_read ... ok
+test elem_move_one_place ... ok
+test every_parked_witness_has_a_runner_here ... ok
+test elem_offset_mut_pair ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/rulings_is58.rs (/lane/target/release/deps/rulings_is58-486a762481921744)
+
+running 20 tests
+test ctl_store_order_nested ... ok
+test ctl_store_order_nested_index ... ok
+test ctl_store_order_map ... ok
+test elem_key_move_map ... ok
+test elem_char_bool_key_revive ... ok
+test elem_key_reassigned_no_revive ... ok
+test elem_const_move_heap ... ok
+test elem_len_after_move ... ok
+test every_row_has_a_runner_here ... ok
+test elem_str_key_revive ... ok
+test elem_tuple_pos_move ... ok
+test mut_param_moveout_elem ... ok
+test mut_param_moveout_field ... ok
+test mut_param_moveout_map ... ok
+test mut_param_moveout_one_path ... ok
+test mut_param_restore_map ... ok
+test mut_param_restore_elem ... ok
+test mut_param_moveout_whole ... ok
+test mut_param_restore_field ... ok
+test mut_param_restore_whole ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+     Running tests/rulings_is59.rs (/lane/target/release/deps/rulings_is59-ddb2c61c778c9e6b)
+
+running 18 tests
+test member_elem_len_under_nested_claim ... ok
+test member_len_before_claim ... ok
+test member_field_list_len_under_claim ... ok
+test elem_member_read_after_mut ... ok
+test member_grouped_base_under_claim ... ok
+test member_len_in_interp_under_claim ... ok
+test member_len_under_borrow_claim ... ok
+test member_len_in_expr_under_claim ... ok
+test member_map_len_under_key_claim ... ok
+test member_len_under_dyn_index_claim ... ok
+test member_len_under_two_claims ... ok
+test twin_field_mut_member_read ... ok
+test member_sibling_elem_len_under_claim ... ok
+test twin_elem_mut_its_member_read ... ok
+test member_outer_len_under_nested_claim ... ok
+test twin_whole_mut_member_read ... ok
+test twin_whole_read_under_elem_claim ... ok
+test twin_same_elem_read ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/rulings_is60.rs (/lane/target/release/deps/rulings_is60-d8cb1750bf71ffa6)
+
+running 82 tests
+test elem_in_interp ... ok
+test elem_effect_index ... ok
+test elem_dyn_indices ... ok
+test elem_nested_same_row ... ok
+test elem_nested_sibling_row ... ok
+test elem_map_sibling_interp ... ok
+test elem_field_list_sibling ... ok
+test elem_origin1_sibling ... ok
+test elem_sibling_in_expr ... ok
+test elem_two_siblings_in_expr ... ok
+test header_after_move_is_empty ... ok
+test header_after_move_count ... ok
+test elem_under_borrow_claim ... ok
+test header_after_move_map ... ok
+test header_after_move_map_s185 ... ok
+test elem_two_claims_third ... ok
+test header_count_under_borrow_claim ... ok
+test header_after_move_s185 ... ok
+test header_after_move_nested ... ok
+test header_count_in_expr_under_claim ... ok
+test header_elem_count_sibling_claim ... ok
+test header_count_under_elem_claim ... ok
+test header_count_under_two_claims ... ok
+test header_len_method_under_elem_claim ... ok
+test header_field_list_count_under_claim ... ok
+test header_map_count_under_key_claim ... ok
+test header_is_empty_under_elem_claim ... ok
+test header_map_is_empty_under_key_claim ... ok
+test header_outer_count_under_nested_claim ... ok
+test once_absent_key_let ... ok
+test header_methods_under_claim_s185 ... ok
+test once_arg_member ... ok
+test once_claimed_member ... ok
+test once_copy_member ... ok
+test once_group_member ... ok
+test once_field_member ... ok
+test once_map_member ... ok
+test once_let_member ... ok
+test once_interp_member ... ok
+test once_match_member ... ok
+test once_member_in_expr ... ok
+test once_method_receiver_control ... ok
+test once_nested_member ... ok
+test once_moved_elem_member ... ok
+test once_oob_let ... ok
+test once_origin1_oob ... ok
+test once_oob_member_base ... ok
+test once_slice_let ... ok
+test once_slice_member_let ... ok
+test once_slice_member_interp ... ok
+test once_str_elem_member ... ok
+test revived_push_after_move ... ok
+test sibling_row_methods_after_move ... ok
+test twin_effect_index_same_elem ... ok
+test twin_count_whole_claim ... ok
+test twin_get_under_elem_claim ... ok
+test twin_elem_count_same_elem_claim ... ok
+test twin_same_elem_in_expr ... ok
+test twin_last_under_elem_claim ... ok
+test twin_row_claim_elem_read ... ok
+test twin_impl_count_under_field_claim ... ok
+test twin_whole_claim_elem_read ... ok
+test whole_read_field_list_get ... ok
+test whole_read_clear_after_move ... ok
+test whole_read_get_after_move ... ok
+test whole_read_impl_on_elem ... ok
+test whole_read_map_remove_after_move ... ok
+test whole_read_get_s185 ... ok
+test whole_read_last_after_move ... ok
+test whole_read_mut_self_after_move ... ok
+test whole_read_nested_row_push ... ok
+test whole_read_pop_after_move ... ok
+test whole_read_outer_get_deep_move ... ok
+test whole_read_named_count_s185 ... ok
+test whole_read_push_s185 ... ok
+test whole_read_pop_s185 ... ok
+test whole_read_push_after_move ... ok
+test whole_read_slice_of_row ... ok
+test whole_read_self_s185 ... ok
+test whole_read_self_after_move ... ok
+test whole_read_slice_after_move ... ok
+test whole_read_slice_s185 ... ok
+
+test result: ok. 82 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+
+     Running tests/rulings_is62.rs (/lane/target/release/deps/rulings_is62-fda7ec771f5b9d86)
+
+running 53 tests
+test once_receivers_flows ... ok
+test once_slice_count_arg_for ... ok
+test once_receivers_more ... ok
+test once_receivers_try ... ok
+test once_slice_deep_field_str ... ok
+test once_slice_open_ends ... ok
+test once_slice_try_base ... ok
+test once_slice_indexed_base ... ok
+test once_slice_under_claim ... ok
+test recv164_elem_move ... ok
+test recv164_elem_whole_write ... ok
+test recv164_closure ... ok
+test recv164_elem_write ... ok
+test recv164_field_move ... ok
+test recv164_field_write ... ok
+test recv164_field_prefix_write ... ok
+test recv164_move ... ok
+test recv164_lend ... ok
+test recv164_reclaim ... ok
+test recv164_reclaim_call ... ok
+test recv164_reads ... ok
+test recv164_view_write ... ok
+test recv164_reclaim_nested ... ok
+test recv164_write ... ok
+test recv494_viewset_two_fields ... ok
+test recv494_viewset_disjoint_write ... ok
+test recv_closure_lend ... ok
+test recv_copy_read_impl ... ok
+test recv_elem_write ... ok
+test recv_field_write ... ok
+test recv_impl_write ... ok
+test recv_lend_impl ... ok
+test recv_reclaim_nested ... ok
+test recv_move ... ok
+test recv_reclaim_receiver ... ok
+test recv_reads_run ... ok
+test recv_sibling_write ... ok
+test recv_write ... ok
+test shorthand_copy ... ok
+test shorthand_closure ... ok
+test shorthand_closure_borrow ... ok
+test shorthand_mixed ... ok
+test shorthand_module_let ... ok
+test shorthand_moves ... ok
+test shorthand_mixed_runs ... ok
+test shorthand_nested ... ok
+test shorthand_nested_runs ... ok
+test shorthand_return_mut ... ok
+test shorthand_nested_bound ... ok
+test shorthand_return_take ... ok
+test shorthand_unknown_name ... ok
+test shorthand_unknown_field ... ok
+test shorthand_task ... ok
+
+test result: ok. 53 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s
+
+     Running tests/rulings_is63.rs (/lane/target/release/deps/rulings_is63-e7f33a7e8a6cfecc)
+
+running 58 tests
+test read_closure_bound_before ... ok
+test read_closure_nested ... ok
+test read_closure_other ... ok
+test read_copy_direct ... ok
+test read_copy_field_direct ... ok
+test read_copy_nested ... ok
+test read_copy_str_direct ... ok
+test read_copy_elem_direct ... ok
+test read_count_whole_claim ... ok
+test read_get_elem_claim ... ok
+test read_if_arm ... ok
+test read_for_in_block ... ok
+test read_impl_self ... ok
+test read_member_ensure ... ok
+test read_map_nested ... ok
+test read_interp_whole ... ok
+test read_member_whole_claim ... ok
+test read_method_mut_receiver_arg ... ok
+test read_nested_field_seq ... ok
+test read_nested_claims ... ok
+test read_nested_ring_len ... ok
+test read_slice_nested ... ok
+test read_order_effects ... ok
+test read_operand ... ok
+test read_total_elem_claim ... ok
+test read_total_whole_claim ... ok
+test read_two_claims ... ok
+test s186_elem_dyn_read_after_mut ... ok
+test s186_mut_claim_arg_block_move ... ok
+test s186_mut_claim_nested_copy_read ... ok
+test s186_mut_claim_arg_block_write ... ok
+test s186_mut_claim_nested_disjoint_reads ... ok
+test s186_mut_claim_nested_get ... ok
+test s186_mut_claim_nested_read_elem ... ok
+test s186_mut_claim_nested_map ... ok
+test s186_mut_claim_nested_header ... ok
+test s186_mut_claim_two_phase_reads ... ok
+test s186_mut_read_overlap ... ok
+test s186_mut_claim_operand_read ... ok
+test stay_block_write ... ok
+test stay_borrow_lend ... ok
+test stay_elem_write ... ok
+test stay_closure_lend ... ok
+test stay_closure_lend_copy_field ... ok
+test stay_lend_before_claim ... ok
+test s186_mut_claim_nested_read_whole ... ok
+test stay_lend_list_field ... ok
+test stay_lend_struct ... ok
+test stay_move_block ... ok
+test stay_move_field_nested ... ok
+test stay_lend_whole_elem_claim ... ok
+test stay_move_nested ... ok
+test stay_nested_write_outer ... ok
+test stay_push_write ... ok
+test stay_reclaim_nested ... ok
+test stay_reclaim_direct ... ok
+test stay_reclaim_prefix_nested ... ok
+test stay_take_arg ... ok
+
+test result: ok. 58 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running tests/rulings_is65.rs (/lane/target/release/deps/rulings_is65-77694ba7a56a0ea4)
+
+running 24 tests
+test break_arg ... ok
+test elem_mut_try ... ok
+test continue_arg ... ok
+test continue_for ... ok
+test field_mut_try ... ok
+test impl_recv_try ... ok
+test recv_continue ... ok
+test recv_break ... ok
+test recv_nested_try ... ok
+test read_lend_try ... ok
+test recv_return ... ok
+test repl_trap_then_write ... ok
+test return_arg ... ok
+test recv_try ... ok
+test take_then_try ... ok
+test scalar_mut_try ... ok
+test trap_arg ... ok
+test try_after_nested_done ... ok
+test try_arg_then_mut_arg ... ok
+test try_arg ... ok
+test two_muts_try ... ok
+test try_nested_first_arg ... ok
+test try_nested_inner_claim ... ok
+test viewset_recv_try ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running tests/rulings_is67.rs (/lane/target/release/deps/rulings_is67-cf9582b45587db9f)
+
+running 29 tests
+test d19_try_in_defer ... ok
+test d19_defer_else_control ... ok
+test d19_try_in_defer_block ... ok
+test d19_try_in_closure_in_defer ... ok
+test d19_try_in_errdefer ... ok
+test m21_book_missing_tag ... ok
+test m21_book_open_row_rest ... ok
+test m21_bool_value_half ... ok
+test m21_book_describe ... ok
+test m21_enum_missing_variant ... ok
+test m21_else_match_control ... ok
+test m21_call_tag_value ... ok
+test m21_imported_row ... ok
+test m21_guard_no_cover ... ok
+test m21_local_scrutinee ... ok
+test m21_missing_tag ... ok
+test m21_enum_value_half ... ok
+test m21_map_index ... ok
+test m21_nested ... ok
+test m21_payload_missing_tag ... ok
+test m21_payload_tags ... ok
+test m21_tag_collision ... ok
+test m21_uncovered_value ... ok
+test m21_result_consumed ... ok
+test m21_wild_both ... ok
+test m21_try_in_scrutinee ... ok
+test m21_wild_row_half ... ok
+test m21_two_tags_named ... ok
+test m21_wild_value_half ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/rulings_is68.rs (/lane/target/release/deps/rulings_is68-c4f3c06de2667e34)
+
+running 108 tests
+test c125_for_piece ... ok
+test c125_issue ... ok
+test c125_ctl_family ... ok
+test c125_ctl_user_trim ... ok
+test c125_trim_end ... ok
+test c125_lines ... ok
+test c125_param_receiver ... ok
+test c125_lit_receiver ... ok
+test c125_trim_start ... ok
+test c125_two_args ... ok
+test c125_words ... ok
+test c125_var_cutset ... ok
+test n169_as_value ... ok
+test n169_moveout ... ok
+test n169_omitted ... ok
+test n169_capture ... ok
+test n169_mut_on_read ... ok
+test n169_param ... ok
+test n169_recursive ... ok
+test s138_arg_bool ... ok
+test n169_restored ... ok
+test n169_take_omitted ... ok
+test s138_arg_str ... ok
+test s138_bool_from_lit ... ok
+test s138_assign ... ok
+test s138_bool_from_int ... ok
+test s138_ctl_generic ... ok
+test s138_ctl_str_param ... ok
+test s138_ctl_list_elem ... ok
+test s138_ctl_sibling_int ... ok
+test s138_field ... ok
+test s138_int_from_bool ... ok
+test s138_int_from_interp ... ok
+test s138_ctl_ok_shapes ... ok
+test s138_int_from_str ... ok
+test s138_issue ... ok
+test s138_str_from_lit ... ok
+test s138_return ... ok
+test s138_three_files ... ok
+test s138_str_from_char ... ok
+test s138_root ... ok
+test u103_arith_tail ... ok
+test u103_bool_tail ... ok
+test u103_chain2 ... ok
+test u103_call_tail ... ok
+test u103_chain3 ... ok
+test u103_char_float_tail ... ok
+test u103_cmp_tail ... ok
+test u103_ctl_body_stmt ... ok
+test u103_ctl_match_loop ... ok
+test u103_ctl_raise_tail ... ok
+test u103_concat_tail ... ok
+test u103_ctl_stmt_raise ... ok
+test u103_ctl_unit ... ok
+test u103_ctl_w0601 ... ok
+test u103_ctl_if_else ... ok
+test u103_if_else_tail ... ok
+test u103_issue ... ok
+test u103_interp_tail ... ok
+test u103_list_tail ... ok
+test u103_ctl_closure ... ok
+test u103_local_tail ... ok
+test u103_loop_tail ... ok
+test u103_param_tail ... ok
+test u103_res_member ... ok
+test u103_res_for ... ok
+test u103_res_method ... ok
+test u103_struct_tail ... ok
+test u103_stmt_int ... ok
+test u103_unit_fn ... ok
+test u103_unit_explicit ... ok
+test u103_unit_main ... ok
+test u103_stmt_str ... ok
+test u103_while_tail ... ok
+test u103_unit_main_row ... ok
+test u103_row_tail_value ... ok
+test u103_unit_nested ... ok
+test v126_block_value ... ok
+test v126_copy_in_region ... ok
+test v126_ctl_bytes ... ok
+test v126_ctl_literal ... ok
+test v126_ctl_inside ... ok
+test v126_ctl_needle ... ok
+test v126_ctl_literal_local ... ok
+test v126_ctl_upper ... ok
+test v126_ctl_outer_held ... ok
+test v126_for_lines ... ok
+test v126_for_split ... ok
+test v126_for_words ... ok
+test v126_for_words_held ... ok
+test v126_ctl_param ... ok
+test v126_field_view ... ok
+test v126_get_inclusive ... ok
+test v126_get_open ... ok
+test v126_get_range ... ok
+test v126_issue ... ok
+test v126_held_outside ... ok
+test v126_split_index ... ok
+test v126_proc_send ... ok
+test v126_slice ... ok
+test v126_strip_prefix ... ok
+test v126_strip_suffix ... ok
+test v126_trim ... ok
+test v126_strip_prefix_tail ... ok
+test v126_trim_end ... ok
+test v126_trim_tail ... ok
+test v126_view_of_view ... ok
+test v126_trim_start ... ok
+
+test result: ok. 108 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+
+     Running tests/rulings_is69.rs (/lane/target/release/deps/rulings_is69-5643c7d8f3653157)
+
+running 20 tests
+test i69_field_tail ... ok
+test i69_closure_try ... ok
+test i69_generic ... ok
+test i69_let_annotated ... ok
+test i69_issue_row ... ok
+test i69_match_binder_tail ... ok
+test i69_one_tag ... ok
+test i69_generic_missing ... ok
+test i69_one_tag_missing ... ok
+test i69_recursive ... ok
+test i69_recursive_missing ... ok
+test i69_member_tail ... ok
+test i69_row_grows_before ... ok
+test i69_row_grows_after ... ok
+test i69_row_grows_covered ... ok
+test i69_try_callee_missing ... ok
+test i69_tail_call_row ... ok
+test i69_try_callee ... ok
+test i69_tail_call_row_missing ... ok
+test i69_unknown_method ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/rulings_is70.rs (/lane/target/release/deps/rulings_is70-22aaca6fd89fde06)
+
+running 57 tests
+test attr_misplaced ... ok
+test attr_repr_bogus ... ok
+test attr_implemented_set ... ok
+test attr_stmt_field ... ok
+test bind_row_var_wider ... ok
+test bind_row_named_wider ... ok
+test bind_row_wider ... ok
+test cfg_field_member ... ok
+test cfg_malformed ... ok
+test cfg_target_arch ... ok
+test cfg_target_freestanding ... ok
+test deref_compound_outside ... ok
+test deref_inside_ok ... ok
+test attributes_nothing_reads_are_e0817 ... ok
+test deref_write_outside ... ok
+test device_freestanding ... ok
+test bind_row_controls ... ok
+test device_hosted ... ok
+test errdefer_fallible_ok ... ok
+test errdefer_main_int ... ok
+test errdefer_nested_block ... ok
+test deref_read_outside ... ok
+test errdefer_unit_fn ... ok
+test errdefer_int_fn ... ok
+test extern_abi_interrupt ... ok
+test extern_c_outside_unsafe ... ok
+test extern_libc ... ok
+test f9_exposed ... ok
+test first_boundary_before_lex ... ok
+test first_boundary_at_the_opener ... ok
+test first_row_brace_unclosed ... ok
+test first_parse_before_lex ... ok
+test first_expected_pattern ... ok
+test first_same_offset_lex ... ok
+test first_union_toplevel ... ok
+test first_stray_characters ... ok
+test first_controls ... ok
+test prov_addr_with_addr ... ok
+test prov_expose_round_trip ... ok
+test prov_narrow_cast ... ok
+test prov_narrow_cast_trap ... ok
+test ptr_offset_foreign ... ok
+test ptr_from_signed ... ok
+test ptr_narrow_signed_trap ... ok
+test raw_ptr_mut_param ... ok
+test raw_ptr_private_sig ... ok
+test region_return_for_word ... ok
+test region_return_s ... ok
+test prov_controls ... ok
+test region_return_ok ... ok
+test region_view_for_return ... ok
+test sig_export_raw ... ok
+test region_return_trim ... ok
+test sig_controls ... ok
+test sig_private_ret_raw ... ok
+test target_none ... ok
+test target_host_runs_and_others_are_tool_errors ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/rulings_is73.rs (/lane/target/release/deps/rulings_is73-dbf63098fe38a4f1)
+
+running 15 tests
+test a_cycle_through_a_fn_is_declined_by_name ... ok
+test a_link_time_symbol_is_refused_by_name ... ok
+test a_module_var_outside_unsafe_is_e1301 ... ok
+test a_placed_section_is_refused_by_name ... ok
+test a_whole_aggregate_raw_store_is_refused_by_name ... ok
+test a_packed_field_is_never_lent ... ok
+test a_query_without_a_comptime_layout_is_refused ... ok
+test an_initializer_cycle_is_e0705 ... ok
+test every_witness_is_run ... ok
+test an_extern_let_misused_is_e0821 ... ok
+test module_state_that_is_not_static_data_is_refused_by_name ... ok
+test reading_a_var_in_an_initializer_is_e0705 ... ok
+test an_unlayable_representation_is_e0820 ... ok
+test the_queries_answer_the_c_layout ... ok
+test no_initializer_graph_overflows_the_stack ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.04s
+
+     Running tests/rulings_is74.rs (/lane/target/release/deps/rulings_is74-77ba64be943717c1)
+
+running 16 tests
+test a_misaligned_volatile_access_is_row_l3 ... ok
+test a_volatile_access_needs_the_ring ... ok
+test an_atomic_publication_orders_plain_accesses ... ok
+test a_pointee_that_is_not_one_access_is_e1307 ... ok
+test a_misaligned_atomic_is_row_l4 ... ok
+test a_pointee_that_is_not_a_fixed_width_integer_is_e1308 ... ok
+test atomics_and_weak_fences_need_the_ring ... ok
+test every_admitted_fence_runs ... ok
+test every_witness_is_run ... ok
+test every_admitted_pointee_reads_back_what_it_wrote ... ok
+test on_an_allocation_a_volatile_access_is_ordinary ... ok
+test every_operation_answers_on_every_width_and_order ... ok
+test on_an_allocation_an_atomic_is_an_access ... ok
+test an_order_the_operation_does_not_admit_is_e1309 ... ok
+test tasks_count_exactly ... ok
+test the_racy_twins_still_trap has been running for over 60 seconds
+test the_racy_twins_still_trap ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 62.52s
+
+     Running tests/rulings_s182.rs (/lane/target/release/deps/rulings_s182-de085195244fb155)
+
+running 11 tests
+test every_parked_witness_has_a_runner_here ... ok
+test fs_path_inside_after_dotdot ... ok
+test fs_path_absolute ... ok
+test fs_path_climbs_out ... ok
+test fs_path_symlink_out ... ok
+test index_store_copies_list ... ok
+test index_store_copies_map ... ok
+test index_store_read_param ... ok
+test index_store_take_list ... ok
+test index_store_take_map ... ok
+test fs_path_symlink_in ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/rulings_s208.rs (/lane/target/release/deps/rulings_s208-554ab23129faf5a1)
+
+running 7 tests
+test tail_bare_tag ... ok
+test if_value_179 ... ok
+test tail_leaves ... ok
+test tail_closure ... ok
+test tail_chain ... ok
+test tail_value_row ... ok
+test tail_if ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/rulings_s213.rs (/lane/target/release/deps/rulings_s213-9d0e87ac71cde22f)
+
+running 9 tests
+test a_never_body_that_returns_is_e0401 ... ok
+test a_misaligned_element_field_store_is_row_l4 ... ok
+test a_qualified_module_var_outside_unsafe_is_e1301 ... ok
+test bang_on_a_float_is_e0409 ... ok
+test a_never_fn_call_is_bottom ... ok
+test a_field_of_a_raw_element_is_stored_in_place ... ok
+test the_ring_and_the_whole_aggregate_stay_refused ... ok
+test a_module_item_reads_and_writes_through_its_module_name ... ok
+test bang_on_an_integer_is_its_complement ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running tests/run_corpus.rs (/lane/target/release/deps/run_corpus-d7405b0228a7d778)
+
+running 15 tests
+test a_record_that_completed_no_run_reports_no_stdout ... ok
+test a_declared_main_return_is_refused_before_the_program_runs ... ok
+test a_trapping_program_reports_the_stdout_it_produced_before_the_trap ... ok
+test evaluation_is_deterministic_over_the_corpus has been running for over 60 seconds
+test every_record_is_schema_valid_including_the_running_ones has been running for over 60 seconds
+test every_run_expectation_this_machine_reaches_is_met_exactly has been running for over 60 seconds
+test every_unsupported_file_says_why has been running for over 60 seconds
+test every_record_is_schema_valid_including_the_running_ones ... ok
+test every_unsupported_file_says_why ... ok
+test every_run_expectation_this_machine_reaches_is_met_exactly ... ok
+test no_corpus_file_mismatches_its_expectation has been running for over 60 seconds
+test phase_reached_is_never_inflated has been running for over 60 seconds
+test the_four_seed_files_are_accounted_for has been running for over 60 seconds
+test evaluation_is_deterministic_over_the_corpus ... ok
+test no_corpus_file_mismatches_its_expectation ... ok
+test the_stdout_digest_is_the_digest_of_the_stdout ... ok
+test phase_reached_is_never_inflated ... ok
+test the_four_seed_files_are_accounted_for ... ok
+test w0316_stops_at_the_package_root_and_not_at_the_filesystem_s ... ok
+test the_run_ledger_is_exactly_what_reaches_run has been running for over 60 seconds
+test the_run_ledger_is_exactly_what_reaches_run ... ok
+test unsafe_free_corpus_programs_never_produce_a_ub_verdict ... ok
+test the_warns_ledger_is_enforced_for_the_analyses_this_machine_runs has been running for over 60 seconds
+test the_warns_ledger_is_enforced_for_the_analyses_this_machine_runs ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 377.81s
+
+     Running tests/shift_is76.rs (/lane/target/release/deps/shift_is76-b8aeed7b9f0a400c)
+
+running 6 tests
+test a_count_past_127_is_the_value ... ok
+test a_literal_term_computes_at_its_declared_type ... ok
+test a_shift_takes_one_integer_type ... ok
+test the_compilers_shift_rows_answer_their_headers ... ok
+test a_module_initialiser_that_faults_is_e0706 ... ok
+test a_deep_initialiser_chain_folds_on_a_small_stack ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.92s
+
+     Running tests/signal_listen_is77.rs (/lane/target/release/deps/signal_listen_is77-3b4cee24e94fa9f9)
+
+running 3 tests
+test the_listen_wait_and_raise_shape_rows ... ok
+test the_corpus_loopback_stops_at_the_listen_by_name ... ok
+test each_well_formed_call_is_refused_by_name ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/signal_one_is77.rs (/lane/target/release/deps/signal_one_is77-bf1d8bbbc63e8067)
+
+running 3 tests
+test the_one_meaning_shape_rows ... ok
+test kill_and_stop_by_number_and_a_number_past_the_last_are_invalid ... ok
+test each_well_formed_call_is_refused_by_name ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/signal_shell_s232.rs (/lane/target/release/deps/signal_shell_s232-4be19248c309e4fc)
+
+running 5 tests
+test every_number_is_the_hosts ... ok
+test the_job_rows_with_the_moved_bit ... ok
+test this_process_ids ... ok
+test the_shell_rows ... ok
+test what_this_machine_refuses_it_names ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests/signal_text_is77.rs (/lane/target/release/deps/signal_text_is77-9fd61a55562a3bfc)
+
+running 1 test
+test signal_zero_passes_the_shape_and_is_refused_by_name ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/snapshot_exemplar.rs (/lane/target/release/deps/snapshot_exemplar-f01f2e7594fdc963)
+
+running 1 test
+test directive_header_rendering ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/spec_extract.rs (/lane/target/release/deps/spec_extract-c47b07b0af56f2c0)
+
+running 14 tests
+test the_emitted_operator_climb_matches_our_transcription ... ok
+test the_contextual_keyword_list_matches_the_spec_prose ... ok
+test the_float_counter_example_lexes_as_member_access ... ok
+test e0006_spans_the_opening_brace ... ok
+test freeze_takes_a_prefix_tier_operand ... ok
+test the_interpolation_depth_rails_are_the_ones_the_spec_names ... ok
+test the_in_header_is_a_no_struct_literal_position ... ok
+test the_newline_counter_example_does_not_parse ... ok
+test the_precedence_table_matches_the_spec_table ... ok
+test the_reserved_keyword_list_matches_the_spec_production ... ok
+test the_parameter_mode_counter_example_does_not_parse ... ok
+test the_section_nine_code_reservations_are_the_ones_we_emit ... ok
+test the_syntactic_nesting_rail_is_the_number_the_spec_makes_normative ... ok
+test underscore_identifiers_are_legal_and_a_bare_underscore_is_still_the_wildcard ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/static_wrapping_is79.rs (/lane/target/release/deps/static_wrapping_is79-4e71e9fcfdca508c)
+
+running 2 tests
+test wrapping_module_state_is_static_data ... ok
+test the_rest_of_module_state_is_still_declined_by_name ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/std_root.rs (/lane/target/release/deps/std_root-1044cf53500adf45)
+
+running 27 tests
+test a_method_call_on_std_data_is_the_free_call_with_no_use ... ok
+test a_duplicate_leaf_binding_is_an_honest_error_not_a_silent_first_wins ... ok
+test a_mut_argument_inside_an_interpolation_leaves_no_stale_tag ... ok
+test a_home_module_binds_no_name ... ok
+test a_qualified_trait_in_a_generic_bound_counts_as_a_use_of_its_import ... ok
+test a_read_call_that_allocates_after_a_mut_call_is_not_a_foreign_write ... ok
+test a_candidate_that_does_not_fit_is_e0403_and_a_wrong_count_is_e0402 ... ok
+test a_std_beside_the_entry_beats_the_default ... ok
+test a_trait_reached_through_its_module_dispatches_like_a_local_one ... ok
+test a_std_tree_beside_the_entry_is_the_std_root_with_no_flag ... ok
+test an_imported_trait_alias_expands_its_bound_through_the_import ... ok
+test step_two_with_no_std_root_is_e0301_and_a_builtin_needs_none ... ok
+test an_operator_is_a_use_of_its_imported_trait_and_an_unused_one_is_still_unused ... ok
+test the_cargo_built_lupin_has_no_std_beside_it ... ok
+test no_std_directory_beside_keeps_no_root ... ok
+test take_is_never_a_method_and_the_refusal_names_the_slices ... ok
+test an_imported_error_alias_named_only_in_a_row_is_used_and_an_unnamed_one_is_not ... ok
+test the_environment_beats_the_default ... ok
+test the_environment_variable_is_the_flagless_spelling ... ok
+test the_flag_resolves_flat_and_nested_std_paths ... ok
+test the_flat_fallback_and_repeated_same_path_imports_stay_legal ... ok
+test the_flag_beats_the_environment_and_the_default ... ok
+test the_std_beside_the_binary_is_the_default_root ... ok
+test the_method_and_the_qualified_spelling_are_one_call ... ok
+test the_receiver_mode_is_the_first_parameters ... ok
+test two_modules_with_the_same_leaf_resolve_by_their_full_paths ... ok
+test without_a_root_the_answer_stays_the_honest_unsupported ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running tests/str_append_d62.rs (/lane/target/release/deps/str_append_d62-6ac57681aebf121f)
+
+running 3 tests
+test a_char_joins_a_str_in_either_order ... ok
+test the_legal_chain_runs_and_means_the_interpolation ... ok
+test the_two_int_mixes_stay_refused_by_name ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/str_escape_code.rs (/lane/target/release/deps/str_escape_code-53850f3b5cd2dd02)
+
+running 6 tests
+test a_raw_string_has_no_escapes_to_get_wrong ... ok
+test an_unknown_escape_is_e0101_at_the_escape ... ok
+test a_char_literal_keeps_its_own_malformed_code ... ok
+test a_malformed_x_or_u_escape_rides_the_same_code ... ok
+test e0103_and_e0104_are_unspoken_here ... ok
+test the_digit_bound_twins_are_unmoved ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/str_layout_d74.rs (/lane/target/release/deps/str_layout_d74-d286f10015001688)
+
+running 19 tests
+test a_blank_line_has_nothing_to_strip_and_nothing_to_complain_about ... ok
+test a_byte_order_mark_anywhere_else_is_a_stray_character ... ok
+test a_closing_delimiter_at_column_zero_sets_an_empty_margin ... ok
+test a_generalized_literals_body_does_not_cross_a_line ... ok
+test a_raw_literal_still_spans_lines ... ok
+test e0102_a_bare_brace_spans_the_string_to_the_end_of_its_line ... ok
+test e0103_a_one_line_multiline_shares_both_delimiters_and_reports_the_opening ... ok
+test e0103_the_closing_delimiter_is_the_first_thing_on_its_line ... ok
+test e0103_the_opening_delimiter_is_the_last_thing_on_its_line ... ok
+test e0104_a_content_line_with_no_margin_at_all_spans_its_first_byte ... ok
+test e0105_catches_a_margin_that_is_long_enough_and_still_wrong ... ok
+test e0104_a_short_content_line_spans_its_leading_whitespace ... ok
+test e0105_eight_tabs_against_eight_spaces_is_a_mismatch_not_a_short_margin ... ok
+test the_five_witnesses_answer_wolfc_code_and_span ... ok
+test the_pinned_bom_file_lexes_clean_and_the_mid_file_mark_does_not ... ok
+test a_leading_byte_order_mark_is_stripped_and_never_a_diagnostic ... ok
+test a_margin_that_is_short_reads_e0104_even_when_its_bytes_also_differ ... ok
+test the_three_layout_codes_are_no_longer_this_implementations_to_choose ... ok
+test trailing_whitespace_after_the_opener_is_hygiene_and_stays_content ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/term_editor_s234.rs (/lane/target/release/deps/term_editor_s234-cfd420bb886feef7)
+
+running 4 tests
+test the_characters_are_refused_by_name ... ok
+test the_wait_is_refused_by_name ... ok
+test the_size_is_refused_by_name ... ok
+test the_terminal_rows ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/to_int_range.rs (/lane/target/release/deps/to_int_range-70dbfb5fb8f6d838)
+
+running 4 tests
+test the_two_extremes_of_int_parse_and_survive_arithmetic ... ok
+test the_ordinary_readings_are_untouched ... ok
+test the_row_is_the_mark_parse ... ok
+test one_past_each_extreme_raises_and_the_program_runs_on ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/type_shape_is79.rs (/lane/target/release/deps/type_shape_is79-73987209166fcc57)
+
+running 5 tests
+test a_literal_of_a_local_name_that_does_not_exist_is_e0301 ... ok
+test a_literal_of_a_type_the_module_does_not_have_is_e0301 ... ok
+test a_misspelled_field_of_an_imported_struct_is_e0408 ... ok
+test a_parameter_typed_with_a_missing_type_is_e0301 ... ok
+test the_types_that_exist_still_run ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/ub_coverage.rs (/lane/target/release/deps/ub_coverage-28e9422be930da5b)
+
+running 7 tests
+test every_row_names_the_optimization_it_licenses ... ok
+test every_program_here_pins_its_own_expectation ... ok
+test a_planted_uncovered_row_fails_the_gate ... ok
+test the_deferred_and_unreachable_rows_are_listed_with_their_reasons ... ok
+test every_enumeration_row_is_detected_and_paired_or_explicitly_deferred ... ok
+test the_trap_kind_and_the_oracle_verdict_stay_distinct ... ok
+test every_trigger_program_yields_its_row_and_every_twin_runs_clean ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/wrapping_count_is79.rs (/lane/target/release/deps/wrapping_count_is79-deeae084288d81e9)
+
+running 4 tests
+test a_literal_count_and_a_count_of_the_operands_type_run ... ok
+test an_unannotated_counter_takes_the_wrapping_type_of_the_shift_it_counts ... ok
+test the_countdown_row_runs_forty_turns_then_sixteen ... ok
+test an_int_count_on_a_shift_of_another_type_is_e0401 ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+   Compiling libc v0.2.189
+   Compiling cfg-if v1.0.4
+   Compiling bitflags v2.13.1
+   Compiling memchr v2.8.3
+   Compiling utf8parse v0.2.2
+   Compiling anstyle-parse v1.0.0
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling smallvec v1.15.2
+   Compiling colorchoice v1.0.5
+   Compiling anstyle v1.0.14
+   Compiling anstyle-query v1.1.5
+   Compiling nibble_vec v0.1.0
+   Compiling anstream v1.0.0
+   Compiling serde_core v1.0.229
+   Compiling endian-type v0.2.0
+   Compiling clap_lex v1.1.0
+   Compiling linux-raw-sys v0.12.1
+   Compiling strsim v0.11.1
+   Compiling rustix v1.1.4
+   Compiling clap_builder v4.6.6
+   Compiling nix v0.31.3
+   Compiling getrandom v0.4.3
+   Compiling radix_trie v0.3.0
+   Compiling aho-corasick v1.1.5
+   Compiling zmij v1.0.23
+   Compiling unicode-segmentation v1.13.3
+   Compiling wolf-interp v0.1.55 (/lane/src)
+   Compiling fastrand v2.5.0
+   Compiling itoa v1.0.18
+   Compiling unicode-width v0.2.2
+   Compiling once_cell v1.21.4
+   Compiling regex-syntax v0.8.11
+   Compiling log v0.4.34
+   Compiling rustyline v18.0.1
+   Compiling tempfile v3.27.0
+   Compiling regex-automata v0.4.18
+   Compiling serde_json v1.0.151
+   Compiling serde v1.0.229
+   Compiling clap v4.6.6
+   Compiling getrandom v0.2.16
+   Compiling thiserror v2.0.20
+   Compiling console v0.16.4
+   Compiling comma v1.0.0
+   Compiling similar v2.7.0
+   Compiling regex v1.13.1
+   Compiling rexpect v0.7.1
+   Compiling insta v1.48.0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 37.06s
+     Running tests/differ_cli.rs (/lane/target/debug/deps/differ_cli-51aba5e5afa3ba42)
+
+running 8 tests
+test require_counterparty_turns_the_skip_into_a_failure ... ok
+test a_missing_counterparty_skips_loudly_and_green ... ok
+test a_debug_harness_is_refused_by_name_before_it_can_compare ... ok
+test fuzz_replays_identically_from_a_seed ... ok
+test the_fuzz_self_oracle_runs_green_without_a_counterparty ... ok
+test the_jsonl_report_of_a_self_differential_is_an_empty_file ... ok
+test the_self_differential_is_empty ... ok
+test the_door_is_loud_and_stamps_the_profile_on_the_report ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.06s
+
+    Finished `release` profile [optimized] target(s) in 0.04s
+   Doc-tests wolf_interp
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+tiers-test: PASS T1 the workflow's jobs between plan and tier: plan-test test shard-coverage bundle-identical independence dist-floor
+tiers-test: PASS T1 a push to trunk: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 the nightly: release, every job (6)
+tiers-test: PASS T1 a dispatch, no input: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 a dispatch asking for tier full: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 a dispatch asking for tier release: release, every job (6)
+tiers-test: PASS T1 a dispatch asking for tier pr is refused
+tiers-test: PASS T1 a dispatch asking for tier noop is refused
+tiers-test: PASS T1 a dispatch asking for tier partial is refused
+tiers-test: PASS T1 a dispatch asking for tier everything is refused
+tiers-test: PASS T1 a dispatch naming jobs and a tier is refused
+tiers-test: PASS T1 the tier input means nothing to a push: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 a dispatch naming the planner's test: partial, plan-test
+tiers-test: PASS T1 a dispatch naming two jobs, in the workflow's order: partial, test shard-coverage
+tiers-test: PASS T1 a dispatch naming every job is still partial: partial, every job (6)
+tiers-test: PASS T1 a dispatch naming no job of the workflow is refused
+tiers-test: PASS T1 a dispatch naming a job without the job it needs is refused
+tiers-test: PASS T1 a partial run of the test job, no entries: tier release's entries (ubuntu/1 ubuntu/2 ubuntu/3 ubuntu/ladder macos/1 macos/2 macos/3 macos/ladder windows/1 windows/2 windows/3 windows/ladder windows/smoke)
+tiers-test: PASS T1 a partial run of one entry: that entry alone (windows/2), no OS's shards or ladder whole
+tiers-test: PASS T1 a partial run's entries come in the matrix's order, and name the OSes they make whole (ubuntu/1 ubuntu/2 ubuntu/3 ubuntu/ladder windows/1 windows/2 windows/3 windows/ladder macos/smoke; ubuntu windows; ubuntu windows)
+tiers-test: PASS T1 a dispatch naming an entry that is none is refused
+tiers-test: PASS T1 a dispatch naming an entry no tier runs is refused
+tiers-test: PASS T1 a dispatch naming entries but not the test job is refused
+tiers-test: PASS T1 a dispatch naming entries and no jobs is refused
+tiers-test: PASS T1 a pull request labelled full-matrix, prose only: the diet stays, the label asks for nothing (ruling #101 C): noop, no job
+tiers-test: PASS T1 the full-matrix label added: a noop, the pull request's own run is the gate (ruling #101 C): noop, no job
+tiers-test: PASS T1 a code pull request's push: full, the merge gate (ruling #101 C): full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 a code pull request's push carrying full-matrix: full, as without it: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 a code pull request opened: full: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 a pull request labelled release-matrix, prose only: release, every job (6)
+tiers-test: PASS T1 the release-matrix label added: release, every job (6)
+tiers-test: PASS T1 the release-matrix label added beside full-matrix: release, every job (6)
+tiers-test: PASS T1 the full-matrix label added beside release-matrix (whose run covers it): noop, no job
+tiers-test: PASS T1 a push to a pull request carrying both labels: release, every job (6)
+tiers-test: PASS T1 another label added: noop, no job
+tiers-test: PASS T1 another label added to a labelled pull request: noop, no job
+tiers-test: PASS T1 another label added to a release-labelled pull request: noop, no job
+tiers-test: PASS T1 the jobs input means nothing to a pull request: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 the tier input means nothing to a pull request: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 src/eval/mod.rs: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 tests/doc_truth.rs: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 tests/ub/p2_frozen_write.lu: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 vendor/upstream/corpus/hello.lu: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 vendor/upstream/spec/02-memory-model.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 vendor/upstream/spec/anchors.json: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 vendor/upstream/spec/prelude.json: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 upstream: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 Cargo.toml: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 Cargo.lock: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 build.rs: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 rust-toolchain.toml: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 LICENSE: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 examples/pack.lu: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 .github/workflows/ci.yml: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 .github/workflows/release.yml: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 ci/tiers.py: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 ci/tiers-test.py: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 ci/test-shards.sh: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 ci/tl21/before.tsv: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 tools/replkeys_probe.py: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 assets/wolf-logo.svg: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): README.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/repl.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/manual/01-running-programs.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/manual/README.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/manual/new/page.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/figure.png: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): tests/faults/README.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): vendor/README.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 prose: CHANGELOG.md: noop, no job
+tiers-test: PASS T2 prose: CONTRIBUTING.md: noop, no job
+tiers-test: PASS T2 prose: docs/README.md: noop, no job
+tiers-test: PASS T2 prose: docs/approximation-contract.md: noop, no job
+tiers-test: PASS T2 prose: docs/conformance-bundle.md: noop, no job
+tiers-test: PASS T2 prose: docs/divergence-log.md: noop, no job
+tiers-test: PASS T2 prose: ci/is75.md: noop, no job
+tiers-test: PASS T2 prose: ci/tl21.md: noop, no job
+tiers-test: PASS T2 prose alone, several: noop, no job
+tiers-test: PASS T2 prose beside code: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 prose beside a document a test reads: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 a pull request's matrix: ubuntu's four and two smokes; shard coverage checks ubuntu
+tiers-test: PASS T3 a path no rule names: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T3 a new file at the root: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T3 an unknown path beside prose: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T3 an unknown path beside code: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T3 no changed paths to read: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T3 a change that names no path: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T3 a merge that cannot be read (no repository there): full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T6 a green release run: exit 0
+tiers-test: PASS T6 a green full run: exit 0
+tiers-test: PASS T6 a pr run: no tier since ruling #101 C: exit 1
+tiers-test: PASS T6 a noop run: exit 0
+tiers-test: PASS T6 a noop run whose jobs output is absent: exit 0
+tiers-test: PASS T6 a green run whose other outputs are absent: exit 0
+tiers-test: PASS T6 a partial run of the planner's test: exit 0
+tiers-test: PASS T6 a chosen job failed: exit 1
+tiers-test: PASS T6 the planner's test failed: exit 1
+tiers-test: PASS T6 a chosen job was skipped: exit 1
+tiers-test: PASS T6 a chosen job was cancelled: exit 1
+tiers-test: PASS T6 a job ran unasked: exit 1
+tiers-test: PASS T6 a job ran in a noop run: exit 1
+tiers-test: PASS T6 a full run that chose less than its jobs: exit 1
+tiers-test: PASS T6 a full run that ran the bundle comparison (is78's full): exit 1
+tiers-test: PASS T6 a release run that chose less than every job: exit 1
+tiers-test: PASS T6 a release run whose test job failed: exit 1
+tiers-test: PASS T6 a full run whose jobs output is absent: exit 1
+tiers-test: PASS T6 a full run that chose one job: exit 1
+tiers-test: PASS T6 a partial run that chose nothing: exit 1
+tiers-test: PASS T6 the plan failed: exit 1
+tiers-test: PASS T6 the plan named no tier: exit 1
+tiers-test: PASS T6 the plan named a tier that is none: exit 1
+tiers-test: PASS T6 the plan's jobs are no list: exit 1
+tiers-test: PASS T6 a chosen job the tier job does not need: exit 1
+tiers-test: PASS T4 the plan is the first job and the tier is the last
+tiers-test: PASS T4 plan-test needs the plan and runs only when the plan names it
+tiers-test: PASS T4 test needs the plan and runs only when the plan names it
+tiers-test: PASS T4 shard-coverage needs the plan and runs only when the plan names it
+tiers-test: PASS T4 bundle-identical needs the plan and runs only when the plan names it
+tiers-test: PASS T4 independence needs the plan and runs only when the plan names it
+tiers-test: PASS T4 dist-floor needs the plan and runs only when the plan names it
+tiers-test: PASS T4 every plan output is read with a default (11 reads: jobs ladder_oses matrix shard_oses tier)
+tiers-test: PASS T4 the plan job declares tier, jobs, matrix, shard_oses and ladder_oses
+tiers-test: PASS T4 the plan reads the merge commit (depth 2) and checks its second parent
+tiers-test: PASS T4 the plan-test job runs this file
+tiers-test: PASS T4 the tier job needs every job (7 of 7)
+tiers-test: PASS T4 the tier job runs on !cancelled(), never always() (${{ !cancelled() }})
+tiers-test: PASS T4 the tier job is named for the tier
+tiers-test: PASS T4 the tier job's check is ci/tiers.py verdict over toJSON(needs)
+tiers-test: PASS T4 cancel-in-progress for pull requests only
+tiers-test: PASS T4 a run that is no pull request's has a concurrency group of its own run id
+tiers-test: PASS T4 a pull request's release and gate runs are separate groups, and a label's noop cancels nothing
+tiers-test: PASS T4 every label but release-matrix, full-matrix included, is a noop's group, as the plan says; full-matrix picks no group (ruling #101 C)
+tiers-test: PASS T4 a push to trunk runs
+tiers-test: PASS T4 the nightly runs
+tiers-test: PASS T4 adding a label starts a run
+tiers-test: PASS T4 a dispatch takes the jobs input
+tiers-test: PASS T4 a dispatch takes the tier and entries inputs, empty by default, and the plan reads them
+tiers-test: PASS T4 the release matrix is is75's twelve entries, in its order, and the windows smoke; every OS's shards and ladder
+tiers-test: PASS T4 the full matrix is ubuntu's four entries, in is75's order, the macOS smoke and the windows smoke; ubuntu's shards and ladder (tl29)
+tiers-test: PASS T4 no merge-gate run (a trunk push, a labelled PR, a PR, a PR with a path no rule names, a dispatch) has a macOS or windows heavy entry; each has both smokes (tl29)
+tiers-test: PASS T4 the nightly's release matrix keeps macOS's and windows's three shards and ladder (tl29: what left the merge is here)
+tiers-test: PASS T4 a code pull request's run is the merge gate itself, a trunk push's plan (tl30b, ruling #101 C; ci/tl29.md R-tl29-2)
+tiers-test: PASS T4 the pull-request matrix is is75's six entries, in its order
+tiers-test: PASS T4 the bundle is compared across the OSes the plan says ran a ladder, all three when it says nothing
+tiers-test: PASS T4 shard coverage checks the OSes the plan says were sharded, all three when it says nothing
+tiers-test: PASS T4 a red nightly, and only a nightly, runs ci/nightly-red.py, after the verdict
+tiers-test: PASS T4 the tier job's token may read the code and the run and write issues; no other job may write issues
+tiers-test: PASS T7 a prose-only merge, the base moved on (its src/moved.rs is not the pull request's): noop, no job
+tiers-test: PASS T7 the same merge, the head not given: noop, no job
+tiers-test: PASS T7 the merge's second parent is not the pull request's head: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T7 HEAD is the branch, not a merge commit: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T7 a merge that changes code and prose: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T7 a merge that adds a path no rule names: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T8 no open issue: one opened, labelled, naming the red jobs (failed and cancelled) and the run, and no green job
+tiers-test: PASS T8 an open issue of the title: commented on (#42), none opened
+tiers-test: PASS T8 an open issue of another title does not dedupe: one opened
+tiers-test: PASS T8 a run with no red job: the issue says the verdict is red
+tiers-test: PASS T8 the dedupe reads the open issues labelled nightly-red
+tiers-test: PASS T8 a gh that fails (issue create) makes the reporter exit 1, loudly
+tiers-test: PASS T8 a gh that fails (issue list) makes the reporter exit 1, loudly
+tiers-test: PASS T8 a gh that fails (api repos/o/r/actions/runs/123456789/jobs) makes the reporter exit 1, loudly
+tiers-test: PASS T8 the reporter refuses to run without REPO and RUN_ID
+tiers-test: FAIL T5 not a git checkout: the tracked paths cannot be listed
+tiers-test: FAIL (1)

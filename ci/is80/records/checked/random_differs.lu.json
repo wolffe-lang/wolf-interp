@@ -1,0 +1,1 @@
+{"commit":"9da7bdc","diagnostics":[],"file":"/lane/src/tests/fixtures/os_random_is80/random_differs.lu","impl":"wolfgang","impl_version":"0.2.34","phase_reached":"run","protocol":1,"seeded":true,"stdout_inline":"len=32/32 range=true same=false\n","stdout_sha256":"3aec1c23c7135c86747008f5890462545b7af7a19aae2b89dc8a87b9b4675a01","verdict":"exit(0)","warnings":[]}

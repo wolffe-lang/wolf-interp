@@ -1,0 +1,12 @@
+notice: counterparty compiler: /lane/download/wolf-0.2.34-x86_64-unknown-linux-gnu/wolf
+notice: counterparty tier: checked (conform-run --checked)
+harness profile: release
+differential: 3 entries compared, 0 member(s) exercised through their entries
+divergences: 0
+conservatism ledger: 3 entries
+  unsupported(interp): 3
+differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
+os_random mirror gate: the witnesses did not all compare at run
+{"file":"//lane/src/tests/fixtures/os_random_is80/random_differs.lu","kind":"unsupported","phase_reached":"resolve","reason":"`os_random` does not resolve","side":"interp"}
+{"file":"//lane/src/tests/fixtures/os_random_is80/random_edges.lu","kind":"unsupported","phase_reached":"resolve","reason":"`os_random` does not resolve","side":"interp"}
+{"file":"//lane/src/tests/fixtures/os_random_is80/random_negative_trap.lu","kind":"unsupported","phase_reached":"resolve","reason":"`os_random` does not resolve","side":"interp"}

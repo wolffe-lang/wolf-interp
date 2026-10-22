@@ -1,0 +1,3 @@
+{"file":"tests/fixtures/os_random_is80/random_differs.lu","kind":"unsupported","phase_reached":"resolve","reason":"`os_random` does not resolve","side":"interp"}
+{"file":"tests/fixtures/os_random_is80/random_edges.lu","kind":"unsupported","phase_reached":"resolve","reason":"`os_random` does not resolve","side":"interp"}
+{"file":"tests/fixtures/os_random_is80/random_negative_trap.lu","kind":"unsupported","phase_reached":"resolve","reason":"`os_random` does not resolve","side":"interp"}

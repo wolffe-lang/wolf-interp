@@ -1,0 +1,1 @@
+{"commit":"9da7bdc","diagnostics":[],"file":"/lane/src/tests/fixtures/os_random_is80/random_edges.lu","impl":"wolfgang","impl_version":"0.2.34","phase_reached":"run","protocol":1,"seeded":true,"stdout_inline":"z=0 big=65536 range=true\n","stdout_sha256":"11181cf2a3771cd6372fc0a4658697382478f43ff0eb4f2bc85882123cb98016","verdict":"exit(0)","warnings":[]}

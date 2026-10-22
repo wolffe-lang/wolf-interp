@@ -1,0 +1,1 @@
+{"protocol":1,"impl":"lupin","impl_version":"0.1.55","commit":"unknown","file":"tests/fixtures/os_random_is80/random_edges.lu","phase_reached":"run","seeded":true,"diagnostics":[],"warnings":[],"verdict":"exit(0)","stdout_sha256":"11181cf2a3771cd6372fc0a4658697382478f43ff0eb4f2bc85882123cb98016","stdout_inline":"z=0 big=65536 range=true\n","x-seed":42}

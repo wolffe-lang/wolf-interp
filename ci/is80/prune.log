@@ -1,0 +1,7 @@
+is80: all recorded jobs completed; preserve evidence and scripts only
+before:
+2.3G	/home/mfwolffe/lanes/is80
+after:
+728K	/home/mfwolffe/lanes/is80
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/nvme0n1p2  928G  854G   70G  93% /home

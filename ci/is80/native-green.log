@@ -1,0 +1,142 @@
+notice: counterparty compiler: /lane/download/wolf-0.2.34-x86_64-unknown-linux-gnu/wolf
+notice: counterparty tier: checked (conform-run --checked)
+info: syncing channel updates for 1.97.1-x86_64-unknown-linux-gnu
+info: latest update on 2026-07-16 for version 1.97.1 (8bab26f4f 2026-07-14)
+info: downloading 2 components
+    Updating crates.io index
+     Locking 2 packages to latest Rust 1.97.1 compatible versions
+      Adding getrandom v0.2.16 (available: v0.2.17)
+      Adding wasi v0.11.1+wasi-snapshot-preview1
+ Downloading crates ...
+  Downloaded aho-corasick v1.1.5
+  Downloaded heck v0.5.0
+  Downloaded anstyle-query v1.1.5
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded errno v0.3.14
+  Downloaded fastrand v2.5.0
+  Downloaded itoa v1.0.18
+  Downloaded clap_lex v1.1.0
+  Downloaded endian-type v0.2.0
+  Downloaded cfg-if v1.0.4
+  Downloaded cfg_aliases v0.2.2
+  Downloaded utf8parse v0.2.2
+  Downloaded nibble_vec v0.1.0
+  Downloaded strsim v0.11.1
+  Downloaded comma v1.0.0
+  Downloaded anstyle-parse v1.0.0
+  Downloaded thiserror-impl v2.0.20
+  Downloaded zmij v1.0.23
+  Downloaded anstyle v1.0.14
+  Downloaded colorchoice v1.0.5
+  Downloaded quote v1.0.47
+  Downloaded getrandom v0.2.16
+  Downloaded rexpect v0.7.1
+  Downloaded tempfile v3.27.0
+  Downloaded thiserror v2.0.20
+  Downloaded once_cell v1.21.4
+  Downloaded clap_derive v4.6.4
+  Downloaded anstream v1.0.0
+  Downloaded log v0.4.34
+  Downloaded smallvec v1.15.2
+  Downloaded proc-macro2 v1.0.107
+  Downloaded serde_core v1.0.229
+  Downloaded unicode-ident v1.0.24
+  Downloaded serde_derive v1.0.229
+  Downloaded getrandom v0.4.3
+  Downloaded clap v4.6.6
+  Downloaded bitflags v2.13.1
+  Downloaded console v0.16.4
+  Downloaded similar v2.7.0
+  Downloaded serde v1.0.229
+  Downloaded unicode-segmentation v1.13.3
+  Downloaded memchr v2.8.3
+  Downloaded insta v1.48.0
+  Downloaded rustyline v18.0.1
+  Downloaded serde_json v1.0.151
+  Downloaded regex v1.13.1
+  Downloaded clap_builder v4.6.6
+  Downloaded radix_trie v0.3.0
+  Downloaded unicode-width v0.2.2
+  Downloaded syn v3.0.3
+  Downloaded nix v0.31.3
+  Downloaded regex-syntax v0.8.11
+  Downloaded rustix v1.1.4
+  Downloaded regex-automata v0.4.18
+  Downloaded libc v0.2.189
+  Downloaded linux-raw-sys v0.12.1
+   Compiling unicode-ident v1.0.24
+   Compiling libc v0.2.189
+    Checking cfg-if v1.0.4
+    Checking bitflags v2.13.1
+   Compiling rustix v1.1.4
+   Compiling proc-macro2 v1.0.107
+    Checking smallvec v1.15.2
+    Checking nibble_vec v0.1.0
+   Compiling quote v1.0.47
+   Compiling serde_json v1.0.151
+    Checking clap_lex v1.1.0
+   Compiling syn v3.0.3
+    Checking radix_trie v0.3.0
+    Checking clap_builder v4.6.6
+    Checking nix v0.31.3
+    Checking getrandom v0.4.3
+   Compiling thiserror v2.0.20
+   Compiling wolf-interp v0.1.55 (/lane/src)
+    Checking tempfile v3.27.0
+    Checking getrandom v0.2.16
+    Checking console v0.16.4
+    Checking insta v1.48.0
+    Checking rustyline v18.0.1
+   Compiling clap_derive v4.6.4
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.20
+    Checking rexpect v0.7.1
+    Checking clap v4.6.6
+    Checking serde v1.0.229
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 37.09s
+   Compiling getrandom v0.2.16
+   Compiling wolf-interp v0.1.55 (/lane/src)
+    Finished `release` profile [optimized] target(s) in 1m 08s
+     Running tests/os_random_is80.rs (/lane/target/release/deps/os_random_is80-dd5f653047640128)
+
+running 3 tests
+test the_name_is_a_first_class_builtin ... ok
+test a_schedule_seed_never_seeds_key_material ... ok
+test canonical_random_rows_match_the_checked_machine ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+   Compiling wolf-interp v0.1.55 (/lane/src)
+    Finished `release` profile [optimized] target(s) in 54.72s
+     Running unittests src/lib.rs (/lane/target/release/deps/wolf_interp-44ca67ffff6478a5)
+
+running 3 tests
+test eval::builtin::entropy_tests::empty_and_negative_requests_never_touch_the_source ... ok
+test eval::builtin::entropy_tests::partial_entropy_on_failure_is_never_returned ... ok
+test eval::builtin::entropy_tests::the_fill_boundary_owns_the_whole_buffer ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 785 filtered out; finished in 0.00s
+
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.120s
+
+OK
+   Compiling nix v0.31.3
+   Compiling bitflags v2.13.1
+   Compiling rustyline v18.0.1
+   Compiling wolf-interp v0.1.55 (/lane/src)
+    Finished `release` profile [optimized] target(s) in 56.80s
+notice: counterparty compiler: /lane/download/wolf-0.2.34-x86_64-unknown-linux-gnu/wolf
+notice: counterparty tier: checked (conform-run --checked)
+harness profile: release
+differential: 3 entries compared, 0 member(s) exercised through their entries
+divergences: 0
+conservatism ledger: 3 entries
+  unsupported(interp): 3
+differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
+harness profile: release
+differential: 3 entries compared, 0 member(s) exercised through their entries
+divergences: 0
+conservatism ledger: 0 entries
+differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate

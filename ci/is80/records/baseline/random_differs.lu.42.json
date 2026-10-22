@@ -1,0 +1,1 @@
+{"protocol":1,"impl":"lupin","impl_version":"0.1.55","commit":"unknown","file":"tests/fixtures/os_random_is80/random_differs.lu","phase_reached":"resolve","seeded":true,"diagnostics":[],"warnings":[],"verdict":"unsupported","stdout_sha256":null,"stdout_inline":null,"x-seed":42,"x-unsupported":"`os_random` does not resolve","x-unsupported-at":"run"}

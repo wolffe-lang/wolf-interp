@@ -1,0 +1,91 @@
+is80-full-running
+is80-full-running
+is80-full-running
+is80-full-running
+test every_corpus_file_lexes_clean ... ok
+test the_corpus_is_the_only_source_of_pinned_codes ... ok
+test the_spans_of_pinned_failures_point_at_the_offending_source ... ok
+test files_that_reach_parse_or_deeper_parse_clean ... ok
+test the_parser_is_deterministic_over_the_corpus ... ok
+test every_parseable_file_resolves_under_sema_lite ... ok
+test the_static_rungs_this_implementation_does_not_perform_are_declared ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.65s
+
+     Running tests/core_is77.rs (/lane/target/release/deps/core_is77-365b840b062724f7)
+
+running 4 tests
+SKIP: core_is77_live: no container engine ran docker.io/library/ubuntu:24.04 (["docker: No such file or directory (os error 2)", "podman: No such file or directory (os error 2)"]) — the live rows did not run
+test a_core_rides_the_sibling_status ... ok
+test the_polls_with_no_child_answer_minus_one_zero ... ok
+test the_sibling_wait_answers_as_the_released_one ... ok
+test the_sibling_poll_with_a_child_not_yet_reaped_is_refused_by_name ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/cores_s137.rs (/lane/target/release/deps/cores_s137-386056e4ac070032)
+
+running 7 tests
+test a_non_loopback_bind_refuses_by_name_through_the_option_call_too ... ok
+test an_empty_inherit_set_is_os_spawn_with_the_program_named_apart ... ok
+test the_answer_is_the_subset_in_the_callers_order ... ok
+test an_empty_set_is_the_io_row_only_when_the_deadline_is_unbounded ... ok
+test the_option_less_shape_is_net_listen_call_for_call ... ok
+test the_machine_answers_its_own_size_and_its_own_path ... ok
+test the_two_declined_constructs_are_named_in_s137s_own_words ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/corpus_harness.rs (/lane/target/release/deps/corpus_harness-c8e91c767b36394e)
+
+running 10 tests
+test entries_carry_check_and_phase_and_members_carry_neither ... ok
+test every_conforms_tag_is_a_well_formed_anchor ... ok
+test member_files_live_beside_an_entry_file ... ok
+test every_header_in_the_pinned_corpus_parses ... ok
+test paths_never_leak_platform_separators ... ok
+test registered_namespace_tags_resolve_against_the_pinned_anchors_json ... ok
+test vendor_matches_submodule ... ok
+submodule absent; vendored snapshot not cross-checked here
+test the_pin_holds_the_corpus_we_think_it_does ... ok
+test the_walk_is_green ... ok
+test the_walk_is_deterministic_and_sorted ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/differ_cli.rs (/lane/target/release/deps/differ_cli-e037ce85bccfb28c)
+
+running 8 tests
+test require_counterparty_turns_the_skip_into_a_failure ... ok
+test a_missing_counterparty_skips_loudly_and_green ... ok
+test fuzz_replays_identically_from_a_seed ... ok
+test the_fuzz_self_oracle_runs_green_without_a_counterparty ... ok
+test the_self_differential_is_empty ... ok
+
+thread 'a_debug_harness_is_refused_by_name_before_it_can_compare' (462893) panicked at tests/differ_cli.rs:104:5:
+assertion `left == right` failed: a refusal is a TOOL error, not a comparison result: notice: counterparty compiler: /lane/target/release/lupin
+notice: counterparty tier: default (conform-run)
+
+  left: Some(0)
+ right: Some(2)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test a_debug_harness_is_refused_by_name_before_it_can_compare ... FAILED
+test the_jsonl_report_of_a_self_differential_is_an_empty_file ... ok
+
+thread 'the_door_is_loud_and_stamps_the_profile_on_the_report' (462905) panicked at tests/differ_cli.rs:140:5:
+notice: counterparty compiler: /lane/target/release/lupin
+notice: counterparty tier: default (conform-run)
+
+test the_door_is_loud_and_stamps_the_profile_on_the_report ... FAILED
+
+failures:
+
+failures:
+    a_debug_harness_is_refused_by_name_before_it_can_compare
+    the_door_is_loud_and_stamps_the_profile_on_the_report
+
+test result: FAILED. 6 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.35s
+
+error: test failed, to rerun pass `--test differ_cli`
+
+[exited with code 101]

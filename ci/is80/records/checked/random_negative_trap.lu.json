@@ -1,0 +1,1 @@
+{"commit":"9da7bdc","diagnostics":[],"file":"/lane/src/tests/fixtures/os_random_is80/random_negative_trap.lu","impl":"wolfgang","impl_version":"0.2.34","phase_reached":"run","protocol":1,"seeded":true,"stdout_inline":null,"stdout_sha256":null,"verdict":"trap(assert)","warnings":[],"x-trap-clause":"os.random.fill","x-trap-pos":[19,13],"x-trap-span":[971,984]}

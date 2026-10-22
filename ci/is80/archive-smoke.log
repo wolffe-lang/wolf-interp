@@ -1,0 +1,32 @@
+++ sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml
+++ head -1
++ version=0.1.55
++ target=x86_64-unknown-linux-musl
++ stem=lupin-0.1.55-x86_64-unknown-linux-musl
++ mkdir -p target/dist/lupin-0.1.55-x86_64-unknown-linux-musl
++ '[' Linux = Windows ']'
++ cp target/x86_64-unknown-linux-musl/release/lupin target/dist/lupin-0.1.55-x86_64-unknown-linux-musl/
++ cp README.md LICENSE CHANGELOG.md target/dist/lupin-0.1.55-x86_64-unknown-linux-musl/
++ cd target/dist
++ '[' Linux = Windows ']'
++ tar -czf lupin-0.1.55-x86_64-unknown-linux-musl.tar.gz lupin-0.1.55-x86_64-unknown-linux-musl
++ echo archive=target/dist/lupin-0.1.55-x86_64-unknown-linux-musl.tar.gz
++ echo stem=lupin-0.1.55-x86_64-unknown-linux-musl
++ work=/lane/archive-smoke/smoke
++ rm -rf /lane/archive-smoke/smoke
++ mkdir -p /lane/archive-smoke/smoke
++ cp target/dist/lupin-0.1.55-x86_64-unknown-linux-musl.tar.gz /lane/archive-smoke/smoke/
++ cd /lane/archive-smoke/smoke
++ '[' Linux = Windows ']'
+++ basename target/dist/lupin-0.1.55-x86_64-unknown-linux-musl.tar.gz
++ tar -xzf lupin-0.1.55-x86_64-unknown-linux-musl.tar.gz
++ bin=./lupin-0.1.55-x86_64-unknown-linux-musl/lupin
++ printf 'fn main() -> !int {\n    print("hello, wolf")\n    0\n}\n'
++ ./lupin-0.1.55-x86_64-unknown-linux-musl/lupin --version
+lupin 0.1.55 (wolf-interp, reference interpreter at pin 294d626)
+++ ./lupin-0.1.55-x86_64-unknown-linux-musl/lupin run hello.lu
++ out='hello, wolf'
+hello, wolf
++ echo 'hello, wolf'
++ test 'hello, wolf' = 'hello, wolf'
+exact archive and unpack/hello steps: green
