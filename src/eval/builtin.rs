@@ -594,10 +594,14 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // host's words for a number — std's rendering without its
         // ` (os error N)` suffix, the compiler's runtime word for word.
         "os_error" => Ok(Value::Int(machine.last_os_error(), IntTy::INT)),
+        // wolf-web ww40: `eval::fs` is not compiled for wasm (`mod fs` is
+        // gated in eval/mod.rs), so the host's words for a number have no
+        // host to come from; the arm declines there, as the fs tier does.
         #[cfg(target_family = "wasm")]
-        "os_error_text" => unsupported(
-            "`os_error_text` needs the host OS error-text tier; this wasm build has no host shim",
-        ),
+        "os_error_text" => unsupported(format!(
+            "`{name}` asks the host for an error number's words; this wasm build has no \
+             host to ask, so it is declined rather than mocked"
+        )),
         #[cfg(not(target_family = "wasm"))]
         "os_error_text" => {
             let Some(Value::Int(code, _)) = args.first() else {
