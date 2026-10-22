@@ -1264,6 +1264,7 @@ impl Machine {
 
     /// s248 (`[os.clock.ns]`, wolf-interp#268): the same anchor at
     /// nanoseconds, saturating at the largest `int` (292 years in).
+    #[cfg(not(target_family = "wasm"))]
     pub(crate) fn monotonic_ns(&self) -> i128 {
         i128::try_from(self.shared.epoch.elapsed().as_nanos())
             .unwrap_or(i128::MAX)
