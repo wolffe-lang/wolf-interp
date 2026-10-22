@@ -231,6 +231,10 @@ pub enum Rule {
     // -- traps -------------------------------------------------------------
     /// A user assertion that fails traps `assert`.
     Assert,
+    /// A negative OS-entropy byte count traps assert.
+    RandomFill,
+    /// An unavailable OS-entropy source traps assert, never a fallback.
+    RandomTrap,
     /// Traps map onto the closed twelve-kind vocabulary and terminate.
     TrapVocabulary,
 
@@ -677,6 +681,14 @@ impl Rule {
                 "a failed user assertion, or a ruled caller-contract violation of a builtin \
                  surface (`[mem.str.repeat]`), traps `assert`",
             ),
+            Rule::RandomFill => (
+                "os.random.fill",
+                "os_random requires a nonnegative byte count; zero is an empty list",
+            ),
+            Rule::RandomTrap => (
+                "os.random.trap",
+                "OS entropy failure traps assert with no predictable fallback",
+            ),
             Rule::TrapVocabulary => (
                 "conf.trap.set",
                 "every fault this machine raises is one of the closed twelve kinds",
@@ -910,7 +922,7 @@ impl Rule {
     }
 
     /// Every rule, in declaration order. The registry.
-    pub const ALL: [Rule; 121] = [
+    pub const ALL: [Rule; 123] = [
         Rule::ValueSemantics,
         Rule::PlacePath,
         Rule::PathDisjoint,
@@ -986,6 +998,8 @@ impl Rule {
         Rule::DeferLifo,
         Rule::StrInterp,
         Rule::Assert,
+        Rule::RandomFill,
+        Rule::RandomTrap,
         Rule::TrapVocabulary,
         Rule::SchedSeed,
         Rule::SchedSpawn,

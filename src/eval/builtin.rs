@@ -340,6 +340,9 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // s248 (wolf-lang#798, `[os.clock.ns]`; wolf-interp#268): the monotonic
     // clock at nanoseconds, from `time_now_ms`'s own anchor.
     "os_clock_ns",
+    // [os.random]: this is real OS entropy even under --seed. A missing
+    // table entry used to send it down the unresolved-name path (#284).
+    "os_random",
     "json_valid",
     "json_get",
     "json_type",
@@ -1865,6 +1868,51 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 }
             }
         }
+        // [os.random.checked/.sole]: scheduling determinism never changes
+        // key material. No Machine/Sched PRNG is consulted here.
+        #[cfg(not(target_family = "wasm"))]
+        "os_random" => {
+            let [Value::Int(n, _)] = args.as_slice() else {
+                return unsupported("`os_random` takes exactly one `int` byte count");
+            };
+            let bytes = match entropy_bytes(*n, getrandom::getrandom) {
+                Ok(bytes) => bytes,
+                Err(EntropyFailure::Contract) => {
+                    return machine.fault(
+                        TrapKind::Assert,
+                        Rule::RandomFill,
+                        span,
+                        "`os_random` needs a nonnegative, representable byte count".to_owned(),
+                    );
+                }
+                Err(EntropyFailure::Source) => {
+                    return machine.fault(
+                        TrapKind::Assert,
+                        Rule::RandomTrap,
+                        span,
+                        "`os_random`: the OS entropy source failed; no fallback".to_owned(),
+                    );
+                }
+            };
+            let home = machine.allocate(
+                span,
+                "os_random",
+                ledger::container_bytes(bytes.len() as u64),
+            )?;
+            Ok(Value::list(
+                bytes
+                    .into_iter()
+                    .map(|b| Slot::live(Value::Int(i128::from(b), IntTy::INT)))
+                    .collect(),
+                Some(ElemTy::Int(IntTy::INT)),
+                Some(home),
+            ))
+        }
+        #[cfg(target_family = "wasm")]
+        "os_random" => unsupported(
+            "`os_random` is the OS entropy tier [os.random]; this wasm build has no host entropy shim \
+             (crypto.getRandomValues), so the tier is declined rather than seeded or mocked",
+        ),
         // The time trio needs a clock and a way to block, and wasm has
         // neither to call: `Instant`, `SystemTime` and `thread::sleep` all
         // abort the module. A guessed clock would make the tier *look*
@@ -4496,4 +4544,74 @@ fn host_signal_number(m: i128) -> Option<i128> {
     const TABLE: Option<[i128; 28]> = None;
     let i = usize::try_from(m.trailing_zeros()).ok()?;
     TABLE.map(|t| t[i])
+}
+
+// Keep filling at one boundary. getrandom owns EINTR and short reads; a failed
+// fill never hands even a partial buffer to wolf. Allocation failure uses the
+// same fail-closed trap as a failed OS request, never a PRNG or empty success.
+#[cfg(not(target_family = "wasm"))]
+#[derive(Debug, PartialEq, Eq)]
+enum EntropyFailure {
+    Contract,
+    Source,
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn entropy_bytes<E>(
+    n: i128,
+    fill: impl FnOnce(&mut [u8]) -> Result<(), E>,
+) -> Result<Vec<u8>, EntropyFailure> {
+    let n = usize::try_from(n).map_err(|_| EntropyFailure::Contract)?;
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(n)
+        .map_err(|_| EntropyFailure::Source)?;
+    bytes.resize(n, 0);
+    if n != 0 {
+        fill(&mut bytes).map_err(|_| EntropyFailure::Source)?;
+    }
+    Ok(bytes)
+}
+
+#[cfg(all(test, not(target_family = "wasm")))]
+mod entropy_tests {
+    use super::{EntropyFailure, entropy_bytes};
+
+    #[test]
+    fn empty_and_negative_requests_never_touch_the_source() {
+        assert_eq!(
+            entropy_bytes::<()>(0, |_| panic!("empty needs no entropy")),
+            Ok(vec![])
+        );
+        assert_eq!(
+            entropy_bytes::<()>(-1, |_| panic!("invalid count")),
+            Err(EntropyFailure::Contract)
+        );
+    }
+
+    #[test]
+    fn partial_entropy_on_failure_is_never_returned() {
+        assert_eq!(
+            entropy_bytes(32, |b| {
+                b[0] = 7;
+                Err(())
+            }),
+            Err(EntropyFailure::Source)
+        );
+        assert_eq!(
+            entropy_bytes(i128::from(usize::MAX as u64), |_| Ok::<_, ()>(())),
+            Err(EntropyFailure::Source)
+        );
+    }
+
+    #[test]
+    fn the_fill_boundary_owns_the_whole_buffer() {
+        assert_eq!(
+            entropy_bytes(3, |b| {
+                b.copy_from_slice(&[0, 128, 255]);
+                Ok::<_, ()>(())
+            }),
+            Ok(vec![0, 128, 255])
+        );
+    }
 }
