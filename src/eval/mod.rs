@@ -2542,6 +2542,7 @@ impl Machine {
 
     /// `[os.fs.error]` (s200): set by `Machine::fs_call` after each
     /// fallible fs call.
+    #[cfg(not(target_family = "wasm"))]
     pub(crate) fn set_last_os_error(&mut self, code: i128) {
         self.last_os_error = code;
     }

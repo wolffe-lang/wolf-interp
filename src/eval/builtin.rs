@@ -4362,6 +4362,7 @@ pub(crate) const ID_MAX: i128 = 0xFFFF_FFFE;
 #[cfg(not(target_family = "wasm"))]
 const GROUPS_MAX: usize = 65536;
 
+#[cfg(not(target_family = "wasm"))]
 fn fd_map_of(flat: &[i128]) -> Option<Vec<(i128, Option<i128>)>> {
     if !flat.len().is_multiple_of(2) || flat.len() / 2 > 64 {
         return None;
