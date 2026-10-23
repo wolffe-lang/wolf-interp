@@ -9224,7 +9224,7 @@ impl Machine {
             (None, None) => unreachable!("a lend implies a place"),
         };
         // The lend's O(1) mutation witness, captured before the call.
-        let lent_len = lend.map(|_| builtin::list_len(&receiver_value));
+        let lent_stamp = lend.map(|_| builtin::container_write_stamp(&receiver_value));
         // Kept for the `[mem.region.freeze.4]` comparison below: a method
         // that returns its receiver unmodified performed only reads, and an
         // unmodified write-back must not count as a write. A lend answers the
@@ -9337,11 +9337,11 @@ impl Machine {
             (Some(path), result) if lend.is_some() => {
                 let mutated = result.is_ok()
                     && lend.is_some_and(|kind| kind.mutating)
-                    && lent_len.flatten() != builtin::list_len(&receiver_value);
+                    && lent_stamp.flatten() != builtin::container_write_stamp(&receiver_value);
                 debug_assert_eq!(
                     mutated,
                     result.is_ok() && receiver_value != original_receiver,
-                    "`builtin::mutates_receiver`/`list_len` disagreed with the whole-value \
+                    "`builtin::mutates_receiver`/`container_write_stamp` disagreed with the whole-value \
                      comparison for `{method}`"
                 );
                 let value = std::mem::replace(&mut receiver_value, Value::Unit);

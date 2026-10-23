@@ -2560,8 +2560,8 @@ pub fn is_builtin_method(receiver: &Value, name: &str) -> bool {
 /// Whether [`method`] can change `receiver` in place — that is, whether the
 /// arm it dispatches to takes the receiver's elements mutably.
 ///
-/// Five arms of [`method`] do: `List.push`, `List.pop`, `List.clear`,
-/// `Map.clear` and `Map.remove`. Every other arm either reads its receiver and returns a fresh
+/// `List.push`, `List.pop`, `List.clear`/`reset`, `List.reserve`,
+/// `Map.clear` and `Map.remove` do. Every other arm either reads its receiver and returns a fresh
 /// value, or changes *machine* state (the store, the provenance forest, the
 /// scheduler) behind a receiver that is an immutable id.
 ///
@@ -2583,15 +2583,15 @@ pub fn mutates_receiver(receiver: &Value, name: &str) -> bool {
     )
 }
 
-/// The O(1) witness for [`mutates_receiver`]'s five methods: each changes the
-/// element count exactly when it changes the value (`clear` on an empty
-/// container changes neither, and neither does a `remove` that misses), so
-/// the count is a complete stand-in for comparing the whole container.
+/// O(1) internal writeback witness: push/pop/reset change length, while
+/// reserve can change only the capacity in the header. This is not wolf's
+/// value equality (which ignores capacity). Retaining header changes also
+/// preserves reservations made inside an impl method's inout receiver.
 #[must_use]
-pub fn list_len(value: &Value) -> Option<usize> {
+pub fn container_write_stamp(value: &Value) -> Option<(usize, u64)> {
     match value {
-        Value::List(items, _, _) => Some(items.len()),
-        Value::Map(pairs, _) => Some(pairs.len()),
+        Value::List(items, _, _) => Some((items.len(), items.capacity)),
+        Value::Map(pairs, _) => Some((pairs.len(), 0)),
         _ => None,
     }
 }

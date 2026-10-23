@@ -327,3 +327,30 @@ fn main() -> !int {
         }
     }
 }
+
+#[test]
+fn reserve_header_changes_survive_an_impl_receiver_writeback() {
+    let source = r#"
+struct Buffer { xs: List[int] }
+impl Buffer {
+    fn reserve_more(mut self) { (mut self.xs).reserve(32) }
+}
+fn main() {
+    region r {
+        var b = Buffer { xs: List[int]() }
+        (mut b).reserve_more()
+        let reserved = region_bytes(r)
+        var i = 0
+        while i < 32 { (mut b.xs).push(i); i += 1 }
+        assert(region_bytes(r) == reserved)
+        (mut b.xs).reserve(0)
+        (mut b.xs).reserve(16)
+        assert(region_bytes(r) == reserved)
+        print("{b.xs.len} {b.xs[31]}")
+    }
+}
+"#;
+    let obs = observe(source.as_bytes(), None);
+    assert_eq!(obs.verdict, Verdict::Exit(0), "{:?} {:?}", obs.trap, obs.reason);
+    assert_eq!(obs.stdout, b"32 31\n");
+}
