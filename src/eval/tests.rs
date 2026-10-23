@@ -5525,3 +5525,17 @@ fn the_wasm_decline_names_the_hosted_tier_not_spawning() {
         assert!(!around.contains("spawn"), "{why}");
     }
 }
+
+#[test]
+fn is81_container_values_ignore_homes_and_spare_capacity_in_equality() {
+    let entry = || (Value::Str(value::Str::new("key")), Slot::live(Value::Int(7, IntTy::INT)));
+    let first = Value::Map(vec![entry()], Some(1));
+    let second = Value::Map(vec![entry()], Some(2));
+    assert!(value_eq(&first, &second));
+    let small = Value::list(vec![Slot::live(first)], None, Some(1));
+    let mut reserved = Value::list(vec![Slot::live(second)], None, Some(2));
+    if let Value::List(items, _, _) = &mut reserved {
+        Arc::make_mut(items).capacity = 128;
+    }
+    assert!(value_eq(&small, &reserved));
+}
