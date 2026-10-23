@@ -8532,8 +8532,16 @@ impl RowWalk<'_> {
             | ExprKind::Try(operand)
             | ExprKind::FromEnd(operand)
             | ExprKind::Freeze(operand)
-            | ExprKind::Member { base: operand, .. }
             | ExprKind::ModedReceiver { place: operand, .. } => self.expr(operand),
+            ExprKind::Member { base, .. } => self
+                .member_operand(base)
+                .or_else(|| self.expr(base)),
+            ExprKind::Path(path) if path.segments.len() > 1 => {
+                let head = &path.segments[0];
+                self.lookup(&head.name).map(|row| {
+                    Self::member_diag(head.span, row)
+                })
+            }
             ExprKind::Block(block) | ExprKind::Scope { body: block, .. } => self.block(block),
             ExprKind::Unsafe { body } | ExprKind::When { body, .. } => self.block(body),
             ExprKind::Tuple(parts) => parts.iter().find_map(|part| self.expr(part)),
@@ -8725,6 +8733,27 @@ impl RowWalk<'_> {
         };
         (path.is_single() && self.nominal_of(&path.segments[0].name) == Some("Map"))
             .then(|| "V ! {none}".to_owned())
+    }
+
+    // `[type.row.operand]`: a member read and a method call both read
+    // their base. Dotted local paths and postfix members are distinct AST
+    // forms; neither is a handling of the row.
+    fn member_operand(&self, base: &Expr) -> Option<Diag> {
+        self.row_of(base)
+            .map(|row| Self::member_diag(base.span, &row))
+    }
+
+    fn member_diag(span: Span, row: &str) -> Diag {
+        Diag::new(
+            "E0409",
+            span,
+            "type.row.operand",
+            format!(
+                "a member read or method call cannot read `{row}`: an error union is two \
+                 values, never one. Handle the row first with `?`, `else` or `match` \
+                 (`rest?.len`, `(rest else \"\").len`; [type.row.operand])"
+            ),
+        )
     }
 
     /// The refusal itself: E0409 on either side, for arithmetic, the
