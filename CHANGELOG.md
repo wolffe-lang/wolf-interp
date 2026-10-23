@@ -1,5 +1,125 @@
 # Changelog
 
+## 0.1.56 — 2026-10-23
+
+`os_random` now reads real OS entropy on every native host, including a
+run made with `--seed` or a replay schedule. It returns exactly the
+requested number of bytes, each in 0–255; zero returns an empty list,
+and a negative count traps `assert`. Allocation or backend failure is
+refused without returning a partially filled buffer. There is no seeded
+stream, clock seed or old-Linux `/dev/urandom` fallback:
+`[os.random.sole]` makes entropy the deliberate exception to deterministic
+scheduling. This uses the safe `getrandom` 0.2.16 API, with its Linux
+fallback disabled; no `unsafe` was added to this repository.
+
+This release pairs with wolf 0.2.35. The spec and corpus pin stays
+`294d626dd596122285d5df954762e3aee3e5db71` (wolf v0.2.24).
+The 64 intervening commits include the 0.2.34 mirror, entropy and
+portability fixes, the static archive, and the CI changes below; the
+release adds the version and these notes.
+
+### The 0.2.34 mirror
+
+The six editor and storage calls now resolve. `os_clock_ns` uses the
+monotonic anchor at nanosecond precision, saturating at the largest
+`int`. `fs_sync` and `fs_sync_dir` use the host's full-file sync;
+`fs_realpath` canonicalizes inside this machine's served tree. Like
+other filesystem calls here, it refuses a path outside that tree rather
+than silently granting a wider filesystem domain.
+
+`os_term_restore_at_exit` and `os_signal_wait_fds` answer their shape
+rows, and `io` for a closed, forged or non-terminal handle, then refuse
+a well-formed operation by name. `os_fork` also resolves and is refused
+by name on unix; windows gets its declared `unsupported` row. These
+operations need host facilities this interpreter does not implement.
+The terminal mode's bits 5–7 (`RAW_CR`, `RAW_OUTPUT`, `STRIP8`) are
+fields now, not invalid reserved bits. The exclusive-create mode was
+already served and is unchanged (#268, #269).
+
+A value whose type reaches no storage names no region
+(`[mem.region.scalar]`): scalar-only tuples, structs, enums and rows
+can leave a region or be read after it ends or freezes. A value holding
+a `str` or `List` keeps the region rules. Module state of `wrapping[T]`
+is static data; a bare integer initializer takes the item's declared
+type, so it wraps from its first use (#271, #272).
+
+An annotated `int` used as the shift count of a `wrapping[u64]` or
+`u64` is E0401 at the count. A counter whose deciding uses all require
+the same wrapping type is inferred as that type before execution; the
+countdown witness now takes the same path as the compiler (#273).
+
+Casting a place consumes it just as initializing a binding does: an
+adapter of a container, struct or `str` moves, while a scalar adapter
+copies. Casts to and from adapters of `bool` and `str` work. A qualified
+type annotation or struct-literal head that names nothing is E0301;
+an imported struct literal missing a field is E0408, at the compiler's
+recorded spans (#274, #275).
+
+### Archives and the browser build
+
+There are now five archive targets: GNU/Linux x86-64 and aarch64,
+macOS aarch64, Windows x86-64, and static musl Linux x86-64. Windows
+also publishes the bare `lupin.exe`. The new
+`lupin-0.1.56-x86_64-unknown-linux-musl.tar.gz` needs no host libc:
+the release gate requires ET_EXEC, no ELF interpreter, and no dynamic
+section, then prints the binary's SHA-256. Every archive is unpacked
+outside the checkout and runs a hello before upload. Release builds
+must print the bare tag version; off-tag builds retain `+dev.<commit>`.
+
+The browser module has no `crypto.getRandomValues` import. Its
+`os_random` therefore refuses by name and entropy tier rather than
+inventing bytes. Two inherited wasm compilation holes are fixed:
+`os_error_text` no longer calls a host-only filesystem helper, and the
+nanosecond clock no longer reads a host-only epoch. Host-only helper
+functions are gated out too. The error-text change also subsumes the
+site's carried portability patch; the site can retire that patch when
+it adopts this release, not before (#222's build portion, #283, #284).
+
+The archive still ships no `std/`. A standalone lupin refuses an
+unconfigured `use std.…`; beside wolf it can use the standard library
+bundled in wolf's archive.
+
+### Conformance and CI
+
+The unchanged pinned corpus has this ledger after the scalar-region
+mirror and the three newly served entropy entries:
+
+| measure | count |
+|---|---:|
+| files / entries / members | 1,002 / 955 / 47 |
+| entries reaching run / matching | 763 / 724 |
+| dynamic counterparts / static conservatism | 92 / 66 |
+| unsupported / standing mismatches | 69 / 4 |
+
+The four mismatches remain the filed set, not new findings. The entropy
+witnesses run both seeded and unseeded; the same seed does not repeat
+the byte stream. Native entropy and wasm compilation are permanent
+checks in the existing dist-floor runner, without another CI job slot.
+
+Every code PR's own run is now the merge gate, `tier full`: ubuntu's
+three shards and ladder, one macOS smoke, one Windows smoke, shard
+coverage, independence and dist-floor checks. `full-matrix` asks for
+no additional work. `tier release` keeps the macOS and Windows heavy
+shards and ladders and the cross-host bundle comparison; it runs
+nightly, on an explicit release dispatch and on `release-matrix`.
+A release needs that tier at its final head. A red nightly is a debt
+the next lane owes, not evidence supplied by the smaller merge gate.
+
+### Read before changing the paired pin
+
+The newly mirrored calls and scalar-region rules can move a downstream
+pre-mirror ledger entry deliberately. Re-measure version-keyed entries
+rather than extending every list mechanically. `fs_realpath` still
+refuses paths outside the served tree; the restore, wait and fork
+limits above remain named refusals, not newly executed host operations.
+
+Wolf 0.2.35's outer-region materializing copies, `List.reserve`,
+`List.reset`, and member reads or method calls on `!T` have not been
+mirrored here. The compiler's union-layout change does not need a new
+interpreter representation: mixed-payload enums already run here.
+The browser's entropy paragraph and the site's carried-patch transition
+must be reviewed at their new lupin pin.
+
 ## 0.1.55 — 2026-10-20
 
 THE FIFTY-FIFTH, the lupin half of wolf 0.2.34. **Pin unchanged:
