@@ -1,0 +1,63 @@
+//! check: run(exit=0)
+//! phase: run
+//! conforms: std.time
+//! Unknown, incomplete and unbounded-width formats are format rows.
+
+use std.time
+
+fn main() -> !int {
+    let l = time.Local {
+        year: 1970,
+        month: 1,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0,
+        nanos: 0,
+        offset_s: 0,
+        is_dst: false,
+        abbrev: "UTC",
+    }
+    if (
+        time.format(l, "%Q") else |e| match e {
+            format => "row",
+        }
+    ) !=
+        "row" {
+        return 1
+    }
+    if (
+        time.format(l, "%") else |e| match e {
+            format => "row",
+        }
+    ) !=
+        "row" {
+        return 2
+    }
+    if (
+        time.format(l, "%_12") else |e| match e {
+            format => "row",
+        }
+    ) !=
+        "row" {
+        return 3
+    }
+    if (
+        time.format(l, "%999999999999999999999d") else |e| match e {
+            format => "row",
+        }
+    ) !=
+        "row" {
+        return 4
+    }
+    if (
+        time.format(l, "%é") else |e| match e {
+            format => "row",
+        }
+    ) !=
+        "row" {
+        return 5
+    }
+    if time.format(l, "")? != "" { return 6 }
+    0
+}
