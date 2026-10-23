@@ -52,7 +52,7 @@ version and the upstream pin it was built against:
 
 ```console
 $ lupin --version
-lupin 0.1.55… (wolf-interp, reference interpreter at pin …)
+lupin 0.1.56… (wolf-interp, reference interpreter at pin …)
 ```
 
 A build made at its release tag prints the bare version. Any other
@@ -167,8 +167,8 @@ static analysis needed to run programs. The type checker, borrow
 checker and region checker are the compiler's. Every property they
 prove statically is enforced dynamically here, so an ownership
 violation surfaces as a runtime trap where the compiler would refuse
-the program ([manual](docs/manual/03-phases.md)). Of the 473 entry
-files in the pinned corpus, 363 reach the `run` rung. The corpus walk
+the program ([manual](docs/manual/03-phases.md)). Of the 955 entry
+files in the pinned corpus, 763 reach the `run` rung. The corpus walk
 (`lupin corpus`) prints the exact ledger.
 
 ## Documentation
