@@ -4167,9 +4167,17 @@ impl Machine {
                     .filter(|frame| frame.body == Some(block.span))
                     .and_then(|frame| frame.ret_int)
                     .filter(|_| is_int_term(tail));
-                let value = match expected {
-                    Some(ty) => self.eval_int_expected(tail, ty),
-                    None => self.eval(tail),
+                // A function's tail checks against its declared row, just
+                // like `return`: a module function named `format` loses to
+                // that mark here, but remains callable everywhere else.
+                let tag = self.frames.last()
+                    .filter(|frame| frame.body == Some(block.span))
+                    .map(|frame| frame.row.clone())
+                    .and_then(|row| self.declared_row_tag(tail, &row));
+                let value = match (tag, expected) {
+                    (Some(tag), _) => Ok(tag),
+                    (None, Some(ty)) => self.eval_int_expected(tail, ty),
+                    (None, None) => self.eval(tail),
                 };
                 // is72: a function body's tail is that activation's last
                 // word, so the place trace reports it like a statement.
@@ -6084,13 +6092,9 @@ impl Machine {
             // fallible function's TAIL check against the declared return
             // row, locals shadowing, module items losing — is implemented
             // by `declared_row_tag` at the `Return` arm (exact, items lose)
-            // plus this fallback, which is what resolves the tail and any
-            // expression feeding it. Two honest deltas from the clause
-            // remain here, named rather than hidden: (1) this fallback runs
-            // AFTER the module/prelude lookups, so a module item spelling a
-            // declared tag would win in tail position (no witness
-            // exercises the collision; the `return` spelling is exact);
-            // (2) it answers in positions the clause does not check —
+            // and the function-body tail (exact, items lose), plus this
+            // fallback for expressions feeding it. This fallback still
+            // answers in positions the clause does not check —
             // wider than the rule, but a program relying on that width is
             // one the compiler refuses E0301, so the differential lands it
             // in the refusal classes, never as a silent disagreement.
