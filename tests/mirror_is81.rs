@@ -209,3 +209,65 @@ fn s260_spawn_and_exec_witnesses_keep_the_host_number() {
     }
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn copied_keys_and_values_charge_the_maps_birth_region() {
+    let source = r#"
+fn main() -> !int {
+    let keep = region()
+    in keep {
+        var m = Map[str, str]()
+        let before = region_bytes(keep)
+        region turn {
+            let key = "key{3}"
+            let value = "value{4}"
+            m[copy key] = copy value
+        }
+        let after = region_bytes(keep)
+        // Each string has its own charge; a fresh map slot is tier units.
+        assert(after - before >= 128)
+        print("{m["key3"] else "?"}")
+    }
+    0
+}
+"#;
+    let obs = observe(source.as_bytes(), None);
+    assert_eq!(obs.verdict, Verdict::Exit(0), "{:?} {:?}", obs.trap, obs.reason);
+    assert_eq!(obs.stdout, b"value4\n");
+}
+
+#[test]
+fn ordinary_copies_still_share_strings_and_outer_copies_charge_the_destination_cap() {
+    for source in [r#"
+struct Box { title: str }
+fn main() -> !int {
+    let kept = copy region turn {
+        let s = "built{7}"
+        var v = Box { title: "" }
+        v.title = copy s
+        v
+    }
+    print("{kept.title}")
+    0
+}
+"#, r#"
+fn main() -> !int {
+    region keep(cap: 0) {
+        var text = ""
+        region turn { text = copy "built{7}" }
+        print("{text}")
+    }
+    0
+}
+"#] {
+        let obs = observe(source.as_bytes(), None);
+        // First program is the plain-copy control: copy-out makes the
+        // leaving value independent. Second must breach KEEP's zero cap.
+        if source.contains("cap:") {
+            assert_eq!(obs.verdict, Verdict::Trap(wolf_interp::trap::TrapKind::AllocContract), "{:?}", obs.reason);
+        } else {
+            assert_eq!(obs.verdict, Verdict::Exit(0), "{:?}", obs.reason);
+            assert_eq!(obs.stdout, b"built7\n");
+        }
+    }
+}

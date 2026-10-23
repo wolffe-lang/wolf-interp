@@ -2386,6 +2386,10 @@ impl Machine {
     /// Writes through a path, making the place live again if it was moved from
     /// (`[mem.tier0.move.4]`).
     fn write_path(&mut self, path: &Path, value: Value, span: Span) -> EResult<()> {
+        self.write_path_with_key(path, value, None, span)
+    }
+
+    fn write_path_with_key(&mut self, path: &Path, value: Value, key: Option<Value>, span: Span) -> EResult<()> {
         // D39's dynamic mirror: a write through a read-mode binding traps in
         // the exclusivity family (`[conf.trap.map]`), the kind
         // `[mem.tier0.excl.1]` already gives every read/write conflict —
@@ -2434,7 +2438,7 @@ impl Machine {
         let display = path.to_string();
         // A map grows on assignment to an absent key; every other path must
         // already denote a place.
-        if self.slot_mut(path).is_none() && !self.insert_map_key(path, span)? {
+        if self.slot_mut(path).is_none() && !self.insert_map_key(path, key, span)? {
             return unsupported(format!("`{display}` does not denote a place at run time"));
         }
         let Some(slot) = self.slot_mut(path) else {
@@ -2496,7 +2500,7 @@ impl Machine {
 
     /// Grows a map when a path's last step is an absent key. Returns whether it
     /// did.
-    fn insert_map_key(&mut self, path: &Path, _span: Span) -> EResult<bool> {
+    fn insert_map_key(&mut self, path: &Path, stored: Option<Value>, _span: Span) -> EResult<bool> {
         let Some(Proj::Key(key)) = path.projections.last() else {
             return Ok(false);
         };
@@ -2509,7 +2513,7 @@ impl Machine {
         let Value::Map(pairs, _) = &mut slot.value else {
             return Ok(false);
         };
-        pairs.push((key.to_value(), Slot::live(Value::Unit)));
+        pairs.push((stored.unwrap_or_else(|| key.to_value()), Slot::live(Value::Unit)));
         Ok(true)
     }
 
@@ -5164,6 +5168,19 @@ impl Machine {
             }
             _ => self.place_of(place)?,
         };
+        // A map keeps its key too. Its index expression has already run;
+        // rebuild the resolved key, never evaluate that expression twice.
+        let stored_key = if op == AssignOp::Assign {
+            match (&*place.kind, path.projections.last()) {
+                (ExprKind::BracketApply { args, .. }, Some(Proj::Key(key))) => {
+                    if let [IndexArg::Value(arg)] = args.as_slice() {
+                        let into = self.copy_destination(&path);
+                        Some(self.materialize_store(&arg.expr, key.to_value(), into)?)
+                    } else { None }
+                }
+                _ => None,
+            }
+        } else { None };
         // is76 (wolf-interp#251): an integer place is its term's context, as
         // a binding's annotation is — `v = 1 << 10` and `v += 1 << 9` at
         // `wrapping[u8]` compute the term at `wrapping[u8]` (4 and 2 on the
@@ -5233,7 +5250,7 @@ impl Machine {
                 ))
                 .map(|_: Value| ());
             }
-            return self.write_path(&path, value, span);
+            return self.write_path_with_key(&path, value, stored_key, span);
         }
 
         // `[mem.map.absent]` (s152): `m[k] op= v` is E0417 — `m[k]` is
