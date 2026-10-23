@@ -109,3 +109,38 @@ fn main() -> !int {{
     assert_eq!(output.stdout, b"5 8\n");
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[cfg(unix)]
+#[test]
+fn s260_spawn_and_exec_witnesses_keep_the_host_number() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("is81-spawn-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    for (name, bytes) in [("noshebang", b"echo ran > ran-marker\n".as_slice()), ("junk", b"\0\0\0\0"), ("control", b"#!/bin/sh\nexit 7\n")] {
+        let path = root.join(name);
+        std::fs::write(&path, bytes).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    for name in ["spawn_rows", "exec_row"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_lupin"))
+            .args(["run", &format!("{}/tests/fixtures/is81/{name}.lu", env!("CARGO_MANIFEST_DIR"))])
+            .current_dir(&root).output().unwrap();
+        assert!(output.status.success(), "{name}: {output:?}");
+        let got = String::from_utf8_lossy(&output.stdout);
+        if name == "exec_row" {
+            assert_eq!(got, "exec: io os_error=8 marker=false\n");
+        } else {
+            let mut want = String::new();
+            for exe in ["./noshebang", "./junk", "./control"] {
+                for call in ["spawn_fds[1,1]", "spawn_fds[]", "spawn", "spawn_job[1,1]"] {
+                    let answer = if exe == "./control" { "RAN status 7" } else { "io os_error=8" };
+                    want.push_str(&format!("{exe} {call}: {answer}\n"));
+                }
+            }
+            want.push_str("marker=false\n");
+            assert_eq!(got, want);
+        }
+        assert!(!root.join("ran-marker").exists());
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}

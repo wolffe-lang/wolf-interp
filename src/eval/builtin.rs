@@ -843,6 +843,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // the handoff.
         #[cfg(not(target_family = "wasm"))]
         "os_spawn_with" => {
+            machine.set_last_os_error(0);
             let (Some(Value::Str(exe)), Some(Value::List(args_list, _, _))) =
                 (args.first(), args.get(1))
             else {
@@ -874,7 +875,12 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 argv.push(part.text.clone());
             }
             let cwd = machine.files().moved_cwd();
-            let spawned = machine.children().spawn_in(&argv, cwd.as_deref());
+            let (spawned, code) = {
+                let mut children = machine.children();
+                let answer = children.spawn_in(&argv, cwd.as_deref());
+                (answer, children.spawn_error())
+            };
+            machine.set_last_os_error(code);
             match spawned {
                 Ok(handle) => Ok(Value::Int(handle, IntTy::INT)),
                 Err(tag) => {
@@ -1816,6 +1822,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         }
         #[cfg(not(target_family = "wasm"))]
         "os_spawn" => {
+            machine.set_last_os_error(0);
             let Some(Value::List(items, _, _)) = args.first() else {
                 return unsupported(
                     "`os_spawn` takes a `List[str]` argv (argv-array only — no shell-string \
@@ -1834,7 +1841,12 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 argv.push(part.text.clone());
             }
             let cwd = machine.files().moved_cwd();
-            let spawned = machine.children().spawn_in(&argv, cwd.as_deref());
+            let (spawned, code) = {
+                let mut children = machine.children();
+                let answer = children.spawn_in(&argv, cwd.as_deref());
+                (answer, children.spawn_error())
+            };
+            machine.set_last_os_error(code);
             match spawned {
                 Ok(handle) => Ok(Value::Int(handle, IntTy::INT)),
                 Err(tag) => {
@@ -4145,6 +4157,7 @@ fn spawn_fds_answer(
     argv: &[String],
     flat: &[i128],
 ) -> Result<Result<i128, &'static str>, String> {
+    machine.set_last_os_error(0);
     let Some(pairs) = fd_map_of(flat) else {
         return Ok(Err("invalid"));
     };
@@ -4172,7 +4185,12 @@ fn spawn_fds_answer(
         stdio[at] = Some(file);
     }
     let cwd = machine.files().moved_cwd();
-    let spawned = machine.children().spawn_fds(argv, stdio, cwd.as_deref());
+    let (spawned, code) = {
+        let mut children = machine.children();
+        let answer = children.spawn_fds(argv, stdio, cwd.as_deref());
+        (answer, children.spawn_error())
+    };
+    machine.set_last_os_error(code);
     Ok(spawned)
 }
 
@@ -4192,6 +4210,7 @@ fn exec_answer(
     env: &[String],
     flat: &[i128],
 ) -> Result<&'static str, String> {
+    machine.set_last_os_error(0);
     let entry_ok = |e: &String| match e.split_once('=') {
         None => false,
         Some((name, _)) => !name.is_empty() && !e.contains('\0'),
@@ -4391,6 +4410,7 @@ fn spawn_job_answer(
     tty: i128,
     defaults: i128,
 ) -> Result<Result<i128, &'static str>, String> {
+    machine.set_last_os_error(0);
     let Some(pairs) = fd_map_of(flat) else {
         return Ok(Err("invalid"));
     };
@@ -4434,7 +4454,13 @@ fn spawn_job_answer(
     }
     let g = (group >= 0).then(|| i32::try_from(group).unwrap_or(i32::MAX));
     let cwd = machine.files().moved_cwd();
-    Ok(machine.children().spawn_job(argv, stdio, cwd.as_deref(), g))
+    let (spawned, code) = {
+        let mut children = machine.children();
+        let answer = children.spawn_job(argv, stdio, cwd.as_deref(), g);
+        (answer, children.spawn_error())
+    };
+    machine.set_last_os_error(code);
+    Ok(spawned)
 }
 
 /// s215 (`[os.proc.fds]`): the flat `[target, source, …]` map as pairs, or

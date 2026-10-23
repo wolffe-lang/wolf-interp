@@ -34,6 +34,8 @@ use std::process::{Child, Command, Stdio};
 #[derive(Default)]
 pub(crate) struct ChildTable {
     slots: Vec<Option<Child>>,
+    /// Number from the last spawn's program step (s260, #291).
+    spawn_error: i128,
     /// s225 (`[os.env.unset]`): the machine's environment overlay, as a
     /// child is handed it — the host's environment with every `env_set`
     /// set and every `env_unset` removed, as a native child is handed its
@@ -78,6 +80,8 @@ impl ChildTable {
         }
     }
 
+    pub(crate) fn spawn_error(&self) -> i128 { self.spawn_error }
+
     /// `os_spawn`: argv-array only, null-wired stdio.
     ///
     /// # Errors
@@ -96,6 +100,7 @@ impl ChildTable {
         argv: &[String],
         cwd: Option<&std::path::Path>,
     ) -> Result<i128, Row> {
+        self.spawn_error = 0;
         let Some(program) = argv.first() else {
             // An empty argv names no program (the witnessed row).
             return Err("not_found");
@@ -115,11 +120,14 @@ impl ChildTable {
                 self.slots.push(Some(child));
                 Ok(self.slots.len() as i128)
             }
-            Err(error) => Err(match error.kind() {
-                std::io::ErrorKind::NotFound => "not_found",
-                std::io::ErrorKind::PermissionDenied => "denied",
-                _ => "io",
-            }),
+            Err(error) => {
+                self.spawn_error = error.raw_os_error().map_or(0, i128::from);
+                Err(match error.kind() {
+                    std::io::ErrorKind::NotFound => "not_found",
+                    std::io::ErrorKind::PermissionDenied => "denied",
+                    _ => "io",
+                })
+            },
         }
     }
 
@@ -160,6 +168,7 @@ impl ChildTable {
         cwd: Option<&std::path::Path>,
         group: Option<i32>,
     ) -> Result<i128, Row> {
+        self.spawn_error = 0;
         let Some(program) = argv.first() else {
             return Err("not_found");
         };
@@ -195,11 +204,14 @@ impl ChildTable {
                 self.slots.push(Some(child));
                 Ok(self.slots.len() as i128)
             }
-            Err(error) => Err(match error.kind() {
-                std::io::ErrorKind::NotFound => "not_found",
-                std::io::ErrorKind::PermissionDenied => "denied",
-                _ => "io",
-            }),
+            Err(error) => {
+                self.spawn_error = error.raw_os_error().map_or(0, i128::from);
+                Err(match error.kind() {
+                    std::io::ErrorKind::NotFound => "not_found",
+                    std::io::ErrorKind::PermissionDenied => "denied",
+                    _ => "io",
+                })
+            },
         }
     }
 
