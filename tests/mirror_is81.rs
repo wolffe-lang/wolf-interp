@@ -351,7 +351,13 @@ fn main() {
 }
 "#;
     let obs = observe(source.as_bytes(), None);
-    assert_eq!(obs.verdict, Verdict::Exit(0), "{:?} {:?}", obs.trap, obs.reason);
+    assert_eq!(
+        obs.verdict,
+        Verdict::Exit(0),
+        "{:?} {:?}",
+        obs.trap,
+        obs.reason
+    );
     assert_eq!(obs.stdout, b"32 31\n");
 }
 
@@ -361,16 +367,25 @@ fn spawning_lupin_itself_keeps_the_native_executable_path() {
     std::fs::create_dir_all(&root).unwrap();
     let program = root.join("main.lu");
     let binary = serde_json::to_string(env!("CARGO_BIN_EXE_lupin")).unwrap();
-    std::fs::write(&program, format!(r#"
+    std::fs::write(
+        &program,
+        format!(
+            r#"
 fn main() -> !int {{
     let h = os_spawn([{binary}, "--version"])?
     let status = os_wait(h)?
     print("{{status}} {{os_error()}}")
     0
 }}
-"#)).unwrap();
+"#
+        ),
+    )
+    .unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_lupin"))
-        .args(["run", program.to_str().unwrap()]).current_dir(&root).output().unwrap();
+        .args(["run", program.to_str().unwrap()])
+        .current_dir(&root)
+        .output()
+        .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(output.stdout, b"0 0\n");
     std::fs::remove_dir_all(root).unwrap();
@@ -386,7 +401,9 @@ fn noexec_guard_leaves_missing_and_denied_programs_to_spawn() {
     std::fs::write(&denied, "not an executable header\n").unwrap();
     std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o600)).unwrap();
     let program = root.join("main.lu");
-    std::fs::write(&program, r#"
+    std::fs::write(
+        &program,
+        r#"
 fn main() -> !int {
     for name in ["./missing", "./denied"] {
         let answer = os_spawn([name]) else |e| match e { not_found => -1, denied => -2, io => -3 }
@@ -394,9 +411,14 @@ fn main() -> !int {
     }
     0
 }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_lupin"))
-        .args(["run", program.to_str().unwrap()]).current_dir(&root).output().unwrap();
+        .args(["run", program.to_str().unwrap()])
+        .current_dir(&root)
+        .output()
+        .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(output.stdout, b"-1 2\n-2 13\n");
     std::fs::remove_dir_all(root).unwrap();

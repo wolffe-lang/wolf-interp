@@ -106,10 +106,14 @@ impl ChildTable {
                 Some(None) => "/usr/bin:/bin".into(),
                 None => std::env::var_os("PATH").unwrap_or_else(|| "/usr/bin:/bin".into()),
             };
-            std::env::split_paths(&path).map(|dir| cwd.join(dir).join(program)).collect()
+            std::env::split_paths(&path)
+                .map(|dir| cwd.join(dir).join(program))
+                .collect()
         };
         for path in candidates {
-            let Ok(metadata) = std::fs::metadata(&path) else { continue };
+            let Ok(metadata) = std::fs::metadata(&path) else {
+                continue;
+            };
             // Ask using effective IDs, as exec does; do not read a denied
             // candidate's bytes and substitute ENOEXEC for its EACCES.
             if !metadata.is_file()
@@ -117,7 +121,9 @@ impl ChildTable {
             {
                 continue;
             }
-            let Ok(file) = std::fs::File::open(path) else { return false };
+            let Ok(file) = std::fs::File::open(path) else {
+                return false;
+            };
             let mut prefix = Vec::with_capacity(4);
             if file.take(4).read_to_end(&mut prefix).is_err() {
                 return false;
@@ -422,7 +428,9 @@ fn has_known_executable_header(prefix: &[u8]) -> bool {
             [0xce, 0xfa, 0xed, 0xfe],
             [0xcf, 0xfa, 0xed, 0xfe],
             [0xca, 0xfe, 0xba, 0xbe],
-        ].iter().any(|magic| prefix.starts_with(magic))
+        ]
+        .iter()
+        .any(|magic| prefix.starts_with(magic))
 }
 
 /// SIGKILL to the process group `pgid` (its leader's pid), through the
@@ -573,7 +581,15 @@ mod executable_header_is81 {
     use super::has_known_executable_header;
     #[test]
     fn scripts_elf_and_both_mach_endiannesses_are_recognized() {
-        for prefix in [b"#!".as_slice(), b"\x7fELF", b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf", b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"] {
+        for prefix in [
+            b"#!".as_slice(),
+            b"\x7fELF",
+            b"\xfe\xed\xfa\xce",
+            b"\xfe\xed\xfa\xcf",
+            b"\xce\xfa\xed\xfe",
+            b"\xcf\xfa\xed\xfe",
+            b"\xca\xfe\xba\xbe",
+        ] {
             assert!(has_known_executable_header(prefix), "{prefix:?}");
         }
         for prefix in [b"".as_slice(), b"#", b"echo", b"\0\0\0\0", b"\x7fEL"] {
