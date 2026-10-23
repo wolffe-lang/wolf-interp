@@ -5060,14 +5060,6 @@ impl Machine {
         self.move_path_by(&path, span, MoveBy::Take)
     }
 
-    /// The right-hand side of a plain `=`, consumed the way its place says.
-    ///
-    /// An INDEX store follows `push` (`[mem.region.edge.elem]`, wolf-lang#438,
-    /// ruled 2026-09-24): spelled plainly it COPIES the value in — the
-    /// operand is read, never moved, so the binding it came from stays live
-    /// and independent — and spelled `take` it MOVES. Every other place
-    /// (`x = v`, `s.f = v`) is an initializer and consumes its operand as one
-    /// (`[mem.tier0.move.1]`), exactly as before.
     /// The store's lexical root decides whether it is outer; the old
     /// container header, when there is one, decides where the copy lands.
     fn copy_destination(&mut self, path: &Path) -> Option<RegionId> {
@@ -5093,13 +5085,8 @@ impl Machine {
         if !outer {
             return None;
         }
-        let own = self.slot_mut(path).and_then(|s| match &s.value {
-            Value::List(_, _, home) | Value::Map(_, home) => *home,
-            _ => None,
-        });
-        if own.is_some() {
-            return own;
-        }
+        // An element store belongs to its containing buffer, even when
+        // the element being replaced is itself a List or Map.
         if matches!(path.projections.last(), Some(Proj::Index(_) | Proj::Key(_))) {
             let mut parent = path.clone();
             parent.projections.pop();
@@ -5107,7 +5094,12 @@ impl Machine {
                 return Some(home);
             }
         }
-        Some(ambient)
+        self.slot_mut(path)
+            .and_then(|s| match &s.value {
+                Value::List(_, _, home) | Value::Map(_, home) => *home,
+                _ => None,
+            })
+            .or(Some(ambient))
     }
 
     fn materialize_store(
@@ -5128,6 +5120,14 @@ impl Machine {
         Ok(value)
     }
 
+    /// The right-hand side of a plain `=`, consumed the way its place says.
+    ///
+    /// An INDEX store follows `push` (`[mem.region.edge.elem]`, wolf-lang#438,
+    /// ruled 2026-09-24): spelled plainly it COPIES the value in — the
+    /// operand is read, never moved, so the binding it came from stays live
+    /// and independent — and spelled `take` it MOVES. Every other place
+    /// (`x = v`, `s.f = v`) is an initializer and consumes its operand as one
+    /// (`[mem.tier0.move.1]`), exactly as before.
     fn store_operand(&mut self, place: &Expr, value: &Expr, take: bool) -> EResult<Value> {
         if take {
             return self.take_operand(value, value.span);
