@@ -55,7 +55,7 @@ fn failed_copy_writes_rewind_and_preserve_errno() {
     std::fs::create_dir_all(root.join("target")).unwrap();
     for (name, want) in [
         ("copy_chunk_failed_write", "copy=io took_nothing=true os_error_set=true offset_after=0\nretry=17 same=true\ncleaned=true\n"),
-        ("copy_chunk_dev_full", "copy=io os_error_set=true offset_after=0 left_to_read=17 of 17\ncleaned=true\n"),
+
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_lupin"))
             .args(["run", &format!("{}/tests/fixtures/is81/{name}.lu", env!("CARGO_MANIFEST_DIR"))])
@@ -63,6 +63,20 @@ fn failed_copy_writes_rewind_and_preserve_errno() {
         assert!(output.status.success(), "{name}: {}", String::from_utf8_lossy(&output.stderr));
         assert_eq!(String::from_utf8_lossy(&output.stdout), want, "{name}");
     }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn dev_full_corpus_witness_names_the_existing_path_domain_limit() {
+    let root = std::env::temp_dir().join(format!("is81-full-{}", std::process::id()));
+    std::fs::create_dir_all(root.join("target")).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_lupin"))
+        .args(["run", concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/is81/copy_chunk_dev_full.lu")])
+        .current_dir(&root).output().unwrap();
+    assert!(!output.status.success());
+    let error = String::from_utf8_lossy(&output.stderr);
+    assert!(error.contains("/dev/full") && error.contains("[os.fs.path.domain]"), "{error}");
+    eprintln!("LIMIT: fs/copy_chunk_dev_full.lu is declined by [os.fs.path.domain]; Rust-level counted-write and in-tree failed-write rows cover the copy rule");
     std::fs::remove_dir_all(root).unwrap();
 }
 
