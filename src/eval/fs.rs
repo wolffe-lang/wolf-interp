@@ -438,6 +438,22 @@ impl FsTable {
         file.write_all(bytes).map_err(io_row)
     }
 
+    /// `[os.fs.copy]`: retain the exact accepted prefix on failure. The
+    /// caller rewinds only the unread-by-the-sink suffix, not a short write
+    /// the sink already took. Ordinary writes keep their write-all contract.
+    fn copy_write(&mut self, handle: i128, bytes: &[u8]) -> (usize, FsResult<()>) {
+        if (0..FIRST_HANDLE as i128).contains(&handle) {
+            return match std_stream(handle) {
+                Some(mut file) => counted_write(&mut file, bytes),
+                None => (0, Err(FsErr::Row("io"))),
+            };
+        }
+        match self.file(handle) {
+            Ok(file) => counted_write(file, bytes),
+            Err(row) => (0, Err(FsErr::Row(row))),
+        }
+    }
+
     /// Is `handle` a live handle, or one of the three standard streams? The
     /// copy checks both sides before it moves a byte (`[os.fs.copy]`).
     pub(crate) fn names_a_stream(&mut self, handle: i128) -> bool {
@@ -615,6 +631,21 @@ fn read_retrying(reader: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usiz
             other => return other,
         }
     }
+}
+
+/// A counted write-all: EINTR is retried, a zero write is `io`, and an
+/// error carries the prefix already accepted by the sink.
+fn counted_write(writer: &mut impl Write, bytes: &[u8]) -> (usize, FsResult<()>) {
+    let mut written = 0;
+    while written < bytes.len() {
+        match writer.write(&bytes[written..]) {
+            Ok(0) => return (written, Err(io_row(std::io::ErrorKind::WriteZero.into()))),
+            Ok(n) => written += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return (written, Err(io_row(e))),
+        }
+    }
+    (written, Ok(()))
 }
 
 /// The first handle an open answers (`[os.fs.std]`): `0`, `1` and `2` are the
@@ -1885,12 +1916,20 @@ impl Machine {
                     Err(err) => Err(err),
                     Ok(bytes) => {
                         let moved = bytes.len() as i128;
-                        let wrote = if dst == 1 || dst == 2 {
+                        let (written, wrote) = if dst == 1 || dst == 2 {
                             self.std_capture(dst, &bytes);
-                            Ok(())
+                            (bytes.len(), Ok(()))
                         } else {
-                            self.shared_fs().write_bytes(dst, &bytes)
+                            self.shared_fs().copy_write(dst, &bytes)
                         };
+                        if wrote.is_err() {
+                            // Best effort for a nonseekable source; a failed
+                            // rewind must never replace the WRITE's errno.
+                            let code = HOST_ERROR.with(std::cell::Cell::get);
+                            let shortfall = (bytes.len() - written) as i128;
+                            let _ = self.shared_fs().seek(src, -shortfall, 1);
+                            HOST_ERROR.with(|c| c.set(code));
+                        }
                         wrote.map(|()| Value::Int(moved, IntTy::INT))
                     }
                 };
