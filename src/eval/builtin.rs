@@ -2119,8 +2119,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             Ok(Value::list(Vec::new(), None, Some(home)))
         }
         "Map" => {
-            machine.allocate(span, "Map", ledger::container_bytes(0))?;
-            Ok(Value::Map(Vec::new()))
+            let home = machine.allocate(span, "Map", ledger::container_bytes(0))?;
+            Ok(Value::Map(Vec::new(), Some(home)))
         }
         "Pool" => {
             // The pool is anchored to the region that is current when it is
@@ -2403,7 +2403,7 @@ pub fn property(machine: &mut Machine, receiver: &Value, name: &str, span: Span)
         // of its own (`[type.range.value]`): `r.end - r.start` is the count.
         (Value::Range { start, elem, .. }, "start") => Ok(elem.endpoint(*start)),
         (Value::Range { end, elem, .. }, "end") => Ok(elem.endpoint(*end)),
-        (Value::Map(pairs), "len") => Ok(Value::Int(pairs.len() as i128, IntTy::INT)),
+        (Value::Map(pairs, _), "len") => Ok(Value::Int(pairs.len() as i128, IntTy::INT)),
         // D25: `str` is bytes, and `len` is a byte count — the same unit
         // slicing uses, so `s[..s.len]` is the whole string.
         // Duration constructors (`[conc.select.timeout]`): `1.s`, `20.ms`.
@@ -2462,7 +2462,7 @@ pub fn property(machine: &mut Machine, receiver: &Value, name: &str, span: Span)
 pub fn home_of(value: &Value) -> Option<(&'static str, &'static str)> {
     match value {
         Value::List(..) => Some(("List", "list")),
-        Value::Map(_) => Some(("Map", "map")),
+        Value::Map(..) => Some(("Map", "map")),
         Value::Str(_) => Some(("str", "str")),
         Value::Range { .. } => Some(("range", "range")),
         _ => None,
@@ -2563,7 +2563,7 @@ pub fn is_builtin_method(receiver: &Value, name: &str) -> bool {
 pub fn mutates_receiver(receiver: &Value, name: &str) -> bool {
     matches!(
         (receiver, name),
-        (Value::List(..), "push" | "pop" | "clear") | (Value::Map(_), "clear" | "remove")
+        (Value::List(..), "push" | "pop" | "clear") | (Value::Map(..), "clear" | "remove")
     )
 }
 
@@ -2575,7 +2575,7 @@ pub fn mutates_receiver(receiver: &Value, name: &str) -> bool {
 pub fn list_len(value: &Value) -> Option<usize> {
     match value {
         Value::List(items, _, _) => Some(items.len()),
-        Value::Map(pairs) => Some(pairs.len()),
+        Value::Map(pairs, _) => Some(pairs.len()),
         _ => None,
     }
 }
@@ -2776,11 +2776,11 @@ pub fn method(
             }
         }
 
-        (Value::Map(pairs), "len" | "count") => Ok(Value::Int(pairs.len() as i128, IntTy::INT)),
-        (Value::Map(pairs), "is_empty") => Ok(Value::Bool(pairs.is_empty())),
+        (Value::Map(pairs, _), "len" | "count") => Ok(Value::Int(pairs.len() as i128, IntTy::INT)),
+        (Value::Map(pairs, _), "is_empty") => Ok(Value::Bool(pairs.is_empty())),
         // `[type.map]`'s surface: "`m.clear()` drains (a `mut` receiver)",
         // and `[type.method.resolve]` step (1) lists it among `Map`'s builtins.
-        (Value::Map(pairs), "clear") => {
+        (Value::Map(pairs, _), "clear") => {
             pairs.clear();
             Ok(Value::Unit)
         }
@@ -2803,7 +2803,7 @@ pub fn method(
         // `eval::tests::every_builtin_method_the_table_names_dispatches`
         // calls every claimed name with no arguments and requires that it
         // not answer "has no method".
-        (Value::Map(pairs), "remove") => {
+        (Value::Map(pairs, _), "remove") => {
             let [key] = args.as_slice() else {
                 return unsupported(format!(
                     "`remove` takes exactly one argument, the key to erase; {} given",
@@ -2831,7 +2831,7 @@ pub fn method(
         }
         // Every value is read into a fresh live slot, so a moved one would
         // come back out laundered: it is a read of a moved element (#141).
-        (Value::Map(pairs), "pairs") if pairs.iter().any(|(_, slot)| !slot.is_live()) => {
+        (Value::Map(pairs, _), "pairs") if pairs.iter().any(|(_, slot)| !slot.is_live()) => {
             let (key, moved_at) = pairs
                 .iter()
                 .find_map(|(key, slot)| match slot.state {
@@ -2841,7 +2841,7 @@ pub fn method(
                 .expect("a slot that is not live is moved");
             machine.moved_element(&format!("the value at key {key}"), moved_at, span)
         }
-        (Value::Map(pairs), "pairs") => Ok(Value::list(
+        (Value::Map(pairs, _), "pairs") => Ok(Value::list(
             pairs
                 .iter()
                 .map(|(key, slot)| {
@@ -3595,7 +3595,7 @@ pub fn index(
         // trap. Keys compare by value (`[type.map.key]`: bytes for a `str`,
         // the value for `int`/`char`/`bool`; an `int` key's width is not
         // part of the key).
-        (Value::Map(pairs), key) => match pairs.iter().find(|(k, _)| super::value_eq(k, key)) {
+        (Value::Map(pairs, _), key) => match pairs.iter().find(|(k, _)| super::value_eq(k, key)) {
             Some((k, slot)) => {
                 element_value(machine, slot, || format!("the value at key {k}"), span)
             }

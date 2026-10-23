@@ -490,10 +490,10 @@ fn walk(
     let mut pending = pending;
     let addressed = records.touched.get(&key);
     let mut listed: Vec<&Elem> = Vec::new();
-    if let Value::List(..) | Value::Map(_) = &slot.value {
+    if let Value::List(..) | Value::Map(..) = &slot.value {
         let count = match &slot.value {
             Value::List(items, _, _) => items.len(),
-            Value::Map(pairs) => pairs.len(),
+            Value::Map(pairs, _) => pairs.len(),
             _ => 0,
         };
         pending.len = Some(count);
@@ -538,7 +538,7 @@ fn walk(
                 walk(records, view, &child, item, below, out);
             }
         }
-        Value::Map(pairs) => {
+        Value::Map(pairs, _) => {
             for elem in listed {
                 let Some((map_key, value)) = pairs.iter().find_map(|(key, value)| {
                     MapKey::of(key)

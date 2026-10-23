@@ -592,12 +592,18 @@ impl Store {
     /// (`[mem.region.cap.1]`).
     pub fn charge(&mut self, bytes: u64) -> Result<RegionId, CapBreach> {
         let id = self.current();
+        self.charge_into(id, bytes)?;
+        Ok(id)
+    }
+
+    /// A materializing outer store allocates in the destination's home.
+    pub fn charge_into(&mut self, id: RegionId, bytes: u64) -> Result<(), CapBreach> {
         if let Some(region) = self.regions.get_mut(id) {
             let total = Store::admits(region, bytes)?;
             region.allocations += 1;
             region.bytes = total;
         }
-        Ok(id)
+        Ok(())
     }
 
     /// Charges `bytes` to a **named** region — the birth-region attribution
@@ -1227,7 +1233,7 @@ pub fn references(value: &Value, out: &mut Vec<Ref>) {
                 references(&slot.value, out);
             }
         }
-        Value::Map(pairs) => {
+        Value::Map(pairs, _) => {
             for (key, slot) in pairs {
                 references(key, out);
                 references(&slot.value, out);

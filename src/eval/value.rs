@@ -650,7 +650,7 @@ pub enum Value {
     List(std::sync::Arc<Vec<Slot>>, Option<ElemTy>, Option<RegionId>),
     /// Insertion-ordered; wolf's `Map` has no specified iteration order, and
     /// insertion order is the one that makes output reproducible.
-    Map(Vec<(Value, Slot)>),
+    Map(Vec<(Value, Slot)>, Option<RegionId>),
     /// A range VALUE (`[type.range]`, s158): two present, plain endpoints
     /// and **an exclusive `end`, always**. `a..=b` normalized to `b + 1` at
     /// construction under the checked arithmetic `[mem.iter.range]` rules
@@ -746,7 +746,7 @@ impl Value {
     pub fn home(&self) -> Option<RegionId> {
         match self {
             Value::Struct { home, .. } => *home,
-            Value::List(_, _, home) => *home,
+            Value::List(_, _, home) | Value::Map(_, home) => *home,
             // `[mem.region.escape]` (s153): a built `str` is an allocation
             // in the ambient region of the building expression, and the
             // view carries that site out with it.
@@ -794,7 +794,7 @@ impl Value {
             Value::Tuple(items) => format!("a {}-tuple", items.len()),
             Value::Struct { name, .. } => name.clone(),
             Value::List(..) => "List".to_owned(),
-            Value::Map(_) => "Map".to_owned(),
+            Value::Map(..) => "Map".to_owned(),
             Value::Range { .. } => "a range".to_owned(),
             Value::Fn(name) => format!("fn {name}"),
             Value::Closure(_) => "a closure".to_owned(),
@@ -910,7 +910,7 @@ impl fmt::Display for Value {
                 }
                 f.write_str("]")
             }
-            Value::Map(pairs) => {
+            Value::Map(pairs, _) => {
                 f.write_str("{")?;
                 for (i, (key, slot)) in pairs.iter().enumerate() {
                     if i > 0 {

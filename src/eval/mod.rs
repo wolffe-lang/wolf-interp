@@ -448,6 +448,10 @@ pub struct Run {
 #[derive(Debug, Default)]
 struct Scope {
     locals: Vec<(String, Slot)>,
+    /// Declaration ambient and whether this binding is a `mut` parameter.
+    homes: Vec<(RegionId, bool)>,
+    /// A lexical `region`/`in` boundary, not an ordinary nested block.
+    region_boundary: bool,
     /// What each local's binding statically recorded (is67,
     /// `[type.row.match]`): one entry per `declare`, in declaration order, so
     /// the last entry for a name is the live binding's. A `T ! {row}`
@@ -1643,10 +1647,12 @@ impl Machine {
     }
 
     fn declare(&mut self, name: &str, slot: Slot) {
+        let home = self.current_region();
         if let Some(frame) = self.frames.last_mut()
             && let Some(scope) = frame.scopes.last_mut()
         {
             scope.locals.push((name.to_owned(), slot));
+            scope.homes.push((home, false));
             scope.known.push((name.to_owned(), None));
         }
         self.trace_declare(name);
@@ -1785,7 +1791,7 @@ impl Machine {
                     let index = usize::try_from(*i).ok()?;
                     std::sync::Arc::make_mut(items).get_mut(index)?
                 }
-                (Value::Map(pairs), Proj::Key(key)) => {
+                (Value::Map(pairs, _), Proj::Key(key)) => {
                     let index = pairs.iter().position(|(k, _)| key.names(k))?;
                     &mut pairs[index].1
                 }
@@ -1935,7 +1941,7 @@ impl Machine {
             && matches!(method, "len" | "count" | "is_empty")
             && matches!(
                 self.slot_mut(place).map(|slot| &slot.value),
-                Some(Value::List(..) | Value::Map(_))
+                Some(Value::List(..) | Value::Map(..))
             )
     }
 
@@ -2238,7 +2244,7 @@ impl Machine {
                 (Value::List(items, _, _), Proj::Index(i)) => {
                     usize::try_from(*i).ok().and_then(|index| items.get(index))
                 }
-                (Value::Map(pairs), Proj::Key(key)) => pairs
+                (Value::Map(pairs, _), Proj::Key(key)) => pairs
                     .iter()
                     .find(|(k, _)| key.names(k))
                     .map(|(_, slot)| slot),
@@ -2500,7 +2506,7 @@ impl Machine {
         let Some(slot) = self.slot_mut(&parent) else {
             return Ok(false);
         };
-        let Value::Map(pairs) = &mut slot.value else {
+        let Value::Map(pairs, _) = &mut slot.value else {
             return Ok(false);
         };
         pairs.push((key.to_value(), Slot::live(Value::Unit)));
@@ -2599,6 +2605,15 @@ impl Machine {
             &format!("{what} allocated in {label}"),
         );
         Ok(id)
+    }
+
+    fn allocate_into(&mut self, into: RegionId, span: Span, what: &str, bytes: u64) -> EResult<RegionId> {
+        self.check_home_write(Some(into), what, span)?;
+        let charged = self.store().charge_into(into, bytes);
+        if let Err(breach) = charged {
+            return self.cap_breach(breach, span, what);
+        }
+        Ok(into)
     }
 
     /// The cap breach, rendered (`[mem.region.cap.1]`, `[conf.trap.map]`: a
@@ -2833,6 +2848,7 @@ impl Machine {
         );
 
         self.push_scope();
+        self.frames.last_mut().unwrap().scopes.last_mut().unwrap().region_boundary = true;
         if let Some(binder) = &binder {
             let generation = self.store().generation(id);
             self.fire(
@@ -2952,17 +2968,28 @@ impl Machine {
     /// pool, a cell, a raw pointer, a conc handle — is the dynamic half of
     /// the compiler's E1010 at the block: `region-fault`.
     fn copy_out(&mut self, value: Value, block: RegionId, span: Span) -> EResult<Value> {
+        self.materialize(value, self.current_region(), block, span)
+    }
+
+    /// The same materializing copy at either boundary: a copy-out or a
+    /// syntactic `copy` stored into an outer value. The destination is an
+    /// explicit argument: evaluating a nested call never inherits it.
+    fn materialize(&mut self, value: Value, into: RegionId, block: RegionId, span: Span) -> EResult<Value> {
         match value {
-            Value::Str(s) => Ok(Value::Str(self.built_str(s.text, span)?)),
+            Value::Str(s) => {
+                self.allocate_into(into, span, "a materialized str", region::ledger::container_bytes(s.text.len() as u64))?;
+                Ok(Value::Str(value::Str::built(s.text, Some(into))))
+            },
             Value::List(items, elem, _) => {
                 let mut copied = Vec::with_capacity(items.len());
                 for slot in items.iter() {
                     copied.push(Slot {
                         state: slot.state,
-                        value: self.copy_out(slot.value.clone(), block, span)?,
+                        value: self.materialize(slot.value.clone(), into, block, span)?,
                     });
                 }
-                let home = self.allocate(
+                let home = self.allocate_into(
+                    into,
                     span,
                     "a copied-out List",
                     region::ledger::container_bytes(copied.len() as u64),
@@ -2976,11 +3003,12 @@ impl Machine {
                         field,
                         Slot {
                             state: slot.state,
-                            value: self.copy_out(slot.value, block, span)?,
+                            value: self.materialize(slot.value, into, block, span)?,
                         },
                     ));
                 }
-                let home = self.allocate(
+                let home = self.allocate_into(
+                    into,
                     span,
                     &format!("a copied-out `{name}`"),
                     region::ledger::alloc_bytes(copied.len() as u64),
@@ -2999,30 +3027,31 @@ impl Machine {
                 for slot in slots {
                     copied.push(Slot {
                         state: slot.state,
-                        value: self.copy_out(slot.value, block, span)?,
+                        value: self.materialize(slot.value, into, block, span)?,
                     });
                 }
                 Ok(Value::Tuple(copied))
             }
-            Value::Map(entries) => {
+            Value::Map(entries, _) => {
                 let mut copied = Vec::with_capacity(entries.len());
                 for (key, slot) in entries {
-                    let key = self.copy_out(key, block, span)?;
+                    let key = self.materialize(key, into, block, span)?;
                     copied.push((
                         key,
                         Slot {
                             state: slot.state,
-                            value: self.copy_out(slot.value, block, span)?,
+                            value: self.materialize(slot.value, into, block, span)?,
                         },
                     ));
                 }
-                Ok(Value::Map(copied))
+                self.allocate_into(into, span, "a materialized Map", region::ledger::container_bytes(copied.len() as u64))?;
+                Ok(Value::Map(copied, Some(into)))
             }
             Value::Error(mut err) => {
                 let payload = std::mem::take(&mut err.payload);
                 let mut copied = Vec::with_capacity(payload.len());
                 for p in payload {
-                    copied.push(self.copy_out(p, block, span)?);
+                    copied.push(self.materialize(p, into, block, span)?);
                 }
                 err.payload = copied;
                 Ok(Value::Error(err))
@@ -3059,7 +3088,10 @@ impl Machine {
         let value = self.eval(region)?;
         let id = self.region_id_of(&value, span, "`in`")?;
         self.enter_region(id, span)?;
+        self.push_scope();
+        self.frames.last_mut().unwrap().scopes.last_mut().unwrap().region_boundary = true;
         let result = self.eval_block(body);
+        self.pop_scope();
         self.leave_region(id, span);
         result
     }
@@ -3510,6 +3542,13 @@ impl Machine {
                 self.prov().bind_place(&key, retag.alloc, retag.tag);
             }
             self.declare(&name, Slot::live(value));
+            if param.mode == Some(ParamMode::Mut)
+                && let Some(home) = self.frames.last_mut()
+                    .and_then(|frame| frame.scopes.last_mut())
+                    .and_then(|scope| scope.homes.last_mut())
+            {
+                home.1 = true;
+            }
             if let ParamKind::Named { ty, .. } = &param.kind
                 && let Some(known) = crate::rowmatch::known_of_type(ty)
             {
@@ -4978,6 +5017,41 @@ impl Machine {
     /// and independent — and spelled `take` it MOVES. Every other place
     /// (`x = v`, `s.f = v`) is an initializer and consumes its operand as one
     /// (`[mem.tier0.move.1]`), exactly as before.
+    /// The store's lexical root decides whether it is outer; the old
+    /// container header, when there is one, decides where the copy lands.
+    fn copy_destination(&mut self, path: &Path) -> Option<RegionId> {
+        let frame = self.frames.get(path.frame)?;
+        let (scope_index, local_index) = frame.scopes.iter().enumerate().rev()
+            .find_map(|(i, scope)| scope.locals.iter().rposition(|(name, _)| name == &path.base).map(|j| (i, j)))?;
+        let (ambient, parameter) = frame.scopes[scope_index].homes[local_index];
+        let outer = parameter || frame.scopes[scope_index + 1..].iter().any(|scope| scope.region_boundary);
+        if !outer { return None; }
+        let own = self.slot_mut(path).and_then(|s| match &s.value {
+            Value::List(_, _, home) | Value::Map(_, home) => *home,
+            _ => None,
+        });
+        if own.is_some() { return own; }
+        if matches!(path.projections.last(), Some(Proj::Index(_) | Proj::Key(_))) {
+            let mut parent = path.clone();
+            parent.projections.pop();
+            if let Some(home) = self.slot_mut(&parent).and_then(|s| s.value.home()) {
+                return Some(home);
+            }
+        }
+        Some(ambient)
+    }
+
+    fn materialize_store(&mut self, expr: &Expr, value: Value, into: Option<RegionId>) -> EResult<Value> {
+        let mut syntax = expr;
+        while let ExprKind::Group(inner) = &*syntax.kind { syntax = inner; }
+        if let Some(into) = into
+            && matches!(&*syntax.kind, ExprKind::Unary { op: UnOp::Copy, .. })
+        {
+            return self.materialize(value, into, self.current_region(), expr.span);
+        }
+        Ok(value)
+    }
+
     fn store_operand(&mut self, place: &Expr, value: &Expr, take: bool) -> EResult<Value> {
         if take {
             return self.take_operand(value, value.span);
@@ -5036,10 +5110,13 @@ impl Machine {
             _ => None,
         };
         if op == AssignOp::Assign {
+            let syntax = value;
             let value = match place_int {
                 Some(ty) => self.eval_int_expected(value, ty)?,
                 None => self.store_operand(place, value, take)?,
             };
+            let into = self.copy_destination(&path);
+            let value = self.materialize_store(syntax, value, into)?;
             // Keep the place's integer type: `x += 1` and `x = x + 1` agree.
             let value = match (self.slot_mut(&path).map(|s| s.value.clone()), value) {
                 (Some(Value::Int(_, ty)), Value::Int(v, lit)) if lit.literal => {
@@ -5108,7 +5185,7 @@ impl Machine {
             parent.projections.pop();
             if matches!(
                 self.resolve(&parent),
-                Some((slot, _)) if matches!(slot.value, Value::Map(_))
+                Some((slot, _)) if matches!(slot.value, Value::Map(..))
             ) {
                 return unsupported(format!(
                     "cannot update `{}` in place: the key may be absent — `m[k]` is `V ! \
@@ -5322,7 +5399,7 @@ impl Machine {
         // here and "did not denote a place" — wolf-interp#91.)
         let map_base = matches!(
             self.resolve(&path),
-            Some((slot, _)) if matches!(slot.value, Value::Map(_))
+            Some((slot, _)) if matches!(slot.value, Value::Map(..))
         );
         Ok(match key {
             Value::Int(i, _) if !map_base => {
@@ -7083,7 +7160,7 @@ impl Machine {
         self.step()?;
         let map_base = matches!(
             self.resolve(&base_path),
-            Some((slot, _)) if matches!(slot.value, Value::Map(_))
+            Some((slot, _)) if matches!(slot.value, Value::Map(..))
         );
         if !map_base {
             // A read of an element of anything else: the ordinary value
@@ -7232,7 +7309,7 @@ impl Machine {
         // earlier ones ran, which is where the read happens.
         let items: Vec<Slot> = match iterable {
             Value::List(slots, _, _) => std::sync::Arc::unwrap_or_clone(slots),
-            Value::Map(pairs) => pairs
+            Value::Map(pairs, _) => pairs
                 .into_iter()
                 .map(|(key, slot)| Slot {
                     state: slot.state,
@@ -8652,7 +8729,7 @@ impl Machine {
         match &slot.value {
             // Only a step-(1) builtin lends: a home-module call runs std code,
             // which keeps the copy for the reason an impl method does.
-            value @ (Value::List(..) | Value::Map(_) | Value::Str(_))
+            value @ (Value::List(..) | Value::Map(..) | Value::Str(_))
                 if builtin::is_builtin_method(value, method) =>
             {
                 Some(Lend {
@@ -8679,7 +8756,7 @@ impl Machine {
                 return None;
             }
             match &slot.value {
-                value @ (Value::List(..) | Value::Map(_) | Value::Str(_)) => {
+                value @ (Value::List(..) | Value::Map(..) | Value::Str(_)) => {
                     if builtin::is_builtin_method(value, method) {
                         return builtin::mutates_receiver(value, method).then_some(None);
                     }
@@ -8985,7 +9062,17 @@ impl Machine {
                 why: HeldWhy::Pending(call),
             });
         }
-        let evaluated = self.eval_arg_list(args, Callee::Wolf, None, call);
+        let evaluated = self.eval_arg_list(args, Callee::Wolf, None, call).and_then(|mut evaluated| {
+            if method == "push" && mode == Some(ParamMode::Mut)
+                && let Some(path) = &path
+            {
+                let into = self.copy_destination(path);
+                for (arg, value) in args.iter().zip(&mut evaluated.values) {
+                    *value = self.materialize_store(&arg.expr, value.clone(), into)?;
+                }
+            }
+            Ok(evaluated)
+        });
         for claimed in &receiver_claims {
             self.access.withdraw(call, claimed);
         }
@@ -9399,7 +9486,7 @@ impl Machine {
         }
         let place = self.place_of(base).ok()?;
         let (slot, _) = self.resolve(&place)?;
-        matches!(slot.value, Value::List(..) | Value::Map(_) | Value::Str(_)).then_some(place)
+        matches!(slot.value, Value::List(..) | Value::Map(..) | Value::Str(_)).then_some(place)
     }
 
     /// `[mem.model.place.elem]` 1(a) for an index read inside an expression
@@ -10946,7 +11033,7 @@ fn prefix(path: &Path, depth: usize) -> Path {
 /// `UnknownIndex`, which conflicts with every sibling (the sound direction).
 fn element_step(container: &Value, index: &Value, origin: u8) -> Proj {
     match (container, index) {
-        (Value::Map(_), key) => MapKey::of(key).map_or(Proj::UnknownIndex, Proj::Key),
+        (Value::Map(..), key) => MapKey::of(key).map_or(Proj::UnknownIndex, Proj::Key),
         (Value::List(..) | Value::Tuple(_), Value::Int(i, _)) if origin == 1 => {
             i.checked_sub(1).map_or(Proj::UnknownIndex, Proj::Index)
         }
@@ -11126,7 +11213,7 @@ fn moved_part(value: &Value) -> Option<(Vec<Proj>, Span)> {
             Value::Struct { fields, .. } => fields
                 .iter()
                 .find_map(|(name, slot)| visit(Proj::Field(name.clone()), slot, steps)),
-            Value::Map(pairs) => pairs
+            Value::Map(pairs, _) => pairs
                 .iter()
                 .find_map(|(key, slot)| visit(Proj::Key(MapKey::of(key)?), slot, steps)),
             _ => None,
