@@ -36,7 +36,7 @@ runs!(region_outer_write_reset, "300 3 299 0 6\n");
 
 // R-is81-3: these remain compiler E1010 controls, but the dynamic
 // materializing copy no longer keeps the dying region's bytes. The pairing
-// must name the below-ledger movement, not forge a stale-data trap.
+// must name the dynamic movement, not forge a stale-data trap.
 runs!(region_kept_arg_field, "28\nbuilt in pass, 0 uses\n");
 runs!(region_kept_arg_method, "28\nbuilt in pass, 0 uses\n");
 runs!(region_kept_arg_read_struct, "28\nbuilt in pass, 0 uses\n");
