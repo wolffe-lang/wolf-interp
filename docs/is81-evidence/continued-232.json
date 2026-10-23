@@ -1,0 +1,254 @@
+[
+  {
+    "name": "builtin_push",
+    "record": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/builtin_push/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "before"
+  },
+  {
+    "name": "builtin_push",
+    "record": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/builtin_push/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "after"
+  },
+  {
+    "name": "callee_push",
+    "record": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/callee_push/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "before"
+  },
+  {
+    "name": "callee_push",
+    "record": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/callee_push/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "after"
+  },
+  {
+    "name": "generic_push",
+    "record": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/generic_push/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "before"
+  },
+  {
+    "name": "generic_push",
+    "record": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/generic_push/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "after"
+  },
+  {
+    "name": "result_list",
+    "record": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/result_list/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "before"
+  },
+  {
+    "name": "result_list",
+    "record": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/result_list/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "after"
+  },
+  {
+    "name": "map_pairs",
+    "record": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/map_pairs/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "before"
+  },
+  {
+    "name": "map_pairs",
+    "record": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/map_pairs/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "after"
+  },
+  {
+    "name": "map_key_store",
+    "record": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/map_key_store/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n1\n",
+      "stdout_sha256": "3448463e0363f77d020a8b2af61f1189bcbab17d67e2a5ae1d63d18a22860a90",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "before"
+  },
+  {
+    "name": "map_key_store",
+    "record": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/map_key_store/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n1\n",
+      "stdout_sha256": "3448463e0363f77d020a8b2af61f1189bcbab17d67e2a5ae1d63d18a22860a90",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "after"
+  },
+  {
+    "name": "map_key_no_in",
+    "record": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/map_key_no_in/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n1\n",
+      "stdout_sha256": "3448463e0363f77d020a8b2af61f1189bcbab17d67e2a5ae1d63d18a22860a90",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "before"
+  },
+  {
+    "name": "map_key_no_in",
+    "record": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/map_key_no_in/main.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n1\n",
+      "stdout_sha256": "3448463e0363f77d020a8b2af61f1189bcbab17d67e2a5ae1d63d18a22860a90",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "after"
+  }
+]

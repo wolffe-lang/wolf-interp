@@ -1,0 +1,39 @@
+--- a/crates/wolf_driver/tests/region_outer_write_lanes.rs
++++ b/crates/wolf_driver/tests/region_outer_write_lanes.rs
+@@ -46,6 +46,7 @@
+     assert!(copy_before_mirror("0.1.56", "28547b4"));
+     assert!(!copy_before_mirror("0.1.57", "28547b4"));
+     assert!(!copy_before_mirror("0.1.56", "unknown"));
++    assert!(!copy_before_mirror("NEXT_LUPIN_VERSION", "NEXT_LUPIN_COMMIT"));
+ }
+ 
+ fn wolf() -> &'static str {
+--- a/crates/wolf_driver/tests/region_str_call_lanes.rs
++++ b/crates/wolf_driver/tests/region_str_call_lanes.rs
+@@ -40,6 +40,7 @@
+     assert!(copy_before_mirror("0.1.56", "28547b4"));
+     assert!(!copy_before_mirror("0.1.57", "28547b4"));
+     assert!(!copy_before_mirror("0.1.56", "unknown"));
++    assert!(!copy_before_mirror("NEXT_LUPIN_VERSION", "NEXT_LUPIN_COMMIT"));
+ }
+ 
+ fn wolf() -> &'static str {
+--- a/crates/wolf_driver/tests/region_kept_arg_lanes.rs
++++ b/crates/wolf_driver/tests/region_kept_arg_lanes.rs
+@@ -40,6 +40,7 @@
+     assert!(copy_before_mirror("0.1.56", "28547b4"));
+     assert!(!copy_before_mirror("0.1.57", "28547b4"));
+     assert!(!copy_before_mirror("0.1.56", "unknown"));
++    assert!(!copy_before_mirror("NEXT_LUPIN_VERSION", "NEXT_LUPIN_COMMIT"));
+ }
+ 
+ fn wolf() -> &'static str {
+@@ -175,7 +176,7 @@
+ /// 0.2.34 pairing, r39; #232 still open), the same.
+ // r40: the published 0.1.56 archive retains these measured answers.
+ const LUPIN_MISSES_LIST_ELEMENTS: &[&str] = &[
+-    "0.1.50", "0.1.51", "0.1.52", "0.1.53", "0.1.54", "0.1.55", "0.1.56",
++    "0.1.50", "0.1.51", "0.1.52", "0.1.53", "0.1.54", "0.1.55", "0.1.56", "NEXT_LUPIN_VERSION",
+ ];
+ 
+ fn base_version(v: &str) -> &str {

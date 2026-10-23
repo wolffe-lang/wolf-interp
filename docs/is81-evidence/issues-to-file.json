@@ -1,0 +1,8 @@
+[
+  {
+    "repo": "wolffe-lang/wolf-interp",
+    "title": "Track fs/copy_chunk_dev_full.lu outside the contained filesystem path domain",
+    "witness": "fs/copy_chunk_dev_full.lu is unsupported by name under os.fs.path.domain on lupin, before and after is81. The in-tree read-only sink now rewinds and retries all 17 bytes, and the Rust-level /dev/full writer reports ENOSPC with zero accepted bytes.",
+    "recommendation": "Keep the production path boundary; track an admissible device-witness strategy separately. Do not broaden it as a convenience fix."
+  }
+]

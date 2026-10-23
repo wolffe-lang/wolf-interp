@@ -1,0 +1,19 @@
+[
+  {
+    "id": "R-is81-1",
+    "recommendation": "Promote locked nix 0.31.3 (MIT) for safe direct execve and dup2; process/fs only, defaults disabled, no unsafe in lupin",
+    "status": "accepted and implemented",
+    "conditions": "Cargo.lock only adds nix to the root dependency list; no new crates or version changes. No dependency/license allowlist or deny gate exists; compiler-independence checks remain unchanged."
+  },
+  {
+    "id": "R-is81-2",
+    "recommendation": "Preserve the resolved fs path domain; test the in-tree read-only sink and Rust-level counted writes, including /dev/full, rather than widening paths",
+    "status": "accepted and implemented"
+  },
+  {
+    "id": "R-is81-3",
+    "recommendation": "A copy materializes only inside a region/in block opened in the current activation; mut parameters are outer relative to that lexical block",
+    "status": "accepted and implemented",
+    "withdrawn": "The over-broad dynamic-context reading, the proposed five safe-exit gate changes, and the proposed E1010 policy issue are withdrawn. The five controls remain region-fault."
+  }
+]

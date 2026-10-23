@@ -1,0 +1,232 @@
+{
+  "checked": {
+    "moved": [
+      {
+        "after_class": "Verdict",
+        "after_verdict": "exit(0)",
+        "before_class": "agreement",
+        "before_verdict": "exit(1)",
+        "file": "corpus/fs/copy_chunk_failed_write.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "unsupported",
+        "before_verdict": "unsupported",
+        "file": "corpus/memory/list_reserve.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "unsupported",
+        "before_verdict": "unsupported",
+        "file": "corpus/memory/list_reset.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "SOUNDNESS",
+        "before_verdict": "trap(region-fault)",
+        "file": "corpus/memory/region_copy_shares_str.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "SOUNDNESS",
+        "before_verdict": "trap(region-fault)",
+        "file": "corpus/memory/region_outer_write_field.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "SOUNDNESS",
+        "before_verdict": "trap(region-fault)",
+        "file": "corpus/memory/region_outer_write_map.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "unsupported",
+        "before_verdict": "unsupported",
+        "file": "corpus/memory/region_outer_write_reset.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "SOUNDNESS",
+        "before_verdict": "trap(region-fault)",
+        "file": "corpus/memory/region_outer_write_str_push.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "SOUNDNESS",
+        "before_verdict": "trap(region-fault)",
+        "file": "corpus/memory/region_outer_write_struct.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "SOUNDNESS",
+        "before_verdict": "trap(region-fault)",
+        "file": "corpus/memory/region_str_call_index_store.lu"
+      },
+      {
+        "after_class": "Completeness",
+        "after_verdict": "fail(E0409)",
+        "before_class": "Completeness",
+        "before_verdict": "exit(0)",
+        "file": "corpus/rows/negative/row_operand_member.lu"
+      },
+      {
+        "after_class": "Completeness",
+        "after_verdict": "fail(E0409)",
+        "before_class": "Completeness",
+        "before_verdict": "exit(0)",
+        "file": "corpus/rows/negative/row_operand_method.lu"
+      }
+    ],
+    "summary_lines": [
+      "differ: 1219 file(s) \u2014 835 agreement(s), 251 completeness note(s), 0 SOUNDNESS finding(s), 98 unsupported (3 forward pin(s)); 21 hard divergence(s)",
+      "differ: run-rung coverage \u2014 A executed 745, B executed 936, BOTH executed 722 of 1157 entries ([proto.cmp.coverage]; `cargo xtask lane-coverage` is the gated union across A's lanes)",
+      "differ: control \u2014 the same 1219 file(s), the same impl A, against the PREVIOUS interpreter: (no --version line)",
+      "differ: control ledger \u2014 827 agreement(s), 251 completeness note(s), 6 SOUNDNESS finding(s), 101 unsupported (3 forward pin(s)); 26 hard divergence(s)",
+      "differ: control coverage \u2014 A executed 745, B executed 935, BOTH executed 719 of 1157 entries",
+      "differ: control  agreements     827 -> 835 (+8)",
+      "differ: control  soundness      6 -> 0 (-6)",
+      "differ: control  unsupported    101 -> 98 (-3)",
+      "differ: control  hard           26 -> 21 (-5)",
+      "differ: control  coverage B     935 -> 936 (+1)",
+      "differ: control  coverage BOTH  719 -> 722 (+3)",
+      "differ: THE INTERPRETER BUMP MOVED 10 LEDGER COUNT(S).",
+      "differ: control  corpus/fs/copy_chunk_failed_write.lu  agreement -> Verdict",
+      "differ: control  corpus/memory/list_reserve.lu  unsupported -> agreement",
+      "differ: control  corpus/memory/list_reset.lu  unsupported -> agreement",
+      "differ: control  corpus/memory/region_copy_shares_str.lu  SOUNDNESS -> agreement",
+      "differ: control  corpus/memory/region_outer_write_field.lu  SOUNDNESS -> agreement",
+      "differ: control  corpus/memory/region_outer_write_map.lu  SOUNDNESS -> agreement",
+      "differ: control  corpus/memory/region_outer_write_reset.lu  unsupported -> agreement",
+      "differ: control  corpus/memory/region_outer_write_str_push.lu  SOUNDNESS -> agreement",
+      "differ: control  corpus/memory/region_outer_write_struct.lu  SOUNDNESS -> agreement",
+      "differ: control  corpus/memory/region_str_call_index_store.lu  SOUNDNESS -> agreement",
+      "differ: control \u2014 2 file(s) moved BELOW the ledger (B's verdict or printed bytes changed while its class did not: a `fail`-pinned file is a completeness note whatever B answers, and `compare` reads stdout only on a seeded pair, so these reach NO count and are invisible to the table above)",
+      "differ: control  corpus/rows/negative/row_operand_member.lu  B exit(0) -> fail(E0409)",
+      "differ: control  corpus/rows/negative/row_operand_method.lu  B exit(0) -> fail(E0409)"
+    ]
+  },
+  "native": {
+    "moved": [
+      {
+        "after_class": "Verdict",
+        "after_verdict": "exit(0)",
+        "before_class": "agreement",
+        "before_verdict": "exit(1)",
+        "file": "corpus/fs/copy_chunk_failed_write.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "unsupported",
+        "before_verdict": "unsupported",
+        "file": "corpus/memory/list_reserve.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "unsupported",
+        "before_verdict": "unsupported",
+        "file": "corpus/memory/list_reset.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "SOUNDNESS",
+        "before_verdict": "trap(region-fault)",
+        "file": "corpus/memory/region_copy_shares_str.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "SOUNDNESS",
+        "before_verdict": "trap(region-fault)",
+        "file": "corpus/memory/region_outer_write_field.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "SOUNDNESS",
+        "before_verdict": "trap(region-fault)",
+        "file": "corpus/memory/region_outer_write_map.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "unsupported",
+        "before_verdict": "unsupported",
+        "file": "corpus/memory/region_outer_write_reset.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "SOUNDNESS",
+        "before_verdict": "trap(region-fault)",
+        "file": "corpus/memory/region_outer_write_str_push.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "SOUNDNESS",
+        "before_verdict": "trap(region-fault)",
+        "file": "corpus/memory/region_outer_write_struct.lu"
+      },
+      {
+        "after_class": "agreement",
+        "after_verdict": "exit(0)",
+        "before_class": "SOUNDNESS",
+        "before_verdict": "trap(region-fault)",
+        "file": "corpus/memory/region_str_call_index_store.lu"
+      },
+      {
+        "after_class": "Completeness",
+        "after_verdict": "fail(E0409)",
+        "before_class": "Completeness",
+        "before_verdict": "exit(0)",
+        "file": "corpus/rows/negative/row_operand_member.lu"
+      },
+      {
+        "after_class": "Completeness",
+        "after_verdict": "fail(E0409)",
+        "before_class": "Completeness",
+        "before_verdict": "exit(0)",
+        "file": "corpus/rows/negative/row_operand_method.lu"
+      }
+    ],
+    "summary_lines": [
+      "differ: 1219 file(s) \u2014 820 agreement(s), 251 completeness note(s), 14 SOUNDNESS finding(s), 99 unsupported (3 forward pin(s)); 35 hard divergence(s)",
+      "differ: run-rung coverage \u2014 A executed 750, B executed 936, BOTH executed 721 of 1157 entries ([proto.cmp.coverage]; `cargo xtask lane-coverage` is the gated union across A's lanes)",
+      "differ: control \u2014 the same 1219 file(s), the same impl A, against the PREVIOUS interpreter: (no --version line)",
+      "differ: control ledger \u2014 812 agreement(s), 251 completeness note(s), 20 SOUNDNESS finding(s), 102 unsupported (3 forward pin(s)); 40 hard divergence(s)",
+      "differ: control coverage \u2014 A executed 750, B executed 935, BOTH executed 718 of 1157 entries",
+      "differ: control  agreements     812 -> 820 (+8)",
+      "differ: control  soundness      20 -> 14 (-6)",
+      "differ: control  unsupported    102 -> 99 (-3)",
+      "differ: control  hard           40 -> 35 (-5)",
+      "differ: control  coverage B     935 -> 936 (+1)",
+      "differ: control  coverage BOTH  718 -> 721 (+3)",
+      "differ: THE INTERPRETER BUMP MOVED 10 LEDGER COUNT(S).",
+      "differ: control  corpus/fs/copy_chunk_failed_write.lu  agreement -> Verdict",
+      "differ: control  corpus/memory/list_reserve.lu  unsupported -> agreement",
+      "differ: control  corpus/memory/list_reset.lu  unsupported -> agreement",
+      "differ: control  corpus/memory/region_copy_shares_str.lu  SOUNDNESS -> agreement",
+      "differ: control  corpus/memory/region_outer_write_field.lu  SOUNDNESS -> agreement",
+      "differ: control  corpus/memory/region_outer_write_map.lu  SOUNDNESS -> agreement",
+      "differ: control  corpus/memory/region_outer_write_reset.lu  unsupported -> agreement",
+      "differ: control  corpus/memory/region_outer_write_str_push.lu  SOUNDNESS -> agreement",
+      "differ: control  corpus/memory/region_outer_write_struct.lu  SOUNDNESS -> agreement",
+      "differ: control  corpus/memory/region_str_call_index_store.lu  SOUNDNESS -> agreement",
+      "differ: control \u2014 2 file(s) moved BELOW the ledger (B's verdict or printed bytes changed while its class did not: a `fail`-pinned file is a completeness note whatever B answers, and `compare` reads stdout only on a seeded pair, so these reach NO count and are invisible to the table above)",
+      "differ: control  corpus/rows/negative/row_operand_member.lu  B exit(0) -> fail(E0409)",
+      "differ: control  corpus/rows/negative/row_operand_method.lu  B exit(0) -> fail(E0409)"
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "archives": {
+    "lupin_before": {
+      "file": "downloads/lupin/archive.tar.gz",
+      "matches_published_asset_digest": true,
+      "sha256_read_1": "ad703550ac4787e8e4bb26989d591a731410274d7332f2b4e8b9a64c878822cc",
+      "sha256_read_2": "ad703550ac4787e8e4bb26989d591a731410274d7332f2b4e8b9a64c878822cc"
+    },
+    "wolf": {
+      "file": "downloads/wolf/archive.tar.gz",
+      "matches_published_asset_digest": true,
+      "sha256_read_1": "4cc4045bbbb605c07835bc4f32685953c784eeef4cd3139a48b457dfc90dad1a",
+      "sha256_read_2": "4cc4045bbbb605c07835bc4f32685953c784eeef4cd3139a48b457dfc90dad1a"
+    }
+  },
+  "container_image": "localhost/px57-rust",
+  "core_limit": 0,
+  "corrected_pairing_source_commit": "b3f28164baf1ff112dbe1cb5440cfe6ee67c7b62",
+  "cpus": "4-7",
+  "differ_exit_codes": {
+    "checked": 1,
+    "native": 1
+  },
+  "fixture_std_policy": "only an entry own std/ is supplied equally; raw compiler and runtime are byte-identical to the published archive, without its bundled std",
+  "host": "kasumi",
+  "incremental": false,
+  "lock": "/home/mfwolffe/lanes/kasumi-cores-4-7.lock",
+  "lupin_before_commit": "28547b4",
+  "note": "Differ exits 1 on residual findings; job exit 0 means invocations completed, not a green differential.",
+  "pairing_driver_and_corpus_commit": "2f89a712",
+  "published_and_raw_wolf_binary_sha256": "def1d450147beaed53780481abb124bfa2882e3f8a79b095ae39107b63de7bcc",
+  "published_std_commit": "2386522eb059cca5a84108562c2c0a0e72345d34",
+  "runtime_pin": "294d626dd596122285d5df954762e3aee3e5db71",
+  "stamp_note": "Authoritative pairing rebuilt with WOLF_INTERP_STAMP_NONCE; its records identify b3f2816. Earlier unstamped rehearsals remain in /home/mfwolffe/lanes/is81/records/fixed-* and are not the final provenance claim. Final exact-head gate forces its own nonce and validates the binary record against that sha.",
+  "wolf_commit": "cf0c13d38479f444b69bb8356ad5709d07eff323",
+  "wolf_version": "0.2.35"
+}

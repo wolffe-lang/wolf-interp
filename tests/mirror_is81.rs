@@ -40,8 +40,16 @@ macro_rules! sharing_copy_faults {
     ($name:ident) => {
         #[test]
         fn $name() {
-            let obs = observe(include_bytes!(concat!("fixtures/is81/", stringify!($name), ".lu")), None);
-            assert_eq!(obs.verdict, Verdict::Trap(wolf_interp::trap::TrapKind::RegionFault), "{:?}", obs.reason);
+            let obs = observe(
+                include_bytes!(concat!("fixtures/is81/", stringify!($name), ".lu")),
+                None,
+            );
+            assert_eq!(
+                obs.verdict,
+                Verdict::Trap(wolf_interp::trap::TrapKind::RegionFault),
+                "{:?}",
+                obs.reason
+            );
             assert_eq!(obs.stdout, b"28\n");
         }
     };
@@ -177,8 +185,16 @@ fn main() -> !int {{
     for map in ["List[int]()", "[1, 1]", "[0, 1]"] {
         std::fs::write(&program, source.replace("List[int]()", map)).unwrap();
         let closed = Command::new("/bin/sh")
-            .args(["-c", "exec 0<&-; exec \"$1\" run \"$2\"", "is81", env!("CARGO_BIN_EXE_lupin"), program.to_str().unwrap()])
-            .current_dir(&root).output().unwrap();
+            .args([
+                "-c",
+                "exec 0<&-; exec \"$1\" run \"$2\"",
+                "is81",
+                env!("CARGO_BIN_EXE_lupin"),
+                program.to_str().unwrap(),
+            ])
+            .current_dir(&root)
+            .output()
+            .unwrap();
         assert!(closed.status.success(), "{map}: {closed:?}");
         assert_eq!(closed.stdout, b"5 8\n", "closed stdin, map {map}");
     }

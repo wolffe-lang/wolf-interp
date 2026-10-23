@@ -1,0 +1,33 @@
+{
+  "closed_stdin_hypothesis": {
+    "action": "helper rewrite withdrawn; inherited-closed-stdin cases retained as positive controls",
+    "old_helper_gave": "exec: io os_error=8 marker=false",
+    "reproduced": false,
+    "status": 0
+  },
+  "corrected_focused": {
+    "commit": "b3f28164baf1ff112dbe1cb5440cfe6ee67c7b62",
+    "job_exit": 0,
+    "tests": 22
+  },
+  "final_head_gate": "Separate exact-sha marker at /home/mfwolffe/lanes/is81/evidence/final-gate-marker.json, written before final push.",
+  "original_source_red": {
+    "commit": "28547b4",
+    "exit": 101,
+    "failed": 14,
+    "passed": 1,
+    "tests_taken_from": "239a0bf"
+  },
+  "whole_gates_before_final": [
+    {
+      "commit": "4bbb204",
+      "exit": 0,
+      "log": "/home/mfwolffe/lanes/is81/evidence/full.log"
+    },
+    {
+      "commit": "5edeaf2670e1076d11415554ec6615ba109f10d6",
+      "exit": 0,
+      "log": "/home/mfwolffe/lanes/is81/evidence/full-final-source.log"
+    }
+  ]
+}

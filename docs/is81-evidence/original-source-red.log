@@ -1,0 +1,168 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded cfg_aliases v0.2.2
+  Downloaded anstyle-query v1.1.5
+  Downloaded cfg-if v1.0.4
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded heck v0.5.0
+  Downloaded itoa v1.0.18
+  Downloaded colorchoice v1.0.5
+  Downloaded utf8parse v0.2.2
+  Downloaded nibble_vec v0.1.0
+  Downloaded errno v0.3.14
+  Downloaded comma v1.0.0
+  Downloaded endian-type v0.2.0
+  Downloaded strsim v0.11.1
+  Downloaded clap_lex v1.1.0
+  Downloaded anstyle v1.0.14
+  Downloaded fastrand v2.5.0
+  Downloaded quote v1.0.47
+  Downloaded rexpect v0.7.1
+  Downloaded getrandom v0.2.16
+  Downloaded thiserror v2.0.20
+  Downloaded thiserror-impl v2.0.20
+  Downloaded zmij v1.0.23
+  Downloaded clap_derive v4.6.4
+  Downloaded anstyle-parse v1.0.0
+  Downloaded smallvec v1.15.2
+  Downloaded tempfile v3.27.0
+  Downloaded anstream v1.0.0
+  Downloaded once_cell v1.21.4
+  Downloaded getrandom v0.4.3
+  Downloaded bitflags v2.13.1
+  Downloaded serde_derive v1.0.229
+  Downloaded clap v4.6.6
+  Downloaded console v0.16.4
+  Downloaded similar v2.7.0
+  Downloaded aho-corasick v1.1.5
+  Downloaded unicode-ident v1.0.24
+  Downloaded proc-macro2 v1.0.107
+  Downloaded log v0.4.34
+  Downloaded serde_core v1.0.229
+  Downloaded serde v1.0.229
+  Downloaded memchr v2.8.3
+  Downloaded unicode-segmentation v1.13.3
+  Downloaded insta v1.48.0
+  Downloaded regex v1.13.1
+  Downloaded rustyline v18.0.1
+  Downloaded clap_builder v4.6.6
+  Downloaded serde_json v1.0.151
+  Downloaded radix_trie v0.3.0
+  Downloaded unicode-width v0.2.2
+  Downloaded nix v0.31.3
+  Downloaded syn v3.0.3
+  Downloaded regex-syntax v0.8.11
+  Downloaded rustix v1.1.4
+  Downloaded regex-automata v0.4.18
+  Downloaded libc v0.2.189
+  Downloaded linux-raw-sys v0.12.1
+   Compiling wolf-interp v0.1.56 (/lane/red-src)
+    Finished `release` profile [optimized] target(s) in 24.95s
+     Running tests/mirror_is81.rs (/lane/target/release/deps/mirror_is81-4452818f335bc3b5)
+
+running 15 tests
+
+thread 'format_mark_beats_the_module_function_in_a_tuple_result' (158) panicked at tests/mirror_is81.rs:52:5:
+assertion `left == right` failed: Some("a tuple pattern needs a tuple place; shape mismatches are the type checker's")
+  left: Unsupported
+ right: Exit(0)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test format_mark_beats_the_module_function_in_a_tuple_result ... FAILED
+
+thread 'list_reserve' (171) panicked at tests/mirror_is81.rs:24:1:
+assertion `left == right` failed: None Some("`List.reserve` is no builtin, so it reaches `List`'s home module `std.list` ([type.method.resolve] step 2), and no std root is configured: pass `--std-root DIR`, set `LUPIN_STD`, or put a `std/` beside the `lupin` binary (the compiler reads `WOLF_STD`, a `std` path dependency in `wolf.pkg`, or the `std/` its release archive ships beside `wolf`) — the counterparty's E0301 ([type.method.root])")
+  left: Unsupported
+ right: Exit(0)
+test list_reserve ... FAILED
+
+thread 'exec_no_shebang_is_io_with_enoexec_and_never_runs_the_file' (156) panicked at tests/mirror_is81.rs:108:5:
+
+test exec_no_shebang_is_io_with_enoexec_and_never_runs_the_file ... FAILED
+
+thread 'region_copy_shares_str' (192) panicked at tests/mirror_is81.rs:17:1:
+assertion `left == right` failed: Some(Trap { kind: RegionFault, rule: RegionFree, span: Span { start: 1455, end: 1462 }, secondary: Some((Span { start: 1144, end: 1320 }, "the region was created here")), message: "`o.title` reaches into `pass` (region #2), which was freed wholesale; the value died with the region", program_message: None }) None
+  left: Trap(RegionFault)
+ right: Exit(0)
+test region_copy_shares_str ... FAILED
+
+thread 'list_reset' (188) panicked at tests/mirror_is81.rs:25:1:
+assertion `left == right` failed: None Some("`List.reset` is no builtin, so it reaches `List`'s home module `std.list` ([type.method.resolve] step 2), and no std root is configured: pass `--std-root DIR`, set `LUPIN_STD`, or put a `std/` beside the `lupin` binary (the compiler reads `WOLF_STD`, a `std` path dependency in `wolf.pkg`, or the `std/` its release archive ships beside `wolf`) — the counterparty's E0301 ([type.method.root])")
+  left: Unsupported
+ right: Exit(0)
+test list_reset ... FAILED
+LIMIT: fs/copy_chunk_dev_full.lu is declined by [os.fs.path.domain]; Rust-level counted-write and in-tree failed-write rows cover the copy rule
+test dev_full_corpus_witness_names_the_existing_path_domain_limit ... ok
+
+thread 'failed_copy_writes_rewind_and_preserve_errno' (157) panicked at tests/mirror_is81.rs:67:9:
+copy_chunk_failed_write: 
+test failed_copy_writes_rewind_and_preserve_errno ... FAILED
+
+thread 'region_outer_write_field' (212) panicked at tests/mirror_is81.rs:18:1:
+assertion `left == right` failed: Some(Trap { kind: RegionFault, rule: RegionFree, span: Span { start: 1582, end: 1589 }, secondary: Some((Span { start: 974, end: 1137 }, "the region was created here")), message: "`s.title` reaches into `turn` (region #10), which was freed wholesale; the value died with the region", program_message: None }) None
+  left: Trap(RegionFault)
+ right: Exit(0)
+
+thread 'region_outer_write_map' (213) panicked at tests/mirror_is81.rs:19:1:
+assertion `left == right` failed: Some(Trap { kind: RegionFault, rule: RegionFree, span: Span { start: 803, end: 814 }, secondary: Some((Span { start: 657, end: 769 }, "the region was created here")), message: "`tab.m[\"k7\"]` reaches into `turn` (region #8), which was freed wholesale; the value died with the region", program_message: None }) None
+  left: Trap(RegionFault)
+ right: Exit(0)
+test region_outer_write_field ... FAILED
+test region_outer_write_map ... FAILED
+
+thread 'region_outer_write_reset' (222) panicked at tests/mirror_is81.rs:26:1:
+assertion `left == right` failed: None Some("`List.reset` is no builtin, so it reaches `List`'s home module `std.list` ([type.method.resolve] step 2), and no std root is configured: pass `--std-root DIR`, set `LUPIN_STD`, or put a `std/` beside the `lupin` binary (the compiler reads `WOLF_STD`, a `std` path dependency in `wolf.pkg`, or the `std/` its release archive ships beside `wolf`) — the counterparty's E0301 ([type.method.root])")
+  left: Unsupported
+ right: Exit(0)
+test region_outer_write_reset ... FAILED
+
+thread 'region_str_call_index_store' (229) panicked at tests/mirror_is81.rs:22:1:
+assertion `left == right` failed: Some(Trap { kind: RegionFault, rule: RegionFree, span: Span { start: 1326, end: 1338 }, secondary: Some((Span { start: 1144, end: 1221 }, "the region was created here")), message: "`st.vals[\"x\"]` reaches into `scratch` (region #1), which was freed wholesale; the value died with the region", program_message: None }) None
+  left: Trap(RegionFault)
+ right: Exit(0)
+test region_str_call_index_store ... FAILED
+
+thread 'row_members_and_methods_require_handling' (237) panicked at tests/mirror_is81.rs:32:9:
+assertion `left == right` failed: None
+  left: Exit(0)
+ right: Fail("E0409")
+test row_members_and_methods_require_handling ... FAILED
+
+thread 'region_outer_write_str_push' (224) panicked at tests/mirror_is81.rs:20:1:
+assertion `left == right` failed: Some(Trap { kind: RegionFault, rule: RegionFree, span: Span { start: 1449, end: 1462 }, secondary: Some((Span { start: 1112, end: 1270 }, "the region was created here")), message: "`log.lines[42]` reaches into `turn` (region #43), which was freed wholesale; the value died with the region", program_message: None }) None
+  left: Trap(RegionFault)
+ right: Exit(0)
+test region_outer_write_str_push ... FAILED
+
+thread 'region_outer_write_struct' (228) panicked at tests/mirror_is81.rs:21:1:
+assertion `left == right` failed: Some(Trap { kind: RegionFault, rule: RegionFree, span: Span { start: 1159, end: 1171 }, secondary: Some((Span { start: 866, end: 1122 }, "the region was created here")), message: "`acc.rows[49]` reaches into `turn` (region #50), which was freed wholesale; the value died with the region", program_message: None }) None
+  left: Trap(RegionFault)
+ right: Exit(0)
+test region_outer_write_struct ... FAILED
+
+thread 's260_spawn_and_exec_witnesses_keep_the_host_number' (241) panicked at tests/mirror_is81.rs:141:13:
+assertion `left == right` failed
+  left: "./noshebang spawn_fds[1,1]: io os_error=0\n./noshebang spawn_fds[]: io os_error=0\n./noshebang spawn: io os_error=0\n./noshebang spawn_job[1,1]: io os_error=0\n./junk spawn_fds[1,1]: io os_error=0\n./junk spawn_fds[]: io os_error=0\n./junk spawn: io os_error=0\n./junk spawn_job[1,1]: io os_error=0\n./control spawn_fds[1,1]: RAN status 7\n./control spawn_fds[]: RAN status 7\n./control spawn: RAN status 7\n./control spawn_job[1,1]: RAN status 7\nmarker=false\n"
+ right: "./noshebang spawn_fds[1,1]: io os_error=8\n./noshebang spawn_fds[]: io os_error=8\n./noshebang spawn: io os_error=8\n./noshebang spawn_job[1,1]: io os_error=8\n./junk spawn_fds[1,1]: io os_error=8\n./junk spawn_fds[]: io os_error=8\n./junk spawn: io os_error=8\n./junk spawn_job[1,1]: io os_error=8\n./control spawn_fds[1,1]: RAN status 7\n./control spawn_fds[]: RAN status 7\n./control spawn: RAN status 7\n./control spawn_job[1,1]: RAN status 7\nmarker=false\n"
+test s260_spawn_and_exec_witnesses_keep_the_host_number ... FAILED
+
+failures:
+
+failures:
+    exec_no_shebang_is_io_with_enoexec_and_never_runs_the_file
+    failed_copy_writes_rewind_and_preserve_errno
+    format_mark_beats_the_module_function_in_a_tuple_result
+    list_reserve
+    list_reset
+    region_copy_shares_str
+    region_outer_write_field
+    region_outer_write_map
+    region_outer_write_reset
+    region_outer_write_str_push
+    region_outer_write_struct
+    region_str_call_index_store
+    row_members_and_methods_require_handling
+    s260_spawn_and_exec_witnesses_keep_the_host_number
+
+test result: FAILED. 1 passed; 14 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--test mirror_is81`

@@ -1,0 +1,9 @@
+Replace NEXT_LUPIN_VERSION and NEXT_LUPIN_COMMIT in next-release.patch.in with the impl_version and commit read from the next published lupin archive (expected version 0.1.57). Apply in wolf-lang, then cargo fmt.
+
+The three copy_before_mirror predicates already whitelist only 0.1.55/e642f26 and 0.1.56/28547b4. Do NOT add the fixed release to those lag tuples: their unlisted-record branches already require exit(0) and exact bytes. The added negative assertions record the new mirror identity explicitly.
+
+The version appended to LUPIN_MISSES_LIST_ELEMENTS is a DIFFERENT, still-open lag, wolf-interp#232: all seven fixtures builtin_push, callee_push, generic_push, result_list, map_pairs, map_key_store and map_key_no_in remain exit(0) before and after is81 (continued-232.json). Carry that narrow lag for the new version; do not retire it with #289.
+
+The five region_kept_arg_{field,method,read_struct,recv,two_mut} controls remain trap(region-fault) after the lexical fix. No helper or E1010 assertion change is owed for them. The earlier proposal to change them was withdrawn (R-is81-3).
+
+MEMBER_PRE_MIRROR, METHOD_PRE_MIRROR and s260 old-release records must not gain a new pre-mirror entry: the fixed release takes their normal expected-answer branch. No wolf-lang file was changed by is81.

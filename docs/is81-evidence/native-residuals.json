@@ -1,0 +1,299 @@
+[
+  {
+    "after": {
+      "a": "exit(0)",
+      "b": "trap(race)",
+      "class": "SOUNDNESS",
+      "file": "corpus/conc/atomic_race_plain.lu"
+    },
+    "before": {
+      "a": "exit(0)",
+      "b": "trap(race)",
+      "class": "SOUNDNESS",
+      "file": "corpus/conc/atomic_race_plain.lu"
+    },
+    "file": "corpus/conc/atomic_race_plain.lu",
+    "issue_references": [
+      "wolf-lang#603 OPEN (corpus header)",
+      "wolf-interp#194 CLOSED"
+    ],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": "wolf-lang#603",
+    "present_in_published_baseline": true
+  },
+  {
+    "after": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/conc/atomic_ub_misaligned.lu"
+    },
+    "before": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/conc/atomic_ub_misaligned.lu"
+    },
+    "file": "corpus/conc/atomic_ub_misaligned.lu",
+    "issue_references": [
+      "wolf-lang#528 CLOSED",
+      "wolf-lang#606 CLOSED"
+    ],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": null,
+    "present_in_published_baseline": true
+  },
+  {
+    "after": {
+      "a": "exit(69)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/conc/atomic_ub_uaf.lu"
+    },
+    "before": {
+      "a": "exit(115)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/conc/atomic_ub_uaf.lu"
+    },
+    "file": "corpus/conc/atomic_ub_uaf.lu",
+    "issue_references": [
+      "wolf-lang#528 CLOSED",
+      "wolf-lang#606 CLOSED"
+    ],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": null,
+    "present_in_published_baseline": true
+  },
+  {
+    "after": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_repr_c_field.lu"
+    },
+    "before": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_repr_c_field.lu"
+    },
+    "file": "corpus/memory/raw_ub_misaligned_repr_c_field.lu",
+    "issue_references": [
+      "wolf-lang#574 CLOSED"
+    ],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": null,
+    "present_in_published_baseline": true
+  },
+  {
+    "after": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_repr_c_field_store.lu"
+    },
+    "before": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_repr_c_field_store.lu"
+    },
+    "file": "corpus/memory/raw_ub_misaligned_repr_c_field_store.lu",
+    "issue_references": [
+      "wolf-lang#577 CLOSED"
+    ],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": null,
+    "present_in_published_baseline": true
+  },
+  {
+    "after": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_u16_read.lu"
+    },
+    "before": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_u16_read.lu"
+    },
+    "file": "corpus/memory/raw_ub_misaligned_u16_read.lu",
+    "issue_references": [
+      "wolf-lang#574 CLOSED"
+    ],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": null,
+    "present_in_published_baseline": true
+  },
+  {
+    "after": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_u16_write.lu"
+    },
+    "before": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_u16_write.lu"
+    },
+    "file": "corpus/memory/raw_ub_misaligned_u16_write.lu",
+    "issue_references": [
+      "wolf-lang#574 CLOSED"
+    ],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": null,
+    "present_in_published_baseline": true
+  },
+  {
+    "after": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_u32_read.lu"
+    },
+    "before": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_u32_read.lu"
+    },
+    "file": "corpus/memory/raw_ub_misaligned_u32_read.lu",
+    "issue_references": [
+      "wolf-lang#574 CLOSED"
+    ],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": null,
+    "present_in_published_baseline": true
+  },
+  {
+    "after": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_u32_write.lu"
+    },
+    "before": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_u32_write.lu"
+    },
+    "file": "corpus/memory/raw_ub_misaligned_u32_write.lu",
+    "issue_references": [
+      "wolf-lang#574 CLOSED"
+    ],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": null,
+    "present_in_published_baseline": true
+  },
+  {
+    "after": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_u64_read.lu"
+    },
+    "before": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_u64_read.lu"
+    },
+    "file": "corpus/memory/raw_ub_misaligned_u64_read.lu",
+    "issue_references": [
+      "wolf-lang#574 CLOSED"
+    ],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": null,
+    "present_in_published_baseline": true
+  },
+  {
+    "after": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_u64_write.lu"
+    },
+    "before": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/raw_ub_misaligned_u64_write.lu"
+    },
+    "file": "corpus/memory/raw_ub_misaligned_u64_write.lu",
+    "issue_references": [
+      "wolf-lang#574 CLOSED"
+    ],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": null,
+    "present_in_published_baseline": true
+  },
+  {
+    "after": {
+      "a": "exit(177)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/unsafe_ub_uaf.lu"
+    },
+    "before": {
+      "a": "exit(77)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/unsafe_ub_uaf.lu"
+    },
+    "file": "corpus/memory/unsafe_ub_uaf.lu",
+    "issue_references": [],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": null,
+    "present_in_published_baseline": true
+  },
+  {
+    "after": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/volatile_ub_misaligned.lu"
+    },
+    "before": {
+      "a": "exit(0)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/volatile_ub_misaligned.lu"
+    },
+    "file": "corpus/memory/volatile_ub_misaligned.lu",
+    "issue_references": [
+      "wolf-lang#527 CLOSED",
+      "wolf-lang#606 CLOSED"
+    ],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": null,
+    "present_in_published_baseline": true
+  },
+  {
+    "after": {
+      "a": "exit(36)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/volatile_ub_uaf.lu"
+    },
+    "before": {
+      "a": "exit(124)",
+      "b": "ub(mem.ub)",
+      "class": "SOUNDNESS",
+      "file": "corpus/memory/volatile_ub_uaf.lu"
+    },
+    "file": "corpus/memory/volatile_ub_uaf.lu",
+    "issue_references": [
+      "wolf-lang#527 CLOSED",
+      "wolf-lang#606 CLOSED"
+    ],
+    "native_policy": "deliberate native UB explicitly documented by the corpus header; not a new interpreter finding",
+    "open_owning_issue": null,
+    "present_in_published_baseline": true
+  }
+]

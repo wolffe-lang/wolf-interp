@@ -1,0 +1,585 @@
+[
+  {
+    "command": [
+      "/lane/raw-tools/wolf/wolf",
+      "conform-run",
+      "/lane/wolf-interp/docs/is81-evidence/probes/local_format_rows.lu",
+      "--json",
+      "--checked",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "sc70_local_format_rows",
+    "raw_stdout": null,
+    "record": {
+      "commit": "cf0c13d",
+      "diagnostics": [],
+      "file": "/lane/wolf-interp/docs/is81-evidence/probes/local_format_rows.lu",
+      "impl": "wolfgang",
+      "impl_version": "0.2.35",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": null,
+      "stdout_sha256": null,
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "wolf-checked",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/raw-tools/wolf/wolf",
+      "conform-run",
+      "/lane/wolf-interp/docs/is81-evidence/probes/local_format_rows.lu",
+      "--json",
+      "--native",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "sc70_local_format_rows",
+    "raw_stdout": null,
+    "record": {
+      "commit": "cf0c13d",
+      "diagnostics": [],
+      "file": "/lane/wolf-interp/docs/is81-evidence/probes/local_format_rows.lu",
+      "impl": "wolfgang",
+      "impl_version": "0.2.35",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": null,
+      "stdout_sha256": null,
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "wolf-native",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/downloads/lupin/lupin-0.1.56-x86_64-unknown-linux-gnu/lupin",
+      "conform-run",
+      "/lane/wolf-interp/docs/is81-evidence/probes/local_format_rows.lu",
+      "--json",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "sc70_local_format_rows",
+    "raw_stdout": null,
+    "record": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "//lane/wolf-interp/docs/is81-evidence/probes/local_format_rows.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "resolve",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": null,
+      "stdout_sha256": null,
+      "verdict": "unsupported",
+      "warnings": [],
+      "x-unsupported": "a tuple pattern was given fn time::format; shape mismatches are the type checker's",
+      "x-unsupported-at": "run"
+    },
+    "tool": "lupin-before",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/target/release/lupin",
+      "conform-run",
+      "/lane/wolf-interp/docs/is81-evidence/probes/local_format_rows.lu",
+      "--json",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "sc70_local_format_rows",
+    "raw_stdout": null,
+    "record": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "//lane/wolf-interp/docs/is81-evidence/probes/local_format_rows.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": null,
+      "stdout_sha256": null,
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "lupin-after",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/raw-tools/wolf/wolf",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/copy_chunk_failed_write.lu",
+      "--json",
+      "--checked",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "copy_chunk_failed_write",
+    "raw_stdout": null,
+    "record": {
+      "commit": "cf0c13d",
+      "diagnostics": [],
+      "file": "/lane/wolf-interp/tests/fixtures/is81/copy_chunk_failed_write.lu",
+      "impl": "wolfgang",
+      "impl_version": "0.2.35",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "copy=io took_nothing=false os_error_set=true offset_after=17\nerror: eof\n",
+      "stdout_sha256": "ff7539571d945b353723a15034e3e5f854b295c7065f43f364b56f4576fdbd88",
+      "verdict": "exit(1)",
+      "warnings": []
+    },
+    "tool": "wolf-checked",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/raw-tools/wolf/wolf",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/copy_chunk_failed_write.lu",
+      "--json",
+      "--native",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "copy_chunk_failed_write",
+    "raw_stdout": null,
+    "record": {
+      "commit": "cf0c13d",
+      "diagnostics": [],
+      "file": "/lane/wolf-interp/tests/fixtures/is81/copy_chunk_failed_write.lu",
+      "impl": "wolfgang",
+      "impl_version": "0.2.35",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "copy=io took_nothing=false os_error_set=true offset_after=17\nerror: eof\n",
+      "stdout_sha256": "ff7539571d945b353723a15034e3e5f854b295c7065f43f364b56f4576fdbd88",
+      "verdict": "exit(1)",
+      "warnings": []
+    },
+    "tool": "wolf-native",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/downloads/lupin/lupin-0.1.56-x86_64-unknown-linux-gnu/lupin",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/copy_chunk_failed_write.lu",
+      "--json",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "copy_chunk_failed_write",
+    "raw_stdout": null,
+    "record": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "//lane/wolf-interp/tests/fixtures/is81/copy_chunk_failed_write.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "copy=io took_nothing=false os_error_set=true offset_after=17\nerror: eof\n",
+      "stdout_sha256": "ff7539571d945b353723a15034e3e5f854b295c7065f43f364b56f4576fdbd88",
+      "verdict": "exit(1)",
+      "warnings": []
+    },
+    "tool": "lupin-before",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/target/release/lupin",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/copy_chunk_failed_write.lu",
+      "--json",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "copy_chunk_failed_write",
+    "raw_stdout": null,
+    "record": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "//lane/wolf-interp/tests/fixtures/is81/copy_chunk_failed_write.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "copy=io took_nothing=true os_error_set=true offset_after=0\nretry=17 same=true\ncleaned=true\n",
+      "stdout_sha256": "374f23c379c1df32bf453146abd07f85c2f92511a5cb19ff6c416166f9999190",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "lupin-after",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/raw-tools/wolf/wolf",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/copy_chunk_dev_full.lu",
+      "--json",
+      "--checked",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "copy_chunk_dev_full",
+    "raw_stdout": null,
+    "record": {
+      "commit": "cf0c13d",
+      "diagnostics": [],
+      "file": "/lane/wolf-interp/tests/fixtures/is81/copy_chunk_dev_full.lu",
+      "impl": "wolfgang",
+      "impl_version": "0.2.35",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "copy=io os_error_set=true offset_after=17 left_to_read=0 of 17\ncleaned=true\n",
+      "stdout_sha256": "6fba422e97a31d7de3d401288d15bd98455093e09e50462c1be217d9dd98bc45",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "wolf-checked",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/raw-tools/wolf/wolf",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/copy_chunk_dev_full.lu",
+      "--json",
+      "--native",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "copy_chunk_dev_full",
+    "raw_stdout": null,
+    "record": {
+      "commit": "cf0c13d",
+      "diagnostics": [],
+      "file": "/lane/wolf-interp/tests/fixtures/is81/copy_chunk_dev_full.lu",
+      "impl": "wolfgang",
+      "impl_version": "0.2.35",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "copy=io os_error_set=true offset_after=17 left_to_read=0 of 17\ncleaned=true\n",
+      "stdout_sha256": "6fba422e97a31d7de3d401288d15bd98455093e09e50462c1be217d9dd98bc45",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "wolf-native",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/downloads/lupin/lupin-0.1.56-x86_64-unknown-linux-gnu/lupin",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/copy_chunk_dev_full.lu",
+      "--json",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "copy_chunk_dev_full",
+    "raw_stdout": null,
+    "record": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "//lane/wolf-interp/tests/fixtures/is81/copy_chunk_dev_full.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "resolve",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": null,
+      "stdout_sha256": null,
+      "verdict": "unsupported",
+      "warnings": [],
+      "x-unsupported": "`fs_open_mode(\"/dev/full\")` resolves outside the working directory \u2014 `..` applied and symlinks followed, as the host would (`[os.fs.path.domain]`); this machine serves the fs tier over REAL files inside its own tree and declines the rest by name rather than observing it",
+      "x-unsupported-at": "run"
+    },
+    "tool": "lupin-before",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/target/release/lupin",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/copy_chunk_dev_full.lu",
+      "--json",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "copy_chunk_dev_full",
+    "raw_stdout": null,
+    "record": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "//lane/wolf-interp/tests/fixtures/is81/copy_chunk_dev_full.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "resolve",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": null,
+      "stdout_sha256": null,
+      "verdict": "unsupported",
+      "warnings": [],
+      "x-unsupported": "`fs_open_mode(\"/dev/full\")` resolves outside the working directory \u2014 `..` applied and symlinks followed, as the host would (`[os.fs.path.domain]`); this machine serves the fs tier over REAL files inside its own tree and declines the rest by name rather than observing it",
+      "x-unsupported-at": "run"
+    },
+    "tool": "lupin-after",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/raw-tools/wolf/wolf",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/spawn_rows.lu",
+      "--json",
+      "--checked",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": true,
+    "probe": "spawn_rows",
+    "raw_stdout": null,
+    "record": {
+      "commit": "cf0c13d",
+      "diagnostics": [],
+      "file": "/lane/wolf-interp/tests/fixtures/is81/spawn_rows.lu",
+      "impl": "wolfgang",
+      "impl_version": "0.2.35",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "./noshebang spawn_fds[1,1]: RAN status 0\n./noshebang spawn_fds[]: io os_error=0\n./noshebang spawn: io os_error=0\n./noshebang spawn_job[1,1]: RAN status 0\n./junk spawn_fds[1,1]: RAN status 0\n./junk spawn_fds[]: io os_error=0\n./junk spawn: io os_error=0\n./junk spawn_job[1,1]: RAN status 0\n./control spawn_fds[1,1]: RAN status 7\n./control spawn_fds[]: RAN status 7\n./control spawn: RAN status 7\n./control spawn_job[1,1]: RAN status 7\nmarker=true\n",
+      "stdout_sha256": "f0f3673efab3949d8b961fffed176270c2449cf0a55945eed19721de03171a8c",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "wolf-checked",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/raw-tools/wolf/wolf",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/spawn_rows.lu",
+      "--json",
+      "--native",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": true,
+    "probe": "spawn_rows",
+    "raw_stdout": null,
+    "record": {
+      "commit": "cf0c13d",
+      "diagnostics": [],
+      "file": "/lane/wolf-interp/tests/fixtures/is81/spawn_rows.lu",
+      "impl": "wolfgang",
+      "impl_version": "0.2.35",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "./noshebang spawn_fds[1,1]: RAN status 0\n./noshebang spawn_fds[]: io os_error=0\n./noshebang spawn: io os_error=0\n./noshebang spawn_job[1,1]: RAN status 0\n./junk spawn_fds[1,1]: RAN status 0\n./junk spawn_fds[]: io os_error=0\n./junk spawn: io os_error=0\n./junk spawn_job[1,1]: RAN status 0\n./control spawn_fds[1,1]: RAN status 7\n./control spawn_fds[]: RAN status 7\n./control spawn: RAN status 7\n./control spawn_job[1,1]: RAN status 7\nmarker=true\n",
+      "stdout_sha256": "f0f3673efab3949d8b961fffed176270c2449cf0a55945eed19721de03171a8c",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "wolf-native",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/downloads/lupin/lupin-0.1.56-x86_64-unknown-linux-gnu/lupin",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/spawn_rows.lu",
+      "--json",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "spawn_rows",
+    "raw_stdout": null,
+    "record": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "//lane/wolf-interp/tests/fixtures/is81/spawn_rows.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "./noshebang spawn_fds[1,1]: io os_error=0\n./noshebang spawn_fds[]: io os_error=0\n./noshebang spawn: io os_error=0\n./noshebang spawn_job[1,1]: io os_error=0\n./junk spawn_fds[1,1]: io os_error=0\n./junk spawn_fds[]: io os_error=0\n./junk spawn: io os_error=0\n./junk spawn_job[1,1]: io os_error=0\n./control spawn_fds[1,1]: RAN status 7\n./control spawn_fds[]: RAN status 7\n./control spawn: RAN status 7\n./control spawn_job[1,1]: RAN status 7\nmarker=false\n",
+      "stdout_sha256": "d9aa36e3e77644eb903f1e258aa112bc78587cbdb5203caf829d16ce0e87de40",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "lupin-before",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/target/release/lupin",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/spawn_rows.lu",
+      "--json",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "spawn_rows",
+    "raw_stdout": null,
+    "record": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "//lane/wolf-interp/tests/fixtures/is81/spawn_rows.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "./noshebang spawn_fds[1,1]: io os_error=8\n./noshebang spawn_fds[]: io os_error=8\n./noshebang spawn: io os_error=8\n./noshebang spawn_job[1,1]: io os_error=8\n./junk spawn_fds[1,1]: io os_error=8\n./junk spawn_fds[]: io os_error=8\n./junk spawn: io os_error=8\n./junk spawn_job[1,1]: io os_error=8\n./control spawn_fds[1,1]: RAN status 7\n./control spawn_fds[]: RAN status 7\n./control spawn: RAN status 7\n./control spawn_job[1,1]: RAN status 7\nmarker=false\n",
+      "stdout_sha256": "4fcc73c38f4001230f8dc19437e8e6868cdf3714c5bd87f963d5334e6cf64fdd",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "lupin-after",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/raw-tools/wolf/wolf",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/exec_row.lu",
+      "--json",
+      "--checked",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "exec_row",
+    "raw_stdout": null,
+    "record": {
+      "commit": "cf0c13d",
+      "diagnostics": [],
+      "file": "/lane/wolf-interp/tests/fixtures/is81/exec_row.lu",
+      "impl": "wolfgang",
+      "impl_version": "0.2.35",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "exec: io os_error=0 marker=false\n",
+      "stdout_sha256": "b132006215dc26e4ae83f6679dc6c4eca75f9fcb52bf07332ed13bfc1baaa205",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "wolf-checked",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/raw-tools/wolf/wolf",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/exec_row.lu",
+      "--json",
+      "--native",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "exec_row",
+    "raw_stdout": null,
+    "record": {
+      "commit": "cf0c13d",
+      "diagnostics": [],
+      "file": "/lane/wolf-interp/tests/fixtures/is81/exec_row.lu",
+      "impl": "wolfgang",
+      "impl_version": "0.2.35",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "exec: io os_error=0 marker=false\n",
+      "stdout_sha256": "b132006215dc26e4ae83f6679dc6c4eca75f9fcb52bf07332ed13bfc1baaa205",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "wolf-native",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/downloads/lupin/lupin-0.1.56-x86_64-unknown-linux-gnu/lupin",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/exec_row.lu",
+      "--json",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": true,
+    "probe": "exec_row",
+    "raw_stdout": "",
+    "record": null,
+    "tool": "lupin-before",
+    "tool_exit": 0
+  },
+  {
+    "command": [
+      "/lane/target/release/lupin",
+      "conform-run",
+      "/lane/wolf-interp/tests/fixtures/is81/exec_row.lu",
+      "--json",
+      "--std-root",
+      "/lane/downloads/wolf/wolf-0.2.35-x86_64-unknown-linux-gnu/std"
+    ],
+    "marker": false,
+    "probe": "exec_row",
+    "raw_stdout": null,
+    "record": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "//lane/wolf-interp/tests/fixtures/is81/exec_row.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "exec: io os_error=8 marker=false\n",
+      "stdout_sha256": "b5554c4912d2c5bf19e552ed731928f451c7612b5b8131a57550723b38aafe11",
+      "verdict": "exit(0)",
+      "warnings": []
+    },
+    "tool": "lupin-after",
+    "tool_exit": 0
+  }
+]

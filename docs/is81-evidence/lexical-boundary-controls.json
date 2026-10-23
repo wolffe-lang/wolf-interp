@@ -1,0 +1,277 @@
+[
+  {
+    "before": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_field.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n",
+      "stdout_sha256": "9961d158a7e0e2f990765971a9e490af826c0743b7d603020f34cc8944319fcb",
+      "verdict": "trap(region-fault)",
+      "warnings": [],
+      "x-trap-clause": "mem.region.intra.2",
+      "x-trap-span": [
+        1093,
+        1099
+      ]
+    },
+    "corrected": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_field.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n",
+      "stdout_sha256": "9961d158a7e0e2f990765971a9e490af826c0743b7d603020f34cc8944319fcb",
+      "verdict": "trap(region-fault)",
+      "warnings": [],
+      "x-trap-clause": "mem.region.intra.2",
+      "x-trap-span": [
+        1093,
+        1099
+      ]
+    },
+    "file": "corpus/memory/region_kept_arg_field.lu",
+    "overbroad": {
+      "commit": "unknown",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_field.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    }
+  },
+  {
+    "before": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_method.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n",
+      "stdout_sha256": "9961d158a7e0e2f990765971a9e490af826c0743b7d603020f34cc8944319fcb",
+      "verdict": "trap(region-fault)",
+      "warnings": [],
+      "x-trap-clause": "mem.region.intra.2",
+      "x-trap-span": [
+        889,
+        895
+      ]
+    },
+    "corrected": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_method.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n",
+      "stdout_sha256": "9961d158a7e0e2f990765971a9e490af826c0743b7d603020f34cc8944319fcb",
+      "verdict": "trap(region-fault)",
+      "warnings": [],
+      "x-trap-clause": "mem.region.intra.2",
+      "x-trap-span": [
+        889,
+        895
+      ]
+    },
+    "file": "corpus/memory/region_kept_arg_method.lu",
+    "overbroad": {
+      "commit": "unknown",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_method.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    }
+  },
+  {
+    "before": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_read_struct.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n",
+      "stdout_sha256": "9961d158a7e0e2f990765971a9e490af826c0743b7d603020f34cc8944319fcb",
+      "verdict": "trap(region-fault)",
+      "warnings": [],
+      "x-trap-clause": "mem.region.intra.2",
+      "x-trap-span": [
+        1042,
+        1048
+      ]
+    },
+    "corrected": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_read_struct.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n",
+      "stdout_sha256": "9961d158a7e0e2f990765971a9e490af826c0743b7d603020f34cc8944319fcb",
+      "verdict": "trap(region-fault)",
+      "warnings": [],
+      "x-trap-clause": "mem.region.intra.2",
+      "x-trap-span": [
+        1042,
+        1048
+      ]
+    },
+    "file": "corpus/memory/region_kept_arg_read_struct.lu",
+    "overbroad": {
+      "commit": "unknown",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_read_struct.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    }
+  },
+  {
+    "before": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_recv.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n",
+      "stdout_sha256": "9961d158a7e0e2f990765971a9e490af826c0743b7d603020f34cc8944319fcb",
+      "verdict": "trap(region-fault)",
+      "warnings": [],
+      "x-trap-clause": "mem.region.intra.2",
+      "x-trap-span": [
+        1010,
+        1016
+      ]
+    },
+    "corrected": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_recv.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n",
+      "stdout_sha256": "9961d158a7e0e2f990765971a9e490af826c0743b7d603020f34cc8944319fcb",
+      "verdict": "trap(region-fault)",
+      "warnings": [],
+      "x-trap-clause": "mem.region.intra.2",
+      "x-trap-span": [
+        1010,
+        1016
+      ]
+    },
+    "file": "corpus/memory/region_kept_arg_recv.lu",
+    "overbroad": {
+      "commit": "unknown",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_recv.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    }
+  },
+  {
+    "before": {
+      "commit": "28547b4",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_two_mut.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n",
+      "stdout_sha256": "9961d158a7e0e2f990765971a9e490af826c0743b7d603020f34cc8944319fcb",
+      "verdict": "trap(region-fault)",
+      "warnings": [],
+      "x-trap-clause": "mem.region.intra.2",
+      "x-trap-span": [
+        1018,
+        1024
+      ]
+    },
+    "corrected": {
+      "commit": "b3f2816",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_two_mut.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\n",
+      "stdout_sha256": "9961d158a7e0e2f990765971a9e490af826c0743b7d603020f34cc8944319fcb",
+      "verdict": "trap(region-fault)",
+      "warnings": [],
+      "x-trap-clause": "mem.region.intra.2",
+      "x-trap-span": [
+        1018,
+        1024
+      ]
+    },
+    "file": "corpus/memory/region_kept_arg_two_mut.lu",
+    "overbroad": {
+      "commit": "unknown",
+      "diagnostics": [],
+      "file": "corpus/memory/region_kept_arg_two_mut.lu",
+      "impl": "lupin",
+      "impl_version": "0.1.56",
+      "phase_reached": "run",
+      "protocol": 1,
+      "seeded": false,
+      "stdout_inline": "28\nbuilt in pass, 0 uses\n",
+      "stdout_sha256": "6a72ff5f227babbf18145ad703b9dcda1f50c9313d93938ff6781de1d483adf2",
+      "verdict": "exit(0)",
+      "warnings": []
+    }
+  }
+]
