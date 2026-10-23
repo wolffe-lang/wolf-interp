@@ -7308,7 +7308,7 @@ impl Machine {
         // read of a moved element (#141) — at that iteration, after the
         // earlier ones ran, which is where the read happens.
         let items: Vec<Slot> = match iterable {
-            Value::List(slots, _, _) => std::sync::Arc::unwrap_or_clone(slots),
+            Value::List(slots, _, _) => std::sync::Arc::unwrap_or_clone(slots).items,
             Value::Map(pairs, _) => pairs
                 .into_iter()
                 .map(|(key, slot)| Slot {

@@ -2492,7 +2492,7 @@ pub const BUILTIN_METHODS: &[(&str, &[&str])] = &[
     (
         "List",
         &[
-            "push", "pop", "len", "count", "is_empty", "get", "first", "last", "clear", "par",
+            "push", "pop", "len", "count", "is_empty", "get", "first", "last", "clear", "reset", "reserve", "par",
         ],
     ),
     (
@@ -2563,7 +2563,7 @@ pub fn is_builtin_method(receiver: &Value, name: &str) -> bool {
 pub fn mutates_receiver(receiver: &Value, name: &str) -> bool {
     matches!(
         (receiver, name),
-        (Value::List(..), "push" | "pop" | "clear") | (Value::Map(..), "clear" | "remove")
+        (Value::List(..), "push" | "pop" | "clear" | "reset" | "reserve") | (Value::Map(..), "clear" | "remove")
     )
 }
 
@@ -2607,7 +2607,7 @@ pub fn method(
             // (#28): a caller holding the same spine observes nothing.
             let home = *home;
             let items = std::sync::Arc::make_mut(items);
-            let was = items.len() as u64;
+            let was = items.capacity;
             // Issue #21 (the #53 mechanism): a container-element literal
             // adopts the container's element type — or `int` (64-bit,
             // locked: `[arith.literal.default]`'s container half) when the
@@ -2680,6 +2680,9 @@ pub fn method(
                 ledger::SLOT_BYTES
             };
             let grown = ledger::growth_bytes_strided(was, items.len() as u64, stride);
+            if items.len() as u64 > items.capacity {
+                items.capacity = ledger::slot_capacity(items.len() as u64);
+            }
             if let Some(home) = home {
                 let charged = machine.store().charge_growth(home, grown);
                 if let Err(breach) = charged {
@@ -2720,9 +2723,32 @@ pub fn method(
         // `[type.method.resolve]` step (1) names `clear` among `List`'s
         // builtins: it drains in place, a `mut` receiver like `push`/`pop`,
         // and consults the home region first for the same reason they do.
-        (Value::List(items, _, home), "clear") => {
+        (Value::List(items, _, home), "clear" | "reset") => {
             machine.check_home_write(*home, "this `clear`", span)?;
             std::sync::Arc::make_mut(items).clear();
+            Ok(Value::Unit)
+        }
+        (Value::List(items, elem, home), "reserve") => {
+            machine.check_home_write(*home, "this `reserve`", span)?;
+            let [Value::Int(want, _)] = args.as_slice() else {
+                return unsupported("`List.reserve` takes one `int` capacity".to_owned());
+            };
+            if *want <= 0 || *want <= i128::from(items.capacity) {
+                return Ok(Value::Unit);
+            }
+            let Ok(want) = u64::try_from(*want) else {
+                return machine.fault(TrapKind::AllocContract, Rule::Alloc, span, "list capacity is outside the ledger's domain");
+            };
+            let Some(want) = want.max(4).checked_next_power_of_two() else {
+                return machine.fault(TrapKind::AllocContract, Rule::Alloc, span, "list capacity exceeds the ledger's domain");
+            };
+            let stride = if matches!(elem, Some(ElemTy::Byte)) { ledger::BYTE_SLOT_BYTES } else { ledger::SLOT_BYTES };
+            let bytes = ledger::round_to_grain(ledger::HEADER_BYTES.saturating_add(want.saturating_mul(stride)));
+            if let Some(home) = *home {
+                let charged = machine.store().charge_growth(home, bytes);
+                if let Err(breach) = charged { return machine.cap_breach(breach, span, "List.reserve"); }
+            }
+            std::sync::Arc::make_mut(items).capacity = want;
             Ok(Value::Unit)
         }
         // `[conc.task.par]`: the one builtin combinator (`[type.comb.builtin]`),

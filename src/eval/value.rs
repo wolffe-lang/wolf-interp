@@ -574,6 +574,23 @@ impl PartialEq<String> for Str {
 }
 
 /// A wolf runtime value.
+/// CoW list storage keeps its modelled capacity across reset and clone.
+/// The ledger measures this capacity, never Rust allocator implementation
+/// details (a Vec clone need not preserve its spare allocation).
+#[derive(Clone, Debug)]
+pub struct ListItems {
+    pub items: Vec<Slot>,
+    pub capacity: u64,
+}
+
+impl std::ops::Deref for ListItems {
+    type Target = Vec<Slot>;
+    fn deref(&self) -> &Self::Target { &self.items }
+}
+impl std::ops::DerefMut for ListItems {
+    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.items }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     /// The value of a statement, an empty block, a `for` loop.
@@ -647,7 +664,7 @@ pub enum Value {
     /// values would claim one home. `None` only for values minted by
     /// machinery with no allocation site; region ids are never reused, so a
     /// bare id stays meaningful forever.
-    List(std::sync::Arc<Vec<Slot>>, Option<ElemTy>, Option<RegionId>),
+    List(std::sync::Arc<ListItems>, Option<ElemTy>, Option<RegionId>),
     /// Insertion-ordered; wolf's `Map` has no specified iteration order, and
     /// insertion order is the one that makes output reproducible.
     Map(Vec<(Value, Slot)>, Option<RegionId>),
@@ -721,7 +738,8 @@ impl Value {
     /// pass the machine's current region, machinery passes `None`.
     #[must_use]
     pub fn list(items: Vec<Slot>, elem: Option<ElemTy>, home: Option<RegionId>) -> Value {
-        Value::List(std::sync::Arc::new(items), elem, home)
+        let capacity = super::region::ledger::slot_capacity(items.len() as u64);
+        Value::List(std::sync::Arc::new(ListItems { items, capacity }), elem, home)
     }
 
     /// The slots of a sequence value (`Tuple` or `List`), if it is one —

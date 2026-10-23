@@ -21,6 +21,10 @@ runs!(region_outer_write_str_push, "100 turn 0 turn 99 42 true\n");
 runs!(region_outer_write_struct, "50 r0 r49 3 49 98 147\n");
 runs!(region_str_call_index_store, "[piece 7 3-7]\n");
 
+runs!(list_reserve, "0 1000 0 999 3 7 8 9 true\n");
+runs!(list_reset, "5 0 3 10 11 12 2 b2 true\n");
+runs!(region_outer_write_reset, "300 3 299 0 6\n");
+
 #[test]
 fn row_members_and_methods_require_handling() {
     for source in [include_str!("fixtures/is81/row_operand_member.lu"), include_str!("fixtures/is81/row_operand_method.lu")] {
