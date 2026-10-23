@@ -4214,7 +4214,9 @@ fn exec_answer(
         Err(tag) => return Ok(tag),
     };
     machine.flush_for_exec();
-    Ok(exec_replace(&program, argv, env, stdio, &dir))
+    let (tag, code) = exec_replace(&program, argv, env, stdio, &dir);
+    machine.set_last_os_error(code);
+    Ok(tag)
 }
 
 /// s225 (`[os.proc.exec]`): the program `exe` names, asked before anything
@@ -4275,10 +4277,10 @@ fn exec_resolve(exe: &str, path: &str, dir: &std::path::Path) -> Result<String, 
     })
 }
 
-/// s225: the exec itself — std's `CommandExt::exec` (safe), with argv[0]
-/// given, the environment exactly the handed one, 0..2 placed from
-/// `stdio` (an unmapped one is this process's own, `Stdio::inherit`) and
-/// `dir` the working directory. It returns only on a failure.
+/// Direct `execve`: POSIX's ENOEXEC is a failure, never permission to
+/// invoke a shell. Safe nix calls preserve this crate's no-unsafe boundary.
+/// On failure restore descriptor mappings and cwd before handing back the
+/// original errno, including a failure while installing the map.
 #[cfg(all(unix, not(target_family = "wasm")))]
 fn exec_replace(
     program: &str,
@@ -4286,34 +4288,43 @@ fn exec_replace(
     env: &[String],
     stdio: [Option<std::fs::File>; 3],
     dir: &std::path::Path,
-) -> &'static str {
-    use std::os::unix::process::CommandExt as _;
-    use std::process::{Command, Stdio};
-    let [zero, one, two] = stdio;
-    let wire = |f: Option<std::fs::File>| f.map_or_else(Stdio::inherit, Stdio::from);
-    let mut command = Command::new(program);
-    command
-        .arg0(&argv[0])
-        .args(&argv[1..])
-        .env_clear()
-        .stdin(wire(zero))
-        .stdout(wire(one))
-        .stderr(wire(two))
-        .current_dir(dir);
-    for entry in env {
-        if let Some((name, value)) = entry.split_once('=') {
-            command.env(name, value);
-        }
-    }
-    let error = command.exec();
-    match error.kind() {
+) -> (&'static str, i128) {
+    use std::ffi::CString;
+    use std::os::fd::AsFd;
+    use nix::unistd::{dup2_stderr, dup2_stdin, dup2_stdout, execve};
+    let program = CString::new(program).expect("validated executable");
+    let argv: Vec<_> = argv.iter().map(|s| CString::new(s.as_str()).expect("validated argv")).collect();
+    let env: Vec<_> = env.iter().map(|s| CString::new(s.as_str()).expect("validated environment")).collect();
+    let run = || -> std::io::Result<()> {
+        let old_dir = std::env::current_dir()?;
+        let old_zero = std::io::stdin().as_fd().try_clone_to_owned()?;
+        let old_one = std::io::stdout().as_fd().try_clone_to_owned()?;
+        let old_two = std::io::stderr().as_fd().try_clone_to_owned()?;
+        let error = (|| -> std::io::Result<()> {
+            std::env::set_current_dir(dir)?;
+            if let Some(file) = &stdio[0] { dup2_stdin(file)?; }
+            if let Some(file) = &stdio[1] { dup2_stdout(file)?; }
+            if let Some(file) = &stdio[2] { dup2_stderr(file)?; }
+            match execve(&program, &argv, &env) {
+                Err(error) => Err(error.into()),
+                Ok(never) => match never {},
+            }
+        })();
+        let _ = dup2_stdin(&old_zero);
+        let _ = dup2_stdout(&old_one);
+        let _ = dup2_stderr(&old_two);
+        let _ = std::env::set_current_dir(old_dir);
+        error
+    };
+    let error = run().expect_err("execve only returns on failure");
+    let tag = match error.kind() {
         std::io::ErrorKind::NotFound => "not_found",
         std::io::ErrorKind::PermissionDenied => "denied",
         _ => "io",
-    }
+    };
+    (tag, error.raw_os_error().map_or(0, i128::from))
 }
 
-/// s225: windows answered `unsupported` before anything reached here.
 #[cfg(all(not(unix), not(target_family = "wasm")))]
 fn exec_replace(
     _program: &str,
@@ -4321,8 +4332,8 @@ fn exec_replace(
     _env: &[String],
     _stdio: [Option<std::fs::File>; 3],
     _dir: &std::path::Path,
-) -> &'static str {
-    "unsupported"
+) -> (&'static str, i128) {
+    ("unsupported", 0)
 }
 
 /// The wasm build's reason for declining a name of the hosted-only process

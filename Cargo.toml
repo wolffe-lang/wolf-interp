@@ -40,5 +40,9 @@ insta = "1"
 # argument that buys `unsafe` here (see CONTRIBUTING.md).
 unsafe_code = "forbid"
 
+# R-is81-1: safe direct execve (MIT), with no execvp shell fallback.
+[target.'cfg(all(unix, not(target_family = "wasm")))'.dependencies]
+nix = { version = "=0.31.3", features = ["process", "fs"] }
+
 [target."cfg(unix)".dev-dependencies]
 rexpect = "0.7"

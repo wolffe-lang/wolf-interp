@@ -560,6 +560,7 @@ dependencies = [
  "clap",
  "getrandom 0.2.16",
  "insta",
+ "nix",
  "rexpect",
  "rustyline",
  "serde",
