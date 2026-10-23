@@ -4356,9 +4356,9 @@ fn exec_replace(
     stdio: [Option<std::fs::File>; 3],
     dir: &std::path::Path,
 ) -> (&'static str, i128) {
-    use nix::unistd::{dup2_stderr, dup2_stdin, dup2_stdout, execve};
+    use nix::unistd::{close, dup2_stderr, dup2_stdin, dup2_stdout, execve};
     use std::ffi::CString;
-    use std::os::fd::AsFd;
+    use std::os::fd::{AsFd, BorrowedFd};
     let program = CString::new(program).expect("validated executable");
     let argv: Vec<_> = argv
         .iter()
@@ -4370,9 +4370,18 @@ fn exec_replace(
         .collect();
     let run = || -> std::io::Result<()> {
         let old_dir = std::env::current_dir()?;
-        let old_zero = std::io::stdin().as_fd().try_clone_to_owned()?;
-        let old_one = std::io::stdout().as_fd().try_clone_to_owned()?;
-        let old_two = std::io::stderr().as_fd().try_clone_to_owned()?;
+        // Save only streams the map changes. An unmapped closed stdin
+        // must not turn the program's ENOEXEC into a backup's EBADF.
+        let backup = |fd: BorrowedFd<'_>| {
+            match fd.try_clone_to_owned() {
+                Ok(saved) => Ok(Some(saved)),
+                Err(error) if error.raw_os_error() == Some(nix::errno::Errno::EBADF as i32) => Ok(None),
+                Err(error) => Err(error),
+            }
+        };
+        let old_zero = stdio[0].as_ref().map(|_| backup(std::io::stdin().as_fd())).transpose()?;
+        let old_one = stdio[1].as_ref().map(|_| backup(std::io::stdout().as_fd())).transpose()?;
+        let old_two = stdio[2].as_ref().map(|_| backup(std::io::stderr().as_fd())).transpose()?;
         let error = (|| -> std::io::Result<()> {
             std::env::set_current_dir(dir)?;
             if let Some(file) = &stdio[0] {
@@ -4389,9 +4398,19 @@ fn exec_replace(
                 Ok(never) => match never {},
             }
         })();
-        let _ = dup2_stdin(&old_zero);
-        let _ = dup2_stdout(&old_one);
-        let _ = dup2_stderr(&old_two);
+        for (target, saved) in [old_zero, old_one, old_two].iter().enumerate() {
+            if let Some(saved) = saved {
+                let _ = match saved {
+                    Some(fd) => match target {
+                        0 => dup2_stdin(fd),
+                        1 => dup2_stdout(fd),
+                        _ => dup2_stderr(fd),
+                    },
+                    // This target was closed before the map installed it.
+                    None => close(target as i32),
+                };
+            }
+        }
         let _ = std::env::set_current_dir(old_dir);
         error
     };

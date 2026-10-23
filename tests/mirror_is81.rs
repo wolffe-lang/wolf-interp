@@ -173,6 +173,15 @@ fn main() -> !int {{
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(output.stdout, b"5 8\n");
+    let source = std::fs::read_to_string(&program).unwrap();
+    for map in ["List[int]()", "[1, 1]", "[0, 1]"] {
+        std::fs::write(&program, source.replace("List[int]()", map)).unwrap();
+        let closed = Command::new("/bin/sh")
+            .args(["-c", "exec 0<&-; exec \"$1\" run \"$2\"", "is81", env!("CARGO_BIN_EXE_lupin"), program.to_str().unwrap()])
+            .current_dir(&root).output().unwrap();
+        assert!(closed.status.success(), "{map}: {closed:?}");
+        assert_eq!(closed.stdout, b"5 8\n", "closed stdin, map {map}");
+    }
     std::fs::remove_dir_all(root).unwrap();
 }
 
