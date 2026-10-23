@@ -2389,7 +2389,13 @@ impl Machine {
         self.write_path_with_key(path, value, None, span)
     }
 
-    fn write_path_with_key(&mut self, path: &Path, value: Value, key: Option<Value>, span: Span) -> EResult<()> {
+    fn write_path_with_key(
+        &mut self,
+        path: &Path,
+        value: Value,
+        key: Option<Value>,
+        span: Span,
+    ) -> EResult<()> {
         // D39's dynamic mirror: a write through a read-mode binding traps in
         // the exclusivity family (`[conf.trap.map]`), the kind
         // `[mem.tier0.excl.1]` already gives every read/write conflict —
@@ -2513,7 +2519,10 @@ impl Machine {
         let Value::Map(pairs, _) = &mut slot.value else {
             return Ok(false);
         };
-        pairs.push((stored.unwrap_or_else(|| key.to_value()), Slot::live(Value::Unit)));
+        pairs.push((
+            stored.unwrap_or_else(|| key.to_value()),
+            Slot::live(Value::Unit),
+        ));
         Ok(true)
     }
 
@@ -5176,11 +5185,15 @@ impl Machine {
                     if let [IndexArg::Value(arg)] = args.as_slice() {
                         let into = self.copy_destination(&path);
                         Some(self.materialize_store(&arg.expr, key.to_value(), into)?)
-                    } else { None }
+                    } else {
+                        None
+                    }
                 }
                 _ => None,
             }
-        } else { None };
+        } else {
+            None
+        };
         // is76 (wolf-interp#251): an integer place is its term's context, as
         // a binding's annotation is — `v = 1 << 10` and `v += 1 << 9` at
         // `wrapping[u8]` compute the term at `wrapping[u8]` (4 and 2 on the

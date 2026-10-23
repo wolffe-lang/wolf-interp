@@ -74,10 +74,9 @@ fn main() -> !int {
 fn failed_copy_writes_rewind_and_preserve_errno() {
     let root = std::env::temp_dir().join(format!("is81-copy-{}", std::process::id()));
     std::fs::create_dir_all(root.join("target")).unwrap();
-    for (name, want) in [(
-        "copy_chunk_failed_write",
-        "copy=io took_nothing=true os_error_set=true offset_after=0\nretry=17 same=true\ncleaned=true\n",
-    )] {
+    {
+        let name = "copy_chunk_failed_write";
+        let want = "copy=io took_nothing=true os_error_set=true offset_after=0\nretry=17 same=true\ncleaned=true\n";
         let output = Command::new(env!("CARGO_BIN_EXE_lupin"))
             .args([
                 "run",
@@ -232,13 +231,20 @@ fn main() -> !int {
 }
 "#;
     let obs = observe(source.as_bytes(), None);
-    assert_eq!(obs.verdict, Verdict::Exit(0), "{:?} {:?}", obs.trap, obs.reason);
+    assert_eq!(
+        obs.verdict,
+        Verdict::Exit(0),
+        "{:?} {:?}",
+        obs.trap,
+        obs.reason
+    );
     assert_eq!(obs.stdout, b"value4\n");
 }
 
 #[test]
 fn ordinary_copies_still_share_strings_and_outer_copies_charge_the_destination_cap() {
-    for source in [r#"
+    for source in [
+        r#"
 struct Box { title: str }
 fn main() -> !int {
     let kept = copy region turn {
@@ -250,7 +256,8 @@ fn main() -> !int {
     print("{kept.title}")
     0
 }
-"#, r#"
+"#,
+        r#"
 fn main() -> !int {
     region keep(cap: 0) {
         var text = ""
@@ -259,12 +266,18 @@ fn main() -> !int {
     }
     0
 }
-"#] {
+"#,
+    ] {
         let obs = observe(source.as_bytes(), None);
         // First program is the plain-copy control: copy-out makes the
         // leaving value independent. Second must breach KEEP's zero cap.
         if source.contains("cap:") {
-            assert_eq!(obs.verdict, Verdict::Trap(wolf_interp::trap::TrapKind::AllocContract), "{:?}", obs.reason);
+            assert_eq!(
+                obs.verdict,
+                Verdict::Trap(wolf_interp::trap::TrapKind::AllocContract),
+                "{:?}",
+                obs.reason
+            );
         } else {
             assert_eq!(obs.verdict, Verdict::Exit(0), "{:?}", obs.reason);
             assert_eq!(obs.stdout, b"built7\n");
