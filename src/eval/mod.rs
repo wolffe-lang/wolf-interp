@@ -2607,7 +2607,13 @@ impl Machine {
         Ok(id)
     }
 
-    fn allocate_into(&mut self, into: RegionId, span: Span, what: &str, bytes: u64) -> EResult<RegionId> {
+    fn allocate_into(
+        &mut self,
+        into: RegionId,
+        span: Span,
+        what: &str,
+        bytes: u64,
+    ) -> EResult<RegionId> {
         self.check_home_write(Some(into), what, span)?;
         let charged = self.store().charge_into(into, bytes);
         if let Err(breach) = charged {
@@ -2848,7 +2854,13 @@ impl Machine {
         );
 
         self.push_scope();
-        self.frames.last_mut().unwrap().scopes.last_mut().unwrap().region_boundary = true;
+        self.frames
+            .last_mut()
+            .unwrap()
+            .scopes
+            .last_mut()
+            .unwrap()
+            .region_boundary = true;
         if let Some(binder) = &binder {
             let generation = self.store().generation(id);
             self.fire(
@@ -2974,12 +2986,23 @@ impl Machine {
     /// The same materializing copy at either boundary: a copy-out or a
     /// syntactic `copy` stored into an outer value. The destination is an
     /// explicit argument: evaluating a nested call never inherits it.
-    fn materialize(&mut self, value: Value, into: RegionId, block: RegionId, span: Span) -> EResult<Value> {
+    fn materialize(
+        &mut self,
+        value: Value,
+        into: RegionId,
+        block: RegionId,
+        span: Span,
+    ) -> EResult<Value> {
         match value {
             Value::Str(s) => {
-                self.allocate_into(into, span, "a materialized str", region::ledger::container_bytes(s.text.len() as u64))?;
+                self.allocate_into(
+                    into,
+                    span,
+                    "a materialized str",
+                    region::ledger::container_bytes(s.text.len() as u64),
+                )?;
                 Ok(Value::Str(value::Str::built(s.text, Some(into))))
-            },
+            }
             Value::List(items, elem, _) => {
                 let mut copied = Vec::with_capacity(items.len());
                 for slot in items.iter() {
@@ -3044,7 +3067,12 @@ impl Machine {
                         },
                     ));
                 }
-                self.allocate_into(into, span, "a materialized Map", region::ledger::container_bytes(copied.len() as u64))?;
+                self.allocate_into(
+                    into,
+                    span,
+                    "a materialized Map",
+                    region::ledger::container_bytes(copied.len() as u64),
+                )?;
                 Ok(Value::Map(copied, Some(into)))
             }
             Value::Error(mut err) => {
@@ -3089,7 +3117,13 @@ impl Machine {
         let id = self.region_id_of(&value, span, "`in`")?;
         self.enter_region(id, span)?;
         self.push_scope();
-        self.frames.last_mut().unwrap().scopes.last_mut().unwrap().region_boundary = true;
+        self.frames
+            .last_mut()
+            .unwrap()
+            .scopes
+            .last_mut()
+            .unwrap()
+            .region_boundary = true;
         let result = self.eval_block(body);
         self.pop_scope();
         self.leave_region(id, span);
@@ -3543,7 +3577,9 @@ impl Machine {
             }
             self.declare(&name, Slot::live(value));
             if param.mode == Some(ParamMode::Mut)
-                && let Some(home) = self.frames.last_mut()
+                && let Some(home) = self
+                    .frames
+                    .last_mut()
                     .and_then(|frame| frame.scopes.last_mut())
                     .and_then(|scope| scope.homes.last_mut())
             {
@@ -4209,7 +4245,9 @@ impl Machine {
                 // A function's tail checks against its declared row, just
                 // like `return`: a module function named `format` loses to
                 // that mark here, but remains callable everywhere else.
-                let tag = self.frames.last()
+                let tag = self
+                    .frames
+                    .last()
                     .filter(|frame| frame.body == Some(block.span))
                     .map(|frame| frame.row.clone())
                     .and_then(|row| self.declared_row_tag(tail, &row));
@@ -5021,16 +5059,34 @@ impl Machine {
     /// container header, when there is one, decides where the copy lands.
     fn copy_destination(&mut self, path: &Path) -> Option<RegionId> {
         let frame = self.frames.get(path.frame)?;
-        let (scope_index, local_index) = frame.scopes.iter().enumerate().rev()
-            .find_map(|(i, scope)| scope.locals.iter().rposition(|(name, _)| name == &path.base).map(|j| (i, j)))?;
+        let (scope_index, local_index) =
+            frame
+                .scopes
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(i, scope)| {
+                    scope
+                        .locals
+                        .iter()
+                        .rposition(|(name, _)| name == &path.base)
+                        .map(|j| (i, j))
+                })?;
         let (ambient, parameter) = frame.scopes[scope_index].homes[local_index];
-        let outer = parameter || frame.scopes[scope_index + 1..].iter().any(|scope| scope.region_boundary);
-        if !outer { return None; }
+        let outer = parameter
+            || frame.scopes[scope_index + 1..]
+                .iter()
+                .any(|scope| scope.region_boundary);
+        if !outer {
+            return None;
+        }
         let own = self.slot_mut(path).and_then(|s| match &s.value {
             Value::List(_, _, home) | Value::Map(_, home) => *home,
             _ => None,
         });
-        if own.is_some() { return own; }
+        if own.is_some() {
+            return own;
+        }
         if matches!(path.projections.last(), Some(Proj::Index(_) | Proj::Key(_))) {
             let mut parent = path.clone();
             parent.projections.pop();
@@ -5041,9 +5097,16 @@ impl Machine {
         Some(ambient)
     }
 
-    fn materialize_store(&mut self, expr: &Expr, value: Value, into: Option<RegionId>) -> EResult<Value> {
+    fn materialize_store(
+        &mut self,
+        expr: &Expr,
+        value: Value,
+        into: Option<RegionId>,
+    ) -> EResult<Value> {
         let mut syntax = expr;
-        while let ExprKind::Group(inner) = &*syntax.kind { syntax = inner; }
+        while let ExprKind::Group(inner) = &*syntax.kind {
+            syntax = inner;
+        }
         if let Some(into) = into
             && matches!(&*syntax.kind, ExprKind::Unary { op: UnOp::Copy, .. })
         {
@@ -9062,17 +9125,20 @@ impl Machine {
                 why: HeldWhy::Pending(call),
             });
         }
-        let evaluated = self.eval_arg_list(args, Callee::Wolf, None, call).and_then(|mut evaluated| {
-            if method == "push" && mode == Some(ParamMode::Mut)
-                && let Some(path) = &path
-            {
-                let into = self.copy_destination(path);
-                for (arg, value) in args.iter().zip(&mut evaluated.values) {
-                    *value = self.materialize_store(&arg.expr, value.clone(), into)?;
-                }
-            }
-            Ok(evaluated)
-        });
+        let evaluated =
+            self.eval_arg_list(args, Callee::Wolf, None, call)
+                .and_then(|mut evaluated| {
+                    if method == "push"
+                        && mode == Some(ParamMode::Mut)
+                        && let Some(path) = &path
+                    {
+                        let into = self.copy_destination(path);
+                        for (arg, value) in args.iter().zip(&mut evaluated.values) {
+                            *value = self.materialize_store(&arg.expr, value.clone(), into)?;
+                        }
+                    }
+                    Ok(evaluated)
+                });
         for claimed in &receiver_claims {
             self.access.withdraw(call, claimed);
         }

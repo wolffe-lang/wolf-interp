@@ -584,10 +584,14 @@ pub struct ListItems {
 
 impl std::ops::Deref for ListItems {
     type Target = Vec<Slot>;
-    fn deref(&self) -> &Self::Target { &self.items }
+    fn deref(&self) -> &Self::Target {
+        &self.items
+    }
 }
 impl std::ops::DerefMut for ListItems {
-    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.items }
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.items
+    }
 }
 
 /// A wolf runtime value.
@@ -739,7 +743,11 @@ impl Value {
     #[must_use]
     pub fn list(items: Vec<Slot>, elem: Option<ElemTy>, home: Option<RegionId>) -> Value {
         let capacity = super::region::ledger::slot_capacity(items.len() as u64);
-        Value::List(std::sync::Arc::new(ListItems { items, capacity }), elem, home)
+        Value::List(
+            std::sync::Arc::new(ListItems { items, capacity }),
+            elem,
+            home,
+        )
     }
 
     /// The slots of a sequence value (`Tuple` or `List`), if it is one —

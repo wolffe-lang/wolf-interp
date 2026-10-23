@@ -2504,7 +2504,8 @@ pub const BUILTIN_METHODS: &[(&str, &[&str])] = &[
     (
         "List",
         &[
-            "push", "pop", "len", "count", "is_empty", "get", "first", "last", "clear", "reset", "reserve", "par",
+            "push", "pop", "len", "count", "is_empty", "get", "first", "last", "clear", "reset",
+            "reserve", "par",
         ],
     ),
     (
@@ -2575,7 +2576,10 @@ pub fn is_builtin_method(receiver: &Value, name: &str) -> bool {
 pub fn mutates_receiver(receiver: &Value, name: &str) -> bool {
     matches!(
         (receiver, name),
-        (Value::List(..), "push" | "pop" | "clear" | "reset" | "reserve") | (Value::Map(..), "clear" | "remove")
+        (
+            Value::List(..),
+            "push" | "pop" | "clear" | "reset" | "reserve"
+        ) | (Value::Map(..), "clear" | "remove")
     )
 }
 
@@ -2749,16 +2753,34 @@ pub fn method(
                 return Ok(Value::Unit);
             }
             let Ok(want) = u64::try_from(*want) else {
-                return machine.fault(TrapKind::AllocContract, Rule::Alloc, span, "list capacity is outside the ledger's domain");
+                return machine.fault(
+                    TrapKind::AllocContract,
+                    Rule::Alloc,
+                    span,
+                    "list capacity is outside the ledger's domain",
+                );
             };
             let Some(want) = want.max(4).checked_next_power_of_two() else {
-                return machine.fault(TrapKind::AllocContract, Rule::Alloc, span, "list capacity exceeds the ledger's domain");
+                return machine.fault(
+                    TrapKind::AllocContract,
+                    Rule::Alloc,
+                    span,
+                    "list capacity exceeds the ledger's domain",
+                );
             };
-            let stride = if matches!(elem, Some(ElemTy::Byte)) { ledger::BYTE_SLOT_BYTES } else { ledger::SLOT_BYTES };
-            let bytes = ledger::round_to_grain(ledger::HEADER_BYTES.saturating_add(want.saturating_mul(stride)));
+            let stride = if matches!(elem, Some(ElemTy::Byte)) {
+                ledger::BYTE_SLOT_BYTES
+            } else {
+                ledger::SLOT_BYTES
+            };
+            let bytes = ledger::round_to_grain(
+                ledger::HEADER_BYTES.saturating_add(want.saturating_mul(stride)),
+            );
             if let Some(home) = *home {
                 let charged = machine.store().charge_growth(home, bytes);
-                if let Err(breach) = charged { return machine.cap_breach(breach, span, "List.reserve"); }
+                if let Err(breach) = charged {
+                    return machine.cap_breach(breach, span, "List.reserve");
+                }
             }
             std::sync::Arc::make_mut(items).capacity = want;
             Ok(Value::Unit)
@@ -4334,12 +4356,18 @@ fn exec_replace(
     stdio: [Option<std::fs::File>; 3],
     dir: &std::path::Path,
 ) -> (&'static str, i128) {
+    use nix::unistd::{dup2_stderr, dup2_stdin, dup2_stdout, execve};
     use std::ffi::CString;
     use std::os::fd::AsFd;
-    use nix::unistd::{dup2_stderr, dup2_stdin, dup2_stdout, execve};
     let program = CString::new(program).expect("validated executable");
-    let argv: Vec<_> = argv.iter().map(|s| CString::new(s.as_str()).expect("validated argv")).collect();
-    let env: Vec<_> = env.iter().map(|s| CString::new(s.as_str()).expect("validated environment")).collect();
+    let argv: Vec<_> = argv
+        .iter()
+        .map(|s| CString::new(s.as_str()).expect("validated argv"))
+        .collect();
+    let env: Vec<_> = env
+        .iter()
+        .map(|s| CString::new(s.as_str()).expect("validated environment"))
+        .collect();
     let run = || -> std::io::Result<()> {
         let old_dir = std::env::current_dir()?;
         let old_zero = std::io::stdin().as_fd().try_clone_to_owned()?;
@@ -4347,9 +4375,15 @@ fn exec_replace(
         let old_two = std::io::stderr().as_fd().try_clone_to_owned()?;
         let error = (|| -> std::io::Result<()> {
             std::env::set_current_dir(dir)?;
-            if let Some(file) = &stdio[0] { dup2_stdin(file)?; }
-            if let Some(file) = &stdio[1] { dup2_stdout(file)?; }
-            if let Some(file) = &stdio[2] { dup2_stderr(file)?; }
+            if let Some(file) = &stdio[0] {
+                dup2_stdin(file)?;
+            }
+            if let Some(file) = &stdio[1] {
+                dup2_stdout(file)?;
+            }
+            if let Some(file) = &stdio[2] {
+                dup2_stderr(file)?;
+            }
             match execve(&program, &argv, &env) {
                 Err(error) => Err(error.into()),
                 Ok(never) => match never {},

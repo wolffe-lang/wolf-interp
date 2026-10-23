@@ -3659,22 +3659,33 @@ mod copy_write_is81 {
     use super::*;
     use std::io::{Error, ErrorKind};
 
-    struct Sink { accepted: Vec<u8>, step: usize }
+    struct Sink {
+        accepted: Vec<u8>,
+        step: usize,
+    }
     impl Write for Sink {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
             self.step += 1;
             match self.step {
                 1 => Err(ErrorKind::Interrupted.into()),
-                2 | 3 => { self.accepted.extend_from_slice(&bytes[..2]); Ok(2) },
+                2 | 3 => {
+                    self.accepted.extend_from_slice(&bytes[..2]);
+                    Ok(2)
+                }
                 _ => Err(Error::from_raw_os_error(28)),
             }
         }
-        fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
     }
 
     #[test]
     fn a_partial_write_retains_its_prefix_and_retries_eintr() {
-        let mut sink = Sink { accepted: Vec::new(), step: 0 };
+        let mut sink = Sink {
+            accepted: Vec::new(),
+            step: 0,
+        };
         let (written, answer) = counted_write(&mut sink, b"abcdefgh");
         assert_eq!(written, 4);
         assert!(matches!(answer, Err(FsErr::Row("io"))));
@@ -3698,7 +3709,10 @@ mod copy_write_is81 {
     #[cfg(target_os = "linux")]
     #[test]
     fn dev_full_accepts_nothing_and_reports_enospc() {
-        let mut full = OpenOptions::new().write(true).open("/dev/full").expect("linux /dev/full");
+        let mut full = OpenOptions::new()
+            .write(true)
+            .open("/dev/full")
+            .expect("linux /dev/full");
         let (written, answer) = counted_write(&mut full, b"alpha\nbeta\ngamma\n");
         assert_eq!(written, 0);
         assert!(matches!(answer, Err(FsErr::Row("io"))));

@@ -80,7 +80,9 @@ impl ChildTable {
         }
     }
 
-    pub(crate) fn spawn_error(&self) -> i128 { self.spawn_error }
+    pub(crate) fn spawn_error(&self) -> i128 {
+        self.spawn_error
+    }
 
     /// `os_spawn`: argv-array only, null-wired stdio.
     ///
@@ -127,7 +129,7 @@ impl ChildTable {
                     std::io::ErrorKind::PermissionDenied => "denied",
                     _ => "io",
                 })
-            },
+            }
         }
     }
 
@@ -211,7 +213,7 @@ impl ChildTable {
                     std::io::ErrorKind::PermissionDenied => "denied",
                     _ => "io",
                 })
-            },
+            }
         }
     }
 

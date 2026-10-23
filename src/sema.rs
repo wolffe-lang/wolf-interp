@@ -8533,14 +8533,11 @@ impl RowWalk<'_> {
             | ExprKind::FromEnd(operand)
             | ExprKind::Freeze(operand)
             | ExprKind::ModedReceiver { place: operand, .. } => self.expr(operand),
-            ExprKind::Member { base, .. } => self
-                .member_operand(base)
-                .or_else(|| self.expr(base)),
+            ExprKind::Member { base, .. } => self.member_operand(base).or_else(|| self.expr(base)),
             ExprKind::Path(path) if path.segments.len() > 1 => {
                 let head = &path.segments[0];
-                self.lookup(&head.name).map(|row| {
-                    Self::member_diag(head.span, row)
-                })
+                self.lookup(&head.name)
+                    .map(|row| Self::member_diag(head.span, row))
             }
             ExprKind::Block(block) | ExprKind::Scope { body: block, .. } => self.block(block),
             ExprKind::Unsafe { body } | ExprKind::When { body, .. } => self.block(body),
