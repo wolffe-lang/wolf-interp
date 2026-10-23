@@ -28,7 +28,7 @@ fn row_members_and_methods_require_handling() {
         assert_eq!(obs.verdict, Verdict::Fail("E0409".into()), "{:?}", obs.reason);
         let diagnostic = &obs.diagnostics[0];
         let start = source.rfind("rest.").unwrap();
-        assert_eq!(diagnostic.span, [start, start + 4]);
+        assert_eq!(diagnostic.span, [start as u64, (start + 4) as u64]);
     }
 }
 
