@@ -5528,7 +5528,12 @@ fn the_wasm_decline_names_the_hosted_tier_not_spawning() {
 
 #[test]
 fn is81_container_values_ignore_homes_and_spare_capacity_in_equality() {
-    let entry = || (Value::Str(value::Str::new("key")), Slot::live(Value::Int(7, IntTy::INT)));
+    let entry = || {
+        (
+            Value::Str(value::Str::new("key")),
+            Slot::live(Value::Int(7, IntTy::INT)),
+        )
+    };
     let first = Value::Map(vec![entry()], Some(1));
     let second = Value::Map(vec![entry()], Some(2));
     assert!(value_eq(&first, &second));

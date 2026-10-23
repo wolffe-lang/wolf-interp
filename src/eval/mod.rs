@@ -11195,9 +11195,9 @@ pub(crate) fn value_eq(left: &Value, right: &Value) -> bool {
         }
         (Value::Map(a, _), Value::Map(b, _)) => {
             a.len() == b.len()
-                && a.iter().zip(b).all(|((ak, av), (bk, bv))| {
-                    value_eq(ak, bk) && value_eq(&av.value, &bv.value)
-                })
+                && a.iter()
+                    .zip(b)
+                    .all(|((ak, av), (bk, bv))| value_eq(ak, bk) && value_eq(&av.value, &bv.value))
         }
         (Value::Error(a), Value::Error(b)) => {
             a.tag == b.tag
