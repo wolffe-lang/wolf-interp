@@ -1,0 +1,63 @@
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4439490Z ---- eval::tests::a_dangling_handle_into_a_freed_region_faults_exactly stdout ----
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4439760Z 
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4440470Z thread 'eval::tests::a_dangling_handle_into_a_freed_region_faults_exactly' (24088) panicked at src/eval/tests.rs:526:5:
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4440910Z the dead region's creation site
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4441210Z note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4441450Z 
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4441450Z 
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4441510Z failures:
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4441720Z     eval::tests::a_dangling_handle_into_a_freed_region_faults_exactly
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4441930Z 
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4442320Z test result: FAILED. 789 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.96s
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4442630Z 
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4443190Z ^[[1m^[[91merror^[[0m: test failed, to rerun pass `--lib`
+test (macos-latest, smoke)	test	2026-10-23T20:10:04.4465830Z ##[error]Process completed with exit code 101.
+tier partial	every chosen job succeeded, every other was skipped	﻿2026-10-23T20:10:13.2349099Z ##[group]Run python3 ci/tiers.py verdict
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2349560Z ^[[36;1mpython3 ci/tiers.py verdict^[[0m
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2565988Z shell: /usr/bin/bash -e {0}
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2566479Z env:
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2566934Z   CARGO_TERM_COLOR: always
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2567311Z   SMOKE_OMITS: doc_truth run_corpus export cli region_machine rule_registry divergence
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2568683Z   NEEDS: {
+tier partial	every chosen job succeeded, every other was skipped	  "plan": {
+tier partial	every chosen job succeeded, every other was skipped	    "result": "success",
+tier partial	every chosen job succeeded, every other was skipped	    "outputs": {
+tier partial	every chosen job succeeded, every other was skipped	      "tier": "partial",
+tier partial	every chosen job succeeded, every other was skipped	      "jobs": "[\"test\"]",
+tier partial	every chosen job succeeded, every other was skipped	      "matrix": "[{\"os\":\"macos-latest\",\"osid\":\"macos\",\"shard\":\"smoke\"}]"
+tier partial	every chosen job succeeded, every other was skipped	    }
+tier partial	every chosen job succeeded, every other was skipped	  },
+tier partial	every chosen job succeeded, every other was skipped	  "plan-test": {
+tier partial	every chosen job succeeded, every other was skipped	    "result": "skipped",
+tier partial	every chosen job succeeded, every other was skipped	    "outputs": {}
+tier partial	every chosen job succeeded, every other was skipped	  },
+tier partial	every chosen job succeeded, every other was skipped	  "test": {
+tier partial	every chosen job succeeded, every other was skipped	    "result": "failure",
+tier partial	every chosen job succeeded, every other was skipped	    "outputs": {}
+tier partial	every chosen job succeeded, every other was skipped	  },
+tier partial	every chosen job succeeded, every other was skipped	  "shard-coverage": {
+tier partial	every chosen job succeeded, every other was skipped	    "result": "skipped",
+tier partial	every chosen job succeeded, every other was skipped	    "outputs": {}
+tier partial	every chosen job succeeded, every other was skipped	  },
+tier partial	every chosen job succeeded, every other was skipped	  "bundle-identical": {
+tier partial	every chosen job succeeded, every other was skipped	    "result": "skipped",
+tier partial	every chosen job succeeded, every other was skipped	    "outputs": {}
+tier partial	every chosen job succeeded, every other was skipped	  },
+tier partial	every chosen job succeeded, every other was skipped	  "independence": {
+tier partial	every chosen job succeeded, every other was skipped	    "result": "skipped",
+tier partial	every chosen job succeeded, every other was skipped	    "outputs": {}
+tier partial	every chosen job succeeded, every other was skipped	  },
+tier partial	every chosen job succeeded, every other was skipped	  "dist-floor": {
+tier partial	every chosen job succeeded, every other was skipped	    "result": "skipped",
+tier partial	every chosen job succeeded, every other was skipped	    "outputs": {}
+tier partial	every chosen job succeeded, every other was skipped	  }
+tier partial	every chosen job succeeded, every other was skipped	}
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2570127Z ##[endgroup]
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2900124Z tier partial: 1 of 6 job(s) chosen
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2900811Z   plan-test          skipped   ok
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2901150Z   test               failure   WANTED success
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2901533Z   shard-coverage     skipped   ok
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2901809Z   bundle-identical   skipped   ok
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2902067Z   independence       skipped   ok
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2902313Z   dist-floor         skipped   ok
+tier partial	every chosen job succeeded, every other was skipped	2026-10-23T20:10:13.2948258Z ##[error]Process completed with exit code 1.

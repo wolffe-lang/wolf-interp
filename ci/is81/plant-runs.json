@@ -1,0 +1,28 @@
+{
+  "functional_plant": {
+    "run": 40016845293,
+    "commit": "9a3ee0ff2eaaa4a825b8a8456ec72239576de96a",
+    "jobs": "test",
+    "entries": "macos/smoke",
+    "first_status": "in_progress",
+    "observed_terminal": "failure",
+    "failed_test": "eval::tests::a_dangling_handle_into_a_freed_region_faults_exactly",
+    "assertion": "the dead region's creation site",
+    "mechanism": "Copy was deliberately matched as Move, so a move of a Pool was wrongly materialized before its region was freed",
+    "restoration": "613b3f5d72bf1f355ec8b8659493f8ff788c36c1",
+    "restored_source_tree": "4bbb204"
+  },
+  "non_functional_dispatches": [
+    {
+      "run": 40014362550,
+      "commit": "eba46d9",
+      "reason": "invalid matrix entry ubuntu/smoke; plan failed before tests"
+    },
+    {
+      "run": 40014656095,
+      "commit": "439ff99",
+      "reason": "invalid matrix entry ubuntu/smoke; plan failed before tests"
+    }
+  ],
+  "note": "No claim that mirror_is81 executed in the functional plant: cargo stopped at the lib failure. The original-source local control exercises all five mirrors."
+}
