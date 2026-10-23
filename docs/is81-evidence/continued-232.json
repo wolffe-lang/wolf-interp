@@ -20,7 +20,7 @@
   {
     "name": "builtin_push",
     "record": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/builtin_push/main.lu",
       "impl": "lupin",
@@ -56,7 +56,7 @@
   {
     "name": "callee_push",
     "record": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/callee_push/main.lu",
       "impl": "lupin",
@@ -92,7 +92,7 @@
   {
     "name": "generic_push",
     "record": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/generic_push/main.lu",
       "impl": "lupin",
@@ -128,7 +128,7 @@
   {
     "name": "result_list",
     "record": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/result_list/main.lu",
       "impl": "lupin",
@@ -164,7 +164,7 @@
   {
     "name": "map_pairs",
     "record": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/map_pairs/main.lu",
       "impl": "lupin",
@@ -200,7 +200,7 @@
   {
     "name": "map_key_store",
     "record": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/map_key_store/main.lu",
       "impl": "lupin",
@@ -236,7 +236,7 @@
   {
     "name": "map_key_no_in",
     "record": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "//lane/pair-driver/crates/wolf_driver/tests/fixtures/kept_arg/map_key_no_in/main.lu",
       "impl": "lupin",

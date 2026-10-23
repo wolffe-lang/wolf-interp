@@ -103,7 +103,7 @@
     "probe": "sc70_local_format_rows",
     "raw_stdout": null,
     "record": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "//lane/wolf-interp/docs/is81-evidence/probes/local_format_rows.lu",
       "impl": "lupin",
@@ -221,7 +221,7 @@
     "probe": "copy_chunk_failed_write",
     "raw_stdout": null,
     "record": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "//lane/wolf-interp/tests/fixtures/is81/copy_chunk_failed_write.lu",
       "impl": "lupin",
@@ -341,7 +341,7 @@
     "probe": "copy_chunk_dev_full",
     "raw_stdout": null,
     "record": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "//lane/wolf-interp/tests/fixtures/is81/copy_chunk_dev_full.lu",
       "impl": "lupin",
@@ -461,7 +461,7 @@
     "probe": "spawn_rows",
     "raw_stdout": null,
     "record": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "//lane/wolf-interp/tests/fixtures/is81/spawn_rows.lu",
       "impl": "lupin",
@@ -566,7 +566,7 @@
     "probe": "exec_row",
     "raw_stdout": null,
     "record": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "//lane/wolf-interp/tests/fixtures/is81/exec_row.lu",
       "impl": "lupin",

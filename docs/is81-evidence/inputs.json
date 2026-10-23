@@ -15,7 +15,7 @@
   },
   "container_image": "localhost/px57-rust",
   "core_limit": 0,
-  "corrected_pairing_source_commit": "b3f28164baf1ff112dbe1cb5440cfe6ee67c7b62",
+  "corrected_pairing_source_commit": "f1f30d19c9f0c2b74b5fd864928da335221b41a1",
   "cpus": "4-7",
   "differ_exit_codes": {
     "checked": 1,
@@ -31,7 +31,7 @@
   "published_and_raw_wolf_binary_sha256": "def1d450147beaed53780481abb124bfa2882e3f8a79b095ae39107b63de7bcc",
   "published_std_commit": "2386522eb059cca5a84108562c2c0a0e72345d34",
   "runtime_pin": "294d626dd596122285d5df954762e3aee3e5db71",
-  "stamp_note": "Authoritative pairing rebuilt with WOLF_INTERP_STAMP_NONCE; its records identify b3f2816. Earlier unstamped rehearsals remain in /home/mfwolffe/lanes/is81/records/fixed-* and are not the final provenance claim. Final exact-head gate forces its own nonce and validates the binary record against that sha.",
+  "stamp_note": "Authoritative post-CI-recovery pairing uses f1f30d1, with WOLF_INTERP_STAMP_NONCE forcing a fresh stamp. Final exact-head both-profile gate verifies that the runtime tree still matches this paired source and validates its own binary commit.",
   "wolf_commit": "cf0c13d38479f444b69bb8356ad5709d07eff323",
   "wolf_version": "0.2.35"
 }

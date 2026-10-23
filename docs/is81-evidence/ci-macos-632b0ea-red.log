@@ -1,0 +1,28 @@
+1980: 2026-10-23T21:48:35.8174050Z ---- list_reserve stdout ----
+1981: 2026-10-23T21:48:35.8174400Z 
+1982: 2026-10-23T21:48:35.8174830Z thread 'wolf-interp-run' (157831) panicked at src/eval/mod.rs:9341:17:
+1983: 2026-10-23T21:48:35.8176590Z assertion `left == right` failed: `builtin::mutates_receiver`/`list_len` disagreed with the whole-value comparison for `reserve`
+1984: 2026-10-23T21:48:35.8177190Z   left: false
+1985: 2026-10-23T21:48:35.8177690Z  right: true
+1986: 2026-10-23T21:48:35.8178510Z note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+1987: 2026-10-23T21:48:35.8179180Z 
+1988: 2026-10-23T21:48:35.8179570Z ---- s260_spawn_and_exec_witnesses_keep_the_host_number stdout ----
+1989: 2026-10-23T21:48:35.8179810Z 
+1990: 2026-10-23T21:48:35.8180070Z thread 's260_spawn_and_exec_witnesses_keep_the_host_number' (157902) panicked at tests/mirror_is81.rs:248:13:
+1991: 2026-10-23T21:48:35.8180560Z assertion `left == right` failed
+1992: 2026-10-23T21:48:35.8181880Z   left: "./noshebang spawn_fds[1,1]: RAN status 0\n./noshebang spawn_fds[]: RAN status 0\n./noshebang spawn: RAN status 0\n./noshebang spawn_job[1,1]: RAN status 0\n./junk spawn_fds[1,1]: RAN status 126\n./junk spawn_fds[]: RAN status 126\n./junk spawn: RAN status 126\n./junk spawn_job[1,1]: RAN status 126\n./control spawn_fds[1,1]: RAN status 7\n./control spawn_fds[]: RAN status 7\n./control spawn: RAN status 7\n./control spawn_job[1,1]: RAN status 7\nmarker=true\n"
+1993: 2026-10-23T21:48:35.8184710Z  right: "./noshebang spawn_fds[1,1]: io os_error=8\n./noshebang spawn_fds[]: io os_error=8\n./noshebang spawn: io os_error=8\n./noshebang spawn_job[1,1]: io os_error=8\n./junk spawn_fds[1,1]: io os_error=8\n./junk spawn_fds[]: io os_error=8\n./junk spawn: io os_error=8\n./junk spawn_job[1,1]: io os_error=8\n./control spawn_fds[1,1]: RAN status 7\n./control spawn_fds[]: RAN status 7\n./control spawn: RAN status 7\n./control spawn_job[1,1]: RAN status 7\nmarker=false\n"
+1994: 2026-10-23T21:48:35.8186160Z 
+1995: 2026-10-23T21:48:35.8186160Z 
+1996: 2026-10-23T21:48:35.8186690Z failures:
+1997: 2026-10-23T21:48:35.8186890Z     list_reserve
+1998: 2026-10-23T21:48:35.8187100Z     s260_spawn_and_exec_witnesses_keep_the_host_number
+1999: 2026-10-23T21:48:35.8187310Z 
+2000: 2026-10-23T21:48:35.8187550Z test result: FAILED. 20 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+2001: 2026-10-23T21:48:35.8188050Z 
+2002: 2026-10-23T21:48:35.8188490Z error: test failed, to rerun pass `--test mirror_is81`
+2003: 2026-10-23T21:48:35.8300100Z ##[error]Process completed with exit code 101.
+2004: 2026-10-23T21:48:35.8699680Z Post job cleanup.
+2005: 2026-10-23T21:48:36.3532900Z [command]/opt/homebrew/bin/git version
+2006: 2026-10-23T21:48:36.3871740Z git version 2.56.0
+2007: 2026-10-23T21:48:36.3900440Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/fa9d8029-6965-405f-a24c-1dd217fb061d/.gitconfig'

@@ -20,7 +20,7 @@
       ]
     },
     "corrected": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "corpus/memory/region_kept_arg_field.lu",
       "impl": "lupin",
@@ -75,7 +75,7 @@
       ]
     },
     "corrected": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "corpus/memory/region_kept_arg_method.lu",
       "impl": "lupin",
@@ -130,7 +130,7 @@
       ]
     },
     "corrected": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "corpus/memory/region_kept_arg_read_struct.lu",
       "impl": "lupin",
@@ -185,7 +185,7 @@
       ]
     },
     "corrected": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "corpus/memory/region_kept_arg_recv.lu",
       "impl": "lupin",
@@ -240,7 +240,7 @@
       ]
     },
     "corrected": {
-      "commit": "b3f2816",
+      "commit": "f1f30d1",
       "diagnostics": [],
       "file": "corpus/memory/region_kept_arg_two_mut.lu",
       "impl": "lupin",

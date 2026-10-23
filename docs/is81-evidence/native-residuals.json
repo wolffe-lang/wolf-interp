@@ -45,7 +45,7 @@
   },
   {
     "after": {
-      "a": "exit(69)",
+      "a": "exit(6)",
       "b": "ub(mem.ub)",
       "class": "SOUNDNESS",
       "file": "corpus/conc/atomic_ub_uaf.lu"
@@ -235,7 +235,7 @@
   },
   {
     "after": {
-      "a": "exit(177)",
+      "a": "exit(181)",
       "b": "ub(mem.ub)",
       "class": "SOUNDNESS",
       "file": "corpus/memory/unsafe_ub_uaf.lu"
@@ -276,7 +276,7 @@
   },
   {
     "after": {
-      "a": "exit(36)",
+      "a": "exit(174)",
       "b": "ub(mem.ub)",
       "class": "SOUNDNESS",
       "file": "corpus/memory/volatile_ub_uaf.lu"

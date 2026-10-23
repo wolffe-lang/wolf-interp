@@ -1,0 +1,139 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded aho-corasick v1.1.5
+  Downloaded errno v0.3.14
+  Downloaded anstyle-query v1.1.5
+  Downloaded strsim v0.11.1
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded comma v1.0.0
+  Downloaded insta v1.48.0
+  Downloaded nibble_vec v0.1.0
+  Downloaded cfg-if v1.0.4
+  Downloaded cfg_aliases v0.2.2
+  Downloaded clap_lex v1.1.0
+  Downloaded utf8parse v0.2.2
+  Downloaded endian-type v0.2.0
+  Downloaded colorchoice v1.0.5
+  Downloaded itoa v1.0.18
+  Downloaded anstyle-parse v1.0.0
+  Downloaded heck v0.5.0
+  Downloaded quote v1.0.47
+  Downloaded anstream v1.0.0
+  Downloaded thiserror-impl v2.0.20
+  Downloaded rexpect v0.7.1
+  Downloaded thiserror v2.0.20
+  Downloaded zmij v1.0.23
+  Downloaded fastrand v2.5.0
+  Downloaded console v0.16.4
+  Downloaded log v0.4.34
+  Downloaded clap_derive v4.6.4
+  Downloaded smallvec v1.15.2
+  Downloaded getrandom v0.2.16
+  Downloaded anstyle v1.0.14
+  Downloaded tempfile v3.27.0
+  Downloaded bitflags v2.13.1
+  Downloaded similar v2.7.0
+  Downloaded proc-macro2 v1.0.107
+  Downloaded once_cell v1.21.4
+  Downloaded serde_derive v1.0.229
+  Downloaded clap v4.6.6
+  Downloaded unicode-ident v1.0.24
+  Downloaded serde_core v1.0.229
+  Downloaded getrandom v0.4.3
+  Downloaded serde v1.0.229
+  Downloaded memchr v2.8.3
+  Downloaded unicode-segmentation v1.13.3
+  Downloaded rustyline v18.0.1
+  Downloaded regex v1.13.1
+  Downloaded serde_json v1.0.151
+  Downloaded clap_builder v4.6.6
+  Downloaded radix_trie v0.3.0
+  Downloaded unicode-width v0.2.2
+  Downloaded syn v3.0.3
+  Downloaded nix v0.31.3
+  Downloaded regex-syntax v0.8.11
+  Downloaded rustix v1.1.4
+  Downloaded regex-automata v0.4.18
+  Downloaded libc v0.2.189
+  Downloaded linux-raw-sys v0.12.1
+   Compiling wolf-interp v0.1.56 (/lane/wolf-interp)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10.79s
+   Compiling wolf-interp v0.1.56 (/lane/wolf-interp)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.86s
+   Compiling wolf-interp v0.1.56 (/lane/wolf-interp)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.77s
+     Running tests/mirror_is81.rs (/lane/target/debug/deps/mirror_is81-9d62d4679dd2e21e)
+
+running 25 tests
+test copied_keys_and_values_charge_the_maps_birth_region ... ok
+test format_mark_beats_the_module_function_in_a_tuple_result ... ok
+LIMIT: fs/copy_chunk_dev_full.lu is declined by [os.fs.path.domain]; Rust-level counted-write and in-tree failed-write rows cover the copy rule
+test dev_full_corpus_witness_names_the_existing_path_domain_limit ... ok
+test failed_copy_writes_rewind_and_preserve_errno ... ok
+test noexec_guard_leaves_missing_and_denied_programs_to_spawn ... ok
+test list_reset ... ok
+test ordinary_copies_still_share_strings_and_outer_copies_charge_the_destination_cap ... ok
+test region_copy_shares_str ... ok
+test exec_no_shebang_is_io_with_enoexec_and_never_runs_the_file ... ok
+test region_kept_arg_field ... ok
+test region_kept_arg_read_struct ... ok
+test region_kept_arg_method ... ok
+test region_kept_arg_recv ... ok
+test region_kept_arg_two_mut ... ok
+test region_outer_write_map ... ok
+test region_outer_write_field ... ok
+test region_outer_write_str_push ... ok
+test region_outer_write_struct ... ok
+test region_str_call_index_store ... ok
+test row_members_and_methods_require_handling ... ok
+test reserve_header_changes_survive_an_impl_receiver_writeback ... ok
+test spawning_lupin_itself_keeps_the_native_executable_path ... ok
+test list_reserve ... ok
+test s260_spawn_and_exec_witnesses_keep_the_host_number ... ok
+test region_outer_write_reset ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+   Compiling wolf-interp v0.1.56 (/lane/wolf-interp)
+    Finished `release` profile [optimized] target(s) in 22.12s
+     Running tests/mirror_is81.rs (/lane/target/release/deps/mirror_is81-3bfa519d2f3e611b)
+
+running 25 tests
+test copied_keys_and_values_charge_the_maps_birth_region ... ok
+test format_mark_beats_the_module_function_in_a_tuple_result ... ok
+test failed_copy_writes_rewind_and_preserve_errno ... ok
+LIMIT: fs/copy_chunk_dev_full.lu is declined by [os.fs.path.domain]; Rust-level counted-write and in-tree failed-write rows cover the copy rule
+test dev_full_corpus_witness_names_the_existing_path_domain_limit ... ok
+test list_reset ... ok
+test noexec_guard_leaves_missing_and_denied_programs_to_spawn ... ok
+test ordinary_copies_still_share_strings_and_outer_copies_charge_the_destination_cap ... ok
+test region_copy_shares_str ... ok
+test list_reserve ... ok
+test region_kept_arg_method ... ok
+test region_kept_arg_field ... ok
+test exec_no_shebang_is_io_with_enoexec_and_never_runs_the_file ... ok
+test region_kept_arg_read_struct ... ok
+test region_kept_arg_recv ... ok
+test region_kept_arg_two_mut ... ok
+test region_outer_write_field ... ok
+test region_outer_write_map ... ok
+test region_outer_write_str_push ... ok
+test region_str_call_index_store ... ok
+test row_members_and_methods_require_handling ... ok
+test region_outer_write_struct ... ok
+test reserve_header_changes_survive_an_impl_receiver_writeback ... ok
+test spawning_lupin_itself_keeps_the_native_executable_path ... ok
+test s260_spawn_and_exec_witnesses_keep_the_host_number ... ok
+test region_outer_write_reset ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+   Compiling wolf-interp v0.1.56 (/lane/wolf-interp)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.40s
+     Running unittests src/lib.rs (/lane/target/debug/deps/wolf_interp-17249cc15a44f024)
+
+running 1 test
+test eval::os::executable_header_is81::scripts_elf_and_both_mach_endiannesses_are_recognized ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 792 filtered out; finished in 0.00s
+

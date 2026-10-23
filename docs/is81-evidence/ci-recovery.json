@@ -1,0 +1,24 @@
+{
+  "failed_head": "632b0eab24b4ddf2f21c21374477123f3e90956d",
+  "run": 40028490094,
+  "macos_job": 120670610507,
+  "windows_job": 120670610551,
+  "failures": [
+    "list_reserve debug_assert: length-only mutation witness missed capacity change, both macOS and Windows",
+    "s260 spawn rows on Darwin: libc spawn shell fallback ran executable unknown headers"
+  ],
+  "linux_status_read": "All shards and ladder in_progress at the one requested snapshot, before the correction push cancelled that head",
+  "fixes": [
+    "5e71703: O(1) writeback witness includes length/capacity, preserving impl-method reservations; wolf value_eq still ignores capacity",
+    "e603e6d: Unix executable-prefix guard with effective permission ordering; no helper",
+    "f1f30d1: formatting"
+  ],
+  "focused_validation": {
+    "debug": "25 passed",
+    "release": "25 passed",
+    "header_unit": "1 passed in debug",
+    "clippy": "all targets and wasm lib passed"
+  },
+  "profile_gap": "Original local whole gate used release for every target except differ_cli, so debug_assert did not execute. The replacement exact-head gate runs cargo test in DEBUG for all targets, then RELEASE for every target except intentionally debug-only differ_cli, plus release doc tests.",
+  "raw_job_logs": "Fetched with gh api --allow-escape-sequences and stripped ANSI before reading; macOS original log lines 1980-2003 and Windows 1934-1949 are retained in the adjacent excerpts."
+}

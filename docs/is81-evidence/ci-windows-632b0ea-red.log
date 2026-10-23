@@ -1,0 +1,20 @@
+1934: 2026-10-23T21:53:03.6149019Z ---- list_reserve stdout ----
+1935: 2026-10-23T21:53:03.6149331Z 
+1936: 2026-10-23T21:53:03.6149668Z thread 'wolf-interp-run' (1288) panicked at src\eval\mod.rs:9341:17:
+1937: 2026-10-23T21:53:03.6151069Z assertion `left == right` failed: `builtin::mutates_receiver`/`list_len` disagreed with the whole-value comparison for `reserve`
+1938: 2026-10-23T21:53:03.6152069Z   left: false
+1939: 2026-10-23T21:53:03.6152416Z  right: true
+1940: 2026-10-23T21:53:03.6152995Z note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+1941: 2026-10-23T21:53:03.6153511Z 
+1942: 2026-10-23T21:53:03.6153552Z 
+1943: 2026-10-23T21:53:03.6153685Z failures:
+1944: 2026-10-23T21:53:03.6154004Z     list_reserve
+1945: 2026-10-23T21:53:03.6154237Z 
+1946: 2026-10-23T21:53:03.6154672Z test result: FAILED. 19 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+1947: 2026-10-23T21:53:03.6155339Z 
+1948: 2026-10-23T21:53:03.6156016Z error: test failed, to rerun pass `--test mirror_is81`
+1949: 2026-10-23T21:53:03.6519597Z ##[error]Process completed with exit code 101.
+1950: 2026-10-23T21:53:03.6874285Z Post job cleanup.
+1951: 2026-10-23T21:53:03.8846729Z [command]"C:\Program Files\Git\bin\git.exe" version
+1952: 2026-10-23T21:53:03.9209150Z git version 2.56.0.windows.2
+1953: 2026-10-23T21:53:03.9280102Z Temporarily overriding HOME='D:\a\_temp\cff9d289-6702-473e-8fab-ddb865a43ad6' before making global git config changes

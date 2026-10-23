@@ -31,7 +31,7 @@
 {"a":"fail(E1308)","b":"fail(E1308)","class":"Completeness","file":"corpus/conc/atomic_pointee.lu"}
 {"a":"exit(0)","b":"trap(race)","class":"SOUNDNESS","file":"corpus/conc/atomic_race_plain.lu"}
 {"a":"exit(0)","b":"ub(mem.ub)","class":"SOUNDNESS","file":"corpus/conc/atomic_ub_misaligned.lu"}
-{"a":"exit(69)","b":"ub(mem.ub)","class":"SOUNDNESS","file":"corpus/conc/atomic_ub_uaf.lu"}
+{"a":"exit(6)","b":"ub(mem.ub)","class":"SOUNDNESS","file":"corpus/conc/atomic_ub_uaf.lu"}
 {"a":"fail(E1101)","b":"fail(E1101)","class":"Completeness","file":"corpus/conc/capture_mut_arg.lu"}
 {"a":"fail(E1101)","b":"fail(E1101)","class":"Completeness","file":"corpus/conc/capture_mut_lend.lu"}
 {"a":"fail(E1101)","b":"fail(E1101)","class":"Completeness","file":"corpus/conc/capture_write_assign.lu"}
@@ -156,13 +156,13 @@
 {"a":"fail(E1305)","b":"unsupported","class":"Completeness","file":"corpus/memory/unsafe_door_misuse.lu"}
 {"a":"fail(E1301)","b":"fail(E1301)","class":"Completeness","file":"corpus/memory/unsafe_raw_outside.lu"}
 {"a":"fail(E1302)","b":"fail(E1302)","class":"Completeness","file":"corpus/memory/unsafe_sig.lu"}
-{"a":"exit(177)","b":"ub(mem.ub)","class":"SOUNDNESS","file":"corpus/memory/unsafe_ub_uaf.lu"}
+{"a":"exit(181)","b":"ub(mem.ub)","class":"SOUNDNESS","file":"corpus/memory/unsafe_ub_uaf.lu"}
 {"a":"fail(E1008)","b":"exit(0)","class":"Completeness","file":"corpus/memory/view_set_violation.lu"}
 {"a":"fail(E1301)","b":"fail(E1301)","class":"Completeness","file":"corpus/memory/volatile_outside_unsafe.lu"}
 {"a":"fail(E1307)","b":"fail(E1307)","class":"Completeness","file":"corpus/memory/volatile_pointee_bool.lu"}
 {"a":"fail(E1307)","b":"fail(E1307)","class":"Completeness","file":"corpus/memory/volatile_pointee_int.lu"}
 {"a":"exit(0)","b":"ub(mem.ub)","class":"SOUNDNESS","file":"corpus/memory/volatile_ub_misaligned.lu"}
-{"a":"exit(36)","b":"ub(mem.ub)","class":"SOUNDNESS","file":"corpus/memory/volatile_ub_uaf.lu"}
+{"a":"exit(174)","b":"ub(mem.ub)","class":"SOUNDNESS","file":"corpus/memory/volatile_ub_uaf.lu"}
 {"a":"fail(E0403)","b":"unsupported","class":"Completeness","file":"corpus/methods/method_non_std_receiver.lu"}
 {"a":"fail(E0403)","b":"unsupported","class":"Completeness","file":"corpus/methods/method_take.lu"}
 {"a":"fail(E0403)","b":"unsupported","class":"Completeness","file":"corpus/methods/method_unknown.lu"}

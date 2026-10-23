@@ -6,17 +6,28 @@
     "status": 0
   },
   "corrected_focused": {
-    "commit": "b3f28164baf1ff112dbe1cb5440cfe6ee67c7b62",
+    "commit": "f1f30d19c9f0c2b74b5fd864928da335221b41a1",
     "job_exit": 0,
-    "tests": 22
+    "tests": 25
   },
-  "final_head_gate": "Separate exact-sha marker at /home/mfwolffe/lanes/is81/evidence/final-gate-marker.json, written before final push.",
+  "final_head_gate": "The replacement final head receives cargo test in DEBUG for all targets and RELEASE for all except debug-only differ_cli, plus release doc-tests, corpus and exact binary-stamp validation before push.",
+  "initial_release_only_gate": {
+    "head": "632b0eab24b4ddf2f21c21374477123f3e90956d",
+    "local_exit": 0,
+    "not_sufficient": "CI40028490094 found debug-only reserve assertion and Darwin spawn fallback; replacement gate must run the whole suite in both profiles"
+  },
   "original_source_red": {
     "commit": "28547b4",
     "exit": 101,
     "failed": 14,
     "passed": 1,
     "tests_taken_from": "239a0bf"
+  },
+  "recovery_focused": {
+    "all_target_and_wasm_clippy_exit": 0,
+    "debug_header_unit_passed": 1,
+    "debug_passed": 25,
+    "release_passed": 25
   },
   "whole_gates_before_final": [
     {

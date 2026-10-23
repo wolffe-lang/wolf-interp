@@ -15,20 +15,20 @@
     "bytes": 31651,
     "sha256": "8bd3723146e2b0a120b63520bf992b7c36a08339499865822eefcc83584f8ca7"
   },
-  "/home/mfwolffe/lanes/is81/evidence/red-all.log": {
-    "bytes": 9902,
-    "sha256": "6a5167ca840f9adcea03bd0e881cb6a64fc0b60fe694d5b231d0706aac907658"
-  },
-  "/home/mfwolffe/lanes/is81/evidence/stamped-checked.log": {
+  "/home/mfwolffe/lanes/is81/evidence/recovery-pair-checked.log": {
     "bytes": 31602,
     "sha256": "23dfb5ac92166a489dbd848f59631af27c661a198b710bff9c52d45cbde1ca9e"
   },
-  "/home/mfwolffe/lanes/is81/evidence/stamped-host.log": {
-    "bytes": 8964,
-    "sha256": "ecb1e872eaaa4565b9e25efe95dced497566895c27a02e4106736d10a3c5cf45"
+  "/home/mfwolffe/lanes/is81/evidence/recovery-pair-host.log": {
+    "bytes": 9170,
+    "sha256": "e3ee193bfd051a587c0f7453779e91ffbfd75823ce47e439f2368682580f95f9"
   },
-  "/home/mfwolffe/lanes/is81/evidence/stamped-native.log": {
+  "/home/mfwolffe/lanes/is81/evidence/recovery-pair-native.log": {
     "bytes": 33049,
-    "sha256": "a662e7861dacffc5f0c910de296f2e3d3c4ff70b89d4d8c2ec91fd9013f23e06"
+    "sha256": "945ff4e6b6cab4eb3c1aa1da26ccf5c23359e1e4fc4825338d203fcc269e0134"
+  },
+  "/home/mfwolffe/lanes/is81/evidence/red-all.log": {
+    "bytes": 9902,
+    "sha256": "6a5167ca840f9adcea03bd0e881cb6a64fc0b60fe694d5b231d0706aac907658"
   }
 }

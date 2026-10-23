@@ -15,5 +15,13 @@
     "recommendation": "A copy materializes only inside a region/in block opened in the current activation; mut parameters are outer relative to that lexical block",
     "status": "accepted and implemented",
     "withdrawn": "The over-broad dynamic-context reading, the proposed five safe-exit gate changes, and the proposed E1010 policy issue are withdrawn. The five controls remain region-fault."
+  },
+  {
+    "id": "R-is81-4",
+    "recommendation": "Before std spawn, check effective executable access and then recognize shebang, ELF and the specified Mach-O prefixes; synthesize io/ENOEXEC for executable unknown formats",
+    "status": "accepted directed replacement implemented",
+    "rejected": "Private re-exec helper and Unix-socket transport: rejected, never implemented",
+    "limitation": "Linux binfmt_misc-registered formats with other prefixes are refused as ENOEXEC although the kernel could run them; by design until needed",
+    "darwin_witness": "CI40028490094 macOS smoke job120670610507, mirror_is81; final s260 note confirms Darwin expected ENOEXEC8"
   }
 ]
