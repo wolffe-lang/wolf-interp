@@ -448,8 +448,8 @@ pub struct Run {
 #[derive(Debug, Default)]
 struct Scope {
     locals: Vec<(String, Slot)>,
-    /// Declaration ambient and whether this binding is a `mut` parameter.
-    homes: Vec<(RegionId, bool)>,
+    /// The region ambient at each binding's declaration.
+    homes: Vec<RegionId>,
     /// A lexical `region`/`in` boundary, not an ordinary nested block.
     region_boundary: bool,
     /// What each local's binding statically recorded (is67,
@@ -1652,7 +1652,7 @@ impl Machine {
             && let Some(scope) = frame.scopes.last_mut()
         {
             scope.locals.push((name.to_owned(), slot));
-            scope.homes.push((home, false));
+            scope.homes.push(home);
             scope.known.push((name.to_owned(), None));
         }
         self.trace_declare(name);
@@ -3589,15 +3589,6 @@ impl Machine {
                 self.prov().bind_place(&key, retag.alloc, retag.tag);
             }
             self.declare(&name, Slot::live(value));
-            if param.mode == Some(ParamMode::Mut)
-                && let Some(home) = self
-                    .frames
-                    .last_mut()
-                    .and_then(|frame| frame.scopes.last_mut())
-                    .and_then(|scope| scope.homes.last_mut())
-            {
-                home.1 = true;
-            }
             if let ParamKind::Named { ty, .. } = &param.kind
                 && let Some(known) = crate::rowmatch::known_of_type(ty)
             {
@@ -5077,11 +5068,15 @@ impl Machine {
                         .rposition(|(name, _)| name == &path.base)
                         .map(|j| (i, j))
                 })?;
-        let (ambient, parameter) = frame.scopes[scope_index].homes[local_index];
-        let outer = parameter
-            || frame.scopes[scope_index + 1..]
-                .iter()
-                .any(|scope| scope.region_boundary);
+        let ambient = frame.scopes[scope_index].homes[local_index];
+        // `[mem.region.outer-write]` is lexical in this activation. A
+        // caller's region context must not change how a callee compiled
+        // once interprets `copy`. A mut parameter (scope 0) is outer to
+        // every region/in block opened by this function, but no copy in
+        // its ordinary body materializes merely because it is inout.
+        let outer = frame.scopes[scope_index + 1..]
+            .iter()
+            .any(|scope| scope.region_boundary);
         if !outer {
             return None;
         }

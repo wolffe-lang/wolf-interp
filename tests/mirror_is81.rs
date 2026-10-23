@@ -34,14 +34,23 @@ runs!(list_reserve, "0 1000 0 999 3 7 8 9 true\n");
 runs!(list_reset, "5 0 3 10 11 12 2 b2 true\n");
 runs!(region_outer_write_reset, "300 3 299 0 6\n");
 
-// R-is81-3: these remain compiler E1010 controls, but the dynamic
-// materializing copy no longer keeps the dying region's bytes. The pairing
-// must name the dynamic movement, not forge a stale-data trap.
-runs!(region_kept_arg_field, "28\nbuilt in pass, 0 uses\n");
-runs!(region_kept_arg_method, "28\nbuilt in pass, 0 uses\n");
-runs!(region_kept_arg_read_struct, "28\nbuilt in pass, 0 uses\n");
-runs!(region_kept_arg_recv, "28\nbuilt in pass, 0 uses\n");
-runs!(region_kept_arg_two_mut, "28\nbuilt in pass, 0 uses\n");
+// R-is81-3: the callee has no lexical region/in block. Its plain
+// `copy` still shares, regardless of the caller's dynamic `in st`.
+macro_rules! sharing_copy_faults {
+    ($name:ident) => {
+        #[test]
+        fn $name() {
+            let obs = observe(include_bytes!(concat!("fixtures/is81/", stringify!($name), ".lu")), None);
+            assert_eq!(obs.verdict, Verdict::Trap(wolf_interp::trap::TrapKind::RegionFault), "{:?}", obs.reason);
+            assert_eq!(obs.stdout, b"28\n");
+        }
+    };
+}
+sharing_copy_faults!(region_kept_arg_field);
+sharing_copy_faults!(region_kept_arg_method);
+sharing_copy_faults!(region_kept_arg_read_struct);
+sharing_copy_faults!(region_kept_arg_recv);
+sharing_copy_faults!(region_kept_arg_two_mut);
 
 #[test]
 fn row_members_and_methods_require_handling() {
