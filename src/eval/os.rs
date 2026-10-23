@@ -84,6 +84,51 @@ impl ChildTable {
         self.spawn_error
     }
 
+    /// R-is81-4: do not hand an unrecognized executable to a libc spawn
+    /// path that may retry it under a shell (Darwin does). Missing files,
+    /// directories and execute-permission refusals still belong to spawn.
+    /// This deliberately does not support Linux binfmt_misc formats.
+    #[cfg(unix)]
+    fn rejects_executable_header(&self, program: &str, cwd: Option<&std::path::Path>) -> bool {
+        use nix::fcntl::{AT_FDCWD, AtFlags};
+        use nix::unistd::{AccessFlags, faccessat};
+        use std::io::Read as _;
+
+        if program.is_empty() || program.contains('\0') {
+            return false;
+        }
+        let cwd = cwd.unwrap_or_else(|| std::path::Path::new("."));
+        let candidates: Vec<std::path::PathBuf> = if program.contains('/') {
+            vec![cwd.join(program)]
+        } else {
+            let path = match self.overlay.get("PATH") {
+                Some(Some(path)) => path.into(),
+                Some(None) => "/usr/bin:/bin".into(),
+                None => std::env::var_os("PATH").unwrap_or_else(|| "/usr/bin:/bin".into()),
+            };
+            std::env::split_paths(&path).map(|dir| cwd.join(dir).join(program)).collect()
+        };
+        for path in candidates {
+            let Ok(metadata) = std::fs::metadata(&path) else { continue };
+            // Ask using effective IDs, as exec does; do not read a denied
+            // candidate's bytes and substitute ENOEXEC for its EACCES.
+            if !metadata.is_file()
+                || faccessat(AT_FDCWD, &path, AccessFlags::X_OK, AtFlags::AT_EACCESS).is_err()
+            {
+                continue;
+            }
+            let Ok(file) = std::fs::File::open(path) else { return false };
+            let mut prefix = Vec::with_capacity(4);
+            if file.take(4).read_to_end(&mut prefix).is_err() {
+                return false;
+            }
+            // The first executable PATH candidate decides, including an
+            // unrecognized format: it must not fall through to another one.
+            return !has_known_executable_header(&prefix);
+        }
+        false
+    }
+
     /// `os_spawn`: argv-array only, null-wired stdio.
     ///
     /// # Errors
@@ -107,6 +152,11 @@ impl ChildTable {
             // An empty argv names no program (the witnessed row).
             return Err("not_found");
         };
+        #[cfg(unix)]
+        if self.rejects_executable_header(program, cwd) {
+            self.spawn_error = i128::from(nix::errno::Errno::ENOEXEC as i32);
+            return Err("io");
+        }
         let mut command = Command::new(program);
         command
             .args(&argv[1..])
@@ -179,6 +229,11 @@ impl ChildTable {
         }
         let [zero, one, two] = stdio;
         let wire = |f: Option<std::fs::File>| f.map_or_else(Stdio::null, Stdio::from);
+        #[cfg(unix)]
+        if self.rejects_executable_header(program, cwd) {
+            self.spawn_error = i128::from(nix::errno::Errno::ENOEXEC as i32);
+            return Err("io");
+        }
         let mut command = Command::new(program);
         command
             .args(&argv[1..])
@@ -355,6 +410,21 @@ impl ChildTable {
     }
 }
 
+/// The formats admitted by R-is81-4's prefix guard. This is not an ELF or
+/// Mach-O validator; recognized formats remain the kernel's decision.
+#[cfg(unix)]
+fn has_known_executable_header(prefix: &[u8]) -> bool {
+    prefix.starts_with(b"#!")
+        || [
+            [0x7f, b'E', b'L', b'F'],
+            [0xfe, 0xed, 0xfa, 0xce],
+            [0xfe, 0xed, 0xfa, 0xcf],
+            [0xce, 0xfa, 0xed, 0xfe],
+            [0xcf, 0xfa, 0xed, 0xfe],
+            [0xca, 0xfe, 0xba, 0xbe],
+        ].iter().any(|magic| prefix.starts_with(magic))
+}
+
 /// SIGKILL to the process group `pgid` (its leader's pid), through the
 /// POSIX `kill` utility of `sh`: `kill -s KILL -- -PGID`, then once more
 /// 50 ms later. The second send is for a child the group's members were
@@ -495,5 +565,19 @@ mod tests {
         t.kill(k).expect("kill");
         assert_eq!(t.wait_status_core(k), Ok(-9));
         assert_eq!(t.wait_status_core(4096), Err("io"));
+    }
+}
+
+#[cfg(all(test, unix))]
+mod executable_header_is81 {
+    use super::has_known_executable_header;
+    #[test]
+    fn scripts_elf_and_both_mach_endiannesses_are_recognized() {
+        for prefix in [b"#!".as_slice(), b"\x7fELF", b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf", b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"] {
+            assert!(has_known_executable_header(prefix), "{prefix:?}");
+        }
+        for prefix in [b"".as_slice(), b"#", b"echo", b"\0\0\0\0", b"\x7fEL"] {
+            assert!(!has_known_executable_header(prefix), "{prefix:?}");
+        }
     }
 }
