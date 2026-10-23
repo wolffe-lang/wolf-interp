@@ -1,0 +1,1 @@
+Intentional CI plant: materialize_store matches Move instead of Copy. The fixed implementation is already committed at 4bbb204. The following restoration commit restores the rule; keep this plant in history as the unattended-gate red control.

@@ -5121,7 +5121,7 @@ impl Machine {
             syntax = inner;
         }
         if let Some(into) = into
-            && matches!(&*syntax.kind, ExprKind::Unary { op: UnOp::Copy, .. })
+            && matches!(&*syntax.kind, ExprKind::Unary { op: UnOp::Move, .. })
         {
             return self.materialize(value, into, self.current_region(), expr.span);
         }
