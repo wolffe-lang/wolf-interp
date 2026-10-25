@@ -630,6 +630,28 @@ fn the_bundle_opens_verified_and_its_records_reference_bundled_programs() {
     assert_eq!(verified.bundle_sha256, summary.bundle_sha256);
     assert_eq!(verified.expected.len(), summary.records);
 
+    // The reference target is Linux even when the exporter is Windows.
+    // These corpus programs handle Windows's error row and exit, whereas
+    // this machine refuses the Unix host operation before it can run.
+    for (path, name) in [
+        ("corpus/os/ids_read.lu", "os_uid"),
+        ("corpus/os/signal_reserved_rows.lu", "os_signal_realtime"),
+    ] {
+        let record = verified.expected.iter().find(|r| r.file == path).unwrap();
+        assert_eq!(
+            record.verdict,
+            wolf_interp::protocol::Verdict::Unsupported,
+            "{path}: {record:?}"
+        );
+        assert_eq!(record.phase_reached, wolf_interp::phase::Phase::Resolve);
+        assert!(
+            record.extensions["x-unsupported"]
+                .as_str()
+                .unwrap()
+                .contains(name)
+        );
+    }
+
     // Every record names a program that ships in the bundle, by its
     // bundle-relative slash path, in sorted order (two exports of the same
     // trees diff cleanly).

@@ -131,3 +131,22 @@ uniqueness while fitting the measured complete budget:
 56+1+12+1+33 = 103, and the corpus socket is 56+1+12+1+26 = 96.
 The 64-bit OS read supplies the low 60 bits; the top four are deliberately
 unused. Exclusive creation/retry still owns the leaf; no clock fallback.
+
+R41b bundle target prediction before the repair:
+- CI 40229710726 has only manifest artifacts, not full bundles. Retained
+  ce6610d records with the CI merge stamp 362523a reproduce the Linux hash
+  af47963a17be1b5a7db261e8d1a3accc6220cc5c762af2aa9f95d20942b77832.
+  Replacing only os/ids_read.lu and os/signal_reserved_rows.lu with their
+  Windows handled-host-error records reproduces the Windows hash
+  2ed37a8111e0ffd34762cf8b68d0e13182747119602a3c8b1b694e41f0edf8e6.
+- This is host-policy drift, not CRLF, slash paths, ordering or socket roots.
+  The exporter fixes cfg parsing to BUNDLE_TARGET (Linux), but these two
+  builtin host decisions still inspect Rust's compilation host.
+- First commit the failing Windows-shaped semantic-input unit test and
+  exact exported-corpus assertions. Make these two host decisions use the
+  selected observation target, whose default remains HOST_TRIPLE. Do not
+  rewrite observations after execution, exclude records or weaken gates.
+- Predict the unit test red before the repair, green after, with Linux
+  refusals preserved in bundles on Windows and ordinary host rows unchanged.
+  Mac work is restricted to the focused crate build/unit tests; CI owns
+  full export, replay and the cross-OS ladder. No CI wait, label or release.

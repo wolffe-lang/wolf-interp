@@ -990,6 +990,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn bundle_host_refusals_use_the_fixed_target_not_the_exporter() {
+        use crate::phase::Phase;
+        use crate::protocol::Verdict;
+
+        // Windows-shaped semantic input, not path spelling: these calls
+        // return a handled host error there but are interpreter refusals
+        // on Unix. The bundle must retain the latter on either exporter.
+        for name in ["os_uid", "os_signal_realtime"] {
+            let source = format!("fn main() -> int {{ {name}() else |_| {{ return 0 }}; 1 }}");
+            for host in ["x86_64-pc-windows-msvc", BUNDLE_TARGET] {
+                crate::attrs::with_build_target(host, || {
+                    let observe = || {
+                        crate::observe_record_stdin(
+                            source.as_bytes(),
+                            &crate::eval::SchedRequest::Default,
+                        )
+                        .0
+                    };
+                    let native = observe();
+                    if host.contains("-windows-") {
+                        assert_eq!(native.verdict, Verdict::Exit(0), "{name}: {native:?}");
+                    } else {
+                        assert_eq!(native.verdict, Verdict::Unsupported, "{name}: {native:?}");
+                    }
+                    let bundled = crate::attrs::with_build_target(BUNDLE_TARGET, observe);
+                    assert_eq!(bundled.phase_reached, Phase::Resolve, "{name}: {bundled:?}");
+                    assert_eq!(bundled.verdict, Verdict::Unsupported, "{name}: {bundled:?}");
+                    assert!(
+                        bundled.extensions["x-unsupported"]
+                            .as_str()
+                            .unwrap()
+                            .contains(name)
+                    );
+                    assert_eq!(bundled.extensions["x-unsupported-at"], "run");
+                    assert_eq!(observe(), native, "the bundle target must not leak");
+                });
+            }
+        }
+        assert_eq!(crate::attrs::build_target(), crate::HOST_TRIPLE);
+    }
+
+    #[test]
     fn normalization_touches_only_crlf() {
         assert_eq!(normalize(b"a\r\nb\n"), b"a\nb\n");
         assert_eq!(
