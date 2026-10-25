@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: int_shift_count_negative.lu
+trap:    overflow
+clause:  [arith.checked]
+rule:    ArithChecked
+message: `>>` overflowed the machine's widest integer
+at:      11:5 `x >> n`
+because: (single-span fault)

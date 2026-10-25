@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: int_shift_left_sign_bit.lu
+trap:    overflow
+clause:  [arith.checked]
+rule:    ArithChecked
+message: `<<` produced 9223372036854775808, outside `i64` — checked arithmetic traps in every profile (X3); spell intended overflow `wrapping[i64]`
+at:      12:5 `x << n`
+because: (single-span fault)

@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: int_truth_neg_u64_trap.lu
+trap:    overflow
+clause:  [arith.checked]
+rule:    ArithChecked
+message: negation produced -9223372036854775808, outside `u64` — checked arithmetic traps in every profile (X3); spell intended overflow `wrapping[u64]`
+at:      10:13 `-x`
+because: (single-span fault)

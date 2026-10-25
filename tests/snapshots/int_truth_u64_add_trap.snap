@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: int_truth_u64_add_trap.lu
+trap:    overflow
+clause:  [arith.checked]
+rule:    ArithChecked
+message: `+` produced 18446744073709551616, outside `u64` — checked arithmetic traps in every profile (X3); spell intended overflow `wrapping[u64]`
+at:      13:13 `m + one`
+because: (single-span fault)

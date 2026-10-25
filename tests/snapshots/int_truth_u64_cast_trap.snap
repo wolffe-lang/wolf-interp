@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: int_truth_u64_cast_trap.lu
+trap:    overflow
+clause:  [arith.checked]
+rule:    ArithChecked
+message: `9223372036854775808 as i64` is outside `i64` — numeric casts are checked conversions in every profile (X3); spell intended overflow `wrapping[i64]`
+at:      11:13 `h as int`
+because: (single-span fault)

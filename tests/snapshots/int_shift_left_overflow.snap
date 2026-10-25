@@ -1,0 +1,10 @@
+---
+source: tests/fault_snapshots.rs
+---
+program: int_shift_left_overflow.lu
+trap:    overflow
+clause:  [arith.checked]
+rule:    ArithChecked
+message: `<<` produced 510, outside `u8` — checked arithmetic traps in every profile (X3); spell intended overflow `wrapping[u8]`
+at:      11:5 `x << n`
+because: (single-span fault)
