@@ -128,7 +128,9 @@ may gate code to one architecture, so a host observing as itself could
 record a different outcome and the bundle would stop being byte-identical
 across OSes.
 
-```console
+On Unix hosts:
+
+```console unix
 $ lupin conformance export --out target/bundle --json
 {"anchors_covered":375,"anchors_total":705,"bundle_sha256":"…","files":1287,"forward_tags":109,"out":"target/bundle","pin":"a5378e3fd5b6347f4a89a7d77dbe43aa576fee76","programs":1267,"records":1205}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
@@ -137,6 +139,23 @@ divergences: 0
 conservatism ledger: 180 entries
   unsupported(counterparty): 90
   unsupported(interp): 90
+differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
+notice: bundle target/bundle at pin a5378e3fd5b6347f4a89a7d77dbe43aa576fee76 verified (bundle_sha256 …)
+```
+
+On Windows the two handled host-error rows described in the
+[corpus census](00-building.md) run instead of being declined. Self-replay
+therefore records 88 unsupported observations on each side rather than 90:
+
+```console windows
+$ lupin conformance export --out target/bundle --json
+{"anchors_covered":375,"anchors_total":705,"bundle_sha256":"…","files":1287,"forward_tags":109,"out":"target/bundle","pin":"a5378e3fd5b6347f4a89a7d77dbe43aa576fee76","programs":1267,"records":1205}
+$ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
+differential: 1205 entries compared, 0 member(s) exercised through their entries
+divergences: 0
+conservatism ledger: 176 entries
+  unsupported(counterparty): 88
+  unsupported(interp): 88
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
 notice: bundle target/bundle at pin a5378e3fd5b6347f4a89a7d77dbe43aa576fee76 verified (bundle_sha256 …)
 ```

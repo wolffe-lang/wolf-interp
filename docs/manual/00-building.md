@@ -69,7 +69,9 @@ wolf-lang#341 re-pinned the two seed headers that had gone stale against
 their clauses; the gate in `tests/run_corpus.rs` waives only the filed
 set):
 
-```console
+On Unix hosts:
+
+```console unix
 $ lupin corpus
 …
 
@@ -77,6 +79,21 @@ $ lupin corpus
 479 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
 lupin: 938 entries reach the `run` rung; 868 match their `check:` expectation, 133 are the dynamic counterpart of the static code the corpus pins, 68 are static-conservatism entries (the compiler rejects statically what this machine never checks), 90 are out of scope, 4 mismatch
+```
+
+On Windows, `os/ids_read.lu` and `os/signal_reserved_rows.lu` handle the
+host's `unsupported` error rows and finish normally. On Unix this
+interpreter declines `os_uid` and `os_signal_realtime` by name instead.
+These are named observations, not skipped corpus entries:
+
+```console windows
+$ lupin corpus
+…
+
+1225 file(s) under upstream/corpus: 1163 entries, 62 member(s), 0 failure(s)
+479 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
+
+lupin: 940 entries reach the `run` rung; 870 match their `check:` expectation, 133 are the dynamic counterpart of the static code the corpus pins, 68 are static-conservatism entries (the compiler rejects statically what this machine never checks), 88 are out of scope, 4 mismatch
 ```
 
 ## Bumping the pin
