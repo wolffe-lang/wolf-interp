@@ -37,3 +37,9 @@ bundle hash. Blocks fenced `sh` or `text` are not executed. A `console`
 block whose command is `lupin repl` is replayed as a piped session and
 compared as a transcript. Bare `lupin` opens the REPL, so it is replayed
 the same way.
+
+A fence may be qualified as `console unix` or `console windows` when the
+host's own error rows change the transcript. Each qualified block is
+executed on the named hosts with the same exact-output matcher; an unknown
+qualifier is an error. Keep both transcripts visible and name the rows
+behind the difference. Do not replace host-specific counts with `…`.

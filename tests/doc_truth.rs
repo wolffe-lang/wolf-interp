@@ -43,8 +43,28 @@ fn doc_files() -> Vec<PathBuf> {
     files
 }
 
-/// One fenced `console` block: where it is, and its lines.
+/// A transcript is checked on every host it names, never with wildcard
+/// counts. Unqualified console blocks remain mandatory on every host.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Host {
+    All,
+    Unix,
+    Windows,
+}
+
+impl Host {
+    fn includes(self, unix: bool, windows: bool) -> bool {
+        match self {
+            Self::All => true,
+            Self::Unix => unix,
+            Self::Windows => windows,
+        }
+    }
+}
+
+/// One fenced `console` block: where it is, its host, and its lines.
 struct Block {
+    host: Host,
     file: String,
     line: usize,
     lines: Vec<String>,
@@ -58,14 +78,28 @@ fn console_blocks(path: &Path) -> Vec<Block> {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/");
+    parse_console_blocks(&file, &text)
+}
+
+fn parse_console_blocks(file: &str, text: &str) -> Vec<Block> {
     let mut blocks = Vec::new();
     let mut current: Option<Block> = None;
     for (idx, raw) in text.lines().enumerate() {
         let line = raw.trim_end_matches('\r');
         if current.is_none() {
-            if line == "```console" {
+            let host = match line {
+                "```console" => Some(Host::All),
+                "```console unix" => Some(Host::Unix),
+                "```console windows" => Some(Host::Windows),
+                other if other.starts_with("```console") => {
+                    panic!("{file}: unknown console fence {other:?}")
+                }
+                _ => None,
+            };
+            if let Some(host) = host {
                 current = Some(Block {
-                    file: file.clone(),
+                    host,
+                    file: file.to_owned(),
                     line: idx + 1,
                     lines: Vec::new(),
                 });
@@ -239,6 +273,9 @@ fn every_documented_output_is_the_binary_output() {
     let mut failures = Vec::new();
     for path in doc_files() {
         for block in console_blocks(&path) {
+            if !block.host.includes(cfg!(unix), cfg!(windows)) {
+                continue;
+            }
             for pair in pairs(&block) {
                 let actual = run_pair(&pair);
                 checked += 1;
@@ -328,4 +365,36 @@ fn the_command_tour_matches_help() {
         commands.len(),
         "the tour lists a command --help does not"
     );
+}
+
+#[test]
+fn host_qualified_transcripts_are_selected_without_relaxing_the_output() {
+    let blocks = parse_console_blocks(
+        "hosts.md",
+        "```console\n$ lupin --version\nshared\n```\n\
+         ```console unix\n$ lupin corpus\n938 run\n```\n\
+         ```console windows\n$ lupin corpus\n940 run\n```\n",
+    );
+    assert_eq!(blocks.len(), 3);
+    for (unix, windows, wanted) in [
+        (true, false, vec!["shared", "938 run"]),
+        (false, true, vec!["shared", "940 run"]),
+    ] {
+        let selected: Vec<_> = blocks
+            .iter()
+            .filter(|block| block.host.includes(unix, windows))
+            .flat_map(pairs)
+            .collect();
+        assert_eq!(selected.len(), wanted.len());
+        for (pair, want) in selected.iter().zip(wanted) {
+            assert!(matches_expected(&pair.expected, want));
+            assert!(!matches_expected(&pair.expected, "939 run"));
+        }
+    }
+}
+
+#[test]
+#[should_panic(expected = "unknown console fence")]
+fn a_misspelled_console_host_cannot_silently_disable_a_transcript() {
+    parse_console_blocks("hosts.md", "```console windwos\n$ lupin corpus\n```\n");
 }
