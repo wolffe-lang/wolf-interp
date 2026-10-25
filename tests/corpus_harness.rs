@@ -772,10 +772,12 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     //  `abi.link*`, `conc.mm.atomic.*`, `conc.mm.fence`, `mem.prov.device`,
     //  `mem.static*`, `mem.unsafe.raw.4`, `mem.unsafe.volatile*`), none
     //  dropped, key sets diffed both ways, and no new namespace.)
+    // is81: 294d626d -> a5378e3f adds 223 files (208 entries, 15
+    // members), loses none; the registry grows 595 -> 705 with no key lost.
     let report = report();
     assert_eq!(
         report.total(),
-        1002,
+        1225,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
@@ -805,8 +807,8 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     // kw02's `membrane/geo/geo.lu`.
     // 900 -> 955 at 294d626d (r30, wolf-lang v0.2.24): fifty-five new
     // files, every one an entry. `members` holds at 47.
-    assert_eq!(report.entries(), 955);
-    assert_eq!(report.members(), 47);
+    assert_eq!(report.entries(), 1163);
+    assert_eq!(report.members(), 62);
 }
 
 #[test]

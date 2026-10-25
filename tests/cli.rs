@@ -313,7 +313,9 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // entry (kw07's volatile, kw08's layout, kw09's static and link rows,
     // s209's L4 rows, kw11's `conc/atomic_*`). `members` holds at 47; the
     // registry 569 -> 595.
-    assert!(stdout.contains("1002 file(s)"), "{stdout}");
+    // is81's a5378e3f re-vendor: 223 added files, none removed;
+    // 1163 entries / 62 members, measured by the unchanged CLI walk.
+    assert!(stdout.contains("1225 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -322,7 +324,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 1002);
+    assert_eq!(value["total"], 1225);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes
