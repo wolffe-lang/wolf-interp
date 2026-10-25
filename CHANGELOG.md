@@ -52,20 +52,31 @@ Successful `os_cwd` strings are charged to their ambient region, and an
 escape traps instead of retaining uncharged storage. This repairs that
 part of #278, not its remaining accounting work.
 
+An observation's private working directory is canonicalized before its
+first `os_cwd` answer. Changing away and back therefore preserves the
+same spelling on macOS, and Windows's short temporary-directory aliases
+no longer cause a false outside-tree refusal or leak private directory
+names into exported records. Filesystem containment remains unchanged.
+
 ### Conformance and archives
 
 The complete anchor key set grows from 595 to 705: 110 added, none lost,
 with both directions checked. The vendored corpus has 1,225 files,
-1,163 entries and 62 members. Its measured ledger has 938 run entries,
+1,163 entries and 62 members. On Unix its ledger has 938 run entries,
 868 matches, 133 dynamic counterparts, 68 static-conservatism entries,
-90 unsupported entries and the same four standing mismatches. These
-categories overlap; they are not a partition to add together. No new
+90 unsupported entries and the same four standing mismatches. Windows
+has 940 run entries, 870 matches and 88 unsupported entries: `os/ids_read.lu`
+and `os/signal_reserved_rows.lu` handle the host's unsupported error rows
+and finish normally, while Unix declines the host calls by name. The
+other counts are unchanged. Manual transcripts check both host-specific
+answers exactly. These categories overlap; they are not a partition to
+add together. No new
 mismatch waiver is introduced. Eleven newly vendored arithmetic-fault
 snapshots are added without changing or dropping a prior one.
 
 The conformance bundle has 705 anchors, 375 covered, 1,267 programs and
 1,205 records. Manual transcripts and the README reflect the measured
-pin. The cwd accounting repair also removes the old temporary-path
+pin. The cwd accounting and path-identity repairs remove temporary-path
 export drift without normalizing it away. The exact nonzero comparator
 limitation remains tracked separately (#117).
 
