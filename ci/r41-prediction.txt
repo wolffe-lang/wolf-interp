@@ -1,0 +1,59 @@
+r41 release prediction
+Recorded before the first release edit: 2026-10-25T09:04:00.860726+00:00
+
+Inputs verified from origin/trunk, annotated release tags peeled separately:
+  wolf-interp b684303c6d722a0b86df37c6390f989bda25c562
+  v0.1.56 interpreter source 28547b4324524d5477a6e54e4f6888462461a21f
+  old vendored spec 294d626dd596122285d5df954762e3aee3e5db71
+  new vendored spec a5378e3fd5b6347f4a89a7d77dbe43aa576fee76
+  wolf-lang 568dfda484120c02e41de6c88e375ebddc10080d
+  s266 semantic merge e65b89e5fc77f43aaabe6539749c3fb70afbdb09
+  v0.2.35 source cf0c13d38479f444b69bb8356ad5709d07eff323
+  wolf-std 78b9d3cbc41d51db44d18c40b6694403644d1c83
+  current STD-PIN 2386522eb059cca5a84108562c2c0a0e72345d34
+  homebrew-wolf 087cf7b7baa4cb236420c2c8b1efeca63766350f
+
+The launch's `v0.1.56 at 294d626` names a spec identity, not the release
+source. No tag is moved. The release keeps the a5378e3f pin is81 supplied.
+There are 59 interpreter commits since v0.1.56 before this release pass.
+
+Prediction, not measurement:
+- The wolf published-control differ has four stable full-run verdict moves:
+  fs/copy_chunk_failed_write.lu (s260 short-write/source rewind),
+  os/arg0.lu and os/args_bytes.lu (s261),
+  membrane/variadic_position.lu (s263 E0822 instead of E0201).
+  membrane/variadic_declarations.lu additionally changes its parse answer
+  (s263), masked by the full-run unsupported class: five named semantic rows
+  across both observations. Native UB exit numbers are not stable semantic
+  moves. s264 is an optimization; s265's start-up change should not move
+  corpus output; s266's focused errno/note rows require dedicated probes.
+  Every additional stable move must be named and owned in the measured pass.
+- The interpreter pairing moves are separately measured against 0.1.56,
+  not attributed wholesale to the compiler. In particular #280's three
+  List/str rows now use their real bodies and trap region-fault.
+- Fixed std 78b9d3c stays at sc72's 552 test files and 552 doc examples
+  (1656 lane observations), up 28 from r40's 524 tests. No candidate-only
+  count movement is expected; every changed answer must be enumerated.
+- Ubuntu container start-up row: runtime's own 12 syscalls; the Arch 23
+  is wolf-lang#952, not a compiler adjustment to make in this release.
+- Published readback hashes every asset twice: five wolf assets and six
+  lupin assets (eleven total), including the musl runtime-only wolf asset.
+- R-r41-1: recommend A, re-pin std to 78b9d3c; implement at wolf phase.
+- R-r41-2: recommend A, tap continues to select host archives and ignores
+  the fifth, runtime-only musl asset. No musl-specific tap change expected.
+- #887 stays open: a musl runtime archive is not a musl wolf executable.
+
+Version posture: lupin 0.1.57 then wolf 0.2.36, pairing to lupin 0.1.57
+with spec pin a5378e3. The lupin release closes wolf-interp#280's release
+tracker; the orchestrator closes it, not this lane.
+
+Validation plan: existing CLI/D57 stamp, executable documentation, mirror,
+corpus and release-matrix gates remain intact. A locked-manifest plant
+will revert only the root Cargo.lock version on r41-plant-lock after the
+correct bump is committed; the selected CI leg must fail --locked before
+running the suite. No new production gate is needed for a version bump.
+README is read against version, scope, counts, commands and install/build.
+No docs/releases/0.2.35.md exists in wolf-lang: preserve that posture.
+
+Public STOPs: no tag/release/merge/AUR push. Per push, read CI id and first
+state once, then hand back for the orchestrator to watch and label.
