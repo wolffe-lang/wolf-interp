@@ -130,13 +130,13 @@ across OSes.
 
 ```console
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":313,"anchors_total":595,"bundle_sha256":"…","files":1064,"forward_tags":109,"out":"target/bundle","pin":"294d626dd596122285d5df954762e3aee3e5db71","programs":1044,"records":997}
+{"anchors_covered":375,"anchors_total":705,"bundle_sha256":"…","files":1287,"forward_tags":109,"out":"target/bundle","pin":"a5378e3fd5b6347f4a89a7d77dbe43aa576fee76","programs":1267,"records":1205}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 997 entries compared, 0 member(s) exercised through their entries
+differential: 1205 entries compared, 0 member(s) exercised through their entries
 divergences: 0
-conservatism ledger: 138 entries
-  unsupported(counterparty): 69
-  unsupported(interp): 69
+conservatism ledger: 180 entries
+  unsupported(counterparty): 90
+  unsupported(interp): 90
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
 notice: bundle target/bundle at pin 294d626dd596122285d5df954762e3aee3e5db71 verified (bundle_sha256 …)
 ```
