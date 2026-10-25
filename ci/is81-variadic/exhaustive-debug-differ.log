@@ -1,0 +1,16 @@
+   Compiling wolf-interp v0.1.56 (/work)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.64s
+     Running tests/differ_cli.rs (target-contained/debug/deps/differ_cli-8c61e145123fa95c)
+
+running 8 tests
+test a_debug_harness_is_refused_by_name_before_it_can_compare ... ok
+test require_counterparty_turns_the_skip_into_a_failure ... ok
+test a_missing_counterparty_skips_loudly_and_green ... ok
+test fuzz_replays_identically_from_a_seed ... ok
+test the_fuzz_self_oracle_runs_green_without_a_counterparty ... ok
+test the_door_is_loud_and_stamps_the_profile_on_the_report ... ok
+test the_jsonl_report_of_a_self_differential_is_an_empty_file ... ok
+test the_self_differential_is_empty ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.90s
+

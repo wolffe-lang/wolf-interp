@@ -1,0 +1,21 @@
+warning[W1301]: this `unsafe` block does not state its invariant
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/copy_mode/main.lu:1:40
+  |
+1 | fn consume(mut ap: VaList) -> VaList { unsafe { va_copy(mut ap) } }
+  |                                        ^^^^^^ add a `# Safety:` comment
+  |
+  = note: the block discharges a proof obligation the checker cannot; write the invariant down for
+    the auditors who will read this ring (`// # Safety: …` above the block).
+
+error[E1007]: `va_copy` takes `ap` as plain `read` — no mode is written for it
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/copy_mode/main.lu:1:61
+  |
+1 | fn consume(mut ap: VaList) -> VaList { unsafe { va_copy(mut ap) } }
+  |                                                 --------------- the parameter is declared here
+  |                                                             ^^ this argument
+  |
+help: remove the `mut`
+  |
+1 | fn consume(mut ap: VaList) -> VaList { unsafe { va_copy(ap) } }
+  |
+

@@ -1,0 +1,4 @@
+pinned anchors: expected=705 actual=704
+lost anchors: ['abi.c.variadic.checked']
+unexpected anchors: []
+::error::pinned_anchor_keys_agree_both_ways failed

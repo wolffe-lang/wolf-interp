@@ -1,0 +1,10 @@
+error[E0414]: `main` is the entry the process calls, and the process hands it no arguments — this one wants 1
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/start_main/main.lu:1:11
+  |
+1 | export fn main(n: i32, ...) -> i64 { unsafe { let ap = va_start(); va_end(mut ap) }; 0 }
+  |           ^^^^ declared with parameters here
+  |
+  = note: the entry's legal shapes: `fn main()`, `fn main() -> int`, `fn main() -> !int` (and
+    `!()` / an explicit error row over `int` or `()`). An ok value becomes the exit status;
+    an error value prints `error: <tag>` and exits 1 (D30).
+

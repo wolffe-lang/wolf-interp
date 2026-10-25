@@ -1,0 +1,7 @@
+error[E0401]: `va_arg` reads the promoted type — use `i32` for narrow integers or `f64` for `f32`
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/bad_arg/main.lu:1:45
+  |
+1 | fn consume(mut ap: VaList) -> i8 { unsafe { va_arg[i8](mut ap) } }
+  |                                             ^^^^^^^^^^^^^^^^^^
+  |
+

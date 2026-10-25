@@ -1,0 +1,1 @@
+{"commit":"unknown","diagnostics":[{"code":"E1301","severity":"error","span":[29,43]}],"file":"/home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/out_of_ring/main.lu","impl":"wolfgang","impl_version":"0.2.35+dev.unknown","phase_reached":"mem","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"fail(E1301)","warnings":[]}

@@ -1,0 +1,10 @@
+warning[W0304]: this function shadows the prelude name `va_copy`
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/shadow_builtin/main.lu:1:4
+  |
+1 | fn va_copy(x: int) -> int { x }
+  |    ^^^^^^^ shadows an ambient name
+  |
+  = note: `va_copy` resolves without an import in every file; this declaration silently wins over
+    it for the whole module (file boundaries create no scopes). Pick another name so both
+    stay reachable.
+

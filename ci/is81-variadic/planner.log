@@ -1,0 +1,177 @@
+tiers-test: PASS T1 the workflow's jobs between plan and tier: plan-test test shard-coverage bundle-identical independence dist-floor
+tiers-test: PASS T1 a push to trunk: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 the nightly: release, every job (6)
+tiers-test: PASS T1 a dispatch, no input: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 a dispatch asking for tier full: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 a dispatch asking for tier release: release, every job (6)
+tiers-test: PASS T1 a dispatch asking for tier pr is refused
+tiers-test: PASS T1 a dispatch asking for tier noop is refused
+tiers-test: PASS T1 a dispatch asking for tier partial is refused
+tiers-test: PASS T1 a dispatch asking for tier everything is refused
+tiers-test: PASS T1 a dispatch naming jobs and a tier is refused
+tiers-test: PASS T1 the tier input means nothing to a push: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 a dispatch naming the planner's test: partial, plan-test
+tiers-test: PASS T1 a dispatch naming two jobs, in the workflow's order: partial, test shard-coverage
+tiers-test: PASS T1 a dispatch naming every job is still partial: partial, every job (6)
+tiers-test: PASS T1 a dispatch naming no job of the workflow is refused
+tiers-test: PASS T1 a dispatch naming a job without the job it needs is refused
+tiers-test: PASS T1 a partial run of the test job, no entries: tier release's entries (ubuntu/1 ubuntu/2 ubuntu/3 ubuntu/ladder macos/1 macos/2 macos/3 macos/ladder windows/1 windows/2 windows/3 windows/ladder windows/smoke)
+tiers-test: PASS T1 a partial run of one entry: that entry alone (windows/2), no OS's shards or ladder whole
+tiers-test: PASS T1 a partial run's entries come in the matrix's order, and name the OSes they make whole (ubuntu/1 ubuntu/2 ubuntu/3 ubuntu/ladder windows/1 windows/2 windows/3 windows/ladder macos/smoke; ubuntu windows; ubuntu windows)
+tiers-test: PASS T1 a dispatch naming an entry that is none is refused
+tiers-test: PASS T1 a dispatch naming an entry no tier runs is refused
+tiers-test: PASS T1 a dispatch naming entries but not the test job is refused
+tiers-test: PASS T1 a dispatch naming entries and no jobs is refused
+tiers-test: PASS T1 a pull request labelled full-matrix, prose only: the diet stays, the label asks for nothing (ruling #101 C): noop, no job
+tiers-test: PASS T1 the full-matrix label added: a noop, the pull request's own run is the gate (ruling #101 C): noop, no job
+tiers-test: PASS T1 a code pull request's push: full, the merge gate (ruling #101 C): full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 a code pull request's push carrying full-matrix: full, as without it: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 a code pull request opened: full: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 a pull request labelled release-matrix, prose only: release, every job (6)
+tiers-test: PASS T1 the release-matrix label added: release, every job (6)
+tiers-test: PASS T1 the release-matrix label added beside full-matrix: release, every job (6)
+tiers-test: PASS T1 the full-matrix label added beside release-matrix (whose run covers it): noop, no job
+tiers-test: PASS T1 a push to a pull request carrying both labels: release, every job (6)
+tiers-test: PASS T1 another label added: noop, no job
+tiers-test: PASS T1 another label added to a labelled pull request: noop, no job
+tiers-test: PASS T1 another label added to a release-labelled pull request: noop, no job
+tiers-test: PASS T1 the jobs input means nothing to a pull request: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T1 the tier input means nothing to a pull request: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 src/eval/mod.rs: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 tests/doc_truth.rs: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 tests/ub/p2_frozen_write.lu: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 vendor/upstream/corpus/hello.lu: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 vendor/upstream/spec/02-memory-model.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 vendor/upstream/spec/anchors.json: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 vendor/upstream/spec/prelude.json: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 upstream: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 Cargo.toml: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 Cargo.lock: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 build.rs: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 rust-toolchain.toml: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 LICENSE: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 examples/pack.lu: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 .github/workflows/ci.yml: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 .github/workflows/release.yml: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 ci/tiers.py: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 ci/tiers-test.py: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 ci/test-shards.sh: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 ci/tl21/before.tsv: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 tools/replkeys_probe.py: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 assets/wolf-logo.svg: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): README.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/repl.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/manual/01-running-programs.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/manual/README.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/manual/new/page.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/figure.png: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): tests/faults/README.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 not prose (a test reads it, or it is no document): vendor/README.md: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 prose: CHANGELOG.md: noop, no job
+tiers-test: PASS T2 prose: CONTRIBUTING.md: noop, no job
+tiers-test: PASS T2 prose: docs/README.md: noop, no job
+tiers-test: PASS T2 prose: docs/approximation-contract.md: noop, no job
+tiers-test: PASS T2 prose: docs/conformance-bundle.md: noop, no job
+tiers-test: PASS T2 prose: docs/divergence-log.md: noop, no job
+tiers-test: PASS T2 prose: ci/is75.md: noop, no job
+tiers-test: PASS T2 prose: ci/tl21.md: noop, no job
+tiers-test: PASS T2 prose alone, several: noop, no job
+tiers-test: PASS T2 prose beside code: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 prose beside a document a test reads: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T2 a pull request's matrix: ubuntu's four and two smokes; shard coverage checks ubuntu
+tiers-test: PASS T3 a path no rule names: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T3 a new file at the root: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T3 an unknown path beside prose: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T3 an unknown path beside code: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T3 no changed paths to read: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T3 a change that names no path: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T3 a merge that cannot be read (no repository there): full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T6 a green release run: exit 0
+tiers-test: PASS T6 a green full run: exit 0
+tiers-test: PASS T6 a pr run: no tier since ruling #101 C: exit 1
+tiers-test: PASS T6 a noop run: exit 0
+tiers-test: PASS T6 a noop run whose jobs output is absent: exit 0
+tiers-test: PASS T6 a green run whose other outputs are absent: exit 0
+tiers-test: PASS T6 a partial run of the planner's test: exit 0
+tiers-test: PASS T6 a chosen job failed: exit 1
+tiers-test: PASS T6 the planner's test failed: exit 1
+tiers-test: PASS T6 a chosen job was skipped: exit 1
+tiers-test: PASS T6 a chosen job was cancelled: exit 1
+tiers-test: PASS T6 a job ran unasked: exit 1
+tiers-test: PASS T6 a job ran in a noop run: exit 1
+tiers-test: PASS T6 a full run that chose less than its jobs: exit 1
+tiers-test: PASS T6 a full run that ran the bundle comparison (is78's full): exit 1
+tiers-test: PASS T6 a release run that chose less than every job: exit 1
+tiers-test: PASS T6 a release run whose test job failed: exit 1
+tiers-test: PASS T6 a full run whose jobs output is absent: exit 1
+tiers-test: PASS T6 a full run that chose one job: exit 1
+tiers-test: PASS T6 a partial run that chose nothing: exit 1
+tiers-test: PASS T6 the plan failed: exit 1
+tiers-test: PASS T6 the plan named no tier: exit 1
+tiers-test: PASS T6 the plan named a tier that is none: exit 1
+tiers-test: PASS T6 the plan's jobs are no list: exit 1
+tiers-test: PASS T6 a chosen job the tier job does not need: exit 1
+tiers-test: PASS T4 the plan is the first job and the tier is the last
+tiers-test: PASS T4 plan-test needs the plan and runs only when the plan names it
+tiers-test: PASS T4 test needs the plan and runs only when the plan names it
+tiers-test: PASS T4 shard-coverage needs the plan and runs only when the plan names it
+tiers-test: PASS T4 bundle-identical needs the plan and runs only when the plan names it
+tiers-test: PASS T4 independence needs the plan and runs only when the plan names it
+tiers-test: PASS T4 dist-floor needs the plan and runs only when the plan names it
+tiers-test: PASS T4 every plan output is read with a default (11 reads: jobs ladder_oses matrix shard_oses tier)
+tiers-test: PASS T4 the plan job declares tier, jobs, matrix, shard_oses and ladder_oses
+tiers-test: PASS T4 the plan reads the merge commit (depth 2) and checks its second parent
+tiers-test: PASS T4 the plan-test job runs this file
+tiers-test: PASS T4 the tier job needs every job (7 of 7)
+tiers-test: PASS T4 the tier job runs on !cancelled(), never always() (${{ !cancelled() }})
+tiers-test: PASS T4 the tier job is named for the tier
+tiers-test: PASS T4 the tier job's check is ci/tiers.py verdict over toJSON(needs)
+tiers-test: PASS T4 cancel-in-progress for pull requests only
+tiers-test: PASS T4 a run that is no pull request's has a concurrency group of its own run id
+tiers-test: PASS T4 a pull request's release and gate runs are separate groups, and a label's noop cancels nothing
+tiers-test: PASS T4 every label but release-matrix, full-matrix included, is a noop's group, as the plan says; full-matrix picks no group (ruling #101 C)
+tiers-test: PASS T4 a push to trunk runs
+tiers-test: PASS T4 the nightly runs
+tiers-test: PASS T4 adding a label starts a run
+tiers-test: PASS T4 a dispatch takes the jobs input
+tiers-test: PASS T4 a dispatch takes the tier and entries inputs, empty by default, and the plan reads them
+tiers-test: PASS T4 the release matrix is is75's twelve entries, in its order, and the windows smoke; every OS's shards and ladder
+tiers-test: PASS T4 the full matrix is ubuntu's four entries, in is75's order, the macOS smoke and the windows smoke; ubuntu's shards and ladder (tl29)
+tiers-test: PASS T4 no merge-gate run (a trunk push, a labelled PR, a PR, a PR with a path no rule names, a dispatch) has a macOS or windows heavy entry; each has both smokes (tl29)
+tiers-test: PASS T4 the nightly's release matrix keeps macOS's and windows's three shards and ladder (tl29: what left the merge is here)
+tiers-test: PASS T4 a code pull request's run is the merge gate itself, a trunk push's plan (tl30b, ruling #101 C; ci/tl29.md R-tl29-2)
+tiers-test: PASS T4 the pull-request matrix is is75's six entries, in its order
+tiers-test: PASS T4 the bundle is compared across the OSes the plan says ran a ladder, all three when it says nothing
+tiers-test: PASS T4 shard coverage checks the OSes the plan says were sharded, all three when it says nothing
+tiers-test: PASS T4 a red nightly, and only a nightly, runs ci/nightly-red.py, after the verdict
+tiers-test: PASS T4 the tier job's token may read the code and the run and write issues; no other job may write issues
+tiers-test: PASS T7 a prose-only merge, the base moved on (its src/moved.rs is not the pull request's): noop, no job
+tiers-test: PASS T7 the same merge, the head not given: noop, no job
+tiers-test: PASS T7 the merge's second parent is not the pull request's head: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T7 HEAD is the branch, not a merge commit: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T7 a merge that changes code and prose: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T7 a merge that adds a path no rule names: full, plan-test test shard-coverage independence dist-floor
+tiers-test: PASS T8 no open issue: one opened, labelled, naming the red jobs (failed and cancelled) and the run, and no green job
+tiers-test: PASS T8 an open issue of the title: commented on (#42), none opened
+tiers-test: PASS T8 an open issue of another title does not dedupe: one opened
+tiers-test: PASS T8 a run with no red job: the issue says the verdict is red
+tiers-test: PASS T8 the dedupe reads the open issues labelled nightly-red
+tiers-test: PASS T8 a gh that fails (issue create) makes the reporter exit 1, loudly
+tiers-test: PASS T8 a gh that fails (issue list) makes the reporter exit 1, loudly
+tiers-test: PASS T8 a gh that fails (api repos/o/r/actions/runs/123456789/jobs) makes the reporter exit 1, loudly
+tiers-test: PASS T8 the reporter refuses to run without REPO and RUN_ID
+tiers-test: the 14 tracked paths that are prose: CHANGELOG.md CONTRIBUTING.md ci/is57.md ci/is75.md ci/is78.md ci/is80.md ci/is81-variadic.md ci/tl21.md ci/tl29.md ci/tl30b.md docs/README.md docs/approximation-contract.md docs/conformance-bundle.md docs/divergence-log.md
+tiers-test: PASS T5 the search fires: it finds what reads README.md (tests/doc_truth.rs:34), docs/repl.md (src/export.rs:101), docs/manual/README.md (tests/doc_truth.rs:35)
+tiers-test: PASS T5 no prose path is named by a line that reads a file
+tiers-test: PASS T5 no tracked path of the vendored spec and corpus is prose (1251 paths)
+tiers-test: PASS T5 nothing but a .md file is prose
+tiers-test: PASS T5 every one of 3406 tracked paths has a rule
+tiers-test: PASS
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.048s
+
+OK
+pinned anchors: expected=705 actual=705
+lost anchors: []
+unexpected anchors: []

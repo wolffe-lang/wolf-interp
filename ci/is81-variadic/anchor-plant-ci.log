@@ -1,0 +1,324 @@
+the planner's own test	Set up job	﻿2026-10-25T05:14:01.9231053Z Current runner version: '2.338.0'
+the planner's own test	Set up job	2026-10-25T05:14:01.9251232Z ##[group]Runner Image Provisioner
+the planner's own test	Set up job	2026-10-25T05:14:01.9252141Z Hosted Compute Agent
+the planner's own test	Set up job	2026-10-25T05:14:01.9252630Z Version: 20261021.618
+the planner's own test	Set up job	2026-10-25T05:14:01.9253547Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+the planner's own test	Set up job	2026-10-25T05:14:01.9254702Z Build Date: 2026-10-21T00:45:21Z
+the planner's own test	Set up job	2026-10-25T05:14:01.9255891Z Worker ID: {7a634566-8d9e-4576-9c42-e135c3317abd}
+the planner's own test	Set up job	2026-10-25T05:14:01.9256643Z Region: westus3
+the planner's own test	Set up job	2026-10-25T05:14:01.9257083Z Cloud: Azure
+the planner's own test	Set up job	2026-10-25T05:14:01.9257537Z ##[endgroup]
+the planner's own test	Set up job	2026-10-25T05:14:01.9258719Z ##[group]Operating System
+the planner's own test	Set up job	2026-10-25T05:14:01.9259235Z Ubuntu
+the planner's own test	Set up job	2026-10-25T05:14:01.9259830Z 24.04.5
+the planner's own test	Set up job	2026-10-25T05:14:01.9260252Z LTS
+the planner's own test	Set up job	2026-10-25T05:14:01.9260687Z ##[endgroup]
+the planner's own test	Set up job	2026-10-25T05:14:01.9261183Z ##[group]Runner Image
+the planner's own test	Set up job	2026-10-25T05:14:01.9261690Z Image: ubuntu-24.04
+the planner's own test	Set up job	2026-10-25T05:14:01.9262153Z Version: 20261012.334.1
+the planner's own test	Set up job	2026-10-25T05:14:01.9262999Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+the planner's own test	Set up job	2026-10-25T05:14:01.9264468Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+the planner's own test	Set up job	2026-10-25T05:14:01.9265270Z ##[endgroup]
+the planner's own test	Set up job	2026-10-25T05:14:01.9266223Z ##[group]GITHUB_TOKEN Permissions
+the planner's own test	Set up job	2026-10-25T05:14:01.9267918Z Contents: read
+the planner's own test	Set up job	2026-10-25T05:14:01.9268413Z Metadata: read
+the planner's own test	Set up job	2026-10-25T05:14:01.9268867Z Packages: read
+the planner's own test	Set up job	2026-10-25T05:14:01.9269327Z ##[endgroup]
+the planner's own test	Set up job	2026-10-25T05:14:01.9271068Z Secret source: Actions
+the planner's own test	Set up job	2026-10-25T05:14:01.9271825Z Cache mode: write
+the planner's own test	Set up job	2026-10-25T05:14:01.9272382Z Prepare workflow directory
+the planner's own test	Set up job	2026-10-25T05:14:01.9606946Z Prepare all required actions
+the planner's own test	Set up job	2026-10-25T05:14:01.9655726Z Getting action download info
+the planner's own test	Set up job	2026-10-25T05:14:02.2458903Z Download action repository 'actions/checkout@v5' (SHA:fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09)
+the planner's own test	Set up job	2026-10-25T05:14:02.4112845Z Complete job name: the planner's own test
+the planner's own test	Run actions/checkout@v5	﻿2026-10-25T05:14:02.4756402Z ##[group]Run actions/checkout@v5
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4757151Z with:
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4757636Z   repository: wolffe-lang/wolf-interp
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4760964Z   token: ***
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4761413Z   ssh-strict: true
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4761831Z   ssh-user: git
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4762289Z   persist-credentials: true
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4762755Z   clean: true
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4763225Z   sparse-checkout-cone-mode: true
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4763728Z   fetch-depth: 1
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4764135Z   fetch-tags: false
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4764590Z   show-progress: true
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4765020Z   lfs: false
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4765419Z   submodules: false
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4765879Z   set-safe-directory: true
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4766359Z   allow-unsafe-pr-checkout: false
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4766987Z env:
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4767386Z   CARGO_TERM_COLOR: always
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4768065Z   SMOKE_OMITS: doc_truth run_corpus export cli region_machine rule_registry divergence
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.4768789Z ##[endgroup]
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5625845Z Syncing repository: wolffe-lang/wolf-interp
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5628360Z ##[group]Getting Git version info
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5629338Z Working directory is '/home/runner/work/wolf-interp/wolf-interp'
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5631075Z [command]/usr/bin/git version
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5694125Z git version 2.55.0
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5709998Z ##[endgroup]
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5722205Z Temporarily overriding HOME='/home/runner/work/_temp/42e3b8b3-c76c-416e-8049-4fb7f2ca5b0e' before making global git config changes
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5723922Z Adding repository directory to the temporary git global config as a safe directory
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5728651Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wolf-interp/wolf-interp
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5767970Z Deleting the contents of '/home/runner/work/wolf-interp/wolf-interp'
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5771583Z ##[group]Initializing the repository
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5774368Z [command]/usr/bin/git init /home/runner/work/wolf-interp/wolf-interp
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5874782Z hint: Using 'master' as the name for the initial branch. This default branch name
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5876570Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5877896Z hint: to use in all of your new repositories, which will suppress this warning,
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5878824Z hint: call:
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5879650Z hint:
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5880503Z hint: 	git config --global init.defaultBranch <name>
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5881262Z hint:
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5882045Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5883189Z hint: 'development'. The just-created branch can be renamed via this command:
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5884179Z hint:
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5884800Z hint: 	git branch -m <name>
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5885413Z hint:
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5886265Z hint: Disable this message with "git config set advice.defaultBranchName false"
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5890931Z Initialized empty Git repository in /home/runner/work/wolf-interp/wolf-interp/.git/
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5897905Z [command]/usr/bin/git remote add origin https://github.com/wolffe-lang/wolf-interp
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5939279Z ##[endgroup]
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5940803Z ##[group]Disabling automatic garbage collection
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5951898Z [command]/usr/bin/git config --local gc.auto 0
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5984548Z ##[endgroup]
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5985619Z ##[group]Setting up auth
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.5990038Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.6042615Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.6326714Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.6357149Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.6517616Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.6541717Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.6704069Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.6736568Z ##[endgroup]
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.6737637Z ##[group]Fetching the repository
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:02.6744022Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +3e6fcfb133222545a97e3a464b72debc1d701592:refs/remotes/origin/is81-plant-anchor
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:03.9612861Z From https://github.com/wolffe-lang/wolf-interp
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:03.9615280Z  * [new ref]         3e6fcfb133222545a97e3a464b72debc1d701592 -> origin/is81-plant-anchor
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:03.9619945Z ##[endgroup]
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:03.9621637Z ##[group]Determining the checkout info
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:03.9623756Z ##[endgroup]
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:03.9624876Z [command]/usr/bin/git sparse-checkout disable
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:03.9666714Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:03.9689279Z ##[group]Checking out the ref
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:03.9692582Z [command]/usr/bin/git checkout --progress --force -B is81-plant-anchor refs/remotes/origin/is81-plant-anchor
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:04.0762408Z Switched to a new branch 'is81-plant-anchor'
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:04.0768322Z branch 'is81-plant-anchor' set up to track 'origin/is81-plant-anchor'.
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:04.0775060Z ##[endgroup]
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:04.0806375Z [command]/usr/bin/git log -1 --format=%H
+the planner's own test	Run actions/checkout@v5	2026-10-25T05:14:04.0823692Z 3e6fcfb133222545a97e3a464b72debc1d701592
+the planner's own test	Run python3 ci/tiers-test.py	﻿2026-10-25T05:14:04.1042020Z ##[group]Run python3 ci/tiers-test.py
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:04.1043553Z ^[[36;1mpython3 ci/tiers-test.py^[[0m
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:04.1213282Z shell: /usr/bin/bash -e {0}
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:04.1214705Z env:
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:04.1215608Z   CARGO_TERM_COLOR: always
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:04.1217247Z   SMOKE_OMITS: doc_truth run_corpus export cli region_machine rule_registry divergence
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:04.1218990Z ##[endgroup]
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4504466Z tiers-test: PASS T1 the workflow's jobs between plan and tier: plan-test test shard-coverage bundle-identical independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4505717Z tiers-test: PASS T1 a push to trunk: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4506781Z tiers-test: PASS T1 the nightly: release, every job (6)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4507714Z tiers-test: PASS T1 a dispatch, no input: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4509070Z tiers-test: PASS T1 a dispatch asking for tier full: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4510514Z tiers-test: PASS T1 a dispatch asking for tier release: release, every job (6)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4511288Z tiers-test: PASS T1 a dispatch asking for tier pr is refused
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4511937Z tiers-test: PASS T1 a dispatch asking for tier noop is refused
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4512671Z tiers-test: PASS T1 a dispatch asking for tier partial is refused
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4513415Z tiers-test: PASS T1 a dispatch asking for tier everything is refused
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4514104Z tiers-test: PASS T1 a dispatch naming jobs and a tier is refused
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4515034Z tiers-test: PASS T1 the tier input means nothing to a push: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4516036Z tiers-test: PASS T1 a dispatch naming the planner's test: partial, plan-test
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4516955Z tiers-test: PASS T1 a dispatch naming two jobs, in the workflow's order: partial, test shard-coverage
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4519624Z tiers-test: PASS T1 a dispatch naming every job is still partial: partial, every job (6)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4520560Z tiers-test: PASS T1 a dispatch naming no job of the workflow is refused
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4521347Z tiers-test: PASS T1 a dispatch naming a job without the job it needs is refused
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4522824Z tiers-test: PASS T1 a partial run of the test job, no entries: tier release's entries (ubuntu/1 ubuntu/2 ubuntu/3 ubuntu/ladder macos/1 macos/2 macos/3 macos/ladder windows/1 windows/2 windows/3 windows/ladder windows/smoke)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4524364Z tiers-test: PASS T1 a partial run of one entry: that entry alone (windows/2), no OS's shards or ladder whole
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4525967Z tiers-test: PASS T1 a partial run's entries come in the matrix's order, and name the OSes they make whole (ubuntu/1 ubuntu/2 ubuntu/3 ubuntu/ladder windows/1 windows/2 windows/3 windows/ladder macos/smoke; ubuntu windows; ubuntu windows)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4527432Z tiers-test: PASS T1 a dispatch naming an entry that is none is refused
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4528183Z tiers-test: PASS T1 a dispatch naming an entry no tier runs is refused
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4528953Z tiers-test: PASS T1 a dispatch naming entries but not the test job is refused
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4529867Z tiers-test: PASS T1 a dispatch naming entries and no jobs is refused
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4530965Z tiers-test: PASS T1 a pull request labelled full-matrix, prose only: the diet stays, the label asks for nothing (ruling #101 C): noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4532385Z tiers-test: PASS T1 the full-matrix label added: a noop, the pull request's own run is the gate (ruling #101 C): noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4533671Z tiers-test: PASS T1 a code pull request's push: full, the merge gate (ruling #101 C): full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4535009Z tiers-test: PASS T1 a code pull request's push carrying full-matrix: full, as without it: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4536759Z tiers-test: PASS T1 a code pull request opened: full: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4537934Z tiers-test: PASS T1 a pull request labelled release-matrix, prose only: release, every job (6)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4539280Z tiers-test: PASS T1 the release-matrix label added: release, every job (6)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4540365Z tiers-test: PASS T1 the release-matrix label added beside full-matrix: release, every job (6)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4541349Z tiers-test: PASS T1 the full-matrix label added beside release-matrix (whose run covers it): noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4542364Z tiers-test: PASS T1 a push to a pull request carrying both labels: release, every job (6)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4543105Z tiers-test: PASS T1 another label added: noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4543794Z tiers-test: PASS T1 another label added to a labelled pull request: noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4544692Z tiers-test: PASS T1 another label added to a release-labelled pull request: noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4545775Z tiers-test: PASS T1 the jobs input means nothing to a pull request: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4547049Z tiers-test: PASS T1 the tier input means nothing to a pull request: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4548103Z tiers-test: PASS T2 src/eval/mod.rs: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4549129Z tiers-test: PASS T2 tests/doc_truth.rs: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4550352Z tiers-test: PASS T2 tests/ub/p2_frozen_write.lu: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4551451Z tiers-test: PASS T2 vendor/upstream/corpus/hello.lu: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4552702Z tiers-test: PASS T2 vendor/upstream/spec/02-memory-model.md: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4553948Z tiers-test: PASS T2 vendor/upstream/spec/anchors.json: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4555127Z tiers-test: PASS T2 vendor/upstream/spec/prelude.json: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4556192Z tiers-test: PASS T2 upstream: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4557154Z tiers-test: PASS T2 Cargo.toml: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4558085Z tiers-test: PASS T2 Cargo.lock: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4559039Z tiers-test: PASS T2 build.rs: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4560177Z tiers-test: PASS T2 rust-toolchain.toml: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4561173Z tiers-test: PASS T2 LICENSE: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4562203Z tiers-test: PASS T2 examples/pack.lu: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4563255Z tiers-test: PASS T2 .github/workflows/ci.yml: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4564362Z tiers-test: PASS T2 .github/workflows/release.yml: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4565401Z tiers-test: PASS T2 ci/tiers.py: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4566418Z tiers-test: PASS T2 ci/tiers-test.py: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4567412Z tiers-test: PASS T2 ci/test-shards.sh: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4568428Z tiers-test: PASS T2 ci/tl21/before.tsv: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4569651Z tiers-test: PASS T2 tools/replkeys_probe.py: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4570947Z tiers-test: PASS T2 assets/wolf-logo.svg: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4572270Z tiers-test: PASS T2 not prose (a test reads it, or it is no document): README.md: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4573671Z tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/repl.md: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4575137Z tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/manual/01-running-programs.md: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4576627Z tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/manual/README.md: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4578076Z tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/manual/new/page.md: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4579713Z tiers-test: PASS T2 not prose (a test reads it, or it is no document): docs/figure.png: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4581119Z tiers-test: PASS T2 not prose (a test reads it, or it is no document): tests/faults/README.md: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4582538Z tiers-test: PASS T2 not prose (a test reads it, or it is no document): vendor/README.md: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4583525Z tiers-test: PASS T2 prose: CHANGELOG.md: noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4584167Z tiers-test: PASS T2 prose: CONTRIBUTING.md: noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4584846Z tiers-test: PASS T2 prose: docs/README.md: noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4585565Z tiers-test: PASS T2 prose: docs/approximation-contract.md: noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4586324Z tiers-test: PASS T2 prose: docs/conformance-bundle.md: noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4587050Z tiers-test: PASS T2 prose: docs/divergence-log.md: noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4587670Z tiers-test: PASS T2 prose: ci/is75.md: noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4588314Z tiers-test: PASS T2 prose: ci/tl21.md: noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4588919Z tiers-test: PASS T2 prose alone, several: noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4589917Z tiers-test: PASS T2 prose beside code: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:06.4591091Z tiers-test: PASS T2 prose beside a document a test reads: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1425862Z tiers-test: PASS T2 a pull request's matrix: ubuntu's four and two smokes; shard coverage checks ubuntu
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1426954Z tiers-test: PASS T3 a path no rule names: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1427967Z tiers-test: PASS T3 a new file at the root: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1428956Z tiers-test: PASS T3 an unknown path beside prose: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1430154Z tiers-test: PASS T3 an unknown path beside code: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1431125Z tiers-test: PASS T3 no changed paths to read: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1432010Z tiers-test: PASS T3 a change that names no path: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1433181Z tiers-test: PASS T3 a merge that cannot be read (no repository there): full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1434059Z tiers-test: PASS T6 a green release run: exit 0
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1434598Z tiers-test: PASS T6 a green full run: exit 0
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1435188Z tiers-test: PASS T6 a pr run: no tier since ruling #101 C: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1435797Z tiers-test: PASS T6 a noop run: exit 0
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1436715Z tiers-test: PASS T6 a noop run whose jobs output is absent: exit 0
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1437717Z tiers-test: PASS T6 a green run whose other outputs are absent: exit 0
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1438704Z tiers-test: PASS T6 a partial run of the planner's test: exit 0
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1439540Z tiers-test: PASS T6 a chosen job failed: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1440152Z tiers-test: PASS T6 the planner's test failed: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1440958Z tiers-test: PASS T6 a chosen job was skipped: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1441551Z tiers-test: PASS T6 a chosen job was cancelled: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1442097Z tiers-test: PASS T6 a job ran unasked: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1442691Z tiers-test: PASS T6 a job ran in a noop run: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1443350Z tiers-test: PASS T6 a full run that chose less than its jobs: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1444174Z tiers-test: PASS T6 a full run that ran the bundle comparison (is78's full): exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1444963Z tiers-test: PASS T6 a release run that chose less than every job: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1445693Z tiers-test: PASS T6 a release run whose test job failed: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1446444Z tiers-test: PASS T6 a full run whose jobs output is absent: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1447345Z tiers-test: PASS T6 a full run that chose one job: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1448219Z tiers-test: PASS T6 a partial run that chose nothing: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1448856Z tiers-test: PASS T6 the plan failed: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1449634Z tiers-test: PASS T6 the plan named no tier: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1450407Z tiers-test: PASS T6 the plan named a tier that is none: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1451011Z tiers-test: PASS T6 the plan's jobs are no list: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1451634Z tiers-test: PASS T6 a chosen job the tier job does not need: exit 1
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1452284Z tiers-test: PASS T4 the plan is the first job and the tier is the last
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1452968Z tiers-test: PASS T4 plan-test needs the plan and runs only when the plan names it
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1453740Z tiers-test: PASS T4 test needs the plan and runs only when the plan names it
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1454473Z tiers-test: PASS T4 shard-coverage needs the plan and runs only when the plan names it
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1455299Z tiers-test: PASS T4 bundle-identical needs the plan and runs only when the plan names it
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1456077Z tiers-test: PASS T4 independence needs the plan and runs only when the plan names it
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1456810Z tiers-test: PASS T4 dist-floor needs the plan and runs only when the plan names it
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1457655Z tiers-test: PASS T4 every plan output is read with a default (11 reads: jobs ladder_oses matrix shard_oses tier)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1458573Z tiers-test: PASS T4 the plan job declares tier, jobs, matrix, shard_oses and ladder_oses
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1459565Z tiers-test: PASS T4 the plan reads the merge commit (depth 2) and checks its second parent
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1460253Z tiers-test: PASS T4 the plan-test job runs this file
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1460855Z tiers-test: PASS T4 the tier job needs every job (7 of 7)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1461641Z tiers-test: PASS T4 the tier job runs on !cancelled(), never always() (${{ !cancelled() }})
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1462308Z tiers-test: PASS T4 the tier job is named for the tier
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1462950Z tiers-test: PASS T4 the tier job's check is ci/tiers.py verdict over toJSON(needs)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1463731Z tiers-test: PASS T4 cancel-in-progress for pull requests only
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1464506Z tiers-test: PASS T4 a run that is no pull request's has a concurrency group of its own run id
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1465476Z tiers-test: PASS T4 a pull request's release and gate runs are separate groups, and a label's noop cancels nothing
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1466644Z tiers-test: PASS T4 every label but release-matrix, full-matrix included, is a noop's group, as the plan says; full-matrix picks no group (ruling #101 C)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1467632Z tiers-test: PASS T4 a push to trunk runs
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1468344Z tiers-test: PASS T4 the nightly runs
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1468834Z tiers-test: PASS T4 adding a label starts a run
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1469595Z tiers-test: PASS T4 a dispatch takes the jobs input
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1470387Z tiers-test: PASS T4 a dispatch takes the tier and entries inputs, empty by default, and the plan reads them
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1471407Z tiers-test: PASS T4 the release matrix is is75's twelve entries, in its order, and the windows smoke; every OS's shards and ladder
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1472623Z tiers-test: PASS T4 the full matrix is ubuntu's four entries, in is75's order, the macOS smoke and the windows smoke; ubuntu's shards and ladder (tl29)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1473983Z tiers-test: PASS T4 no merge-gate run (a trunk push, a labelled PR, a PR, a PR with a path no rule names, a dispatch) has a macOS or windows heavy entry; each has both smokes (tl29)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1475290Z tiers-test: PASS T4 the nightly's release matrix keeps macOS's and windows's three shards and ladder (tl29: what left the merge is here)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1476478Z tiers-test: PASS T4 a code pull request's run is the merge gate itself, a trunk push's plan (tl30b, ruling #101 C; ci/tl29.md R-tl29-2)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1477376Z tiers-test: PASS T4 the pull-request matrix is is75's six entries, in its order
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1478325Z tiers-test: PASS T4 the bundle is compared across the OSes the plan says ran a ladder, all three when it says nothing
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1479146Z tiers-test: PASS T4 shard coverage checks the OSes the plan says were sharded, all three when it says nothing
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1480059Z tiers-test: PASS T4 a red nightly, and only a nightly, runs ci/nightly-red.py, after the verdict
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1480922Z tiers-test: PASS T4 the tier job's token may read the code and the run and write issues; no other job may write issues
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1481811Z tiers-test: PASS T7 a prose-only merge, the base moved on (its src/moved.rs is not the pull request's): noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1482603Z tiers-test: PASS T7 the same merge, the head not given: noop, no job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1483565Z tiers-test: PASS T7 the merge's second parent is not the pull request's head: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1484680Z tiers-test: PASS T7 HEAD is the branch, not a merge commit: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1485511Z tiers-test: PASS T7 a merge that changes code and prose: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1486127Z tiers-test: PASS T7 a merge that adds a path no rule names: full, plan-test test shard-coverage independence dist-floor
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1486789Z tiers-test: PASS T8 no open issue: one opened, labelled, naming the red jobs (failed and cancelled) and the run, and no green job
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1487744Z tiers-test: PASS T8 an open issue of the title: commented on (#42), none opened
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1488384Z tiers-test: PASS T8 an open issue of another title does not dedupe: one opened
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1488924Z tiers-test: PASS T8 a run with no red job: the issue says the verdict is red
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1489680Z tiers-test: PASS T8 the dedupe reads the open issues labelled nightly-red
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1490175Z tiers-test: PASS T8 a gh that fails (issue create) makes the reporter exit 1, loudly
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1490630Z tiers-test: PASS T8 a gh that fails (issue list) makes the reporter exit 1, loudly
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1491200Z tiers-test: PASS T8 a gh that fails (api repos/o/r/actions/runs/123456789/jobs) makes the reporter exit 1, loudly
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1491768Z tiers-test: PASS T8 the reporter refuses to run without REPO and RUN_ID
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1492663Z tiers-test: the 14 tracked paths that are prose: CHANGELOG.md CONTRIBUTING.md ci/is57.md ci/is75.md ci/is78.md ci/is80.md ci/is81-variadic.md ci/tl21.md ci/tl29.md ci/tl30b.md docs/README.md docs/approximation-contract.md docs/conformance-bundle.md docs/divergence-log.md
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1493901Z tiers-test: PASS T5 the search fires: it finds what reads README.md (tests/doc_truth.rs:34), docs/repl.md (src/export.rs:101), docs/manual/README.md (tests/doc_truth.rs:35)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1494603Z tiers-test: PASS T5 no prose path is named by a line that reads a file
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1495125Z tiers-test: PASS T5 no tracked path of the vendored spec and corpus is prose (1251 paths)
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1495551Z tiers-test: PASS T5 nothing but a .md file is prose
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1495968Z tiers-test: PASS T5 every one of 3358 tracked paths has a rule
+the planner's own test	Run python3 ci/tiers-test.py	2026-10-25T05:14:09.1496302Z tiers-test: PASS
+the planner's own test	Run python3 ci/is80/dist-test.py	﻿2026-10-25T05:14:09.1533716Z ##[group]Run python3 ci/is80/dist-test.py
+the planner's own test	Run python3 ci/is80/dist-test.py	2026-10-25T05:14:09.1534114Z ^[[36;1mpython3 ci/is80/dist-test.py^[[0m
+the planner's own test	Run python3 ci/is80/dist-test.py	2026-10-25T05:14:09.1571293Z shell: /usr/bin/bash -e {0}
+the planner's own test	Run python3 ci/is80/dist-test.py	2026-10-25T05:14:09.1571691Z env:
+the planner's own test	Run python3 ci/is80/dist-test.py	2026-10-25T05:14:09.1571953Z   CARGO_TERM_COLOR: always
+the planner's own test	Run python3 ci/is80/dist-test.py	2026-10-25T05:14:09.1572354Z   SMOKE_OMITS: doc_truth run_corpus export cli region_machine rule_registry divergence
+the planner's own test	Run python3 ci/is80/dist-test.py	2026-10-25T05:14:09.1572761Z ##[endgroup]
+the planner's own test	Run python3 ci/is80/dist-test.py	2026-10-25T05:14:09.2757037Z ..
+the planner's own test	Run python3 ci/is80/dist-test.py	2026-10-25T05:14:09.2757433Z ----------------------------------------------------------------------
+the planner's own test	Run python3 ci/is80/dist-test.py	2026-10-25T05:14:09.2757977Z Ran 2 tests in 0.072s
+the planner's own test	Run python3 ci/is80/dist-test.py	2026-10-25T05:14:09.2758198Z 
+the planner's own test	Run python3 ci/is80/dist-test.py	2026-10-25T05:14:09.2758338Z OK
+the planner's own test	pinned anchor keys agree both ways	﻿2026-10-25T05:14:09.2848631Z ##[group]Run python3 ci/is81-variadic/anchors.py
+the planner's own test	pinned anchor keys agree both ways	2026-10-25T05:14:09.2849061Z ^[[36;1mpython3 ci/is81-variadic/anchors.py^[[0m
+the planner's own test	pinned anchor keys agree both ways	2026-10-25T05:14:09.2878948Z shell: /usr/bin/bash -e {0}
+the planner's own test	pinned anchor keys agree both ways	2026-10-25T05:14:09.2879452Z env:
+the planner's own test	pinned anchor keys agree both ways	2026-10-25T05:14:09.2879835Z   CARGO_TERM_COLOR: always
+the planner's own test	pinned anchor keys agree both ways	2026-10-25T05:14:09.2880242Z   SMOKE_OMITS: doc_truth run_corpus export cli region_machine rule_registry divergence
+the planner's own test	pinned anchor keys agree both ways	2026-10-25T05:14:09.2880648Z ##[endgroup]
+the planner's own test	pinned anchor keys agree both ways	2026-10-25T05:14:09.3126112Z pinned anchors: expected=705 actual=704
+the planner's own test	pinned anchor keys agree both ways	2026-10-25T05:14:09.3126745Z lost anchors: ['abi.c.variadic.checked']
+the planner's own test	pinned anchor keys agree both ways	2026-10-25T05:14:09.3127177Z unexpected anchors: []
+the planner's own test	pinned anchor keys agree both ways	2026-10-25T05:14:09.3148401Z ##[error]pinned_anchor_keys_agree_both_ways failed
+the planner's own test	pinned anchor keys agree both ways	2026-10-25T05:14:09.3170781Z ##[error]Process completed with exit code 1.
+the planner's own test	Post Run actions/checkout@v5	﻿2026-10-25T05:14:09.3278664Z Post job cleanup.
+the planner's own test	Post Run actions/checkout@v5	2026-10-25T05:14:09.3948680Z [command]/usr/bin/git version
+the planner's own test	Post Run actions/checkout@v5	2026-10-25T05:14:09.3978333Z git version 2.55.0
+the planner's own test	Post Run actions/checkout@v5	2026-10-25T05:14:09.4005278Z Temporarily overriding HOME='/home/runner/work/_temp/cb0a7a35-8440-432c-a131-0469f9dfc7ca' before making global git config changes
+the planner's own test	Post Run actions/checkout@v5	2026-10-25T05:14:09.4006629Z Adding repository directory to the temporary git global config as a safe directory
+the planner's own test	Post Run actions/checkout@v5	2026-10-25T05:14:09.4009664Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wolf-interp/wolf-interp
+the planner's own test	Post Run actions/checkout@v5	2026-10-25T05:14:09.4037205Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+the planner's own test	Post Run actions/checkout@v5	2026-10-25T05:14:09.4062685Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+the planner's own test	Post Run actions/checkout@v5	2026-10-25T05:14:09.4245413Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+the planner's own test	Post Run actions/checkout@v5	2026-10-25T05:14:09.4265910Z http.https://github.com/.extraheader
+the planner's own test	Post Run actions/checkout@v5	2026-10-25T05:14:09.4276686Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+the planner's own test	Post Run actions/checkout@v5	2026-10-25T05:14:09.4303816Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+the planner's own test	Post Run actions/checkout@v5	2026-10-25T05:14:09.4491651Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+the planner's own test	Post Run actions/checkout@v5	2026-10-25T05:14:09.4520948Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+the planner's own test	Complete job	﻿2026-10-25T05:14:09.4816192Z Cleaning up orphan processes

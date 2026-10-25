@@ -1,0 +1,7 @@
+error[E0812]: `va_arg` needs one promoted C type, as in `va_arg[i32](mut ap)`
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/arg_generic/main.lu:1:46
+  |
+1 | fn consume(mut ap: VaList) -> i64 { unsafe { va_arg(mut ap) } }
+  |                                              ^^^^^^^^^^^^^^
+  |
+

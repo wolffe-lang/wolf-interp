@@ -1,0 +1,32 @@
+warning[W1301]: this `unsafe` block does not state its invariant
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/arg_mode/main.lu:1:33
+  |
+1 | fn consume(ap: VaList) -> i64 { unsafe { va_arg[i64](ap) } }
+  |                                 ^^^^^^ add a `# Safety:` comment
+  |
+  = note: the block discharges a proof obligation the checker cannot; write the invariant down for
+    the auditors who will read this ring (`// # Safety: …` above the block).
+
+error[E1007]: `va_arg` declares `ap` as `mut`, but the call site does not say so
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/arg_mode/main.lu:1:54
+  |
+1 | fn consume(ap: VaList) -> i64 { unsafe { va_arg[i64](ap) } }
+  |                                          --------------- the parameter is declared here
+  |                                                      ^^ this argument
+  |
+help: write the argument's mode: `mut …`
+  |
+1 | fn consume(ap: VaList) -> i64 { unsafe { va_arg[i64](mut ap) } }
+  |
+
+error[E1014]: `ap` is `read` for the whole call, so it cannot be lent `mut`
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/arg_mode/main.lu:1:54
+  |
+1 | fn consume(ap: VaList) -> i64 { unsafe { va_arg[i64](ap) } }
+  |            -- `ap` is declared without a mode — that spells `read`, immutable for the call
+  |                                                      ^^ write through a `read` parameter
+  |
+  = note: a `read` parameter is the caller's value, lent immutably [mem.tier0.mode.read]. Declare
+    it `mut` if this function's purpose is to change it (call sites then spell the
+    mutation), `take` it if the function consumes it, or mutate this function's own `copy`.
+

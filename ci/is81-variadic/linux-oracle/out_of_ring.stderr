@@ -1,0 +1,10 @@
+error[E1301]: the C call `va_end` needs an `unsafe` block
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/out_of_ring/main.lu:1:30
+  |
+1 | fn consume(mut ap: VaList) { va_end(mut ap) }
+  |                              ^^^^^^^^^^^^^^ raw-tier operation in safe code
+  |
+  = note: raw pointers are inert data anywhere — only the tier's operations need the ring. Wrap
+    this in `unsafe { }` and state the invariant in a `# Safety:` comment; the rules inside
+    are simpler than the safe tier's, not stricter.
+

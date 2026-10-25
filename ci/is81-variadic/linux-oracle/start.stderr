@@ -1,0 +1,15 @@
+wolf conform-run --checked: unsupported — a C variadic call to a wolf definition `sum` (the checked machine has no variadic membrane)
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/start/main.lu:2:21
+  |
+2 | fn main() -> !int { sum(1, 2); 0 }
+  |                     ^^^^^^^^^
+  |
+warning[W1301]: this `unsafe` block does not state its invariant
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/start/main.lu:1:37
+  |
+1 | export fn sum(n: i32, ...) -> i64 { unsafe { let ap = va_start(); va_end(mut ap) }; 0 }
+  |                                     ^^^^^^ add a `# Safety:` comment
+  |
+  = note: the block discharges a proof obligation the checker cannot; write the invariant down for
+    the auditors who will read this ring (`// # Safety: …` above the block).
+

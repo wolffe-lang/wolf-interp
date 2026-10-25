@@ -1,0 +1,10 @@
+error[E0402]: `sum` takes 1 argument, but this call passes 0
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/call_few_fixed/main.lu:2:21
+  |
+1 | export fn sum(n: i32, ...) -> i64 { 0 }
+  |           --- `sum` is defined here
+2 | fn main() -> !int { sum(); 0 }
+  |                     ^^^^^ 0 arguments here
+  |
+  = note: add the missing arguments — every parameter is required.
+

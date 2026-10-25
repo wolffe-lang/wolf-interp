@@ -1,0 +1,22 @@
+wolf conform-run --checked: unsupported — the va_arg C variadic cursor builtin on the checked machine
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/arg_raw/main.lu:2:59
+  |
+2 | fn consume(ap: *VaList) -> i64 { unsafe { var cp = ap[0]; va_arg[i64](mut cp) } }
+  |                                                           ^^^^^^^^^^^^^^^^^^^
+  |
+warning[W1301]: this `unsafe` block does not state its invariant
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/arg_raw/main.lu:2:34
+  |
+2 | fn consume(ap: *VaList) -> i64 { unsafe { var cp = ap[0]; va_arg[i64](mut cp) } }
+  |                                  ^^^^^^ add a `# Safety:` comment
+  |
+  = note: the block discharges a proof obligation the checker cannot; write the invariant down for
+    the auditors who will read this ring (`// # Safety: …` above the block).
+
+warning[W1301]: this `unsafe` block does not state its invariant
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/arg_raw/main.lu:3:21
+  |
+3 | fn main() -> !int { unsafe { consume(c.calloc(1, 24) as *VaList); }; 0 }
+  |                     ^^^^^^ add a `# Safety:` comment
+  |
+

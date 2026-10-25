@@ -1,0 +1,17 @@
+{
+  "added": [
+    "int_truth_u64_cast_trap.snap",
+    "int_truth_neg_u8_trap.snap",
+    "int_truth_wrap_rem_zero_signed.snap",
+    "int_shift_left_past_width.snap",
+    "int_shift_left_overflow.snap",
+    "int_truth_wrap_div_zero.snap",
+    "int_shift_left_sign_bit.snap",
+    "int_truth_neg_u64_trap.snap",
+    "int_truth_uint_sub_trap.snap",
+    "int_truth_u64_add_trap.snap",
+    "int_shift_count_negative.snap"
+  ],
+  "changed": [],
+  "lost": []
+}

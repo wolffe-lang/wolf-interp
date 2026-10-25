@@ -1,0 +1,3 @@
+Mac prune: removed own compiler target, lane-local Cargo cache, archive snapshot, snapshot staging and incomplete interpreter target.
+Kasumi prune: removed completed black-box compiler source/archive build and target after oracle-final.exit=0.
+Kasumi prune: removed all completed interpreter targets, lane Cargo cache, contained temp trees and four source overlays after all job markers completed.

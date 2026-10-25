@@ -1,0 +1,7 @@
+error[E0812]: `VaList` is one C-layout record and takes no type arguments
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/generic_list/main.lu:1:16
+  |
+1 | fn consume(ap: VaList[int]) {}
+  |                ^^^^^^^^^^^
+  |
+

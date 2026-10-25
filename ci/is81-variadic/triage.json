@@ -1,0 +1,50 @@
+[
+  {
+    "file": "memory/region_copy_shares_str.lu",
+    "issue": "wolffe-lang/wolf-interp#289",
+    "status": "closed at a1a394d via #296",
+    "same_fixture_bytes": true,
+    "vendored_sha256": "be88661b4d4f3f1a4ac7a64fd383485ceaf0700b21b4f9bc38e829a664115632"
+  },
+  {
+    "file": "memory/region_outer_write_field.lu",
+    "issue": "wolffe-lang/wolf-interp#289",
+    "status": "closed at a1a394d via #296",
+    "same_fixture_bytes": true,
+    "vendored_sha256": "caee128984ff34a028425659ab4d441b866e27c4a54e537c2b9095f1ddb95ddf"
+  },
+  {
+    "file": "memory/region_outer_write_map.lu",
+    "issue": "wolffe-lang/wolf-interp#289",
+    "status": "closed at a1a394d via #296",
+    "same_fixture_bytes": true,
+    "vendored_sha256": "0c71109eb05703c45ea4b65b69f913d434295ad31194af378771fed1e8fc0bbd"
+  },
+  {
+    "file": "memory/region_outer_write_str_push.lu",
+    "issue": "wolffe-lang/wolf-interp#289",
+    "status": "closed at a1a394d via #296",
+    "same_fixture_bytes": true,
+    "vendored_sha256": "98bca8b86e36108383d5b89d4cbc101c7ce9b19a94c873072ec0cb852b27d45b"
+  },
+  {
+    "file": "memory/region_outer_write_struct.lu",
+    "issue": "wolffe-lang/wolf-interp#289",
+    "status": "closed at a1a394d via #296",
+    "same_fixture_bytes": true,
+    "vendored_sha256": "cfea322134a871cec8b6c98a1b957d8fbd5c2cc8d269a2cdcbc757d53413bbee"
+  },
+  {
+    "file": "memory/region_str_call_index_store.lu",
+    "issue": "wolffe-lang/wolf-interp#289",
+    "status": "closed at a1a394d via #296",
+    "same_fixture_bytes": true,
+    "vendored_sha256": "4b6051f8f806cb840f1fb15146cc9f911343f6487bb303e445f96393630a8b04"
+  },
+  {
+    "file": "conc/proc_link_root_death.lu",
+    "issue": "wolffe-lang/wolf-interp#117 item 2",
+    "status": "open; exact nonzero comparator debt, no new issue",
+    "contract": "run(exit=nonzero); implementation-specified nonzero per conc.proc.root"
+  }
+]

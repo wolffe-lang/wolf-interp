@@ -1,0 +1,72 @@
+{
+  "exhaustive_head": "422fcadf723ae1b3b1ce9e75a808b76557f1c7fb",
+  "exhaustive_release": {
+    "targets": 99,
+    "passed": 2187,
+    "failed": 1,
+    "ignored": 0,
+    "filtered": 0
+  },
+  "debug_differ": {
+    "targets": 1,
+    "passed": 8,
+    "failed": 0,
+    "ignored": 0,
+    "filtered": 0
+  },
+  "doc_tests": {
+    "targets": 1,
+    "passed": 0,
+    "failed": 0,
+    "ignored": 0,
+    "filtered": 0
+  },
+  "final_focused_head": "d1768a291703b8e6d15a2728a713573e8b72dfe6",
+  "final_focused": {
+    "targets": 3,
+    "passed": 823,
+    "failed": 0,
+    "ignored": 0,
+    "filtered": 0
+  },
+  "final_warning_gate": {
+    "targets": 1,
+    "passed": 1,
+    "failed": 0,
+    "ignored": 0,
+    "filtered": 14
+  },
+  "live_skip_lines": [
+    "SKIP: core_is77_live: no container engine ran docker.io/library/ubuntu:24.04 ([\"docker: No such file or directory (os error 2)\", \"podman: No such file or directory (os error 2)\"]) \u2014 the live rows did not run",
+    "SKIP: a_refusal_ends_the_job_it_left_running ends a process group lupin starts; it runs where CI is set or LUPIN_SIGNAL_TESTS=1 (a throwaway host)"
+  ],
+  "tracked_diff": "",
+  "corpus": {
+    "anchors_checked": true,
+    "entries": 1163,
+    "failures": 0,
+    "green": true,
+    "members": 62,
+    "root": "vendor/upstream/corpus",
+    "total": 1225,
+    "unknown_anchors": [],
+    "judgements": {
+      "out-of-scope": 90,
+      "match": 868,
+      "conservatism": 68,
+      "MISMATCH": 4,
+      "dynamic-counterpart": 133
+    },
+    "run": 938
+  },
+  "source_manifest_sha256": "1da2f7e6d3f9f5333799494ccf72335b68fee42680b28619ac3e839f3aed4bec",
+  "source_file_count": 2009,
+  "final_commands_exit": {
+    "fmt": 0,
+    "clippy_all_targets": 0,
+    "lib_mirror_phase_tests": 0,
+    "warning_gate": 0,
+    "corpus": 0
+  },
+  "exhaustive_only_failure": "new imported cursor-shadow control; fixed in d1768a2 and rerun successfully"
+}

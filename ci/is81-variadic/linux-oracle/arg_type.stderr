@@ -1,0 +1,8 @@
+error[E0401]: this is `int`, but `va_arg` needs its 1st argument to be `VaList`
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/arg_type/main.lu:1:59
+  |
+1 | fn consume(mut ap: int) -> i64 { unsafe { va_arg[i64](mut ap) } }
+  |                                                           ^^ found `int` here
+  |
+  = note: expected `VaList`, found `int`
+

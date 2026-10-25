@@ -1,0 +1,7 @@
+error[E0401]: an unnamed C argument must have a C-compatible value type
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/list_tail/main.lu:2:60
+  |
+2 | fn main() -> !int { var xs = List[int](); unsafe { sink(1, xs) }; 0 }
+  |                                                            ^^
+  |
+

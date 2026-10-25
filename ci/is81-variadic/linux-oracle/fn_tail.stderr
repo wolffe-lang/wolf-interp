@@ -1,0 +1,7 @@
+error[E0401]: an unnamed C argument must have a C-compatible value type
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/fn_tail/main.lu:3:38
+  |
+3 | fn main() -> !int { unsafe { sink(1, f) }; 0 }
+  |                                      ^
+  |
+

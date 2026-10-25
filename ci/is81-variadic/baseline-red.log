@@ -1,0 +1,101 @@
+baseline start Sun Oct 25 05:17:54 AM UTC 2026 pid=3721892
+ Downloading crates ...
+  Downloaded getrandom v0.2.16
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling libc v0.2.189
+   Compiling cfg-if v1.0.4
+   Compiling memchr v2.8.3
+   Compiling bitflags v2.13.1
+   Compiling utf8parse v0.2.2
+   Compiling cfg_aliases v0.2.2
+   Compiling nix v0.31.3
+   Compiling serde_core v1.0.229
+   Compiling anstyle-parse v1.0.0
+   Compiling syn v3.0.3
+   Compiling anstyle-query v1.1.5
+   Compiling smallvec v1.15.2
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling zmij v1.0.23
+   Compiling anstyle v1.0.14
+   Compiling rustix v1.1.4
+   Compiling getrandom v0.4.3
+   Compiling colorchoice v1.0.5
+   Compiling anstream v1.0.0
+   Compiling nibble_vec v0.1.0
+   Compiling linux-raw-sys v0.12.1
+   Compiling clap_lex v1.1.0
+   Compiling serde v1.0.229
+   Compiling endian-type v0.2.0
+   Compiling strsim v0.11.1
+   Compiling heck v0.5.0
+   Compiling serde_json v1.0.151
+   Compiling clap_builder v4.6.6
+   Compiling radix_trie v0.3.0
+   Compiling clap_derive v4.6.4
+   Compiling serde_derive v1.0.229
+   Compiling aho-corasick v1.1.5
+   Compiling fastrand v2.5.0
+   Compiling unicode-segmentation v1.13.3
+   Compiling log v0.4.34
+   Compiling unicode-width v0.2.2
+   Compiling itoa v1.0.18
+   Compiling regex-syntax v0.8.11
+   Compiling once_cell v1.21.4
+   Compiling thiserror v2.0.20
+   Compiling wolf-interp v0.1.56 (/home/mfwolffe/lanes/is81/wolf-interp)
+   Compiling tempfile v3.27.0
+   Compiling rustyline v18.0.1
+   Compiling clap v4.6.6
+   Compiling thiserror-impl v2.0.20
+   Compiling regex-automata v0.4.18
+   Compiling getrandom v0.2.16
+   Compiling console v0.16.4
+   Compiling comma v1.0.0
+   Compiling similar v2.7.0
+   Compiling insta v1.48.0
+   Compiling regex v1.13.1
+   Compiling rexpect v0.7.1
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.75s
+     Running tests/variadic_is81.rs (target/debug/deps/variadic_is81-57af1feb16e4568b)
+
+running 5 tests
+
+thread 'checked_variadic_calls_are_named_refusals' (3723119) panicked at tests/variadic_is81.rs:70:9:
+assertion `left == right` failed: Observation { phase_reached: Parse, verdict: Fail("E0201"), diagnostics: [Diagnostic { code: "E0201", span: [27, 29], severity: "error", file: None }], detail: Some(Diag { code: "E0201", span: Span { start: 27, end: 29 }, anchor: "gram.item.fn", message: "expected an identifier, found `..`", help: None, file: None }), warnings: None, stdout: [], reason: None, trap: None, ub: None, trace: [], leaks: [], host_leaks: [], forest: Ok(()), warning_files: [], files: None, warning_file_index: [], refused_in_run: false, ended: [] }
+  left: Fail("E0201")
+ right: Unsupported
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'ellipsis_is_only_a_final_unnamed_c_tail' (3723120) panicked at tests/variadic_is81.rs:39:9:
+assertion `left == right` failed: Observation { phase_reached: Parse, verdict: Fail("E0201"), diagnostics: [Diagnostic { code: "E0201", span: [24, 26], severity: "error", file: None }], detail: Some(Diag { code: "E0201", span: Span { start: 24, end: 26 }, anchor: "gram.item.fn", message: "expected an identifier, found `..`", help: None, file: None }), warnings: None, stdout: [], reason: None, trap: None, ub: None, trace: [], leaks: [], host_leaks: [], forest: Ok(()), warning_files: [], files: None, warning_file_index: [], refused_in_run: false, ended: [] }
+  left: Fail("E0201")
+ right: Pass
+test checked_variadic_calls_are_named_refusals ... FAILED
+test ellipsis_is_only_a_final_unnamed_c_tail ... FAILED
+
+thread 'variadic_corpus_parses_and_resolves' (3723127) panicked at tests/variadic_is81.rs:23:9:
+assertion `left == right` failed: Observation { phase_reached: Parse, verdict: Fail("E0201"), diagnostics: [Diagnostic { code: "E0201", span: [403, 405], severity: "error", file: None }], detail: Some(Diag { code: "E0201", span: Span { start: 403, end: 405 }, anchor: "gram.item.fn", message: "expected an identifier, found `..`", help: None, file: None }), warnings: None, stdout: [], reason: None, trap: None, ub: None, trace: [], leaks: [], host_leaks: [], forest: Ok(()), warning_files: [], files: None, warning_file_index: [], refused_in_run: false, ended: [] }
+  left: Fail("E0201")
+ right: Pass
+
+thread 'valist_is_a_free_type_name_including_a_decayed_c_parameter' (3723122) panicked at tests/variadic_is81.rs:59:9:
+assertion `left == right` failed: Observation { phase_reached: Resolve, verdict: Fail("E0301"), diagnostics: [Diagnostic { code: "E0301", span: [15, 21], severity: "error", file: None }], detail: Some(Diag { code: "E0301", span: Span { start: 15, end: 21 }, anchor: "gram.item.fn", message: "nothing named `VaList` is in scope — a type annotation names a type, and resolution is the rung that answers whether a name exists ([mod]); it is neither a built-in scalar, an item this module declares, nor a generic parameter of `consume`", help: None, file: None }), warnings: Some([]), stdout: [], reason: None, trap: None, ub: None, trace: [], leaks: [], host_leaks: [], forest: Ok(()), warning_files: [], files: None, warning_file_index: [], refused_in_run: false, ended: [] }
+  left: Fail("E0301")
+ right: Pass
+test variadic_corpus_parses_and_resolves ... FAILED
+test valist_is_a_free_type_name_including_a_decayed_c_parameter ... FAILED
+test pinned_anchor_keys_agree_both_ways ... ok
+
+failures:
+
+failures:
+    checked_variadic_calls_are_named_refusals
+    ellipsis_is_only_a_final_unnamed_c_tail
+    valist_is_a_free_type_name_including_a_decayed_c_parameter
+    variadic_corpus_parses_and_resolves
+
+test result: FAILED. 1 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test variadic_is81`

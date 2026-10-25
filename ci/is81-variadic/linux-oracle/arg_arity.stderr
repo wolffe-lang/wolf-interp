@@ -1,0 +1,8 @@
+error[E0402]: `va_arg` takes 1 argument, but this call passes 2
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/arg_arity/main.lu:1:46
+  |
+1 | fn consume(mut ap: VaList) -> i64 { unsafe { va_arg[i64](mut ap, 1) } }
+  |                                              ^^^^^^^^^^^^^^^^^^^^^^ 2 arguments here
+  |
+  = note: remove the extra arguments, or check the argument order.
+

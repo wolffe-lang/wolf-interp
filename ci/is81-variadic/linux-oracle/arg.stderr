@@ -1,0 +1,9 @@
+warning[W1301]: this `unsafe` block does not state its invariant
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/arg/main.lu:1:37
+  |
+1 | fn consume(mut ap: VaList) -> i64 { unsafe { va_arg[i64](mut ap) } }
+  |                                     ^^^^^^ add a `# Safety:` comment
+  |
+  = note: the block discharges a proof obligation the checker cannot; write the invariant down for
+    the auditors who will read this ring (`// # Safety: …` above the block).
+

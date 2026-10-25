@@ -1,7 +1,7 @@
 # is81 — the variadic mirror
 
 Crawl 54. Contract: `wolf/sprints/interpreter/is81-the-variadic-mirror.md`.
-Base `a1a394d`; final semantic head `02ba839`. The completed outer-write
+Base `a1a394d`; final semantic head `d1768a2`. The completed outer-write
 pass already used is81: its `ci/is81/`, `docs/is81-evidence/` and
 `tests/mirror_is81.rs` are preserved. This pass addresses #300.
 
@@ -80,7 +80,9 @@ marks clock_ms and VaList as warning-producing shadows. Recommend reading
 those canonical flags and checking local let/var patterns, preserving
 `allow(w0304)`, provisional exemptions and std suppression. Prediction:
 exactly the unsuppressed clock_ms binder warns; the allowed twin stays
-quiet. The corpus warning gate is not weakened.
+quiet. The corpus warning gate is not weakened. Implemented in **8bec908**,
+with the coordinator's concurrence; **5f1ec73** pins the declaration span.
+The corpus row and suppression/new-type controls pass at the final head.
 
 ## 4. Evidence index
 
@@ -168,10 +170,26 @@ tracked tree, touches staged inputs, cleans this package's release outputs,
 and forces the declared build-stamp nonce. Source identity and timestamps
 are recorded with the final logs. No pre-edit green is used as final proof.
 
-Final local gate: PENDING_LOCAL_GATE.
-Final CI run: PENDING_CI_RUN. It is the orchestrator's to watch, not a claimed
-green here. No label is needed for wolf-interp's verdict-only tier full.
-Audit last line: PENDING_AUDIT.
+Final local evidence, not a collapsed full-green claim:
+- Exhaustive **422fcad**: 99 release targets, **2,187 passed / one failed**;
+  debug differ: **8 passed**; doc-tests: **0 tests, successful**. The sole
+  failed control was the newly added imported cursor-name shadow case.
+  All existing targets, corpus, warning, bundle, documentation and planner
+  gates passed. There were **two loud live-test SKIPs**, listed verbatim
+  in `suite-summary.json`; no ignored tests.
+- **d1768a2** resolves explicit imports of the four new cursor names before
+  the ambient fallback. On that actual edited head: **793 lib + 20 mirror
+  + 10 phase tests = 823 passed**, fmt and all-target clippy green, the
+  explicit corpus-warning gate passed, and the fresh corpus JSON is green
+  with the counts above. Tracked source diff is empty; the 2,009-file
+  source-manifest digest is banked. No full-suite green at d1768a2 is claimed; the final CI full gate is authoritative.
+- README's **21 executable documentation pairs** and bundle identity passed
+  in the exhaustive run. `prune.txt` records completed target/cache removal;
+  kasumi's lane is **36 MiB**, with source and durable evidence retained.
+The PR body and handback carry the final published head, first CI state/run
+id and audit's actual last line, obtained after this evidence commit. CI is
+the orchestrator's to watch, not a claimed green here. No label is needed
+for wolf-interp's verdict-only tier full.
 
 ## 5. Done-when
 
@@ -180,9 +198,9 @@ Audit last line: PENDING_AUDIT.
 - [x] Both anchor set directions, CI plant, and all seven issue mappings.
 - [x] No waiver for cwd; existing #278 prerequisite fixed and tested.
 - [x] README read and refreshed; each changed ledger enumerated above.
-- [ ] Final exhaustive local gate, evidence reconciliation and pruning.
-- [ ] PR with commit bullets, test checklist and declared footprint.
-- [ ] Final pushed head, one CI-state read and lane-audit handback.
+- [x] Exhaustive/final-focused heads disclosed separately; evidence reconciled and targets/caches pruned.
+- [x] PR body prepared with commit bullets, test checklist and declared footprint.
+- [ ] Publication pass supplies final head, first CI state and lane-audit result in the PR/handback.
 - [ ] Orchestrator watches tier full, merges on green, closes #300.
 
 Issues to file: none. Close **#300 at merge**. #280's stale vendored-snapshot

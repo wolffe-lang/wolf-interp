@@ -1,0 +1,8 @@
+error[E0823]: `sum` is variadic — call it by name, not through a function value
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/function_value/main.lu:2:21
+  |
+2 | fn main() { let f = sum }
+  |                     ^^^
+  |
+  = note: Write a named call with its arguments, or write a wrapper with a fixed parameter list.
+

@@ -1,0 +1,21 @@
+{
+  "base": "a1a394d9d787c6f7a1735024af3d3f30b532eb9b",
+  "spec_pin": "a5378e3fd5b6347f4a89a7d77dbe43aa576fee76",
+  "final_semantic_head": "d1768a291703b8e6d15a2728a713573e8b72dfe6",
+  "prior_clean_heads": [
+    "e34652966aebbcd9f59b2a35fca91255ad54c167",
+    "5677fefb89aa27ac483c9d592180d323ae06fad1"
+  ],
+  "rust": "1.97.1",
+  "compiler_command": "cargo build --release -p wolf_driver -j4",
+  "observation_command": "wolf conform-run <file> --checked --json",
+  "compiler_sha256_twice_verified": {
+    "macos": "57f31be4c2eb6672ebde034c688d2006c4091cb7448d14419f208d17bd9d49e1",
+    "linux": "79dd02e03e5a91cb267abad77cb525e62f4f437d87aa7aa949eeb08864ec8fa5"
+  },
+  "build_identity": "wolf 0.2.35+dev.unknown; source pin fixed independently, not a release archive",
+  "no_dependency_or_lock_change": true,
+  "exhaustive_head": "422fcadf723ae1b3b1ce9e75a808b76557f1c7fb",
+  "full_source_nonce": "is81-422fcad-final3",
+  "final_focused_nonce": "is81-final-focused"
+}

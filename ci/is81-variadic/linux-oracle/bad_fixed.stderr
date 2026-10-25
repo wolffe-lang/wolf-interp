@@ -1,0 +1,10 @@
+error[E0401]: this is `str`, but `sink` needs its 1st argument to be `i32`
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/bad_fixed/main.lu:2:35
+  |
+1 | extern "c" fn sink(n: i32, ...) -> i64
+  |                    - the parameter is declared here
+2 | fn main() -> !int { unsafe { sink("s", 2) }; 0 }
+  |                                   ^^^ found `str` here
+  |
+  = note: expected `i32`, found `str`
+

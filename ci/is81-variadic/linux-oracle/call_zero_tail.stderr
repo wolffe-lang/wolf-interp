@@ -1,0 +1,6 @@
+wolf conform-run --checked: unsupported — a C variadic call to a wolf definition `sum` (the checked machine has no variadic membrane)
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/call_zero_tail/main.lu:2:21
+  |
+2 | fn main() -> !int { sum(1); 0 }
+  |                     ^^^^^^
+  |

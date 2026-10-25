@@ -1,0 +1,10 @@
+error[E0825]: `va_start` is already spelled in this function — use `va_copy` for another cursor
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/second_start/main.lu:1:67
+  |
+1 | export fn f(n: i32, ...) { unsafe { let ap = va_start(); let bp = va_start() } }
+  |                                              ---------- the first start is here
+  |                                                                   ^^^^^^^^^^
+  |
+  = note: Keep one `va_start()` and make another cursor with `va_copy(ap)`; end each cursor before
+    returning.
+

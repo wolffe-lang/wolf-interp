@@ -1,0 +1,19 @@
+   Compiling wolf-interp v0.1.56 (/home/mfwolffe/lanes/is81/wolf-interp)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.24s
+     Running tests/variadic_is81.rs (target/debug/deps/variadic_is81-57af1feb16e4568b)
+
+running 11 tests
+test ellipsis_is_only_a_final_unnamed_c_tail ... ok
+test every_cursor_dispatch_refuses_before_reading_a_cursor ... ok
+test checked_variadic_calls_are_named_refusals ... ok
+test declaration_diagnostics_match_the_measured_code_span_and_message ... ok
+test pinned_anchor_keys_agree_both_ways ... ok
+test valist_has_the_published_record_layout ... ok
+test valist_is_a_free_type_name_including_a_decayed_c_parameter ... ok
+test checked_calls_name_exactly_the_measured_construct ... ok
+test variadic_corpus_parses_and_resolves ... ok
+test ordinary_consumers_and_shadowing_do_not_require_a_variadic_frame ... ok
+test variadic_target_matrix_and_cfg_filtered_corpus ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

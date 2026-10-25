@@ -1,0 +1,15 @@
+wolf conform-run --checked: unsupported — a C variadic call into C `sink` (the checked machine has no variadic membrane)
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/call_c/main.lu:2:30
+  |
+2 | fn main() -> !int { unsafe { sink(1, 2) }; 0 }
+  |                              ^^^^^^^^^^
+  |
+warning[W1301]: this `unsafe` block does not state its invariant
+ --> /home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/call_c/main.lu:2:21
+  |
+2 | fn main() -> !int { unsafe { sink(1, 2) }; 0 }
+  |                     ^^^^^^ add a `# Safety:` comment
+  |
+  = note: the block discharges a proof obligation the checker cannot; write the invariant down for
+    the auditors who will read this ring (`// # Safety: …` above the block).
+

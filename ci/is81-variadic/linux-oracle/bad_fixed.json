@@ -1,0 +1,1 @@
+{"commit":"unknown","diagnostics":[{"code":"E0401","severity":"error","span":[73,76]}],"file":"/home/mfwolffe/lanes/is81/wolf-interp/tests/fixtures/variadic_is81/bad_fixed/main.lu","impl":"wolfgang","impl_version":"0.2.35+dev.unknown","phase_reached":"typecheck","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"fail(E0401)","warnings":[]}
