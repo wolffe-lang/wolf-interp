@@ -182,6 +182,9 @@ fn declaration_read_code(case: &Case) -> Option<&str> {
         // is68 (wolf-interp#125): `[mem.str.ws]`'s "the family takes no
         // argument" is decided where the receiver is visibly a `str`.
         "E0402" => ["mem.str.ws"].as_slice(),
+        // s237's folded module shift is already checked by statics::fold_check.
+        // Do not claim the separate comptime-function E0706 row.
+        "E0706" => ["type.int.shift"].as_slice(),
         "E0610" => ["type.err.alias"].as_slice(),
         // `[type.row.match]` joins at the dfcc2f13 pin (r27, wolf-lang
         // v0.2.21; is67 mirrored ruling #21): a `match` over a fallible value
@@ -208,7 +211,7 @@ fn declaration_read_code(case: &Case) -> Option<&str> {
         // `left: Fail("E0607"), right: Pass` (kasumi
         // `~/lanes/is70/logs/dev-d179.log`).
         "E0607" => ["err.errdefer"].as_slice(),
-        "E0409" => ["type.row.operand"].as_slice(),
+        "E0409" => ["type.row.operand", "type.int.not"].as_slice(),
         "E0417" => ["mem.map.absent"].as_slice(),
         "E0418" => ["type.map.key"].as_slice(),
         "E0501" => ["generics.golden.def-site"].as_slice(),
@@ -224,7 +227,7 @@ fn declaration_read_code(case: &Case) -> Option<&str> {
         // `typecheck/method_home_no_std.lu` both pin `fail(E0301)` and both
         // are `unsupported` here. Widening this row to the code would assert
         // a refusal on those two and be wrong about both.
-        "E0301" => ["type.trait.op", "gram.expr.variant"].as_slice(),
+        "E0301" => ["type.trait.op", "gram.expr.variant", "gram.amb.brackets"].as_slice(),
         // `[mem.region.edge.elem]` joins at is53 (2e4ca769, wolf-lang
         // v0.2.15, wolf-lang#385 ruled option 3). `memory/push_take_moves.lu`
         // is the first corpus file to pin use-after-`take`, and this machine
@@ -302,6 +305,13 @@ const RULED_AHEAD_OF_PIN: &[(&str, Verdict, &str)] = &[];
 /// `conc/atomic_outside_unsafe.lu` (r30 listed them for wolf-interp#185 and
 /// #194) answer their pinned E1301 now.
 const AWAITING_MIRROR: &[(&str, &str)] = &[];
+
+// A buffer has no sibling files. This new row's qualified module-var
+// ring fact is visible only with the loaded `counter/` module. The CLI
+// corpus and variadic_is81's module-context test still require E1301.
+fn needs_module_for_tier_fact(path: &str) -> bool {
+    path == "memory/static_qualified_var_outside_unsafe/main.lu"
+}
 
 fn is_awaiting_mirror(path: &str) -> bool {
     AWAITING_MIRROR.iter().any(|(row, _)| path.ends_with(row))
@@ -560,12 +570,14 @@ fn files_whose_ledger_stops_at_lex_fail_at_parse_with_their_pinned_code() {
     // times (`first_keyword_pattern.lu`, `first_parse_before_lex.lu`,
     // `first_parse_before_resolve.lu`). is70 (#175) answered all four
     // before the pin carried them; they sort last, after `error_alias_open`.
+    // is81 / a5378e3f adds if_brace_next_line (E0201) and the C
+    // ellipsis position row (E0822); preserve every prior code cell.
     assert_eq!(
         seen.values().cloned().collect::<Vec<_>>(),
         vec![
-            "E0201", "E0201", "E0201", "E0201", "E0211", "E0201", "E0201", "E0201", "E0001",
-            "E0201", "E0210", "E0002", "E0201", "E0201", "E0201", "E0006", "E0201", "E0206",
-            "E0008", "E0201", "E0202", "E0207", "E0207", "E0207"
+            "E0201", "E0201", "E0201", "E0201", "E0201", "E0211", "E0201", "E0201", "E0201",
+            "E0001", "E0201", "E0210", "E0002", "E0201", "E0201", "E0201", "E0006", "E0201",
+            "E0206", "E0008", "E0822", "E0201", "E0202", "E0207", "E0207", "E0207"
         ],
         "the pinned grammar-tier codes changed: {seen:?}"
     );
@@ -685,7 +697,8 @@ fn every_parseable_file_resolves_under_sema_lite() {
             | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101" | "E1102" | "E1103"
             | "E1301" | "E1302" | "E0817" | "E0818" | "E0708" | "E0819" | "E0820" | "E0821"
             | "E1307" | "E1308" | "E1309"),
-        ) = pinned_code(case.check.as_ref()).filter(|_| !is_awaiting_mirror(&case.path))
+        ) = pinned_code(case.check.as_ref())
+            .filter(|_| !is_awaiting_mirror(&case.path) && !needs_module_for_tier_fact(&case.path))
         {
             assert_eq!(
                 observation.verdict,
@@ -771,8 +784,9 @@ fn the_static_rungs_this_implementation_does_not_perform_are_declared() {
                 | "E0809" | "E0810" | "E0812" | "E0813" | "E0815" | "E0416" | "E1101"
                 | "E1102" | "E1103" | "E1301" | "E1302" | "E0817" | "E0818" | "E0708"
                 | "E0819" | "E0820" | "E0821" | "E1307" | "E1308" | "E1309"),
-            ) = pinned_code(case.check.as_ref()).filter(|_| !is_awaiting_mirror(&case.path))
-            {
+            ) = pinned_code(case.check.as_ref()).filter(|_| {
+                !is_awaiting_mirror(&case.path) && !needs_module_for_tier_fact(&case.path)
+            }) {
                 assert_eq!(
                     observation.verdict,
                     Verdict::Fail(code.to_owned()),
