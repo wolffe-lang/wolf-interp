@@ -6227,6 +6227,23 @@ impl Machine {
             if self.shared.program.modules.contains_key(name) {
                 return Ok(Value::Module(name.clone()));
             }
+            // The newly admitted cursor names are ordinary prelude names,
+            // not primitives: an explicitly imported declaration wins.
+            if crate::variadic::builtin_name(expr).is_some() {
+                let imported = self
+                    .shared
+                    .program
+                    .modules
+                    .get(&module)
+                    .and_then(|m| m.use_paths.iter().find(|(bound, _)| bound == name))
+                    .and_then(|(_, parts)| parts.split_last())
+                    .map(|(item, prefix)| (prefix.join("."), item.clone()));
+                if let Some((target, item)) = imported
+                    && let Some(def) = self.shared.program.lookup(&target, &item, true).cloned()
+                {
+                    return self.value_of_def(&def, &target, &item, expr.span);
+                }
+            }
             if let Some(builtin) = builtin::ambient(name) {
                 return Ok(builtin);
             }
