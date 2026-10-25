@@ -41,7 +41,12 @@ fn the_cli_replays_the_chdir_record_exactly() {
     assert_eq!(first, run());
     let record: serde_json::Value = serde_json::from_slice(&first).unwrap();
     assert_eq!(record["verdict"], "exit(0)");
-    assert!(record["stdout_inline"].as_str().unwrap().contains("back=true\n"));
+    assert!(
+        record["stdout_inline"]
+            .as_str()
+            .unwrap()
+            .contains("back=true\n")
+    );
 }
 
 #[test]
