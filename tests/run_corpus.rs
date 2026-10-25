@@ -2383,6 +2383,14 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/static_var_call_writes.lu", "exit(0)"),
     ("memory/static_wrapping.lu", "exit(0)"),
     ("os/chdir_relative.lu", "exit(0)"),
+    // a5378e3f: these programs handle the Windows host's unsupported
+    // error rows and finish normally. On Unix the interpreter declines
+    // os_uid / os_signal_realtime by name instead; cwd_r41 pins both
+    // postures, including the reason, rather than treating one as a skip.
+    #[cfg(windows)]
+    ("os/ids_read.lu", "exit(0)"),
+    #[cfg(windows)]
+    ("os/signal_reserved_rows.lu", "exit(0)"),
     ("os/env_unset.lu", "exit(0)"),
     ("os/exec_rows.lu", "exit(0)"),
     ("os/group_rows.lu", "exit(0)"),
