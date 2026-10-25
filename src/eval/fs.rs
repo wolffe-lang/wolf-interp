@@ -239,6 +239,14 @@ impl FsTable {
                         // there still leaves `Drop` something to remove
                         // rather than leaking a half-built directory.
                         self.root = Some(root.clone());
+                        // `os_cwd` must use the same identity before and
+                        // after `os_chdir`: Darwin's temp directory may
+                        // contain symlinks, and Windows may return an 8.3
+                        // alias (RUNNER~1) that a component walk cannot
+                        // expand. Canonicalize once, before exposing it;
+                        // keep the recorded leaf for cleanup on failure.
+                        let root = plain_path(std::fs::canonicalize(root).map_err(|_| "io")?);
+                        self.root = Some(root.clone());
                         std::fs::create_dir(root.join("target")).map_err(|_| "io")?;
                         return Ok(self.root.as_deref().expect("just set"));
                     }
@@ -3341,6 +3349,16 @@ mod tests {
             "os_cwd would gain a trailing separator: {root:?}"
         );
         assert!(root.join("target").is_dir(), "the root is a project root");
+        assert_eq!(
+            root,
+            plain_path(std::fs::canonicalize(&root).expect("canonical root")),
+            "os_cwd must not expose a temp-directory alias"
+        );
+        assert!(resolves_inside(&root, &root), "the cwd must admit itself");
+        assert!(
+            !resolves_inside(&root, &root.join("..")),
+            "normalizing the root must not broaden containment"
+        );
     }
 
     #[test]
