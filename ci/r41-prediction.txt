@@ -112,3 +112,12 @@ Second continuation prediction (before socket-budget repair):
 - Validate locally with pinned 1.97.1, -j4, incremental off and scripted
   8 GiB floor, including all three failing targets. No expectation change,
   no dispatch by this lane, no tag until the new release tier is green.
+
+Socket-budget refinement before the fix: the local plant reproduced BOTH
+failures in 0.01 s / 0.00 s. Its process ids already have eight decimal
+digits, so the probe is 29 bytes rather than the CI run's 28. A direct host
+probe binds at 103 pathname bytes and refuses 104. Use a 14-byte leaf:
+w + thirteen lowercase base32 digits encoding all 64 random bits. This
+also fits a ten-decimal-digit pid's 31-byte probe: 56+1+14+1+31 = 103.
+The corpus socket is 56+1+14+1+24 = 96 bytes. No PID or serial contributes
+to the root length; no test socket name or expectation needs shortening.
