@@ -440,3 +440,42 @@ fn aliases_are_not_guessed_to_be_non_c_shapes() {
         );
     }
 }
+
+#[test]
+fn local_prelude_shadows_use_the_pinned_metadata_and_honor_allow() {
+    let source = include_bytes!("../vendor/upstream/corpus/lints/shadow_prelude_local.lu");
+    let obs = observe(source, None);
+    assert_eq!(obs.verdict, Verdict::Exit(0), "{obs:?}");
+    assert_eq!(obs.stdout, b"5 7\n");
+    let shadows: Vec<_> = obs
+        .warnings
+        .unwrap()
+        .into_iter()
+        .filter(|w| w.code == "W0304")
+        .collect();
+    assert_eq!(shadows.len(), 1, "{shadows:?}");
+    let at = std::str::from_utf8(source)
+        .unwrap()
+        .find("let clock_ms = 5")
+        .unwrap()
+        + 4;
+    assert_eq!(shadows[0].span, [at as u64, at as u64 + 8]);
+    for (source, count) in [
+        ("fn main() { let VaList = 1 }", 1),
+        ("fn main() { let (va_start, other) = (1, 2) }", 1),
+        ("#[allow(w0304)]\nfn main() { let VaList = 1 }", 0),
+        ("fn main() { let range = 1 }", 0),
+    ] {
+        let obs = observe(source.as_bytes(), None);
+        assert_eq!(obs.verdict, Verdict::Exit(0), "{source}: {obs:?}");
+        assert_eq!(
+            obs.warnings
+                .unwrap()
+                .iter()
+                .filter(|w| w.code == "W0304")
+                .count(),
+            count,
+            "{source}"
+        );
+    }
+}

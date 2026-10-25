@@ -913,10 +913,52 @@ impl Walk<'_> {
     /// W0304 — a declaration shadowing a prelude/built-in name. The
     /// provisional corpus stand-ins and the std tree are exempt (s68 triage).
     fn shadow_check(&mut self, name: &str, span: Span) {
-        let prelude =
-            crate::eval::builtin::AMBIENT_NAMES.contains(&name) && !STAND_INS.contains(&name);
+        static PRELUDE: std::sync::OnceLock<BTreeSet<String>> = std::sync::OnceLock::new();
+        let names = PRELUDE.get_or_init(|| {
+            let data: serde_json::Value =
+                serde_json::from_str(include_str!("../vendor/upstream/spec/prelude.json"))
+                    .expect("the pinned prelude metadata is valid JSON");
+            data["names"]
+                .as_array()
+                .expect("the prelude has a names array")
+                .iter()
+                .filter(|entry| entry["w0304"] == true)
+                .map(|entry| entry["name"].as_str().expect("a prelude name").to_owned())
+                .collect()
+        });
+        let prelude = names.contains(name) && !STAND_INS.contains(&name);
         if prelude {
             self.warn("W0304", span);
+        }
+    }
+
+    fn shadow_binding_pattern(&mut self, pattern: &Pattern) {
+        match &*pattern.kind {
+            PatKind::Binding(name) => self.shadow_check(&name.name, name.span),
+            PatKind::At { name, pattern } => {
+                self.shadow_check(&name.name, name.span);
+                self.shadow_binding_pattern(pattern);
+            }
+            PatKind::Tuple(parts) | PatKind::Or(parts) => {
+                for part in parts {
+                    self.shadow_binding_pattern(part);
+                }
+            }
+            PatKind::Variant { fields, .. } => {
+                for field in fields {
+                    self.shadow_binding_pattern(field);
+                }
+            }
+            PatKind::Struct { fields, .. } => {
+                for field in fields {
+                    if let Some(pattern) = &field.pattern {
+                        self.shadow_binding_pattern(pattern);
+                    } else {
+                        self.shadow_check(&field.name.name, field.name.span);
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -1287,6 +1329,7 @@ impl Walk<'_> {
     }
 
     fn binding(&mut self, binding: &Binding) {
+        self.shadow_binding_pattern(&binding.pattern);
         // W0305's annotated-`let`/`var` position (D52): the annotation's row
         // is the expected row of the initializer.
         if let Some(ty) = &binding.ty {
