@@ -1343,6 +1343,9 @@ impl<'a> Parser<'a> {
                 // The counter-example `fn f(x: mut int)` dies here: modes
                 // precede the *name*, so `mut` after `:` is not a type.
                 self.expect(&Tok::Colon, anchor)?;
+                if self.at(&Tok::DotDot) {
+                    return Err(self.misplaced_ellipsis());
+                }
                 let ty = self.parse_type()?;
                 ParamKind::Named { name, ty }
             };
@@ -1353,6 +1356,9 @@ impl<'a> Parser<'a> {
             });
             self.skip_inserted_terms();
             if !self.eat(&Tok::Comma) {
+                if self.at(&Tok::DotDot) {
+                    return Err(self.misplaced_ellipsis());
+                }
                 break;
             }
             self.skip_inserted_terms();
@@ -1361,6 +1367,21 @@ impl<'a> Parser<'a> {
             }
         }
         Ok((params, None))
+    }
+
+    fn misplaced_ellipsis(&mut self) -> Diag {
+        let first = self.advance();
+        let end = if self.at(&Tok::Dot) && self.span().start == first.end {
+            self.advance().end
+        } else {
+            first.end
+        };
+        Diag::new(
+            "E0822",
+            Span::new(first.start, end),
+            "abi.c.variadic.syntax",
+            "`...` belongs after the last named parameter of an `extern \"c\" fn` or `export fn`",
+        )
     }
 
     fn parse_param_mode(&mut self) -> Option<ParamMode> {
