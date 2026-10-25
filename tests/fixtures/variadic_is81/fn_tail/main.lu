@@ -1,0 +1,3 @@
+extern "c" fn sink(n: i32, ...) -> i64
+fn f() {}
+fn main() -> !int { unsafe { sink(1, f) }; 0 }

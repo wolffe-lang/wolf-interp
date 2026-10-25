@@ -62,9 +62,7 @@ pub(crate) fn target_diag(span: Span) -> Diag {
 
 fn type_name(ty: &Type) -> Option<String> {
     match &*ty.kind {
-        TypeKind::Path { path, args } if args.is_empty() && path.is_single() => {
-            Some(path.segments[0].name.clone())
-        }
+        TypeKind::Path { path, .. } if path.is_single() => Some(path.segments[0].name.clone()),
         TypeKind::RawPointer(_) => Some("*".into()),
         _ => None,
     }
@@ -168,9 +166,11 @@ impl Walk<'_> {
     }
     fn class(&self, expr: &Expr) -> Option<String> {
         match &*expr.kind {
-            ExprKind::Path(path) if path.is_single() => {
-                self.local(&path.segments[0].name).cloned().flatten()
-            }
+            ExprKind::Path(path) if path.is_single() => self
+                .local(&path.segments[0].name)
+                .cloned()
+                .flatten()
+                .or_else(|| self.function(expr).map(|_| "fn".into())),
             ExprKind::Str(_) => Some("str".into()),
             ExprKind::Bool(_) => Some("bool".into()),
             ExprKind::Int(_) => Some("int".into()),
@@ -181,6 +181,21 @@ impl Walk<'_> {
             ExprKind::Closure { .. } => Some("fn".into()),
             ExprKind::Cast { ty, .. } => type_name(ty),
             ExprKind::Group(inner) => self.class(inner),
+            ExprKind::Call { callee, .. } => {
+                let base = match &*callee.kind {
+                    ExprKind::BracketApply { base, .. } => base,
+                    _ => callee,
+                };
+                match &*base.kind {
+                    ExprKind::Path(path)
+                        if path.is_single()
+                            && matches!(path.segments[0].name.as_str(), "List" | "Map" | "Set") =>
+                    {
+                        Some(path.segments[0].name.clone())
+                    }
+                    _ => None,
+                }
+            }
             ExprKind::StructLit { path, .. } => path.segments.last().map(|i| i.name.clone()),
             _ => None,
         }
@@ -203,7 +218,8 @@ impl Walk<'_> {
                 | "f32"
                 | "f64"
                 | "VaList"
-        ) || crate::layout::layout_of_name(self.module, name).is_ok()
+        ) || (matches!(self.module.items.get(name), Some((Def::Struct(_), _)))
+            && crate::layout::layout_of_name(self.module, name).is_ok())
     }
     fn decl(&mut self, decl: &FnDecl) {
         for param in &decl.params {
@@ -327,6 +343,73 @@ impl Walk<'_> {
                 }
                 self.started = true;
             }
+            let arity = usize::from(name != "va_start");
+            if args.len() != arity {
+                return Some(Diag::new(
+                    "E0402",
+                    expr.span,
+                    "abi.c.variadic.builtins",
+                    format!(
+                        "`{name}` takes {arity} argument{}, but this call passes {}",
+                        if arity == 1 { "" } else { "s" },
+                        args.len()
+                    ),
+                ));
+            }
+            if name == "va_arg"
+                && !matches!(&*callee.kind, ExprKind::BracketApply { args, .. } if args.len() == 1)
+            {
+                return Some(Diag::new(
+                    "E0812",
+                    expr.span,
+                    "abi.c.variadic.arg",
+                    "`va_arg` needs one promoted C type, as in `va_arg[i32](mut ap)`",
+                ));
+            }
+            if let Some(arg) = args.first() {
+                if let Some(ty) = self.class(&arg.expr)
+                    && ty != "VaList"
+                {
+                    return Some(Diag::new(
+                        "E0401",
+                        arg.expr.span,
+                        "abi.c.variadic.builtins",
+                        format!(
+                            "this is `{ty}`, but `{name}` needs its 1st argument to be `VaList`"
+                        ),
+                    ));
+                }
+                let mode = if matches!(name, "va_arg" | "va_end") {
+                    Some(ParamMode::Mut)
+                } else {
+                    None
+                };
+                if arg.mode != mode {
+                    let message = if mode.is_some() {
+                        if arg.mode == Some(ParamMode::Take) {
+                            format!(
+                                "`{name}` declares `ap` as `mut`, but the call site says `take`"
+                            )
+                        } else {
+                            format!(
+                                "`{name}` declares `ap` as `mut`, but the call site does not say so"
+                            )
+                        }
+                    } else {
+                        format!("`{name}` takes `ap` as plain `read` — no mode is written for it")
+                    };
+                    return Some(Diag::new(
+                        "E1007",
+                        arg.expr.span,
+                        if mode.is_some() {
+                            "mem.tier0.mode.mut"
+                        } else {
+                            "mem.tier0.mode.read"
+                        },
+                        message,
+                    ));
+                }
+            }
             if self.unsafe_depth == 0 {
                 return Some(Diag::new(
                     "E1301",
@@ -375,6 +458,47 @@ impl Walk<'_> {
                     ),
                 ));
             }
+            for (index, (param, arg)) in decl.params.iter().zip(args).enumerate() {
+                if let ParamKind::Named { ty, .. } = &param.kind
+                    && let Some(expected) = type_name(ty)
+                    && let Some(actual) = self.class(&arg.expr)
+                {
+                    let literal_fits = match &*arg.expr.kind {
+                        ExprKind::Int(_) => matches!(
+                            expected.as_str(),
+                            "i8" | "i16"
+                                | "i32"
+                                | "i64"
+                                | "u8"
+                                | "u16"
+                                | "u32"
+                                | "u64"
+                                | "int"
+                                | "uint"
+                                | "byte"
+                        ),
+                        ExprKind::Float(_) => matches!(expected.as_str(), "f32" | "f64"),
+                        _ => false,
+                    };
+                    if actual != expected && !literal_fits {
+                        let ordinal = match index {
+                            0 => "1st".into(),
+                            1 => "2nd".into(),
+                            2 => "3rd".into(),
+                            _ => format!("{}th", index + 1),
+                        };
+                        return Some(Diag::new(
+                            "E0401",
+                            arg.expr.span,
+                            "abi.c.variadic.call",
+                            format!(
+                                "this is `{actual}`, but `{}` needs its {ordinal} argument to be `{expected}`",
+                                decl.name.name
+                            ),
+                        ));
+                    }
+                }
+            }
             for arg in args.iter().skip(decl.params.len()) {
                 if let Some(ty) = self.class(&arg.expr)
                     && !self.c_type(&ty)
@@ -420,6 +544,45 @@ impl Walk<'_> {
                         ),
                     ));
                 }
+            }
+            ExprKind::For {
+                pattern,
+                iter,
+                body,
+            } => {
+                self.expr(iter, false);
+                self.scopes.push(BTreeMap::new());
+                self.declare(pattern, None);
+                self.block(body);
+                self.scopes.pop();
+                return;
+            }
+            ExprKind::Match { scrutinee, arms } => {
+                self.expr(scrutinee, false);
+                for arm in arms {
+                    self.scopes.push(BTreeMap::new());
+                    self.declare(&arm.pattern, None);
+                    if let Some(guard) = &arm.guard {
+                        self.expr(guard, false);
+                    }
+                    self.expr(&arm.body, false);
+                    self.scopes.pop();
+                }
+                return;
+            }
+            ExprKind::ElseDefault { expr, handler } => {
+                self.expr(expr, false);
+                match &**handler {
+                    ElseHandler::Handler { pattern, body } => {
+                        self.scopes.push(BTreeMap::new());
+                        self.declare(pattern, None);
+                        self.expr(body, false);
+                        self.scopes.pop();
+                    }
+                    ElseHandler::Block(block) => self.block(block),
+                    ElseHandler::Expr(expr) => self.expr(expr, false),
+                }
+                return;
             }
             ExprKind::Closure { params, body, .. } => {
                 let saved = (self.frame, self.started, self.unsafe_depth);

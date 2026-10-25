@@ -1,0 +1,2 @@
+fn consume(mut ap: VaList) -> VaList { unsafe { va_copy(mut ap) } }
+fn main() {}

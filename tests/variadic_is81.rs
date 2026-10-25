@@ -60,6 +60,8 @@ fn ellipsis_is_only_a_final_unnamed_c_tail() {
         "export fn f(n: i32, ...: i64) {}",
         "export fn f(n: i32, mut ...) {}",
         "export fn f(n: i32, take ...) {}",
+        "export fn f(n: i32 ...) {}",
+        "export fn f(n: i32, tail: ...) {}",
     ] {
         let obs = observe(source.as_bytes(), Some(Phase::Parse));
         assert_eq!(
@@ -303,5 +305,121 @@ fn every_cursor_dispatch_refuses_before_reading_a_cursor() {
             reason,
             format!("the {name} C variadic cursor builtin on the checked machine")
         );
+    }
+}
+
+#[test]
+fn list_signatures_and_non_c_tail_shapes_are_checked_before_refusal() {
+    for (name, code, span) in [
+        ("arg_mode", "E1007", [53, 55]),
+        ("end_mode", "E1007", [41, 43]),
+        ("copy_mode", "E1007", [60, 62]),
+        ("arg_arity", "E0402", [45, 67]),
+        ("arg_generic", "E0812", [45, 59]),
+        ("arg_type", "E0401", [58, 60]),
+        ("bad_fixed", "E0401", [73, 76]),
+        ("char_tail", "E0401", [76, 79]),
+        ("fn_tail", "E0401", [86, 87]),
+        ("list_tail", "E0401", [98, 100]),
+    ] {
+        let obs =
+            attrs::with_build_target("x86_64-unknown-linux-gnu", || observe(&fixture(name), None));
+        assert_eq!(obs.verdict, Verdict::Fail(code.into()), "{name}: {obs:?}");
+        assert_eq!(obs.diagnostics[0].span, span, "{name}: {obs:?}");
+    }
+}
+
+#[test]
+fn the_six_old_soundness_rows_keep_the_closed_289_answer_at_the_new_pin() {
+    for (name, stdout) in [
+        ("region_copy_shares_str", "28\nbuilt in pass, 0 uses\n"),
+        ("region_outer_write_field", "t9 1 9 x1 2 7\n"),
+        ("region_outer_write_map", "40 v7 v39 true\n"),
+        (
+            "region_outer_write_str_push",
+            "100 turn 0 turn 99 42 true\n",
+        ),
+        ("region_outer_write_struct", "50 r0 r49 3 49 98 147\n"),
+        ("region_str_call_index_store", "[piece 7 3-7]\n"),
+    ] {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("vendor/upstream/corpus/memory")
+            .join(format!("{name}.lu"));
+        let obs = observe(&std::fs::read(path).unwrap(), None);
+        assert_eq!(obs.verdict, Verdict::Exit(0), "{name}: {obs:?}");
+        assert_eq!(obs.stdout, stdout.as_bytes(), "{name}");
+    }
+}
+
+#[test]
+fn command_line_records_the_named_refusal_and_the_spec_identity() {
+    let version = std::process::Command::new(env!("CARGO_BIN_EXE_lupin"))
+        .arg("--version")
+        .output()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&version.stdout).contains("pin a5378e3"));
+    // CLI follows the real host. Linux is the supported executable row;
+    // unsupported hosts must reject the declaration, not borrow SysV.
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_lupin"))
+        .args(["conform-run", "--json"])
+        .arg(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/variadic_is81/call_wolf/main.lu"),
+        )
+        .output()
+        .unwrap();
+    let record: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    if wolf_interp::HOST_TRIPLE == "x86_64-unknown-linux-gnu" {
+        assert_eq!(record["verdict"], "unsupported");
+        assert_eq!(
+            record["x-unsupported"],
+            "a C variadic call to a wolf definition `sum` (the checked machine has no variadic membrane)"
+        );
+    } else {
+        assert_eq!(record["verdict"], "fail(E0826)");
+    }
+}
+
+#[test]
+fn the_new_pin_charges_cwd_strings_and_catches_their_escape() {
+    let obs = observe(
+        include_bytes!("../vendor/upstream/corpus/memory/region_os_cwd_charged.lu"),
+        None,
+    );
+    assert_eq!(obs.verdict, Verdict::Exit(0), "{obs:?}");
+    assert_eq!(obs.stdout, b"charged true | reclaimed true | got true");
+    let obs = observe(
+        include_bytes!("../vendor/upstream/corpus/memory/region_os_cwd_return.lu"),
+        None,
+    );
+    assert_eq!(
+        obs.verdict,
+        Verdict::Trap(wolf_interp::trap::TrapKind::RegionFault),
+        "{obs:?}"
+    );
+}
+
+#[test]
+fn a_qualified_static_read_is_still_refused_with_its_module_context() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("vendor/upstream/corpus/memory/static_qualified_var_outside_unsafe/main.lu");
+    let (record, _) = wolf_interp::observe_record(&path, &std::fs::read(&path).unwrap(), None);
+    assert_eq!(record.verdict, Verdict::Fail("E1301".into()), "{record:?}");
+}
+
+#[test]
+fn a_pattern_binding_shadows_the_variadic_function_value() {
+    for body in [
+        "for sum in 0..2 { let x = sum }\n0",
+        "match 2 { sum => { let x = sum } }\n0",
+        "let x = (fail() else |sum| { let x = sum; 0 })\n0",
+    ] {
+        let source = format!(
+            "extern \"c\" fn sum(n: i32, ...) -> i64\nfn fail() -> int ! {{bad}} {{ bad }}\nfn main() -> !int {{ {body} }}"
+        );
+        let obs = attrs::with_build_target("x86_64-unknown-linux-gnu", || {
+            observe(source.as_bytes(), None)
+        });
+        assert_eq!(obs.verdict, Verdict::Exit(0), "{source}: {obs:?}");
     }
 }

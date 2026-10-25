@@ -1,0 +1,2 @@
+fn consume(ap: VaList) { unsafe { va_end(ap) } }
+fn main() {}

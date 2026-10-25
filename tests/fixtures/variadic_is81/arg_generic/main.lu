@@ -1,0 +1,2 @@
+fn consume(mut ap: VaList) -> i64 { unsafe { va_arg(mut ap) } }
+fn main() {}
