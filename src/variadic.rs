@@ -200,6 +200,35 @@ impl Walk<'_> {
             _ => None,
         }
     }
+    // Unknown aliases and generic parameters stay unknown: this is sema-lite,
+    // not the compiler's type normalizer. Never diagnose a guessed mismatch.
+    fn known_class(&self, name: &str) -> bool {
+        matches!(
+            name,
+            "*" | "i8"
+                | "i16"
+                | "i32"
+                | "i64"
+                | "u8"
+                | "u16"
+                | "u32"
+                | "u64"
+                | "int"
+                | "uint"
+                | "byte"
+                | "bool"
+                | "f32"
+                | "f64"
+                | "VaList"
+                | "char"
+                | "str"
+                | "List"
+                | "Map"
+                | "Set"
+                | "tuple"
+                | "fn"
+        ) || matches!(self.module.items.get(name), Some((Def::Struct(_), _)))
+    }
     fn c_type(&self, name: &str) -> bool {
         matches!(
             name,
@@ -218,8 +247,9 @@ impl Walk<'_> {
                 | "f32"
                 | "f64"
                 | "VaList"
-        ) || (matches!(self.module.items.get(name), Some((Def::Struct(_), _)))
-            && crate::layout::layout_of_name(self.module, name).is_ok())
+        ) || !self.known_class(name)
+            || (matches!(self.module.items.get(name), Some((Def::Struct(_), _)))
+                && crate::layout::layout_of_name(self.module, name).is_ok())
     }
     fn decl(&mut self, decl: &FnDecl) {
         for param in &decl.params {
@@ -369,6 +399,7 @@ impl Walk<'_> {
             if let Some(arg) = args.first() {
                 if let Some(ty) = self.class(&arg.expr)
                     && ty != "VaList"
+                    && self.known_class(&ty)
                 {
                     return Some(Diag::new(
                         "E0401",
@@ -480,7 +511,11 @@ impl Walk<'_> {
                         ExprKind::Float(_) => matches!(expected.as_str(), "f32" | "f64"),
                         _ => false,
                     };
-                    if actual != expected && !literal_fits {
+                    if actual != expected
+                        && !literal_fits
+                        && self.known_class(&actual)
+                        && self.known_class(&expected)
+                    {
                         let ordinal = match index {
                             0 => "1st".into(),
                             1 => "2nd".into(),

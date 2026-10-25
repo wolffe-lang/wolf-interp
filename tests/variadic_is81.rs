@@ -423,3 +423,20 @@ fn a_pattern_binding_shadows_the_variadic_function_value() {
         assert_eq!(obs.verdict, Verdict::Exit(0), "{source}: {obs:?}");
     }
 }
+
+#[test]
+fn aliases_are_not_guessed_to_be_non_c_shapes() {
+    for source in [
+        "type I = i32\nextern \"c\" fn sink(n: I, ...) -> i64\nfn main() -> !int { unsafe { sink(1, 2) }; 0 }",
+        "type I = i32\nextern \"c\" fn sink(n: i32, ...) -> i64\nfn main() -> !int { let n: I = 2; unsafe { sink(1, n) }; 0 }",
+    ] {
+        let obs = attrs::with_build_target("x86_64-unknown-linux-gnu", || {
+            observe(source.as_bytes(), None)
+        });
+        assert_eq!(obs.verdict, Verdict::Unsupported, "{source}: {obs:?}");
+        assert_eq!(
+            obs.reason.as_deref(),
+            Some("a C variadic call into C `sink` (the checked machine has no variadic membrane)")
+        );
+    }
+}
