@@ -57,3 +57,28 @@ No docs/releases/0.2.35.md exists in wolf-lang: preserve that posture.
 
 Public STOPs: no tag/release/merge/AUR push. Per push, read CI id and first
 state once, then hand back for the orchestrator to watch and label.
+
+Release-tier continuation prediction (before corrective changes):
+- Release 40179895640 has six failing OS jobs. The prior nightly at
+  a1a394d9d787c6f7a1735024af3d3f30b532eb9b (40079992456) is green;
+  the pin-bump trunk b684303c nightly 40179765529 repeats the six failures.
+  None is established as a pre-existing 0.1.56 release-tier red.
+- The new a5378e3f os/chdir_relative.lu exposes a pre-existing sandbox
+  spelling fault: the initial cwd uses temp_dir's alias (/var on Darwin,
+  RUNNER~1 on Windows), while chdir canonicalizes it. Canonicalize the
+  observation root once, retaining plain Windows prefixes and cleanup on
+  error. Predict back=true on Darwin and exit(0), reproducible records on
+  Windows. Corpus expectations and mismatch/determinism gates stay intact.
+- Fix and regression tests are committed BEFORE ledger/manual changes.
+- Windows os/ids_read.lu and os/signal_reserved_rows.lu run exit(0), because
+  host unsupported error rows are handled by these programs. Unix refuses
+  them by name; do not call those refusals skips. Add exactly these two
+  Windows ledger rows. Predict Windows totals after the cwd fix: 940 run,
+  870 match, 133 dynamic counterparts, 68 static conservatism, 88 out of
+  scope, the same four standing mismatches. Unix remains 938/868/133/68/90/4.
+- Manual self-replay predicts Windows 176 conservatism entries (88 on each
+  side), Unix 180 (90 each). Document and test exact host-specific console
+  blocks, not wildcard numbers. No new divergence waiver or corpus edit.
+- Local Mac release targets: focused sandbox/row regressions, run_corpus,
+  doc_truth and export, CARGO_INCREMENTAL=0 and -j4 with scripted 8 GiB
+  free+inactive+speculative floor before each heavy job. Windows is CI-only.
