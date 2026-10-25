@@ -82,3 +82,33 @@ Release-tier continuation prediction (before corrective changes):
 - Local Mac release targets: focused sandbox/row regressions, run_corpus,
   doc_truth and export, CARGO_INCREMENTAL=0 and -j4 with scripted 8 GiB
   free+inactive+speculative floor before each heavy job. Windows is CI-only.
+
+Second continuation prediction (before socket-budget repair):
+- Run 40210158390 is red only on macOS shards 1/2/3. Saved failed-log
+  lines 1571-1588 name only net/unix_echo.lu (exit(3), expected exit(0));
+  2202-2212, 3050-3051, 3448 show that row causing doc census 867/5;
+  3841-3844 show embedded fs/socket coherence exit(1), stdout error: io.
+  The 3063.25 seconds at line 3807 belongs to ten PASSING export tests;
+  fs_family fails separately in 0.19 seconds at line 3851, not a timeout.
+- Predict a regression introduced by the previous root canonicalization,
+  NOT the prior non-canonical-root defect or a runner artefact: Darwin's
+  /private prefix adds eight bytes to a temp root already close to the
+  AF_UNIX pathname limit. The local first continuation used a shorter
+  lane-owned TMPDIR, so it missed the runner-sized canonical path.
+- First plant a lane-owned 56-byte canonical TMPDIR, matching the measured
+  Darwin default canonical-temp length, and run the unchanged fs_family
+  socket-coherence test plus a focused embedded corpus echo witness.
+  Predict reproducible pre-fix bind io/exit(3), independent of test speed.
+- Keep canonical cwd identity. Replace the nested wolf-obs/pid-counter-clock
+  path with one compact, fixed 17-byte leaf (w + 64 random bits in hex)
+  directly under temp_dir. Existing safe getrandom supplies the nonce;
+  create_dir exclusively claims it and retries collisions. No weak clock
+  fallback; cleanup records the leaf before later operations can fail.
+  A 56-byte canonical temp + / + 17-byte leaf + / + 28-byte probe = 103
+  bytes, fitting Darwin's pathname payload; the 24-byte corpus name is 99.
+- Add a structural root-budget invariant and focused Unix corpus witness;
+  preserve all existing cwd, containment, corpus/doc and socket expectations.
+  Predict the unchanged rows green under the same long-TMPDIR plant.
+- Validate locally with pinned 1.97.1, -j4, incremental off and scripted
+  8 GiB floor, including all three failing targets. No expectation change,
+  no dispatch by this lane, no tag until the new release tier is green.
