@@ -325,7 +325,8 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // `mem.unsafe.raw.4` (s209), `conc.mm.atomic.order`,
 // `conc.mm.atomic.raw{,.1,.2,.3,.4,.5}`, `conc.mm.fence` and
 // `conc.mm.race.1` (kw11).
-const RATCHET_FLOOR: usize = 313;
+// is81 / a5378e3f: the measured covered set grows 313 -> 375.
+const RATCHET_FLOOR: usize = 375;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's
@@ -544,7 +545,8 @@ const RATCHET_FLOOR: usize = 313;
 // `mem.unsafe.volatile{,.1,.2,.3}` (spec/02, kw07, kw09, s209),
 // `conc.mm.atomic.order`, `conc.mm.atomic.raw{,.1,.2,.3,.4,.5}` and
 // `conc.mm.fence` (spec/03, kw11). No new namespace.
-const ANCHORS_TOTAL: usize = 595;
+// is81 / a5378e3f: complete key sets diffed both ways, none lost.
+const ANCHORS_TOTAL: usize = 705;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -826,9 +828,10 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // counts move by fifty-five.
     // 1042/995 -> 1044/997 at the same pin (is74): row L3 brings a trigger
     // and its twin to `tests/ub` — both counts by two, the corpus unmoved.
-    assert_eq!(summary.pin, "294d626dd596122285d5df954762e3aee3e5db71");
-    assert_eq!(summary.programs, 1044);
-    assert_eq!(summary.records, 997);
+    // is81: 223 corpus programs / 208 entry records added, none lost.
+    assert_eq!(summary.pin, "a5378e3fd5b6347f4a89a7d77dbe43aa576fee76");
+    assert_eq!(summary.programs, 1267);
+    assert_eq!(summary.records, 1205);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 
