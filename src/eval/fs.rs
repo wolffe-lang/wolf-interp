@@ -206,33 +206,32 @@ impl FsTable {
     /// user's own directory, exactly as `wolf run` does.
     fn observation_root(&mut self) -> Result<&Path, Row> {
         if self.root.is_none() {
-            let parent = std::env::temp_dir().join("wolf-obs");
-            // The parent is shared and lives in a world-writable place, so
-            // nothing here may assume anything about it beyond "a directory".
-            std::fs::create_dir_all(&parent).map_err(|_| "io")?;
-            // The LEAF is this observation's alone, and it is claimed with
-            // `create_dir` rather than `create_dir_all`: the non-recursive
-            // call fails if anything already occupies the name, which is what
-            // makes a planted SYMLINK an error instead of a redirection. A
-            // predictable name under a world-writable directory is otherwise
-            // a way to aim every write an observed program makes at a
-            // directory of somebody else's choosing, so the name also carries
-            // a clock reading — the pid and the serial alone are guessable.
+            let parent = std::env::temp_dir();
+            // One fixed-size leaf directly under temp_dir: canonicalizing
+            // Darwin's /var adds /private, and the old nested pid/serial
+            // name exhausted sockaddr_un's 103-byte pathname payload.
+            // With a 56-byte canonical temp directory this 12-byte leaf
+            // leaves room even for the 33-byte full-width-pid coherence probe.
             //
-            // The name stays SHORT on purpose. A unix socket path is capped
-            // near 104 bytes by `sockaddr_un`, and `corpus/net/unix_echo.lu`
-            // binds one under this root through `target/`; macOS's temp
-            // directory alone is about fifty characters, so a chattier name
-            // would push a witness over a limit that reports only as an
-            // opaque bind failure.
-            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-            let mut last = std::io::ErrorKind::Other;
+            // The 60-bit name is real OS entropy, never a clock or a
+            // seeded program's stream. Lowercase base32 preserves all its
+            // bits in twelve bytes, also on case-insensitive filesystems.
+            // create_dir exclusively claims the leaf: a pre-planted file
+            // or symlink is a collision, never a redirection. Record it
+            // before canonicalization/target creation so Drop cleans up
+            // even if either later operation fails.
+            const DIGITS: &[u8; 32] = b"0123456789abcdefghijklmnopqrstuv";
             for _ in 0..32 {
-                let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                let spice = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_or(0, |d| d.subsec_nanos());
-                let root = parent.join(format!("{:x}-{serial:x}-{spice:x}", std::process::id()));
+                let mut random = [0; 8];
+                getrandom::getrandom(&mut random).map_err(|_| "io")?;
+                let mut bits = u64::from_le_bytes(random);
+                let mut leaf = String::with_capacity(12);
+                // Only the low 60 bits are used: twelve base32 digits.
+                for _ in 0..12 {
+                    leaf.push(char::from(DIGITS[(bits & 31) as usize]));
+                    bits >>= 5;
+                }
+                let root = parent.join(leaf);
                 match std::fs::create_dir(&root) {
                     Ok(()) => {
                         // Recorded BEFORE `target/` is made, so a failure
@@ -250,11 +249,11 @@ impl FsTable {
                         std::fs::create_dir(root.join("target")).map_err(|_| "io")?;
                         return Ok(self.root.as_deref().expect("just set"));
                     }
-                    Err(error) => last = error.kind(),
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(_) => return Err("io"),
                 }
             }
             // Every candidate name was taken: the host, not this machine.
-            let _ = last;
             return Err("io");
         }
         Ok(self.root.as_deref().expect("set on a previous call"))
@@ -2416,7 +2415,7 @@ impl Machine {
             return std::env::current_dir().map_err(|_| ());
         }
         // `resolve` joins, and joining an EMPTY relative path appends a
-        // separator — `os_cwd` would answer ".../wolf-obs/1f4-0/" where no
+        // separator — `os_cwd` would answer ".../012345abcdef/" where no
         // host's cwd ever carries a trailing one. Ask for the root itself.
         self.files().observation_root_path().map_err(|_| ())
     }
@@ -3353,6 +3352,26 @@ mod tests {
             root,
             plain_path(std::fs::canonicalize(&root).expect("canonical root")),
             "os_cwd must not expose a temp-directory alias"
+        );
+        let temp = plain_path(std::fs::canonicalize(std::env::temp_dir()).unwrap());
+        assert_eq!(
+            root.parent(),
+            Some(temp.as_path()),
+            "no socket-budget subdirectory"
+        );
+        let leaf = root.file_name().unwrap().to_str().unwrap();
+        assert_eq!(
+            leaf.len(),
+            12,
+            "the observation leaf has a fixed byte budget"
+        );
+        assert!(
+            leaf.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'v').contains(&b))
+        );
+        assert!(
+            56 + 1 + leaf.len() + 1 + "target/is55-probe-4294967295.sock".len() <= 103,
+            "a canonical Darwin temp directory must leave room for a full-width pid probe"
         );
         assert!(resolves_inside(&root, &root), "the cwd must admit itself");
         assert!(

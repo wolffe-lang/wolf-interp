@@ -70,3 +70,24 @@ fn host_rows_are_run_on_windows_and_named_refusals_on_unix() {
         }
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn the_embedded_unix_echo_keeps_its_socket_path_budget() {
+    let file = corpus("net/unix_echo.lu");
+    let source = std::fs::read(&file).unwrap();
+    let (first, observed) = wolf_interp::observe_record(&file, &source, None);
+    let (second, _) = wolf_interp::observe_record(&file, &source, None);
+    assert_eq!(first, second);
+    assert_eq!(first.phase_reached, Phase::Run);
+    assert_eq!(
+        first.verdict,
+        Verdict::Exit(0),
+        "{first:?}: {}",
+        observed.stdout
+    );
+    assert_eq!(
+        observed.stdout,
+        "unix sockets | served_or_named true | echo true | port_is_io true | cleaned true\n"
+    );
+}
