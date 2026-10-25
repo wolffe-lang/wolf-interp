@@ -951,11 +951,17 @@ impl Machine {
     /// Runs the program's `main`, on a stack this machine chose.
     #[cfg(not(target_family = "wasm"))]
     pub fn run(self) -> Run {
+        // Like the parser, carry the observation target onto the stack
+        // thread: the bundle's host-row decisions must not fall back to
+        // the exporter's OS here.
+        let target = crate::attrs::build_target();
         std::thread::scope(|scope| {
             std::thread::Builder::new()
                 .stack_size(Machine::RUN_STACK)
                 .name("wolf-interp-run".to_owned())
-                .spawn_scoped(scope, || self.run_on_this_stack())
+                .spawn_scoped(scope, || {
+                    crate::attrs::with_build_target(target, || self.run_on_this_stack())
+                })
                 .expect("the machine's stack thread must spawn")
                 .join()
                 // The walk never panics; a panic here is an interpreter bug

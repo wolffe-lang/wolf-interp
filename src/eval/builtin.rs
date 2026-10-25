@@ -1113,7 +1113,10 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // has no `unsafe` to make one.
         #[cfg(not(target_family = "wasm"))]
         "os_uid" | "os_euid" | "os_gid" | "os_egid" | "os_groups" => {
-            if cfg!(not(unix)) {
+            // The bundle observes a fixed target, not the exporter's OS.
+            // Neither branch calls the host: select the target's error
+            // row or this machine's refusal before building the record.
+            if crate::attrs::build_target().contains("-windows-") {
                 machine.note(
                     Rule::ErrUnion,
                     span,
@@ -1322,7 +1325,10 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 );
                 return Ok(error_value(name, "invalid"));
             }
-            if cfg!(windows) {
+            // As for process ids, both answers are host-call-free. Honor
+            // the bundle's fixed observation target rather than leaking
+            // the exporter's Windows error-row behavior into its records.
+            if crate::attrs::build_target().contains("-windows-") {
                 machine.note(
                     Rule::ErrUnion,
                     span,
