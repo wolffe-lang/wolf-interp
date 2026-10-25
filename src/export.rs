@@ -87,6 +87,9 @@ pub struct ExportOptions {
 /// bundle would stop being byte-identical across OSes (CI's
 /// `bundle-identical`). Until the 8e36bc1a pin `ffi.lu` gated its asm to
 /// `x86_64` alone, and an aarch64 host did record a different outcome.
+/// The process-id and signal-range builtins also use this target for their
+/// host-error versus interpreter-refusal decision; exporting on Windows
+/// must not turn a Linux reference refusal into a handled host error.
 pub const BUNDLE_TARGET: &str = "x86_64-unknown-linux-gnu";
 
 impl ExportOptions {

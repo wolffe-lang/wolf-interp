@@ -148,7 +148,9 @@ pub fn build_target() -> &'static str {
 /// bundle's one use: its reference outcomes are observed as one target on
 /// every OS, so the bundle stays byte-identical across them
 /// (`export::BUNDLE_TARGET`). The parser carries the setting onto its own
-/// stack thread ([`crate::parse::parse`]).
+/// stack thread ([`crate::parse::parse`]); the evaluator carries it onto
+/// its stack thread too, for the host-call-free process-id and signal-range
+/// error/refusal decisions used by the bundle's reference observations.
 pub fn with_build_target<T>(target: &'static str, f: impl FnOnce() -> T) -> T {
     let saved = BUILD_TARGET.with(|t| t.replace(Some(target)));
     let out = f();

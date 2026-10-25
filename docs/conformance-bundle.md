@@ -69,6 +69,14 @@ prefix. Records are unseeded (`"seeded": false`, the strict-FIFO default
 schedule). Every schedule question the suite asks is closed separately
 by the is07 exploration record.
 
+The reference target is `x86_64-unknown-linux-gnu` on every exporting OS.
+Conditional compilation and the host-call-free process-id and signal-range
+error/refusal decisions use that target, including on the evaluator's
+stack thread. Thus `os/ids_read.lu` and `os/signal_reserved_rows.lu` record
+Unix interpreter refusals in the bundle even on Windows, where an ordinary
+observation handles the host's `unsupported` error row and runs to completion.
+This does not emulate host calls or rewrite observed records after execution.
+
 A consumer compares an implementation against these records with the
 spec/06 deep comparison as the is05 differ does: rung-by-rung
 claims, the conservatism ledger for `unsupported` and accept-set
