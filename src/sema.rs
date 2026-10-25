@@ -9372,7 +9372,7 @@ fn unresolved_expr_type_name<'a>(
 /// `Scope` and takes no argument; a proc handle is `Proc[T]`, `T` the value
 /// its join collects. Their arity is [`handle_arity_check`]'s.
 const PRELUDE_TYPE_NAMES: &[&str] = &[
-    "List", "Map", "Option", "Proc", "Scope", "Self", "Set", "never", "range", "wrapping",
+    "List", "Map", "Option", "Proc", "Scope", "Self", "Set", "VaList", "never", "range", "wrapping",
 ];
 
 /// `[conc.proc.handle]`'s arity, which is the ruling's substance: `Scope`

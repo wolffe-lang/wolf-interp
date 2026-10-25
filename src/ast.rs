@@ -212,6 +212,8 @@ pub struct FnDecl {
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub params: Vec<Param>,
+    /// The unnamed C tail is not a parameter or a function-value arity.
+    pub variadic: Option<Span>,
     pub ret: Option<RetType>,
     /// Absent only under `extern` (`[gram.item.fn]`: "Bodyless form (TERM) only
     /// under `extern`").

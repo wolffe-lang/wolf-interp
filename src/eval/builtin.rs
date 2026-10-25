@@ -42,6 +42,11 @@ fn env_name_valid(name: &str) -> bool {
 /// Ambient single-segment names — the std stub this machine resolves against.
 /// Public because sema's eager raise check must know what resolves.
 pub const AMBIENT_NAMES: &[&str] = &[
+    // [abi.c.variadic.builtins]: resolve, but never execute a C cursor.
+    "va_start",
+    "va_arg",
+    "va_copy",
+    "va_end",
     // Implemented here.
     "print",
     "print_raw",

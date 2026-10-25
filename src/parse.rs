@@ -1242,7 +1242,12 @@ impl<'a> Parser<'a> {
         let generics = self.parse_generics()?;
 
         self.expect(&Tok::LParen, anchor)?;
-        let params = self.with_struct_lit(true, Parser::parse_params)?;
+        let membrane = quals.iter().any(|q| match q {
+            FnQual::Export(_) => true,
+            FnQual::Extern { abi, .. } => abi.as_plain_text().as_deref() == Some("c"),
+            _ => false,
+        });
+        let (params, variadic) = self.with_struct_lit(true, |p| p.parse_params(membrane))?;
         self.expect(&Tok::RParen, anchor)?;
 
         let ret = if self.eat(&Tok::Arrow) {
@@ -1275,22 +1280,48 @@ impl<'a> Parser<'a> {
             name,
             generics,
             params,
+            variadic,
             ret,
             body,
             span: Span::new(start, self.prev_span().end),
         })
     }
 
-    fn parse_params(&mut self) -> PResult<Vec<Param>> {
+    fn parse_params(&mut self, membrane: bool) -> PResult<(Vec<Param>, Option<Span>)> {
         let anchor = "gram.item.fn";
         let mut params = Vec::new();
         if self.at(&Tok::RParen) {
-            return Ok(params);
+            return Ok((params, None));
         }
         loop {
             self.skip_inserted_terms();
             let start = self.span().start;
             let mode = self.parse_param_mode();
+            // The lexer keeps `..` and `.` for range/member syntax. Here
+            // only an adjacent pair is the clause's three-byte ellipsis.
+            if self.at(&Tok::DotDot) {
+                let dots = self.advance();
+                let contiguous = self.at(&Tok::Dot) && self.span().start == dots.end;
+                let span = if contiguous {
+                    Span::new(dots.start, self.advance().end)
+                } else {
+                    dots
+                };
+                if !contiguous
+                    || !membrane
+                    || params.is_empty()
+                    || mode.is_some()
+                    || !self.at(&Tok::RParen)
+                {
+                    return Err(Diag::new(
+                        "E0822",
+                        span,
+                        "abi.c.variadic.syntax",
+                        "`...` belongs after the last named parameter of an `extern \"c\" fn` or `export fn`",
+                    ));
+                }
+                return Ok((params, Some(span)));
+            }
             // `param ::= param_mode? IDENT ':' type | param_mode? 'self' view_set?`
             let kind = if self.at_ctx("self") {
                 self.advance();
@@ -1329,7 +1360,7 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        Ok(params)
+        Ok((params, None))
     }
 
     fn parse_param_mode(&mut self) -> Option<ParamMode> {
