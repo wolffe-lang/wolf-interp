@@ -168,7 +168,10 @@ checker and region checker are the compiler's. Every property they
 prove statically is enforced dynamically here, so an ownership
 violation surfaces as a runtime trap where the compiler would refuse
 the program ([manual](docs/manual/03-phases.md)). Of the 1163 entry
-files in the pinned corpus, 938 reach the `run` rung. The corpus walk
+files in the pinned corpus, 938 reach the `run` rung on Unix and 940
+on Windows. Two programs handle Windows's unsupported host-error rows
+instead of encountering the interpreter's named Unix refusals; the
+[manual census](docs/manual/00-building.md) names both. The corpus walk
 (`lupin corpus`) prints the exact ledger.
 
 C variadic declarations and the `VaList` prelude are recognized. The
