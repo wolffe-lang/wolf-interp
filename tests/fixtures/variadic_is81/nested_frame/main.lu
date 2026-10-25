@@ -1,0 +1,2 @@
+export fn sum(n: i32, ...) { fn nested() { unsafe { let ap = va_start() } } }
+fn main() {}

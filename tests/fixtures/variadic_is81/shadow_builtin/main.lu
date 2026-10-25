@@ -1,0 +1,2 @@
+fn va_copy(x: int) -> int { x }
+fn main() -> !int { va_copy(7) - 7 }

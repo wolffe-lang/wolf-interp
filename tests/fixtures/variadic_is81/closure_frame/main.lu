@@ -1,0 +1,2 @@
+export fn sum(n: i32, ...) { let f = fn() unsafe { va_start() } }
+fn main() {}

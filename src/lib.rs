@@ -56,6 +56,7 @@ pub mod sema;
 pub mod sha256;
 pub mod statics;
 pub mod trap;
+mod variadic;
 
 use std::collections::BTreeMap;
 use std::path::Path;

@@ -1,0 +1,2 @@
+fn consume(ap: VaList[int]) {}
+fn main() {}

@@ -1,0 +1,2 @@
+fn f() { unsafe { let ap = va_start() } }
+fn main() {}

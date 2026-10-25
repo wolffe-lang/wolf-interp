@@ -1,0 +1,2 @@
+export fn f(n: i32, ...) { unsafe { let ap = va_start(); let bp = va_start() } }
+fn main() {}

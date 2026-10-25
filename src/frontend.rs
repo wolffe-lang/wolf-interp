@@ -219,6 +219,9 @@ fn admit_with(program: &sema::Program, statics: Vec<crate::diag::Diag>) -> Optio
     if let Some(reason) = crate::statics::not_static_data(program) {
         return Some(Refusal::Unsupported(reason));
     }
+    if let Some(diag) = crate::variadic::check(program) {
+        return Some(Refusal::Reject(Box::new(diag)));
+    }
     if let Some(diag) = sema::resolve_check(program) {
         return Some(Refusal::Reject(Box::new(diag)));
     }

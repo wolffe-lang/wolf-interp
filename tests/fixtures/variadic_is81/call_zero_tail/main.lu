@@ -1,0 +1,2 @@
+export fn sum(n: i32, ...) -> i64 { 0 }
+fn main() -> !int { sum(1); 0 }

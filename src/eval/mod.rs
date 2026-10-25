@@ -3516,6 +3516,9 @@ impl Machine {
                 decl.name.name
             ));
         }
+        if decl.variadic.is_some() {
+            return unsupported(crate::variadic::call_refusal(decl));
+        }
         let Some(body) = &decl.body else {
             return unsupported(format!(
                 "`{}` has no body (extern or trait signature); the interpreter has no C ABI \
@@ -4396,6 +4399,9 @@ impl Machine {
                 "nested fn `{name}` declares an error row on its return; rows on a nested \
                  return are outside the scoped v1 — lift it to the module (#38)"
             ));
+        }
+        if decl.variadic.is_some() {
+            return unsupported(crate::variadic::call_refusal(decl));
         }
         let Some(body) = &decl.body else {
             return unsupported(format!(
@@ -8265,6 +8271,14 @@ impl Machine {
     }
 
     fn eval_call(&mut self, callee: &Expr, args: &[Arg], span: Span) -> EResult<Value> {
+        // A checked cursor is never materialized, advanced or ended here.
+        // Refuse before interpreting a generic type argument as a value.
+        if let Some(name) = crate::variadic::builtin_name(callee)
+            && !self.local_exists(name)
+            && !self.module_declares(name)
+        {
+            return unsupported(crate::variadic::builtin_refusal(name));
+        }
         // A method call is a call whose callee projects a member out of a
         // *value*. `[gram.item.use]`'s `path` production swallows the dots, so
         // `xs.push` and `geometry.area` arrive in the same shape and are told

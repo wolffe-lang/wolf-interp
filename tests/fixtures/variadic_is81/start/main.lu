@@ -1,0 +1,2 @@
+export fn sum(n: i32, ...) -> i64 { unsafe { let ap = va_start(); va_end(mut ap) }; 0 }
+fn main() -> !int { sum(1, 2); 0 }

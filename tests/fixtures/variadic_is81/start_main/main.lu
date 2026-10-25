@@ -1,0 +1,1 @@
+export fn main(n: i32, ...) -> i64 { unsafe { let ap = va_start(); va_end(mut ap) }; 0 }

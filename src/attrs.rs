@@ -485,6 +485,9 @@ fn judge_extern_abi(abi: &crate::ast::StrLit, out: &mut Vec<Diag>) {
 
 /// E0818: `extern "S"` with any `S` but `"c"` (`[abi.c.seams]`, K7).
 fn judge_abi(decl: &FnDecl, out: &mut Vec<Diag>) {
+    if decl.variadic.is_some() && !crate::variadic::supported_target() {
+        out.push(crate::variadic::target_diag(decl.span));
+    }
     for qual in &decl.quals {
         if let FnQual::Extern { abi, .. } = qual {
             let text = abi.as_plain_text().unwrap_or_default();

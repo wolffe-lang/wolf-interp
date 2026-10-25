@@ -427,6 +427,9 @@ pub fn ambient_dotted(head: &str, tail: &str) -> Option<Value> {
 ///
 /// A trap, or `unsupported` for a stub name with no pinned semantics.
 pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> BResult {
+    if matches!(name, "va_start" | "va_arg" | "va_copy" | "va_end") {
+        return unsupported(crate::variadic::builtin_refusal(name));
+    }
     // `[conc.cancel.c]` / `[conc.ffi.external]`: a C frame is never unwound
     // or interrupted. This machine's C surface is host intrinsics that
     // complete synchronously, so "the next safe point after return" is simply

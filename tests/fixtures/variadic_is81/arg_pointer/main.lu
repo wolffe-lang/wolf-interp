@@ -1,0 +1,2 @@
+fn consume(mut ap: VaList) -> *u8 { unsafe { va_arg[*u8](mut ap) } }
+fn main() {}

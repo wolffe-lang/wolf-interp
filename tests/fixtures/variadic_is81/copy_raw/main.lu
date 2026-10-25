@@ -1,0 +1,3 @@
+import c "stdlib.h"
+fn consume(ap: *VaList) -> VaList { unsafe { va_copy(ap[0]) } }
+fn main() -> !int { unsafe { consume(c.calloc(1, 24) as *VaList); }; 0 }
