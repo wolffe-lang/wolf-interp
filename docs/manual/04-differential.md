@@ -138,7 +138,7 @@ conservatism ledger: 180 entries
   unsupported(counterparty): 90
   unsupported(interp): 90
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin 294d626dd596122285d5df954762e3aee3e5db71 verified (bundle_sha256 …)
+notice: bundle target/bundle at pin a5378e3fd5b6347f4a89a7d77dbe43aa576fee76 verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the
