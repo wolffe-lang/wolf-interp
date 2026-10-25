@@ -56,7 +56,10 @@ An observation's private working directory is canonicalized before its
 first `os_cwd` answer. Changing away and back therefore preserves the
 same spelling on macOS, and Windows's short temporary-directory aliases
 no longer cause a false outside-tree refusal or leak private directory
-names into exported records. Filesystem containment remains unchanged.
+names into exported records. Compact, fixed-length private directory
+names leave room for Unix socket paths under macOS's pathname limit even
+after canonicalization. Exclusive creation and OS entropy keep each
+observation isolated. Filesystem containment remains unchanged.
 
 ### Conformance and archives
 
