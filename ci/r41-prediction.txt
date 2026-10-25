@@ -121,3 +121,13 @@ w + thirteen lowercase base32 digits encoding all 64 random bits. This
 also fits a ten-decimal-digit pid's 31-byte probe: 56+1+14+1+31 = 103.
 The corpus socket is 56+1+14+1+24 = 96 bytes. No PID or serial contributes
 to the root length; no test socket name or expectation needs shortening.
+
+Measured suffix correction before the fix: the full-width-pid invariant
+caught my hand-counted suffix lengths. The actual byte lengths are 26
+(corpus echo), 30 (the CI run's seven-digit probe), and 33 (full u32 pid),
+not 24/28/31. Use TWELVE lowercase base32 digits (60 OS-random bits), no
+extra prefix, directly under temp_dir. This preserves case-insensitive
+uniqueness while fitting the measured complete budget:
+56+1+12+1+33 = 103, and the corpus socket is 56+1+12+1+26 = 96.
+The 64-bit OS read supplies the low 60 bits; the top four are deliberately
+unused. Exclusive creation/retry still owns the leaf; no clock fallback.
