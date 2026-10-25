@@ -456,7 +456,7 @@ fn local_prelude_shadows_use_the_pinned_metadata_and_honor_allow() {
     assert_eq!(shadows.len(), 1, "{shadows:?}");
     let at = std::str::from_utf8(source)
         .unwrap()
-        .find("let clock_ms = 5")
+        .rfind("let clock_ms = 5")
         .unwrap()
         + 4;
     assert_eq!(shadows[0].span, [at as u64, at as u64 + 8]);
