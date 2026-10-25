@@ -1,5 +1,80 @@
 # Changelog
 
+## 0.1.57 — 2026-10-25
+
+C variadic declarations and the `VaList` prelude are now recognized.
+The specification and corpus pin moves from `294d626` to
+`a5378e3fd5b6347f4a89a7d77dbe43aa576fee76`, including the SysV C variadic
+clause. The interpreter parses and resolves a final C ellipsis, checks
+its fixed prefix and argument modes, and knows `VaList`'s C layout
+(24 bytes, alignment 8, fields at offsets 0, 4, 8 and 16). Malformed
+ellipsis positions report E0822. Calls in either direction and the four
+cursor builtins (`va_start`, `va_arg`, `va_copy`, `va_end`) are refused
+by name, with the compiler's checked-machine primary messages: lupin
+never executes a C variadic frame. Local or imported declarations can
+shadow the new names; local prelude shadows now produce the pinned
+W0304 warning, with suppression honored. Unknown aliases remain
+conservative rather than becoming guessed type errors.
+
+This release pairs with wolf 0.2.36. The 59 intervening interpreter
+commits include the mirrors below and their measured corpus and bundle
+updates. The new spec pin is the vendored wolf revision, not this
+interpreter's source commit. In particular, the three old scalar region
+stand-ins now contain the actual List/str programs and trap
+`region-fault`, resolving the stale-snapshot release debt (#280).
+
+### Copies, rows and process errors
+
+The 0.2.35 and s260 mirror handles a member read or method call on an
+unhandled row as E0409, and resolves a declared return mark before a
+module function of the same name. List `reserve` and `reset` retain the
+buffer's birth region; receiver writeback includes reserved capacity,
+while ordinary value equality ignores allocation metadata.
+
+A materializing copy at a lexical outer-region store is retained and
+charged to the destination region, including map keys. The six
+outer-write/copy rows now agree with the compiler (#289). This does not
+materialize through an ordinary mut parameter outside a lexical region
+boundary: the five kept-argument negative controls still trap. The
+separate List-element escape limitation remains (#232).
+
+A short or failed filesystem copy write preserves its original errno
+and rewinds the source by the unwritten shortfall, so a retry does not
+lose bytes. Spawn and failed exec preserve the host errno; exec rollback
+preserves even closed standard streams. Unix spawning no longer lets a
+C library run a headerless executable under a shell: executable unknown
+headers return `io`/ENOEXEC, while shebang, ELF and recognized Mach-O
+prefixes reach the host loader. That prefix guard intentionally refuses
+other binfmt_misc formats. Filesystem operations still refuse paths
+outside the served tree; this release does not broaden that domain.
+
+Successful `os_cwd` strings are charged to their ambient region, and an
+escape traps instead of retaining uncharged storage. This repairs that
+part of #278, not its remaining accounting work.
+
+### Conformance and archives
+
+The complete anchor key set grows from 595 to 705: 110 added, none lost,
+with both directions checked. The vendored corpus has 1,225 files,
+1,163 entries and 62 members. Its measured ledger has 938 run entries,
+868 matches, 133 dynamic counterparts, 68 static-conservatism entries,
+90 unsupported entries and the same four standing mismatches. These
+categories overlap; they are not a partition to add together. No new
+mismatch waiver is introduced. Eleven newly vendored arithmetic-fault
+snapshots are added without changing or dropping a prior one.
+
+The conformance bundle has 705 anchors, 375 covered, 1,267 programs and
+1,205 records. Manual transcripts and the README reflect the measured
+pin. The cwd accounting repair also removes the old temporary-path
+export drift without normalizing it away. The exact nonzero comparator
+limitation remains tracked separately (#117).
+
+Archive targets are unchanged: GNU/Linux x86-64 and aarch64, macOS
+aarch64, Windows x86-64 and static musl Linux x86-64, plus the bare
+`lupin.exe` (six assets). Release builds must print the bare tag version;
+off-tag builds retain `+dev.<commit>`. The archive ships no `std/`;
+beside wolf it can use the standard library bundled in wolf's archive.
+
 ## 0.1.56 — 2026-10-23
 
 `os_random` now reads real OS entropy on every native host, including a
