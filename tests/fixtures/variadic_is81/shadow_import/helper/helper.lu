@@ -1,0 +1,2 @@
+//! member: true
+pub fn va_copy(n: int) -> int { n }

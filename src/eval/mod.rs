@@ -8276,6 +8276,12 @@ impl Machine {
         if let Some(name) = crate::variadic::builtin_name(callee)
             && !self.local_exists(name)
             && !self.module_declares(name)
+            && !self
+                .shared
+                .program
+                .modules
+                .get(&self.current_module())
+                .is_some_and(|module| module.uses.iter().any(|bound| bound == name))
         {
             return unsupported(crate::variadic::builtin_refusal(name));
         }

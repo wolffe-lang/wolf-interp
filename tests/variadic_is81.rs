@@ -479,3 +479,11 @@ fn local_prelude_shadows_use_the_pinned_metadata_and_honor_allow() {
         );
     }
 }
+
+#[test]
+fn an_imported_declaration_shadows_the_cursor_builtin() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/variadic_is81/shadow_import/main.lu");
+    let (record, _) = wolf_interp::observe_record(&path, &std::fs::read(&path).unwrap(), None);
+    assert_eq!(record.verdict, Verdict::Exit(0), "{record:?}");
+}

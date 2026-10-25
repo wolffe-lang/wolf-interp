@@ -1,0 +1,2 @@
+use helper.va_copy
+fn main() -> !int { va_copy(0) }

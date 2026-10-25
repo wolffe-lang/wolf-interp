@@ -350,6 +350,7 @@ impl Walk<'_> {
         if let Some(name) = builtin_name(callee)
             && self.local(name).is_none()
             && !self.module.items.contains_key(name)
+            && !self.module.uses.iter().any(|bound| bound == name)
         {
             if !supported_target() {
                 return Some(target_diag(expr.span));
