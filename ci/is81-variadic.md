@@ -52,3 +52,13 @@ checked diagnostic records, triage, CI plant and final run, audit last line.
 - [ ] README read/current or refreshed, focused tests and applicable gates.
 - [ ] PR five sections, commit bullets, tests, footprint, final run and audit.
 - [ ] Orchestrator watches CI, merges and closes #300 (and #280 as appropriate).
+
+### Re-vendor prerequisite prediction (before its implementation)
+
+The exhaustive contained suite exposed `memory/region_os_cwd_charged.lu`
+printing `charged false | reclaimed true | got true`; #278 already names
+that exact gap. **R-is81-5 recommendation:** use the existing `produced_str`
+materialization helper for both `os_cwd` arms, rather than waive the row.
+Prediction: charged becomes true and `region_os_cwd_return.lu` gains the
+existing dynamic `trap(region-fault)` counterpart of E1010. No other #278
+item is claimed fixed; it remains open.
