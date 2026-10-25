@@ -202,6 +202,18 @@ fn layout_named(
             fields: Vec::new(),
         });
     }
+    if name == "VaList" && !module.items.contains_key(name) {
+        return Ok(Layout {
+            size: 24,
+            align: 8,
+            fields: vec![
+                ("gp_offset".into(), 0),
+                ("fp_offset".into(), 4),
+                ("overflow_arg_area".into(), 8),
+                ("reg_save_area".into(), 16),
+            ],
+        });
+    }
     if name == "str" {
         return Err(NoLayout::Native);
     }
