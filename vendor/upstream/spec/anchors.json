@@ -16,7 +16,6 @@
     "abi.c.variadic.arg": "04-abi.md",
     "abi.c.variadic.builtins": "04-abi.md",
     "abi.c.variadic.call": "04-abi.md",
-    "abi.c.variadic.checked": "04-abi.md",
     "abi.c.variadic.list": "04-abi.md",
     "abi.c.variadic.start": "04-abi.md",
     "abi.c.variadic.syntax": "04-abi.md",
