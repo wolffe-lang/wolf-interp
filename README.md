@@ -167,9 +167,13 @@ static analysis needed to run programs. The type checker, borrow
 checker and region checker are the compiler's. Every property they
 prove statically is enforced dynamically here, so an ownership
 violation surfaces as a runtime trap where the compiler would refuse
-the program ([manual](docs/manual/03-phases.md)). Of the 955 entry
-files in the pinned corpus, 763 reach the `run` rung. The corpus walk
+the program ([manual](docs/manual/03-phases.md)). Of the 1163 entry
+files in the pinned corpus, 938 reach the `run` rung. The corpus walk
 (`lupin corpus`) prints the exact ledger.
+
+C variadic declarations and the `VaList` prelude are recognized. The
+interpreter never executes a C variadic frame: calls and cursor builtins
+are `unsupported` by name.
 
 ## Documentation
 
