@@ -24,6 +24,34 @@ AAPCS64, win64, Apple arm64 deltas).
   a non-null raw pointer wrapper, or `shared T` occupies exactly the
   payload's size — the null/absent case is the niche. This list may
   grow; it may not shrink.
+- `[abi.native.enum]` **An enum value is its variant tag, then its
+  payload slots** (s27, s257): the tag is one word (the variant's
+  declaration index; an error row's tag is the module-interned tag id,
+  `[abi.err.row]`), and the payloads of every variant unify BY
+  POSITION into slots — slot `i` is shared by every variant's `i`-th
+  payload. A slot whose payloads all have one type is that type. A
+  slot whose payloads disagree (`enum V { Int(int), Text(str) }`; a
+  row `{Parse(int), Io(str)}`) is a **union slot**: its storage is the
+  largest member's size rounded up to the strictest member's
+  alignment, every member sits at the slot's start, and each variant
+  writes and reads its own member through a typed view at that offset
+  — the write and the read are both the variant's, licensed by the tag
+  the program tested, so no slot is ever read as a member the tag
+  does not name. The bytes a member does not cover are unspecified
+  and never read; a variant that does not fill a slot leaves the zero
+  of the slot's first member there. A payload-free enum is the tag
+  alone. The union is per slot, never one blob for the whole payload:
+  a slot every variant agrees on keeps its plain type and layout.
+  Everything here is `wolf-abi-0` internal (`[abi.native.layout]`,
+  `[abi.native.unstable]`): an enum never crosses a C membrane by
+  value (`[abi.c.types]`), and the checked machine and the reference
+  interpreter keep the variant and its typed payloads and have no
+  slot to read through. Witnesses: `typecheck/enum_union_two.lu`,
+  `typecheck/enum_union_three.lu`, `typecheck/enum_union_tree.lu`
+  (the JSON-shaped value tree), `rows/row_union_payloads.lu`,
+  `memory/enum_union_take.lu`, `memory/enum_union_copy.lu`,
+  `memory/enum_union_str_escape.lu` (a `str` member is still a
+  region-tracked pointer: E1004 at the store).
 - `[abi.native.call]` Calls may use multiple return registers, pass
   small aggregates in registers, and omit shadow space and frame
   pointers where the target permits. Callee/caller-save split is
@@ -111,6 +139,33 @@ AAPCS64, win64, Apple arm64 deltas).
   same word whether a named function, a capture-free closure or a
   capturing one stands behind it.) Same stability status as everything
   in this section: `[abi.native.unstable]` governs.
+- `[abi.native.closure.object]` **A static callable record names its
+  entry by symbol, and no object boundary separates them.** The slot of
+  a static one-slot record — a capture-free closure's entry, the `.fv`
+  shim behind a named function read as a value, a trait table's shim
+  (`[abi.native.dyn]`) — is a link-time constant exactly as a function's
+  address is: an object that builds the record where the slot's
+  function lowered into another object imports that function's mangled
+  symbol, on both compiling tiers and under every partition (the native
+  tier's per-module objects, the release tier's clusters, and
+  `WOLF_MIDEND=0`). The release tier's mid-end keeps the invariant from
+  its side: a function a record names is never merged into another body
+  by deduplication (its identity is pinned as an address-taken
+  function's is), and the cross-cluster import and inline of a record's
+  maker into another cluster is permitted — the record is then built in
+  the importing object and its slot resolved by symbol. A capture-free
+  closure made in any module and called from any other, a closure
+  captured by a closure, a named function of one file of a module read
+  as a value in another file of it, and a one-line maker inlined into
+  the entry therefore build and run on the release tier with the native
+  tier's semantics. (Added 2026-10-20, s251 — wolf-lang#806, #807:
+  until then the emitters resolved a record's slot only inside the
+  object's own subset and refused `a vtable slot @f outside this
+  object's subset` when dedup had merged the entry away, when the
+  inliner had moved the record's construction across a cluster, or when
+  the native tier's partition had filed the synthetic `.fv` shim under
+  the root module's object.) Same stability status as everything in
+  this section: `[abi.native.unstable]` governs.
 
 ## §2 C membranes `[abi.c]`
 
@@ -148,13 +203,16 @@ AAPCS64, win64, Apple arm64 deltas).
   function wolf calls: a call is a call into imported C, the raw-tier
   operation E1301 gates to `unsafe` (as `c.malloc` is,
   `[mem.unsafe.scope]`), and lowers to the plain symbol `f` under the C
-  plan, with exactly the declared prototype (a variadic C function
-  declared without its varargs is the author's error, as in C;
-  wolf-lang#515). A narrow integer or `bool` argument is widened to 32
+  plan, with exactly the declared prototype; a variadic prototype
+  ends in `...` by `[abi.c.variadic]`. Declaring a variadic C function
+  without its varargs is the author's error, as in C. A narrow integer or `bool` argument is widened to 32
   bits by the caller according to its signedness, the rule C callers
   keep and clang's callees and the Apple arm64 ABI rely on. The
   program's link supplies `f` (the C library, or an object linked
-  beside the wolf objects). The checked machine and the reference
+  beside the wolf objects). The declaration carries the `ffi`
+  capability, as `import c` does (`[pkg.caps]`, ruling #55): a package
+  that declares one without `capabilities: [ffi]` is E1504, naming the
+  declaration and its first call. The checked machine and the reference
   interpreter have no C membrane and refuse the call by name. `import
   c` resolves the modelled five (`malloc`, `calloc`, `free`, `memset`,
   `memcpy`); its other names wait for the header importer (the second
@@ -274,6 +332,128 @@ AAPCS64, win64, Apple arm64 deltas).
   boundary **aborts the process** (after the fault report). There is no
   `c-unwind` at v1; C frames are never unwound (`[conc.cancel.c]`).
 
+### C variable arguments `[abi.c.variadic]`
+
+This clause follows the System V AMD64 psABI 1.0, §3.2.3 (classification
+and parameter passing) and §3.5.7 "Variable Argument Lists", figures
+3.33–3.34, and C17 §7.16 (list lifetime and access). Only hand-declared
+C membranes are extended: `import c` still admits only its modelled set
+(`[abi.c.import]`), even when a header records a variadic prototype.
+
+- `[abi.c.variadic.syntax]` A C membrane's parameter list may end in
+  `, ...`, after at least one fixed parameter: `extern "c" fn f(n: i32,
+  ...) -> i64` declares one; `export fn f(n: i32, ...) -> i64 { ... }`
+  defines one. An `extern "c" fn` with a body is likewise a definition.
+  The ellipsis has no name, type or passing mode. An ellipsis anywhere
+  else in a parameter list, or on an ordinary wolf function, is E0822.
+  A variadic function is callable by name only, never a function value
+  (E0823): wolf function values carry fixed arity, not this C contract.
+- `[abi.c.variadic.call]` A call supplies every fixed argument, checked
+  against its declared type, followed by zero or more unnamed arguments.
+  The compiler silently applies C's default argument promotions only to
+  the unnamed arguments: `i8`, `i16`, `u8`, `u16`, `byte` and `bool` to
+  `i32`, and `f32` to `f64`; the remaining sized integers, `int`, `uint`,
+  `f64` and raw pointers retain their type. Narrow signed values are
+  sign-extended; unsigned values and `bool` are zero-extended. `str`,
+  containers, function values and other non-C shapes are refused by name.
+  A promoted argument is read using its promoted type, not its source
+  type. Fixed arguments do not receive default promotions.
+- `[abi.c.variadic.sysv]` On x86-64 Linux and `x86_64-unknown-none`,
+  the fixed and promoted arguments
+  share the SysV register budgets, in source order: six INTEGER registers
+  (`rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9`) and eight SSE registers
+  (`xmm0`–`xmm7`). Exhaustion is independent by class; overflow arguments
+  occupy aligned stack slots in source order. Aggregates keep §3.2.3's
+  classification and whole-aggregate register rollback. A hidden C
+  result pointer consumes a GP register before the named arguments.
+  Immediately before the call, `%al` is the number of vector argument
+  registers used, fixed arguments included, in `0..=8`. The caller's
+  stack is 16-byte aligned at the call instruction. Every compiling
+  tier keeps the same contract.
+  The native implementation may use a C-entry trampoline and a fixed-arity
+  private core. The trampoline saves all six GP and eight SSE argument
+  registers before using scratch registers (`rax`, `r10`, `r11`); the
+  core receives the fixed arguments unchanged plus a final hidden pointer
+  to the initialized list. The pointer uses the next GP slot, or an
+  8-byte stack slot after the named stack arguments when GP is exhausted.
+  Relative to the trampoline's adjusted `rsp`, named stack arguments for
+  the core occupy the initial bytes; the hidden pointer's stack slot, if
+  any, follows; the 24-byte list is next at 8-byte alignment; the 176-byte
+  save area follows at 16-byte alignment. The frame allocation is the
+  smallest size covering those areas that is 8 modulo 16: the entry's
+  return address makes the original `rsp` 8 modulo 16, so the core call
+  is aligned. The top eight padding bytes hold the caller's saved frame
+  pointer; the trampoline establishes and restores its own frame chain.
+  The overflow pointer addresses the original incoming stack
+  after the named stack arguments, not the core's copied argument area.
+  A tail-call shim for an outgoing variadic call sets `%al` immediately
+  before jumping to the C symbol, preserving all argument registers and
+  the caller's stack layout. These private shims are not extra C ABI
+  parameters; the release emitter may use its native variadic operations
+  instead, but must expose the same cursor layout and argument sequence.
+- `[abi.c.variadic.list]` `VaList` is a builtin C-layout record, size 24,
+  alignment 8: `gp_offset: u32` at byte 0, `fp_offset: u32` at byte 4,
+  `overflow_arg_area: *u8` at byte 8 and `reg_save_area: *u8` at byte 16.
+  C's `va_list` is an array of one such record; in a C parameter it
+  decays to a pointer. Spell that parameter **`*VaList`** in a wolf
+  import or export, for example `extern "c" fn vprintf(fmt: *u8,
+  ap: *VaList) -> i32`. Passing a `VaList` record by value is not an
+  implicit array decay and is not the C `va_list` parameter ABI.
+- `[abi.c.variadic.builtins]` The raw-tier builtins require `unsafe`:
+  `va_start() -> VaList`, `va_arg[T](mut ap: VaList) -> T`,
+  `va_copy(ap: VaList) -> VaList`, and `va_end(mut ap: VaList) -> ()`.
+  `va_start` obtains this invocation's unnamed arguments and is legal
+  only in a variadic definition (E0824). A definition spells it once;
+  a second occurrence is E0825: use `va_copy` for another cursor.
+  `va_arg`, `va_copy` and `va_end` also work in nonvariadic consumers
+  of a live list. In particular a `vfmt` receiving `*VaList` can copy
+  the pointed-to record, consume its copy, and end it without advancing
+  the caller's cursor. A copy owns its cursor state, not the argument
+  storage. Neither the original nor a copy may outlive the variadic
+  invocation whose register and stack storage it points into.
+- `[abi.c.variadic.start]` A variadic definition saves incoming argument
+  registers before its body can clobber them. The register save area is
+  176 bytes: six 8-byte GP slots at offsets 0–40 and eight 16-byte SSE
+  slots at offsets 48–160. Nonvariadic definitions do not allocate this
+  area. `va_start` initializes `gp_offset` to the named GP bytes consumed
+  (at most 48), `fp_offset` to 48 plus the named SSE slots consumed
+  (at most 176), the overflow pointer to the first unnamed stack slot,
+  and the save pointer to that invocation's save area. Inlining must
+  not move this prologue or `va_start` into a caller's frame.
+- `[abi.c.variadic.arg]` `va_arg[T]` classifies `T` as §3.2.3 does. If
+  all required GP and SSE slots remain, it loads the value from their
+  save slots (reassembling an aggregate when needed), then advances the
+  GP cursor by 8 per GP slot and the FP cursor by 16 per SSE slot.
+  Otherwise it reads the whole value from the overflow area, aligned
+  upwards to the type's alignment, then advances by its size rounded
+  up to 8. This does not consume any remaining register slots.
+  `va_copy` copies all four fields. `va_end` ends that cursor's lifetime;
+  it need not release storage. Every start or copy must have a matching
+  end before return. Access after end, access past the supplied argument
+  count, or access with a type incompatible with the promoted argument
+  is undefined, with C17 §7.16.1.1's signed/unsigned representability
+  and void-pointer/character-pointer exceptions. The compiler rejects
+  `va_arg` of a type that cannot survive default promotions by name.
+- `[abi.c.variadic.targets]` This support is target-specific: Linux
+  x86-64 and `x86_64-unknown-none`. A variadic declaration, definition,
+  call or list builtin on any other target is
+  E0826, naming the target; no other target borrows the SysV layout.
+
+  | target | variadic C membrane |
+  |---|---|
+  | x86-64 Linux (SysV AMD64) | supported, both directions |
+  | aarch64 Linux (AAPCS64) | unsupported, E0826; distinct list and save areas |
+  | aarch64 macOS (Apple arm64) | unsupported, E0826; unnamed arguments use the stack |
+  | x86-64 Windows (MSVC x64) | unsupported, E0826; distinct register and shadow-space rules |
+  | x86-64 freestanding (`x86_64-unknown-none`) | supported; wolf floating values remain refused; vector saves only under the incoming `%al` guard |
+  | x86-64 FreeBSD and every other target | unsupported, E0826 |
+
+- `[abi.c.variadic.checked]` The checked machine has no C membrane:
+  a variadic call into C is `unsupported`, naming that call; a call from
+  wolf to a variadic wolf definition is likewise `unsupported`, naming
+  the definition. The list builtins are unsupported there by name,
+  rather than interpreted as ordinary fixed-arity calls.
+
 ## §3 Callback and pointer rules `[abi.callback]`
 
 - `[abi.callback.reentry]` A wolf function passed to C as a callback
@@ -294,9 +474,11 @@ AAPCS64, win64, Apple arm64 deltas).
   else via sret-style memory. Observable contract only: callers branch
   on the discriminant; there is no unwinding, no landing pads, no
   side-channel (errno-shaped) state — ever.
-- `[abi.err.row]` Error rows lower to a tag + payload union whose layout
-  is `wolf-abi-0` internal (rows never cross C membranes; an `export`ed
-  function returning `!T` is E1201 with a fix-it to flatten).
+- `[abi.err.row]` Error rows lower to a tag + payload slots whose
+  layout is `wolf-abi-0` internal — `[abi.native.enum]`'s slots, a
+  union slot where the tags' payloads disagree (rows never cross C
+  membranes; an `export`ed function returning `!T` is E1201 with a
+  fix-it to flatten).
 - `[abi.err.trace]` Debug builds accrete error return traces at each `?`
   propagation and `else` observation point, into trace storage disjoint
   from the value path. Normative: debug and release differ **only in
@@ -352,8 +534,11 @@ AAPCS64, win64, Apple arm64 deltas).
   program's own `extern "c"` declarations; (d) for a program that
   allocates, the allocator pair `wolf_alloc(size: i64, align: i64) ->
   *u8` and `wolf_free(p: *u8, size: i64, align: i64)` (K8(b) = B),
-  which only the freestanding runtime calls (`[abi.target.none.alloc]`).
-  The program supplies (a), (b) and (d), in wolf (`export fn`) or
+  which only the freestanding runtime calls (`[abi.target.none.alloc]`);
+  (e) the freestanding runtime's ambient pair, `wolf_rt_ambient_get()
+  -> *u8` and `wolf_rt_ambient_set(p: *u8)`, which the runtime defines
+  and a program that switches threads calls
+  (`[abi.target.none.ambient]`). The program supplies (a), (b) and (d), in wolf (`export fn`) or
   assembly; the freestanding runtime defines (b) as weak symbols, so a
   program that defines its own wins at the link. On a hosted target
   `wolf_trap` is the runtime's own report-and-exit: a hosted program
@@ -383,9 +568,10 @@ AAPCS64, win64, Apple arm64 deltas).
   never with null — a region's chunks and header when the region is
   freed, an interpolation's build buffer when it finishes. A block
   allocated outside every `region` (the process root) is never freed.
-  The runtime keeps one ambient-region slot and takes no lock: the
-  target has no threads, and a program that runs wolf code on several
-  CPUs must not allocate from two at once. A fault inside the runtime (a
+  The runtime keeps one ambient-region slot, the running thread of
+  control's (`[abi.target.none.ambient]`), and takes no lock: a program
+  that runs wolf code on several CPUs must not allocate from two at
+  once. A fault inside the runtime (a
   breached budget, a negative size) reaches `wolf_trap` with its kind
   and no site, `(null, 0, 0, 0)`. Still refused by name, as constructs
   the freestanding runtime does not carry: `Pool`, `freeze`, a boxed
@@ -397,20 +583,70 @@ AAPCS64, win64, Apple arm64 deltas).
   report through the hosted runtime and through this one over a bump
   allocator written in wolf, linked `-nostdlib`, and compares the
   bytes.
+- `[abi.target.none.ambient]` The ambient region (`[mem.region.create.3]`)
+  belongs to a thread of control. The language has no threads on the
+  freestanding target, but a program may have its own (a kernel's
+  scheduler switching stacks, by a timer or by a yield), and a switch
+  that leaves a `region` open must carry that thread's ambient region
+  with it, or the next thread's allocations land in a region it never
+  entered, whose exit frees them under it. The freestanding runtime
+  keeps the running thread's ambient region in one word and defines
+  two functions over it, with the C convention: `wolf_rt_ambient_get()
+  -> *u8` returns it (null is the process root), and
+  `wolf_rt_ambient_set(p: *u8)` makes `p` the running thread's. A
+  program that switches threads calls `get` for the outgoing thread
+  and keeps the value in that thread's record, and calls `set` with
+  the incoming thread's saved value, or with null for a thread that
+  has not run yet, before that thread runs again. Passing `set`
+  anything else is undefined. The value is opaque: the program
+  stores it and gives it back, and reads nothing through it. Both
+  functions read or write one word and never call a hook, so a switch
+  may call them with interrupts off. The runtime's other state is a
+  region's own, which belongs to the thread inside it, or a counter
+  moved by one atomic read-modify-write. So a switch may land anywhere
+  inside a runtime call on one CPU. A program that never switches
+  threads inside a `region` need not call them, and its object is the
+  same as before. In a package that lists assembly, the pair is a hook
+  to the roster (`[abi.asm.roster]`), never E1306. A call to either
+  links the runtime archive as an allocating construct does
+  (`[abi.target.none.alloc]`). They are freestanding only: the hosted
+  runtime keeps the slot per thread itself and defines neither.
+  Witness: `crates/wolf_driver/tests/freestanding_threads.rs`. It
+  switches two threads of control between two stacks in one process,
+  each inside its own `region` across the switch, on both tiers. With
+  the pair, the List lands in its own thread's region. Without it
+  (the control), the List lands in the other thread's.
 - `[abi.target.none.codegen]` Code generated for `x86_64-unknown-none`
-  uses no red zone, no x87/MMX/SSE/AVX register and no stack protector,
+  uses no red zone, no x87/MMX/SSE/AVX register (apart from the narrowly
+  guarded C variadic entry saves below) and no stack protector,
   keeps frame pointers, and is position-independent under the small
   code model (K10(a) = A: it links in the -2 GiB higher half and loads
   anywhere). The release tier emits the triple
   `x86_64-unknown-none-elf`, and `noredzone`, `"frame-pointer"="all"`
   and `"target-features"="-mmx,-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2,+soft-float"`
-  on every function; the native tier's frames never use the red zone
+  on every nonvariadic function; the native tier's frames never use the red zone
   and its integer code uses no vector register (proven by disassembly
   on every object the gate builds). A floating-point value of any type
   is refused by name on this target (K10(b) = A). Witness for the whole
   section: `crates/wolf_driver/tests/freestanding_target.rs`, which
   links both tiers' objects with an assembly boot stub and trap hook,
   no libc and no runtime, and runs them.
+  A C variadic definition is the one vector-save exception: its entry
+  may save `xmm0`–`xmm7` only inside a block guarded by the incoming
+  `%al` (`test %al,%al; je` skips the whole save block). A plain
+  register-to-register move may preserve that incoming low byte in
+  another register; the guard may test that proven copy, but no load,
+  arithmetic or intervening overwrite may establish its provenance.
+  No other part
+  of the freestanding object may use SSE. A C caller passing vector
+  arguments has already enabled SSE; a caller passing none sets `%al`
+  to zero, and the shim executes no SSE instruction. Wolf's ordinary
+  floating-value ban remains, so freestanding wolf callers always set
+  `%al` to zero. The release tier permits this entry block through
+  per-function attributes only on variadic definitions, never relaxing
+  a nonvariadic function's contract. Object disassembly gates both the
+  guard and the absence of SSE elsewhere; the integer-only muzzle
+  acceptance runs on this real target, without libc or a hosted runtime.
 
 ## §6 Assembly `[abi.asm]`
 
@@ -463,7 +699,9 @@ AAPCS64, win64, Apple arm64 deltas).
   noreturn)` are reserved for KWC kw13 (LLVM inline assembly on the
   release tier, outlined to a generated assembly file on the native tier,
   which has none). **Not yet implemented**: until then every machine
-  answers an `asm` block `unsupported` by name.
+  answers an `asm` block `unsupported` by name, so a block reaches no
+  host and charges no capability yet (`[pkg.caps]`; its charge is
+  kw13's to land with it).
 
 ## §7 Linker control `[abi.link]`
 
@@ -492,7 +730,8 @@ AAPCS64, win64, Apple arm64 deltas).
   by a linker script (`__kernel_end`), an assembly label, or the C
   library. Its value is the symbol's **address**, as a `*T`: naming it
   is free and safe, and using the pointer is raw-tier like any `*T`
-  (`[mem.unsafe.raw.1]`). A type that is not a raw pointer, an
+  (`[mem.unsafe.raw.1]`). Like a bodyless `extern "c" fn` it carries the
+  `ffi` capability (`[pkg.caps]`). A type that is not a raw pointer, an
   initializer, or the form anywhere but a module's top level is
   **E0821**. The checked machine and lupin model no link: a program that
   names one is `unsupported` with the construct `the link-time symbol
@@ -535,7 +774,9 @@ AAPCS64, win64, Apple arm64 deltas).
   `rip`; when `h` returns, the trampoline reloads the registers from
   the frame, drops the vector and the error code and returns with
   `iretq` (SDM vol. 3A §6.14.2–§6.14.3, APM vol. 2 §8.9). No x87, SSE or
-  AVX state is saved, because the freestanding target generates none,
+  AVX state is saved: ordinary freestanding code generates none, and
+  a C variadic entry's optional guarded XMM saves only read incoming
+  vector state (`[abi.target.none.codegen]`),
   and an interrupt taken in kernel code overwrites nothing live below
   %rsp, because it keeps no red zone (`[abi.target.none.codegen]`).
   The interrupt descriptor table is data the program builds: its

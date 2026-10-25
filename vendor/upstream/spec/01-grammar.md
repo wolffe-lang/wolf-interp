@@ -262,6 +262,16 @@ Exceptions (grammar-level):
   is retired.)
 - A terminator may be omitted before a closing `}` (Go's rule 2): the
   final statement of a single-line block needs no `;`.
+- **A `{` on its own line after an `if`, `while`, `for` or `loop`
+  header is E0201, by design** (s252, wolf-lang#822, yew's fuzz fork):
+  the header's last token took the terminator, and a `{` that begins a
+  line begins a block statement, so the lookahead `else` has is not
+  extended to `{` — the formatter's one shape is `[gram.fmt.brace]`. A
+  header that runs over several lines breaks after an operator (`if a
+  &&` / `b {`). E0201's report there says why, labels the brace, and
+  offers the machine-applicable edit that joins the brace to the
+  header's line (none when a comment lies between). Witness
+  `corpus/grammar/if_brace_next_line.lu`.
 
 Counter-example (does not parse; diagnostic points at the break):
 
@@ -318,7 +328,7 @@ fn_qual   ::= 'comptime' | 'extern' STRING | 'export'
 generics  ::= '[' generic_param (',' generic_param)* ','? ']'
 generic_param ::= IDENT (':' bound)? | IDENT ':' 'type'
 bound     ::= path ('+' path)*
-params    ::= param (',' param)* ','?
+params    ::= param (',' param)* (',' '...' | ','?)
 param     ::= param_mode? IDENT ':' type | param_mode? 'self' view_set?
 param_mode ::= 'mut' | 'take'
 view_set  ::= '.' '{' IDENT (',' IDENT)* '}'
@@ -326,6 +336,9 @@ fn_ret    ::= '->' ret_type
 ret_type  ::= type ('!' (error_row | path))?   /* `-> !T` parses via type's '!' type */
 ```
 
+- A final `, ...` is restricted to a C membrane, after at least one
+  fixed parameter (`[abi.c.variadic.syntax]`). It is not a parameter
+  named `...`, and cannot have a type, mode or trailing comma.
 - Modes (D10 Tier 0): default is `read` (no keyword — the absence *is* the
   syntax); `mut` = exclusive inout; `take` = consume.
 - View sets: `fn norm(mut self.{x, y})` — field-granular exclusivity.
@@ -448,7 +461,10 @@ its own.
 Nominal traits, checked generics (D28). Adapter types are `distinct`
 types (`type Cover = distinct Song`): same layout as the base, free
 bidirectional `as` casts, an *own* empty impl set — the sanctioned
-orphan-rule escape, with no dedicated keyword. The impl subject is a *type*
+orphan-rule escape, with no dedicated keyword. An adapter of a `Copy`
+scalar is `Copy` (`[mem.tier0.move.3]`, s252): a `distinct int`
+coordinate crosses a function boundary and is read twice without a
+`copy`. The impl subject is a *type*
 (so `impl[T] List[T] { … }` works); when `for` is present the first
 type is the trait path applied to its arguments.
 
@@ -657,8 +673,11 @@ chain (`a < b < c` is a parse error with a "did you mean `&&`" diagnostic).
 | 14 | `..` `..=` ranges (endpoints may be `^n` from-end forms) | none |
 | 15 | `else` defaulting (`expr else expr`, `expr else \|p\| expr-or-block`) | right |
 
-Prefix `&`/`&mut` create Tier-0 **local** borrows (second-class at
-function boundaries; 02-memory-model). Prefix `*` is raw-pointer deref
+Prefix `!` is logical not on `bool` and the bitwise not on an integer
+(`[type.int.not]`); there is no `~` (s252, wolf-lang#800: `~x` is the
+stray character E0107, whose report offers `!x`). Prefix `&`/`&mut`
+create Tier-0 **local** borrows (second-class at function boundaries;
+02-memory-model). Prefix `*` is raw-pointer deref
 (unsafe tier). `move` transfers a region/value; `copy` forces a copy of a
 non-`Copy` value; `shared` creates a Tier-2 RC cell from a value
 (`let a = shared (Cfg { limit: 7 })`).

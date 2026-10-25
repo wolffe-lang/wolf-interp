@@ -133,8 +133,11 @@ premise by construction.
     — so a program whose correctness rests on those outcomes never
     arising is not checked by them: the checked machine is a subset of
     the hardware's behaviours, never a superset. The checked machine
-    also runs no task at all (structured concurrency there is C1,
-    deferred, and refused by name), so its atomics are single-task.
+    runs its tasks one at a time and never preempts one between
+    blocking points (`[exec.checked.sched]`), so an atomic operation
+    there is whole against every other task's, and its race detector
+    orders the atomic operations on one location by a clock of that
+    location's own (`[exec.checked.race]`).
     Witnesses: `conc/atomic_widths.lu`, `conc/atomic_orders.lu`,
     `conc/atomic_counter.lu` (exact counts on every cpu set,
     `atomic_witness.rs`).
@@ -202,21 +205,47 @@ premise by construction.
   with happens-before. Implementations schedule on OS threads; a blocked
   task holds its thread; pool compensation is unobservable **to the
   program** — no value, ordering or exit depends on it — **and
-  observable to the host.** **The cost, stated** (measured, not
-  derived): on wolf's native tier on linux, compensation is a timed
-  wait that re-arms, armed once per parked blocking wait, so each task
-  parked in a kernel wait with no deadline — `os_signal_wait`, an
-  unbudgeted `net_accept` — costs **~196 `futex` calls a second, every
-  one an error return**, for as long as it stays parked, and a process
-  with two such waits pays two clocks. Four measurements by lobo on
-  ubuntu-latest (4 vcpus) under `strace -c -f`, 8 s idle windows:
-  ws30 (wolf 0.2.9 and `fc07cc5`, runs 34553773533, 34554207566),
-  ws31 (0.2.11, run 34598620069), ws32 (0.2.11, run 34603180650,
-  6,273 calls over four hands, and run 34603229602 for the per-wait
-  increment). It is under 0.1% of a serving hand's CPU, and it is a
-  count a server choosing between a poll and a park is owed. (The
-  number written 2026-09-15 by s163 — wolf-lang#302 item 2; whether a
-  deadline-less park can cost nothing is item 1, still open.)
+  observable to the host.** Compensation has no cap of its own: the
+  native runtime holds a thread for every task parked in a wait at
+  once, beside one per core, so a program that parks one task per
+  connection holds as many as the host lets it start. The host's thread
+  limit is the last word, and a thread it refuses is reported once on
+  stderr; a task queued then waits for a parked one to return. (Since
+  s231, wolf-lang#713: compensation used to stop at eight threads a
+  core, and `waitwolf loop 0 N`, which parks 2N + 1 tasks, stopped at
+  N = 8 on one cpu, 16 on four and 64 on sixteen.) **The cost, stated**
+  (measured, not derived): a parked task costs its thread and no cpu.
+  On wolf's native tier on linux x86-64 the thread is about 15 KiB of
+  resident memory — the stack pages its frames touch — plus the
+  kernel's own record of a thread (s231's soak, 10,000 tasks parked at
+  once on kasumi: 15.1 KiB a task in a channel `recv`, 19.6 KiB in
+  `net_read`, 15.3 KiB in `net_accept`). A wait parked in the reactor
+  (`net_read`, `net_accept`, `net_write`), a channel operation or a
+  `when` acquisition sleeps until its completion, its deadline or a
+  cancellation, with no system call meanwhile: one task parked 8 s in
+  an unbudgeted `net_accept` made 8 `futex` calls in its whole run,
+  against 1,741 before s231, when every parked wait woke each 5 ms to
+  look for a cancellation. **`os_signal_wait` makes none either** since
+  0.2.31 (s242, wolf-lang#680, `[os.signal.wait]`): outside a scope that
+  can be killed it has no timer, and an idle `os_signal_wait(INTERRUPT)`
+  made **0** system calls on any of its threads in an 8 s window —
+  `futex`, `poll`, `ppoll`, `epoll_wait`, `nanosleep`,
+  `clock_nanosleep` and `read` counted under `strace -f -tt` (s246,
+  wolf-lang#788: wolf 0.2.32 on kasumi, linux 7.2.8, in a container,
+  the dev and release tiers on all cpus and under `taskset -c 0-3`,
+  kasumi `~/lanes/s246/ev/idle788-trunk.log`). Inside a scope that can
+  be killed it still looks for a kill every 5 ms. Until 0.2.31 every
+  `os_signal_wait` woke on that 5 ms clock: ~196 `futex` calls a
+  second, every one an error return, for as long as it stayed parked,
+  and a process with two such waits paid two clocks — lobo's four
+  measurements on ubuntu-latest (4 vcpus) under `strace -c -f`, 8 s
+  idle windows: ws30 (wolf 0.2.9 and `fc07cc5`, runs 34553773533,
+  34554207566), ws31 (0.2.11, run 34598620069), ws32 (0.2.11, run
+  34603180650, 6,273 calls over four hands, and run 34603229602 for
+  the per-wait increment). (That number was written 2026-09-15 by s163
+  — wolf-lang#302 item 2; item 1, whether a deadline-less park can cost
+  nothing, is now answered for every wait above, `os_signal_wait`
+  included.)
 - `[conc.task.name]` Tasks and procs carry names (spawn-site default,
   user-overridable) surfaced in the structured dump — the dump's
   *contents* are implementation-specified; its *existence* is contract.
@@ -314,10 +343,10 @@ premise by construction.
   the identical `List` — the chunks' actions touch disjoint slots and
   so commute — and a DPOR reduction may identify them all
   (`[conc.det.dpor]`). The **checked** execution (`wolf conform-run
-  --checked`) refuses `scope` and closures today, and so refuses `par`
-  by the same name, unsupported rather than wrong; the native tiers
-  run it. Cost: the recording costs the `spawn` events and nothing
-  per element.
+  --checked`) runs it with `W = 4` on every host, one schedule per
+  seed (`[exec.checked.sched]`), each worker in a region of its own
+  (`[exec.checked.task]`). Cost: the recording costs the `spawn`
+  events and nothing per element.
 - `[conc.task.par.cost]` **The cost, stated.** One allocation of `n`
   slots in the ambient region of the `par` expression — exactly `map`'s
   (`[type.comb.set]`) — and no copy of `xs`. `k` task spawns, each
@@ -327,10 +356,12 @@ premise by construction.
   allocation and a buffer copy for every `List` or `Map` it reaches,
   charged where the task allocates, so a `par` whose `f` copies a
   container pays that per element and not per list. What `f` allocates lands where a task's allocations land:
-  tasks run with the process root as their ambient region, and the
-  native root arena serializes allocation behind one lock, so an `f`
-  that allocates on every call contends there and scales worse than
-  one that computes. Speedup is not promised: a list shorter than `W`,
+  tasks run with the process root as their ambient region. The
+  native root arena gives each thread its own bump window and takes
+  its lock only to refill one (once per 64 KiB, or for one large
+  allocation), so an `f` that allocates on every call does not queue
+  on the root; it still pays its allocations, and the memory each
+  task leaves in the root lives as long as the process. Speedup is not promised: a list shorter than `W`,
   or an `f` cheaper than a spawn, can make `xs.par(f)` slower than
   `xs.map(f)`, and both are conforming.
 - `[conc.task.root]` The process runs under a root supervisor scope of
@@ -368,7 +399,9 @@ premise by construction.
   reached the proc), `fault(kind)` (a trap fired on a task inside the
   proc and was contained at the boundary — `kind` is one name from
   `[conf.trap.set]`'s closed vocabulary, so containment adds **no**
-  new trap kind). Reasons are values (D30) — never unwinding.
+  new trap kind). Physical stack exhaustion is the exception:
+  `[conf.trap.stack]` ends the process without entering containment,
+  even on a task inside a proc. Reasons are values (D30) — never unwinding.
   (Amended 2026-09-01, s132 — D68, the ruled fourth shape: the trap
   fires at its site, the proc is the failure domain that absorbs it.)
   The fault mapping: a contained trap runs the killed-proc sequence
@@ -405,6 +438,89 @@ premise by construction.
   therefore be handed to any number of procs. (Added 2026-09-18,
   s170, wolf-lang#312: the mem tier moved it, so the same two calls
   compiled as plain calls and refused as spawns.)
+  (Extended 2026-10-11 by s229 for wolf-lang#678, the spawn twin of
+  wolf-lang#665; ruled A (#66), 2026-10-11. **A `spawn proc` argument outlives the
+  spawning frame.** "Moved" does not move a `str`: it is `Copy`, the
+  proc receives its view, and the bytes stay where they were built. So
+  `region pass { let s = "built {n}"; spawn proc child(s) }` was
+  accepted, the block closed while `child` ran, and native and release
+  printed the chunk the next region reused. An argument that can name
+  bytes a region owns — a `str`, or a list, map, struct, tuple or enum
+  reaching one — is now demanded as a sent payload is
+  (`[conc.chan.payload]`): E1010 at the argument when its bytes live
+  in a frame-local region (a region block, a region value made in this
+  frame, the spawning proc's own region). A literal, a scalar, frozen
+  data and a parameter of the spawning function pass. **The cost,
+  stated.** Nothing at run time. Refused though sound: a proc joined
+  inside the block that built its argument
+  (`region pass { let s = "…"; let w = spawn proc child(s); w.join() }`)
+  — no join is tracked; the repair is the shape that is accepted, a
+  function handed the bytes as parameters that spawns and joins before
+  it returns. **Not covered, and it needs a different rule:** that same
+  function when it does NOT join. A parameter's bytes outlive the
+  frame, so `fn helper(s: str) { spawn proc child(s) }` is legal in
+  `helper`, and nothing at `region pass { helper(s) }` says a callee
+  may spawn with what it is handed — every callee may, so a signature
+  rule would refuse every call that passes region bytes. What decides
+  it is whether the proc is joined before the frame returns: a
+  must-join check over the proc handle on every path (s233 adds it,
+  below; a killed proc is not yet a finished one, wolf-lang#683, so the
+  join and not the kill is the fact to track). Measured before it
+  landed: the same census as `[conc.chan.payload]`'s, zero rows moved;
+  lobo's two spawns that pass request-lived strings
+  (`budget.run_small`, `budget.run_stream`) pass them as parameters and
+  join, and compile unchanged. Witnesses: the gate
+  `chan_sent_arg_lanes`'s spawn rows and
+  `corpus/conc/chan_sent_arg_spawn.lu`.)
+  (Extended 2026-10-12 by s233 for wolf-lang#678's helper half; ruled
+  A (#71), 2026-10-12. **A function that may leave a proc running with its caller's
+  bytes is held to the frame rule at every call.** A `spawn proc`
+  whose arguments can name a parameter's bytes, or bytes in the
+  function's caller's current region (`[mem.region.create.3]`), raises
+  an obligation the frame meets on every path out of it: `p.join()`
+  returns, an exit is received from `p.monitor()` (a `select` arm or a
+  receive on that channel — `[conc.proc.kill]` delivers the reason
+  after the proc's regions are freed), or `p` is handed to a function
+  that meets it on every path of its own. A kill meets nothing
+  (wolf-lang#683). "Every path" is a forward dataflow over the memory
+  checker's control-flow graph: `return`, `?`, `defer` and loop edges
+  included, a trap ending the path; an `int` or `bool` local assigned
+  a literal is carried across an `if` on it, so lobo's `cls = 4` on a
+  `select`'s timeout arm followed by `if cls == 4 { end_body(w) }` is
+  read path by path. A proc whose handle is rebound, stored, returned
+  or spawned again while the first is open is never met. A function
+  that misses an obligation **leaves a proc running** with those
+  parameters (or its caller's region): a per-callee summary, the least
+  fixpoint over the package's calls and spawns (a spawned proc that
+  leaves a grandchild running makes its spawner answer for it; a call
+  through a trait bound answers for every impl of the method). At a
+  call of such a function the argument flowing into such a parameter —
+  or, for the caller's region, the call's own current region — must
+  outlive the calling frame: E1010 at the argument (at the call) when
+  its bytes live in a region block, a region value made in the frame
+  or the spawning proc's own region; when they are a parameter's or
+  the caller region's, the calling function leaves the proc running in
+  turn. A literal, a scalar, frozen and `shared` data pass anywhere.
+  What no summary names is refused where it is made: a closure (or a
+  nested fn) that may return while a proc it spawned still runs with a
+  value that can name bytes and is not a literal (E1010 at the spawn
+  argument), and a function that leaves a proc running taken as a fn
+  value (E1010 at the name — a call through the value cannot be asked).
+  **The cost, stated.** Nothing at run time; the summary is computed
+  once per package. Sound programs refused: a closure spawning with a
+  value nothing outlives-checks; a join through a value whose literal
+  the dataflow does not carry (a `match` on it, a value computed rather
+  than assigned); a handle joined from a list or a struct field; and,
+  still, s229's proc joined inside the block that built its argument.
+  Measured: the downstream census at the memory check (wolf-std,
+  boreutils, lobo, pelt, pax, muzzle, the book, lobo's staged tests,
+  1,383 records) moved zero rows; lobo compiles unchanged — its
+  `run_small`/`run_stream` meet the obligation on every feasible path
+  and `acme.daemon_start`, never joined, is handed bytes in `main`'s
+  chain of caller regions — and with `end_body(w)` replaced by
+  `w.kill()` it is refused at its three region blocks in `main.lu`.
+  Witnesses: the gate `proc_must_join_lanes` and
+  `wolf_mem::procjoin`.)
 - `[conc.proc.kill]` **Killed-proc sequence, in order** (the decided
   rule): (1) the proc's task tree is cancelled *without running any
   further user code* — pending `defer`/`errdefer` in the killed proc
@@ -475,6 +591,93 @@ premise by construction.
   family: the native tier carried one word since s39 and E1102 refused
   every aggregate, which held chapter 12 §12.1's `channel[Doc]` on one
   machine. Witness `corpus/conc/chan_struct_payload.lu`.)
+  (Extended 2026-10-11 by s229 for wolf-lang#665; ruled A (#66), 2026-10-11. **What
+  a call can send, it is taken to send.** The frame rule above was
+  demanded at the builtin `send` alone, and a callee handed the channel
+  sends too. `fn fwd(ch: channel[str], s: str) { ch.send(s) }` is legal
+  in `fwd`, where `s` is a parameter and its bytes outlive `fwd`'s
+  frame; so `region pass { let s = "built {n}"; fwd(ch, s) }` was
+  accepted while `ch.send(s)` in its place was E1010. Native and
+  release handed the receiver the chunk the next region reused, the
+  checked machine stale bytes, and lupin traps `region-fault` wherever
+  it reads the payload outside an interpolation. The rule, read off the
+  call's SIGNATURE and never the callee's body, as
+  `[mem.region.escape]`'s kept-argument rule is (a fn in another
+  package, a generic and a trait method answer alike): at a call whose
+  callee is **handed a channel that can carry bytes** — an argument or
+  the receiver whose type reaches a `channel[T]` with `T` a `str` or a
+  struct, tuple or enum reaching one, through any field, container,
+  `Mutex` or channel of channels; a type parameter and a trait object
+  count, because a bounded `S` may be a struct holding the channel —
+  (a) **every argument that can name bytes a region owns is demanded
+  to outlive the frame, as a sent payload is**: E1010 at the argument
+  when its bytes live in a frame-local region (a region block, a region
+  value made in this frame, a proc's own region, `[mem.region.proc]`);
+  and (b) **so is the call's own site**: a callee allocates in its
+  caller's current region (`[mem.region.create.3]`) and may send what
+  it builds there, so a call that hands such a channel from inside a
+  frame-local region is E1010 at the call even when no argument carries
+  bytes — `region pass { emit(ch, n) }`, with `emit` sending
+  `"built {n}"`, read freed bytes the same way. A `spawn proc`
+  argument is demanded the same way whether or not a channel is handed
+  over (`[conc.proc.arg]`); (b) does not apply there, a proc allocating
+  in its own region. A channel is NOT a `mut` argument that
+  shares bytes: a handle is a word that copies to any binding and
+  crosses channels itself, and a channel is never freed with a region,
+  so no binding's lifetime bounds its receiver's — the frame is the
+  only bound there is, the one this clause already used. **A closure
+  that captured such a channel** sends what it is called with and
+  builds its payload wherever it is called, and its type says nothing
+  of the capture. So the fact rides the value — a binding, a copy of
+  it, an aggregate built around it: calling it is a call under (a) and
+  (b); handing it to a callee, returning it, sending it or storing it
+  in module state is E1010 there, where the capture is still known
+  (`fn each(f: fn(str)) { region r { let t = "…"; f(t) } }` cannot be
+  asked to refuse). A `scope`'s `spawn` is not a handing-over: the
+  task's body is checked in the frame that wrote it. Untouched: a
+  `channel[int]` and every payload of scalars, in any region; a call
+  made where the bytes outlive the frame; a direct `send` of a received
+  value. The diagnostic is E1010 at the argument (or the call), naming
+  the callee, the argument and the channel; for a `str` argument under
+  `in r { }` with `r` a region the function was handed, it offers
+  `"{s}"`, which builds the bytes in `r`. **The cost, stated.** Nothing
+  at run time on any tier — a refusal; no accepted program's code
+  changes. What is refused that would have run correctly: a callee
+  that only READS the argument beside a channel it sends something
+  else on; any helper handed such a channel from inside a region block
+  or a proc entry, even one that sends a literal, a parameter or a
+  received value (so `[mem.region.proc]`'s parameter form sends from
+  the proc entry itself); a channel made, used and drained inside one
+  region block through a helper (the direct send there was E1010
+  already); a closure that captured such a channel, handed to a callee
+  that would have called it with long-lived bytes. A summary of what
+  each callee sends would make (a) and (b) exact for a direct call
+  inside one package, and is the debt, as for the kept-argument rule.
+  Measured before it landed, the compiler before against after at the
+  memory check (`conform-run --phase=mem`): every `.lu` file of
+  wolf-std, boreutils, lobo, pelt, pax, muzzle and the book
+  (1,165 files, 991 records reaching the check, lobo at `bea04ee`) and
+  lobo's 122 staged tests — **zero rows moved**; downstream every channel but three is a
+  `channel[int]`, and lobo has none outside two replay tests. The first
+  cut moved six, all in the book and all sound: its walk of a recursive
+  struct (`Node { kids: List[Node] }`) gave up at a depth bound and
+  answered "may hold a channel"; a recursive type met again inside
+  itself now adds nothing. **The alternative weighed, and owed a
+  ruling:** a `send` that copies the payload's `str` bytes into the
+  channel's box, and a receive that copies them into the receiver's
+  current region, would make every shape here sound at run time and
+  let this clause's E1010 go. Measured ceiling on linux x86-64,
+  release, 2,000,000 round trips of a 29-byte `str` on a buffered
+  channel: 33 ns a round trip as it is, 77 ns with two copies and a
+  region per turn — about 40 ns a message, the bytes twice, and an
+  allocation per message in the receiver's region. It changes this
+  clause ("a `str` payload is its view") and parts from lupin, which
+  keeps the bytes in the sender's region. lupin
+  runs the shapes whose receive is read inside an interpolation to
+  `exit(0)` on stale bytes (wolffe-lang/wolf-interp#232) and traps the
+  rest. Witnesses `corpus/conc/chan_sent_arg_*.lu` and the legal
+  companions `chan_sent_arg_legal.lu` and
+  `chan_sent_arg_legal_tasks.lu`.)
 - `[conc.chan.buf]` Capacity `n ≥ 1` buffers; `n = 0` is rendezvous.
   Sends on a full channel and receives on an empty one block (they are
   cancellation points and recorded events).
@@ -631,21 +834,28 @@ schedule deadlocks"; `unsupported` was honest and insufficient.)
   deterministic test modes (record/replay, the is07 explorer) and
   permitted elsewhere. `trap(deadlock)` is the verdict spelling
   is07 reports per schedule. The checked tier (`[exec.checked]`) is
-  one of the deterministic modes, and it runs exactly one task: it
-  refuses `spawn`, `scope`, `select` and `when` by name before they
-  run. So a channel operation that would block there — a send on a
-  full or rendezvous channel, a receive or a `for` on an empty open
-  one — blocks every live task, and the tier answers `trap(deadlock)`
-  at that operation. It costs nothing to detect: with one task the
-  check is the block itself. The native tier is permitted not to
+  one of the deterministic modes: its scheduler knows every task's
+  state (`[exec.checked.sched]`), so when a task blocks and nothing
+  else is ready and no timer is pending, every blocked task is woken
+  with the verdict and the run answers `trap(deadlock)` at the
+  blocking operation of the first one scheduled, the roster on
+  stderr. With one task that is the block itself — a send on a full
+  or rendezvous channel, a receive or a `for` on an empty open one —
+  and it costs nothing to detect; with several it is one scan of the
+  ready queue and the timers. A wait the host may still end — a
+  socket, a signal — is not a blocking point of this definition and
+  is never called a deadlock. The native tier is permitted not to
   detect it and, at 0.2.14, waits. (s161, wolf-lang#342: the checked
   tier served no channel method at all before; lupin 0.1.36 answers
-  the same `trap(deadlock)` on the same four shapes. Witnesses:
+  the same `trap(deadlock)` on the same four shapes. s226: the tier
+  ran exactly one task until then and refused `spawn`, `scope`,
+  `select` and `when` by name. Witnesses:
   `corpus/conc/chan_root_task.lu` for the operations that complete,
-  and `ubcheck`'s
+  `ubcheck`'s
   `a_blocking_channel_operation_on_the_only_task_is_deadlock` for the
-  four that block, which the corpus cannot carry because the native
-  tier would wait on them.)
+  four that block, and the driver's `checked_tasks_lanes` for two
+  tasks that wait on each other — none of which the corpus can carry,
+  because the native tier would wait on them.)
 - `[conc.deadlock.self]` Acquiring a sync object the acquiring task
   already holds can never complete: the same defined outcome,
   detected immediately — `trap(deadlock)`. (The lexical case is

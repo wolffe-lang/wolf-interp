@@ -149,6 +149,18 @@ boreutils or lobo build moved. Witnesses:
 `numlit_binding_literal_term.lu`, and the control
 `numlit_binding_value_later_use.lu`.)
 
+**The countdown this makes** (by design; s252, wolf-lang#822, yew's
+`wrapping-infer` witness): `var i = 15` whose first deciding use is
+a shift count of a `wrapping[u64]` (`h >> (i * 4)`, the count having
+the operand's type, `[type.int.shift]`) is `wrapping[u64]`, so `while
+i >= 0` never fails and `i -= 1` wraps past zero. Annotate the
+counter (`var i: int = 15`) and cast at the use (`h >> (i * 4) as
+wrapping[u64]`). lupin 0.1.54 and 0.1.55 accept an `int` count on a wrapping
+shift and so end that loop after sixteen turns where the three
+compiling machines do not. From 0.1.56, lupin infers the same wrapping
+counter and rejects an annotated `int` shift count with E0401 (is79,
+wolf-interp#273); the older releases keep their measured answers.
+
 ## §3 The numeric cast `[type.numlit.cast]`
 
 `as` between numeric types is the **only** spelling of a value
@@ -237,6 +249,38 @@ conversion, and its numeric arms are closed and total:
   -> Self { self % other } }` could not be written, and `Num` at `f64`
   had a hole in it. Witness: `corpus/typecheck/float_rem.lu`, both
   tiers.
+
+## §3c Wrapping division and negation `[type.wrap.div]`
+
+`/` and `%` on a `wrapping[T]` divide the **values** the operands hold,
+truncating toward zero as the checked division does: `wrapping[u64]`'s
+`(2^64 - 1) / 10` is `1844674407370955161` and its `% 10` is `5`;
+`wrapping[i8]`'s `-7 / 2` is `-3` and `-7 % 2` is `-1`. An unsigned
+quotient or remainder never leaves its width; a signed one leaves it at
+one point only, `MIN / -1`, which **wraps to `MIN`** (and `MIN % -1` is
+`0`), the family's two's-complement meaning. A zero divisor is still the
+`div-zero` trap (`[mem.ub]`'s table): wrapping names what happens past
+the width, and a zero divisor has no quotient at any width. Negation
+wraps the same way: `-x` on a `wrapping[T]` is `0 - x` at the width, so
+`-MIN` is `MIN` and `-(5 as wrapping[u8])` is `251`. On a plain unsigned
+type `-x` is `0 - x` in that type, X3's checked subtraction: `0` for
+`x == 0` and the `overflow` trap for every other `x`. **The cost,
+stated:** an unsigned wrapping `/` or `%` is the unsigned divide; a
+signed one adds a compare and a branch around the divide when the
+divisor is not a constant (a constant divisor other than `-1` is the
+plain divide, and `-1` is the negation). (Written 2026-10-09 by s220
+for wolf-lang#538, where native and release refused every wrapping
+`/` and `%` ("no idiv.wrap op"), the checked machine divided a
+`wrapping[u64]` as signed (`u64::MAX / 10` was `0`) and a negative
+`wrapping[i8]` as its mask, and lupin computed the answers above. The
+clause writes down lupin's answer; it is not a new meaning. Negation
+was found by the same lane: `-MIN` trapped at a wrapping type on
+native and release, and `-x` on a `u8` printed `251` there and `-5` on
+the checked machine where lupin trapped.) Witnesses:
+`typecheck/int_truth_wrap_div_unsigned.lu`,
+`typecheck/int_truth_wrap_div_signed.lu`,
+`typecheck/int_truth_wrap_neg.lu`, `faults/int_truth_wrap_div_zero.lu`,
+`faults/int_truth_neg_u8_trap.lu`, `faults/int_truth_neg_u64_trap.lu`.
 
 ## §4 The `char` type `[type.char]`
 
@@ -356,6 +400,118 @@ conversion, and its numeric arms are closed and total:
   byte > 100 as byte`); `<=>` yields `int`; `byte` against `int` is
   the ordinary type mismatch — widen the byte.
 
+- `[type.int.not]` **`!` on an integer is its bitwise complement.**
+  *(s213 for wolf-lang#575; ruled A by the maintainer 2026-10-07,
+  ruling #51: `!` on integers, over B a `~` operator and C a named
+  function.)* `!x` on every integer type (`int`, `uint`,
+  `i8`…`i64`, `u8`…`u64`, `wrapping[T]`) flips every bit of `x` at its
+  own width and has `x`'s type: `-x - 1` for a signed width, `max - x`
+  for an unsigned one (`!(0 as u32)` is `4294967295`). It is total —
+  never a trap, never a wrap to observe — and a literal operand adopts
+  the type its context expects first, as with `-`: `x & !0xfff` with
+  `x: u64` masks with `0xffff_ffff_ffff_f000`, and `const MASK: u32 =
+  !0xfff` folds at comptime. A `byte` operand widens to `int` first, as
+  every bitwise operator's does (`[type.byte.op]`): `!b` is `int`, and
+  `(!b) as byte` is the octet's complement. `!` on `bool` is logical
+  not, unchanged; on a float, a `char` or any other type it is E0409.
+  Every machine answers it at every width; the checked machine refused
+  a `u64`/`uint` complement by name until s220 (wolf-lang#551), when it
+  learned to hold the type's upper half. **There is no `~`** (the
+  ruling's option B, declined): `~x` is the stray character E0107, and
+  since s252 (wolf-lang#800, yew G11, which had not found `!`) the
+  report names `!` and offers the machine-applicable edit `~x` → `!x`;
+  the parser then reads the operand on as `!`'s, so nothing cascades.
+  Witnesses: `typecheck/int_not_mask.lu`,
+  `typecheck/int_not_signed.lu`, `typecheck/int_not_byte.lu`,
+  `typecheck/int_not_float.lu` (`fail(E0409)`), `typecheck/int_not_tilde.lu`
+  (`fail(E0107)`).
+
+- `[type.int.shift]` **A shift on a plain integer is arithmetic on its
+  value.** *(s237 for wolf-lang#736. Ruled by the maintainer,
+  2026-10-14 (ruling #77): option A of those weighed at the end; in
+  wolf 0.2.31.)* For `x` and `n` of one plain integer
+  type `T` (`int`, `uint`, `i8`…`i64`, `u8`…`u64`) of width `W`,
+  **`x << n` is `x * 2^n` and `x >> n` is the floor of `x / 2^n`**,
+  computed on the values, each of type `T`. X3 holds as it does for
+  `*`: a result that does not fit `T` is the `overflow` trap
+  (`[mem.ub.defined]`) on every machine and in every profile, never a
+  wrapped answer. What follows from that one sentence:
+  **(1) `>>` cannot trap on a count of zero or more.** It rounds toward
+  negative infinity, so it is the arithmetic shift on a signed type
+  (`-8 >> 1` is `-4`, `-7 >> 1` is `-4`, `-1 >> n` is `-1`) and the
+  logical shift on an unsigned one (`255 >> 7` at `u8` is `1`).
+  **(2) `<<` traps exactly when the product leaves the type**: `255 <<
+  1` at `u8`, `127 << 1` at `i8`, `MIN << 1`; and `1 << 63` at `int`,
+  because 2^63 is one past `int`'s maximum — a positive value is never
+  shifted into a signed type's top bit (`-1 << 63` is `MIN`, and `1 <<
+  63` at `u64` fits). `1 << 7` at `u8` is `128`.
+  **(3) A count at or past the width is no case of its own.** Every bit
+  has left: `x >> n` is `0`, or `-1` for a negative `x` (`255 >> 8` at
+  `u8` is `0`, `-8 >> 64` at `int` is `-1`), `0 << n` is `0`, and any
+  other `x << n` traps, as (2) says.
+  **(4) A negative count traps `overflow`**, for `<<` and `>>` alike:
+  `8 >> -1` has no value under the definition and is not `8 << 1`.
+  **(5) The count has the operand's type.** `<<` and `>>` take two
+  operands of one type as `+` does (`x << n` with `x: u64` and `n: int`
+  is E0401); a literal count adopts it, and an unsigned type's count
+  cannot be negative.
+  **(6) `wrapping[T]` is the other meaning, unchanged**: the count is
+  taken modulo `W`, the bits that leave are dropped, and `>>` is logical
+  for an unsigned inner type and arithmetic for a signed one — a
+  rotation is `x << k | x >> (W - k)` there and nowhere else. That is
+  the answer every machine has given since #130; it had no clause
+  either, and this sentence is its record, not a change.
+  **(7) Everything that computes a shift computes this one.** A `byte`
+  operand widens to `int` first (`[type.byte.op]`: `b << 4` is `int`'s);
+  `<<=` and `>>=` are the operator and the store; a constant shift is
+  evaluated by the same rule, so `const K: u8 = 200 << 1` is E0706
+  where `let a: u8 = 200 << 1` traps, and `const Z: u8 = 255 >> 8` is
+  `0`.
+  **The cost, stated:** a count the compiler cannot see is one unsigned
+  compare against the width and a branch; `<<` adds the shift back and
+  a compare (the product fits exactly when the round trip returns
+  `x`). A constant in-width count folds the first check away, and `x >>
+  3` is the bare instruction.
+  **What it replaced, measured** (250 programs: ten types by
+  twenty-five edges, operands through a function; wolf 0.2.29 and lupin
+  0.1.52, 2026-10-13): the checked machine refused every shift on a
+  plain integer by name; native and release computed `wrapping[T]`'s
+  answer on a plain type — the count masked to the width and the bits
+  dropped (`255 << 1` at `u8` was `254`, `1 << 8` was `1`, `1 << 9` was
+  `2`, `255 >> 8` was `255`, `1 << 63` at `int` was `MIN`, `8 >> -1` was
+  `0`); lupin computed this clause on all 250 and so disagreed with the
+  compiled tiers on 155; and the compiler's constant evaluator faulted
+  on every count at or past the width while its own run time computed
+  an answer. **A program compiled by 0.2.29 or earlier that shifts a
+  set bit out of a plain integer, or shifts by its width or more, or by
+  a negative count, changes behaviour**: it trapped nowhere and now
+  traps `overflow`, or (for `>>` past the width) prints 0 or -1 where
+  it printed the masked shift's answer. The spelling that keeps the old
+  bits is `wrapping[T]`.
+  **Not answered by lupin 0.1.52 or 0.1.53:** a count of 128 or more traps there
+  where (3) answers (their integers are 128 bits wide), and a constant
+  initialiser is not checked against its type (`const K: u8 = 200 << 1`
+  prints `400`). lupin 0.1.54 answers both (wolf-interp#251), measured;
+  `shift_lanes` pins no version.
+  **Weighed and not taken** (the ruling's options; A is this clause):
+  *B*, any count outside `0..W` traps (lupin would change on 55 of the
+  250 cells); *C*, a count outside `0..W` traps and the bits that leave
+  are dropped silently, making `<<` the one plain operator that loses
+  value without a trap; *D*, the masked machine shift native and
+  release had, under which `x << 64 == x` on a type that traps on
+  `x * 2`; *E*, no shift on a plain integer at all, a type error
+  naming `wrapping[T]`.
+  Witnesses: `typecheck/int_shift_value.lu`,
+  `faults/int_shift_left_overflow.lu`,
+  `faults/int_shift_left_sign_bit.lu`,
+  `faults/int_shift_left_past_width.lu`,
+  `faults/int_shift_count_negative.lu`, `comptime/shift_value.lu`,
+  `comptime/shift_overflow.lu` (`fail(E0706)`),
+  `kernels/wrap_lshr_fold.lu`, `memory/raw_lshr_top_bits.lu`,
+  `typecheck/straight_line_{shr_var,shl_const,shl_assign}.lu`; the gate
+  `shift_lanes` runs the table on four machines against the rule
+  written a second time.
+
 - `[type.byte.interp]` **`{b}` prints the number** — the decimal octet
   value, `0` through `255`, never a character: a byte is a quantity,
   and the character it might encode is `str`'s business
@@ -381,6 +537,20 @@ values that have none.)
   what `print("{x}")` writes). A `str` inside a composite renders as
   its bytes, unquoted — `Doc { title: regions, words: 900 }`, not
   `"regions"`; interpolation is for reading, not for round-tripping.
+  **An integer hole renders the value its type holds**, in decimal
+  with a `-` only on a negative value: a `u64`, `uint` or
+  `wrapping[u64]` at `2^64 - 1` prints `18446744073709551615` (never
+  `-1`), and a signed `wrapping[i8]` holding `-56` prints `-56` (never
+  its bit pattern `200`). The radix kinds of `[type.interp.spec]` render
+  the same value (`{x:x}` of that `u64` is `ffffffffffffffff`). This is
+  the `Display` of the value, not a new rendering: the reference
+  interpreter has always printed it, and until s220 (wolf-lang#551,
+  #538, #553) native and release printed a 64-bit unsigned value above
+  `i64::MAX` as its signed bits in a spec-less hole, and the checked
+  machine printed a negative signed narrow `wrapping` value as its
+  unsigned mask. Witnesses: `typecheck/int_truth_*.lu` and
+  `crates/wolf_driver/tests/int_truth_lanes.rs`, which also prints
+  seeded random values of all eighteen integer types on four machines.
   A format spec (`{x:>8}`) is defined on the primitive holes
   (`[type.char.interp]`'s `str` surface, the integer surface, the
   float surface) and on nothing composite: a spec on a composite is a
@@ -717,6 +887,33 @@ is about it.)
   its frame and c05/#117 deferred closures as values; the chapter that
   teaches functions as values was the one the maintainer met it in.)
 
+- `[type.fn.never]` **A function declared `-> never` never returns.**
+  *(s213 for wolf-lang#572; ruled A by the maintainer 2026-10-07,
+  ruling #50: `-> never`, over B `-> !` and C `#[noreturn]`.)*
+  `never` is a built-in type name (`[type.byte]`'s kind of name, not a
+  keyword: `[gram.inv.kw]`'s closed set is unchanged), written only as
+  a function's return type — a body, a bodyless `extern "c" fn`
+  (`[abi.link.extern]`), a fn type. It is the bottom type the literal
+  `assert(false)`, `return`, `break`, `continue` and a `loop` with no
+  `break` already have: a **call** to such a function has type `never`
+  and therefore fits wherever a value is wanted — an `else` handler's
+  arm, a `match` arm, a `let` initializer — without a dead value after
+  it. The body of a `-> never` function must itself be bottom: its
+  value (`[type.fn.ret]`) is a call to another `never` function,
+  `assert(false)`, or a `loop` with no `break`, and it holds no
+  `return`; a body that can reach its end, or a `return`, is **E0401**
+  at the tail or at the `return`, naming the declaration. A bodyless
+  `extern "c" fn f() -> never` is the programmer's claim about the
+  foreign function (a `_Noreturn void` in C, `[abi.c.types]`: it
+  crosses as `void`); the compiled tiers emit the call and then the
+  unreachable trap, so a foreign function that does return stops the
+  program there (`trap(assert)`), never runs on with no value. A
+  binding named `never` shadows nothing a program can spell, so W0304
+  exempts it, as it exempts `range`. Witnesses:
+  `typecheck/fn_never_handler_arm.lu`, `typecheck/fn_never_extern.lu`,
+  `typecheck/fn_never_reaches_end.lu` (`fail(E0401)`),
+  `typecheck/fn_never_return.lu` (`fail(E0401)`).
+
 ## §8b Generic parameters `[type.generic]`
 
 (Appended 2026-09-15, s163 — wolf-lang#319, wolf-interp#84, wollf's
@@ -784,9 +981,19 @@ carrying a rule about operators. The rule is written here, beside
   same span on all three witnesses (wolf `--checked` and lupin 0.1.36);
   the s148 split — the compiler's E0401 with the row on the right,
   lupin 0.1.31's E0401 for a comparison — is closed on both sides.
-  Witnesses: `rows/negative/row_operand_add.lu`,
+  **A member read is a read (o1, #879):** `r.len`, `r.field` and a
+  method call `r.f(…)` on a `!T` are the same refusal, E0409 at the
+  base, with the same handle-first note (`r?.len`, `(r else "").len`);
+  "no operator reads it" was always the whole of the rule, and the
+  dot is not an exception the clause failed to name. Status at
+  0.2.34: the compiler filed both under conservatism ("members on
+  this type", "methods on builtin types") and lupin 0.1.55 ran them,
+  reading the payload through the row; o1 closes the compiler's side,
+  wolf-interp owes lupin's. Witnesses: `rows/negative/row_operand_add.lu`,
   `rows/negative/row_operand_compare.lu`,
-  `rows/negative/row_operand_rhs.lu`.
+  `rows/negative/row_operand_rhs.lu`,
+  `rows/negative/row_operand_member.lu`,
+  `rows/negative/row_operand_method.lu`.
 - `[type.row.else]` **An `else` handles its scrutinee's own row, and
   nothing else.** In `e else f` and `e else |p| f`, the handler runs
   when `e` itself yields an error of `e`'s row — a fallible call's
@@ -1128,6 +1335,47 @@ substrate.)
   2026-09-11, wolf-lang#101) — the literal is sugar for a container,
   and the container is the thing the evaluator does not have.
 
+### The list's storage `[type.list.storage]`
+
+(s255, wolf-lang#844 and #821 — aspen's walk paying per-element growth
+for a count it already knew, and yew's grapheme index holding 670 KB an
+edit because a `List` field replaced by assignment keeps its old buffer
+until the value's region ends, `[mem.region.intra.2]`: there is no
+per-object free, so a program that rebuilds a long-lived list every turn
+must REUSE the list's storage rather than replace it. yew wrote that by
+hand as a spare pair of lists swapped each rebuild; these two methods
+are that pattern, named.)
+
+- `[type.list.reserve]` **`xs.reserve(n)`** (`mut` receiver, `n: int`,
+  unit-valued) grows the list's capacity to at least `n` elements, in
+  the list's OWN region — the one its header remembers and its growth
+  uses (`[mem.region.create.3]`, s76) — leaving the length and every
+  element as they were; a capacity already at or past `n` (a zero or
+  negative `n` included, and an `n` under the length) is a no-op. After
+  `reserve(n)`, `n` pushes grow nothing on the native tiers: one
+  buffer, no doubling history. The charge is the tier's
+  (`[mem.region.account.1]`): the native arena charges the buffer at
+  the reservation, the checked machine charges what is stored (a push
+  charges its slot) and nothing at the reservation. Witness
+  `corpus/memory/list_reserve.lu`.
+- `[type.list.reset]` **`xs.reset()`** (`mut` receiver, unit-valued)
+  empties the list and **keeps its buffer**: the length goes to 0, the
+  capacity and the storage stay, the next pushes reuse it in the
+  list's own region, and the reset itself allocates nothing and
+  charges nothing on any machine. `clear()` empties too and promises
+  nothing of the buffer (what it keeps is the implementation's; today
+  every machine keeps it). The rule the two names state: **a `List`
+  field replaced by assignment holds its old storage until its region
+  ends**, so a rebuild that must not grow the region resets and
+  refills. With `[mem.region.outer-write]` the refill may run inside a
+  per-turn `region` block — `reset` stores nothing and a push of a
+  scalar or a `copy` lands in the list's own region — which is yew's
+  index rebuild and aspen's level buffers as one method each. Witness
+  `corpus/memory/list_reset.lu`, and
+  `corpus/memory/region_outer_write_reset.lu` for the rebuild inside a
+  turn. **lupin** 0.1.55 and 0.1.56 resolve neither name (`unsupported`):
+  wolf-interp owes both.
+
 ## §13 The range type `[type.range]`
 
 (s158, wolf-lang#24 / BACKLOG B19 — ruled 2026-09-11. `range` was the
@@ -1309,7 +1557,8 @@ reaches them. wolf-lang#154 is the book's filing of the same gap.)
   args)`.** Resolution of a method call on a receiver with a home
   module, in order, stopping at the first step that finds `name`:
   (1) the language's builtin methods on the type (`push`, `pop`,
-  `get`, `first`, `last`, `is_empty`, `count`, `clear` on `List`;
+  `get`, `first`, `last`, `is_empty`, `count`, `clear`, `reserve`,
+  `reset` on `List` — the last two `[type.list.storage]`, s255;
   `pairs`, `is_empty`, `clear` on `Map`; the `[mem.str]` family on
   `str`; `par`, `[conc.task.par]`); (2) the home module's method
   candidates named `name`; (3) trait methods from traits in scope,
@@ -1318,7 +1567,10 @@ reaches them. wolf-lang#154 is the book's filing of the same gap.)
   parameter with the candidate's generics fresh, then `args` against the
   rest — the same instantiation, the same dispatch record, the same
   instance and the same code as `list.any(xs, p)` written out, so the
-  two spellings are one call and no program can tell them apart. The
+  two spellings are one call and no program can tell them apart
+  (every machine: the checked machine refused the method spelling by
+  name until s237, wolf-lang#745, and ran the free one; it now runs
+  both through one path, `home_method_lanes`). The
   receiver's mode is spelled, as on every method (X1): a candidate whose
   first parameter is `mut` is called `(mut xs).sort_by(less)`, and a
   receiver whose written mode disagrees with the first parameter's is
@@ -1359,11 +1611,17 @@ reaches them. wolf-lang#154 is the book's filing of the same gap.)
   `List` writes a trait and `impl`s it, and step (3) finds it.
 
 - `[type.method.root]` **The home module comes from the std root.** It
-  is loaded from the configured std (`--std-root`, `WOLF_STD`, or a
-  `std` path dependency in `wolf.pkg`), the same tree `use std.list`
-  reads. With no std configured, a call that reaches step (2) is
-  **E0301** naming the home module and the three ways to configure a
-  root — never a silent fall-through, and never a builtin stand-in.
+  is loaded from the std root, the same tree `use std.list` reads: the
+  configured std (`--std-root`, then `WOLF_STD`, then a `std` path
+  dependency in `wolf.pkg`), or, with none configured, the default — a
+  `std` directory beside the `wolf` binary, where the release archive
+  ships wolf-std at a pinned commit (ruling #29) — for a hosted target
+  only: a freestanding build (`[abi.target.none]`) reads no default,
+  since the shipped std is the hosted library. With no std root at
+  all (a build from source with nothing configured), a call that
+  reaches step (2) is **E0301** naming the home module and the ways to
+  configure a root — never a silent fall-through, and never a builtin
+  stand-in.
   Step (1) needs no std, so every builtin method, `par` included, runs
   on a bare `wolf run`. **The cost, stated.** At run time, nothing: a
   method call through a home module is the free call, one instance per

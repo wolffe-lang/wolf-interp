@@ -1,0 +1,44 @@
+//! check: run(exit=0, stdout="[piece 7 3-7]\n")
+//! phase: run
+//! conforms: mem.region.outer-write, mem.region.escape, mem.region.edge.elem
+//!
+//! s216 (wolf-lang#618) — wolf-lang#612's own first witness: the call
+//! result stored through a `mut` parameter's map from inside a region.
+//! #612 reported it E1010; at 0.2.24 it built and read freed bytes on
+//! checked, native and release (`copy v` shared a `str`'s bytes, ruling
+//! #35, so the copy was no repair) and s216 made it E1010. Admitted by
+//! s255 (`[mem.region.outer-write]`): a `copy` at a store into an outer
+//! value is the materializing copy, made in the outer value's region —
+//! `st.vals`'s own — so `v`'s bytes die with `scratch` and the map keeps
+//! its own; the same door as `region_copy_shares_str.lu`. lupin 0.1.55
+//! shares the copy's bytes and traps `region-fault` (the is-lane's
+//! column).
+
+struct St {
+    vals: Map[str, str],
+    n: int,
+}
+
+fn build(i: int) -> str {
+    var parts = List[str]()
+    var k = 0
+    while k < 20 {
+        (mut parts).push("piece {i} {k}")
+        k += 1
+    }
+    "{parts[3]}-{i}"
+}
+
+fn step(mut st: St, i: int) {
+    region scratch {
+        let v = build(i)
+        st.vals["x"] = copy v
+    }
+}
+
+fn main() -> !int {
+    var st = St { vals: Map[str, str](), n: 0 }
+    step(mut st, 7)
+    print("[{st.vals["x"] else "?"}]")
+    0
+}

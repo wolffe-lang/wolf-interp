@@ -163,7 +163,7 @@ vocabulary.
      two indices are equal at run time — `xs[i]` against `xs[k + 1]`
      with `k = i - 1`.
 
-  **Where the machines stand (wolf 0.2.24; lupin 0.1.47).** wolfgang makes moves element-granular: items
+  **Where the machines stand (wolf 0.2.35; lupin 0.1.56).** wolfgang makes moves element-granular: items
   1(a)–(c) hold for a moved element, item 3 holds (wolf-lang#460, where
   any index store revived a moved sibling and native aliased it, is
   fixed), and R3 holds for a store through the same plain local of a
@@ -182,7 +182,7 @@ vocabulary.
   lend of `m[k]` is a typing question (the read is `V ! {none}`,
   `[mem.map.absent]`, E0401 today) that this clause does not answer.
   lupin separates elements at run time and is the oracle for which
-  element a move empties and for the exclusivity trap; at 0.1.47 every
+  element a move empties and for the exclusivity trap; at 0.1.56 every
   read of a moved element traps (wolffe-lang/wolf-interp#141), a whole
   read of a place holding a moved part traps (wolffe-lang/wolf-interp#143),
   a non-`Copy` value read out of a `Map` moves out of it
@@ -216,7 +216,8 @@ vocabulary.
   struct literals, collection constructors, and closures whose values the
   implementation places in memory; whether a given value lives in a
   register, on the stack, or in its region is unobservable except as §3
-  and §7 permit.
+  and §7 permit. A value whose type reaches no storage — a struct of
+  scalars among them — is no site for §3's rules (`[mem.region.scalar]`).
 - `[mem.model.order]` Evaluation is strict and **left-to-right**
   everywhere: operands before operators, arguments left-to-right before
   the call, receivers before arguments, struct-literal fields in written
@@ -259,6 +260,21 @@ law: `.docs/refs/papers/swift-ownership-manifesto.md`.
 - `[mem.tier0.move.3]` `copy x` produces an independent value from any
   type; types opting into `Copy` copy implicitly on what would otherwise
   move. POD-shaped types only (no destructor, no Tier-2 members).
+  **An adapter of a `Copy` scalar is `Copy`** (s252, wolf-lang#813,
+  yew G24): `type ByteOff = distinct int` copies on what would
+  otherwise move, as `int` does — an adapter has its base's layout
+  (D28) and a scalar's copy semantics come with it. The same holds for
+  an adapter of any integer type, `wrapping[T]`, a float, `bool`,
+  `char`, `byte`, or of another such adapter. An adapter of a `str`, a
+  container or a struct moves as its base's value does: a `str`'s bytes
+  carry their region's sites through a `str`-typed read only
+  (`[mem.region.escape]`), and an aggregate is not `Copy`. Nothing else
+  opts in: there is no `Copy` to implement (E0301). Before 0.2.35 every
+  nominal adapter moved, so `let x = a as int` followed by `let y = a
+  as int` was E1001 on every compiling machine while lupin copied.
+  **Cost:** none; a scalar is its own copy. Witnesses
+  `corpus/memory/distinct_copy_scalar.lu` and
+  `distinct_container_moves.lu` (`fail(E1001)`).
   **Independent means deep** (stated 2026-09-15, wolf-lang#384): a
   `List` copies its elements, a `Map` its entries, a struct or tuple its
   fields, each by this same rule, so no storage reachable from the copy
@@ -330,6 +346,17 @@ law: `.docs/refs/papers/swift-ownership-manifesto.md`.
   receiver.
   Witnesses `corpus/memory/read_param_return.lu`, `read_param_escape_*`,
   `read_param_rebind_*` and `read_param_move_legal.lu`.
+  **A move out of a `read` parameter still moves, in this frame** (by
+  design; s252, wolf-lang#822, yew's fuzz fork): `let tb = run.ec.tb`
+  lends the field to `tb` and the caller keeps its value, but
+  `run.ec.tb` is empty here from the binding on (`[mem.tier0.move.1]`),
+  so a later `run.ec.tb.xs.len` is E1001 — on every compiling machine,
+  and `trap(use-after-move)` on lupin. A reader who meant a read reads
+  through the path each time (`run.ec.tb.xs.len`, no binding), or
+  binds once and uses the binding from there on; `copy` at the move is
+  a deep copy and the costly answer. E1001's report names the `read`
+  parameter and these two ways. Witness
+  `corpus/memory/read_param_field_rebound.lu` (`fail(E1001)`).
 - `[mem.tier0.mode.mut]` `mut` parameters are **exclusive inout**: for the
   duration of the call no other access (read or write) to the argument
   place or any conflicting path may occur. Call sites must write `mut`
@@ -495,7 +522,8 @@ fact, polymorphism defaults), `.docs/refs/papers/verona-refcaps.pdf`
   returned from the frame that owns the region, sent on a channel
   (`[conc.chan.payload]`), stored into module state, or held by a
   binding declared outside the region's block. The sites are
-  `[mem.model.alloc]`'s — struct and enum literals, container
+  `[mem.model.alloc]`'s — struct and enum literals (of a type that
+  reaches storage, `[mem.region.scalar]`), container
   constructors and their growth, closures, non-`Copy` call results —
   **and every built `str`**: `s + u`, `s += u` (`[type.str.concat]`) and
   an interpolation with at least one hole. A built `str` is an
@@ -646,6 +674,216 @@ fact, polymorphism defaults), `.docs/refs/papers/verona-refcaps.pdf`
   `region_str_list_for_held.lu`, `region_str_copy_return.lu`, and the
   legal companion
   `region_str_view_for_inside.lu`.)
+  (Extended 2026-10-07 by s216 for wolf-lang#618. **A call's `str`
+  result is a site.** The site list says "non-`Copy` call results",
+  and s160 added the materializing builtins by name; a call to a
+  DECLARED fn — a module or std fn, an impl method, a fn value, a
+  nested fn — whose result is a `str` was neither, because `str` is
+  `Copy`. But the callee builds where its caller decides
+  (`[mem.region.create.3]`, D12), so `build(i)` called inside
+  `region scratch { }` builds its bytes in `scratch`, and
+  `region scratch { out = build(7) }` handed `out` freed bytes on
+  checked, native and release (`ZZZZZZZZ0` and NUL bytes under a
+  region that reused the chunk) while lupin traps `region-fault`.
+  So such a call is a site in the ambient region of the call, exactly
+  as a non-`Copy` result is, and it also carries every argument's and
+  the receiver's sites, because the callee may hand back a view of
+  bytes they name (`fn title_of(d: Doc) -> str { d.title }`). The
+  builtins keep their own rules: the `[mem.str.view]` family carries
+  the receiver, the materializing producers are sites, a container
+  method answering an element (`xs.last()`, `m.get(k)`) carries the
+  receiver as `xs[i]` does, and a host builtin's `str` is no site,
+  because the runtime places it in the process root or static data.
+  **One precision rule:** a declared fn whose every result — its
+  tail and every `return` — is a string literal, an `if`/`match` or
+  block of such, or a call to such a fn, answers static bytes, and
+  its call is no site (boreutils' `bore.io_error()`, held past a
+  `region pass` in `cat`, is the measured case). **The cost,
+  stated.** Nothing at run time on any tier — a refusal. What is
+  refused that lupin runs: a fn that returns a parameter's bytes
+  (`fn pick(a: str, b: str) -> str`) called inside a region and held
+  past it; never unsound, sometimes strict. The repair is to make the
+  call outside the region or to copy the result out of it with
+  `copy region { }` (below). Measured before it landed, trunk compiler
+  against head, both tiers: boreutils' 27 utilities, lobo, wolf-std's
+  423 test files and pelt build with the same verdicts, diagnostics
+  and byte-identical binaries. Witnesses
+  `corpus/memory/region_str_call_*.lu`,
+  `region_str_elem_call_held.lu`, and the legal companions
+  `region_str_call_static.lu` and `region_str_call_inside.lu`.)
+  (Extended 2026-10-10 by s228 for wolf-lang#374, the net half.
+  **`net_read` is a site.** s216 left a host builtin's `str` no site
+  "because the runtime places it in the process root or static data",
+  and for `net_read` that placement was the defect: a server that read
+  each request inside a region of its own kept every request's bytes
+  for the life of the process, because the root gives nothing back
+  (lobo with its workaround taken out: 17 MB over 4,000 keepalive
+  requests). `net_read`'s bytes are now built in the ambient region
+  like every other materialization (`[mem.region.create.3]`), and so
+  the call is a site exactly as `str_from_utf8` is — by name, because
+  its row (`str ! {closed, timeout, utf8, io}`) hides it from "is the
+  result `str`". The order is #374's and it is not optional: the site
+  first, then the bytes; the other way round, the programs that leaked
+  would read freed memory instead. The remaining host producers —
+  `fs_read_text`, `fs_read`, `read_line`, `fs_read_dir`'s names, the
+  environment and argument family, the json accessors — still place
+  their bytes in the root and are still no site. **The cost, stated.**
+  Nothing at run time but where the copy lands; the checked machine
+  charges the read to the ambient region's ledger as the native tiers
+  do, so a `cap:` breach on a read traps on all three. Measured before
+  it landed, trunk compiler against head: boreutils' 28 utilities, lobo
+  and its 28 serve tests, pelt, wolf-std's 433 test files and the
+  book's 357 samples and exercises build with the same verdicts and
+  the same diagnostics — no site newly refused. Witnesses
+  `corpus/memory/region_net_read_return.lu` and
+  `region_net_read_charged.lu`.)
+  (Extended 2026-10-21 by s254 for wolf-lang#834. **`os_cwd` is a
+  site.** It was one of s228's "environment and argument family" — a
+  host producer whose bytes the runtime placed in the process root — and
+  that placement was the defect pelt's sh22 measured: a shell that asked
+  the working directory's name every turn inside a region of its own
+  kept every answer, 48 B a call for a 39-byte directory (the name
+  rounded up to the root arena's 16-byte step; 32 B for a 28-byte one),
+  native and release alike, where a string of the same length built by
+  interpolation in the same region kept nothing. `os_cwd`'s bytes are
+  now built in the ambient region like every other materialization
+  (`[mem.region.create.3]`), and so the call is a site exactly as
+  `net_read` is — by name, because its row (`str ! {io}`) hides it from
+  "is the result `str`" — in #374's order: the site first, then the
+  bytes. The rest of that family (`env_get`, `env_args`, `os_exe`,
+  `fs_read_text`, `fs_read`, `read_line`, `fs_realpath`, the json
+  accessors) still places its bytes in the root and is still no site.
+  **The cost, stated.** Nothing at run time but where the copy lands;
+  the checked machine charges the name to the ambient region's ledger as
+  the native tiers do, so a `cap:` breach on it traps on all three.
+  Measured before it landed, the published 0.2.34 against the head's
+  dist build: every entry of the org's trees that reaches `os_cwd` —
+  pelt's 4 entries, boreutils' 56, yew's 58 and lobo's 84, built as they
+  stand (131 compile on both; 70 of lobo's tests and one pelt module
+  refuse identically outside their package) and lobo's 139 directive
+  tests staged as its corpus runner stages them (34 call `os_cwd`) —
+  build with the same verdicts and the same diagnostics, 0 of 341
+  differing: no site newly refused (wolf-std's one caller,
+  `std/env/env.lu`'s `cwd`, returns the answer from no region). Measured
+  after: sh22's `cwdregion` keeps 0 B a turn on both tiers
+  (`crates/wolf_driver/tests/cwd_region_lanes.rs`, 4 B the bound; 79 B a
+  turn for a 67-byte directory at the gate commit). Witnesses
+  `corpus/memory/region_os_cwd_return.lu` and
+  `region_os_cwd_charged.lu`; lupin 0.1.55 runs the first to `exit(0)`
+  and reads `charged false` on the second, the old placement
+  (wolf-interp owes both).)
+  (Extended 2026-10-10 by s227 for wolf-lang#660; ruled A (#64), 2026-10-11. **What
+  a call can keep, it is taken to keep.** `in r { … }` sets the
+  current region, so it decides where the callee ALLOCATES
+  (`[mem.region.create.3]`); it does not move an argument, whose bytes
+  stay in the region that built them. And a callee may keep an
+  argument past its return without being refused anywhere: a store
+  through a container index or a `push` lends
+  (`[mem.region.edge.elem]`), and `l.last = copy s` on a `str` shares
+  the bytes (`[mem.tier0.move.3]`) — in the callee both are parameters,
+  whose regions it cannot compare. So
+  `region pass { let s = "built {n}"; in st { keep(mut l, s) } }`, with
+  `l` living in `st`, left `l` naming bytes in `pass`: native and
+  release printed the chunk the next region reused, the checked machine
+  stale bytes, and lupin traps `region-fault`. The rule, read off the
+  call's SIGNATURE and never the callee's body (so a fn value, a trait
+  method, a generic and a callee in another package answer alike):
+  every `mut` argument, the `mut` receiver included, **shares the
+  bytes** of every other argument and of the receiver that can reach
+  it — an argument declared `take` or `mut`, whose heap values the
+  callee may move, always; an argument passed by `read` when its type
+  can name bytes a read can share (a `str`, a fn value and what it
+  captured, a type parameter, a trait object, or a container or
+  aggregate reaching one) and the `mut` argument's type can name such
+  bytes too. A non-`Copy` result, and a declared call's `str` result,
+  share the `read` arguments' bytes the same way (the `take` and `mut`
+  ones already rode a non-`Copy` result). A builtin container method
+  keeps exactly its storing parameter (`push`'s value, `Pool.init`'s),
+  and its result is drawn from its receiver alone (`m.pairs()`,
+  `xs.pop()`). Not shared: a scalar; a `List[byte]` or any value that
+  reaches no `str`, passed by `read` — the callee can only copy it, and
+  the copy is a fresh allocation where the callee allocates; anything
+  into a `mut` argument whose type can name no bytes (an `int`, a
+  struct of scalars, a `List[int]`); a parameter's own bytes, which
+  outlive the frame. **Shared is not placed.** A value that shares
+  bytes with a site is not allocated there and embeds nothing allocated
+  there, so no store asks it to be co-located with that site
+  (`[mem.region.edge]` rules where a value is PLACED: a list built in a
+  region block that holds strings from a longer-lived region is still
+  stored into a struct built in the block), and no write, freeze or
+  promotion fact reads it; what it may not do is OUTLIVE the site's
+  region, so every arm of this clause — the block's value, a return, a
+  send, module state, a binding declared outside the block — reads
+  shared bytes exactly as it reads the sites a value holds. The same
+  reading closes two doors that need no call: **a `copy` of a
+  non-`Copy` value shares every `str` the original reaches**
+  (`[mem.tier0.move.3]` says so of a `str`, and it holds at every
+  depth: `in st { out = copy d }` handed `out.title` bytes in the block
+  `d` was built in), and so does the copy a plain index store makes
+  (`xs[i] = d`, `[mem.region.edge.elem]`). (Narrowed 2026-10-22 by
+  s255: a `copy` written AT A STORE INTO AN OUTER VALUE is the
+  materializing copy, made in the outer value's region
+  (`[mem.region.outer-write]`), so that very witness — `o` declared
+  under `in st { }`, `o = copy d` inside `pass` — re-makes the title's
+  bytes in `st` and runs; `region_copy_shares_str.lu` is its run row
+  now. A `copy` in any other position still shares.) And **a `Map` store keeps
+  its key**: `m[k] = v` may insert, the map then holds `k`, and a `str`
+  key's bytes are shared, so the map shares the bytes its key names —
+  as it shares an argument a callee may store. This one never needed
+  `in`: `region pass { let s = "built {n}"; m[s] = 1 }` with `m`
+  declared outside was accepted, and on native and release
+  `m[k] else 0` answered `0` for the key just stored once the next
+  region reused the chunk (the value side, `m["k"] = s`, was E1004 all
+  along). The diagnostic is E1010 at
+  the argument, naming the callee, the argument whose bytes flow, the
+  `mut` argument that outlives them and the region; for a `str`
+  argument it offers the one edit that is sound at the call —
+  `"{s}"`, an interpolation, which materializes the bytes in the
+  current region, the one the callee allocates in. The other repairs:
+  build the value outside the region block, or let the block's own
+  value leave with `copy region { … }` and make the call after it
+  (`[mem.region.copyout]`). **The cost, stated.** Nothing at run time
+  on any tier — a refusal; no accepted program's code changes
+  (measured: byte-identical binaries below). What is refused that
+  would have run correctly: a call under `in r { }` that hands a
+  region-built `str` to a callee which only READS it, beside a `mut`
+  argument that could have held it (`fn count(mut l: Log, s: str)
+  { l.seq += s.len }`) — never unsound, sometimes strict, and the
+  `"{s}"` edit or a scalar argument (`s.len`) repairs it; a summary of
+  what each callee keeps would make it exact for a direct call to a
+  fn in the same package, and is the debt. Without `in`, nothing new
+  is refused: the call's own site already pinned every `mut` argument
+  to the current region. Measured before it landed, trunk `a027b643`
+  against head at the memory check (`conform-run --phase=mem`): every
+  `.lu` file of wolf-std, boreutils, lobo `c9eff15`, pelt, pax, muzzle
+  and the book (1,156 files, 868 of them reaching the check) and
+  lobo's 120 staged tests — **zero rows moved**; lobo (26 `in life
+  { }` blocks in its entry), boreutils' 28 utilities and pelt
+  build byte-identical binaries on both tiers. The first cut of the
+  rule, which made a kept argument a site the `mut` argument HELD,
+  moved five: wolf-book's `pargrep` and three exercises (a list of
+  longer-lived strings embedded in a struct built in a `freeze region
+  { }`) and lobo's reload (`conf: copy gens[ci].conf` inside `region
+  rload`), all sound and all E1004 — which is why shared bytes are not
+  placed. Not covered, filed: a callee that SENDS its argument on a
+  channel it was handed (wolf-lang#665), and a `mut` argument that is
+  module state (the raw tier answers for a module `var`). lupin runs
+  five `List` shapes and the `Map` key to `exit(0)` on stale bytes
+  (wolffe-lang/wolf-interp#232) and traps the rest. Witnesses
+  `corpus/memory/region_kept_arg_*.lu`, `region_kept_result_*.lu`,
+  `region_copy_shares_str.lu`, `region_copy_index_store.lu`, and the
+  legal companion `region_kept_arg_legal.lu`.)
+  (Extended 2026-10-11 by s229 for wolf-lang#665; ruled A (#66), 2026-10-11. The
+  channel door the paragraph above left open is closed in
+  `[conc.chan.payload]`, by that clause's own frame rule carried
+  through the call and not by shared bytes: a callee handed a channel
+  that can carry bytes may send any argument on it, or a value it
+  builds in its caller's current region, so each such argument and the
+  call's own site are demanded to outlive the frame as a sent payload
+  is — "sent on a channel" is this clause's arm, reached through a
+  call. A channel has no binding whose lifetime bounds its receiver's,
+  which is why it is not a `mut` argument that shares. Witnesses
+  `corpus/conc/chan_sent_arg_*.lu`.)
   (Ruled 2026-09-11 by s153 for wolf-lang#310: `region scratch { let s
   = "re" + "gions"; s }` returned from a function printed `regions`
   from freed bytes on wolf 0.2.10 and lupin 0.1.31 alike, with a W1001
@@ -653,6 +891,284 @@ fact, polymorphism defaults), `.docs/refs/papers/verona-refcaps.pdf`
   `List[int]()` was E1010 all along — the escape rule saw the list and
   not the `str`. Witnesses `corpus/memory/region_str_concat_return.lu`
   and `region_str_concat_send.lu`.)
+- `[mem.region.scalar]` **A value whose type reaches no storage names
+  no region.** (s252, wolf-lang#816, #801 and #822's first finding;
+  yew `docs/MAP.md` G18, G28.) A type **reaches no storage** when it is
+  a scalar — an integer type, `wrapping[T]`, a float, `bool`, `char`,
+  `byte` — or unit, or an adapter of one (`[mem.tier0.move.3]`), or a
+  tuple, struct, enum or row all of whose fields and payloads reach no
+  storage, transitively. A `str` reaches storage (its bytes live where
+  they were built), and so do a container, a closure, a fn value, a
+  handle, a region, a `shared` cell and a type parameter. A value of
+  such a type is its own inline words on every machine — the compiling
+  tiers keep it in registers or the frame, the checked machine as a
+  value — so no region holds it and none can free it. It is no site
+  for this section: built inside a region block and bound outside it,
+  returned, stored into another parameter's region
+  (`[mem.region.edge]`'s field store), passed `mut` to a call made
+  inside a region (the callee may replace its words, never with
+  storage), bound by a `for` over a region's `List` of them, or read
+  out of a frozen region (the binding holds a copy of the words, never
+  the region's data, so `[mem.region.freeze.1]` has nothing of it to
+  keep immutable), it ties itself to no region: no E1010, E1004 or
+  E1012 is about it. A struct with one `str` or `List` field keeps
+  every rule. W1001's account is unchanged: a struct literal inside a
+  region still counts as the region's work. **`copy e` of a non-place**
+  — a call's result, a block — is the same fresh value in the ambient
+  region a place's copy is (`[mem.tier0.move.3]`; the native tiers
+  always made it so), sharing only the `str` bytes it reaches: so
+  `copy`, E1004's own fix-it, repairs a call's result too (`sh.bag =
+  copy fill(mut t)`). **What it replaced:** every struct and enum
+  literal was a site and every non-`Copy` `mut` argument gained the
+  call's ambient site, whatever the type held, so `bump(mut g)` of a
+  one-`int` RNG state inside a region was E1010 (yew's fuzzers threaded
+  the state functionally instead), a `Snap` of two `int`s assigned past
+  a region was E1010 while the tuple `(1, 2)` crossed freely, and `m.s
+  = copy g(mut t)` was E1004 "from `t`'s region" — a `copy` of a
+  non-place passed its operand's sites through. **The cost, stated:**
+  none at run time; refusals removed. **lupin** 0.1.54 and 0.1.55 run the `mut`
+  shapes and the copied call result, and trap `region-fault` on the
+  literal, binding, enum, `for`, `take`-store and frozen-write shapes:
+  those are the pre-mirror answers. From 0.1.56, lupin implements this
+  clause (is79, wolf-interp#271): the scalar-only shapes run, while
+  storage keeps its region and its faults. Witnesses
+  `corpus/memory/region_scalar_value.lu`, `region_scalar_mut.lu`,
+  `region_scalar_store.lu`, `region_scalar_freeze.lu`, and what is
+  still refused: `region_scalar_list_store.lu` (E1004),
+  `region_scalar_str_escape.lu` and `region_scalar_list_mut.lu`
+  (E1010). The rows that had used a scalar-only struct as a stand-in
+  for region data (`region_conflict_params.lu`,
+  `region_escape_local.lu`, `region_freeze_write.lu`) hold a `List`
+  now. **Measured before it landed** (kasumi, trunk `808ce11a` against
+  the head, `conform-run --json --phase=mem` over every `.lu` file of
+  boreutils, lobo, pelt, wolf-std and yew at their 2026-10-20 trunks,
+  1,013 files): two verdicts moved, yew's `distinct-copy` and
+  `region-copy` witnesses, from refused to accepted; no other verdict,
+  diagnostic or warning moved.
+- `[mem.region.outer-write]` **A write into an outer value keeps
+  nothing of the block when the stored value names no region or is
+  written `copy`.** (s255, wolf-lang#839, #856, #821, #844; ruling
+  #112, the maintainer, 2026-10-22: "if we've hit the same wall twice
+  in real projects, maybe it's time for the language adjustment".)
+  The wall: a loop whose turn builds temporaries cannot open a
+  `region` block per turn when the turn also writes to something
+  long-lived — an editor's window and cursor set (yew yw03: 337 B kept
+  a typed key, 631 B a line move, ~63 MB over a 100,000-key session,
+  where C yew is flat), a directory walk's output writer (aspen ap01:
+  59.9–157.6 MB on a 100,000-file tree against C aspen's 2.6–18.7) —
+  because the block refused every write into a value living outside
+  it, and `copy` was no repair (the copy landed in the dying region
+  and, for a `str`, shared the bytes). Inside a `region` or `in` block,
+  a write into an OUTER value — a field store or whole assignment to a
+  binding declared before the block opened, a store through a `mut`
+  parameter (always outer: its storage is the caller's), a `push`, an
+  index store or a `Map` store into such a container — is admitted
+  when the stored value **names no region** (`[mem.region.scalar]`; a
+  literal's bytes are static and name none either) or is written
+  **`copy e` at the store**. `copy` in that position is the
+  **materializing** copy `copy region { }` makes
+  (`[mem.region.copyout]`: every `str` reached has its bytes re-made,
+  every `List` and `Map` gets a fresh buffer, structs, tuples, enums
+  and rows are rebuilt around their copied parts — not ruling #35's
+  sharing copy, which is the one for every other position), made in
+  the **outer value's region**, never the block's: for a container
+  store — a `push`, an index or `Map` store (the key included, since a
+  map keeps its key, s227), a `List` or `Map` field or binding
+  replaced — the container's OWN region, the one its header remembers
+  and its growth already uses (`[mem.region.create.3]`'s birth region,
+  s76); for any other store, the region that was **ambient where the
+  outer binding was declared** — a parameter's is the function's entry
+  ambient, the caller's current region, which the caller's own call
+  site keeps longer-lived than the argument (below). A container's
+  growth inside the block is its own region's too, never the block's:
+  a `byte` pushed into an outer `List[byte]` was E1010 before this
+  clause ("even a byte push", ap01 §6.8) because the push's receiver
+  was modelled as an allocation at the push site, where the runtime
+  had grown the list in its birth region since s76. Every other store
+  from inside the block into an outer value is refused as before — a
+  plain `str` push or index store shares the block's bytes (E1010), a
+  plain field store of a block-built value is the cross-region field
+  store (E1004) — with the report naming the store and the one-word
+  repair. A value no copy can make independent (a region value, a fn
+  value, a cell, a channel, a handle, a `Pool`, a raw pointer, a trait
+  object, a type parameter) is E1010 at the `copy`, naming the part, as
+  `copy region { }` refuses it. **A call inside the block passing a
+  `mut` argument** (yew's turn is ten such calls; aspen's level
+  recurses with the writer) gives the argument the call's region
+  (`[mem.region.escape]`, D12: the callee builds in its caller's
+  region, which is the block) **unless the callee's parameter is
+  ambient-clean** — proven by the callee's own lowering, over its whole
+  body: the parameter's root never holds or shares an allocation
+  outside its own region (the generalized region its storage arrived
+  in, where its containers grow and the copies aimed at it land) other
+  than its own entry storage and the static region's. The callee's
+  entry ambient (the caller's region; a `spawn proc` entry's own),
+  another parameter's bytes or region (a `take` argument pushed, a
+  `str` or fn-value argument stored), a region parameter's region
+  (`in keep { }`) and a block's are all the caller's, and the callee
+  cannot know that any of them outlives the parameter. A move out of
+  the parameter, whole or in part, needs
+  no rule of its own: the move checker's exit rule (s184,
+  `[mem.tier0.mode.mut]`) makes every moved-out part re-initialized
+  before the return, and that store is read like any other — yew's
+  take-the-cursor-set-and-give-it-back pattern is clean when what comes
+  back is. Under this clause that is exactly: scalar stores; container
+  stores of
+  scalars or of `copy`s (the container's own region); containers
+  replaced by `copy` (the old header's region); calls handing the
+  parameter, or a place in it, to an ambient-clean parameter; and the
+  mutators that store nothing (`pop`, `clear`, `reset`, `reserve`). A
+  flat (non-container) field or whole store of anything else makes it
+  unclean — a `copy` there included, since that copy lands in the
+  callee's entry ambient, which IS the block when the call is inside
+  one. The verdicts are computed once per build over every checked
+  body, callee-first; a recursive component starts from the optimistic
+  answer and is re-lowered until no verdict moves (aspen's `walk_dir`
+  calls itself inside its level). A fn value, a trait method, a C
+  call, a host builtin and a callee whose body is not in the build are
+  not clean. The diagnostic at the block's end names the callee's
+  first keeping store, so the caller knows what to spell. **Why this
+  is sound.** A scalar is its own inline words. A materialized copy
+  shares no byte with the block: it was made in a region that outlives
+  the block, before the free. A container's buffer lives in its birth
+  region and so do its elements once copied there. The entry ambient
+  of a callee outlives every `mut` parameter's storage because the
+  caller's call site pins the argument to its own ambient whenever the
+  call sits inside a block (this clause's refusal) — the pin is what
+  makes the entry ambient safe, and an ambient-clean parameter never
+  needs it because nothing of the entry ambient reaches it — and
+  nothing of another argument's either, which the pin also covered
+  (s227's `take` and closure rows). A value
+  placed by `in r { }` and written from a block is still E1004 (the
+  copy lands at the binding's ambient, not in `r`; the placement
+  demand conflicts): strict, not unsound. The contract's fourth write
+  form, "a captured `mut`", has no instance: a closure borrows its
+  captures and a write through one is refused by name. **The cost,
+  stated.** Nothing for a program with no such write. A `copy` at an
+  outer store pays one deep copy of the value in the outer region —
+  proportional to the value, not to the block's work — where before
+  the same `copy` (into a `mut` parameter's place, outside any block)
+  shared a `str`'s bytes: a byte copy per `str` reached, charged to
+  the ledger of the region it lands in on every machine (the checked
+  machine charges each `str` its length and each container its slots;
+  the native arena its 16-byte-rounded bytes and 40-byte headers). The
+  verdict pass lowers a recursive component's members once more per
+  verdict that falls (measured over yew's and aspen's trees in s255's
+  note). The repair for a refused program is one word at the store, or
+  `reset` then pushes into storage the value already owns. **lupin**
+  0.1.55 and 0.1.56 share `copy`'s bytes: each traps `region-fault` where a copied
+  `str` is read back after its block (`region_outer_write_str_push`,
+  `_struct`, `_map`, `_field`), runs the scalar-push, index and clean-call
+  rows to the same answer, and resolves neither `reserve` nor `reset`
+  (`unsupported`): wolf-interp owes this clause and
+  `[type.list.reserve]`/`[type.list.reset]`. Witnesses
+  `corpus/memory/region_outer_write_scalar.lu`, `_str_push.lu`,
+  `_struct.lu`, `_field.lu`, `_map.lu`, `_index.lu`, `_call.lu`
+  (yew's turn, 100,000 turns flat), `_reset.lu` (#821's rebuild),
+  `_charged.lu` (the ledger: the copies in the outer region, the
+  scratch in the turn's), and the refusals `_refused.lu` (a plain
+  `str` push, E1010), `_refused_field.lu` (a plain field store, E1004),
+  `_call_refused.lu` (an unclean callee, E1010 naming its store);
+  `region_scalar_list_mut.lu` holds an unclean callee now (its `int`
+  push, refused by the signature rule alone, is `_call.lu`'s run row),
+  and s227's `region_copy_shares_str.lu` — `o = copy d` under
+  `in st { }`, `o` declared there — is a run row: that `copy` sits at a
+  store into an outer value and materializes the title in `st`.
+  Measured before it landed (s255's note §5): the downstream census at
+  `--phase=mem` over boreutils, lobo, pelt, wolf-std, yew and aspen,
+  and the two witnesses' memory rows before and after.
+
+### Copy-out `[mem.region.copyout]`
+
+- `[mem.region.copyout]` **`copy region name? { … }`** — the region
+  block with the `copy` prefix. The block runs exactly as
+  `region name? { … }` does (`[mem.region.create.1]`; its region is
+  the body's ambient, `[mem.region.create.3]`). At its closing brace,
+  while the block's region is still live, the block's VALUE is copied
+  into the region that was ambient where the block was entered — a
+  deep copy in which every `str` the value reaches has its bytes
+  materialized there (not shared, as a plain `copy` of a `str` shares
+  them, `[mem.tier0.move.3]`), every `List` and `Map` gets a fresh
+  buffer there, and structs, tuples, enums and error rows are rebuilt
+  around their copied parts — and only then is the block's region
+  freed wholesale (`[mem.region.intra.2]`). The expression's value is
+  the copy. Nothing else changes: an outer binding, module state, a
+  channel or any other holder of a value built in the block is E1010
+  as for the plain block (`[mem.region.escape]`); a `return`, `break`
+  or `?` leaving the block hands out no copy and frees the region on
+  the way, so a value it carries out of the block is E1010 too. A
+  value whose type has a part no copy can make independent of the
+  region — a region value, a fn value, a `shared`/`weak` cell, a
+  channel, mutex, task scope or proc handle, a `Pool`, a raw pointer,
+  a trait object, an unresolved type parameter — is E1010 at the
+  block, naming the part. In every other respect the block is
+  `region { }`: a name, a strategy and a `cap:` budget are written and
+  mean what they mean there, the budget binding the block's own work
+  and not the copy, which is charged to the enclosing region.
+  **Why this is sound.** The value that leaves is a fresh allocation in
+  a region that outlives the block, made before the free; it shares no
+  byte with the dying region, so it carries none of the block's sites,
+  and the checked machine, native and release all free the region
+  after the copy and before the expression's value is used. A raw
+  pointer stashed into the block's region and read after the `}` is
+  `[mem.ub]` row P4 (`[mem.prov.region]`), as for any freed region.
+  **The cost, stated.** One deep copy of the block's value per
+  execution, in time and in bytes in the enclosing region —
+  proportional to the value, not to the work the block did — paid
+  only where the prefix is written; a scalar value costs nothing to
+  copy. Nothing changes for any program without the prefix.
+  **What it is for, and what it leaves.** A long-running loop — a
+  shell's command loop, a server's request loop, a kernel's event
+  loop — computes each turn in the block and keeps the turn's result:
+  #612's witness (twenty `str`s and a `List` per turn, one `str` kept
+  in a map) peaked at 27,784 KB at 20,000 turns and 53,124 KB at 40,000
+  with no region, and at 2,940 KB and 3,564 KB with the prefix (native;
+  release 27,680 and 53,032 against 2,952 and 3,608), on linux x86-64.
+  What still grows is the kept value itself: a superseded result is not
+  freed by the region that holds the loop's state (here the process
+  root, which frees nothing), about 32 bytes a turn in that witness;
+  keeping a scalar, the loop is flat (2,428 and 2,436 KB). pelt's
+  command loop, with a simple command's expansion, field splitting and
+  pathname expansion computed inside the block in a throwaway copy,
+  went from 163,072 KB (an empty directory) or 489,780 KB (24 files) at
+  20,000 turns to 34,376 KB in either, on release. Bounding the state's own garbage — compacting it
+  into a fresh region and freeing the old — is a separate question.
+  The pattern the form asks of an interpreter is compute in the block,
+  commit outside it: a `mut` argument passed to a call inside the block
+  gains the call's site (D12), so the state is written after the copy,
+  not during the work.
+  **The spelling, ruled A** (s216, 2026-10-07, wolf-lang#612; ruling
+  #56, the maintainer, 2026-10-07). The
+  problem: a `region` block frees a turn's temporaries, but every way
+  to hand its result to longer-lived state is E1010 — rightly, since
+  the result's bytes are in the dying region; `copy` inside the block
+  allocates in the dying region (and for a `str` shares the bytes,
+  ruling #35), a `List[byte]` declared outside grows in it, and the
+  one way past E1010 that existed was the unsound wolf-lang#618. Three
+  designs: (A, implemented) `copy region { … }`: no new token, keyword
+  or code; the second prefix that changes what a block's `}` does,
+  beside `freeze region { … }`; the copy is the block's VALUE only, so
+  a loop that keeps several things returns a struct of them. (B) a
+  materializing copy aimed at a named outer region from inside the
+  block, `copy v in outer` or `in outer { st.x = v }`: more general
+  (several writes, straight into state, mid-block) but it needs a name
+  for the region the block was entered from, which D12 leaves
+  anonymous, a second meaning for `copy` of a `str` in one position,
+  and an outer-region window open inside the block that the antichain
+  and edge rules (`[mem.region.multiopen]`, `[mem.region.edge]`) must
+  then police. (C) a per-iteration region on a loop
+  (`while c region { … }`): sugar that frees each pass but leaves the
+  result question exactly where it was (A or B is still needed), and
+  fixes a granularity an interpreter does not share (pelt's turn is a
+  COMMAND, nested inside loops of the interpreted script, not a wolf
+  loop pass). Recommendation A: the smallest surface that is sound by
+  construction, implemented on every machine with machinery they
+  already had (`freeze region`'s block, `copy`'s deep copy). A
+  different spelling of A (`region name copy { }`, a `keep` keyword) is
+  a rename of the same rule.
+  Witnesses `corpus/memory/region_copyout_*.lu` and the driver gate
+  `region_copyout_lanes.rs` (the bounded-memory rows read `VmHWM` at
+  20,000 and 40,000 turns, with the no-region control).
 
 ### Cross-region edges `[mem.region.edge]`
 
@@ -792,7 +1308,10 @@ Edge legality (source stores a reference to target):
 
 - `[mem.region.freeze.1]` `freeze r` consumes the region value and
   promotes the entire graph to `imm` — deep, in place, no copy. Frozen
-  data is immutable **forever** and shareable across threads (s05).
+  data is immutable **forever** and shareable across threads (s05). A
+  value whose type reaches no storage, read out of a frozen region, is
+  its binding's own words and not the region's data
+  (`[mem.region.scalar]`).
 - `[mem.region.freeze.2]` `move r` transfers the region value (affine
   move); cross-thread semantics in spec 03. After transfer, any use of
   the old binding is `[mem.tier0.move.2]`.
@@ -1032,7 +1551,8 @@ Simpler than the safe tier, not stricter (anti-Stacked-Borrows lesson).
   side-effecting, and never elided, split, merged or reordered against
   each other (K3 = B, STATUS #31).
 - `[mem.unsafe.raw.4]` An ordinary raw access — `p[i]`, `*p`, their
-  compound assignments, a field read through `p[i].f` — of pointee `T`
+  compound assignments, a field read or store through `p[i].f` or
+  `(*p).f` (`.5`) — of pointee `T`
   is at an address that is a multiple of `T`'s alignment (`align_of(T)`,
   `[abi.layout.query]`: a scalar's is its size, a `#[repr(c)]` struct's
   its strictest field's, a `#[repr(c, packed)]` struct's 1). An access
@@ -1049,6 +1569,26 @@ Simpler than the safe tier, not stricter (anti-Stacked-Borrows lesson).
   `memory/raw_ub_misaligned_u32_read.lu` and its five siblings,
   `memory/raw_ub_misaligned_repr_c_field.lu`,
   `memory/raw_aligned_control.lu`, `memory/packed_field_raw_read.lu`.
+- `[mem.unsafe.raw.5]` A field of a raw element is a place in the
+  pointee's memory: `p[i].f`, `(*p).f` and a nested path `p[i].a.b`
+  read the field's bytes, and `p[i].f = v` / `p[i].f op= v` store them,
+  at the offset the struct's layout gives the field (`[abi.layout.c]`,
+  `[abi.layout.packed]`, `[abi.layout.align]`) — one access of the
+  field's width; the other fields' bytes and the padding are not
+  touched. The store is a raw write (`.1`, E1301 outside `unsafe`): the
+  pointer, then the index, run before the right-hand side
+  (`[mem.model.place.rhs]`), and a compound operator reads the field
+  at its own type first. Row L4 (`.4`) is asked of the element — the
+  struct's alignment at `p + i * size_of(S)` — so a packed struct's
+  `u64` field at offset 2 is an ordinary defined access, and a plain
+  `#[repr(c)]` element at a misaligned address is L4 whichever field
+  is named. The checked machine models an integer-shaped (or `bool`)
+  field; any other field type is refused by name there. (wolf-lang#577,
+  s213: an interrupt handler rewriting its frame's saved `rip`.)
+  Witnesses: `memory/raw_field_store.lu`, `memory/raw_field_store_compound.lu`,
+  `memory/raw_field_store_nested.lu`, `memory/raw_field_store_packed.lu`,
+  `memory/raw_field_store_outside_unsafe.lu` (`fail(E1301)`),
+  `memory/raw_ub_misaligned_repr_c_field_store.lu`.
 - `[mem.unsafe.volatile]` `p.read_volatile()` yields the `T` at `p`;
   `p.write_volatile(v)` stores `v: T` there and yields unit. Both are
   raw-tier operations (E1301 outside `unsafe`). Ordinary raw accesses
@@ -1123,8 +1663,12 @@ Simpler than the safe tier, not stricter (anti-Stacked-Borrows lesson).
     outside `unsafe`: spec 03's data-race freedom is a property of the
     safe tier, and a module `var` is shared by every task. The program
     keeps its own discipline (one thread, or its own lock in the unsafe
-    ring). On the checked machine and lupin a `var` is ordinary memory:
-    a write is seen by every later read, across calls.
+    ring). On every machine a `var` is ordinary memory: a write is seen
+    by every later read, across calls. A call may write any module state
+    and any storage a raw pointer or an `extern "c" let` reaches, so no
+    value read or stored before a call stands for that memory after it
+    (s214, wolf-lang#598: native and release reused the caller's store
+    across a callee's write at 0.2.24).
   - `[mem.static.3]` Initialization is at compile time, so there is no
     initialization order to observe: the comptime engine (D29/D33, the
     evaluator `const` items already used) evaluates every module initializer and the result is the image's
@@ -1133,13 +1677,29 @@ Simpler than the safe tier, not stricter (anti-Stacked-Borrows lesson).
     function, ambient IO, a read of a `var` — is **E0705**, as is an
     initializer that depends on itself; an initializer may name any
     other `const` or `let` of its module, before or after it. The types
-    module state holds at this cut are the integers, `byte`, `bool` and
-    the floats (and `str` for a `const` or `let`); any other type (a
-    `List`, a struct) is refused by name, `unsupported`: it is not
-    static data yet (a fixed-size array is a separate type question; a
-    table a kernel needs lives in `.bss` reserved by assembly and named
-    with `extern "c" let`, `[abi.link.extern]`). Witnesses:
-    `memory/static_*.lu`.
+    module state holds at this cut are the integers — `wrapping[T]`
+    over an integer type among them — `byte`, `bool` and the floats
+    (and `str` for a `const` or `let`); any other type (a `List`, a
+    struct) is refused by name, `unsupported`: it is not static data
+    yet (a fixed-size array is a separate type question; a table a
+    kernel needs lives in `.bss` reserved by assembly and named with
+    `extern "c" let`, `[abi.link.extern]`). A `wrapping[T]` item is
+    its width's bits, as the plain type's is, and its initializer folds
+    with the type's own wrap (`const B: wrapping[u8] = A + 100` with
+    `A` at `200` is `44`). (s252, wolf-lang#814, yew G25: until 0.2.35
+    every machine refused a `wrapping[T]` item by name, read or not,
+    where the same literal typed `u64` was accepted.) Witnesses:
+    `memory/static_*.lu`, `memory/static_wrapping.lu` among them.
+  - `[mem.static.4]` A `pub` module item is read through its module's
+    name — `m.K` after `use m` — exactly as the bare name reads inside
+    its own module: a `const` is its value, a `let` its immutable data,
+    a `var` its writable data, read or (a `var`) written with `m.V = x`
+    / `m.V op= x` only inside `unsafe` (`.2`, E1301 outside it). A
+    module item that is not `pub` so named is E0304, as any private
+    member is. (wolf-lang#579, s213: pax's timer constants read by its
+    interrupt module.) Witnesses: `memory/static_qualified/`,
+    `memory/static_qualified_let/`, `memory/static_qualified_var/`,
+    `memory/static_qualified_var_outside_unsafe/` (`fail(E1301)`).
 
 ## §6 Provenance `[mem.prov]`
 
@@ -1338,6 +1898,16 @@ adopt that design and give `for` its desugar.)
   iterates the fresh `List` by `[mem.iter.impl]`; nothing new is
   ruled. The full-open `[..]` spelling stays refused at the grammar
   (`[gram.expr.primary]` requires an endpoint — lupin's letter).
+  **The cost, stated** (s228, wolf-lang#663): one bounds check, one
+  allocation of exactly the slice's elements and one copy of them, for
+  every element type — the native tiers used to append the elements
+  one at a time into a buffer that grew by doubling, 1.9 ns a byte
+  where a decode of the same bytes took 0.03 (7.8 µs against 0.13 µs
+  for 4 KiB), and charged the region every abandoned buffer on the
+  way: a 4,096-byte `List[byte]` slice charged 8,240 bytes, so it
+  breached a `cap: 6000` the checked machine ran it under. It charges
+  4,144 now (`[mem.region.account.1]`: the units stay each tier's
+  own).
 - `[mem.list.pop]` **The recoverable `List` reads answer the `none`
   row** (ruled 2026-09-09, wolf-lang#274; the s37 posture, D25's:
   absence is a row, not a sentinel and not a trap). `xs.pop() ->
@@ -1357,6 +1927,43 @@ adopt that design and give `for` its desugar.)
   interpreter's `pop` arm and one of its REPL tests, and the book's
   chapter 5 (one fence, one sentence — `pop` is not bounds-checked).
   Witness: `corpus/memory/list_pop_empty.lu`, both tiers.
+- `[mem.list.bytes]` **The bulk byte scan** (s200, wolf-lang#411).
+  **`bytes_find(xs: List[byte], b: byte, from: int) -> int ! {none}`**
+  answers the first index `i >= from` with `xs[i] == b`, and the
+  payload-free `none` when there is none — an absent byte, or a `from`
+  outside `0..xs.len` (`xs.get(i)`'s posture: absence is a row, never
+  a trap, and `from == xs.len` simply has nothing after it). **`bytes_count(xs:
+  List[byte], b: byte) -> int`** answers how many elements equal `b`.
+  The words are `str`'s (`s.find`, `s.count`) for the same questions
+  over bytes; they are free builtins because `List`'s `count` method is
+  its element count (`[mem.list.pop]`'s family) and a method that
+  answered differently for one element type would be a second meaning
+  of one name. Both READ `xs` (a lend, `[mem.tier0.mode.read]`) and
+  allocate nothing. **Why builtins and not a loop**: counting newlines
+  is the archetypal bulk byte operation (`wc -l`, a line splitter, a
+  tokenizer's skip), and a wolf `for b in xs` loop is one compare per
+  byte with no way to widen it — no reinterpreting view lets eight
+  bytes enter one word — so boreutils' `wc -l` stood at 0.13x GNU on
+  x86-64 (#411). **The lowering, stated:** on the native and release
+  tiers each call is one runtime call over the list's buffer, into a
+  loop written in the target's BASELINE vector instructions — SSE2 on
+  x86-64, NEON on aarch64, present on every CPU of the target, so
+  nothing is detected at run time — and a scalar loop on every other
+  architecture: `count` compares 16 bytes at a time into a byte-wide
+  accumulator it widens every 255 rounds, `find` compares 16 bytes at a
+  time and walks only the 16 that hit. (A plain loop left to the
+  runtime's optimiser was measured first and vectorised across rows,
+  one gathered byte per row — 1.4x the wolf loop where the intrinsics
+  are 8x.) The checked machine and lupin answer by the scalar
+  definition above, element for element. **The cost, stated:** one call; `count` reads
+  every byte once, `find` reads up to the hit (to the end of its
+  16-byte block). Witnesses: `corpus/memory/bytes_scan.lu` (the edges:
+  empty, `from` at and past the end, negative, a hit at the last
+  index, a count over a block boundary, a line split); the vectorised
+  loops against the scalar ones on every length around their block
+  edges, `wolf_rt::bytes`'s crate tests; the speed, the micro-benchmark
+  `bench/byte-scan/` measured in the s200 PR. (Written 2026-10-06,
+  s200 — wolf-lang#411.)
 - `[mem.map.absent]` **An absent-key `Map` read is the `none` row**
   (ruled 2026-09-11, s152 — wolf-lang#11, #154; the key protocol is
   `[type.map.key]`). `m[k]` is **`V ! {none}`**: a bound key answers

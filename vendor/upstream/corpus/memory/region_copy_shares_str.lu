@@ -1,0 +1,42 @@
+//! check: run(exit=0, stdout="28\nbuilt in pass, 0 uses\n")
+//! phase: run
+//! conforms: mem.region.outer-write, mem.region.escape, mem.tier0.move.3
+//!
+//! s227 (wolf-lang#660's door, no call at all), admitted by s255: until
+//! `[mem.region.outer-write]`, `copy d` here was a fresh allocation in
+//! the ambient region whose `str` still named the original's bytes
+//! (`[mem.tier0.move.3]`: "the copy shares them"), so `o`, living in
+//! `st`, viewed bytes `pass` freed — trunk a027b643 read them back
+//! (`ZZZZZZZZZZZZZZZZZZZZZ`, the chunk `other` reused), and s227 made
+//! the shape E1010. A `copy` written AT A STORE INTO AN OUTER VALUE is
+//! the materializing copy now, made in the outer value's region — `o`
+//! was declared under `in st { }`, so the title's bytes are re-made in
+//! `st` — and the read after `other` reused `pass`'s chunk answers the
+//! title. lupin 0.1.55 still shares the bytes and traps `region-fault`
+//! (wolf-interp owes the clause).
+
+struct Doc {
+    title: str,
+    n: int,
+}
+
+fn main() -> !int {
+    let st = region()
+    in st {
+        let seq0 = 0
+        var o = Doc { title: "", n: 0 }
+        region pass {
+            let s = "built in pass, {seq0} uses"
+            let d = Doc { title: s, n: 1 }
+            in st {
+                o = copy d
+            }
+        }
+        region other {
+            let z = "ZZZZZZZZZZZZZZZZZZZZZZZZZ{seq0}ZZ"
+            print("{z.len}")
+        }
+        print("{o.title}")
+    }
+    0
+}
