@@ -1,0 +1,47 @@
+r41 Darwin socket regression: red evidence before the repair
+
+CI red: release run 40210158390 at 4b8eb4cdf8fff54ef62c0b3100d8ff2911f22cfa.
+Read --log-failed once; saved /Users/mfwolffe/lanes/r41/logs/release-40210158390.log.
+Saved combined-log line ranges:
+- 1571-1588: run_corpus expectation/mismatch/ledger failures. The ledger
+  maps differ ONLY at net/unix_echo.lu: observed exit(3), expected exit(0).
+- 2202-2212 and 3050-3051, 3448: doc_truth's corpus transcript changes
+  only through that echo row: 867 matches / 5 mismatches, not 868 / 4.
+- 3841-3844: fs_family's embedded socket/filesystem coherence witness
+  observes exit(1), stdout error: io, rather than exit(0).
+- 3804-3807: the 3063.25 s target is export, all TEN tests PASS including
+  byte-identical re-export. fs_family fails separately in 0.19 s (3851).
+  This is not a slow-runner timeout or a bad corpus/doc expectation.
+
+Host proof: Darwin's local default temp path is 48 bytes before, 56 after
+canonicalization (/private adds eight). A direct host UnixListener-shaped
+bind probe succeeds at 103 pathname bytes and refuses 104: AF_UNIX path too
+long. No third-party implementation source was read.
+
+Pre-fix environmental plant on this Mac, pinned Rust 1.97.1, release,
+--locked, -j4, CARGO_INCREMENTAL=0, old allocator unchanged:
+TMPDIR=/Users/mfwolffe/lanes/r41/socket-budget-xxxxxxxxxxxxxxxx
+Its canonical pathname is exactly 56 bytes. The focused new corpus test
+and the UNCHANGED embedded fs_family socket-coherence test both fail:
+- the_embedded_unix_echo_keeps_its_socket_path_budget: exit(3), expected
+  exit(0), stdout "bind failed with a path row on a host that serves the
+  family"; 0 passed / 1 failed, 0.01 s, cargo exit 101.
+- an_embedded_observations_socket_lands_beside_its_files_and_not_in_the_process_cwd:
+  exit(1), expected exit(0), stdout "error: io\n";
+  0 passed / 1 failed, 0.00 s, cargo exit 101.
+The scripts checked the 8 GiB memory floor before both invocations:
+16,573,743,104 bytes and 18,829,000,704 bytes respectively.
+Logs retained at:
+/Users/mfwolffe/lanes/r41/logs/mac-socket-corpus-red.log
+/Users/mfwolffe/lanes/r41/logs/mac-socket-coherence-red.log
+
+A later green attempt was correctly stopped BEFORE invoking cargo when
+free+inactive+speculative was 7,725,957,120 bytes (fmt) and 7,725,662,208
+bytes (tests), below 8,589,934,592. Nothing bypassed that guard or changed
+another process. Follow-up validation still checks the guard itself.
+
+Fix ownership: this is a NEW regression in e93eb1c's canonical-root change,
+not the earlier alias-identity failure. Keep canonical identity and the
+unchanged corpus, ledger, transcript, and coherence expectations. Use the
+compact root predicted in ci/r41-prediction.txt; that code is committed
+AFTER this red evidence. The 56-byte TMPDIR remains in the green witness.
