@@ -717,7 +717,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // would be a split no program should have to know about.
         #[cfg(not(target_family = "wasm"))]
         "os_cwd" => match machine.fs_working_dir() {
-            Ok(dir) => Ok(Value::Str(dir.to_string_lossy().into_owned().into())),
+            Ok(dir) => produced_str(machine, dir.to_string_lossy().into_owned(), "os_cwd", span),
             Err(()) => {
                 machine.note(Rule::ErrUnion, span, "`os_cwd` yields the `io` row");
                 Ok(error_value("os_cwd", "io"))
@@ -725,7 +725,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         },
         #[cfg(target_family = "wasm")]
         "os_cwd" => match std::env::current_dir() {
-            Ok(dir) => Ok(Value::Str(dir.to_string_lossy().into_owned().into())),
+            Ok(dir) => produced_str(machine, dir.to_string_lossy().into_owned(), "os_cwd", span),
             Err(_) => {
                 machine.note(Rule::ErrUnion, span, "`os_cwd` yields the `io` row");
                 Ok(error_value("os_cwd", "io"))
