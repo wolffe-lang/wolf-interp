@@ -4411,12 +4411,7 @@ fn exec_replace(
             if let Some(file) = &stdio[2] {
                 dup2_stderr(file)?;
             }
-            let pipe = signal_hook::flag::register(
-                signal_hook::consts::SIGPIPE,
-                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            )?;
             let answer = execve(&program, &argv, &env);
-            signal_hook::low_level::unregister(pipe);
             match answer {
                 Err(error) => Err(error.into()),
                 Ok(never) => match never {},
