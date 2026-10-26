@@ -4564,15 +4564,18 @@ fn sig_one_sendable(m: i128) -> bool {
     m > 0 && m & (m - 1) == 0 && m & !((1 << 28) - 1) == 0
 }
 
-/// s241 (`[os.signal.host]`): the host's last signal number as its ABI
-/// fixes it — 64 on linux (the kernel's 64; glibc's and musl's
-/// `SIGRTMAX`), 31 on macOS. `None` on any other host, as the compiler's
-/// runtime answers.
+/// s241 (`[os.signal.host]`): the observation target's last signal number
+/// as its ABI fixes it — 64 on linux (the kernel's 64; glibc's and musl's
+/// `SIGRTMAX`), 31 on macOS. `None` on any other target. This is a shape
+/// bound, not a host call: the bundle must use the same fixed target here
+/// as in the following error/refusal decision. Ordinary observations use
+/// `HOST_TRIPLE` and retain their host's bounds.
 #[cfg(not(target_family = "wasm"))]
-fn host_last_signal() -> Option<i128> {
-    if cfg!(target_os = "linux") {
+fn target_last_signal() -> Option<i128> {
+    let target = crate::attrs::build_target();
+    if target.contains("-linux-") {
         Some(64)
-    } else if cfg!(target_os = "macos") {
+    } else if target.ends_with("-darwin") {
         Some(31)
     } else {
         None
@@ -4591,10 +4594,10 @@ fn sig_send_shape(m: i128, zero: bool) -> bool {
         return zero;
     }
     if m < 0 {
-        if cfg!(windows) {
+        if crate::attrs::build_target().contains("-windows-") {
             return true;
         }
-        return host_last_signal()
+        return target_last_signal()
             .is_some_and(|last| m.checked_neg().is_some_and(|n| (1..=last).contains(&n)));
     }
     sig_one_sendable(m)
@@ -4680,9 +4683,8 @@ mod signal_shape_target_tests {
                 assert!(!sig_send_shape(3, true));
                 assert!(!sig_send_shape(1 << 28, true));
                 for m in [-1, -31, -32, -64, -65, -1099511627776, i128::MIN] {
-                    let expected = last.is_none_or(|last| {
-                        m.checked_neg().is_some_and(|n| n <= last)
-                    });
+                    let expected =
+                        last.is_none_or(|last| m.checked_neg().is_some_and(|n| n <= last));
                     assert_eq!(sig_send_shape(m, true), expected, "{target}: {m}");
                 }
                 // An exporter already observing Windows must still use
