@@ -4371,9 +4371,10 @@ fn exec_resolve(exe: &str, path: &str, dir: &std::path::Path) -> Result<String, 
 /// `execve` SIGPIPE is CAUGHT instead — signal-hook's safe flag action, a
 /// handler that only stores to a flag — and POSIX `execve` sets every
 /// caught signal to its default in the new image (R-r41e-1). If the exec
-/// fails the action is removed; the handler stays installed with nothing
-/// to do, so lupin's own SIGPIPE stays harmless and a write to a pipe with
-/// no reader is still the program's `io` row (EPIPE). The signal mask is
+/// fails the action is removed, and lupin's own SIGPIPE is ignored again,
+/// as before the call (measured: `ci/r41e/calib-candidate-e194b69.log`;
+/// pinned by `tests/exec_sigpipe_r41e.rs`), so a write to a pipe with no
+/// reader is still the program's `io` row (EPIPE). The signal mask is
 /// passed through unchanged, as 0.1.56 and every spawn path do (R-r41e-2).
 #[cfg(all(unix, not(target_family = "wasm")))]
 fn exec_replace(
