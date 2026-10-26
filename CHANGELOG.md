@@ -12,14 +12,14 @@ not do this. lupin now catches SIGPIPE just before the `execve`, and
 `execve` sets every caught signal back to its default in the new
 program. There is still no shell fallback and still no `unsafe` code.
 
-When an exec fails, lupin keeps the handler installed with nothing for it
-to do. A write to a pipe with no reader is still the program's `io` row
-(EPIPE), as before the exec. The signal mask passes through unchanged,
-as in 0.1.56 and in every spawn. The spawn calls (`os_spawn`,
-`os_spawn_with`, `os_spawn_fds` and `os_spawn_job`) always started
-children with SIGPIPE at its default, and still do. A test now reads
-each new program's own signal state, from `/proc/self/status` on Linux
-and from a small `sigaction` probe on macOS.
+When an exec fails, lupin removes the catch and SIGPIPE is ignored
+again, as it was before the call. A write to a pipe with no reader is
+still the program's `io` row (EPIPE). The signal mask passes through
+unchanged, as in 0.1.56 and in every spawn. The spawn calls
+(`os_spawn`, `os_spawn_with`, `os_spawn_fds` and `os_spawn_job`) always
+started children with SIGPIPE at its default, and still do. A test now
+reads each new program's own signal state, from `/proc/self/status` on
+Linux and from a small `sigaction` probe on macOS.
 
 The new dependency is `signal-hook` 0.3.18 (MIT OR Apache-2.0) with its
 default features disabled. It adds `signal-hook-registry` 1.4.8 to the
