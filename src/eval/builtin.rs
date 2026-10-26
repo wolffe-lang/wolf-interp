@@ -229,7 +229,8 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "os_chdir",
     "os_isatty",
     // s225 (wolf-lang#534, `[os.proc.exec]`): replace the running program —
-    // through std's safe `CommandExt::exec`, for descriptors 0..2.
+    // a direct `execve` (R-is81-1) with SIGPIPE back at its default in the
+    // new image (#307), for descriptors 0..2.
     "os_exec",
     // s230 (wolf-lang#704, `[os.fs.umask]`): the file mode creation mask.
     // The name resolves and its SHAPE row is answered; a well-formed call
@@ -953,9 +954,9 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // name — a target above 2 or a `-1` needs a descriptor placed or
         // closed with no safe call in std, as in `os_spawn_fds` — then the
         // SOURCES (`io`), then the program (`not_found`, `denied`, asked
-        // before anything moves). Then the buffered stdout goes out and
-        // std's `CommandExt::exec` replaces the process; it returns only
-        // on a failure, `io`.
+        // before anything moves). Then the buffered stdout goes out and a
+        // direct `execve` replaces the process (`exec_replace`); it returns
+        // only on a failure, with the row the errno names.
         #[cfg(not(target_family = "wasm"))]
         "os_exec" => {
             let (
@@ -4362,6 +4363,18 @@ fn exec_resolve(exe: &str, path: &str, dir: &std::path::Path) -> Result<String, 
 /// invoke a shell. Safe nix calls preserve this crate's no-unsafe boundary.
 /// On failure restore descriptor mappings and cwd before handing back the
 /// original errno, including a failure while installing the map.
+///
+/// SIGPIPE (r41e, wolf-interp#307): Rust's runtime ignores it before
+/// `main`, and `execve` keeps an ignored signal ignored, so 0.1.57 handed
+/// every image it started an ignored SIGPIPE the program never asked for
+/// (std's exec, before R-is81-1, set it back itself). Just before the
+/// `execve` SIGPIPE is CAUGHT instead — signal-hook's safe flag action, a
+/// handler that only stores to a flag — and POSIX `execve` sets every
+/// caught signal to its default in the new image (R-r41e-1). If the exec
+/// fails the action is removed; the handler stays installed with nothing
+/// to do, so lupin's own SIGPIPE stays harmless and a write to a pipe with
+/// no reader is still the program's `io` row (EPIPE). The signal mask is
+/// passed through unchanged, as 0.1.56 and every spawn path do (R-r41e-2).
 #[cfg(all(unix, not(target_family = "wasm")))]
 fn exec_replace(
     program: &str,
@@ -4398,7 +4411,13 @@ fn exec_replace(
             if let Some(file) = &stdio[2] {
                 dup2_stderr(file)?;
             }
-            match execve(&program, &argv, &env) {
+            let pipe = signal_hook::flag::register(
+                signal_hook::consts::SIGPIPE,
+                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            )?;
+            let answer = execve(&program, &argv, &env);
+            signal_hook::low_level::unregister(pipe);
+            match answer {
                 Err(error) => Err(error.into()),
                 Ok(never) => match never {},
             }
