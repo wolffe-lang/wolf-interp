@@ -1,0 +1,74 @@
+r41e prediction: lupin 0.1.58, the exec'd image's SIGPIPE (wolf-interp#307)
+Recorded before the first change: 2026-10-26T22:09:24Z (date -u)
+
+Inputs verified:
+  wolf-interp origin/trunk fb054c8bf4fc009227d45656b34d07dc30f19960 = v0.1.57 (peeled)
+  suspect d45084ba81f994e56804525688120ab8ba210681 (is81, R-is81-1, direct execve)
+  later   e603e6d619242299b72e6fe011ea8419e88429da (R-is81-4, spawn header guard)
+  wolf-lang control head b7db4184f06c575da79de6a20157ef00309588ab (r41)
+  published lupin 0.1.56 x86_64-linux-gnu archive sha256
+    ad703550ac4787e8e4bb26989d591a731410274d7332f2b4e8b9a64c878822cc (read twice)
+  published lupin 0.1.57 x86_64-linux-gnu archive sha256
+    7d8c188640a33559eb457e6a1bbc97bc2f52c3ec1109f5efbee0a0ff50ac81c0 (read twice)
+
+Measured before any change (black-box, the two published archives, hasu
+block A, rootless container localhost/r41-toolchain:1, foreign pid 1;
+log hasu ~/lanes/r41e/logs/calib-published.log). The replacement image is
+`cat /proc/self/status`; a lupin started "blocked" had SIGPIPE and SIGUSR1
+in its mask (python posix_spawn setsigmask, dispositions defaulted):
+  0.1.56 os_exec, plain start:   SigIgn 0x0     SigBlk 0x0
+  0.1.57 os_exec, plain start:   SigIgn 0x1000  SigBlk 0x0     <- #307
+  0.1.56 os_exec, blocked start: SigIgn 0x0     SigBlk 0x1200
+  0.1.57 os_exec, blocked start: SigIgn 0x1000  SigBlk 0x1200
+  os_spawn_fds, os_spawn_job (group 0), os_spawn, both versions, blocked
+  start: SigIgn 0x0, SigBlk 0x1200.
+  A #! script whose interpreter has no header: 0.1.56 os_exec ran the
+  script's text under /bin/sh (stdout SCRIPT-TEXT-RAN-UNDER-SH, exit 71);
+  0.1.57 os_exec answers io, errno 8. os_spawn of it: io in both.
+
+So, predicted and to be confirmed by the red test:
+- The cause is d45084b alone: it replaced std's CommandExt::exec, which
+  sets SIGPIPE back to the default before it execs, with nix's execve,
+  and POSIX execve keeps an IGNORED signal ignored. Rust's runtime ignores
+  SIGPIPE before main, so every image 0.1.57 execs starts with it ignored.
+  e603e6d touches only the spawn paths and is not involved.
+- The issue's premise about the MASK does not hold at Rust 1.97.1: no
+  path, 0.1.56's std exec included, empties an inherited mask. The mask is
+  not part of the regression. With a plain start the image's mask is
+  already empty for SIGPIPE at fb054c8b.
+- Every other program-starting path (os_spawn, os_spawn_with, os_spawn_fds,
+  os_spawn_job with a group, lupin's internal `sh -c kill` for a group,
+  the differ's counterparty) goes through std's Command and hands the
+  child SIGPIPE at its default: no leak. os_fork starts nothing (refused).
+
+Rulings (recommend; implement the recommendation):
+- R-r41e-1: (A) a safe API before the direct execve. Recommend A with
+  signal-hook's safe `flag::register(SIGPIPE, …)`: it makes SIGPIPE
+  CAUGHT instead of ignored, and POSIX execve sets every caught signal to
+  its default in the new image; nix's own `signal`/`sigaction` are unsafe.
+  Reject (B): measured above, std's exec re-runs a #! script under /bin/sh
+  when its interpreter has no header, and the header guard admits #!, so
+  B reopens R-is81-1's shell fallback (also a check-then-exec race).
+  (C) is not needed. Pin signal-hook =0.3.18 (MIT OR Apache-2.0, default
+  features off); predicted Cargo.lock change: two packages added
+  (signal-hook, signal-hook-registry), none bumped, errno and libc reused.
+- R-r41e-2 (new): the mask across os_exec. (A) pass the inherited mask
+  through unchanged, as 0.1.56, every spawn path and a native image do;
+  (B) unblock SIGPIPE at exec only. Recommend A: no mask change.
+
+Tests (one new target, tests/exec_sigpipe_r41e.rs):
+- exec_hands_the_image_sigpipe_at_default: RED at fb054c8b on Linux
+  (SigIgn 0x1000) and macOS (a probe compiled with the host's cc reports
+  the disposition with sigaction and the mask with sigprocmask; macOS has
+  no /proc and its ps has no ignored-signals keyword); green after.
+- the blocked-start mask and the spawn paths: green before and after.
+- after a failed exec, lupin's own SIGPIPE is never the default: ignored at
+  fb054c8b (SigIgn 0x1000), caught after the fix (SigCgt 0x1000).
+- Plant r41e-plant-reset: the register call removed; the first test red
+  by name in a tier-partial dispatch.
+
+Release: 0.1.57 -> 0.1.58: Cargo.toml/Cargo.lock, a CHANGELOG entry naming
+#307, the README and docs/manual/03-phases.md version transcripts. Corpus
+ledger unchanged (Unix 938 run, 868 match, 133/68/90, 4 standing
+mismatches); anchors 705 both ways; bundle 705/375/1,267/1,205 unchanged.
+r41's control at b7db4184 with the candidate lupin: exit 0, 1 passed.
