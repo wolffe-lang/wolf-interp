@@ -1,0 +1,26 @@
+    Finished `test` profile [unoptimized] target(s) in 0.06s
+     Running tests/exec_lanes.rs (target/debug/deps/exec_lanes-a289bb2d16a4e460)
+
+running 1 test
+control descriptor set: open=
+PASS the checked lane on image.lu (pid 64)
+PASS the native lane on image.lu (pid 72)
+PASS the native (taskset -c 0-3) lane on image.lu (pid 73)
+PASS the release lane on image.lu (pid 74)
+PASS the release (taskset -c 0-3) lane on image.lu (pid 75)
+
+thread 'exec_replaces_the_image_and_keeps_the_pid' (24) panicked at crates/wolf_driver/tests/exec_lanes.rs:553:13:
+assertion `left == right` failed: the lupin lane on image.lu: SIGPIPE ignored in the new image (SigIgn 0x1000)
+  left: 4096
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test exec_replaces_the_image_and_keeps_the_pid ... FAILED
+
+failures:
+
+failures:
+    exec_replaces_the_image_and_keeps_the_pid
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.16s
+
+error: test failed, to rerun pass `-p wolf_driver --test exec_lanes`

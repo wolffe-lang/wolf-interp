@@ -1,0 +1,15 @@
+    Finished `test` profile [unoptimized] target(s) in 0.04s
+     Running tests/exec_lanes.rs (target/debug/deps/exec_lanes-a289bb2d16a4e460)
+
+running 1 test
+control descriptor set: open=
+PASS the checked lane on image.lu (pid 136)
+PASS the native lane on image.lu (pid 144)
+PASS the native (taskset -c 0-3) lane on image.lu (pid 145)
+PASS the release lane on image.lu (pid 146)
+PASS the release (taskset -c 0-3) lane on image.lu (pid 147)
+PASS the lupin lane on image.lu (pid 148)
+test exec_replaces_the_image_and_keeps_the_pid ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.17s
+

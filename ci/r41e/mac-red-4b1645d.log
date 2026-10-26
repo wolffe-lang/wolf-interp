@@ -1,0 +1,39 @@
+R41E_GATE ok 16821 MiB at 2026-10-26T22:34:48Z
+R41E_MAC_START 2026-10-26T22:34:48Z head=4b1645d540b172616c78e822f3d36b36c95bcc75 dirty=2
+   Compiling wolf-interp v0.1.57 (/Users/mfwolffe/lanes/r41e/wolf-interp)
+    Finished `test` profile [unoptimized] target(s) in 5.66s
+     Running tests/exec_sigpipe_r41e.rs (target/debug/deps/exec_sigpipe_r41e-250900e2f1bbedf4)
+
+running 5 tests
+test a_failed_exec_still_answers_a_readerless_pipe_with_io ... ok
+test exec_hands_the_image_sigpipe_at_default ... FAILED
+test exec_passes_an_inherited_mask_through ... FAILED
+test every_spawn_path_passes_an_inherited_mask_through ... ok
+test every_spawn_path_hands_the_child_sigpipe_at_default ... ok
+
+failures:
+
+---- exec_hands_the_image_sigpipe_at_default stdout ----
+
+thread 'exec_hands_the_image_sigpipe_at_default' (11607226) panicked at tests/exec_sigpipe_r41e.rs:217:5:
+assertion `left == right` failed: SIGPIPE ignored in the exec'd image (State { blk: 0, ign: 1000, cgt: 0 }); lupin ignores it, the program never asked to
+  left: 4096
+ right: 0
+
+---- exec_passes_an_inherited_mask_through stdout ----
+
+thread 'exec_passes_an_inherited_mask_through' (11607227) panicked at tests/exec_sigpipe_r41e.rs:246:5:
+assertion `left == right` failed: SIGPIPE ignored in the exec'd image (State { blk: 20001000, ign: 1000, cgt: 0 })
+  left: 4096
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    exec_hands_the_image_sigpipe_at_default
+    exec_passes_an_inherited_mask_through
+
+test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.81s
+
+error: test failed, to rerun pass `--test exec_sigpipe_r41e`
+R41E_MAC_EXIT 101 2026-10-26T22:34:55Z

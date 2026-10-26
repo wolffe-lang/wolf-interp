@@ -1,0 +1,12 @@
+//! member: false
+//! r41e calibration: the same script started by os_spawn.
+fn main() -> !int {
+    let h = os_spawn(["./script"]) else |e| match e { not_found => -1, denied => -2, io => -3 }
+    if h < 0 {
+        print("spawn_answer={h} errno={os_error()}")
+        return 0
+    }
+    let s = os_wait(h)?
+    print("spawn_status={s}")
+    0
+}

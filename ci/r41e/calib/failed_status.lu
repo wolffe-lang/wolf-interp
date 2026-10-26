@@ -1,0 +1,41 @@
+//! member: false
+//! r41e calibration: lupin's own status before and after a failed exec.
+fn drain(fd: int) -> str {
+    var out = ""
+    loop {
+        var stop = false
+        let chunk = fs_read(fd, 4096) else |e| {
+            stop = true
+            match e {
+                eof => "",
+                io => "<io>",
+                utf8 => "<utf8>",
+            }
+        }
+        out = out + chunk
+        if stop {
+            break
+        }
+    }
+    out
+}
+
+fn own_status() -> !str {
+    let (r, w) = os_pipe()?
+    let h = os_spawn_fds("cat", ["/proc/{os_pid()}/status"], [1, w])?
+    fs_close(w)?
+    let text = drain(r)
+    fs_close(r)?
+    let _ = os_wait(h)?
+    text
+}
+
+fn main() -> !int {
+    let before = own_status()?
+    let row = os_exec("/nonexistent/r41e", ["r41e"], ["A=1"], List[int]()) else |e| match e {
+        unsupported => "unsupported", invalid => "invalid", not_found => "not_found", denied => "denied", io => "io",
+    }
+    let after = own_status()?
+    print("== before\n{before}== after {row}\n{after}")
+    0
+}

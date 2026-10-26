@@ -1,0 +1,32 @@
+R41E phase=focused-green waiting for block A at 2026-10-26T22:19:13Z, lane=335568 KiB
+R41E phase=focused-green acquired block A at 2026-10-26T22:19:13Z
+R41E_FOCUSED_START 2026-10-26T22:19:13Z head=daae6d070cfb471a8e2e81dadb5bb6c8c0fa094e dirty=0
+PRETTY_NAME="Ubuntu 24.04.5 LTS"
+NAME="Ubuntu"
+SigBlk:	0000000000000000
+SigIgn:	0000000000000000
+SigCgt:	0000000000000400
+Cpus_allowed_list:	0-5
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded signal-hook v0.3.18
+  Downloaded signal-hook-registry v1.4.8
+   Compiling errno v0.3.14
+   Compiling signal-hook v0.3.18
+   Compiling wolf-interp v0.1.57 (/lane/wolf-interp)
+   Compiling signal-hook-registry v1.4.8
+    Finished `test` profile [unoptimized] target(s) in 5.73s
+     Running tests/exec_sigpipe_r41e.rs (target/debug/deps/exec_sigpipe_r41e-e9b094027f295df9)
+
+running 6 tests
+test exec_hands_the_image_sigpipe_at_default ... ok
+test exec_passes_an_inherited_mask_through ... ok
+test a_failed_exec_still_answers_a_readerless_pipe_with_io ... ok
+test every_spawn_path_hands_the_child_sigpipe_at_default ... ok
+test every_spawn_path_passes_an_inherited_mask_through ... ok
+test a_failed_exec_never_leaves_lupin_sigpipe_at_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+R41E_FOCUSED_EXIT 0 2026-10-26T22:19:19Z
+R41E phase=focused-green exit=0 at 2026-10-26T22:19:19Z

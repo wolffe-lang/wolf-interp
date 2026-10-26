@@ -1,0 +1,43 @@
+R41E phase=focused-plant waiting for block A at 2026-10-26T22:35:16Z, lane=784472 KiB
+R41E phase=focused-plant acquired block A at 2026-10-26T22:35:16Z
+R41E_FOCUSED_START 2026-10-26T22:35:17Z head=5910a07b91fd4d07a9946fc676f55926f5cafd6e dirty=0
+PRETTY_NAME="Ubuntu 24.04.5 LTS"
+NAME="Ubuntu"
+SigBlk:	0000000000000000
+SigIgn:	0000000000000000
+SigCgt:	0000000000000400
+Cpus_allowed_list:	0-5
+   Compiling wolf-interp v0.1.57 (/lane/wolf-interp)
+    Finished `test` profile [unoptimized] target(s) in 5.38s
+     Running tests/exec_sigpipe_r41e.rs (target/debug/deps/exec_sigpipe_r41e-e9b094027f295df9)
+
+running 6 tests
+
+thread 'exec_hands_the_image_sigpipe_at_default' (106) panicked at tests/exec_sigpipe_r41e.rs:216:5:
+assertion `left == right` failed: SIGPIPE ignored in the exec'd image (State { blk: 0, ign: 1000, cgt: 0 }); lupin ignores it, the program never asked to
+  left: 4096
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test exec_hands_the_image_sigpipe_at_default ... FAILED
+test a_failed_exec_still_answers_a_readerless_pipe_with_io ... ok
+
+thread 'exec_passes_an_inherited_mask_through' (107) panicked at tests/exec_sigpipe_r41e.rs:245:5:
+assertion `left == right` failed: SIGPIPE ignored in the exec'd image (State { blk: 1200, ign: 1000, cgt: 0 })
+  left: 4096
+ right: 0
+test exec_passes_an_inherited_mask_through ... FAILED
+test every_spawn_path_hands_the_child_sigpipe_at_default ... ok
+test every_spawn_path_passes_an_inherited_mask_through ... ok
+test a_failed_exec_never_leaves_lupin_sigpipe_at_default ... ok
+
+failures:
+
+failures:
+    exec_hands_the_image_sigpipe_at_default
+    exec_passes_an_inherited_mask_through
+
+test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--test exec_sigpipe_r41e`
+R41E_FOCUSED_EXIT 101 2026-10-26T22:35:22Z
+R41E phase=focused-plant exit=0 at 2026-10-26T22:35:22Z

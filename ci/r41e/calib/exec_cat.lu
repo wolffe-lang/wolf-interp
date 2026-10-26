@@ -1,0 +1,6 @@
+//! member: false
+//! r41e calibration: the replacement image reports its own status.
+fn main() -> !int {
+    os_exec("cat", ["cat", "/proc/self/status"], ["PATH=/usr/bin:/bin"], List[int]())?
+    1
+}

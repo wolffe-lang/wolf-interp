@@ -1,0 +1,165 @@
+R41E phase=focused-red waiting for block A at 2026-10-26T22:16:57Z, lane=37644 KiB
+R41E phase=focused-red acquired block A at 2026-10-26T22:16:57Z
+R41E_FOCUSED_START 2026-10-26T22:16:57Z head=4b1645d540b172616c78e822f3d36b36c95bcc75 dirty=0
+PRETTY_NAME="Ubuntu 24.04.5 LTS"
+NAME="Ubuntu"
+SigBlk:	0000000000000000
+SigIgn:	0000000000000000
+SigCgt:	0000000000000400
+Cpus_allowed_list:	0-5
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded cfg_aliases v0.2.2
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded errno v0.3.14
+  Downloaded utf8parse v0.2.2
+  Downloaded anstyle-parse v1.0.0
+  Downloaded clap_derive v4.6.4
+  Downloaded console v0.16.4
+  Downloaded heck v0.5.0
+  Downloaded endian-type v0.2.0
+  Downloaded colorchoice v1.0.5
+  Downloaded nibble_vec v0.1.0
+  Downloaded anstyle-query v1.1.5
+  Downloaded comma v1.0.0
+  Downloaded clap_lex v1.1.0
+  Downloaded cfg-if v1.0.4
+  Downloaded itoa v1.0.18
+  Downloaded strsim v0.11.1
+  Downloaded anstream v1.0.0
+  Downloaded anstyle v1.0.14
+  Downloaded quote v1.0.47
+  Downloaded thiserror-impl v2.0.20
+  Downloaded thiserror v2.0.20
+  Downloaded rexpect v0.7.1
+  Downloaded getrandom v0.2.16
+  Downloaded fastrand v2.5.0
+  Downloaded tempfile v3.27.0
+  Downloaded smallvec v1.15.2
+  Downloaded zmij v1.0.23
+  Downloaded serde_core v1.0.229
+  Downloaded aho-corasick v1.1.5
+  Downloaded getrandom v0.4.3
+  Downloaded serde_derive v1.0.229
+  Downloaded once_cell v1.21.4
+  Downloaded proc-macro2 v1.0.107
+  Downloaded clap v4.6.6
+  Downloaded bitflags v2.13.1
+  Downloaded unicode-ident v1.0.24
+  Downloaded log v0.4.34
+  Downloaded similar v2.7.0
+  Downloaded serde v1.0.229
+  Downloaded memchr v2.8.3
+  Downloaded unicode-segmentation v1.13.3
+  Downloaded insta v1.48.0
+  Downloaded rustyline v18.0.1
+  Downloaded regex v1.13.1
+  Downloaded serde_json v1.0.151
+  Downloaded clap_builder v4.6.6
+  Downloaded radix_trie v0.3.0
+  Downloaded unicode-width v0.2.2
+  Downloaded syn v3.0.3
+  Downloaded nix v0.31.3
+  Downloaded regex-syntax v0.8.11
+  Downloaded rustix v1.1.4
+  Downloaded regex-automata v0.4.18
+  Downloaded libc v0.2.189
+  Downloaded linux-raw-sys v0.12.1
+   Compiling proc-macro2 v1.0.107
+   Compiling libc v0.2.189
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+   Compiling cfg-if v1.0.4
+   Compiling bitflags v2.13.1
+   Compiling memchr v2.8.3
+   Compiling utf8parse v0.2.2
+   Compiling cfg_aliases v0.2.2
+   Compiling nix v0.31.3
+   Compiling serde_core v1.0.229
+   Compiling anstyle-parse v1.0.0
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle-query v1.1.5
+   Compiling colorchoice v1.0.5
+   Compiling smallvec v1.15.2
+   Compiling rustix v1.1.4
+   Compiling anstyle v1.0.14
+   Compiling getrandom v0.4.3
+   Compiling zmij v1.0.23
+   Compiling anstream v1.0.0
+   Compiling nibble_vec v0.1.0
+   Compiling linux-raw-sys v0.12.1
+   Compiling syn v3.0.3
+   Compiling endian-type v0.2.0
+   Compiling serde v1.0.229
+   Compiling strsim v0.11.1
+   Compiling serde_json v1.0.151
+   Compiling clap_lex v1.1.0
+   Compiling heck v0.5.0
+   Compiling clap_builder v4.6.6
+   Compiling radix_trie v0.3.0
+   Compiling aho-corasick v1.1.5
+   Compiling unicode-segmentation v1.13.3
+   Compiling log v0.4.34
+   Compiling wolf-interp v0.1.57 (/lane/wolf-interp)
+   Compiling thiserror v2.0.20
+   Compiling unicode-width v0.2.2
+   Compiling fastrand v2.5.0
+   Compiling once_cell v1.21.4
+   Compiling itoa v1.0.18
+   Compiling regex-syntax v0.8.11
+   Compiling tempfile v3.27.0
+   Compiling rustyline v18.0.1
+   Compiling getrandom v0.2.16
+   Compiling console v0.16.4
+   Compiling comma v1.0.0
+   Compiling similar v2.7.0
+   Compiling clap_derive v4.6.4
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.20
+   Compiling insta v1.48.0
+   Compiling regex-automata v0.4.18
+   Compiling clap v4.6.6
+   Compiling regex v1.13.1
+   Compiling rexpect v0.7.1
+warning: unused import: `std::sync::OnceLock`
+  --> tests/exec_sigpipe_r41e.rs:37:5
+   |
+37 | use std::sync::OnceLock;
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `wolf-interp` (test "exec_sigpipe_r41e") generated 1 warning (run `cargo fix --test "exec_sigpipe_r41e" -p wolf-interp` to apply 1 suggestion)
+    Finished `test` profile [unoptimized] target(s) in 13.59s
+     Running tests/exec_sigpipe_r41e.rs (target/debug/deps/exec_sigpipe_r41e-3f5a24fc84065a8d)
+
+running 6 tests
+
+thread 'exec_passes_an_inherited_mask_through' (1036) panicked at tests/exec_sigpipe_r41e.rs:246:5:
+assertion `left == right` failed: SIGPIPE ignored in the exec'd image (State { blk: 1200, ign: 1000, cgt: 0 })
+  left: 4096
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'exec_hands_the_image_sigpipe_at_default' (1035) panicked at tests/exec_sigpipe_r41e.rs:217:5:
+assertion `left == right` failed: SIGPIPE ignored in the exec'd image (State { blk: 0, ign: 1000, cgt: 0 }); lupin ignores it, the program never asked to
+  left: 4096
+ right: 0
+test exec_hands_the_image_sigpipe_at_default ... FAILED
+test exec_passes_an_inherited_mask_through ... FAILED
+test a_failed_exec_still_answers_a_readerless_pipe_with_io ... ok
+test every_spawn_path_passes_an_inherited_mask_through ... ok
+test every_spawn_path_hands_the_child_sigpipe_at_default ... ok
+test a_failed_exec_never_leaves_lupin_sigpipe_at_default ... ok
+
+failures:
+
+failures:
+    exec_hands_the_image_sigpipe_at_default
+    exec_passes_an_inherited_mask_through
+
+test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--test exec_sigpipe_r41e`
+R41E_FOCUSED_EXIT 101 2026-10-26T22:17:10Z
+R41E phase=focused-red exit=0 at 2026-10-26T22:17:11Z

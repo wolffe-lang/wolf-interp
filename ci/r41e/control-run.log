@@ -1,0 +1,11 @@
+R41E phase=control waiting for block A at 2026-10-26T22:28:03Z
+R41E phase=control acquired block A at 2026-10-26T22:33:09Z
+R41E_CONTROL_START 2026-10-26T22:33:09Z head=b7db4184f06c575da79de6a20157ef00309588ab
+lupin 0.1.57 (wolf-interp, reference interpreter at pin a5378e3)
+fc6aa874e4cc74457f4f3a31bb7604f9443ddfe86487fd1cf88b8c8204149e90  /lane/inputs/lupin057/lupin-0.1.57-x86_64-unknown-linux-gnu.tar.gz/unpacked/lupin-0.1.57-x86_64-unknown-linux-gnu/lupin
+R41E_CONTROL lupin=lupin exit=101
+lupin 0.1.58+dev.e194b69 (wolf-interp, reference interpreter at pin a5378e3)
+be0cc409529c564f1b436cc20201bb05e1c32b7a98ba0143b709ab100f5042bd  /r41e/records/lupin-candidate-e194b69
+R41E_CONTROL lupin=lupin-candidate-e194b69 exit=0
+R41E_CONTROL_END 2026-10-26T22:33:09Z
+R41E phase=control exit=0 at 2026-10-26T22:33:09Z

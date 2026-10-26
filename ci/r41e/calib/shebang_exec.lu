@@ -1,0 +1,9 @@
+//! member: false
+//! r41e calibration: a #! script whose interpreter has no header.
+fn main() -> !int {
+    let answer = os_exec("./script", ["script"], ["PATH=/usr/bin:/bin"], List[int]()) else |e| match e {
+        unsupported => 1, invalid => 2, not_found => 3, denied => 4, io => 5,
+    }
+    print("exec_answer={answer} errno={os_error()}")
+    0
+}

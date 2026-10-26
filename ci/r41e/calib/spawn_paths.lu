@@ -1,0 +1,43 @@
+//! member: false
+//! r41e calibration: every spawn path's child reports its own status.
+fn drain(fd: int) -> str {
+    var out = ""
+    loop {
+        var stop = false
+        let chunk = fs_read(fd, 4096) else |e| {
+            stop = true
+            match e {
+                eof => "",
+                io => "<io>",
+                utf8 => "<utf8>",
+            }
+        }
+        out = out + chunk
+        if stop {
+            break
+        }
+    }
+    out
+}
+
+fn main() -> !int {
+    let (r1, w1) = os_pipe()?
+    let a = os_spawn_fds("cat", ["/proc/self/status"], [1, w1])?
+    fs_close(w1)?
+    let out1 = drain(r1)
+    fs_close(r1)?
+    let sa = os_wait(a)?
+    print("== os_spawn_fds exit={sa}\n{out1}")
+    let (r2, w2) = os_pipe()?
+    let b = os_spawn_job("cat", ["/proc/self/status"], [1, w2], 0, -1, 0)?
+    fs_close(w2)?
+    let out2 = drain(r2)
+    fs_close(r2)?
+    let sb = os_wait(b)?
+    print("== os_spawn_job exit={sb}\n{out2}")
+    let c = os_spawn(["cp", "/proc/self/status", "spawn-status.txt"])?
+    let sc = os_wait(c)?
+    let out3 = fs_read_text("spawn-status.txt")?
+    print("== os_spawn exit={sc}\n{out3}")
+    0
+}

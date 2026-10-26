@@ -1,0 +1,49 @@
+R41E acquired block A at 2026-10-26T22:35:43Z
+R41E_CALIB_CANDIDATE_START 2026-10-26T22:35:43Z
+lupin 0.1.58+dev.e194b69 (wolf-interp, reference interpreter at pin a5378e3)
+be0cc409529c564f1b436cc20201bb05e1c32b7a98ba0143b709ab100f5042bd  /lane/records/lupin-candidate-e194b69
+== exec, plain start
+Name:	cat
+SigBlk:	0000000000000000
+SigIgn:	0000000000000000
+SigCgt:	0000000000000000
+rc=0
+== exec, start with PIPE+USR1 blocked
+Name:	cat
+SigBlk:	0000000000001200
+SigIgn:	0000000000000000
+SigCgt:	0000000000000000
+rc=0
+== spawn paths, start with PIPE+USR1 blocked
+== os_spawn_fds exit=0
+Name:	cat
+SigBlk:	0000000000001200
+SigIgn:	0000000000000000
+SigCgt:	0000000000000000
+== os_spawn_job exit=0
+Name:	cat
+SigBlk:	0000000000001200
+SigIgn:	0000000000000000
+SigCgt:	0000000000000000
+== os_spawn exit=0
+Name:	cp
+SigBlk:	0000000000001200
+SigIgn:	0000000000000000
+SigCgt:	0000000000000000
+rc=0
+== lupin's own status around a failed exec, plain start
+== before
+Name:	lupin-candidate
+SigBlk:	0000000000000000
+SigIgn:	0000000000001000
+SigCgt:	0000000100000440
+== after not_found
+Name:	lupin-candidate
+SigBlk:	0000000000000000
+SigIgn:	0000000000001000
+SigCgt:	0000000100000440
+rc=0
+== os_exec of a #! script whose interpreter has no header
+exec_answer=5 errno=8
+rc=0
+R41E_CALIB_CANDIDATE_END 2026-10-26T22:35:43Z
