@@ -41,8 +41,12 @@ insta = "1"
 unsafe_code = "forbid"
 
 # R-is81-1: safe direct execve (MIT), with no execvp shell fallback.
+# R-r41e-1 (#307): signal-hook's safe flag action (MIT OR Apache-2.0)
+# catches SIGPIPE just before that execve, so the new image starts with
+# it at the default: execve resets a caught signal, never an ignored one.
 [target.'cfg(all(unix, not(target_family = "wasm")))'.dependencies]
 nix = { version = "=0.31.3", default-features = false, features = ["process", "fs"] }
+signal-hook = { version = "=0.3.18", default-features = false }
 
 [target."cfg(unix)".dev-dependencies]
 rexpect = "0.7"
