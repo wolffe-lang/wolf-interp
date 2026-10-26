@@ -377,14 +377,16 @@ fn every_spawn_path_passes_an_inherited_mask_through() {
 }
 
 /// A failed exec puts the process back (`[os.proc.exec]`): lupin's own
-/// SIGPIPE is never left at the default, which would end lupin at its next
-/// write to a pipe whose reader has gone, and its mask is what it was.
-/// Read from lupin's own `/proc/<pid>/status`, by a child, before and after
-/// the failed exec. (Ignored at `fb054c8b`; caught after the repair, by a
-/// handler that does nothing — the program still sees `io`.)
+/// SIGPIPE is ignored again, exactly as before the call — never left at the
+/// default, which would end lupin at its next write to a pipe whose reader
+/// has gone, nor left caught — and its mask is what it was. Read from
+/// lupin's own `/proc/<pid>/status`, by a child, before and after the
+/// failed exec. (The same at `fb054c8b`, which never changed it; after the
+/// repair the catch is removed and the ignore is back, measured in
+/// `ci/r41e/calib-candidate-e194b69.log`.)
 #[cfg(target_os = "linux")]
 #[test]
-fn a_failed_exec_never_leaves_lupin_sigpipe_at_default() {
+fn a_failed_exec_puts_lupin_sigpipe_back() {
     let dir = scratch("exec-failed");
     let source = r#"//! member: false
 fn drain(fd: int) -> str {
@@ -443,10 +445,10 @@ fn main() -> !int {
             0,
             "lupin starts with SIGPIPE ignored ({before:x?})"
         );
-        assert_ne!(
-            (after.ign | after.cgt) & PIPE,
-            0,
-            "a failed exec left lupin's SIGPIPE at the default ({after:x?})"
+        assert_eq!(
+            (after.ign & PIPE, after.cgt & PIPE),
+            (PIPE, 0),
+            "a failed exec left lupin's SIGPIPE other than ignored ({after:x?})"
         );
         assert_eq!(
             after.blk, before.blk,
