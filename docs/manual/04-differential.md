@@ -143,9 +143,9 @@ differential: GREEN — every divergence is filed in docs/divergence-log.md and 
 notice: bundle target/bundle at pin a5378e3fd5b6347f4a89a7d77dbe43aa576fee76 verified (bundle_sha256 …)
 ```
 
-On Windows the two handled host-error rows described in the
-[corpus census](00-building.md) run instead of being declined. Self-replay
-therefore records 88 unsupported observations on each side rather than 90:
+The self-replay ledger size differs by host because host-dependent corpus
+operations can yield unsupported observations even with the bundle's fixed
+Linux reference target; the Windows transcript elides those counts:
 
 ```console windows
 $ lupin conformance export --out target/bundle --json
@@ -153,9 +153,9 @@ $ lupin conformance export --out target/bundle --json
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
 differential: 1205 entries compared, 0 member(s) exercised through their entries
 divergences: 0
-conservatism ledger: 176 entries
-  unsupported(counterparty): 88
-  unsupported(interp): 88
+conservatism ledger: … entries
+  unsupported(counterparty): …
+  unsupported(interp): …
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
 notice: bundle target/bundle at pin a5378e3fd5b6347f4a89a7d77dbe43aa576fee76 verified (bundle_sha256 …)
 ```
