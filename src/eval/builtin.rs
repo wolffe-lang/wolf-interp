@@ -4661,6 +4661,44 @@ fn host_signal_number(m: i128) -> Option<i128> {
     TABLE.map(|t| t[i])
 }
 
+#[cfg(all(test, not(target_family = "wasm")))]
+mod signal_shape_target_tests {
+    use super::sig_send_shape;
+
+    #[test]
+    fn signal_shape_uses_the_observation_target_not_the_exporter() {
+        let original = crate::attrs::build_target();
+        for (target, last) in [
+            ("x86_64-unknown-linux-gnu", Some(64)),
+            ("aarch64-apple-darwin", Some(31)),
+            ("x86_64-pc-windows-msvc", None),
+        ] {
+            crate::attrs::with_build_target(target, || {
+                assert!(sig_send_shape(0, true));
+                assert!(!sig_send_shape(0, false));
+                assert!(sig_send_shape(1, false));
+                assert!(!sig_send_shape(3, true));
+                assert!(!sig_send_shape(1 << 28, true));
+                for m in [-1, -31, -32, -64, -65, -1099511627776, i128::MIN] {
+                    let expected = last.is_none_or(|last| {
+                        m.checked_neg().is_some_and(|n| n <= last)
+                    });
+                    assert_eq!(sig_send_shape(m, true), expected, "{target}: {m}");
+                }
+                // An exporter already observing Windows must still use
+                // Linux's bounds inside the bundle, then restore Windows.
+                crate::attrs::with_build_target("x86_64-unknown-linux-gnu", || {
+                    assert!(sig_send_shape(-64, true));
+                    assert!(!sig_send_shape(-65, true));
+                    assert!(!sig_send_shape(-1099511627776, true));
+                });
+                assert_eq!(crate::attrs::build_target(), target);
+            });
+            assert_eq!(crate::attrs::build_target(), original);
+        }
+    }
+}
+
 // Keep filling at one boundary. getrandom owns EINTR and short reads; a failed
 // fill never hands even a partial buffer to wolf. Allocation failure uses the
 // same fail-closed trap as a failed OS request, never a PRNG or empty success.

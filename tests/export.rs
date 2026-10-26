@@ -652,6 +652,25 @@ fn the_bundle_opens_verified_and_its_records_reference_bundled_programs() {
         );
     }
 
+    // The far host number must use the same Linux target in the shape
+    // check and the following error/refusal decision, even on Windows.
+    let group_rows = verified
+        .expected
+        .iter()
+        .find(|r| r.file == "corpus/os/group_rows.lu")
+        .unwrap();
+    assert_eq!(
+        group_rows.verdict,
+        wolf_interp::protocol::Verdict::Exit(0),
+        "{group_rows:?}"
+    );
+    assert_eq!(group_rows.phase_reached, wolf_interp::phase::Phase::Run);
+    assert_eq!(
+        group_rows.stdout_sha256.as_deref(),
+        Some("b9fad54da11591428f222c99522e3943008c8b77b46aa27ab4784f3ad328f6b4")
+    );
+    assert!(!group_rows.extensions.contains_key("x-unsupported"));
+
     // Every record names a program that ships in the bundle, by its
     // bundle-relative slash path, in sorted order (two exports of the same
     // trees diff cleanly).
