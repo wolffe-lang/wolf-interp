@@ -34,7 +34,6 @@
 use nix::sys::signal::{SigSet, SigmaskHow, Signal, pthread_sigmask};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::OnceLock;
 
 /// The bit SIGPIPE has in a status word, on every unix host.
 const PIPE: u64 = 1 << (Signal::SIGPIPE as i32 - 1);
@@ -58,7 +57,7 @@ fn literal(text: &str) -> String {
 /// The probe built once for this test binary, on a host with no `/proc`.
 #[cfg(not(target_os = "linux"))]
 fn sigprobe() -> &'static str {
-    static PROBE: OnceLock<String> = OnceLock::new();
+    static PROBE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     PROBE.get_or_init(|| {
         let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("r41e-sigprobe");
         let source = Path::new(env!("CARGO_MANIFEST_DIR"))
