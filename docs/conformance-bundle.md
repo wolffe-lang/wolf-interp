@@ -75,7 +75,10 @@ error/refusal decisions use that target, including on the evaluator's
 stack thread. Thus `os/ids_read.lu` and `os/signal_reserved_rows.lu` record
 Unix interpreter refusals in the bundle even on Windows, where an ordinary
 observation handles the host's `unsupported` error row and runs to completion.
-This does not emulate host calls or rewrite observed records after execution.
+Signal-meaning shape checks use that same target's ABI bounds: a far host
+number in `os/group_rows.lu` produces the Linux `invalid` row rather than
+mixing Windows shape acceptance with a Linux interpreter refusal. This does
+not emulate host calls or rewrite observed records after execution.
 
 A consumer compares an implementation against these records with the
 spec/06 deep comparison as the is05 differ does: rung-by-rung
