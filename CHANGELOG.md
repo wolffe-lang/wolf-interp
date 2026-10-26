@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.1.58 — 2026-10-26
+
+`os_exec` once again starts the new program with SIGPIPE at its default
+(#307). The direct `execve` added in 0.1.57 keeps a C library from
+re-running a headerless file under `/bin/sh`, but it also passed on the
+ignored SIGPIPE that Rust's runtime gives lupin itself. Every program
+0.1.57 exec'd therefore started with SIGPIPE ignored, so a pipeline stage
+whose reader had gone saw write errors instead of stopping. 0.1.56 did
+not do this. lupin now catches SIGPIPE just before the `execve`, and
+`execve` sets every caught signal back to its default in the new
+program. There is still no shell fallback and still no `unsafe` code.
+
+When an exec fails, lupin keeps the handler installed with nothing for it
+to do. A write to a pipe with no reader is still the program's `io` row
+(EPIPE), as before the exec. The signal mask passes through unchanged,
+as in 0.1.56 and in every spawn. The spawn calls (`os_spawn`,
+`os_spawn_with`, `os_spawn_fds` and `os_spawn_job`) always started
+children with SIGPIPE at its default, and still do. A test now reads
+each new program's own signal state, from `/proc/self/status` on Linux
+and from a small `sigaction` probe on macOS.
+
+The new dependency is `signal-hook` 0.3.18 (MIT OR Apache-2.0) with its
+default features disabled. It adds `signal-hook-registry` 1.4.8 to the
+lock and reuses the `libc` and `errno` already there.
+
+This release pairs with wolf 0.2.36 in place of 0.1.57. The spec pin
+(`a5378e3`), the corpus ledger, the anchors, the conformance bundle and
+the six archive targets are unchanged from 0.1.57.
+
 ## 0.1.57 — 2026-10-25
 
 C variadic declarations and the `VaList` prelude are now recognized.
