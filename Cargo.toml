@@ -46,3 +46,6 @@ nix = { version = "=0.31.3", default-features = false, features = ["process", "f
 
 [target."cfg(unix)".dev-dependencies]
 rexpect = "0.7"
+# r41e: the exec tests block signals on their own thread (a safe call)
+# before starting lupin, so it inherits that mask.
+nix = { version = "=0.31.3", default-features = false, features = ["signal"] }
