@@ -701,6 +701,20 @@ jobs:
           echo "the manifest (per-file hashes — the cross-OS diagnostic):"
           cat target/bundle-a/MANIFEST.json
 
+      # Keep both observations even when their byte comparison fails. The
+      # manifests locate a differing file; these records name its fields.
+      - name: upload bundle records
+        if: ${{ !cancelled() && matrix.shard == 'ladder' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-records-${{ matrix.os }}
+          path: |
+            target/bundle-a/MANIFEST.json
+            target/bundle-a/expected/records.jsonl
+            target/bundle-b/MANIFEST.json
+            target/bundle-b/expected/records.jsonl
+          if-no-files-found: error
+
       - name: upload bundle manifest
         if: matrix.shard == 'ladder'
         uses: actions/upload-artifact@v4
