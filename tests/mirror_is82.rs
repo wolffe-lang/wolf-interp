@@ -116,14 +116,15 @@ fn the_first_frontend_diagnostic_is_the_compilers_code_and_span() {
 // -- wolf-interp#304: E0406, a call of a value that is not a function ------
 
 /// The call rows lupin's resolve walk can class: a local bound to a
-/// literal. `b6` (a struct FIELD called, `p.x()`) needs field types this
-/// walk does not carry and is the named remainder (`ci/is82.md`).
+/// literal. Two rows are named remainders (`ci/is82.md`), not pinned here:
+/// `b6` (a struct FIELD called, `p.x()`, E0406 on wolf) needs field types
+/// this walk does not carry, and `b5` parts on the E0412 SPAN already at
+/// 0.1.58 (wolf `[72,76]`, lupin `[72,74]`: `}}` right after a format spec).
 const CALLS: &[(&str, &str, u64, u64)] = &[
     ("b1", "E0412", 47, 54),
     ("b2", "E0412", 39, 45),
     ("b3", "E0406", 51, 54),
     ("b4", "E0413", 41, 46),
-    ("b5", "E0412", 72, 76),
     ("b7", "E0406", 40, 41),
 ];
 
@@ -181,6 +182,7 @@ fn a_module_alias_resolves_to_the_module() {
     let (record, stdout) = observe(&fixture("alias_use/renamed/main.lu"));
     assert_eq!(record.verdict, Verdict::Exit(0), "{record:?}");
     assert_eq!(stdout, "42\n");
+    // The alias beside the direct import of the same directory.
     let (record, stdout) = observe(&fixture("alias_use/beside_list/main.lu"));
     assert_eq!(record.verdict, Verdict::Exit(0), "{record:?}");
     assert_eq!(stdout, "42 84\n");
