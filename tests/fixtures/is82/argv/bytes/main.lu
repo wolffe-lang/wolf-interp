@@ -1,0 +1,7 @@
+fn main() {
+    let a = env_args_bytes()
+    for arg in a {
+        for b in arg { print("{b as int}") }
+        print("end")
+    }
+}

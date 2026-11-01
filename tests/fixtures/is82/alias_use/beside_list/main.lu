@@ -1,0 +1,5 @@
+use math as m
+use math.{twice}
+fn main() {
+    print("{m.value()} {twice()}")
+}

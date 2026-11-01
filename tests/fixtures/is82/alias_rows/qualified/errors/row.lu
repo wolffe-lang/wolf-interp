@@ -1,0 +1,3 @@
+pub error Failures = {broken}
+
+pub fn anchor() -> int { 0 }

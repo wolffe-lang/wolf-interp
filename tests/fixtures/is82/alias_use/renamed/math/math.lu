@@ -1,0 +1,2 @@
+/// Return the witness value.
+pub fn value() -> int { 42 }

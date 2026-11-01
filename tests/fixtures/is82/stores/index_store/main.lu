@@ -1,0 +1,25 @@
+fn churn(n: int) -> int {
+    var junk = List[int]()
+    for _ in 0..n {
+        (mut junk).push(7777777)
+    }
+    junk.len
+}
+
+fn main() {
+    var outs = List[List[int]]()
+    (mut outs).push(List[int]())
+    let x = List[int]()
+    var total = 0
+    region scratch {
+        outs[0] = x
+        for i in 0..100 {
+            (mut outs[0]).push(i)
+        }
+        total += churn(1000)
+    }
+    region other {
+        total += churn(1000)
+    }
+    print("{outs.len} {outs[0].len} {outs[0][99]} {total}")
+}

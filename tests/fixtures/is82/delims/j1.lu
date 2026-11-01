@@ -1,0 +1,4 @@
+fn foo(a: int) -> int { a }
+fn main() {
+    let a = foo(1 2)
+}

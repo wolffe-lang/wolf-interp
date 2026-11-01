@@ -1,0 +1,4 @@
+fn name() -> str {
+    region scratch { env_arg0() }
+}
+fn main() { print(name()) }

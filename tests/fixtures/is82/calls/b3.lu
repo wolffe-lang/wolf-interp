@@ -1,0 +1,5 @@
+fn main() {
+    let key = "a"
+    let s = "{key}: {key(1)}"
+    print(s)
+}

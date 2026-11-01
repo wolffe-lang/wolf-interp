@@ -1,0 +1,1 @@
+fn main() { print("{env_args_bytes().len}") }

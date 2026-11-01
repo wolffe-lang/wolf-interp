@@ -1,0 +1,4 @@
+fn main() {
+    let xs = List[int]()
+    print("{ \"items\": [" + "] }")
+}

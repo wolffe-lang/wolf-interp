@@ -1,0 +1,9 @@
+fn main() {
+    var outs = List[List[int]]()
+    let x = List[int]()
+    (mut outs).push(x)
+    for i in 0..3 {
+        (mut outs[0]).push(i)
+    }
+    print("{outs.len} {outs[0].len} {x.len}")
+}

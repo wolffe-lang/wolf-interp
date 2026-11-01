@@ -1,0 +1,4 @@
+use lib.math as calc
+fn main() {
+    print("{calc.value()}")
+}

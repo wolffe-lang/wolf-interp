@@ -1,0 +1,4 @@
+/// Return the witness value.
+pub fn value() -> int { 42 }
+/// Twice.
+pub fn twice() -> int { value() * 2 }

@@ -1,0 +1,5 @@
+fn main() {
+    let k = "a"
+    let v = 2
+    print("{{\"" + k + "\": {v:q}}}")
+}

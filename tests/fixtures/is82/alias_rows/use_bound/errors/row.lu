@@ -1,0 +1,5 @@
+/// The failures `main` may raise.
+pub error Failures = {broken, lost}
+
+/// A fixed anchor.
+pub fn anchor() -> int { 0 }

@@ -1,0 +1,26 @@
+use errors
+
+fn probe(n: int) -> int ! errors.Failures {
+    if n == 0 { return broken }
+    if n == 1 { return lost }
+    n
+}
+
+fn relay(n: int) -> int ! errors.Failures {
+    let v = probe(n)?
+    v + 1
+}
+
+fn name(n: int) -> str {
+    let v = relay(n) else |e| {
+        return match e {
+            broken => "broken",
+            lost => "lost",
+        }
+    }
+    "{v}"
+}
+
+fn main() {
+    print("{name(0)} {name(1)} {name(5)}")
+}

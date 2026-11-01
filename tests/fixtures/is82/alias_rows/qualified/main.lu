@@ -1,0 +1,6 @@
+use errors
+
+fn main() -> int ! errors.Failures {
+    let _ = errors.anchor()
+    return broken
+}

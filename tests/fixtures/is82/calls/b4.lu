@@ -1,0 +1,4 @@
+fn main() {
+    let k = "a"
+    print("{k: >4x}")
+}

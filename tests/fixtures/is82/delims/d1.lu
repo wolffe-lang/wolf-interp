@@ -1,0 +1,4 @@
+fn f(x: int) -> int { x }
+fn main() {
+    print("{f(}")
+}

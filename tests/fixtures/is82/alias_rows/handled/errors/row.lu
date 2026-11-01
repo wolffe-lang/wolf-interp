@@ -1,0 +1,2 @@
+/// The failures a probe may raise.
+pub error Failures = {broken, lost}

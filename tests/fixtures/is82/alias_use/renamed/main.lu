@@ -1,0 +1,4 @@
+use math as renamed
+fn main() {
+    print("{renamed.value()}")
+}

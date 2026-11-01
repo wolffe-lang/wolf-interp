@@ -1,0 +1,13 @@
+struct P {
+    name: str,
+    n: int,
+}
+
+fn main() {
+    var outs = List[P]()
+    let p = P { name: "outer", n: 1 }
+    region scratch {
+        (mut outs).push(p)
+    }
+    print("{outs.len} {outs[0].name} {outs[0].n}")
+}

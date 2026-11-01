@@ -1,0 +1,4 @@
+error Failures = {broken}
+
+/// A fixed anchor.
+pub fn anchor() -> int { 0 }

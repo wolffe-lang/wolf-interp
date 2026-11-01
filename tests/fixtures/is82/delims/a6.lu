@@ -1,0 +1,6 @@
+fn emit(k: str, v: int) -> str {
+    return "{\"" + k + "\": " + "{v}" + "}"
+}
+fn main() {
+    print(emit("a", 1))
+}
