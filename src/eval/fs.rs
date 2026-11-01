@@ -669,6 +669,48 @@ thread_local! {
     static HOST_ERROR: std::cell::Cell<i128> = const { std::cell::Cell::new(0) };
 }
 
+/// `[os.fs.access]`'s host call: `access(2)` through nix's safe wrapper.
+/// `denied` is the host's refusal (`EACCES`, `EPERM`, `EROFS`, `ETXTBSY`),
+/// `not_found` a missing name (a dangling link included), anything else
+/// `io`, each with the host's number noted for `os_error()`.
+#[cfg(unix)]
+fn access_call(path: &Path, mode: i128) -> FsResult<()> {
+    use nix::unistd::AccessFlags;
+    let bits = u8::try_from(mode).unwrap_or(0);
+    let mut flags = AccessFlags::F_OK;
+    if bits & 4 != 0 {
+        flags |= AccessFlags::R_OK;
+    }
+    if bits & 2 != 0 {
+        flags |= AccessFlags::W_OK;
+    }
+    if bits & 1 != 0 {
+        flags |= AccessFlags::X_OK;
+    }
+    match nix::unistd::access(path, flags) {
+        Ok(()) => Ok(()),
+        Err(errno) => {
+            let error = std::io::Error::from_raw_os_error(errno as i32);
+            note_host_error(&error);
+            Err(FsErr::Row(match errno {
+                nix::errno::Errno::EACCES
+                | nix::errno::Errno::EPERM
+                | nix::errno::Errno::EROFS
+                | nix::errno::Errno::ETXTBSY => "denied",
+                nix::errno::Errno::ENOENT => "not_found",
+                _ => "io",
+            }))
+        }
+    }
+}
+
+/// Windows has no `access(2)`: its permission is an access-control list the
+/// three bits do not describe, so the call is `unsupported` by name.
+#[cfg(not(unix))]
+fn access_call(_path: &Path, _mode: i128) -> FsResult<()> {
+    Err(FsErr::Row("unsupported"))
+}
+
 /// Note the host's number for `error` (0 when std built the error itself).
 fn note_host_error(error: &std::io::Error) {
     HOST_ERROR.with(|c| c.set(error.raw_os_error().map_or(0, i128::from)));
@@ -2285,6 +2327,21 @@ impl Machine {
                 let len = int_arg(args, 1, name)?;
                 let answer = self.shared_fs().truncate(fd, len).map(|()| Value::Unit);
                 self.fs_answer(name, answer, span)
+            }
+            // s254 (`[os.fs.access]`; wolf-interp#278): `access(2)` by the
+            // real ids, a final link followed. The mode's shape is decided
+            // before the host (0, or a sum of 4, 2 and 1); windows answers
+            // `unsupported` by name after it ([`access_call`]).
+            "fs_access" => {
+                let path = self.fs_path_arg(args, 0, name)?;
+                let mode = int_arg(args, 1, name)?;
+                let answer = if (0..=7).contains(&mode) {
+                    self.fs_contained(&path, name)
+                        .and_then(|path| access_call(&path, mode))
+                } else {
+                    Err(FsErr::Row("invalid"))
+                };
+                self.fs_answer(name, answer.map(|()| Value::Unit), span)
             }
             // s248 (`[os.fs.sync]`, wolf-lang#796; ruling #93; wolf-interp#268):
             // the atomic save's two syncs. `fs_sync` on a handle

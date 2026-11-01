@@ -159,6 +159,9 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "fs_sync",
     "fs_sync_dir",
     "fs_realpath",
+    // s254 (wolf-lang#848, `[os.fs.access]`; wolf-interp#278): may this
+    // process do it, by its real ids — nix's safe `access(2)`.
+    "fs_access",
     // `read_line` is NOT part of that landing and stays declined: stdin is
     // not a file, no clause names an injectable one, and nothing in the
     // pinned corpus calls it. Named here so the refusal still reads
@@ -611,7 +614,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_set_owner_fd"
         | "fs_sync"
         | "fs_sync_dir"
-        | "fs_realpath" => machine.fs_call(name, &args, span),
+        | "fs_realpath"
+        | "fs_access" => machine.fs_call(name, &args, span),
         // `[os.fs.error]` (s200, wolf-lang#407): the number the task's last
         // fallible fs call left (`Machine::fs_call` keeps it), and the
         // host's words for a number — std's rendering without its
@@ -4134,6 +4138,7 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "fs_set_owner_fd" => &["denied", "invalid", "unsupported", "io"],
         // s248 (`[os.host.sigs]`'s three lines; wolf-interp#268).
         "fs_sync" => &["io"],
+        "fs_access" => &["denied", "invalid", "io", "not_found", "unsupported"],
         "fs_sync_dir" => &["denied", "invalid", "io", "not_found", "unsupported"],
         "fs_realpath" => &["io", "not_found"],
         // `eof` is the read's own row — a read that wanted bytes and got
