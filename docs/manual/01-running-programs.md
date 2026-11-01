@@ -75,6 +75,23 @@ segment is the bound name. Without a root the loader falls back to the flat
 mirrors keep working unchanged. The flag wins over the environment variable
 when both are given.
 
+## Program arguments
+
+A program's argv is an input of the run, as it is on the checked machine
+(`[exec.checked.argv]`): `--argv-hex=HEX` (on `run` and `conform-run`)
+supplies one argument as an even number of hexadecimal digits, repeated in
+OS argv order, argv[0] first. Empty HEX is an empty argument; a NUL byte is
+refused, since no OS argument holds one. Without the option argv is absent,
+never lupin's own arguments. `env_args()` reads argv[1..] as text,
+`env_arg0()` reads argv[0] alone, and `env_args_bytes()` reads every
+argument as bytes; a text reader that meets an argument that is not UTF-8
+traps `argument-utf8`, naming the argument's OS index (`[os.env.argv]`):
+
+```text
+$ lupin conform-run --json name.lu --argv-hex=ff --argv-hex=6f6b
+… "verdict":"trap(argument-utf8)" … "trap_message":"argument 0 is not UTF-8; read it with env_args_bytes()" …
+```
+
 ## Traps
 
 A trap is a fault of a defined execution: the program was legal, ran, and
