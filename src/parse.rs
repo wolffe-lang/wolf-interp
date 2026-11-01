@@ -345,7 +345,7 @@ pub fn first_of(lexed: &Lexed) -> Result<Parsed, Box<(Diag, Tier)>> {
     // error at the same offset, as before is70; an unclosed delimiter next.
     let mut parse_tier: Vec<Diag> = lexed.deferred.clone();
     if let Err(error) = &parsed {
-        parse_tier.extend(unclosed_delimiter(&lexed.tokens));
+        parse_tier.extend(unclosed_delimiter(&lexed.tokens, Some(error.span.start)));
         // A parse error AT a token the lexer recovered from its own error
         // (`Tok::Error`, e.g. the whole of `'\u{0000041}'`) is that lex
         // error's consequence, never a finding before it — the escape's
@@ -370,28 +370,171 @@ pub fn first_of(lexed: &Lexed) -> Result<Parsed, Box<(Diag, Tier)>> {
     }
 }
 
-/// The earliest delimiter a later closer of another kind leaves open — `(`
-/// met by `}` with a `{` below it — as **E0202 at the opener**: "a boundary
-/// sits at its opener" (`[proto.record.first]`'s named consequence;
-/// wolf-interp#175, `rows/negative/first_boundary_before_lex.lu`, where the
-/// unterminated string swallows the `)`). A closer that matches nothing
-/// open is the parser's to report, and a delimiter still open at the end of
-/// the file keeps the parser's own report.
-fn unclosed_delimiter(tokens: &[Token]) -> Option<Diag> {
-    let mut open: Vec<(char, Span)> = Vec::new();
-    let mut earliest: Option<Span> = None;
-    for token in tokens {
+/// The statement keywords that can never stand inside a `(` or `[` group
+/// (`let` has no expression form; the items are top-level or block-level
+/// declarations). The compiler's parser stops a wrecked group at the first
+/// one and reports the wreck there (`docs/diagnostics.md` E0202: "the parser
+/// instead stops at the next declaration keyword and reports the wreck
+/// once"). `fn` and `type` are left out: both spell types inside a group
+/// (`f: fn(int) -> int`, `[T: type]`).
+const WRECK_KEYWORDS: [&str; 9] = [
+    "let", "var", "const", "struct", "enum", "trait", "impl", "use", "import",
+];
+
+/// One entry of the delimiter scan's stack: an opener, or the start of an
+/// interpolation, which is its own group — a closer inside `{…}` of a string
+/// belongs to the interpolation and never closes an opener outside the
+/// string (wolf-interp#304: `print("{\"k\": 1}")`'s `)` sits inside the
+/// interpolation, and the `(` before the string is never closed).
+#[derive(Clone, Copy)]
+enum Group {
+    Open(char, Span),
+    Interp,
+}
+
+/// The delimiter scan over a token stream, shared by both readings of the
+/// wreck in [`unclosed_delimiter`].
+#[derive(Default)]
+struct DelimScan {
+    stack: Vec<Group>,
+    /// The opener each wreck reports: its innermost delimiter left open.
+    wrecks: Vec<Span>,
+}
+
+impl DelimScan {
+    /// The innermost opener of `left` (the entries a wreck leaves open),
+    /// recorded as that wreck's report.
+    fn wreck(&mut self, left: impl Iterator<Item = Group>) {
+        if let Some(span) = left
+            .filter_map(|group| match group {
+                Group::Open(_, span) => Some(span),
+                Group::Interp => None,
+            })
+            .last()
+        {
+            self.wrecks.push(span);
+        }
+    }
+
+    /// The innermost open delimiter of the current group, if any.
+    fn innermost(&self) -> Option<(char, Span)> {
+        match self.stack.last() {
+            Some(Group::Open(kind, span)) => Some((*kind, *span)),
+            _ => None,
+        }
+    }
+
+    fn step(&mut self, token: &Token) {
         let want = match &token.tok {
             Tok::LParen => {
-                open.push(('(', token.span));
+                self.stack.push(Group::Open('(', token.span));
+                return;
+            }
+            Tok::LBracket | Tok::HashBracket | Tok::HashBangBracket => {
+                self.stack.push(Group::Open('[', token.span));
+                return;
+            }
+            Tok::LBrace => {
+                self.stack.push(Group::Open('{', token.span));
+                return;
+            }
+            Tok::InterpStart => {
+                self.stack.push(Group::Interp);
+                return;
+            }
+            Tok::InterpEnd => {
+                // Every opener the interpolation left open is wrecked by its
+                // end, a closer of another kind.
+                if let Some(at) = self
+                    .stack
+                    .iter()
+                    .rposition(|group| matches!(group, Group::Interp))
+                {
+                    let left: Vec<Group> = self.stack.drain(at..).skip(1).collect();
+                    self.wreck(left.into_iter());
+                }
+                return;
+            }
+            Tok::Kw(word) if WRECK_KEYWORDS.contains(word) => {
+                // A statement keyword inside `(`/`[`: the group is wrecked
+                // here, back to the block or interpolation that holds it.
+                let keep = self
+                    .stack
+                    .iter()
+                    .rposition(|group| !matches!(group, Group::Open('(' | '[', _)))
+                    .map_or(0, |at| at + 1);
+                if keep < self.stack.len() {
+                    let left: Vec<Group> = self.stack.drain(keep..).collect();
+                    self.wreck(left.into_iter());
+                }
+                return;
+            }
+            Tok::RParen => '(',
+            Tok::RBracket => '[',
+            Tok::RBrace => '{',
+            _ => return,
+        };
+        // A closer looks no further out than its own interpolation.
+        let floor = self
+            .stack
+            .iter()
+            .rposition(|group| matches!(group, Group::Interp))
+            .map_or(0, |at| at + 1);
+        let Some(at) = self.stack[floor..]
+            .iter()
+            .rposition(|group| matches!(group, Group::Open(kind, _) if *kind == want))
+            .map(|at| at + floor)
+        else {
+            // A closer that matches nothing open is the parser's to report.
+            return;
+        };
+        let left: Vec<Group> = self.stack.drain(at..).skip(1).collect();
+        self.wreck(left.into_iter());
+    }
+
+    /// The end of the stream wrecks whatever is still open, outermost group
+    /// first: its innermost opener is the report.
+    fn finish(&mut self) {
+        let left = std::mem::take(&mut self.stack);
+        self.wreck(left.into_iter());
+    }
+}
+
+/// Whether the `(`/`[` group `open` that the parse error at token `from`
+/// sits in ever closes: scanning on from the error, its own closer must come
+/// before a closer of another kind, a statement keyword, the end of its
+/// interpolation or the end of the file — each of which wrecks it.
+fn group_closes(tokens: &[Token], from: usize, kind: char) -> bool {
+    let mut local: Vec<Option<char>> = Vec::new();
+    for token in &tokens[from..] {
+        let closer = match &token.tok {
+            Tok::LParen => {
+                local.push(Some('('));
                 continue;
             }
             Tok::LBracket | Tok::HashBracket | Tok::HashBangBracket => {
-                open.push(('[', token.span));
+                local.push(Some('['));
                 continue;
             }
             Tok::LBrace => {
-                open.push(('{', token.span));
+                local.push(Some('{'));
+                continue;
+            }
+            Tok::InterpStart => {
+                local.push(None);
+                continue;
+            }
+            Tok::InterpEnd => {
+                match local.iter().rposition(Option::is_none) {
+                    Some(at) => local.truncate(at),
+                    None => return false,
+                }
+                continue;
+            }
+            Tok::Kw(word) if WRECK_KEYWORDS.contains(word) => {
+                if matches!(local.last(), None | Some(Some('(' | '['))) {
+                    return false;
+                }
                 continue;
             }
             Tok::RParen => '(',
@@ -399,23 +542,66 @@ fn unclosed_delimiter(tokens: &[Token]) -> Option<Diag> {
             Tok::RBrace => '{',
             _ => continue,
         };
-        let Some(at) = open.iter().rposition(|(kind, _)| *kind == want) else {
-            continue;
-        };
-        for (_, span) in open.drain(at..).skip(1) {
-            if earliest.is_none_or(|e| span.start < e.start) {
-                earliest = Some(span);
+        match local.last() {
+            Some(Some(top)) if *top == closer => {
+                local.pop();
             }
+            Some(_) => return false,
+            None => return closer == kind,
         }
     }
-    earliest.map(|span| {
+    false
+}
+
+/// **E0202 at the opener** of a delimiter the parser can never close — "a
+/// boundary sits at its opener" (`[proto.record.first]`'s named
+/// consequence; wolf-interp#175 and #304). Two readings of the compiler's
+/// wreck, measured black-box against wolf 0.2.36 (is82: 45 shapes in
+/// `tests/fixtures/is82/delims/`, pinned by `tests/mirror_is82.rs`), and
+/// the earliest report of either wins:
+///
+/// - **the scan**: a closer of another kind, a statement keyword inside a
+///   `(`/`[` group, the end of an interpolation or the end of the file
+///   wrecks every opener it leaves open, and the wreck is reported at the
+///   INNERMOST of them (`([1, [2)` is E0202 at the second `[`; two `(`s a
+///   string swallowed, at the second). An interpolation is a group of its
+///   own: a closer inside one never closes an opener outside the string;
+/// - **the parse error**: when the parser fails inside a `(`/`[` group, that
+///   group is reported at its opener unless its own closer comes before
+///   anything that wrecks it (`foo(1 2)` stays E0201; `(1` then `foo([2` on
+///   the next line is E0202 at the `(`).
+fn unclosed_delimiter(tokens: &[Token], error_at: Option<usize>) -> Option<Diag> {
+    let mut scan = DelimScan::default();
+    let mut at_error: Option<(char, Span, usize)> = None;
+    for (index, token) in tokens.iter().enumerate() {
+        if at_error.is_none()
+            && let Some(at) = error_at
+            && token.span.start >= at
+        {
+            at_error = scan.innermost().map(|(kind, span)| (kind, span, index));
+            if at_error.is_none() {
+                // The error sits in no group: nothing to read there.
+                at_error = Some(('\0', Span::new(0, 0), index));
+            }
+        }
+        scan.step(token);
+    }
+    scan.finish();
+    let mut reports = scan.wrecks;
+    if let Some((kind @ ('(' | '['), span, index)) = at_error
+        && !group_closes(tokens, index, kind)
+    {
+        reports.push(span);
+    }
+    reports.into_iter().min_by_key(|span| span.start).map(|span| {
         let opener = Span::new(span.start, span.start + 1);
         Diag::new(
             diag::E_UNEXPECTED_EOF,
             opener,
             "gram.lex.newline",
-            "this delimiter is never closed: a later closer of another kind ends the \
-             group it opens",
+            "this delimiter is never closed: the group it opens ends before its closer — at a \
+             closer of another kind, a statement keyword, the end of its interpolation or the \
+             end of the file",
         )
     })
 }
