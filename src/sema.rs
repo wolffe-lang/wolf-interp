@@ -582,7 +582,153 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
         }
     }
 
+    expand_foreign_aliases(&mut program);
     Ok(program)
+}
+
+/// `[type.err.alias.qualified]` across a module boundary (wolf-interp#302):
+/// "a bare name is this module's alias or one this file bound with `use
+/// m.Alias`; `m.Alias` reaches it through the module binding. Whichever
+/// spelling names it, the entry expands to the alias's tags." Each module's
+/// own aliases were spliced out when it loaded ([`expand_error_aliases`]);
+/// a foreign one can only be read once its home is loaded too, so this pass
+/// runs over the whole program and rewrites every row that spells one — the
+/// raise site's vocabulary, `?`'s widening and a match's arms then read
+/// tags, as inside one module. A PRIVATE alias named from another module is
+/// E0304 at the entry, the resolver's refusal for a private member, never a
+/// silent row. A module whose rows moved is collected again from its
+/// rewritten units, so no table it built at load still holds the alias.
+fn expand_foreign_aliases(program: &mut Program) {
+    let tables: BTreeMap<String, BTreeMap<String, (Vec<crate::ast::RowEntry>, bool)>> = program
+        .modules
+        .iter()
+        .map(|(key, module)| (key.clone(), alias_table(&module.units)))
+        .filter(|(_, table)| !table.is_empty())
+        .collect();
+    if tables.is_empty() {
+        return;
+    }
+    for (key, module) in &mut program.modules {
+        let mut flat: BTreeMap<String, Vec<crate::ast::RowEntry>> = BTreeMap::new();
+        let mut private: BTreeSet<String> = BTreeSet::new();
+        let mut add = |spelling: String, entries: &Vec<crate::ast::RowEntry>, public: bool| {
+            if public {
+                flat.insert(spelling, entries.clone());
+            } else {
+                private.insert(spelling);
+            }
+        };
+        // `m.Alias`, through a module this one binds.
+        for (home, table) in &tables {
+            if home == key || !module.uses.iter().any(|bound| bound == home) {
+                continue;
+            }
+            for (alias, (entries, public)) in table {
+                add(format!("{home}.{alias}"), entries, *public);
+            }
+        }
+        // `Alias`, bound by `use m.Alias`.
+        for (bound, segments) in &module.use_paths {
+            if let [.., home, alias] = segments.as_slice()
+                && home != key
+                && let Some((entries, public)) = tables.get(home).and_then(|t| t.get(alias))
+            {
+                add(bound.clone(), entries, *public);
+            }
+        }
+        if flat.is_empty() && private.is_empty() {
+            continue;
+        }
+        let mut rewriter = RowRewriter {
+            flat: &flat,
+            private: &private,
+            diags: Vec::new(),
+            changed: false,
+        };
+        for unit in &mut module.units {
+            for item in &mut unit.unit.items {
+                if !matches!(item.kind, ItemKind::ErrorAlias(_)) {
+                    rewriter.item(item);
+                }
+            }
+        }
+        if !rewriter.changed {
+            continue;
+        }
+        module.alias_diags.extend(rewriter.diags);
+        module.alias_diags.sort_by_key(|diag| diag.span.start);
+        recollect(module);
+    }
+}
+
+/// A module's error-set aliases, each flattened through the module's own
+/// aliases it names, with whether it is visible outside the module.
+fn alias_table(units: &[SourceUnit]) -> BTreeMap<String, (Vec<crate::ast::RowEntry>, bool)> {
+    let mut declared: BTreeMap<String, (crate::ast::ErrorRow, bool)> = BTreeMap::new();
+    for unit in units {
+        for item in &unit.unit.items {
+            if let ItemKind::ErrorAlias(alias) = &item.kind
+                && !declared.contains_key(&alias.name.name)
+            {
+                declared.insert(
+                    alias.name.name.clone(),
+                    (alias.row.clone(), item.visibility.is_some()),
+                );
+            }
+        }
+    }
+    fn flatten(
+        name: &str,
+        declared: &BTreeMap<String, (crate::ast::ErrorRow, bool)>,
+        visiting: &mut Vec<String>,
+    ) -> Vec<crate::ast::RowEntry> {
+        if visiting.iter().any(|v| v == name) {
+            return Vec::new();
+        }
+        visiting.push(name.to_owned());
+        let mut out: Vec<crate::ast::RowEntry> = Vec::new();
+        for entry in &declared[name].0.entries {
+            let nested = match entry.path.segments.as_slice() {
+                [segment] if declared.contains_key(&segment.name) => {
+                    flatten(&segment.name, declared, visiting)
+                }
+                _ => vec![entry.clone()],
+            };
+            for tag in nested {
+                if !out.iter().any(|e| same_tag(&e.path, &tag.path)) {
+                    out.push(tag);
+                }
+            }
+        }
+        visiting.pop();
+        out
+    }
+    declared
+        .keys()
+        .map(|name| {
+            (
+                name.clone(),
+                (flatten(name, &declared, &mut Vec::new()), declared[name].1),
+            )
+        })
+        .collect()
+}
+
+/// Collects a module again from its (rewritten) units: every table
+/// [`collect`] builds, rebuilt; the load-time facts carried over.
+fn recollect(module: &mut Module) {
+    let units = std::mem::take(&mut module.units);
+    let mut fresh = Module {
+        name: std::mem::take(&mut module.name),
+        alias_diags: std::mem::take(&mut module.alias_diags),
+        standalone: std::mem::take(&mut module.standalone),
+        ..Module::default()
+    };
+    for unit in &units {
+        collect(&unit.unit, &mut fresh, &unit.file, &unit.source);
+    }
+    fresh.units = units;
+    *module = fresh;
 }
 
 /// Every `name` spelled `.name(` anywhere in the program: the method calls a
@@ -2073,9 +2219,12 @@ pub fn expand_error_aliases(units: &mut [Unit]) -> Vec<Diag> {
     // 5. The rewrite: every row in every unit, alias entries spliced out for
     //    their tags. The alias items themselves are left as written (the
     //    REPL and the lints read them by name).
+    let private = BTreeSet::new();
     let mut rewriter = RowRewriter {
         flat: &flat,
+        private: &private,
         diags: Vec::new(),
+        changed: false,
     };
     for unit in units.iter_mut() {
         for item in &mut unit.items {
@@ -2103,20 +2252,48 @@ fn same_tag(a: &crate::ast::Path, b: &crate::ast::Path) -> bool {
 /// from an item — signatures, fields, aliases, annotations, casts, closure
 /// parameters, index type arguments — rewritten in place.
 struct RowRewriter<'a> {
+    /// Alias spelling → its tags. A spelling is the entry's path joined by
+    /// `.`: a bare name for this module's own aliases, and for a foreign one
+    /// the bare name a `use m.Alias` bound or the qualified `m.Alias`
+    /// ([`expand_foreign_aliases`]).
     flat: &'a BTreeMap<String, Vec<crate::ast::RowEntry>>,
+    /// Foreign spellings that name a PRIVATE alias: E0304 at the entry,
+    /// never a silent row (`[type.err.alias.qualified]`).
+    private: &'a BTreeSet<String>,
     diags: Vec<Diag>,
+    /// Whether any entry was spliced or refused.
+    changed: bool,
 }
 
 impl RowRewriter<'_> {
     fn row(&mut self, row: &mut crate::ast::ErrorRow) {
         let mut out: Vec<crate::ast::RowEntry> = Vec::with_capacity(row.entries.len());
         for entry in row.entries.drain(..) {
-            let alias = match entry.path.segments.as_slice() {
-                [segment] => self.flat.get(&segment.name).cloned(),
-                _ => None,
-            };
+            let spelling = entry
+                .path
+                .segments
+                .iter()
+                .map(|segment| segment.name.as_str())
+                .collect::<Vec<_>>()
+                .join(".");
+            if self.private.contains(&spelling) {
+                self.changed = true;
+                self.diags.push(Diag::new(
+                    "E0304",
+                    entry.span,
+                    "type.err.alias.qualified",
+                    format!(
+                        "`{spelling}` is a private error-set alias of another module: an alias \
+                         named from outside its module must be `pub` (`[type.err.alias.qualified]`)"
+                    ),
+                ));
+                out.push(entry);
+                continue;
+            }
+            let alias = self.flat.get(&spelling).cloned();
             match alias {
                 Some(tags) => {
+                    self.changed = true;
                     if !entry.payload.is_empty() {
                         self.diags.push(Diag::new(
                             "E0601",
