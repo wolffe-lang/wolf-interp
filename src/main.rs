@@ -347,7 +347,7 @@ fn argv_of(options: &[ArgvHex]) -> Vec<Vec<u8>> {
 /// refused, since an OS argv element cannot hold one.
 fn parse_argv_hex(text: &str) -> Result<ArgvHex, String> {
     let digits = text.as_bytes();
-    if digits.len() % 2 != 0 || !digits.iter().all(u8::is_ascii_hexdigit) {
+    if !digits.len().is_multiple_of(2) || !digits.iter().all(u8::is_ascii_hexdigit) {
         return Err("--argv-hex needs an even number of hexadecimal digits".to_owned());
     }
     let bytes: Vec<u8> = digits

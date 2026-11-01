@@ -854,7 +854,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 return unsupported("`os_set_core_limit` takes two `int`s".to_owned());
             };
             let (soft, hard) = (*soft, *hard);
-            let shaped = soft >= -1 && hard >= -1 && (hard == -1 || (soft >= 0 && soft <= hard));
+            let shaped = soft >= -1 && hard >= -1 && (hard == -1 || (0..=hard).contains(&soft));
             let tag = if !shaped {
                 Some("invalid")
             } else {
