@@ -2811,6 +2811,41 @@ impl TierWalk<'_> {
         LitClass::Unknown
     }
 
+    /// E0406 (wolf-interp#304) — call syntax applies only to functions and
+    /// closures, and a local this walk has classed as a `str`, a number or
+    /// a `bool` is neither: the compiler refuses the call at the callee
+    /// (`"{k(): zz}"` with `k = "a"`: E0406 at `k`, before the spec's
+    /// E0412). Only a single-name callee bound to a classed local is judged
+    /// here; a field, a method or anything the walk cannot class is left to
+    /// run time (a struct field called, `p.x()`, is the named remainder).
+    fn not_callable(&self, callee: &Expr) -> Option<Diag> {
+        let ExprKind::Path(path) = &*callee.kind else {
+            return None;
+        };
+        if !path.is_single() {
+            return None;
+        }
+        let name = &path.segments[0].name;
+        let what = match self.lookup(name) {
+            LitClass::Str => "a `str`",
+            LitClass::Int => "an integer",
+            LitClass::Float => "a float",
+            LitClass::Bool => "a `bool`",
+            LitClass::AdapterBool => "an adapter of `bool`",
+            LitClass::AdapterStr => "an adapter of `str`",
+            LitClass::Raw | LitClass::Unknown => return None,
+        };
+        Some(Diag::new(
+            "E0406",
+            callee.span,
+            "type.fn.value",
+            format!(
+                "`{name}` is {what}, not a function, so it cannot be called: call syntax \
+                 applies only to functions and closures"
+            ),
+        ))
+    }
+
     fn declare(&mut self, name: &str, class: LitClass) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.push((name.to_owned(), class));
@@ -3912,6 +3947,9 @@ impl TierWalk<'_> {
                 None
             }
             ExprKind::Call { callee, args } if self.late.is_some() && !args.is_empty() => {
+                if let Some(diag) = self.not_callable(callee) {
+                    return Some(diag);
+                }
                 if let Some(method) = self.ws_family_call(callee) {
                     return Some(ws_arity_diag(method, args.len(), expr.span));
                 }
@@ -3919,6 +3957,9 @@ impl TierWalk<'_> {
                     .or_else(|| args.iter().find_map(|arg| self.expr(&arg.expr)))
             }
             ExprKind::Call { callee, args } => {
+                if let Some(diag) = self.not_callable(callee) {
+                    return Some(diag);
+                }
                 // The C call itself is the ring's op; its span is the whole
                 // call (observed `[384,395]`, `c.malloc(8)`).
                 if let Some(name) = self.c_member_name(callee) {
