@@ -643,25 +643,48 @@ fn expand_foreign_aliases(program: &mut Program) {
         if flat.is_empty() && private.is_empty() {
             continue;
         }
-        let mut rewriter = RowRewriter {
-            flat: &flat,
-            private: &private,
-            diags: Vec::new(),
-            changed: false,
-        };
+        let mut changed = false;
+        let mut diags = Vec::new();
+        // Per file, the heads its spliced spellings reached through: `use`
+        // is file-scoped (D32), and so is its use.
+        let mut heads: Vec<(String, BTreeSet<String>)> = Vec::new();
         for unit in &mut module.units {
+            let mut rewriter = RowRewriter {
+                flat: &flat,
+                private: &private,
+                diags: Vec::new(),
+                changed: false,
+                spelled: BTreeSet::new(),
+            };
             for item in &mut unit.unit.items {
                 if !matches!(item.kind, ItemKind::ErrorAlias(_)) {
                     rewriter.item(item);
                 }
             }
+            changed |= rewriter.changed;
+            diags.extend(rewriter.diags);
+            let used: BTreeSet<String> = rewriter
+                .spelled
+                .iter()
+                .filter_map(|spelling| spelling.split('.').next().map(str::to_owned))
+                .collect();
+            heads.push((unit.file.clone(), used));
         }
-        if !rewriter.changed {
+        if !changed {
             continue;
         }
-        module.alias_diags.extend(rewriter.diags);
+        module.alias_diags.extend(diags);
         module.alias_diags.sort_by_key(|diag| diag.span.start);
         recollect(module);
+        // The row named the alias; the import it reached through is used,
+        // as `collect_row_refs` would have counted it before the splice.
+        for (file, used) in heads {
+            if let Some(scope) = module.scopes.iter_mut().find(|scope| scope.file == file) {
+                for head in used {
+                    scope.refs.push(PathRef { head, tail: None });
+                }
+            }
+        }
     }
 }
 
@@ -2234,6 +2257,7 @@ pub fn expand_error_aliases(units: &mut [Unit]) -> Vec<Diag> {
         private: &private,
         diags: Vec::new(),
         changed: false,
+        spelled: BTreeSet::new(),
     };
     for unit in units.iter_mut() {
         for item in &mut unit.items {
@@ -2272,6 +2296,9 @@ struct RowRewriter<'a> {
     diags: Vec<Diag>,
     /// Whether any entry was spliced or refused.
     changed: bool,
+    /// Every spelling spliced or refused, so the import it reached through
+    /// still counts as used once the row holds only tags (E0305).
+    spelled: BTreeSet<String>,
 }
 
 impl RowRewriter<'_> {
@@ -2287,6 +2314,7 @@ impl RowRewriter<'_> {
                 .join(".");
             if self.private.contains(&spelling) {
                 self.changed = true;
+                self.spelled.insert(spelling.clone());
                 self.diags.push(Diag::new(
                     "E0304",
                     entry.span,
@@ -2303,6 +2331,7 @@ impl RowRewriter<'_> {
             match alias {
                 Some(tags) => {
                     self.changed = true;
+                    self.spelled.insert(spelling.clone());
                     if !entry.payload.is_empty() {
                         self.diags.push(Diag::new(
                             "E0601",
