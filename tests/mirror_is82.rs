@@ -107,7 +107,10 @@ fn the_first_frontend_diagnostic_is_the_compilers_code_and_span() {
         let first = obs.diagnostics.first().map(|d| (d.code.clone(), d.span));
         let want = ((*code).to_owned(), [*start, *end]);
         if obs.verdict != Verdict::Fail((*code).to_owned()) || first.as_ref() != Some(&want) {
-            parted.push(format!("{name}: want {want:?}, got {:?} {first:?}", obs.verdict));
+            parted.push(format!(
+                "{name}: want {want:?}, got {:?} {first:?}",
+                obs.verdict
+            ));
         }
     }
     assert!(parted.is_empty(), "{}", parted.join("\n"));
@@ -137,7 +140,10 @@ fn calling_a_classed_local_is_e0406_at_the_callee() {
         let first = obs.diagnostics.first().map(|d| (d.code.clone(), d.span));
         let want = ((*code).to_owned(), [*start, *end]);
         if obs.verdict != Verdict::Fail((*code).to_owned()) || first.as_ref() != Some(&want) {
-            parted.push(format!("{name}: want {want:?}, got {:?} {first:?}", obs.verdict));
+            parted.push(format!(
+                "{name}: want {want:?}, got {:?} {first:?}",
+                obs.verdict
+            ));
         }
     }
     assert!(parted.is_empty(), "{}", parted.join("\n"));
@@ -259,7 +265,10 @@ fn argv_hex_supplies_argv_and_the_readers_answer_the_checked_machines_bytes() {
         "argument 2 is not UTF-8; read it with env_args_bytes()"
     );
     let rec = record_of(&conform_run("count", &["ff", "6f6b"]));
-    assert_eq!(rec["stdout_inline"], "1\n", "env_args never decodes argv[0]");
+    assert_eq!(
+        rec["stdout_inline"], "1\n",
+        "env_args never decodes argv[0]"
+    );
     let rec = record_of(&conform_run("name", &["ff", "6f6b"]));
     assert_eq!(rec["verdict"], "trap(argument-utf8)");
     assert_eq!(
@@ -267,9 +276,15 @@ fn argv_hex_supplies_argv_and_the_readers_answer_the_checked_machines_bytes() {
         "argument 0 is not UTF-8; read it with env_args_bytes()"
     );
     let rec = record_of(&conform_run("name", &["7368", "ff"]));
-    assert_eq!(rec["stdout_inline"], "sh\n", "env_arg0 decodes argv[0] only");
+    assert_eq!(
+        rec["stdout_inline"], "sh\n",
+        "env_arg0 decodes argv[0] only"
+    );
     let rec = record_of(&conform_run("count", &["7368", ""]));
-    assert_eq!(rec["stdout_inline"], "1\n", "an empty HEX is an empty argument");
+    assert_eq!(
+        rec["stdout_inline"], "1\n",
+        "an empty HEX is an empty argument"
+    );
     let rec = record_of(&conform_run("count", &["AB"]));
     assert_eq!(rec["stdout_inline"], "0\n", "upper-case digits are hex");
 }

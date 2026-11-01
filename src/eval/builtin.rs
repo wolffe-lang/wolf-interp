@@ -834,7 +834,11 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 Slot::live(Value::Int(i128::from(hard), IntTy::INT)),
             ])),
             None => {
-                machine.note(Rule::ErrUnion, span, "`os_core_limit` yields the `unsupported` row");
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    "`os_core_limit` yields the `unsupported` row",
+                );
                 Ok(error_value("os_core_limit", "unsupported"))
             }
         },
@@ -844,7 +848,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // (`unsupported` on windows), then the host's own answer (`denied`
         // for a raise of the hard limit it refuses).
         "os_set_core_limit" => {
-            let (Some(Value::Int(soft, _)), Some(Value::Int(hard, _))) = (args.first(), args.get(1))
+            let (Some(Value::Int(soft, _)), Some(Value::Int(hard, _))) =
+                (args.first(), args.get(1))
             else {
                 return unsupported("`os_set_core_limit` takes two `int`s".to_owned());
             };
@@ -875,7 +880,11 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         "os_core_off" => match super::host::core_off() {
             Ok(()) => Ok(Value::Unit),
             Err(tag) => {
-                machine.note(Rule::ErrUnion, span, &format!("`os_core_off` yields the `{tag}` row"));
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`os_core_off` yields the `{tag}` row"),
+                );
                 Ok(error_value("os_core_off", tag))
             }
         },

@@ -2455,8 +2455,14 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/region_outer_write_push_copy_control.lu", "exit(0)"),
     ("memory/region_outer_write_push_copy_over.lu", "exit(0)"),
     ("memory/region_outer_write_push_copy_under.lu", "exit(0)"),
-    ("memory/region_outer_write_push_heap.lu", "trap(region-fault)"),
-    ("memory/region_outer_write_push_heap_call.lu", "trap(region-fault)"),
+    (
+        "memory/region_outer_write_push_heap.lu",
+        "trap(region-fault)",
+    ),
+    (
+        "memory/region_outer_write_push_heap_call.lu",
+        "trap(region-fault)",
+    ),
     // wolf-interp#310, the corpus witnesses. A `copy` at a container store
     // through a `mut` parameter is made in the container's own region
     // (`[mem.region.outer-write]`'s clean store), so yew's allocator runs;
@@ -2466,7 +2472,10 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // dynamic counterpart). lupin 0.1.58 trapped the first and ran the
     // second to exit 0.
     ("memory/region_outer_write_push_copy_call.lu", "exit(0)"),
-    ("memory/region_outer_write_push_plain_copy.lu", "trap(region-fault)"),
+    (
+        "memory/region_outer_write_push_plain_copy.lu",
+        "trap(region-fault)",
+    ),
     // wolf-interp#295 (s261): `env_arg0` and `env_args_bytes` resolve, and
     // with no `--argv-hex` argv is absent, the checked machine's default.
     ("os/arg0.lu", "exit(0)"),

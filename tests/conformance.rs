@@ -410,7 +410,9 @@ fn is_member_of_a_failing_module(case: &Case) -> bool {
             .into_iter()
             .filter(|entry| {
                 matches!(entry.check, Some(Check::Fail(_)))
-                    && entry.ledger_phase.is_some_and(|phase| phase <= Phase::Parse)
+                    && entry
+                        .ledger_phase
+                        .is_some_and(|phase| phase <= Phase::Parse)
             })
             .filter_map(|entry| entry.path.rsplit_once('/').map(|(dir, _)| dir.to_owned()))
             .collect()

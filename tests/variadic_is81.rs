@@ -12,9 +12,7 @@ fn pinned_anchor_keys_agree_both_ways() {
         .keys()
         .map(String::as_str)
         .collect();
-    let expected: BTreeSet<&str> = include_str!("../ci/is82/anchor-keys.txt")
-        .lines()
-        .collect();
+    let expected: BTreeSet<&str> = include_str!("../ci/is82/anchor-keys.txt").lines().collect();
     let lost: Vec<_> = expected.difference(&actual).collect();
     let extra: Vec<_> = actual.difference(&expected).collect();
     assert!(

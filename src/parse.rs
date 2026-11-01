@@ -593,17 +593,20 @@ fn unclosed_delimiter(tokens: &[Token], error_at: Option<usize>) -> Option<Diag>
     {
         reports.push(span);
     }
-    reports.into_iter().min_by_key(|span| span.start).map(|span| {
-        let opener = Span::new(span.start, span.start + 1);
-        Diag::new(
-            diag::E_UNEXPECTED_EOF,
-            opener,
-            "gram.lex.newline",
-            "this delimiter is never closed: the group it opens ends before its closer — at a \
+    reports
+        .into_iter()
+        .min_by_key(|span| span.start)
+        .map(|span| {
+            let opener = Span::new(span.start, span.start + 1);
+            Diag::new(
+                diag::E_UNEXPECTED_EOF,
+                opener,
+                "gram.lex.newline",
+                "this delimiter is never closed: the group it opens ends before its closer — at a \
              closer of another kind, a statement keyword, the end of its interpolation or the \
              end of the file",
-        )
-    })
+            )
+        })
 }
 
 /// The origin a node's attributes put in force, when the marker is exactly

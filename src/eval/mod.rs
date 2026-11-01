@@ -30,6 +30,8 @@ mod conc;
 /// on wasm, where the builtin arms decline as the net tier's do).
 #[cfg(not(target_family = "wasm"))]
 mod fs;
+/// s253's host calls (`[os.uname]`, `[os.proc.core]`; wolf-interp#277).
+mod host;
 /// The s39 net family over std::net (no sockets on wasm — the builtin
 /// arms decline there, like the time tier).
 #[cfg(not(target_family = "wasm"))]
@@ -38,8 +40,6 @@ mod net;
 /// builtin arms decline there, like the time tier).
 #[cfg(not(target_family = "wasm"))]
 mod os;
-/// s253's host calls (`[os.uname]`, `[os.proc.core]`; wolf-interp#277).
-mod host;
 pub mod place;
 mod placetrace;
 pub mod prov;
