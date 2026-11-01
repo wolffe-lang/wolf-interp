@@ -2442,6 +2442,32 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("typecheck/straight_line_str_order.lu", "exit(0)"),
     ("typecheck/straight_line_wrap_div.lu", "exit(0)"),
     ("typecheck/straight_line_wrap_rem.lu", "exit(0)"),
+    // is82's b16353e8 re-vendor: thirteen of the fourteen new files reach
+    // `run` (`rows/else_fallback_range_refused.lu` is `pass` at resolve).
+    // wolf-lang#940's two `mut` relays and s270b's (wolf-lang#948) four
+    // `push(copy …)` repairs, its two refusals the block's free answers
+    // (E1010's dynamic counterpart), and s266/s268's rows.
+    ("memory/mut_param_replaced.lu", "exit(0)"),
+    ("memory/mut_relay_push.lu", "exit(0)"),
+    ("memory/region_outer_write_push_copy_control.lu", "exit(0)"),
+    ("memory/region_outer_write_push_copy_over.lu", "exit(0)"),
+    ("memory/region_outer_write_push_copy_under.lu", "exit(0)"),
+    ("memory/region_outer_write_push_heap.lu", "trap(region-fault)"),
+    ("memory/region_outer_write_push_heap_call.lu", "trap(region-fault)"),
+    // wolf-interp#310, the corpus witnesses. A `copy` at a container store
+    // through a `mut` parameter is made in the container's own region
+    // (`[mem.region.outer-write]`'s clean store), so yew's allocator runs;
+    // a plain push copies its element in the AMBIENT region
+    // (`[mem.region.edge.elem]`), the block, so the outer list keeps a
+    // header the block frees and the read after it faults (E1010's
+    // dynamic counterpart). lupin 0.1.58 trapped the first and ran the
+    // second to exit 0.
+    ("memory/region_outer_write_push_copy_call.lu", "exit(0)"),
+    ("memory/region_outer_write_push_plain_copy.lu", "trap(region-fault)"),
+    ("rows/else_fallback_bound_slice.lu", "exit(0)"),
+    ("rows/else_fallback_paren_slice.lu", "exit(0)"),
+    ("rows/mixed_payload_display.lu", "exit(0)"),
+    ("typecheck/enum_str_bare_choice.lu", "exit(0)"),
 ];
 
 // (is70's `RULED_AHEAD_OF_PIN` stood here: `comptime.lu`, whose `#[noalloc]`
