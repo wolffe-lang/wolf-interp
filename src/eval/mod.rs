@@ -484,6 +484,10 @@ struct Frame {
     /// this list: a write through one traps `exclusivity`. Each entry
     /// carries the parameter's declaration span, the trap's second span.
     read_params: Vec<(String, Span)>,
+    /// The parameters this activation bound `mut` (`self` included): a
+    /// container store through one is outer to the callee's whole body,
+    /// lexical block or not (`[mem.region.outer-write]`, wolf-interp#310).
+    mut_params: Vec<String>,
     /// The function this activation runs, by its declared name — kept only
     /// while the place trace is on (is72), empty otherwise.
     name: String,
@@ -1058,6 +1062,7 @@ impl Machine {
             scopes: vec![Scope::default()],
             row: Vec::new(),
             read_params: Vec::new(),
+            mut_params: Vec::new(),
             name: String::new(),
             body: None,
             ret_int: None,
@@ -3563,6 +3568,15 @@ impl Machine {
                 (name, param.span)
             })
             .collect();
+        let mut_params: Vec<String> = decl
+            .params
+            .iter()
+            .filter(|param| param.mode == Some(ParamMode::Mut))
+            .map(|param| match &param.kind {
+                ParamKind::Named { name, .. } => name.name.clone(),
+                ParamKind::SelfParam { .. } => "self".to_owned(),
+            })
+            .collect();
         let serial = self.mint_frame_serial();
         self.frames.push(Frame {
             module: module.to_owned(),
@@ -3570,6 +3584,7 @@ impl Machine {
             scopes: vec![Scope::default()],
             row: crate::sema::declared_raise_tags(decl),
             read_params,
+            mut_params,
             name: if self.shared.place_trace.is_some() {
                 decl.name.name.clone()
             } else {
@@ -5084,12 +5099,22 @@ impl Machine {
         // `[mem.region.outer-write]` is lexical in this activation. A
         // caller's region context must not change how a callee compiled
         // once interprets `copy`. A mut parameter (scope 0) is outer to
-        // every region/in block opened by this function, but no copy in
-        // its ordinary body materializes merely because it is inout.
+        // every region/in block opened by this function.
         let outer = frame.scopes[scope_index + 1..]
             .iter()
             .any(|scope| scope.region_boundary);
-        if !outer {
+        // wolf-interp#310: a CONTAINER store through a `mut` parameter — a
+        // push, an index or `Map` store, a `List` or `Map` replaced — is one
+        // of the clause's clean stores wherever it sits in the callee:
+        // `copy e` there is made in the container's own region, so a
+        // caller's block keeps nothing of it (s270b's
+        // `region_outer_write_push_copy_call.lu`, yew's allocator). A flat
+        // field or whole store of anything else keeps R-is81-3's reading:
+        // with no lexical block, no copy materializes merely because the
+        // parameter is inout.
+        let through_mut =
+            !outer && scope_index == 0 && frame.mut_params.iter().any(|n| *n == path.base);
+        if !outer && !through_mut {
             return None;
         }
         // An element store belongs to its containing buffer, even when
@@ -5101,12 +5126,129 @@ impl Machine {
                 return Some(home);
             }
         }
-        self.slot_mut(path)
-            .and_then(|s| match &s.value {
-                Value::List(_, _, home) | Value::Map(_, home) => *home,
-                _ => None,
-            })
-            .or(Some(ambient))
+        let container = self.slot_mut(path).and_then(|s| match &s.value {
+            Value::List(_, _, home) | Value::Map(_, home) => *home,
+            _ => None,
+        });
+        if through_mut {
+            return container;
+        }
+        container.or(Some(ambient))
+    }
+
+    /// The copy a PLAIN store makes (`[mem.region.edge.elem]`, s270b,
+    /// wolf-interp#310): a non-`Copy` element passed plainly to `push`, an
+    /// index store or a `Map` store is copied into the container, and the
+    /// copy is made where the store runs — every `List` and `Map` it
+    /// reaches is a fresh buffer in the AMBIENT region (inside a block, the
+    /// block's). A `str` keeps sharing its bytes (ruling #35's copy), and a
+    /// value whose containers are all homed in the ambient already is
+    /// returned as it is, so a store in the region its parts were made in
+    /// costs nothing new.
+    fn plain_store_copy(&mut self, value: Value, span: Span) -> EResult<Value> {
+        let ambient = self.current_region();
+        if !reaches_container_outside(&value, ambient) {
+            return Ok(value);
+        }
+        self.rehome_containers(value, ambient, span)
+    }
+
+    fn rehome_containers(&mut self, value: Value, into: RegionId, span: Span) -> EResult<Value> {
+        match value {
+            Value::List(items, elem, home) => {
+                let copied: Vec<Slot> = if elem.is_some() {
+                    // Scalar elements: the buffer is all there is to copy.
+                    items.items.clone()
+                } else {
+                    let mut copied = Vec::with_capacity(items.items.len());
+                    for slot in &items.items {
+                        copied.push(Slot {
+                            state: slot.state,
+                            value: self.rehome_containers(slot.value.clone(), into, span)?,
+                        });
+                    }
+                    copied
+                };
+                let home = match home {
+                    Some(_) => Some(self.allocate_into(
+                        into,
+                        span,
+                        "a plain store's copy of a List",
+                        region::ledger::container_bytes(copied.len() as u64),
+                    )?),
+                    None => None,
+                };
+                Ok(Value::list(copied, elem, home))
+            }
+            Value::Map(entries, home) => {
+                let mut copied = Vec::with_capacity(entries.len());
+                for (key, slot) in entries {
+                    copied.push((
+                        key,
+                        Slot {
+                            state: slot.state,
+                            value: self.rehome_containers(slot.value, into, span)?,
+                        },
+                    ));
+                }
+                let home = match home {
+                    Some(_) => Some(self.allocate_into(
+                        into,
+                        span,
+                        "a plain store's copy of a Map",
+                        region::ledger::container_bytes(copied.len() as u64),
+                    )?),
+                    None => None,
+                };
+                Ok(Value::Map(copied, home))
+            }
+            Value::Struct { name, fields, home } => {
+                let mut copied = Vec::with_capacity(fields.len());
+                for (field, slot) in fields {
+                    copied.push((
+                        field,
+                        Slot {
+                            state: slot.state,
+                            value: self.rehome_containers(slot.value, into, span)?,
+                        },
+                    ));
+                }
+                let home = match home {
+                    Some(_) => Some(self.allocate_into(
+                        into,
+                        span,
+                        &format!("a plain store's copy of `{name}`"),
+                        region::ledger::alloc_bytes(copied.len() as u64),
+                    )?),
+                    None => None,
+                };
+                Ok(Value::Struct {
+                    name,
+                    fields: copied,
+                    home,
+                })
+            }
+            Value::Tuple(slots) => {
+                let mut copied = Vec::with_capacity(slots.len());
+                for slot in slots {
+                    copied.push(Slot {
+                        state: slot.state,
+                        value: self.rehome_containers(slot.value, into, span)?,
+                    });
+                }
+                Ok(Value::Tuple(copied))
+            }
+            Value::Error(mut err) => {
+                let payload = std::mem::take(&mut err.payload);
+                let mut copied = Vec::with_capacity(payload.len());
+                for part in payload {
+                    copied.push(self.rehome_containers(part, into, span)?);
+                }
+                err.payload = copied;
+                Ok(Value::Error(err))
+            }
+            other => Ok(other),
+        }
     }
 
     fn materialize_store(
@@ -5115,12 +5257,8 @@ impl Machine {
         value: Value,
         into: Option<RegionId>,
     ) -> EResult<Value> {
-        let mut syntax = expr;
-        while let ExprKind::Group(inner) = &*syntax.kind {
-            syntax = inner;
-        }
         if let Some(into) = into
-            && matches!(&*syntax.kind, ExprKind::Unary { op: UnOp::Copy, .. })
+            && is_copy_syntax(expr)
         {
             return self.materialize(value, into, self.current_region(), expr.span);
         }
@@ -5216,7 +5354,13 @@ impl Machine {
                 None => self.store_operand(place, value, take)?,
             };
             let into = self.copy_destination(&path);
-            let value = self.materialize_store(syntax, value, into)?;
+            let value = if !take && place.is_index_place() && !is_copy_syntax(syntax) {
+                // A plain index or `Map` store copies its value in where the
+                // store runs, as a plain push does (wolf-interp#310).
+                self.plain_store_copy(value, syntax.span)?
+            } else {
+                self.materialize_store(syntax, value, into)?
+            };
             // Keep the place's integer type: `x += 1` and `x = x + 1` agree.
             let value = match (self.slot_mut(&path).map(|s| s.value.clone()), value) {
                 (Some(Value::Int(_, ty)), Value::Int(v, lit)) if lit.literal => {
@@ -8774,6 +8918,7 @@ impl Machine {
                     // Closure parameters carry no declared modes; D39's
                     // barrier watches `fn` parameters only.
                     read_params: Vec::new(),
+                    mut_params: Vec::new(),
                     name: if self.shared.place_trace.is_some() {
                         "<closure>".to_owned()
                     } else {
@@ -9202,7 +9347,15 @@ impl Machine {
                     {
                         let into = self.copy_destination(path);
                         for (arg, value) in args.iter().zip(&mut evaluated.values) {
-                            *value = self.materialize_store(&arg.expr, value.clone(), into)?;
+                            *value = if is_copy_syntax(&arg.expr) {
+                                self.materialize_store(&arg.expr, value.clone(), into)?
+                            } else if arg.mode == Some(ParamMode::Take) {
+                                value.clone()
+                            } else {
+                                // A plain push copies its element where the
+                                // push runs (wolf-interp#310).
+                                self.plain_store_copy(value.clone(), arg.span)?
+                            };
                         }
                     }
                     Ok(evaluated)
@@ -11387,9 +11540,51 @@ pub(crate) fn scalar_only(value: &Value) -> bool {
     }
 }
 
+/// Whether a store's operand is spelled `copy e` (parentheses aside).
+fn is_copy_syntax(expr: &Expr) -> bool {
+    let mut syntax = expr;
+    while let ExprKind::Group(inner) = &*syntax.kind {
+        syntax = inner;
+    }
+    matches!(&*syntax.kind, ExprKind::Unary { op: UnOp::Copy, .. })
+}
+
 /// [`scalar_only`] over a struct's fields.
 fn fields_scalar_only(fields: &[(String, Slot)]) -> bool {
     fields.iter().all(|(_, slot)| scalar_only(&slot.value))
+}
+
+/// Whether `value` reaches a `List` or `Map` homed outside `ambient` — the
+/// one case a plain store's copy must rebuild ([`Machine::plain_store_copy`]).
+/// A list of scalars is one buffer: its items are never walked.
+fn reaches_container_outside(value: &Value, ambient: RegionId) -> bool {
+    match value {
+        Value::List(items, elem, home) => {
+            home.is_some_and(|home| home != ambient)
+                || (elem.is_none()
+                    && items
+                        .items
+                        .iter()
+                        .any(|slot| reaches_container_outside(&slot.value, ambient)))
+        }
+        Value::Map(entries, home) => {
+            home.is_some_and(|home| home != ambient)
+                || entries
+                    .iter()
+                    .any(|(_, slot)| reaches_container_outside(&slot.value, ambient))
+        }
+        Value::Struct { fields, .. } => fields
+            .iter()
+            .any(|(_, slot)| reaches_container_outside(&slot.value, ambient)),
+        Value::Tuple(slots) => slots
+            .iter()
+            .any(|slot| reaches_container_outside(&slot.value, ambient)),
+        Value::Error(err) => err
+            .payload
+            .iter()
+            .any(|part| reaches_container_outside(part, ambient)),
+        _ => false,
+    }
 }
 
 fn is_copy(value: &Value) -> bool {

@@ -124,6 +124,7 @@ impl Session {
             scopes: vec![Scope::default()],
             row: Vec::new(),
             read_params: Vec::new(),
+            mut_params: Vec::new(),
             name: String::new(),
             body: None,
             ret_int: None,
