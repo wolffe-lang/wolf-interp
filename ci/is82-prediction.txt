@@ -1,0 +1,71 @@
+is82 prediction: lupin mirrors wolf-lang trunk (#310, #304, #302, #299, #295, then #277/#278/#293)
+Recorded before the first change: 2026-11-01T00:28Z (date -u)
+
+Inputs verified:
+  wolf-interp origin/trunk 6240efe5570dba1a33ba6269e3ba44bae33dd972 (lupin 0.1.58, spec pin a5378e3f)
+  wolf-lang trunk b16353e8ae616ff3a35bd27adc56b727c50df345 (the re-vendor target; s270b at a246580b is in it)
+  wolf 0.2.36 on PATH (pin 5adf3d9) as the black-box compiler for every row s270b did not move;
+  s270b's own rows are judged by their corpus headers and s270b's measured table.
+  Base lupin: target/release/lupin built at 6240efe, sha256
+    3a9e39320d8283bfd30922e87bceb911ba3ab2c443db8bd9a6fc4d7041fcd22b (nomad, arm64).
+
+Measured at the base, before any change (probes under ~/lanes/is82/probes/, both machines):
+  #310  memory/region_outer_write_push_plain_copy.lu  lupin exit(0) "1 100 99 2000"  (corpus: fail(E1010))
+        memory/region_outer_write_push_copy_call.lu   lupin trap(region-fault)       (corpus: run, "4 100000 101 64 4 0 2000")
+        the other five s270b rows and #940's two already answer as the corpus says on lupin.
+        A plain INDEX store of an outer-built List in a block (probe i1): wolf fail(E1004), lupin exit(0).
+  #304  print("{\"name\": \"x\"}") and two siblings (probes a2, a5, a7): wolf fail(E0202) at the `(`,
+        lupin fail(E0102) at the string. lupin's delimiter scan lets a `)` inside the interpolation
+        close the `(` outside the string. a1, a3, a4, a6 already agree.
+        E0406: lupin has never emitted E0406 (git log -S finds nothing), so the issue's "wolf E0412,
+        lupin E0406" cannot be lupin 0.1.56's answer as written. The pair reproduces the other way
+        round: `"{k(): zz}"` with `k` a str local (b7) and `"{p.x(): 3}"` (b6) are wolf E0406, lupin
+        E0412; `"{key(1)}"` (b3) is wolf E0406, lupin unsupported. The kasumi witnesses
+        (os-json.002/.003) are unreachable while kasumi is offline.
+  #302  clef's probe (fn main() -> int ! errors.Failures { return broken }): wolf exit(1) "error: broken",
+        lupin unsupported ("`broken` does not resolve at this raise site").
+  #299  scent's witness (use math as renamed; renamed.value()): wolf exit(0) "42", lupin unsupported.
+        `use math as m` beside `use math.{twice}` (c5): wolf "42 84", lupin unsupported.
+        `use math as renamed; math.value()` (c2): wolf fail(E0305), lupin exit(0) "42" (looser).
+  #295  corpus/os/arg0.lu and os/args_bytes.lu: wolf exit(0), lupin unsupported (neither name
+        resolves). lupin's env_args() is always the empty list; TrapKind has 12 kinds where
+        [conf.trap.set] has 14 (stack-overflow and argument-utf8 missing).
+  re-vendor: three of the fourteen new corpus rows part on lupin at 6240efe: the two #310 rows and
+        rows/else_fallback_range_refused.lu (corpus pass at resolve; wolf declines at resolve,
+        unsupported; lupin fail(E0411), a mismatch in the corpus walk).
+
+Predicted, each to be shown by a row committed red first:
+- R-is82-1 (re-vendor): spec/ and corpus/ move to b16353e8; 17 files (14 corpus rows added, three spec
+  files changed); anchors 705 -> 706 (abi.target.main), no anchor lost; the corpus walk 1,225 -> 1,239
+  files, entries +14, members unchanged; RUN_LEDGER gains the 13 rows that reach run. The only
+  mismatch the walk shows is else_fallback_range_refused; push_plain_copy is conservatism (exit 0
+  against E1010) and push_copy_call a mismatch.
+- #310, two changes in the evaluator's store path:
+  (1) the copy a plain push, index store or Map store makes of a value that holds a List or Map is
+      made in the AMBIENT region ([mem.region.edge.elem]), so push_plain_copy traps region-fault
+      (E1010's dynamic counterpart) and probe i1 traps region-fault (E1004's). A str keeps sharing.
+  (2) `copy e` at a container store through a `mut` parameter is made in the container's own region
+      ([mem.region.outer-write]'s clean stores), so push_copy_call prints "4 100000 101 64 4 0 2000".
+      A flat field store of a `copy` through a `mut` parameter is unchanged: is81's five
+      region_kept_arg_* rows stay trap(region-fault) with "28".
+  No other corpus row moves.
+- #304: the delimiter scan treats an interpolation as its own nesting, so a2/a5/a7 answer E0202 at
+  the `(` with the compiler's span [21,22]-shaped opener; a1/a3/a4/a6 keep their codes. E0406 for a
+  call whose callee is a local the resolve walk can class as a non-function (a str/int/float/bool/
+  char literal binding): b7 and b3 answer E0406 at the callee. b6 (a struct field called) needs field
+  types lupin's walk does not carry: named as the remainder.
+- #302: a signature row naming a foreign error-set alias (qualified `errors.Failures`, or `Failures`
+  bound by `use errors.Failures`) expands to that module's tags, for the raise site, `?` and a match;
+  the probe answers exit(1) "error: broken".
+- #299: an aliased `use` loads the named directory under the alias and binds only the alias; the
+  witness prints 42, c5 prints "42 84", c2 no longer runs.
+- #295: env_arg0() and env_args_bytes() resolve; `conform-run --argv-hex=HEX` (repeated, argv[0]
+  first, the checked machine's validation and refusals) supplies argv; without it argv is empty, as
+  on the checked machine. A text reader meeting a non-UTF-8 argument traps `argument-utf8` with
+  "argument N is not UTF-8; read it with env_args_bytes()". TrapKind gains argument-utf8 (and
+  stack-overflow, R-is82-3, so the set is the spec's 14). os/arg0.lu and os/args_bytes.lu match.
+- #277 (as far as fits): os_name() and os_arch() answer the host's uname (macos/aarch64 on nomad,
+  linux/x86_64 on hasu and CI, windows on windows).
+- FILED_DIVERGENCES does not move: zero rows added or removed.
+- Largest change: #295 (CLI, machine input, builtins, trap vocabulary). #310 is two small edits in
+  `copy_destination` and the push/store path.
