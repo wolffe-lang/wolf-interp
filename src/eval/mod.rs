@@ -38,6 +38,8 @@ mod net;
 /// builtin arms decline there, like the time tier).
 #[cfg(not(target_family = "wasm"))]
 mod os;
+/// s253's host calls (`[os.uname]`, `[os.proc.core]`; wolf-interp#277).
+mod host;
 pub mod place;
 mod placetrace;
 pub mod prov;

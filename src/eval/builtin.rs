@@ -220,6 +220,15 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // process reads, never a constant a build folds in — and s90's
     // `os_exe`, which the corpus first calls at this pin.
     "os_cpus",
+    // s253 (wolf-lang#847, `[os.uname]`, `[os.proc.core]`; wolf-interp#277):
+    // the host's name and architecture, and the core a process's end may
+    // leave — through nix's safe `uname`, `getrlimit`/`setrlimit` and
+    // `prctl(PR_SET_DUMPABLE)`, no `unsafe`.
+    "os_name",
+    "os_arch",
+    "os_core_limit",
+    "os_set_core_limit",
+    "os_core_off",
     "os_exe",
     "os_exit",
     "os_spawn",
@@ -799,6 +808,71 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             Err(_) => {
                 machine.note(Rule::ErrUnion, span, "`os_cpus` yields the `io` row");
                 Ok(error_value("os_cpus", "io"))
+            }
+        },
+        // `[os.uname]` (s253; wolf-interp#277): what the KERNEL answers,
+        // lowercased, Darwin as `macos`, `arm64`/`amd64` as linux spells
+        // them; windows has no `uname` and answers `windows` and the build's
+        // architecture. Read once a process. No row; the words are static.
+        "os_name" => match super::host::host_words() {
+            Some((name, _)) => Ok(Value::Str(name.to_owned().into())),
+            None => unsupported("`os_name`: this host has no `uname` to read".to_owned()),
+        },
+        "os_arch" => match super::host::host_words() {
+            Some((_, arch)) => Ok(Value::Str(arch.to_owned().into())),
+            None => unsupported("`os_arch`: this host has no `uname` to read".to_owned()),
+        },
+        // `[os.proc.core]` (s253): the soft and hard core limit, bytes, -1
+        // for unlimited; `unsupported` on windows.
+        "os_core_limit" => match super::host::core_limit() {
+            Some((soft, hard)) => Ok(Value::Tuple(vec![
+                Slot::live(Value::Int(i128::from(soft), IntTy::INT)),
+                Slot::live(Value::Int(i128::from(hard), IntTy::INT)),
+            ])),
+            None => {
+                machine.note(Rule::ErrUnion, span, "`os_core_limit` yields the `unsupported` row");
+                Ok(error_value("os_core_limit", "unsupported"))
+            }
+        },
+        // The order of refusal is the clause's: the SHAPE (`invalid` unless
+        // each is -1 or 0 and up and the soft is at most the hard — an
+        // unlimited soft under a finite hard included), then the host
+        // (`unsupported` on windows), then the host's own answer (`denied`
+        // for a raise of the hard limit it refuses).
+        "os_set_core_limit" => {
+            let (Some(Value::Int(soft, _)), Some(Value::Int(hard, _))) = (args.first(), args.get(1))
+            else {
+                return unsupported("`os_set_core_limit` takes two `int`s".to_owned());
+            };
+            let (soft, hard) = (*soft, *hard);
+            let shaped = soft >= -1 && hard >= -1 && (hard == -1 || (soft >= 0 && soft <= hard));
+            let tag = if !shaped {
+                Some("invalid")
+            } else {
+                match (i64::try_from(soft), i64::try_from(hard)) {
+                    (Ok(soft), Ok(hard)) => super::host::set_core_limit(soft, hard).err(),
+                    _ => Some("invalid"),
+                }
+            };
+            match tag {
+                None => Ok(Value::Unit),
+                Some(tag) => {
+                    machine.note(
+                        Rule::ErrUnion,
+                        span,
+                        &format!("`os_set_core_limit` yields the `{tag}` row"),
+                    );
+                    Ok(error_value("os_set_core_limit", tag))
+                }
+            }
+        }
+        // No core whatever ends this process: on linux the dumpable
+        // attribute to 0, elsewhere the soft limit to 0, keeping the hard.
+        "os_core_off" => match super::host::core_off() {
+            Ok(()) => Ok(Value::Unit),
+            Err(tag) => {
+                machine.note(Rule::ErrUnion, span, &format!("`os_core_off` yields the `{tag}` row"));
+                Ok(error_value("os_core_off", tag))
             }
         },
         // s90's `os_exe` (wolf-lang#69): the running executable's path. The
@@ -4110,6 +4184,8 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // default precisely so a program can say it did not learn the
         // number ([os.cpus], wolf-lang#233).
         "os_exe" | "os_cpus" => &["io"],
+        "os_core_limit" | "os_core_off" => &["unsupported"],
+        "os_set_core_limit" => &["denied", "invalid", "unsupported"],
         // `[os.proc.inherit]`: `unsupported` is the HOST (or, here, the
         // machine) refusing the handoff BY NAME; the rest is `os_spawn`'s
         // own row.
