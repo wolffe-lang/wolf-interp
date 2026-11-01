@@ -199,7 +199,8 @@ The sprint asks for a "`shared` acyclicity assertion at strong-edge
 creation, the dynamic counterpart of E1006". `[mem.shared.rc.2]` makes a strong
 cycle a compile error, and `[mem.ub.defined]` lists it as an error and not a
 trap. `[conf.trap.set]` is a closed vocabulary (twelve kinds since `deadlock`
-landed, §10.5) and has no kind for it.
+landed, §10.5; fourteen since `stack-overflow` and `argument-utf8`) and has
+no kind for it.
 
 The machine therefore implements the check as a trace assertion, not a trap:
 inventing a kind would extend a closed vocabulary, and reusing `region-fault`

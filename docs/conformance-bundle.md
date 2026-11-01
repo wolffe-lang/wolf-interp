@@ -31,7 +31,7 @@ suite/faults/**          is03's fault litmuses + defined twins
 suite/witness/**         is07's model-check witness programs
 expected/records.jsonl   one protocol-1 observation record per entry
                          program (the REFERENCE OUTCOMES)
-vocab/traps.json         [conf.trap.set]: the closed twelve, in order
+vocab/traps.json         [conf.trap.set]: the closed fourteen, in order
 vocab/ub-rows.json       [mem.ub]: the closed eleven, each with its D2
                          licensed optimization and coverage status
 anchors/anchors.json     the pinned clause-anchor registry, verbatim

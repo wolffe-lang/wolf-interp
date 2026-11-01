@@ -103,7 +103,7 @@ The compiler rejects that program statically (E1001). This implementation
 performs no borrow checking and enforces the same property at runtime
 instead. Chapter 3 explains the split.
 
-The trap vocabulary is closed at twelve kinds (`[conf.trap.set]`). Adding
+The trap vocabulary is closed at fourteen kinds (`[conf.trap.set]`). Adding
 one requires revising the spec:
 
 | kind | fault |
@@ -120,6 +120,8 @@ one requires revising the spec:
 | `race` | a data race the dynamic machine observed |
 | `ub` | the UB oracle's finding, when pinned as a trap expectation |
 | `deadlock` | every task blocked with no runnable successor |
+| `stack-overflow` | a native stack's guard page was hit; lupin never raises it, and reads it in another machine's records |
+| `argument-utf8` | `env_args()` or `env_arg0()` read an argument that is not UTF-8; the message names the OS argv index (`[os.env.argv]`) |
 
 ## The directive header
 
