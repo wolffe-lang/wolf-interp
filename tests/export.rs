@@ -960,9 +960,13 @@ fn the_vocabularies_ship_closed() {
     )
     .expect("json");
     let kinds = traps["kinds"].as_array().expect("kinds");
-    assert_eq!(kinds.len(), 12, "[conf.trap.set] is the closed twelve");
+    // R-is82-3: `stack-overflow` and `argument-utf8` close the set at the
+    // pin's fourteen.
+    assert_eq!(kinds.len(), 14, "[conf.trap.set] is the closed fourteen");
     assert_eq!(kinds[0], "overflow");
     assert_eq!(kinds[11], "deadlock");
+    assert_eq!(kinds[12], "stack-overflow");
+    assert_eq!(kinds[13], "argument-utf8");
     assert_eq!(traps["closed"], true);
 
     let rows: serde_json::Value = serde_json::from_str(
