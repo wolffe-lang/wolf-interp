@@ -1,0 +1,23 @@
+# hasu block A, the first gauntlet launch at 5a153fe (records/gauntlet.log), in order: the step lines and the anchors-py output
+IS82 block=A cpus=0-5 waiting 2026-11-01T05:07:10Z
+GAUNTLET head=5a153fea69395edbce91a2842eb586abe2eef7e6 dirty=0 2026-11-01T05:07:10Z
+SigBlk:	0000000000000000
+SigIgn:	0000000000000000
+Cpus_allowed_list:	0-5
+START fmt 2026-11-01T05:07:10Z
+END fmt exit=0 2026-11-01T05:07:11Z
+START clippy 2026-11-01T05:07:11Z
+END clippy exit=0 2026-11-01T05:07:28Z
+START tiers-test 2026-11-01T05:07:28Z
+END tiers-test exit=0 2026-11-01T05:07:31Z
+START dist-test 2026-11-01T05:07:31Z
+END dist-test exit=0 2026-11-01T05:07:31Z
+START anchors-py 2026-11-01T05:07:31Z
+pinned anchors: expected=705 actual=706
+lost anchors: []
+unexpected anchors: ['abi.target.main']
+::error::pinned_anchor_keys_agree_both_ways failed
+END anchors-py exit=1 2026-11-01T05:07:31Z
+GAUNTLET stopped at anchors-py
+IS82 block=A exit=1 2026-11-01T05:07:32Z
+exit=1 2026-11-01T05:07:32Z
