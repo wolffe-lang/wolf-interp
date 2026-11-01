@@ -546,7 +546,8 @@ const RATCHET_FLOOR: usize = 375;
 // `conc.mm.atomic.order`, `conc.mm.atomic.raw{,.1,.2,.3,.4,.5}` and
 // `conc.mm.fence` (spec/03, kw11). No new namespace.
 // is81 / a5378e3f: complete key sets diffed both ways, none lost.
-const ANCHORS_TOTAL: usize = 705;
+// is82 / b16353e8: 705 -> 706, `abi.target.main` (s267, spec/04), none lost.
+const ANCHORS_TOTAL: usize = 706;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -870,9 +871,10 @@ fn the_pin_and_the_counts_are_the_ones_this_sprint_recorded() {
     // 1042/995 -> 1044/997 at the same pin (is74): row L3 brings a trigger
     // and its twin to `tests/ub` — both counts by two, the corpus unmoved.
     // is81: 223 corpus programs / 208 entry records added, none lost.
-    assert_eq!(summary.pin, "a5378e3fd5b6347f4a89a7d77dbe43aa576fee76");
-    assert_eq!(summary.programs, 1267);
-    assert_eq!(summary.records, 1205);
+    // is82 / b16353e8: 14 corpus programs, 14 entry records, none lost.
+    assert_eq!(summary.pin, "b16353e8ae616ff3a35bd27adc56b727c50df345");
+    assert_eq!(summary.programs, 1281);
+    assert_eq!(summary.records, 1219);
     assert_eq!(summary.anchors_total, ANCHORS_TOTAL);
 }
 

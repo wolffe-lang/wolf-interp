@@ -12,7 +12,7 @@ fn pinned_anchor_keys_agree_both_ways() {
         .keys()
         .map(String::as_str)
         .collect();
-    let expected: BTreeSet<&str> = include_str!("../ci/is81-variadic/anchor-keys.txt")
+    let expected: BTreeSet<&str> = include_str!("../ci/is82/anchor-keys.txt")
         .lines()
         .collect();
     let lost: Vec<_> = expected.difference(&actual).collect();
@@ -23,7 +23,7 @@ fn pinned_anchor_keys_agree_both_ways() {
     );
     assert_eq!(
         wolf_interp::UPSTREAM_PIN.trim(),
-        "a5378e3fd5b6347f4a89a7d77dbe43aa576fee76"
+        "b16353e8ae616ff3a35bd27adc56b727c50df345"
     );
 }
 
@@ -357,7 +357,7 @@ fn command_line_records_the_named_refusal_and_the_spec_identity() {
         .arg("--version")
         .output()
         .unwrap();
-    assert!(String::from_utf8_lossy(&version.stdout).contains("pin a5378e3"));
+    assert!(String::from_utf8_lossy(&version.stdout).contains("pin b16353e"));
     // CLI follows the real host. Linux is the supported executable row;
     // unsupported hosts must reject the declaration, not borrow SysV.
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_lupin"))
