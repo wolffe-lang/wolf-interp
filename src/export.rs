@@ -660,7 +660,7 @@ impl CoverageReport {
 // Vocabularies
 // ---------------------------------------------------------------------------
 
-/// `[conf.trap.set]` as shipped data: the closed twelve, in spec order.
+/// `[conf.trap.set]` as shipped data: the closed fourteen, in spec order.
 fn traps_json() -> Vec<u8> {
     let value = serde_json::json!({
         "source": "spec/05-conformance.md [conf.trap.set]",

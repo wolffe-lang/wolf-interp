@@ -21,7 +21,7 @@
 //! warns:    CODE, CODE, …
 //! ```
 //!
-//! `kind` is drawn from the closed twelve-kind vocabulary of
+//! `kind` is drawn from the closed fourteen-kind vocabulary of
 //! `spec/05-conformance.md` `[conf.trap.set]`; `phase` from the canonical
 //! ladder. Both sets are closed: an unknown value is an error.
 //!

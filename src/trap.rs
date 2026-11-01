@@ -1,16 +1,19 @@
 //! The trap vocabulary.
 //!
 //! Reimplemented from `spec/05-conformance.md` `[conf.trap.set]`: a **closed**
-//! set of twelve kinds. It is the comparison alphabet of spec/06, so an
+//! set of fourteen kinds. It is the comparison alphabet of spec/06, so an
 //! unknown kind is an error everywhere it can appear — corpus directives and
 //! protocol verdicts alike. (`deadlock` is the deliberate twelfth, added by
 //! the pinned `[conc.deadlock.trap]` amendment — the spec revision that
-//! closed set demanded, and the resolution of finding S-3.)
+//! closed set demanded, and the resolution of finding S-3. `stack-overflow`
+//! (`[conf.trap.stack]`) and `argument-utf8` (`[os.env.argv]`, s261) are the
+//! thirteenth and fourteenth; this machine raises the second (wolf-interp
+//! #295) and reads the first in a counterparty's records, R-is82-3.)
 
 use std::fmt;
 use std::str::FromStr;
 
-/// One of the twelve kinds in the closed `[conf.trap.set]` vocabulary.
+/// One of the fourteen kinds in the closed `[conf.trap.set]` vocabulary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TrapKind {
     Overflow,
@@ -25,11 +28,13 @@ pub enum TrapKind {
     Race,
     Ub,
     Deadlock,
+    StackOverflow,
+    ArgumentUtf8,
 }
 
 impl TrapKind {
     /// The whole closed set, in spec order. Extension requires a spec revision.
-    pub const ALL: [TrapKind; 12] = [
+    pub const ALL: [TrapKind; 14] = [
         TrapKind::Overflow,
         TrapKind::DivZero,
         TrapKind::Bounds,
@@ -42,6 +47,8 @@ impl TrapKind {
         TrapKind::Race,
         TrapKind::Ub,
         TrapKind::Deadlock,
+        TrapKind::StackOverflow,
+        TrapKind::ArgumentUtf8,
     ];
 
     /// The spelling used in directives and on the wire.
@@ -60,6 +67,8 @@ impl TrapKind {
             TrapKind::Race => "race",
             TrapKind::Ub => "ub",
             TrapKind::Deadlock => "deadlock",
+            TrapKind::StackOverflow => "stack-overflow",
+            TrapKind::ArgumentUtf8 => "argument-utf8",
         }
     }
 
@@ -116,8 +125,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_set_has_exactly_twelve_kinds() {
-        assert_eq!(TrapKind::ALL.len(), 12);
+    fn the_set_has_exactly_fourteen_kinds() {
+        assert_eq!(TrapKind::ALL.len(), 14);
     }
 
     #[test]
@@ -134,6 +143,8 @@ mod tests {
         assert_eq!(TrapKind::StaleHandle.as_str(), "stale-handle");
         assert_eq!(TrapKind::AllocContract.as_str(), "alloc-contract");
         assert_eq!(TrapKind::RegionFault.as_str(), "region-fault");
+        assert_eq!(TrapKind::StackOverflow.as_str(), "stack-overflow");
+        assert_eq!(TrapKind::ArgumentUtf8.as_str(), "argument-utf8");
     }
 
     #[test]

@@ -691,7 +691,7 @@ impl Rule {
             ),
             Rule::TrapVocabulary => (
                 "conf.trap.set",
-                "every fault this machine raises is one of the closed twelve kinds",
+                "every fault this machine raises is one of the closed fourteen kinds",
             ),
             Rule::SchedSeed => (
                 "conc.det.seed",
