@@ -181,16 +181,15 @@ use crate::schema;
 /// `memory/list_session_struct.lu` carries wolf-lang eg01's `copy tbl[2]`,
 /// so the `for` reads a live element and the row answers `exit(0)` printing
 /// `102 1 1408 4 184` here and on all three counterparty tiers.
+///
+/// DIV-2026-019 CLOSED at pin `b16353e8` (is82, wolf-interp#304): a parse
+/// error inside a `(` group whose closer never comes is reported as E0202
+/// at that opener (`[proto.record.first]`'s boundary sentence, and the
+/// E0202 registry text: the parser "stops at the next declaration keyword
+/// and reports the wreck once", measured black-box on 45 shapes), so
+/// `resolve/broken_sibling/entry.lu` answers `fail(E0202)` at `[135,136]`,
+/// byte-for-byte the counterparty's span. The waiver retires with it.
 pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
-    (
-        "resolve/broken_sibling/entry.lu",
-        "DIV-2026-019",
-        "which parse error fires on the unparseable module sibling: the \
-         corpus pins the counterparty's fail(E0202) (EOF inside the mangled \
-         item) where this machine stops at the first bad token, fail(E0201) \
-         at `{` in the parameter list; same rung, span-or-code class — the \
-         spec assigns neither code to junk recovery",
-    ),
     // DIV-2026-027 FILED at the dfcc2f13 pin (r27, wolf-lang v0.2.21;
     // wolffe-lang/wolf-lang#556): both rows trap `assert` as pinned; this
     // machine renders the message as one stdout line before the trap, which
@@ -1773,7 +1772,10 @@ mod tests {
         // kw11's plain racy counter is `check: pass`; this machine traps
         // `race`, which `[conc.mm.race.3]` permits (wolf-lang#603). Three
         // became four.
-        assert_eq!(FILED_DIVERGENCES.len(), 4);
+        // DIV-2026-019 CLOSED at the b16353e8 pin (is82, wolf-interp#304):
+        // the broken sibling answers E0202 at the compiler's opener. Four
+        // became three.
+        assert_eq!(FILED_DIVERGENCES.len(), 3);
         let (id, _) = filed("upstream/corpus/conc/atomic_race_plain.lu")
             .expect("DIV-2026-028 is filed against the plain racy counter");
         assert_eq!(id, "DIV-2026-028");
@@ -1797,9 +1799,11 @@ mod tests {
         );
         assert_eq!(filed("upstream/corpus/wordcount.lu"), None);
         assert_eq!(filed("upstream/corpus/grammar/structlit_paren.lu"), None);
-        let (id, _) = filed("upstream/corpus/resolve/broken_sibling/entry.lu")
-            .expect("DIV-2026-019 is filed against the D59 broken-sibling witness");
-        assert_eq!(id, "DIV-2026-019");
+        assert_eq!(
+            filed("upstream/corpus/resolve/broken_sibling/entry.lu"),
+            None,
+            "DIV-2026-019 is retired: the wreck is E0202 at the opener"
+        );
         assert_eq!(
             filed("upstream/corpus/grammar/let_group_bare_tuple.lu"),
             None,

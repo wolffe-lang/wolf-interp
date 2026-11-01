@@ -381,9 +381,10 @@ pub const E_UNEXPECTED_TOKEN: &str = "E0201";
 /// Input ended inside a production. **Corpus-pinned since e561c6f**:
 /// `resolve/broken_sibling/entry.lu` pins `fail(E0202)` for the D59
 /// broken-sibling witness, so the code is the corpus's to define and no
-/// longer this implementation's to choose. (This machine currently answers
-/// that witness E0201 — it stops at the first bad token where the
-/// counterparty reads to EOF; filed as DIV-2026-019, span-or-code.)
+/// longer this implementation's to choose. (This machine answered that
+/// witness E0201 until is82 — it stopped at the first bad token where the
+/// counterparty reads to EOF, DIV-2026-019; it now reports the wrecked
+/// group at its opener, as the compiler does, wolf-interp#304.)
 pub const E_UNEXPECTED_EOF: &str = "E0202";
 /// A top-level token that starts no declaration (`[gram.item]`): `union
 /// Word { … }`. **E0203 is the compiler's** — "expected a declaration
@@ -526,7 +527,8 @@ pub const UNPINNED_CODES: &[(&str, &str, &str)] = &[
     // E0202 followed at e561c6f (is27): the s124 broken-sibling witness
     // `resolve/broken_sibling/entry.lu` pins `fail(E0202)`, so the
     // unexpected-EOF code is the corpus's now too — see E_UNEXPECTED_EOF's
-    // note and DIV-2026-019 for the recovery-behavior divergence it exposed.
+    // note and DIV-2026-019 (closed at is82) for the recovery-behavior
+    // divergence it exposed.
     (
         E_FN_NEEDS_BODY,
         "gram.item.fn",

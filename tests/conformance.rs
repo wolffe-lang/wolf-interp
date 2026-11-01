@@ -387,14 +387,45 @@ fn parse_refusal_precedes_lex_fault(case: &Case, lexed: &frontend::Observation) 
             .is_some_and(|first| first.span.start < lex_fault.span.start)
 }
 
-/// A `member` file in a directory whose entry's disagreement is filed — the
-/// member is the filed pin's *subject*, not a case of its own. D59's
-/// broken-sibling witness is the shape: `mangled.lu` is deliberately
-/// unparseable and `entry.lu` pins the module's parse failure
-/// (DIV-2026-019), so asserting the member parses would re-assert the filed
-/// disagreement one file over. The waiver dies with the filing, exactly as
-/// [`is_filed_divergence`]'s does.
+/// A `member` file the frontend rungs do not judge on its own: its module's
+/// entry pins a frontend failure the member is the subject of, or a
+/// disagreement filed against that entry ([`is_member_of_a_filed_dir`]),
+/// whose waiver dies with the filing, exactly as [`is_filed_divergence`]'s
+/// does.
 fn is_member_of_filed_module(case: &Case) -> bool {
+    is_member_of_a_failing_module(case) || is_member_of_a_filed_dir(case)
+}
+
+/// A `member` file whose module the corpus itself pins as failing the
+/// frontend: an entry beside it pins `check: fail(…)` at `phase: lex` or
+/// `parse`. D59's broken-sibling witness is the shape — `mangled.lu` is
+/// deliberately unparseable and `entry.lu` pins the module's E0202 — and
+/// since DIV-2026-019 closed (is82, wolf-interp#304) the corpus's own
+/// directive, not a filing, says the member is that pin's subject.
+fn is_member_of_a_failing_module(case: &Case) -> bool {
+    static DIRS: std::sync::OnceLock<std::collections::BTreeSet<String>> =
+        std::sync::OnceLock::new();
+    let dirs = DIRS.get_or_init(|| {
+        cases()
+            .into_iter()
+            .filter(|entry| {
+                matches!(entry.check, Some(Check::Fail(_)))
+                    && entry.ledger_phase.is_some_and(|phase| phase <= Phase::Parse)
+            })
+            .filter_map(|entry| entry.path.rsplit_once('/').map(|(dir, _)| dir.to_owned()))
+            .collect()
+    });
+    case.ledger_phase.is_none()
+        && case
+            .path
+            .rsplit_once('/')
+            .is_some_and(|(dir, _)| dirs.contains(dir))
+}
+
+/// A `member` file in a directory whose entry's disagreement is filed — the
+/// member is the filed pin's *subject*, not a case of its own (none at the
+/// b16353e8 pin; DIV-2026-019 carried D59's broken sibling until is82).
+fn is_member_of_a_filed_dir(case: &Case) -> bool {
     case.ledger_phase.is_none()
         && case.path.rsplit_once('/').is_some_and(|(dir, _)| {
             wolf_interp::differ::FILED_DIVERGENCES

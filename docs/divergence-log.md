@@ -3528,7 +3528,7 @@ The three probes the re-pin was run to answer:
    the sim scheduler is deterministic by design. No tearing on either
    side, so nothing to file.
 
-### DIV-2026-019 — `resolve/broken_sibling/entry.lu` — **OPEN: which parse error fires on an unparseable module sibling**
+### DIV-2026-019 — `resolve/broken_sibling/entry.lu` — **RESOLVED here at is82 (pin `b16353e8`, lupin 0.1.58+): the wrecked group is E0202 at its opener; the file matches, the waiver is gone**
 
 Found 2026-08-28 (is27) at the `e561c6f` pin bump: the s124 D59 wave's
 broken-sibling witness pins `check: fail(E0202)` (the counterparty reads
@@ -3549,6 +3549,23 @@ conformance (the independence doctrine). Proposal upstream: pin the
 recovery in spec/01; either resolves this entry. `FILED_DIVERGENCES`
 carries the waiver; the corpus-walk gate resumes on this file the
 moment the entry resolves.
+
+Resolved at is82 (wolf-interp#304), and not by imitating a recovery: the
+pin's own documents now say where the report goes. `[proto.record.first]`
+places "a boundary diagnostic … at its opener", and the diagnostics
+registry's E0202 says the parser "stops at the next declaration keyword
+and reports the wreck once". lupin reads both as one rule, measured
+black-box against wolf 0.2.36 on 45 shapes (`tests/fixtures/is82/delims/`,
+`tests/mirror_is82.rs`): a parse error inside a `(` or `[` group whose own
+closer comes before nothing that wrecks it (a closer of another kind, a
+statement keyword, the end of its interpolation or of the file) is E0202
+at that opener, and a scan's wreck is reported at its innermost opener.
+`fn mangled( {{{ not wolf at all` is then E0202 at the `(`, `[135,136]`,
+byte-for-byte the counterparty's span on the entry. `FILED_DIVERGENCES` is
+three entries (DIV-2026-027 twice, DIV-2026-028), and the member
+`mangled.lu` is excused from the parse rung by its entry's own
+`fail(E0202)` pin (`tests/conformance.rs`'s
+`is_member_of_a_failing_module`), no longer by the filing.
 
 ### DIV-2026-018 — `s[..]` — **OPEN, filed upstream: the compiler admits a bare `..` range the grammar excludes**
 
