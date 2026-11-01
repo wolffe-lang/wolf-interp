@@ -5133,8 +5133,7 @@ impl Machine {
         // field or whole store of anything else keeps R-is81-3's reading:
         // with no lexical block, no copy materializes merely because the
         // parameter is inout.
-        let through_mut =
-            !outer && scope_index == 0 && frame.mut_params.iter().any(|n| *n == path.base);
+        let through_mut = !outer && scope_index == 0 && frame.mut_params.contains(&path.base);
         if !outer && !through_mut {
             return None;
         }
