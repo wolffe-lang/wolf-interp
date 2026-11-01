@@ -4002,6 +4002,7 @@ impl TierWalk<'_> {
                     if class == LitClass::Str
                         && let [crate::ast::IndexArg::Value(arg)] = args.as_slice()
                         && !matches!(&*arg.expr.kind, ExprKind::Range { .. })
+                        && !else_falls_back_to_a_range(&arg.expr)
                     {
                         return Some(Diag::new(
                             "E0411",
@@ -4302,6 +4303,26 @@ impl TierWalk<'_> {
 
 /// E1301's one shape: the operation named, the ring stated, no moralizing —
 /// the raw tier is simpler, not scarier (D11).
+/// `x else 0 + 2..` — an `else` whose fallback is a range VALUE
+/// (`[gram.amb.else]`: the fallback takes a complete expression, so the
+/// range is the fallback's, s266, wolf-lang#932). Indexing a `str` with one
+/// is not a single index this rung can call E0411: the compiler declines
+/// the slice by name ("an open-ended or end-relative range as an `else`
+/// fallback"), and so does this machine, at run
+/// (`rows/else_fallback_range_refused.lu`, R-is82-2).
+pub(crate) fn else_falls_back_to_a_range(expr: &Expr) -> bool {
+    let mut syntax = expr;
+    while let ExprKind::Group(inner) = &*syntax.kind {
+        syntax = inner;
+    }
+    matches!(
+        &*syntax.kind,
+        ExprKind::ElseDefault { handler, .. }
+            if matches!(&**handler, crate::ast::ElseHandler::Expr(fallback)
+                if matches!(&*fallback.kind, ExprKind::Range { .. }))
+    )
+}
+
 fn ring_diag(what: &str, span: Span) -> Diag {
     Diag::new(
         "E1301",
