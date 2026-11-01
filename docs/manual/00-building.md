@@ -57,12 +57,14 @@ The corpus walk at the end checks every pinned conformance file against
 this implementation and prints the ledger. Its last line counts
 mismatches; on a healthy checkout every mismatch it counts is one that
 is already triaged and filed in `docs/divergence-log.md` (the count is
-`4` at the current pin: DIV-2026-019, the broken-sibling parse-code
-disagreement, DIV-2026-027's two failing `assert_msg_*` rows, whose
+`3` at the current pin: DIV-2026-027's two failing `assert_msg_*` rows, whose
 `stdout=` pins the dropped rendering of an assert message this machine
 renders as a line (wolf-lang#556), and DIV-2026-028, kw11's plain racy
 counter, whose `check: pass` cannot spell the `trap(race)` this machine
-answers and `[conc.mm.race.3]` permits (wolf-lang#603); DIV-2026-026, `memory/list_session_struct.lu` reading the
+answers and `[conc.mm.race.3]` permits (wolf-lang#603); DIV-2026-019, the
+broken-sibling parse-code disagreement, closed at the `b16353e8` bump, where
+a wrecked group is E0202 at its opener as on the compiler (wolf-interp#304);
+DIV-2026-026, `memory/list_session_struct.lu` reading the
 element its `let` moved, retired at the `ec56a08f` bump, where the row
 copies the element instead; DIV-2026-022 and -023 retired at the `a7f517e` bump, where
 wolf-lang#341 re-pinned the two seed headers that had gone stale against
@@ -75,10 +77,10 @@ On Unix hosts:
 $ lupin corpus
 …
 
-1225 file(s) under upstream/corpus: 1163 entries, 62 member(s), 0 failure(s)
+1239 file(s) under upstream/corpus: 1177 entries, 62 member(s), 0 failure(s)
 479 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 938 entries reach the `run` rung; 868 match their `check:` expectation, 133 are the dynamic counterpart of the static code the corpus pins, 68 are static-conservatism entries (the compiler rejects statically what this machine never checks), 90 are out of scope, 4 mismatch
+lupin: 953 entries reach the `run` rung; 883 match their `check:` expectation, 136 are the dynamic counterpart of the static code the corpus pins, 67 are static-conservatism entries (the compiler rejects statically what this machine never checks), 88 are out of scope, 3 mismatch
 ```
 
 On Windows, `os/ids_read.lu` and `os/signal_reserved_rows.lu` handle the
@@ -90,10 +92,10 @@ These are named observations, not skipped corpus entries:
 $ lupin corpus
 …
 
-1225 file(s) under upstream/corpus: 1163 entries, 62 member(s), 0 failure(s)
+1239 file(s) under upstream/corpus: 1177 entries, 62 member(s), 0 failure(s)
 479 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 940 entries reach the `run` rung; 870 match their `check:` expectation, 133 are the dynamic counterpart of the static code the corpus pins, 68 are static-conservatism entries (the compiler rejects statically what this machine never checks), 88 are out of scope, 4 mismatch
+lupin: 955 entries reach the `run` rung; 885 match their `check:` expectation, 136 are the dynamic counterpart of the static code the corpus pins, 67 are static-conservatism entries (the compiler rejects statically what this machine never checks), 86 are out of scope, 3 mismatch
 ```
 
 ## Bumping the pin

@@ -132,15 +132,15 @@ On Unix hosts:
 
 ```console unix
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":375,"anchors_total":705,"bundle_sha256":"…","files":1287,"forward_tags":109,"out":"target/bundle","pin":"a5378e3fd5b6347f4a89a7d77dbe43aa576fee76","programs":1267,"records":1205}
+{"anchors_covered":375,"anchors_total":706,"bundle_sha256":"…","files":1301,"forward_tags":109,"out":"target/bundle","pin":"b16353e8ae616ff3a35bd27adc56b727c50df345","programs":1281,"records":1219}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 1205 entries compared, 0 member(s) exercised through their entries
+differential: 1219 entries compared, 0 member(s) exercised through their entries
 divergences: 0
-conservatism ledger: 180 entries
-  unsupported(counterparty): 90
-  unsupported(interp): 90
+conservatism ledger: 176 entries
+  unsupported(counterparty): 88
+  unsupported(interp): 88
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin a5378e3fd5b6347f4a89a7d77dbe43aa576fee76 verified (bundle_sha256 …)
+notice: bundle target/bundle at pin b16353e8ae616ff3a35bd27adc56b727c50df345 verified (bundle_sha256 …)
 ```
 
 The self-replay ledger size differs by host because host-dependent corpus
@@ -149,15 +149,15 @@ Linux reference target; the Windows transcript elides those counts:
 
 ```console windows
 $ lupin conformance export --out target/bundle --json
-{"anchors_covered":375,"anchors_total":705,"bundle_sha256":"…","files":1287,"forward_tags":109,"out":"target/bundle","pin":"a5378e3fd5b6347f4a89a7d77dbe43aa576fee76","programs":1267,"records":1205}
+{"anchors_covered":375,"anchors_total":706,"bundle_sha256":"…","files":1301,"forward_tags":109,"out":"target/bundle","pin":"b16353e8ae616ff3a35bd27adc56b727c50df345","programs":1281,"records":1219}
 $ lupin conformance check target/bundle --replay target/bundle/expected/records.jsonl
-differential: 1205 entries compared, 0 member(s) exercised through their entries
+differential: 1219 entries compared, 0 member(s) exercised through their entries
 divergences: 0
 conservatism ledger: … entries
   unsupported(counterparty): …
   unsupported(interp): …
 differential: GREEN — every divergence is filed in docs/divergence-log.md and none is a soundness candidate
-notice: bundle target/bundle at pin a5378e3fd5b6347f4a89a7d77dbe43aa576fee76 verified (bundle_sha256 …)
+notice: bundle target/bundle at pin b16353e8ae616ff3a35bd27adc56b727c50df345 verified (bundle_sha256 …)
 ```
 
 The `bundle_sha256` covers every file in the bundle, so two exports at the
