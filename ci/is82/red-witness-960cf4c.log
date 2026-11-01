@@ -1,0 +1,192 @@
+is82 waits for the Mac build lock pid=83198 lane=s273 2026-11-01T00:49:22Z
+is82 waits for the Mac build lock pid=87026 lane=s273 2026-11-01T00:49:52Z
+is82 Mac floor clear 10879614976 bytes 2026-11-01T00:50:22Z
+   Compiling wolf-interp v0.1.58 (/Users/mfwolffe/lanes/is82/wolf-interp)
+    Finished `release` profile [optimized] target(s) in 16.28s
+     Running tests/mirror_is82.rs (target/release/deps/mirror_is82-5fc09379548dae26)
+
+running 18 tests
+test the_trap_vocabulary_is_the_specs_fourteen ... FAILED
+test a_private_foreign_alias_is_e0304_at_the_qualified_path ... FAILED
+test os_name_and_os_arch_answer_the_hosts_uname ... FAILED
+test a_use_bound_foreign_alias_is_its_tags_at_the_raise_site ... FAILED
+test the_program_name_is_a_region_escape_site ... FAILED
+test a_qualified_foreign_alias_is_its_tags_at_the_raise_site ... FAILED
+test a_foreign_alias_row_propagates_and_is_matched_by_its_tags ... FAILED
+test a_module_alias_resolves_to_the_module ... FAILED
+test an_aliased_module_is_not_also_bound_under_its_own_name ... FAILED
+test calling_a_classed_local_is_e0406_at_the_callee ... FAILED
+test a_plain_push_of_a_str_holding_struct_still_shares ... ok
+test the_first_frontend_diagnostic_is_the_compilers_code_and_span ... FAILED
+test a_plain_index_store_of_an_outer_list_in_a_block_is_the_blocks_copy ... FAILED
+test the_two_corpus_argv_rows_run ... FAILED
+test the_core_limit_corpus_row_runs ... FAILED
+test argv_hex_supplies_argv_and_the_readers_answer_the_checked_machines_bytes ... FAILED
+test without_argv_hex_argv_is_absent ... FAILED
+test a_malformed_argv_hex_is_a_tool_error_naming_the_option ... ok
+
+failures:
+
+---- the_trap_vocabulary_is_the_specs_fourteen stdout ----
+
+thread 'the_trap_vocabulary_is_the_specs_fourteen' (61908818) panicked at tests/mirror_is82.rs:305:9:
+stack-overflow
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- a_private_foreign_alias_is_e0304_at_the_qualified_path stdout ----
+
+thread 'a_private_foreign_alias_is_e0304_at_the_qualified_path' (61908807) panicked at tests/mirror_is82.rs:172:5:
+assertion `left == right` failed: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.58", commit: "7c9984d", file: "//Users/mfwolffe/lanes/is82/wolf-interp/tests/fixtures/is82/alias_rows/private/main.lu", phase_reached: Resolve, seeded: false, files: None, diagnostics: [], warnings: Some([]), verdict: Unsupported, trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {"x-unsupported": String("`broken` does not resolve at this raise site: it is not a binding, not a module-level name, and not a tag of the enclosing function's declared row")} }
+  left: Unsupported
+ right: Fail("E0304")
+
+---- os_name_and_os_arch_answer_the_hosts_uname stdout ----
+
+thread 'os_name_and_os_arch_answer_the_hosts_uname' (61908814) panicked at tests/mirror_is82.rs:338:5:
+assertion `left == right` failed: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.58", commit: "7c9984d", file: "//Users/mfwolffe/lanes/is82/wolf-interp/tests/fixtures/is82/host/main.lu", phase_reached: Resolve, seeded: false, files: None, diagnostics: [], warnings: Some([]), verdict: Unsupported, trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {"x-unsupported": String("`os_name` does not resolve"), "x-unsupported-at": String("run")} }
+  left: Unsupported
+ right: Exit(0)
+
+---- a_use_bound_foreign_alias_is_its_tags_at_the_raise_site stdout ----
+
+thread 'a_use_bound_foreign_alias_is_its_tags_at_the_raise_site' (61908809) panicked at tests/mirror_is82.rs:158:5:
+assertion `left == right` failed: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.58", commit: "7c9984d", file: "//Users/mfwolffe/lanes/is82/wolf-interp/tests/fixtures/is82/alias_rows/use_bound/main.lu", phase_reached: Resolve, seeded: false, files: None, diagnostics: [], warnings: Some([]), verdict: Unsupported, trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {"x-unsupported": String("`lost` does not resolve at this raise site: it is not a binding, not a module-level name, and not a tag of the enclosing function's declared row")} }
+  left: Unsupported
+ right: Exit(1)
+
+---- the_program_name_is_a_region_escape_site stdout ----
+
+thread 'the_program_name_is_a_region_escape_site' (61908817) panicked at tests/mirror_is82.rs:218:5:
+assertion `left == right` failed: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.58", commit: "7c9984d", file: "//Users/mfwolffe/lanes/is82/wolf-interp/tests/fixtures/is82/argv/name_escape/main.lu", phase_reached: Resolve, seeded: false, files: None, diagnostics: [], warnings: Some([]), verdict: Unsupported, trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {"x-unsupported": String("`env_arg0` does not resolve"), "x-unsupported-at": String("run")} }
+  left: Unsupported
+ right: Trap(RegionFault)
+
+---- a_qualified_foreign_alias_is_its_tags_at_the_raise_site stdout ----
+
+thread 'a_qualified_foreign_alias_is_its_tags_at_the_raise_site' (61908808) panicked at tests/mirror_is82.rs:151:5:
+assertion `left == right` failed: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.58", commit: "7c9984d", file: "//Users/mfwolffe/lanes/is82/wolf-interp/tests/fixtures/is82/alias_rows/qualified/main.lu", phase_reached: Resolve, seeded: false, files: Some(["main.lu", "errors/row.lu"]), diagnostics: [Diagnostic { code: "W0313", span: [0, 3], severity: "warning", file: Some(1) }, Diagnostic { code: "W0313", span: [31, 34], severity: "warning", file: Some(1) }], warnings: Some([Warning { code: "W0313", span: [0, 3] }, Warning { code: "W0313", span: [31, 34] }]), verdict: Unsupported, trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {"x-unsupported": String("`broken` does not resolve at this raise site: it is not a binding, not a module-level name, and not a tag of the enclosing function's declared row")} }
+  left: Unsupported
+ right: Exit(1)
+
+---- a_foreign_alias_row_propagates_and_is_matched_by_its_tags stdout ----
+
+thread 'a_foreign_alias_row_propagates_and_is_matched_by_its_tags' (61908802) panicked at tests/mirror_is82.rs:165:5:
+assertion `left == right` failed: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.58", commit: "7c9984d", file: "//Users/mfwolffe/lanes/is82/wolf-interp/tests/fixtures/is82/alias_rows/handled/main.lu", phase_reached: Resolve, seeded: false, files: Some(["main.lu", "errors/row.lu"]), diagnostics: [Diagnostic { code: "W0314", span: [46, 54], severity: "warning", file: Some(1) }], warnings: Some([Warning { code: "W0314", span: [46, 54] }]), verdict: Unsupported, trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {"x-unsupported": String("`broken` does not resolve at this raise site: it is not a binding, not a module-level name, and not a tag of the enclosing function's declared row")} }
+  left: Unsupported
+ right: Exit(0)
+
+---- a_module_alias_resolves_to_the_module stdout ----
+
+thread 'a_module_alias_resolves_to_the_module' (61908804) panicked at tests/mirror_is82.rs:182:5:
+assertion `left == right` failed: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.58", commit: "7c9984d", file: "//Users/mfwolffe/lanes/is82/wolf-interp/tests/fixtures/is82/alias_use/renamed/main.lu", phase_reached: Resolve, seeded: false, files: Some(["main.lu", "math/math.lu"]), diagnostics: [Diagnostic { code: "W0314", span: [37, 42], severity: "warning", file: Some(1) }], warnings: Some([Warning { code: "W0314", span: [37, 42] }]), verdict: Unsupported, trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {"x-unsupported": String("`renamed.value` does not resolve"), "x-unsupported-at": String("run")} }
+  left: Unsupported
+ right: Exit(0)
+
+---- an_aliased_module_is_not_also_bound_under_its_own_name stdout ----
+
+thread 'an_aliased_module_is_not_also_bound_under_its_own_name' (61908811) panicked at tests/mirror_is82.rs:198:5:
+assertion `left == right` failed: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.58", commit: "7c9984d", file: "//Users/mfwolffe/lanes/is82/wolf-interp/tests/fixtures/is82/alias_use/head_unbound/main.lu", phase_reached: Run, seeded: false, files: Some(["main.lu", "math/math.lu"]), diagnostics: [Diagnostic { code: "W0314", span: [37, 42], severity: "warning", file: Some(1) }], warnings: Some([Warning { code: "W0314", span: [37, 42] }]), verdict: Exit(0), trap_message: None, stdout_sha256: Some("084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0"), stdout_inline: Some("42\n"), extensions: {} }
+  left: Exit(0)
+ right: Fail("E0305")
+
+---- calling_a_classed_local_is_e0406_at_the_callee stdout ----
+
+thread 'calling_a_classed_local_is_e0406_at_the_callee' (61908813) panicked at tests/mirror_is82.rs:142:5:
+b3: want ("E0406", [51, 54]), got Unsupported None
+b5: want ("E0412", [72, 76]), got Fail("E0412") Some(("E0412", [72, 74]))
+b7: want ("E0406", [40, 41]), got Fail("E0412") Some(("E0412", [43, 47]))
+
+---- the_first_frontend_diagnostic_is_the_compilers_code_and_span stdout ----
+
+thread 'the_first_frontend_diagnostic_is_the_compilers_code_and_span' (61908816) panicked at tests/mirror_is82.rs:113:5:
+a2: want ("E0202", [21, 22]), got Fail("E0102") Some(("E0102", [22, 42]))
+a5: want ("E0202", [35, 36]), got Fail("E0102") Some(("E0102", [36, 51]))
+a7: want ("E0202", [46, 47]), got Fail("E0102") Some(("E0102", [47, 72]))
+d3: want ("E0202", [24, 25]), got Fail("E0201") Some(("E0201", [27, 28]))
+d6: want ("E0202", [22, 23]), got Fail("E0202") Some(("E0202", [21, 22]))
+e1: want ("E0202", [29, 30]), got Fail("E0202") Some(("E0202", [24, 25]))
+e2: want ("E0202", [25, 26]), got Fail("E0202") Some(("E0202", [24, 25]))
+e3: want ("E0202", [29, 30]), got Fail("E0202") Some(("E0202", [25, 26]))
+e4: want ("E0202", [22, 23]), got Fail("E0102") Some(("E0102", [23, 34]))
+e5: want ("E0202", [23, 24]), got Fail("E0202") Some(("E0202", [21, 22]))
+f1: want ("E0202", [29, 30]), got Fail("E0202") Some(("E0202", [25, 26]))
+f2: want ("E0202", [29, 30]), got Fail("E0202") Some(("E0202", [25, 26]))
+g3: want ("E0202", [24, 25]), got Fail("E0201") Some(("E0201", [31, 33]))
+g4: want ("E0202", [24, 25]), got Fail("E0201") Some(("E0201", [31, 36]))
+g5: want ("E0202", [24, 25]), got Fail("E0201") Some(("E0201", [31, 34]))
+g8: want ("E0202", [24, 25]), got Fail("E0201") Some(("E0201", [31, 36]))
+g10: want ("E0202", [10, 11]), got Fail("E0201") Some(("E0201", [31, 37]))
+h2: want ("E0202", [25, 26]), got Fail("E0202") Some(("E0202", [24, 25]))
+h3: want ("E0202", [25, 26]), got Fail("E0202") Some(("E0202", [24, 25]))
+h4: want ("E0202", [28, 29]), got Fail("E0202") Some(("E0202", [24, 25]))
+j3: want ("E0202", [24, 25]), got Fail("E0201") Some(("E0201", [33, 36]))
+k1: want ("E0202", [24, 25]), got Fail("E0202") Some(("E0202", [26, 26]))
+k2: want ("E0202", [24, 25]), got Fail("E0201") Some(("E0201", [27, 28]))
+k3: want ("E0202", [24, 25]), got Fail("E0202") Some(("E0202", [27, 27]))
+k4: want ("E0202", [10, 11]), got Fail("E0202") Some(("E0202", [25, 25]))
+
+---- a_plain_index_store_of_an_outer_list_in_a_block_is_the_blocks_copy stdout ----
+
+thread 'a_plain_index_store_of_an_outer_list_in_a_block_is_the_blocks_copy' (61908805) panicked at tests/mirror_is82.rs:362:5:
+assertion `left == right` failed: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.58", commit: "7c9984d", file: "//Users/mfwolffe/lanes/is82/wolf-interp/tests/fixtures/is82/stores/index_store/main.lu", phase_reached: Run, seeded: false, files: None, diagnostics: [], warnings: Some([]), verdict: Exit(0), trap_message: None, stdout_sha256: Some("38a010c57d16f97d039638a57d410899024ef5575b7b5d0cb813fa698d4f837c"), stdout_inline: Some("1 100 99 2000\n"), extensions: {} }
+  left: Exit(0)
+ right: Trap(RegionFault)
+
+---- the_two_corpus_argv_rows_run stdout ----
+
+thread 'the_two_corpus_argv_rows_run' (61908819) panicked at tests/mirror_is82.rs:207:5:
+assertion `left == right` failed: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.58", commit: "7c9984d", file: "//Users/mfwolffe/lanes/is82/wolf-interp/vendor/upstream/corpus/os/arg0.lu", phase_reached: Resolve, seeded: false, files: None, diagnostics: [], warnings: Some([]), verdict: Unsupported, trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {"x-unsupported": String("`env_arg0` does not resolve"), "x-unsupported-at": String("run")} }
+  left: Unsupported
+ right: Exit(0)
+
+---- the_core_limit_corpus_row_runs stdout ----
+
+thread 'the_core_limit_corpus_row_runs' (61908815) panicked at tests/mirror_is82.rs:346:5:
+assertion `left == right` failed: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.58", commit: "7c9984d", file: "//Users/mfwolffe/lanes/is82/wolf-interp/vendor/upstream/corpus/os/core_limit_rows.lu", phase_reached: Resolve, seeded: false, files: None, diagnostics: [], warnings: Some([]), verdict: Unsupported, trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {"x-unsupported": String("`os_set_core_limit` does not resolve"), "x-unsupported-at": String("run")} }
+  left: Unsupported
+ right: Exit(0)
+
+---- argv_hex_supplies_argv_and_the_readers_answer_the_checked_machines_bytes stdout ----
+
+thread 'argv_hex_supplies_argv_and_the_readers_answer_the_checked_machines_bytes' (61908812) panicked at tests/mirror_is82.rs:236:5:
+assertion `left == right` failed: error: unexpected argument '--argv-hex' found
+
+  tip: a similar argument exists: '--target'
+
+Usage: lupin conform-run --json --target <TRIPLE> <FILE>
+
+For more information, try '--help'.
+
+  left: Some(2)
+ right: Some(0)
+
+---- without_argv_hex_argv_is_absent stdout ----
+
+thread 'without_argv_hex_argv_is_absent' (61908820) panicked at tests/mirror_is82.rs:278:5:
+assertion `left == right` failed
+  left: String("unsupported")
+ right: "exit(0)"
+
+
+failures:
+    a_foreign_alias_row_propagates_and_is_matched_by_its_tags
+    a_module_alias_resolves_to_the_module
+    a_plain_index_store_of_an_outer_list_in_a_block_is_the_blocks_copy
+    a_private_foreign_alias_is_e0304_at_the_qualified_path
+    a_qualified_foreign_alias_is_its_tags_at_the_raise_site
+    a_use_bound_foreign_alias_is_its_tags_at_the_raise_site
+    an_aliased_module_is_not_also_bound_under_its_own_name
+    argv_hex_supplies_argv_and_the_readers_answer_the_checked_machines_bytes
+    calling_a_classed_local_is_e0406_at_the_callee
+    os_name_and_os_arch_answer_the_hosts_uname
+    the_core_limit_corpus_row_runs
+    the_first_frontend_diagnostic_is_the_compilers_code_and_span
+    the_program_name_is_a_region_escape_site
+    the_trap_vocabulary_is_the_specs_fourteen
+    the_two_corpus_argv_rows_run
+    without_argv_hex_argv_is_absent
+
+test result: FAILED. 2 passed; 16 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+error: test failed, to rerun pass `--test mirror_is82`
+is82 released the Mac build lock status=101 2026-11-01T00:50:39Z

@@ -1,0 +1,55 @@
+HEAD 1a3c6c75f132ccfa470ddfba7accf43869a125af is82-plant-interp-floor
+START plant-red 04:50:02
+   Compiling nix v0.31.3
+   Compiling wolf-interp v0.1.58 (/Users/mfwolffe/lanes/is82/plant)
+   Compiling rustyline v18.0.1
+   Compiling rexpect v0.7.1
+    Finished `release` profile [optimized] target(s) in 14.86s
+     Running tests/mirror_is82.rs (target/release/deps/mirror_is82-a886586c7c65333e)
+
+running 19 tests
+test the_trap_vocabulary_is_the_specs_fourteen ... ok
+test a_private_foreign_alias_is_e0304_at_the_qualified_path ... ok
+test an_aliased_module_is_not_also_bound_under_its_own_name ... ok
+test calling_a_classed_local_is_e0406_at_the_callee ... ok
+test the_program_name_is_a_region_escape_site ... ok
+test a_use_bound_foreign_alias_is_its_tags_at_the_raise_site ... ok
+test a_qualified_foreign_alias_is_its_tags_at_the_raise_site ... ok
+test a_foreign_alias_row_propagates_and_is_matched_by_its_tags ... ok
+test a_plain_push_of_a_str_holding_struct_still_shares ... ok
+test a_module_alias_resolves_to_the_module ... ok
+test the_first_frontend_diagnostic_is_the_compilers_code_and_span ... FAILED
+test os_name_and_os_arch_answer_the_hosts_uname ... ok
+test fs_access_answers_the_checked_machines_rows ... ok
+test the_core_limit_corpus_row_runs ... ok
+test a_plain_index_store_of_an_outer_list_in_a_block_is_the_blocks_copy ... ok
+test the_two_corpus_argv_rows_run ... ok
+test without_argv_hex_argv_is_absent ... ok
+test a_malformed_argv_hex_is_a_tool_error_naming_the_option ... ok
+test argv_hex_supplies_argv_and_the_readers_answer_the_checked_machines_bytes ... ok
+
+failures:
+
+---- the_first_frontend_diagnostic_is_the_compilers_code_and_span stdout ----
+
+thread 'the_first_frontend_diagnostic_is_the_compilers_code_and_span' (81664998) panicked at tests/mirror_is82.rs:116:5:
+a2: want ("E0202", [21, 22]), got Fail("E0102") Some(("E0102", [22, 42]))
+a5: want ("E0202", [35, 36]), got Fail("E0102") Some(("E0102", [36, 51]))
+a7: want ("E0202", [46, 47]), got Fail("E0102") Some(("E0102", [47, 72]))
+d1: want ("E0202", [47, 48]), got Fail("E0102") Some(("E0102", [48, 55]))
+d2: want ("E0202", [21, 22]), got Fail("E0102") Some(("E0102", [22, 28]))
+d3: want ("E0202", [24, 25]), got Fail("E0201") Some(("E0201", [27, 28]))
+d5: want ("E0202", [21, 22]), got Fail("E0102") Some(("E0102", [28, 39]))
+d6: want ("E0202", [22, 23]), got Fail("E0202") Some(("E0202", [21, 22]))
+e4: want ("E0202", [22, 23]), got Fail("E0102") Some(("E0102", [23, 34]))
+e5: want ("E0202", [23, 24]), got Fail("E0202") Some(("E0202", [22, 23]))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    the_first_frontend_diagnostic_is_the_compilers_code_and_span
+
+test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+error: test failed, to rerun pass `--test mirror_is82`
+END plant-red exit=101 04:50:18

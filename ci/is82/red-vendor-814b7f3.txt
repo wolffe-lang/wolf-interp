@@ -1,0 +1,74 @@
+is82: the release suite at 814b7f3 (the re-vendor; code at 6240efe), nomad, 2026-11-01T00:28Z-00:40Z
+test the_corpus_walk_has_a_machine_mode ... FAILED
+test the_corpus_walk_is_green_over_the_pinned_corpus ... FAILED
+test result: FAILED. 33 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 64.54s
+test every_parseable_file_resolves_under_sema_lite ... FAILED
+test the_static_rungs_this_implementation_does_not_perform_are_declared ... FAILED
+test result: FAILED. 8 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
+test the_pin_holds_the_corpus_we_think_it_does ... FAILED
+test result: FAILED. 9 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+test the_door_is_loud_and_stamps_the_profile_on_the_report ... FAILED
+test a_debug_harness_is_refused_by_name_before_it_can_compare ... FAILED
+test result: FAILED. 6 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.71s
+test every_documented_output_is_the_binary_output ... FAILED
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 93.36s
+test the_anchor_registry_cross_check_holds_at_this_pin ... FAILED
+test coverage_is_ratcheted ... FAILED
+test the_pin_and_the_counts_are_the_ones_this_sprint_recorded ... FAILED
+test result: FAILED. 7 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 70.17s
+test no_corpus_file_mismatches_its_expectation ... FAILED
+test the_run_ledger_is_exactly_what_reaches_run ... FAILED
+test every_run_expectation_this_machine_reaches_is_met_exactly ... FAILED
+test result: FAILED. 12 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 92.35s
+test pinned_anchor_keys_agree_both_ways ... FAILED
+test command_line_records_the_named_refusal_and_the_spec_identity ... FAILED
+test result: FAILED. 18 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+error: 8 targets failed:
+    `--test cli`
+    `--test conformance`
+    `--test corpus_harness`
+    `--test differ_cli`
+    `--test doc_truth`
+    `--test export`
+    `--test run_corpus`
+    `--test variadic_is81`
+
+--- the panics, verbatim:
+thread 'every_parseable_file_resolves_under_sema_lite' (54953819) panicked at tests/conformance.rs:735:9:
+assertion `left == right` failed: rows/else_fallback_range_refused.lu
+  left: Fail("E0411")
+ right: Pass
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- the_static_rungs_this_implementation_does_not_perform_are_declared stdout ----
+--
+thread 'the_static_rungs_this_implementation_does_not_perform_are_declared' (54953826) panicked at tests/conformance.rs:799:13:
+assertion `left == right` failed: rows/else_fallback_range_refused.lu
+  left: Fail("E0411")
+ right: Unsupported
+
+
+failures:
+--
+thread 'no_corpus_file_mismatches_its_expectation' (58015253) panicked at tests/run_corpus.rs:2469:5:
+the corpus and this implementation disagree. `[proto.cmp.triage]`: the spec document is the defendant first — triage each of these, do NOT edit the corpus:
+  memory/region_outer_write_push_copy_call.lu: MISMATCH: expected exit(0), observed trap(region-fault)
+  rows/else_fallback_range_refused.lu: MISMATCH: expected a clean program, observed fail(E0411)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- the_run_ledger_is_exactly_what_reaches_run stdout ----
+--
+thread 'the_run_ledger_is_exactly_what_reaches_run' (58015256) panicked at tests/run_corpus.rs:2627:5:
+the set of files reaching `run` moved.
+  newly running (progress — add them): ["memory/mut_param_replaced.lu", "memory/mut_relay_push.lu", "memory/region_outer_write_push_copy_call.lu", "memory/region_outer_write_push_copy_control.lu", "memory/region_outer_write_push_copy_over.lu", "memory/region_outer_write_push_copy_under.lu", "memory/region_outer_write_push_heap.lu", "memory/region_outer_write_push_heap_call.lu", "memory/region_oute
+  no longer running (regression): []
+
+---- every_run_expectation_this_machine_reaches_is_met_exactly stdout ----
+
+thread 'every_run_expectation_this_machine_reaches_is_met_exactly' (58015251) panicked at tests/run_corpus.rs:2722:28:
+memory/region_outer_write_push_copy_call.lu: expected exit=0, observed trap(region-fault)
+
+
+failures:
+    every_run_expectation_this_machine_reaches_is_met_exactly
+    no_corpus_file_mismatches_its_expectation

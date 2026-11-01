@@ -1,0 +1,332 @@
+is82 witness table, 2026-11-01T04:50:18Z; wolf wolf 0.2.36 (wolfgang, pin 5adf3d9); head lupin lupin 0.1.58+dev.4048494 (wolf-interp, reference interpreter at pin b16353e)
+NOTE: the wolf column is the published 0.2.36, which predates s270b (wolf-lang a246580b). For the seven
+s270b rows (memory/region_outer_write_push_*) the trunk answer is each corpus header: fail(E1010) for
+_plain_copy, _push_heap and _push_heap_call, the printed lines for the four runs (s270b note section 5).
+#304 delims/a1
+  wolf 0.2.36 : fail(E0102) E0102[24, 36]
+  lupin 6240efe: fail(E0102) E0102[24, 36]
+  lupin head  : fail(E0102) E0102[24, 36]
+#304 delims/a2
+  wolf 0.2.36 : fail(E0202) E0202[21, 22]
+  lupin 6240efe: fail(E0102) E0102[22, 42]
+  lupin head  : fail(E0202) E0202[21, 22]
+#304 delims/a3
+  wolf 0.2.36 : fail(E0102) E0102[24, 27]
+  lupin 6240efe: fail(E0102) E0102[24, 27]
+  lupin head  : fail(E0102) E0102[24, 27]
+#304 delims/a4
+  wolf 0.2.36 : fail(E0202) E0202[21, 22]
+  lupin 6240efe: fail(E0202) E0202[21, 22]
+  lupin head  : fail(E0202) E0202[21, 22]
+#304 delims/a5
+  wolf 0.2.36 : fail(E0202) E0202[35, 36]
+  lupin 6240efe: fail(E0102) E0102[36, 51]
+  lupin head  : fail(E0202) E0202[35, 36]
+#304 delims/a6
+  wolf 0.2.36 : fail(E0102) E0102[44, 76]
+  lupin 6240efe: fail(E0102) E0102[44, 76]
+  lupin head  : fail(E0102) E0102[44, 76]
+#304 delims/a7
+  wolf 0.2.36 : fail(E0202) E0202[46, 47]
+  lupin 6240efe: fail(E0102) E0102[47, 72]
+  lupin head  : fail(E0202) E0202[46, 47]
+#304 delims/d1
+  wolf 0.2.36 : fail(E0202) E0202[47, 48]
+  lupin 6240efe: fail(E0202) E0202[47, 48]
+  lupin head  : fail(E0202) E0202[47, 48]
+#304 delims/d2
+  wolf 0.2.36 : fail(E0202) E0202[21, 22]
+  lupin 6240efe: fail(E0202) E0202[21, 22]
+  lupin head  : fail(E0202) E0202[21, 22]
+#304 delims/d3
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0201) E0201[27, 28]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/d4
+  wolf 0.2.36 : fail(E0202) E0202[25, 26]
+  lupin 6240efe: fail(E0202) E0202[25, 26]
+  lupin head  : fail(E0202) E0202[25, 26]
+#304 delims/d5
+  wolf 0.2.36 : fail(E0202) E0202[21, 22]
+  lupin 6240efe: fail(E0202) E0202[21, 22]
+  lupin head  : fail(E0202) E0202[21, 22]
+#304 delims/d6
+  wolf 0.2.36 : fail(E0202) E0202[22, 23]
+  lupin 6240efe: fail(E0202) E0202[21, 22]
+  lupin head  : fail(E0202) E0202[22, 23]
+#304 delims/e1
+  wolf 0.2.36 : fail(E0202) E0202[29, 30]
+  lupin 6240efe: fail(E0202) E0202[24, 25]
+  lupin head  : fail(E0202) E0202[29, 30]
+#304 delims/e2
+  wolf 0.2.36 : fail(E0202) E0202[25, 26]
+  lupin 6240efe: fail(E0202) E0202[24, 25]
+  lupin head  : fail(E0202) E0202[25, 26]
+#304 delims/e3
+  wolf 0.2.36 : fail(E0202) E0202[29, 30]
+  lupin 6240efe: fail(E0202) E0202[25, 26]
+  lupin head  : fail(E0202) E0202[29, 30]
+#304 delims/e4
+  wolf 0.2.36 : fail(E0202) E0202[22, 23]
+  lupin 6240efe: fail(E0102) E0102[23, 34]
+  lupin head  : fail(E0202) E0202[22, 23]
+#304 delims/e5
+  wolf 0.2.36 : fail(E0202) E0202[23, 24]
+  lupin 6240efe: fail(E0202) E0202[21, 22]
+  lupin head  : fail(E0202) E0202[23, 24]
+#304 delims/f1
+  wolf 0.2.36 : fail(E0202) E0202[29, 30]
+  lupin 6240efe: fail(E0202) E0202[25, 26]
+  lupin head  : fail(E0202) E0202[29, 30]
+#304 delims/f2
+  wolf 0.2.36 : fail(E0202) E0202[29, 30]
+  lupin 6240efe: fail(E0202) E0202[25, 26]
+  lupin head  : fail(E0202) E0202[29, 30]
+#304 delims/f3
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0202) E0202[24, 25]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/g1
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0202) E0202[24, 25]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/g10
+  wolf 0.2.36 : fail(E0202) E0202[10, 11]
+  lupin 6240efe: fail(E0201) E0201[31, 37]
+  lupin head  : fail(E0202) E0202[10, 11]
+#304 delims/g2
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0202) E0202[24, 25]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/g3
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0201) E0201[31, 33]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/g4
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0201) E0201[31, 36]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/g5
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0201) E0201[31, 34]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/g6
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0202) E0202[24, 25]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/g7
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0202) E0202[24, 25]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/g8
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0201) E0201[31, 36]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/g9
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0202) E0202[24, 25]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/h1
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0202) E0202[24, 25]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/h2
+  wolf 0.2.36 : fail(E0202) E0202[25, 26]
+  lupin 6240efe: fail(E0202) E0202[24, 25]
+  lupin head  : fail(E0202) E0202[25, 26]
+#304 delims/h3
+  wolf 0.2.36 : fail(E0202) E0202[25, 26]
+  lupin 6240efe: fail(E0202) E0202[24, 25]
+  lupin head  : fail(E0202) E0202[25, 26]
+#304 delims/h4
+  wolf 0.2.36 : fail(E0202) E0202[28, 29]
+  lupin 6240efe: fail(E0202) E0202[24, 25]
+  lupin head  : fail(E0202) E0202[28, 29]
+#304 delims/j1
+  wolf 0.2.36 : fail(E0201) E0201[58, 59]
+  lupin 6240efe: fail(E0201) E0201[58, 59]
+  lupin head  : fail(E0201) E0201[58, 59]
+#304 delims/j2
+  wolf 0.2.36 : fail(E0201) E0201[29, 30]
+  lupin 6240efe: fail(E0201) E0201[29, 30]
+  lupin head  : fail(E0201) E0201[29, 30]
+#304 delims/j3
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0201) E0201[33, 36]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/j4
+  wolf 0.2.36 : fail(E0201) E0201[30, 31]
+  lupin 6240efe: fail(E0201) E0201[30, 31]
+  lupin head  : fail(E0201) E0201[30, 31]
+#304 delims/k1
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0202) E0202[26, 26]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/k2
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0201) E0201[27, 28]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/k3
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0202) E0202[27, 27]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 delims/k4
+  wolf 0.2.36 : fail(E0202) E0202[10, 11]
+  lupin 6240efe: fail(E0202) E0202[25, 25]
+  lupin head  : fail(E0202) E0202[10, 11]
+#304 delims/k5
+  wolf 0.2.36 : fail(E0202) E0202[19, 20]
+  lupin 6240efe: fail(E0202) E0202[19, 20]
+  lupin head  : fail(E0202) E0202[19, 20]
+#304 delims/k6
+  wolf 0.2.36 : fail(E0202) E0202[24, 25]
+  lupin 6240efe: fail(E0202) E0202[24, 25]
+  lupin head  : fail(E0202) E0202[24, 25]
+#304 calls/b1
+  wolf 0.2.36 : fail(E0412) E0412[47, 54]
+  lupin 6240efe: fail(E0412) E0412[47, 54]
+  lupin head  : fail(E0412) E0412[47, 54]
+#304 calls/b2
+  wolf 0.2.36 : fail(E0412) E0412[39, 45]
+  lupin 6240efe: fail(E0412) E0412[39, 45]
+  lupin head  : fail(E0412) E0412[39, 45]
+#304 calls/b3
+  wolf 0.2.36 : fail(E0406) E0406[51, 54]
+  lupin 6240efe: unsupported
+  lupin head  : fail(E0406) E0406[51, 54]
+#304 calls/b4
+  wolf 0.2.36 : fail(E0413) E0413[41, 46]
+  lupin 6240efe: fail(E0413) E0413[41, 46]
+  lupin head  : fail(E0413) E0413[41, 46]
+#304 calls/b5
+  wolf 0.2.36 : fail(E0412) E0412[72, 76]
+  lupin 6240efe: fail(E0412) E0412[72, 74]
+  lupin head  : fail(E0412) E0412[72, 74]
+#304 calls/b6
+  wolf 0.2.36 : fail(E0406) E0406[67, 70]
+  lupin 6240efe: fail(E0412) E0412[72, 75]
+  lupin head  : fail(E0412) E0412[72, 75]
+#304 calls/b7
+  wolf 0.2.36 : fail(E0406) E0406[40, 41]
+  lupin 6240efe: fail(E0412) E0412[43, 47]
+  lupin head  : fail(E0406) E0406[40, 41]
+#302 alias_rows/qualified
+  wolf 0.2.36 : exit(1) 'error: broken\n'
+  lupin 6240efe: unsupported
+  lupin head  : exit(1) 'error: broken\n'
+#302 alias_rows/use_bound
+  wolf 0.2.36 : exit(1) 'error: lost\n'
+  lupin 6240efe: unsupported
+  lupin head  : exit(1) 'error: lost\n'
+#302 alias_rows/handled
+  wolf 0.2.36 : exit(0) 'broken lost 6\n'
+  lupin 6240efe: unsupported
+  lupin head  : exit(0) 'broken lost 6\n'
+#302 alias_rows/private
+  wolf 0.2.36 : fail(E0304) E0304[31, 46]
+  lupin 6240efe: unsupported
+  lupin head  : fail(E0304) E0304[31, 46]
+#299 alias_use/renamed
+  wolf 0.2.36 : exit(0) '42\n'
+  lupin 6240efe: unsupported
+  lupin head  : exit(0) '42\n'
+#299 alias_use/beside_list
+  wolf 0.2.36 : exit(0) '42 84\n'
+  lupin 6240efe: unsupported
+  lupin head  : exit(0) '42 84\n'
+#299 alias_use/dotted
+  wolf 0.2.36 : exit(0) '7\n'
+  lupin 6240efe: exit(0) '7\n'
+  lupin head  : exit(0) '7\n'
+#299 alias_use/head_unbound
+  wolf 0.2.36 : fail(E0305) E0305[12, 19]
+  lupin 6240efe: exit(0) '42\n'
+  lupin head  : fail(E0305) E0305[12, 19]
+#295 os/arg0.lu
+  wolf 0.2.36 : exit(0) 'true\n'
+  lupin 6240efe: unsupported
+  lupin head  : exit(0) 'true\n'
+#295 os/args_bytes.lu
+  wolf 0.2.36 : exit(0) 'args: 0\n'
+  lupin 6240efe: unsupported
+  lupin head  : exit(0) 'args: 0\n'
+#295 argv/name_escape
+  wolf 0.2.36 : fail(E1010) E1010[40, 50]
+  lupin 6240efe: unsupported
+  lupin head  : trap(region-fault)
+#295 argv/bytes 7368 78ff79 '' c3a9
+  wolf 0.2.36 : exit(0) '115\n104\nend\n120\n255\n121\nend\nend\n195\n169\nend\n'
+  lupin 6240efe: TOOL-ERROR
+  lupin head  : exit(0) '115\n104\nend\n120\n255\n121\nend\nend\n195\n169\nend\n'
+#295 argv/count 7368 6f6b 78ff79
+  wolf 0.2.36 : trap(argument-utf8) msg='argument 2 is not UTF-8; read it with env_args_bytes()'
+  lupin 6240efe: TOOL-ERROR
+  lupin head  : trap(argument-utf8) msg='argument 2 is not UTF-8; read it with env_args_bytes()'
+#295 argv/name ff 6f6b
+  wolf 0.2.36 : trap(argument-utf8) msg='argument 0 is not UTF-8; read it with env_args_bytes()'
+  lupin 6240efe: TOOL-ERROR
+  lupin head  : trap(argument-utf8) msg='argument 0 is not UTF-8; read it with env_args_bytes()'
+#277 host
+  wolf 0.2.36 : exit(0) 'macos aarch64\n'
+  lupin 6240efe: unsupported
+  lupin head  : exit(0) 'macos aarch64\n'
+#277 os/core_limit_rows.lu
+  wolf 0.2.36 : exit(0) 'soft_below=invalid\nhard_below=invalid\nsoft_above_hard=invalid\nsoft_unlimited_under_a_finite_hard=invalid\nfar_below=invalid\nread_is_a_limit: true\nset_as_it_is: true\n'
+  lupin 6240efe: unsupported
+  lupin head  : exit(0) 'soft_below=invalid\nhard_below=invalid\nsoft_above_hard=invalid\nsoft_unlimited_under_a_finite_hard=invalid\nfar_below=invalid\nread_is_a_limit: true\nset_as_it_is: true\n'
+#310 memory/region_outer_write_push_plain_copy.lu
+  wolf 0.2.36 : exit(0) '1 100 99 2000\n'
+  lupin 6240efe: exit(0) '1 100 99 2000\n'
+  lupin head  : trap(region-fault)
+#310 memory/region_outer_write_push_copy_call.lu
+  wolf 0.2.36 : exit(0) '4 100000 101 64 4 0 2000\n'
+  lupin 6240efe: trap(region-fault)
+  lupin head  : exit(0) '4 100000 101 64 4 0 2000\n'
+#310 memory/region_outer_write_push_heap.lu
+  wolf 0.2.36 : exit(0) '1 -1 100 99 2000\n'
+  lupin 6240efe: trap(region-fault)
+  lupin head  : trap(region-fault)
+#310 memory/region_outer_write_push_heap_call.lu
+  wolf 0.2.36 : exit(0) '1 100 99 1000\n'
+  lupin 6240efe: trap(region-fault)
+  lupin head  : trap(region-fault)
+#310 memory/region_outer_write_push_copy_control.lu
+  wolf 0.2.36 : exit(0) '4 1024 19 2 4 0 2000\n'
+  lupin 6240efe: exit(0) '4 1024 19 2 4 0 2000\n'
+  lupin head  : exit(0) '4 1024 19 2 4 0 2000\n'
+#310 memory/region_outer_write_push_copy_under.lu
+  wolf 0.2.36 : exit(0) '4 1024 19 16 4 0 2000\n'
+  lupin 6240efe: exit(0) '4 1024 19 16 4 0 2000\n'
+  lupin head  : exit(0) '4 1024 19 16 4 0 2000\n'
+#310 memory/region_outer_write_push_copy_over.lu
+  wolf 0.2.36 : exit(0) '4 1024 19 17 4 0 2000\n'
+  lupin 6240efe: exit(0) '4 1024 19 17 4 0 2000\n'
+  lupin head  : exit(0) '4 1024 19 17 4 0 2000\n'
+#310 memory/mut_param_replaced.lu
+  wolf 0.2.36 : exit(0) '6\n'
+  lupin 6240efe: exit(0) '6\n'
+  lupin head  : exit(0) '6\n'
+#310 memory/mut_relay_push.lu
+  wolf 0.2.36 : exit(0) '6\n2\n7\n'
+  lupin 6240efe: exit(0) '6\n2\n7\n'
+  lupin head  : exit(0) '6\n2\n7\n'
+#310 stores/index_store
+  wolf 0.2.36 : fail(E1004) E1004[277, 284]
+  lupin 6240efe: exit(0) '1 100 99 2000\n'
+  lupin head  : trap(region-fault)
+#310 stores/str_struct
+  wolf 0.2.36 : exit(0) '1 outer 1\n'
+  lupin 6240efe: exit(0) '1 outer 1\n'
+  lupin head  : exit(0) '1 outer 1\n'
+#310 stores/no_block
+  wolf 0.2.36 : exit(0) '1 3 0\n'
+  lupin 6240efe: exit(0) '1 3 0\n'
+  lupin head  : exit(0) '1 3 0\n'
+R-is82-2 rows/else_fallback_range_refused.lu
+  wolf 0.2.36 : unsupported
+  lupin 6240efe: fail(E0411) E0411[904, 938]
+  lupin head  : unsupported
+R-is82-5 resolve/broken_sibling/entry.lu
+  wolf 0.2.36 : fail(E0202) E0202[135, 136]
+  lupin 6240efe: fail(E0201) E0201[137, 138]
+  lupin head  : fail(E0202) E0202[135, 136]
