@@ -474,12 +474,9 @@ impl DelimScan {
             Tok::RBrace => '{',
             _ => return,
         };
-        // A closer looks no further out than its own interpolation.
-        let floor = self
-            .stack
-            .iter()
-            .rposition(|group| matches!(group, Group::Interp))
-            .map_or(0, |at| at + 1);
+        // PLANT (is82): the closer looks past its interpolation again, the
+        // reading 0.1.58 had; never part of the fix.
+        let floor = 0;
         let Some(at) = self.stack[floor..]
             .iter()
             .rposition(|group| matches!(group, Group::Open(kind, _) if *kind == want))
