@@ -204,6 +204,12 @@ struct RunArgs {
         conflicts_with = "json"
     )]
     trace_places: Option<PathBuf>,
+    /// One program argument as HEX (an even number of hexadecimal digits,
+    /// no NUL byte; empty is an empty argument), repeated in OS argv order,
+    /// argv[0] first — `conform-run --checked --argv-hex`'s input
+    /// (`[exec.checked.argv]`). Without it argv is absent.
+    #[arg(long = "argv-hex", value_name = "HEX", value_parser = parse_argv_hex)]
+    argv_hex: Vec<ArgvHex>,
 }
 
 #[derive(Debug, Args)]
@@ -318,6 +324,43 @@ struct ConformRunArgs {
     /// Human-facing; never part of the record.
     #[arg(long, num_args = 0..=1, default_missing_value = "all", value_name = "FILTER")]
     trace: Option<Trace>,
+    /// One program argument as HEX (an even number of hexadecimal digits,
+    /// no NUL byte; empty is an empty argument), repeated in OS argv order,
+    /// argv[0] first — the checked machine's `--argv-hex`
+    /// (`[exec.checked.argv]`, s261). Without it argv is absent, never this
+    /// process's own arguments.
+    #[arg(long = "argv-hex", value_name = "HEX", value_parser = parse_argv_hex)]
+    argv_hex: Vec<ArgvHex>,
+}
+
+/// One `--argv-hex` argument's bytes.
+#[derive(Debug, Clone)]
+struct ArgvHex(Vec<u8>);
+
+/// The argv a run's `--argv-hex` options spell, argv[0] first.
+fn argv_of(options: &[ArgvHex]) -> Vec<Vec<u8>> {
+    options.iter().map(|ArgvHex(bytes)| bytes.clone()).collect()
+}
+
+/// `--argv-hex=HEX` (`[exec.checked.argv]`): an even number of hexadecimal
+/// digits, either case; empty HEX is an empty argument; a NUL byte is
+/// refused, since an OS argv element cannot hold one.
+fn parse_argv_hex(text: &str) -> Result<ArgvHex, String> {
+    let digits = text.as_bytes();
+    if digits.len() % 2 != 0 || !digits.iter().all(u8::is_ascii_hexdigit) {
+        return Err("--argv-hex needs an even number of hexadecimal digits".to_owned());
+    }
+    let bytes: Vec<u8> = digits
+        .chunks(2)
+        .map(|pair| {
+            let text = std::str::from_utf8(pair).expect("ASCII hex digits");
+            u8::from_str_radix(text, 16).expect("validated hex")
+        })
+        .collect();
+    if bytes.contains(&0) {
+        return Err("--argv-hex cannot carry a NUL byte: an OS argument holds none".to_owned());
+    }
+    Ok(ArgvHex(bytes))
 }
 
 #[derive(Debug, Args)]
@@ -510,6 +553,7 @@ fn main() -> ExitCode {
             // `LUPIN_STD` still applies.
             std_root: None,
             trace_places: cli.trace_places,
+            argv_hex: Vec::new(),
         }),
         (None, None, None) => run_repl(&ReplArgs {
             script: None,
@@ -597,6 +641,7 @@ fn render_static_diag(
 /// `exit(N)` as N, a static rejection as 2, a trap or UB finding as 3,
 /// `unsupported` as 4.
 fn run_run(args: &RunArgs) -> u8 {
+    wolf_interp::eval::Machine::observe_with_argv(argv_of(&args.argv_hex));
     let stdin = args.file.as_os_str() == "-";
     let source = if stdin {
         use std::io::Read;
@@ -1404,6 +1449,8 @@ fn run_conform_run(args: &ConformRunArgs) -> u8 {
     // One program, one process: its paths resolve against the cwd it was
     // invoked in, as the compiler's do (`[os.fs.path]`, is55).
     wolf_interp::eval::Machine::observe_in_the_process_cwd();
+    // And its argv is the one `--argv-hex` spelled (wolf-interp#295).
+    wolf_interp::eval::Machine::observe_with_argv(argv_of(&args.argv_hex));
 
     // `--target` (wolf-interp#182): the host runs, the freestanding target is
     // a record refusing it by name, anything else is the invoker's error.

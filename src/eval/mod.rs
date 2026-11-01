@@ -604,6 +604,15 @@ struct Shared {
     epoch: std::time::Instant,
 }
 
+/// The program's argv (`[os.env.argv]`), as [`Machine::observe_with_argv`]
+/// set it: empty until then.
+static PROGRAM_ARGV: std::sync::OnceLock<Vec<Vec<u8>>> = std::sync::OnceLock::new();
+
+/// The program's argv, argv[0] first; empty when none was supplied.
+pub(crate) fn program_argv() -> &'static [Vec<u8>] {
+    PROGRAM_ARGV.get().map_or(&[], Vec::as_slice)
+}
+
 /// The abstract machine — one **task's** view of the program run.
 ///
 /// Frames, exclusivity, pending retags and the unsafe depth are per task;
@@ -855,6 +864,16 @@ impl Machine {
     pub fn live_stdout(mut self) -> Machine {
         self.shared.live_stdout = true;
         self
+    }
+
+    /// `conform-run --argv-hex` (s261, `[exec.checked.argv]`; wolf-interp
+    /// #295): the argv every machine this process builds from now on reads,
+    /// argv[0] first, byte for byte. Never called, argv is ABSENT — the
+    /// checked machine's default, never this process's own arguments. Set
+    /// once, for a process that observes ONE program (as
+    /// [`Machine::observe_in_the_process_cwd`] is); a later call is ignored.
+    pub fn observe_with_argv(argv: Vec<Vec<u8>>) {
+        let _ = PROGRAM_ARGV.set(argv);
     }
 
     /// `lupin conform-run`'s door: every machine this process builds from now

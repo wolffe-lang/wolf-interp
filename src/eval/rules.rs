@@ -235,7 +235,9 @@ pub enum Rule {
     RandomFill,
     /// An unavailable OS-entropy source traps assert, never a fallback.
     RandomTrap,
-    /// Traps map onto the closed twelve-kind vocabulary and terminate.
+    /// A text argv reader meeting a non-UTF-8 argument traps.
+    ArgvUtf8,
+    /// Traps map onto the closed fourteen-kind vocabulary and terminate.
     TrapVocabulary,
 
     // -- spec/03: the sim scheduler (is06) ---------------------------------
@@ -681,6 +683,12 @@ impl Rule {
                 "a failed user assertion, or a ruled caller-contract violation of a builtin \
                  surface (`[mem.str.repeat]`), traps `assert`",
             ),
+            Rule::ArgvUtf8 => (
+                "os.env.argv",
+                "a text argv reader (`env_args`, `env_arg0`) meeting an argument that is not \
+                 UTF-8 traps `argument-utf8`, naming the OS argv index; `env_args_bytes` \
+                 reads every argument as bytes",
+            ),
             Rule::RandomFill => (
                 "os.random.fill",
                 "os_random requires a nonnegative byte count; zero is an empty list",
@@ -1000,6 +1008,7 @@ impl Rule {
         Rule::Assert,
         Rule::RandomFill,
         Rule::RandomTrap,
+        Rule::ArgvUtf8,
         Rule::TrapVocabulary,
         Rule::SchedSeed,
         Rule::SchedSpawn,

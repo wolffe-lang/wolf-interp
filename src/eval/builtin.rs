@@ -170,6 +170,11 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // design; the json kernels are wolf_mem's reference and are declined
     // rather than reimplemented-and-guessed.
     "env_args",
+    // s261 (wolf-lang#904, `[os.env.argv]`; wolf-interp#295): the
+    // invocation name and every argument as bytes, read from the argv
+    // `conform-run --argv-hex` supplies.
+    "env_arg0",
+    "env_args_bytes",
     "env_get",
     // The s39 net builtin tier (is18): blocking TCP v0 over std::net,
     // loopback + port 0, rows never traps — see `eval::net` for the
@@ -660,11 +665,60 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // `env_get` reads here, never the host's real environment, so the
         // same program observes the same answers on any machine (the
         // checked-lane posture; wolfgang's checked machine does the same).
-        // argv defaults empty (the stdin posture, mirrored — real argv is
-        // `wolf run file.lu a b c`'s, a surface this embedding lacks).
-        // Machinery-minted (the corpus posture: argv defaults empty), no
-        // user allocation site — no home.
-        "env_args" => Ok(Value::list(Vec::new(), None, None)),
+        //
+        // argv (`[os.env.argv]`, s261; wolf-interp#295) is the machine's
+        // input, as the checked machine's is: `conform-run --argv-hex=HEX`,
+        // argv[0] first, and ABSENT without it (never this process's own
+        // arguments). `env_args()` is argv[1..] as text, machinery-minted
+        // with no home as before; a non-UTF-8 argument it reads traps
+        // `argument-utf8` naming the OS argv index. It never decodes
+        // argv[0].
+        "env_args" => {
+            let argv = super::program_argv();
+            let mut items = Vec::with_capacity(argv.len().saturating_sub(1));
+            for (index, arg) in argv.iter().enumerate().skip(1) {
+                match std::str::from_utf8(arg) {
+                    Ok(text) => items.push(Slot::live(Value::Str(text.to_owned().into()))),
+                    Err(_) => return argument_utf8(machine, index, span),
+                }
+            }
+            Ok(Value::list(items, None, None))
+        }
+        // argv[0] as invoked, decoded alone; empty text when argv is absent.
+        // Materialized in the ambient region, a `[mem.region.escape]` site
+        // as `os_cwd` is.
+        "env_arg0" => match super::program_argv().first() {
+            None => produced_str(machine, String::new(), "env_arg0", span),
+            Some(arg) => match std::str::from_utf8(arg) {
+                Ok(text) => produced_str(machine, text.to_owned(), "env_arg0", span),
+                Err(_) => argument_utf8(machine, 0, span),
+            },
+        },
+        // Every argument, argv[0] first, as bytes: no decoding, no omitted
+        // entry, no terminating NUL. Each byte list and the outer list are
+        // made in the ambient region.
+        "env_args_bytes" => {
+            let argv = super::program_argv();
+            let mut items = Vec::with_capacity(argv.len());
+            for arg in argv {
+                let home = machine.allocate(
+                    span,
+                    "env_args_bytes",
+                    ledger::byte_buffer_bytes(arg.len() as u64),
+                )?;
+                items.push(Slot::live(Value::list(
+                    arg.iter().map(|b| Slot::live(Value::Byte(*b))).collect(),
+                    Some(ElemTy::Byte),
+                    Some(home),
+                )));
+            }
+            let home = machine.allocate(
+                span,
+                "env_args_bytes",
+                ledger::container_bytes(items.len() as u64),
+            )?;
+            Ok(Value::list(items, None, Some(home)))
+        }
         "env_get" => {
             let Some(Value::Str(name)) = args.first() else {
                 return unsupported("`env_get` takes a variable name".to_owned());
@@ -4123,6 +4177,17 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
 /// bytes are charged to the ambient region at the call, at exact size, and
 /// the value carries that region as its home — the same site rule
 /// `Machine::built_str` gives `+` and interpolation.
+/// `trap(argument-utf8)` (`[os.env.argv]`): a text argv reader met an
+/// argument that is not UTF-8. The words are the compilers', the OS argv
+/// index in them (the name is zero), and they ride the record's
+/// `trap_message` as the checked machine's do.
+fn argument_utf8(machine: &mut Machine, index: usize, span: Span) -> BResult {
+    let words = format!("argument {index} is not UTF-8; read it with env_args_bytes()");
+    machine
+        .fault(TrapKind::ArgumentUtf8, Rule::ArgvUtf8, span, words.clone())
+        .map_err(|signal| super::with_program_message(signal, Some(words)))
+}
+
 fn produced_str(machine: &mut Machine, text: String, what: &str, span: Span) -> BResult {
     let home = machine.allocate(span, what, ledger::str_bytes(text.len() as u64))?;
     Ok(Value::Str(super::value::Str::built(text, Some(home))))
