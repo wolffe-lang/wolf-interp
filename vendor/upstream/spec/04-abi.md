@@ -522,6 +522,31 @@ C membranes are extended: `import c` still admits only its modelled set
   `export fn` the boot code calls (`[abi.c.export]`: one global symbol
   under its own name, the C convention, kept by every tier). `main` is
   an ordinary function there, mangled like any other.
+- `[abi.target.main]` On a hosted target the program's entry is the C
+  `main` the compiler emits around wolf's `main`, on every tier, and its
+  signature is ABI: `int main(int argc, char **argv, char **envp)`, the
+  three arguments the C library's start-up passes (ISO C 5.1.2.2.1, and
+  the environment argument of its J.5.1). Its first call, before
+  anything else runs, hands the three to the hosted runtime,
+  `__wolf_rt_main_start(argc, argv, envp)` (`argc` a 32-bit integer, the
+  two arrays pointers), which records them and registers the main
+  thread's stack (`[conf.trap.stack]`); then come the start-ups a
+  program names (`[os.net.reactor]`, `[os.signal.hub]`,
+  `[os.signal.wait.fd]`), and then wolf's `main`. On every unix C
+  library the argv readers (`[os.env.argv]`) answer from that record:
+  a program linked statically against musl reads the arguments a glibc
+  link reads (s267, wolf-lang#962: until then the entry took nothing and
+  the readers used a capture that glibc's start-up fills and musl's does
+  not, so a static musl link read no arguments at all). Windows' readers
+  keep the host's own arguments (WTF-8 for the OS's UTF-16). `envp` is
+  recorded as passed and read by no builtin at this cut: `env_vars` and
+  `env_get` read the live environment, which `env_set` and `env_unset`
+  (`[os.env.unset]`) write. An object an older compiler made calls
+  `__wolf_rt_stack_start()` instead, which the runtime still defines, so
+  it links, and its readers keep the C library's capture. A wolf object
+  linked under a foreign `main` (a C program's) has no such entry and
+  reads that capture too. The freestanding target has no entry shim
+  (`[abi.target.entry]`).
 - `[abi.target.none.hooks]` A freestanding object imports at most (a)
   `wolf_trap(kind: i32, file: *u8, file_len: i64, line: i64, col: i64)`,
   the one trap hook (K8(a)): every trap of both tiers calls it with the
@@ -659,12 +684,23 @@ C membranes are extended: `import c` still admits only its modelled set
 - `[abi.asm.link]` `asm: ["boot/io.S", …]` in the ROOT manifest
   (`[pkg.manifest.schema]`) lists assembly sources, each path relative to
   the manifest's directory; a listed file that does not exist is refused
-  naming it. The driver assembles each with the C driver the build
-  already uses for its target — on `x86_64-unknown-none` the release
-  tier's clang (`WOLF_CLANG`, else `clang`) with
-  `--target=x86_64-unknown-none-elf`, from any host, and the result must
-  be an ELF x86-64 object; on a hosted target the link's `CC` (else
-  `cc`) — and hands the objects to the link, or, under `--emit=obj -o
+  naming it. `wolf build` and `wolf run` select an assembler by
+  `--assembler PATH` (also `--assembler=PATH`), then a nonempty `WOLF_AS`,
+  then the existing target-specific C driver. An explicit selection is
+  one executable path, not shell text: it receives `-o OUTPUT SOURCE`,
+  preceded by `--64` for x86-64 (freestanding or hosted), never `-c` or
+  a clang target flag. Paths are separate argv elements, including spaces.
+  A failed invocation or invalid output is final; no other tool is retried.
+  With no selection, `x86_64-unknown-none` uses clang (`WOLF_CLANG`, else
+  `clang`) with `--target=x86_64-unknown-none-elf`; a hosted build uses
+  the link's `CC` (else `cc`), both with `-c SOURCE -o OUTPUT`.
+  A freestanding result must be an ELF64 little-endian x86-64 relocatable
+  object, from any host. Explicit assemblers on Linux must likewise emit
+  an ELF64 little-endian relocatable object for the host architecture.
+  Hosted Windows assembly and foreign hosted targets remain refused;
+  selecting an assembler enables neither. The release backend's clang
+  IR-to-object step is code generation, not this seam, and is unchanged.
+  The driver hands assembly objects to the link, or, under `--emit=obj -o
   K.o`, writes each beside the program's object as `K.asm-<stem>.o` for
   the boot code's link (K6(b): the consuming build links a freestanding
   image). A routine is reached through a bodyless `extern "c" fn`
@@ -704,6 +740,33 @@ C membranes are extended: `import c` still admits only its modelled set
   kw13's to land with it).
 
 ## §7 Linker control `[abi.link]`
+
+The hosted toolchain's link step in `wolf build` and `wolf run` selects
+`--linker PATH` (also `--linker=PATH`), then a nonempty `WOLF_LD`, then
+the existing platform path. A selected linker is one executable path,
+not shell text; spaces remain inside an argv element. On native Linux
+it receives the cc-shaped protocol: `-o OUTPUT`, staged module and
+root-manifest assembly objects in order, the runtime archive, then
+`-lpthread -ldl -lm -Wl,--gc-sections`. A program importing `wolf_trap`
+also adds `-Wl,--undefined=__wolf_rt_trap_at` and
+`-Wl,--defsym=wolf_trap=__wolf_rt_trap_at`. No `-fuse-ld` discovery flag
+is added to a selected tool. This protocol is not a raw `ld` command.
+
+A selected tool's absent executable, nonzero exit, missing output or
+invalid output is final: no retry through cc. The result must parse as
+ELF64, little-endian, for the host architecture, with executable or
+shared-object type (the latter admits PIE), and a nonzero entry inside
+an executable segment's file-backed bytes. A prior output is removed
+before invocation, so a successful no-output tool cannot reuse it.
+With neither choice, Unix retains `CC`/`cc` and its existing lld probe;
+macOS retains Apple's driver and signing/debug handling; Windows
+retains its COFF discovery path, including the distinct `WOLF_LINKER`.
+Explicit cc-shaped linkers on hosted Windows and non-Linux hosts are
+refused by name. Foreign hosted targets remain refused. Object-only
+builds do not invoke a linker; freestanding images remain the consuming
+build's responsibility. The assembler and the release backend's clang
+IR-to-object step are separate and unchanged. Ligature requires a
+matching musl runtime and sysroot; selection does not substitute either.
 
 - `[abi.link.section]` `#[section(".name")]` on a function or on a
   module `let`/`var` (`[mem.static]`) places its code or data in the
