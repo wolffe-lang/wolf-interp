@@ -354,6 +354,38 @@ fn the_core_limit_corpus_row_runs() {
     );
 }
 
+// -- wolf-interp#278 (one of its names): `fs_access` ------------------------
+
+#[test]
+fn fs_access_answers_the_checked_machines_rows() {
+    // s254's own fixture, byte for byte (wolf-lang
+    // `crates/wolf_driver/tests/fixtures/fs_gaps/access_rows.lu`); wolf
+    // 0.2.36's checked machine as a non-root user on nomad printed these.
+    // Root writes anywhere (`ro_write=ok`), and windows answers
+    // `unsupported` for every mode the shape allows.
+    let (record, stdout) = observe(&fixture("access/main.lu"));
+    assert_eq!(record.verdict, Verdict::Exit(0), "{record:?}");
+    let want = if cfg!(windows) {
+        "exists=unsupported\nread=unsupported\nwrite=unsupported\nread_write=unsupported\n\
+         exec=unsupported\ndir_write=unsupported\ndir_search=unsupported\n\
+         ro_write=unsupported\nro_read=unsupported\nmissing=unsupported\n\
+         under_file=unsupported\ndangle=no_link\nmode8=invalid\nnegative=invalid\n"
+            .to_owned()
+    } else {
+        let root = Command::new("id")
+            .arg("-u")
+            .output()
+            .is_ok_and(|out| out.stdout.trim_ascii() == b"0");
+        format!(
+            "exists=ok\nread=ok\nwrite=ok\nread_write=ok\nexec=denied\ndir_write=ok\n\
+             dir_search=ok\nro_write={}\nro_read=ok\nmissing=not_found\nunder_file=io\n\
+             dangle=not_found\nmode8=invalid\nnegative=invalid\n",
+            if root { "ok" } else { "denied" }
+        )
+    };
+    assert_eq!(stdout, want);
+}
+
 // -- wolf-interp#310's twin: a plain INDEX store copies in the ambient -----
 
 #[test]
