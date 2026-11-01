@@ -229,7 +229,18 @@ fn there_is_one_program_per_trap_identity_this_tier_can_raise() {
     // `alloc-contract` left this list at is33: the region cap gave it a
     // reachable source (`[mem.region.cap.1]`), and the corpus's own fault
     // witness raises it here.
-    let deferred = [TrapKind::Race, TrapKind::Ub, TrapKind::Deadlock];
+    // is82 (R-is82-3) closes the set at the pin's fourteen: `argument-utf8`
+    // is raised only by a program given a non-UTF-8 argv, so its programs
+    // are `tests/mirror_is82.rs`'s, through `conform-run --argv-hex`; and
+    // `stack-overflow` is a native stack's guard page, which this machine
+    // never has — it reads the kind in another machine's records only.
+    let deferred = [
+        TrapKind::Race,
+        TrapKind::Ub,
+        TrapKind::Deadlock,
+        TrapKind::StackOverflow,
+        TrapKind::ArgumentUtf8,
+    ];
     assert_eq!(
         reachable.len() + deferred.len(),
         TrapKind::ALL.len(),
