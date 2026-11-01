@@ -5591,8 +5591,14 @@ mod tests {
                 d.message
             );
         }
-        assert_eq!(rejects("fn f(p: proc").code, diag::E_EXPECTED_TYPE);
-        assert_eq!(rejects("fn f(p: ").code, diag::E_UNEXPECTED_EOF);
+        // At the end of the file the `(` never closes, and the compiler's
+        // E0202 at the opener is the first diagnostic, before the keyword's
+        // E0206 (is82, wolf-interp#304: wolf 0.2.36 answers `[4,5]` on both).
+        for source in ["fn f(p: proc", "fn f(p: "] {
+            let d = rejects(source);
+            assert_eq!(d.code, diag::E_UNEXPECTED_EOF, "{source}");
+            assert_eq!((d.span.start, d.span.end), (4, 5), "{source}");
+        }
     }
 
     // -- `[gram.expr.list]` (s158, wolf-interp#106) -----------------------
