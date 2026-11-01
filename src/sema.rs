@@ -506,7 +506,11 @@ pub fn load_with(entry: &Path, std_root: Option<&Path>) -> Result<Program, LoadE
                 for segment in segments {
                     full.push(segment);
                 }
-                if segments.len() >= 2 && full.is_dir() {
+                // An alias names the directory its path spells, one segment
+                // or more (`use math as renamed`, wolf-interp#299): the bound
+                // name is not a directory of its own.
+                let aliased = segments.last().is_some_and(|last| last != bound);
+                if (segments.len() >= 2 || aliased) && full.is_dir() {
                     claim(bound, &full, &module)?;
                     if !loaded.contains(bound) && !queued.contains(bound) {
                         queue.push((bound.clone(), full, None, false));
@@ -1375,7 +1379,12 @@ fn collect_use(
             bind(item.name.clone(), item.span, segments, module);
         }
     }
+    // `use math as renamed` binds `renamed` and nothing else (wolf-interp
+    // #299): the directory loads under the alias, and `math.value()` is the
+    // compiler's unresolved name. A dotted path keeps its head, as before.
+    let aliased_head = decl.alias.is_some() && decl.list.is_empty() && decl.path.is_single();
     if let Some(head) = head
+        && !aliased_head
         && !module.uses.contains(&head.name)
     {
         module.uses.push(head.name);
