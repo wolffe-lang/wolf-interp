@@ -1750,7 +1750,10 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // that printed from freed bytes.
     ("memory/region_str_view_return.lu", "trap(region-fault)"),
     ("rows/error_alias_qualified/main.lu", "exit(0)"),
-    ("rows/negative/error_alias_private/main.lu", "exit(0)"),
+    // `rows/negative/error_alias_private/main.lu` LEFT at is82
+    // (wolf-interp#302): a foreign alias is expanded program-wide now, and a
+    // private one named from another module is the resolver's E0304 at the
+    // entry, as the corpus pins — a static refusal, no longer a run.
     // REMOVED by is68: `strings/trim_cutset_refused.lu`, which ran and
     // printed `[hi]` against its pinned `fail(E0402)`. `[mem.str.ws]`'s
     // "the family takes no argument" (s175, wolf-interp#125) is mirrored:
@@ -2464,6 +2467,13 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // second to exit 0.
     ("memory/region_outer_write_push_copy_call.lu", "exit(0)"),
     ("memory/region_outer_write_push_plain_copy.lu", "trap(region-fault)"),
+    // wolf-interp#295 (s261): `env_arg0` and `env_args_bytes` resolve, and
+    // with no `--argv-hex` argv is absent, the checked machine's default.
+    ("os/arg0.lu", "exit(0)"),
+    ("os/args_bytes.lu", "exit(0)"),
+    // wolf-interp#277 (s253): the core-limit calls' shape rows, then the
+    // reader and a set to the limit as it is.
+    ("os/core_limit_rows.lu", "exit(0)"),
     ("rows/else_fallback_bound_slice.lu", "exit(0)"),
     ("rows/else_fallback_paren_slice.lu", "exit(0)"),
     ("rows/mixed_payload_display.lu", "exit(0)"),
