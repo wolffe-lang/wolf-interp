@@ -1,0 +1,39 @@
+r42 guard correction prediction — 2026-11-03T04:41:21Z
+
+Verified direct read of the ended debug run at
+610c4fb7fd640dbcc0840ff0f1a08b368548e71d: exit 1, finished
+2026-11-03T04:34:49Z. Clippy and the host locked check passed.
+plant-lock-proof failed because its assertion recognized only Cargo's
+older wording, not 1.97.1's "cannot update the lock file ... because
+--locked was passed to prevent this". The plant itself was rejected as
+intended, named locked_manifest_refuses_stale_root_version, exit 101.
+This is not a green gauntlet and is not waived.
+
+Prediction before correcting the guards:
+- Focused tests will fail at this base because there is no importable
+  semantic Cargo-diagnostic predicate, no outer-acquisition deadline
+  helper, no native container lifetime cap and no bounded escalation.
+- Both historical Cargo locked-update diagnostics will be accepted only
+  with nonzero exit and their specific lock-update/--locked causal wording.
+  Success, offline cache misses, unrelated compilation/permission errors,
+  and help-only mentions will be rejected by name.
+- Outer lock acquisition starts the hold deadline BEFORE the inner wait.
+  Both required flock -w 21600 requests remain single waits, with lock
+  descriptors closed to workload descendants. The outer-held command has
+  a 7000s foreground timeout plus 10s hard escalation (7010 < 7200).
+- Inner startup, execution and teardown consume remaining time, not a new
+  two-hour budget. The host CLI has a remaining-minus-30 deadline plus
+  10s hard escalation; podman has --timeout remaining-minus-60; the root
+  reaping bash computes a fresh absolute-deadline work budget after
+  startup (remaining-minus-90) with 5s escalation. Insufficient remaining
+  time refuses startup. These are positive-child/namespace bounds, never
+  a process-group kill or a cancellation of an existing runner.
+- Focused static/unit checks will verify wrapper order, preserved flock
+  waits, native lifetime cap, PID-1 wrapper, arithmetic boundaries and
+  semantic diagnostic rejection. No Rust build, new remote job or push.
+- Update the note and machine checkpoint to mark the former job ended
+  red and the corrected candidate not yet submitted; reserve new exact-
+  head debug/release runs for verification and orchestration.
+
+Scope: release/setup guards and their tests only, no runtime/source
+language semantics. Recommendations R-r42-1/A and R-r42-2/A unchanged.
