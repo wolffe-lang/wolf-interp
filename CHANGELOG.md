@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.1.59 — 2026-11-03
+
+This release carries the 38 commits after 0.1.58: the spec and corpus
+mirror at wolf-lang `b16353e8`, and its interpreter fixes. It is prepared
+to pair with wolf 0.2.37 at that pin. Pairing and release-tier validation
+must complete before publication; a branch build still prints
+`0.1.59+dev.<commit>`, not a release identity.
+
+### Arguments, copies and the frontend
+
+- `env_arg0()` and `env_args_bytes()` now resolve (#295).
+  `conform-run --argv-hex=HEX` accepts repeated byte-exact arguments,
+  argv[0] first, with the checked machine's validation and refusals.
+  Without that option the conformance input has no arguments. A text
+  reader encountering invalid UTF-8 traps `argument-utf8` by argument
+  index and points to `env_args_bytes()` instead.
+- Plain container stores copy List/Map-containing values in the ambient
+  region, so a value retained beyond that region traps `region-fault`
+  instead of silently surviving (#310). An explicit `copy` stored through
+  a `mut` container parameter is made in the container's own region.
+- Broken interpolation groups report E0202 at the matching opener;
+  a call of a local known to be a non-function reports E0406 at its callee
+  (#304). A format-spec field call and one E0412 span remain gaps.
+  The broken-sibling E0202 row now matches; DIV-2026-019 is retired.
+- Foreign error-set aliases expand in signatures, raises, propagation and
+  matches (#302). An aliased module import binds and loads the alias,
+  not the original module name (#299). Individual function-item imports
+  remain unsupported (wolf-interp#314).
+
+### Host calls and the conformance snapshot
+
+`os_name`, `os_arch`, `os_core_limit`, `os_set_core_limit` and
+`os_core_off` now use the safe host wrappers (#277). `fs_access` uses
+real/effective credential access checks (#278). Host-specific errors and
+named refusals remain part of those calls; `fs_adopt`, the remaining
+filesystem/job gaps in #278, and the spawn/exec `os_error()` mirror are
+not implemented by this release.
+
+The snapshot has 706 anchor keys, 1,239 corpus files and 1,177 entries.
+On Unix 953 entries reach `run`; on Windows 955 do. The trap vocabulary
+has the spec's fourteen kinds, including `argument-utf8` and
+`stack-overflow`; adding the latter name does not make this interpreter
+execute the stack-overflow fault tier. The bundle census and manuals
+name that boundary. The anchor check and the Rust test now read the
+same manifest and compare the complete key sets in both directions.
+
+Wolf 0.2.37's s272 host surface is not mirrored at this pin. These cells
+are **unsupported**, not successful substitutes for the compiler's calls:
+
+| wolf surface | lupin 0.1.59 |
+| --- | --- |
+| `fs_statfs` | unsupported |
+| `os_chroot` | unsupported |
+| `os_getpriority` | unsupported |
+| `os_setpriority` | unsupported |
+| `os_signal_action_one` | unsupported |
+| terminal mode `RAW_LF` / ONLCR control | unsupported |
+
+The s272 mirror remains wolf-interp#315. No newer spec pin, runtime
+semantics change, extra dependency or archive target is introduced by
+the release-metadata pass. The six published assets retain their existing
+shape; SIGPIPE restoration before direct exec from 0.1.58 is preserved.
+
 ## 0.1.58 — 2026-10-26
 
 `os_exec` once again starts the new program with SIGPIPE at its default
