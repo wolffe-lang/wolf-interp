@@ -323,3 +323,24 @@ fn main() -> !int {
         "{r}"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn raw_lf_on_a_terminal_reaches_the_named_refusal() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("is83_own_terminal");
+    std::fs::create_dir_all(&dir).unwrap();
+    let entry = dir.join("main.lu");
+    std::fs::write(
+        &entry,
+        "fn main() -> !int {\n    os_term_set_mode(0, 16777216)?\n    0\n}\n",
+    )
+    .unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_lupin"));
+    cmd.args(["conform-run", "--json"])
+        .arg(entry)
+        .current_dir(dir);
+    let mut child = rexpect::session::spawn_command(cmd, Some(10_000)).unwrap();
+    child.exp_string("\"verdict\":\"unsupported\"").unwrap();
+    child.exp_string("os_term_set_mode").unwrap();
+    child.exp_eof().unwrap();
+}
