@@ -39,8 +39,7 @@ step anchors python3 -I ci/is81-variadic/anchors.py
 case "$profile" in
     debug)
         step clippy cargo clippy --locked --all-targets -- -D warnings
-        step locked-metadata bash -c 'cargo metadata --locked --offline --format-version=1 > "$1"' \
-            bash "$records/locked-metadata.json"
+        step locked-check cargo check --locked --offline --lib
         if [[ -n "$plant" ]]; then
             step plant-lock-proof python3 -I ci/r42/plant-lock.py "$plant" "$records/plant-lock.log"
         fi

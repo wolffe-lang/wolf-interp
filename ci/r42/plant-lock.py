@@ -15,7 +15,7 @@ package = next(p for p in lock["package"] if p["name"] == "wolf-interp")
 assert manifest["package"]["version"] == "0.1.59"
 assert package["version"] == "0.1.58"
 result = subprocess.run(
-    ["cargo", "metadata", "--locked", "--offline", "--format-version=1"],
+    ["cargo", "check", "--locked", "--offline", "--lib"],
     cwd=args.plant, capture_output=True, text=True,
 )
 output = result.stdout + result.stderr

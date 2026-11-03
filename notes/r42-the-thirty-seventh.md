@@ -105,7 +105,7 @@ an `END <step> exit=N` line for every executed step. It checks the exact
 head and clean tracked tree at both ends. Each run records its full head.
 
 - Debug: metadata, fmt, planner/dist/anchor checks, clippy on all targets,
-  locked metadata, the stale-lock plant proof, D57/build-stamp, mirror,
+  locked host-library check, the stale-lock plant proof, D57/build-stamp, mirror,
   argv/CLI, variadic, anchor, exec/SIGPIPE and all eight differ CLI rows.
 - Release: metadata/fmt/planner/dist/anchors, locked release build,
   CLI/protocol identity, binary digest twice, the whole release test
@@ -114,7 +114,7 @@ head and clean tracked tree at both ends. Each run records its full head.
   both run unfiltered in debug. Every loud SKIP stays in the log.
 - Plant: `r42-plant-lock` contains the candidate plus a deliberate root
   Cargo.lock rollback to 0.1.58. `ci/r42/plant-lock.py` requires
-  `cargo metadata --locked --offline` to fail specifically because that
+  `cargo check --locked --offline --lib` to fail specifically because that
   lock needs updating. Its separate log names
   `locked_manifest_refuses_stale_root_version` and retains the actual
   red exit. This break never belongs in the release branch. The plant
@@ -125,7 +125,12 @@ step: the worktree's absolute gitdir was not visible through the `/lane`
 volume alias. This was a rig prerequisite failure, not a test verdict.
 The launcher now also mounts this lane at its original absolute path,
 so both sides of git's worktree metadata resolve without editing it.
-A fresh committed snapshot is used for the corrected launch.
+A fresh committed snapshot is used for the corrected launch. At `bf835f78`,
+clippy passed, but offline unfiltered `cargo metadata` then requested an
+uncached Windows-only package (`anstyle-wincon`). The locked guard and
+plant now use the host's `cargo check --locked --offline --lib` after
+clippy has populated its host dependencies, preserving the same stale-lock
+rejection without requiring unrelated target downloads.
 
 Final-head gauntlet and plant results are pending when this note is
 committed; their logs and actual statuses must be reviewed before the
