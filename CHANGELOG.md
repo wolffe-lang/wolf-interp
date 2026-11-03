@@ -16,6 +16,24 @@
   refuses mixing it with trailing program words. `conform-run` retains
   its protocol options and empty argv default; it does not accept trailing
   program words. No lexer or language-argument semantics changed.
+- Advance the spec and corpus pin to wolf-lang `5f1f1c94`, including the
+  descriptor-relative filesystem calls and the newer host-specific rows.
+- Serve directory-open bit 32 on read modes 0 and 5, with shape errors
+  before the host and `ENOTDIR` reported as `invalid` with its host number.
+  Set permissions through the held file with `fs_set_mode_fd` (#321).
+- Close two older filesystem gaps needed by those witnesses: no-follow
+  bit 16 composes with the directory/nonblocking flags, and
+  `fs_fstat_record` reads the full record from the held handle, not its name.
+- Recognize the nine directory-relative calls, `fs_statfs`, `os_chroot`,
+  `os_getpriority`, `os_setpriority` and `os_signal_action_one`. Check their
+  argument shapes before declining unsupported operations by name; a
+  missing contained `fs_statfs` path retains its filesystem error (#315,
+  #321). Windows answers its declared unsupported rows after the shape.
+- Accept terminal-mode bit 24 (`RAW_LF`) for a set and restore; nonterminal
+  handles answer `io`, and bit 25 and above remain `invalid` (#315).
+- Keep the new reset/reuse accounting witness as an exact, retirement-checked
+  forward pin (`8 false true`, rather than the expected `8 true true`).
+  No unsafe code, dependency or enabled-feature changes accompany this mirror.
 
 ## 0.1.59 — 2026-11-03
 
