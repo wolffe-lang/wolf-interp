@@ -95,5 +95,8 @@
   },
   "pr_workflows": [
     "ci.yml"
+  ],
+  "tag_only_dispatch": [
+    "release.yml"
   ]
 }
