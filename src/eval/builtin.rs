@@ -140,6 +140,17 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // file without writing its bytes — `[os.fs.mode]`, `[os.fs.create.mode]`,
     // `[os.fs.symlink]`, `[os.fs.link]`, `[os.fs.times]`, `[os.fs.truncate]`
     // — each through the standard library's own call, no `unsafe`.
+    "fs_statfs",
+    "fs_open_at",
+    "fs_stat_at",
+    "fs_lstat_at",
+    "fs_remove_at",
+    "fs_remove_dir_at",
+    "fs_create_dir_at",
+    "fs_symlink_at",
+    "fs_link_at",
+    "fs_read_dir_entries_at",
+    "fs_set_mode_fd",
     "fs_set_mode",
     "fs_open_perm",
     "fs_create_dir_mode",
@@ -243,6 +254,10 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // (`[os.proc.fds]`, `[os.proc.pipe]`, `[os.fs.chdir]`, `[os.fs.isatty]`).
     "os_spawn_fds",
     "os_pipe",
+    "os_chroot",
+    "os_getpriority",
+    "os_setpriority",
+    "os_signal_action_one",
     "os_chdir",
     "os_isatty",
     // s225 (wolf-lang#534, `[os.proc.exec]`): replace the running program —
@@ -554,6 +569,17 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_lstat"
         | "fs_read_link"
         | "fs_read_dir_entries"
+        | "fs_statfs"
+        | "fs_open_at"
+        | "fs_stat_at"
+        | "fs_lstat_at"
+        | "fs_remove_at"
+        | "fs_remove_dir_at"
+        | "fs_create_dir_at"
+        | "fs_symlink_at"
+        | "fs_link_at"
+        | "fs_read_dir_entries_at"
+        | "fs_set_mode_fd"
         | "fs_set_mode"
         | "fs_open_perm"
         | "fs_create_dir_mode"
@@ -603,6 +629,17 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_lstat"
         | "fs_read_link"
         | "fs_read_dir_entries"
+        | "fs_statfs"
+        | "fs_open_at"
+        | "fs_stat_at"
+        | "fs_lstat_at"
+        | "fs_remove_at"
+        | "fs_remove_dir_at"
+        | "fs_create_dir_at"
+        | "fs_symlink_at"
+        | "fs_link_at"
+        | "fs_read_dir_entries_at"
+        | "fs_set_mode_fd"
         | "fs_set_mode"
         | "fs_open_perm"
         | "fs_create_dir_mode"
@@ -928,6 +965,10 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_spawn_with"
         | "os_spawn_fds"
         | "os_pipe"
+        | "os_chroot"
+        | "os_getpriority"
+        | "os_setpriority"
+        | "os_signal_action_one"
         | "os_chdir"
         | "os_isatty"
         | "os_exec"
@@ -1048,6 +1089,34 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         #[cfg(not(target_family = "wasm"))]
         "os_pipe" => machine.os_pipe(span),
         #[cfg(not(target_family = "wasm"))]
+        // #315: recognize the host surface without changing this process's
+        // root, priority, or signal dispositions. Shape precedes the refusal.
+        #[cfg(not(target_family = "wasm"))]
+        "os_chroot" | "os_getpriority" | "os_setpriority" | "os_signal_action_one" => {
+            machine.set_last_os_error(0);
+            if name == "os_signal_action_one" {
+                let Some(Value::Int(m, _)) = args.first() else {
+                    return unsupported(format!("`{name}` takes a meaning"));
+                };
+                if !sig_send_shape(*m, false) {
+                    return Ok(error_value(name, "invalid"));
+                }
+            } else if name == "os_setpriority" {
+                if !matches!(args.first(), Some(Value::Int(..))) {
+                    return unsupported(format!("`{name}` takes an integer delta"));
+                }
+            } else if name == "os_chroot" && !matches!(args.first(), Some(Value::Str(..))) {
+                return unsupported(format!("`{name}` takes a path"));
+            }
+            if cfg!(windows) {
+                return Ok(error_value(name, "unsupported"));
+            }
+            unsupported(format!(
+                "`{name}` is declined by name: changing the interpreter's root or priority \
+                 or querying signal actions is outside this machine's served host surface \
+                 ([os.proc.chroot], [os.proc.priority], [os.signal.action.one])"
+            ))
+        }
         "os_chdir" => {
             let Some(Value::Str(path)) = args.first() else {
                 return unsupported("`os_chdir` takes a `str` path".to_owned());
@@ -1710,6 +1779,14 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                     &format!("`{name}` yields the `unsupported` row"),
                 );
                 return Ok(error_value(name, "unsupported"));
+            }
+            if name == "os_term_set_mode" {
+                let Some(Value::Int(fd, _)) = args.first() else {
+                    return unsupported(format!("`{name}` takes a handle and a mode"));
+                };
+                if machine.files().is_terminal(*fd) != Some(true) {
+                    return Ok(error_value(name, "io"));
+                }
             }
             if name == "os_term_size" || name == "os_term_chars" {
                 return unsupported(format!(
@@ -4130,6 +4207,30 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "fs_read_link" => &["not_found", "denied", "invalid", "io"],
         // s230: the changers' rows, as `[os.host.sigs]` lists them.
         // `unsupported` is windows' answer to a mode and a symbolic link.
+        "fs_statfs" => &["not_found", "denied", "io"],
+        "fs_open_at" | "fs_create_dir_at" | "fs_symlink_at" => &[
+            "denied",
+            "exists",
+            "invalid",
+            "io",
+            "not_found",
+            "unsupported",
+        ],
+        "fs_stat_at"
+        | "fs_lstat_at"
+        | "fs_remove_at"
+        | "fs_remove_dir_at"
+        | "fs_read_dir_entries_at" => &["denied", "invalid", "io", "not_found", "unsupported"],
+        "fs_link_at" => &[
+            "cross_device",
+            "denied",
+            "exists",
+            "invalid",
+            "io",
+            "not_found",
+            "unsupported",
+        ],
+        "fs_set_mode_fd" => &["denied", "invalid", "io", "unsupported"],
         "fs_set_mode" => &["not_found", "denied", "invalid", "unsupported", "io"],
         "fs_open_perm" | "fs_create_dir_mode" | "fs_symlink" => &[
             "not_found",
@@ -4245,6 +4346,10 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "os_fork" => &["busy", "io", "unsupported"],
         // s234 (`[os.host.sigs]`'s three lines).
         "os_term_size" | "os_term_chars" | "os_signal_wait_fd" => &["unsupported", "io"],
+        "os_chroot" => &["denied", "io", "not_found", "unsupported"],
+        "os_getpriority" => &["unsupported"],
+        "os_setpriority" => &["denied", "io", "unsupported"],
+        "os_signal_action_one" => &["invalid", "io", "unsupported"],
         "os_chdir" => &["not_found", "denied", "io"],
         // The env pair and the json query tier: mint-site closures.
         "env_get" => &["invalid", "missing"],
@@ -4724,7 +4829,7 @@ fn fd_map_of(flat: &[i128]) -> Option<Vec<(i128, Option<i128>)>> {
 /// `os_term_restore_at_exit` alike.
 #[cfg(not(target_family = "wasm"))]
 fn term_mode_shape(mode: i128) -> bool {
-    mode >= 0 && mode & !0x00FF_FFFF == 0
+    mode >= 0 && mode & !0x01FF_FFFF == 0
 }
 
 /// s232 (wolf-lang#679, `[os.signal.set]`): the twenty listenable meanings
