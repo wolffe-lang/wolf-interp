@@ -7,8 +7,8 @@
 //!
 //! The programs under `tests/fixtures/editor_calls_is79/` are wolf-lang
 //! `9da7bdcf`'s (v0.2.34) `crates/wolf_driver/tests/fixtures/editor_calls/`
-//! and `editor_wait/` byte for byte (sha256 `52e8ffe7…` clock_ns,
-//! `cdd693cb…` realpath, `686a2a42…` restore_rows, `29998eb6…` save,
+//! and `editor_wait/` byte for byte, except the noted newer restore row (sha256 `52e8ffe7…` clock_ns,
+//! `cdd693cb…` realpath, `681c53d3…` restore_rows (re-synced at `5f1f1c94`), `29998eb6…` save,
 //! `72f15e30…` sync_rows, `c2176395…` wait_fds_rows, `9339d1cd…` wait_fds,
 //! `a74d4e4d…` wait_fds_race, `183da257…` mode_enter, `625626b7…`
 //! mode_opost), so the answers here are the ones the compiler's gates
@@ -260,9 +260,9 @@ fn the_canonical_path_outside_the_tree_is_declined_by_name() {
 fn the_restore_rows_answer_as_the_compiled_tiers() {
     let rec = run_fixture("restore_rows.lu");
     let want = if cfg!(unix) {
-        "bit24=io negative=invalid forged=io file=io\n"
+        "bit25=invalid negative=invalid forged=io file=io lf=io\n"
     } else {
-        "bit24=unsupported negative=invalid forged=unsupported file=unsupported\n"
+        "bit25=invalid negative=invalid forged=unsupported file=unsupported lf=unsupported\n"
     };
     assert_runs(&rec, want, "restore_rows.lu");
 }
