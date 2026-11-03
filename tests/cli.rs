@@ -319,7 +319,7 @@ fn the_corpus_walk_is_green_over_the_pinned_corpus() {
     // `memory/region_outer_write_push_*` rows, #940's two `mut_*` rows,
     // s266's three `rows/else_fallback_*`, `rows/mixed_payload_display.lu`,
     // `typecheck/enum_str_bare_choice.lu`), every one an entry, none removed.
-    assert!(stdout.contains("1239 file(s)"), "{stdout}");
+    assert!(stdout.contains("1253 file(s)"), "{stdout}");
     assert!(stdout.contains("0 failure(s)"), "{stdout}");
 }
 
@@ -328,7 +328,7 @@ fn the_corpus_walk_has_a_machine_mode() {
     let output = lupin(&["corpus", "--json"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value = serde_json::from_str(stdout_of(&output)).expect("json");
-    assert_eq!(value["total"], 1239);
+    assert_eq!(value["total"], 1253);
     assert_eq!(value["failures"], 0);
     assert_eq!(value["green"], true);
     // The first entry in slash-path order is still `comptime.lu` (`.` precedes

@@ -452,6 +452,17 @@ os.env.argv
 os.env.unset
 os.fs
 os.fs.access
+os.fs.at
+os.fs.at.link
+os.fs.at.lstat
+os.fs.at.mkdir
+os.fs.at.note
+os.fs.at.open
+os.fs.at.readdir
+os.fs.at.remove
+os.fs.at.remove.dir
+os.fs.at.stat
+os.fs.at.symlink
 os.fs.change.note
 os.fs.chdir
 os.fs.copy
@@ -465,8 +476,10 @@ os.fs.link
 os.fs.lock
 os.fs.mkfifo
 os.fs.mode
+os.fs.mode.fd
 os.fs.nonblock
 os.fs.open
+os.fs.open.directory
 os.fs.open.nofollow
 os.fs.owner
 os.fs.path
@@ -478,6 +491,7 @@ os.fs.realpath
 os.fs.remove
 os.fs.seek
 os.fs.stat
+os.fs.statfs
 os.fs.std
 os.fs.symlink
 os.fs.sync
@@ -503,6 +517,7 @@ os.net.writev
 os.net.writev.head
 os.proc
 os.proc.adopt
+os.proc.chroot
 os.proc.core
 os.proc.exe
 os.proc.exec
@@ -516,6 +531,7 @@ os.proc.inherit
 os.proc.job
 os.proc.pipe
 os.proc.poll
+os.proc.priority
 os.proc.self
 os.proc.spawn
 os.proc.status
@@ -528,6 +544,7 @@ os.random.platform
 os.random.sole
 os.random.trap
 os.signal
+os.signal.action.one
 os.signal.checked
 os.signal.det
 os.signal.disp
@@ -556,6 +573,7 @@ os.signal.wait
 os.signal.wait.fd
 os.signal.wait.fds
 os.signal.wait.write
+os.surface.note
 os.term
 os.term.chars
 os.term.editor.note

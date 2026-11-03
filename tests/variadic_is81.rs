@@ -21,7 +21,7 @@ fn pinned_anchor_keys_agree_both_ways() {
     );
     assert_eq!(
         wolf_interp::UPSTREAM_PIN.trim(),
-        "b16353e8ae616ff3a35bd27adc56b727c50df345"
+        "5f1f1c949582f53121e4047bc83c86f23ff72240"
     );
 }
 
@@ -355,7 +355,7 @@ fn command_line_records_the_named_refusal_and_the_spec_identity() {
         .arg("--version")
         .output()
         .unwrap();
-    assert!(String::from_utf8_lossy(&version.stdout).contains("pin b16353e"));
+    assert!(String::from_utf8_lossy(&version.stdout).contains("pin 5f1f1c9"));
     // CLI follows the real host. Linux is the supported executable row;
     // unsupported hosts must reject the declaration, not borrow SysV.
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_lupin"))

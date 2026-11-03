@@ -779,7 +779,7 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     let report = report();
     assert_eq!(
         report.total(),
-        1239,
+        1253,
         "corpus size changed — was the pin bumped?"
     );
     assert_eq!(report.entries() + report.members(), report.total());
@@ -809,7 +809,7 @@ fn the_pin_holds_the_corpus_we_think_it_does() {
     // kw02's `membrane/geo/geo.lu`.
     // 900 -> 955 at 294d626d (r30, wolf-lang v0.2.24): fifty-five new
     // files, every one an entry. `members` holds at 47.
-    assert_eq!(report.entries(), 1177);
+    assert_eq!(report.entries(), 1191);
     assert_eq!(report.members(), 62);
 }
 
