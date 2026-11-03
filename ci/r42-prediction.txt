@@ -1,0 +1,108 @@
+r42 release prediction — recorded 2026-11-03T04:15:47Z, before release edits
+
+Verified public inputs (full commits, release tags peeled):
+  wolf-lang trunk 50fa61c9a48f828d26c9cfb71e2942d7ec397365
+  v0.2.36 source 5adf3d91f75b3545ff8d38e5b6693b0b9f367a05
+  wolf posture: Cargo 0.2.36, off-tag builds retain +dev.<commit>
+  wolf-interp trunk ed711840ceb9522015438e9807cf6c214ed37076
+  v0.1.58 source 6240efe5570dba1a33ba6269e3ba44bae33dd972
+  interpreter pin/gitlink b16353e8ae616ff3a35bd27adc56b727c50df345
+  previous interpreter pin a5378e3fd5b6347f4a89a7d77dbe43aa576fee76
+  wolf-std trunk d407430ca238cd5756407ff3e1a7847dfc3a2b6e
+  recommended fixed std 5b3a59942b2ee69b99682544341ce8a12c984e9e
+  current STD-PIN 78b9d3cbc41d51db44d18c40b6694403644d1c83
+  homebrew-wolf trunk 84c4788cf10c5825d2972f9ea0c1ccc471368120
+  wolf's current PAIRING: lupin 0.1.58 / a5378e3
+  wolf release id 427033151; lupin release id 425116893
+
+All 38 interpreter commits after v0.1.58 were read before this edit.
+They carry the b16353e8 mirror: argv readers and --argv-hex (#295),
+ambient container copies (#310), frontend diagnostics (#304), foreign
+error-set aliases (#302), aliased module imports (#299), uname/core-limit
+calls (#277), fs_access (#278), the fourteen-kind trap vocabulary,
+corpus/manual refresh and the corrected 706-key anchor manifest. These
+are user-visible. Remaining item-import, field-callee and host-call gaps
+are not repaired by a release bump. s272's fs_statfs, os_chroot,
+os_getpriority, os_setpriority and os_signal_action_one are absent from
+this interpreter's src/tests: new host-surface cells remain unsupported.
+No new spec pin or gitlink is proposed in the lupin release.
+
+wolf's entire Unreleased section was read: build progress/quiet/timing
+controls, s272's OS surface and RAW_LF, s275's drain thread, s273's
+map-pairs storage and reset accounting, and s270b's E1010 plain pushes.
+s276 changes bounded-memory test rows, not language behaviour. The corpus
+also carries s269's mixed payload/enum fixes and s271's mut relay fixes;
+name those in the later measured differ even though Unreleased does not.
+The 38 std commits since 78b9d3c include leap-aware local time (sc74),
+sc75's byte-list builder/argv wrappers and pins, and sc76's bounded SHA-2.
+Both new CHANGELOG entries (sc75/sc76) were read; the sc74 code/rows were
+also derived from the history. Public APIs and SHA-2 digests stay unchanged.
+docs/releases/0.2.36.md was read in full: preserve separate runtime-only
+musl asset and link-bundle identities; #887 is not closed by this work.
+
+Predictions, NOT measurements:
+- Wolf differ: 14 distinct semantic/output movers across the native,
+  release and checked observations on the candidate corpus:
+    s272 (5): fs/statfs_rows.lu, os/chroot_rows.lu,
+      os/priority_rows.lu, os/signal_action_rows.lu (new calls),
+      os/term_lf_rows.lu (RAW_LF shape becomes accepted).
+    s270b (3): memory/region_outer_write_push_heap.lu,
+      memory/region_outer_write_push_heap_call.lu,
+      memory/region_outer_write_push_plain_copy.lu (E1010).
+    s273 (2): memory/map_pairs_walk_view.lu (allocation ledger),
+      memory/list_reset_reuse_ledger.lu (checked reset ledger).
+    s269 (2): rows/mixed_payload_display.lu,
+      typecheck/enum_str_bare_choice.lu (native/release payload fixes).
+    s271 (2): memory/mut_relay_push.lu,
+      memory/mut_param_replaced.lu (release range-channel fixes).
+  Five other new rows (the four repaired push-copy controls and
+  map_pairs_walk_snapshot) should not move. term_editor_rows changes its
+  invalid literal from bit 24 to 25, not the expected output. Native UB
+  signal numbers are not stable semantic moves. Dedicated drain-thread,
+  terminal and progress probes own behaviour invisible to this differ.
+  Every unexpected move must be measured, named and owned, never waived.
+- Fixed std: 561 tests (verified file count), from 552 at the old pin:
+  sc74 +3, sc75 +4, sc76 +2. sc75 records 554 doc examples; sc76 adds no
+  public API. env/arg0_rows is expected to expose its old lupin unsupported
+  ledger now that #295 is implemented; do not silently flip it here.
+- Lupin moves to 0.1.59 and the later wolf 0.2.37 PAIRING names 0.1.59
+  with pin b16353e8. The candidate prints +dev.<commit> until tagged.
+- Readback: eleven digests, five wolf assets plus six lupin assets, each
+  read twice. Preserve the published controls below; downloads must be
+  hashed twice before any differ (not claimed done by this prediction).
+- Start-up on hasu's Ubuntu 24.04 toolchain container: 12 syscalls over
+  its clang C control, matching bench/startup.json's userland. Measure it;
+  do not substitute another distribution's baseline.
+
+Published digest inputs (release API agrees with prior public identities):
+  wolf-0.2.36-aarch64-apple-darwin.tar.gz b79d55845f349d56789d9d1cb057ee88b5a7128d3b6dd77ca070707cfa4aa632
+  wolf-0.2.36-aarch64-unknown-linux-gnu.tar.gz 3d5bd9ef47d3d198dd67fb3f995dff3ef7b169097529fa0e7ae8524e723be3d4
+  wolf-0.2.36-x86_64-pc-windows-msvc.tar.gz d5dda9335031d19e892566532906452eecb67166e9ae4df5e4f37ff4c5a27290
+  wolf-0.2.36-x86_64-unknown-linux-gnu.tar.gz d383c74c8cd123b9d9dfaa268271d4f004294f85c2b230237d0ef07027d9500d
+  wolf-rt-0.2.36-x86_64-unknown-linux-musl.tar.gz 3aba9c8b4e5c51f2094242946fae0e6f1cd64bc7837b7484e1085ce63373aa57
+  lupin-0.1.58-aarch64-apple-darwin.tar.gz c1b0277133c052892be10539062666e873e874997cbb5be300cffe2c309ec055
+  lupin-0.1.58-aarch64-unknown-linux-gnu.tar.gz 00e40fa22d99046b28357f56092075cdb3e3e36a21cc44bf04d6b46605db432c
+  lupin-0.1.58-x86_64-pc-windows-msvc.zip 5e1b65830082b0a908fd983b941179216f0d6e656121297e80b32b4b73681f50
+  lupin-0.1.58-x86_64-unknown-linux-gnu.tar.gz 34f52792bb59bc7565e0edc1235cd47d9a6ad13d5e6528993627f2e699b62193
+  lupin-0.1.58-x86_64-unknown-linux-musl.tar.gz 6ad6e008f97bce36b875e102906e2a949df5fd5d6f5cc693ae70fa19e376b533
+  lupin.exe 776254d62e3a06f30f2b84cafe4c3b189ce54d5575b782b5e1e1cb4e9608d2cf
+
+R-r42-1: (A) re-pin std to 5b3a599, (B) retain 78b9d3c.
+Recommend A for bounded incremental SHA-2 and the other derived std fixes;
+implement in the wolf phase, after STOP 1.
+R-r42-2: (A) release lupin 0.1.59, (B) retain the 0.1.58 pairing.
+Recommend A because the 38 commits carry user-visible fixes; implement A.
+These remain recommendations, not authority to tag, release or merge.
+
+Validation plan: commit a release-posture regression before bumping;
+show its named red then green. An off-line r42-plant-lock branch makes
+Cargo.lock disagree with the corrected manifest: --locked must fail
+locally by name. Plants are branch-only pushes, never PRs or dispatches.
+Use existing D57, README/manual doc_truth, mirror, corpus, export and
+signal gates, with loud skips. Run a fail-fast final-head gauntlet on hasu,
+printing each END <step> exit=N. Debug and release take separate emptier
+blocks, both long locks, at most two hours each; container memory 12g,
+taskset inside, foreign reaping pid 1. No Mac builds. Build committed
+immutable snapshots. Detached long work hands back pid/log/exit-marker.
+Hold the final push and PR for verification. No tag/release/merge/AUR.
+The orchestrator owns release labels and CI watches, audit and STOPs.
