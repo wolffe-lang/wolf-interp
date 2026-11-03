@@ -103,6 +103,7 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "fs_read_chunk",
     "fs_write",
     "fs_fstat",
+    "fs_fstat_record",
     "fs_close",
     "fs_remove",
     "fs_rename",
@@ -547,6 +548,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_read_chunk"
         | "fs_write"
         | "fs_fstat"
+        | "fs_fstat_record"
         | "fs_close"
         | "fs_remove"
         | "fs_rename"
@@ -607,6 +609,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "fs_read_chunk"
         | "fs_write"
         | "fs_fstat"
+        | "fs_fstat_record"
         | "fs_close"
         | "fs_remove"
         | "fs_rename"
@@ -4207,6 +4210,7 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "fs_read_link" => &["not_found", "denied", "invalid", "io"],
         // s230: the changers' rows, as `[os.host.sigs]` lists them.
         // `unsupported` is windows' answer to a mode and a symbolic link.
+        "fs_fstat_record" => &["io"],
         "fs_statfs" => &["not_found", "denied", "io"],
         "fs_open_at" | "fs_create_dir_at" | "fs_symlink_at" => &[
             "denied",

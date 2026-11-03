@@ -513,6 +513,13 @@ impl FsTable {
         Ok([kind_of(&meta), size_of(&meta)?, modified_ms(&meta)?])
     }
 
+    /// Full metadata from the held file, never its current pathname.
+    pub(crate) fn fstat_record(&mut self, handle: i128) -> FsResult<Vec<i128>> {
+        let file = self.handle_file(handle)?;
+        let meta = file.metadata().map_err(io_row)?;
+        Ok(stat_record(&meta)?)
+    }
+
     /// `fs_seek(fd, off, whence) -> int` (`[os.fs.seek]`): move the offset,
     /// answer the new one from the start. The handle first (`io`), then the
     /// whence (outside {0, 1, 2} is `invalid`, before the host), then the
@@ -2223,15 +2230,20 @@ impl Machine {
             // follows, so its containment is the family's resolved check;
             // `fs_lstat` follows no final link, so only the parent must
             // resolve inside the tree (`fs_contained_link`).
-            "fs_stat" | "fs_lstat" => {
-                let path = self.fs_path_arg(args, 0, name)?;
-                let follow = name == "fs_stat";
-                let answer = if follow {
-                    self.fs_contained(&path, name)
+            "fs_stat" | "fs_lstat" | "fs_fstat_record" => {
+                let answer = if name == "fs_fstat_record" {
+                    let fd = int_arg(args, 0, name)?;
+                    self.shared_fs().fstat_record(fd)
                 } else {
-                    self.fs_contained_link(&path, name)
-                }
-                .and_then(|path| stat_path(&path, follow));
+                    let path = self.fs_path_arg(args, 0, name)?;
+                    let follow = name == "fs_stat";
+                    if follow {
+                        self.fs_contained(&path, name)
+                    } else {
+                        self.fs_contained_link(&path, name)
+                    }
+                    .and_then(|path| stat_path(&path, follow))
+                };
                 let answer = match answer {
                     Ok(words) => {
                         let home = self.allocate(
