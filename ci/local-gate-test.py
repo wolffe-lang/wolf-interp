@@ -144,17 +144,16 @@ class Gate(unittest.TestCase):
             text = (ROOT / ".github/workflows" / name).read_text()
             actual = blocks(text)
             self.assertEqual(set(actual), set(old_jobs), name)
-            self.assertIn("  workflow_dispatch:", text)
+            if name in BASE.get("tag_only_release", []):
+                self.assertNotIn("workflow_dispatch", text)
+            else:
+                self.assertIn("  workflow_dispatch:", text)
             if BASE["schedules"].get(name):
                 self.assertIn(BASE["schedules"][name], text)
             if name in BASE["pr_workflows"]:
                 self.assertIsNotNone(on_block(text, "schedule"), name)
             for job, old in old_jobs.items():
                 new = actual[job]
-                if name in BASE.get("tag_only_dispatch", []):
-                    guard = "    if: ${{ startsWith(github.ref, 'refs/tags/v') }}\n"
-                    self.assertIn(guard, new, "manual release must remain tag-only")
-                    new = new.replace(guard, "")
                 # Remove only the new, explicitly-tested job and step gate lines.
                 new = re.sub(r"^    if: \$\{\{ \(" + re.escape(GATE) + r"\)(?: && \((.*)\))? \}\}\n",
                              lambda m: "    if: " + ("${{ " + m[1] + " }}" if job == "tier" else m[1]) + "\n" if m[1] else "", new, flags=re.M)
