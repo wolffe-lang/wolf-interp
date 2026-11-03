@@ -21,8 +21,16 @@ pid 1; a capability-free uid 1000 runs the tests below a separate session
 wrapper. No host pid namespace, catatonit signal mask or process-group
 kill. A container-only native taskset shim remaps constrained probes
 without changing dispositions or reopening closed standard descriptors.
-Each take has a 7,000-second foreground timeout, below two hours; the
-launcher retains pid, log and exit marker and prints a heartbeat each
+The 7,000-second foreground timeout starts immediately after outer-lock
+acquisition, before the inner wait, and has a 10-second hard escalation
+(7,010 seconds including grace, below two hours). Both flock descriptors
+are closed to workload descendants. The inner phase consumes the same
+remaining budget: bounded CLI teardown, podman's native container lifetime
+cap, and a fresh absolute-deadline calculation inside root PID 1, before
+compilation or tests. Every timeout targets its direct child, not a group;
+PID-1 exit ends the throwaway namespace. These setup guards have focused
+offline tests; the corrected Linux execution is still pending verification.
+The launcher retains pid, log and exit marker and prints a heartbeat each
 minute. Debug and release are separate takes. The lane budget is 10 GB.
 
 ## 2. Inputs, verified
@@ -104,10 +112,11 @@ worktree; `ci/r42/gauntlet.sh` stops at the first nonzero step and prints
 an `END <step> exit=N` line for every executed step. It checks the exact
 head and clean tracked tree at both ends. Each run records its full head.
 
-- Debug: metadata, fmt, planner/dist/anchor checks, clippy on all targets,
-  locked host-library check, the stale-lock plant proof, D57/build-stamp, mirror,
-  argv/CLI, variadic, anchor, exec/SIGPIPE and all eight differ CLI rows.
-- Release: metadata/fmt/planner/dist/anchors, locked release build,
+- Debug: metadata, focused guard tests, fmt, planner/dist/anchor checks,
+  clippy on all targets, locked host-library check, stale-lock plant proof,
+  D57/build-stamp, mirror, argv/CLI, variadic, anchor, exec/SIGPIPE and all
+  eight differ CLI rows.
+- Release: metadata/guard-tests/fmt/planner/dist/anchors, locked release build,
   CLI/protocol identity, binary digest twice, the whole release test
   suite with `--nocapture`, corpus and place-trace identity. Only the two
   differ CLI rows that require an UNOPTIMIZED harness are filtered here;
@@ -132,9 +141,37 @@ plant now use the host's `cargo check --locked --offline --lib` after
 clippy has populated its host dependencies, preserving the same stale-lock
 rejection without requiring unrelated target downloads.
 
-Final-head gauntlet and plant results are pending when this note is
-committed; their logs and actual statuses must be reviewed before the
-final push. The runner writes `records/<profile>-<full-head>.pid`, a
+### Guard correction after the ended `610c4fb7` run
+
+The next debug run ended **exit 1** at 2026-11-03T04:34:49Z, not pending.
+Clippy and `locked-check` passed. Cargo rejected the stale lock as intended:
+`END locked_manifest_refuses_stale_root_version exit=101`. However, the
+proof wrapper accepted only Cargo's older diagnostic, so
+`END plant-lock-proof exit=1` correctly stopped the gauntlet. The actual
+message was "cannot update the lock file ... because --locked was passed
+to prevent this". That failed run is not waived or called green.
+
+`ci/r42/guard-correction-prediction.txt` was committed at `714e11e`
+before correcting the guards. `004bcea` committed nine focused regression
+rows, all red before the fix. The corrected predicate accepts both Cargo
+lock-update/`--locked` causal diagnostics with a nonzero exit, and refuses
+success, permission/compile/cache errors and help-only text. The lifetime
+correction moves the outer-held timeout before the inner wait, preserves
+both single `-w 21600` requests, adds hard escalation and a native
+container lifetime cap, and recomputes the work budget after startup.
+
+`python3 -I ci/r42/guard-tests.py` now passes **11 tests**, including
+budget boundary arithmetic, static wrapper/PID-1 checks and offline CLI
+integration with recording fake flock/timeout/podman/cargo executables.
+Those tests execute no real lock, container, signal or remote job and
+perform no Rust build. They retain a child's nonzero exit and reject an
+unrelated Cargo failure through the real plant entrypoint. Red/green logs
+are under `/Users/mfwolffe/lanes/r42/logs/guard-tests-red.log` and
+`/Users/mfwolffe/lanes/r42/logs/guard-tests-green.log`.
+
+The corrected candidate has **not** been submitted remotely. A new exact-
+head debug/release gauntlet and current plant proof remain required after
+verification. The runner writes `records/<profile>-<full-head>.pid`, a
 `.locker.pid`, a `.exit` marker and a matching directory of records;
 its caller redirects the log to `logs/<profile>-<full-head>.log`.
 No CI run has been requested by this pass.
