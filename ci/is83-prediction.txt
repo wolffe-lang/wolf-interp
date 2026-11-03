@@ -1,0 +1,28 @@
+is83 prediction, recorded 2026-11-03T22:58Z before implementation
+Base: 668fb752 (0.1.59). Issues #315 and #321.
+
+Serve directory-open bit 32 on read modes 0 and 5 with safe custom_flags;
+compose it with bit 16's no-follow flag, which the existing helper also lacks.
+Modes 1..4 with bit 32, unknown bits and negative words: invalid before
+containment/host. Windows refuses either flag invalid. ENOTDIR and final-link
+refusals retain their host numbers beside invalid. Unflagged opens unchanged.
+Serve fs_set_mode_fd on the held File via set_permissions, not a reconstructed
+path: mode 0..07777, shape first, Windows unsupported, forged/closed io.
+
+Resolve nine descriptor-relative calls and s272's fs_statfs, os_chroot,
+os_getpriority, os_setpriority, os_signal_action_one. Shape errors precede
+named unsupported refusals. fs_statfs first resolves a contained path and
+checks metadata: missing not_found with host errno; an existing contained path
+is declined by name. No chroot/priority/disposition host state is changed.
+RAW_LF bit 24 becomes a valid terminal-mode shape; bit 25 stays invalid.
+The existing named terminal refusal is retained for valid mode words.
+
+Red-first integration rows cover each new name, every shape boundary, target
+signal bounds, flags with read/write modes, errno, no-follow composition,
+permission bounds, closed handles and the file-renamed-over-held-handle race.
+Unmodified downstream corpus fixtures record base then mirror answers; calls
+outside the served surface stop by name, not as unresolved identifiers.
+No vendor/pin/spec/dependency/feature changes. No unsafe.
+
+R-is83-1 is report-only: enumerate nix 0.31.3 safe APIs/features for all refused
+calls and recommend a separate approved safe-wrapper pass; implement none.
