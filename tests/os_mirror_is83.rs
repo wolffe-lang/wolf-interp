@@ -157,7 +157,7 @@ fn corpus_rows_at_the_mirror() {
         ("statfs_rows", Some("fs_statfs")),
         ("chroot_rows", Some("os_chroot")),
         ("priority_rows", Some("os_getpriority")),
-        ("signal_action_rows", Some("os_signal_action_one")),
+        ("signal_action_rows", Some("os_signal_ignored")),
         ("term_lf_rows", None),
     ];
     for (name, refusal) in cases {
@@ -295,4 +295,31 @@ fn declared_stdout(entry: &Path) -> String {
     let mut result: String = serde_json::from_str(encoded).unwrap();
     result.push('\n');
     result
+}
+
+#[cfg(unix)]
+#[test]
+fn nofollow_write_modes_preserve_the_target() {
+    let r = observe(
+        "nofollow_writes",
+        r#"fn row(m: int) -> str {
+    let h = fs_open_perm("target/link", m, 0o600) else |e| { return "{e}" }
+    fs_close(h) else |_| {}
+    "ok"
+}
+fn main() -> !int {
+    fs_write_text("target/f", "kept")?
+    fs_symlink("f", "target/link")?
+    for m in [16, 17, 18, 19, 21] { print(row(m)) }
+    print(row(20))
+    print(fs_read_text("target/f")?)
+    0
+}
+"#,
+    );
+    assert_eq!(r["verdict"], "exit(0)", "{r}");
+    assert_eq!(
+        r["stdout_inline"], "invalid\ninvalid\ninvalid\ninvalid\ninvalid\nexists\nkept\n",
+        "{r}"
+    );
 }
