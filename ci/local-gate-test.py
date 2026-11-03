@@ -78,6 +78,20 @@ class Gate(unittest.TestCase):
         original_steps = len(re.findall(r"^      - ", BASE["workflows"]["ci.yml"][root], re.M))
         self.assertEqual(b[root].count("        if: ${{ " + GATE + " }}"), original_steps + 1)
 
+    def test_auxiliary_pr_workflows_follow_gate(self):
+        for name in BASE["pr_workflows"]:
+            if name == "ci.yml":
+                continue
+            text = (ROOT / ".github/workflows" / name).read_text()
+            for job, body in blocks(text).items():
+                self.assertIn("    if: ${{ (" + GATE + ")", body, (name, job))
+                self.assertFalse(expression(GATE, "pull_request"))
+                self.assertTrue(expression(GATE, "pull_request", ["ci"]))
+            if on_block(text, "push") is not None:
+                self.assertIsNotNone(patterns(text))
+                self.assertFalse(matches(BASE["module_path"], patterns(text)))
+                self.assertTrue(matches(".github/workflows/ci.yml", patterns(text)))
+
     def test_labelled_means_full_set(self):
         text = self.main()
         root = blocks(text)[BASE["root"]]
@@ -132,6 +146,10 @@ class Gate(unittest.TestCase):
                 self.assertIsNotNone(on_block(text, "schedule"), name)
             for job, old in old_jobs.items():
                 new = actual[job]
+                if name in BASE.get("tag_only_dispatch", []):
+                    guard = "    if: ${{ startsWith(github.ref, 'refs/tags/v') }}\n"
+                    self.assertIn(guard, new, "manual release must remain tag-only")
+                    new = new.replace(guard, "")
                 # Remove only the new, explicitly-tested job and step gate lines.
                 new = re.sub(r"^    if: \$\{\{ \(" + re.escape(GATE) + r"\)(?: && \((.*)\))? \}\}\n",
                              lambda m: "    if: " + ("${{ " + m[1] + " }}" if job == "tier" else m[1]) + "\n" if m[1] else "", new, flags=re.M)
