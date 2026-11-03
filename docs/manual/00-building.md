@@ -35,9 +35,9 @@ whichever is present:
   ```
 
 - `vendor/upstream/` is a tracked snapshot of the same two trees at the
-  same pin, byte-identical to the submodule. It exists because the
-  submodule is private and CI cannot clone it (`vendor/README.md`). A bare
-  clone works from this snapshot without touching submodules at all.
+  same pin, byte-identical to the submodule. This keeps a bare build and
+  CI independent of a compiler checkout (`vendor/README.md`); neither
+  needs to initialize the submodule.
 
 The corpus is read-only in both forms. A corpus file that looks wrong is a
 finding to report upstream; do not patch it here.
@@ -56,8 +56,9 @@ cargo run -- corpus
 The corpus walk at the end checks every pinned conformance file against
 this implementation and prints the ledger. Its last line counts
 mismatches; on a healthy checkout every mismatch it counts is one that
-is already triaged and filed in `docs/divergence-log.md` (the count is
-`3` at the current pin: DIV-2026-027's two failing `assert_msg_*` rows, whose
+is explicitly accounted for. On Unix the count is `4`: one exact
+reset/reuse accounting forward pin in `tests/run_corpus.rs`, plus the
+three filed findings in `docs/divergence-log.md`: DIV-2026-027's two failing `assert_msg_*` rows, whose
 `stdout=` pins the dropped rendering of an assert message this machine
 renders as a line (wolf-lang#556), and DIV-2026-028, kw11's plain racy
 counter, whose `check: pass` cannot spell the `trap(race)` this machine
@@ -68,8 +69,9 @@ DIV-2026-026, `memory/list_session_struct.lu` reading the
 element its `let` moved, retired at the `ec56a08f` bump, where the row
 copies the element instead; DIV-2026-022 and -023 retired at the `a7f517e` bump, where
 wolf-lang#341 re-pinned the two seed headers that had gone stale against
-their clauses; the gate in `tests/run_corpus.rs` waives only the filed
-set):
+their clauses. The gate in `tests/run_corpus.rs` checks that the reset
+forward pin still has exactly its recorded output, and retires it when
+the accounting agrees:
 
 On Unix hosts:
 
@@ -77,25 +79,29 @@ On Unix hosts:
 $ lupin corpus
 …
 
-1239 file(s) under upstream/corpus: 1177 entries, 62 member(s), 0 failure(s)
-479 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
+1253 file(s) under upstream/corpus: 1191 entries, 62 member(s), 0 failure(s)
+499 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 953 entries reach the `run` rung; 883 match their `check:` expectation, 136 are the dynamic counterpart of the static code the corpus pins, 67 are static-conservatism entries (the compiler rejects statically what this machine never checks), 88 are out of scope, 3 mismatch
+lupin: 959 entries reach the `run` rung; 888 match their `check:` expectation, 136 are the dynamic counterpart of the static code the corpus pins, 67 are static-conservatism entries (the compiler rejects statically what this machine never checks), 96 are out of scope, 4 mismatch
 ```
 
 On Windows, `os/ids_read.lu` and `os/signal_reserved_rows.lu` handle the
 host's `unsupported` error rows and finish normally. On Unix this
 interpreter declines `os_uid` and `os_signal_realtime` by name instead.
-These are named observations, not skipped corpus entries:
+The descriptor-relative calls and the new root, priority and signal-action
+rows also take their specified Windows branches. Four new OS headers carry
+the Unix stdout: the raw CLI counts their different Windows output as
+mismatches, while the tests check the exact Windows expectations from the
+spec. These are named observations, not skipped corpus entries:
 
 ```console windows
 $ lupin corpus
 …
 
-1239 file(s) under upstream/corpus: 1177 entries, 62 member(s), 0 failure(s)
-479 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
+1253 file(s) under upstream/corpus: 1191 entries, 62 member(s), 0 failure(s)
+499 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 955 entries reach the `run` rung; 885 match their `check:` expectation, 136 are the dynamic counterpart of the static code the corpus pins, 67 are static-conservatism entries (the compiler rejects statically what this machine never checks), 86 are out of scope, 3 mismatch
+lupin: 968 entries reach the `run` rung; 893 match their `check:` expectation, 136 are the dynamic counterpart of the static code the corpus pins, 67 are static-conservatism entries (the compiler rejects statically what this machine never checks), 87 are out of scope, 8 mismatch
 ```
 
 ## Bumping the pin
