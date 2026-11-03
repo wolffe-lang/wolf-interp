@@ -891,17 +891,23 @@ const READ_CAP: usize = 1 << 20;
 /// Mode 2 is deliberately NOT readable and mode 4 is: probed on the compiled
 /// lane at this pin, and the reason a shared helper spells each mode out
 /// rather than folding them together.
-fn open_options(mode: i128) -> Result<OpenOptions, Row> {
-    let mut options = OpenOptions::new();
+/// The open word's language shape, independent of the exporting machine.
+fn open_word_shape(mode: i128, flags_supported: bool) -> Result<i128, Row> {
     let base = mode & 15;
     if mode < 0
         || mode & !63 != 0
         || base > 5
         || (mode & 32 != 0 && base != 0 && base != 5)
-        || (!cfg!(unix) && mode & 48 != 0)
+        || (!flags_supported && mode & 48 != 0)
     {
         return Err("invalid");
     }
+    Ok(base)
+}
+
+fn open_options(mode: i128) -> Result<OpenOptions, Row> {
+    let mut options = OpenOptions::new();
+    let base = open_word_shape(mode, cfg!(unix))?;
     let mut flags = 0;
     #[cfg(unix)]
     {
@@ -1909,7 +1915,10 @@ impl Machine {
                 int_arg(args, 0, name)?;
                 let open = int_arg(args, 2, name)?;
                 let perm = int_arg(args, 3, name)?;
-                if open_options(open).is_err() || !(0..=PERM_MAX).contains(&perm) {
+                if open_word_shape(open, !crate::attrs::build_target().contains("-windows-"))
+                    .is_err()
+                    || !(0..=PERM_MAX).contains(&perm)
+                {
                     return Ok(Err(FsErr::Row("invalid")));
                 }
                 names.push(self.fs_str_arg(args, 1, name)?);
@@ -1986,7 +1995,7 @@ impl Machine {
             | "fs_link_at"
             | "fs_read_dir_entries_at" => {
                 let answer = self.fs_at_shape(name, args)?.and_then(|()| {
-                    if cfg!(windows) {
+                    if crate::attrs::build_target().contains("-windows-") {
                         Err(FsErr::Row("unsupported"))
                     } else {
                         Err(FsErr::Outside(format!("`{name}` resolves relative to a held directory; std has no descriptor-relative call ([os.fs.at])")))

@@ -1111,7 +1111,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             } else if name == "os_chroot" && !matches!(args.first(), Some(Value::Str(..))) {
                 return unsupported(format!("`{name}` takes a path"));
             }
-            if cfg!(windows) {
+            if crate::attrs::build_target().contains("-windows-") {
                 return Ok(error_value(name, "unsupported"));
             }
             unsupported(format!(
@@ -1429,7 +1429,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // call, so a unix host refuses by name; windows answers its row.
         #[cfg(not(target_family = "wasm"))]
         "os_signal_ignored" => {
-            if cfg!(windows) {
+            if crate::attrs::build_target().contains("-windows-") {
                 machine.note(
                     Rule::ErrUnion,
                     span,
@@ -1775,7 +1775,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                 );
                 return Ok(error_value(name, "invalid"));
             }
-            if cfg!(windows) {
+            if crate::attrs::build_target().contains("-windows-") {
                 machine.note(
                     Rule::ErrUnion,
                     span,
@@ -1826,7 +1826,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             };
             let row = if !term_mode_shape(*mode) {
                 Some("invalid")
-            } else if cfg!(windows) {
+            } else if crate::attrs::build_target().contains("-windows-") {
                 Some("unsupported")
             } else if machine.files().is_terminal(*fd) == Some(true) {
                 None
@@ -4828,7 +4828,8 @@ fn fd_map_of(flat: &[i128]) -> Option<Vec<(i128, Option<i128>)>> {
 /// `[os.term.mode]`'s shape: a mode is a set of fields — bits 0..7 (s219's
 /// three, s234's `FLOW` and `EXTENDED`, s248's `RAW_CR`, `RAW_OUTPUT` and
 /// `STRIP8`; ruling #97: each new bit's 0 is the usual setting), `VMIN` in
-/// bits 8..15 and `VTIME` in 16..23. A negative mode, or any bit from 24 up,
+/// bits 8..15 and `VTIME` in 16..23; s272 adds `RAW_LF` at bit 24.
+/// A negative mode, or any bit from 25 up,
 /// is `invalid` before the handle is read, for `os_term_set_mode` and
 /// `os_term_restore_at_exit` alike.
 #[cfg(not(target_family = "wasm"))]

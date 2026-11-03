@@ -12,6 +12,8 @@ fn declined_os_calls_use_the_reference_target() {
         ("os_signal_action_one", "1"),
         ("os_signal_ignored", ""),
         ("fs_open_at", "100000, \"x\", 0, 0"),
+        ("fs_open_at", "100000, \"x\", 32, 0"),
+        ("fs_open_at", "100000, \"x\", 48, 0"),
         ("fs_stat_at", "100000, \"x\""),
         ("fs_lstat_at", "100000, \"x\""),
         ("fs_remove_at", "100000, \"x\""),
