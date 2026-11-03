@@ -332,7 +332,7 @@ impl FsTable {
         // The mode is decided BEFORE the filesystem is touched, so a bad
         // mode is never a half-done open. The clause is explicit about it.
         let options = open_options(mode)?;
-        let file = options.open(path).map_err(open_row)?;
+        let file = options.open(path).map_err(|e| open_row(e, mode))?;
         Ok(self.mint(file))
     }
 
@@ -344,7 +344,10 @@ impl FsTable {
     pub(crate) fn open_perm(&mut self, path: &Path, open: i128, mode: u32) -> FsResult<i128> {
         use std::os::unix::fs::OpenOptionsExt as _;
         let mut options = open_options(open)?;
-        let file = options.mode(mode).open(path).map_err(open_row)?;
+        let file = options
+            .mode(mode)
+            .open(path)
+            .map_err(|e| open_row(e, open))?;
         Ok(self.mint(file))
     }
 
@@ -1023,13 +1026,15 @@ fn in_int_domain(value: i128) -> Result<i128, Row> {
 
 /// The open family's rows (`[os.fs.open]`): `not_found`, `denied`, `exists`,
 /// `io`. `invalid` never reaches here — it is decided before the open.
-fn open_row(error: std::io::Error) -> FsErr {
+fn open_row(error: std::io::Error, open: i128) -> FsErr {
     note_host_error(&error);
     FsErr::Row(match error.kind() {
         std::io::ErrorKind::NotFound => "not_found",
         std::io::ErrorKind::PermissionDenied => "denied",
         std::io::ErrorKind::AlreadyExists => "exists",
-        std::io::ErrorKind::NotADirectory | std::io::ErrorKind::FilesystemLoop => "invalid",
+        std::io::ErrorKind::NotADirectory if open & 32 != 0 => "invalid",
+        #[cfg(unix)]
+        _ if error.raw_os_error() == Some(nix::errno::Errno::ELOOP as i32) => "invalid",
         #[cfg(target_os = "freebsd")]
         _ if error.raw_os_error() == Some(nix::errno::Errno::EMLINK as i32) => "invalid",
         _ => "io",
