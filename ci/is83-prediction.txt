@@ -26,3 +26,23 @@ No vendor/pin/spec/dependency/feature changes. No unsafe.
 
 R-is83-1 is report-only: enumerate nix 0.31.3 safe APIs/features for all refused
 calls and recommend a separate approved safe-wrapper pass; implement none.
+
+2026-11-03 follow-on prediction, before further implementation:
+Re-pin spec/corpus/gitlink/PIN to 5f1f1c949582f53121e4047bc83c86f23ff72240.
+The probe at 97d750f keeps the preimplementation evaluator at f3518b9.
+The anchor sets grow 706 -> 724: 18 additions, zero removals, compared both
+ways. The corpus grows by 14 entries, with term_editor_rows updated upstream
+to use bit 25 as its unknown bit; no local vendor overlay is permitted.
+Expect snapshot map iteration already to agree; the reset reuse ledger and
+allocation-free pairs view may require named forward pins, not implementation
+in this pass. Measure the whole corpus before resuming implementation.
+
+Also mirror fs_fstat_record, authorized as an older gap required by the new
+open_directory and mode_fd rows. It reads File::metadata on the held handle
+and reuses the twenty-word stat record mapping. Closed and forged handles:
+io. No path reconstruction, including when a new file replaces the name.
+The new red-first held-record row is committed at d208f65 and observed red on
+macOS because fs_fstat_record does not resolve; flag-composition is red on
+that same missing name. Existing nonterminal mode-set rows will answer io
+once the new pin is carried; RAW_LF bit 24 is legal, bit 25 invalid. Local
+terminal fixtures/assertions move with the upstream corpus, red first.
