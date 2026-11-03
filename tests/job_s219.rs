@@ -109,7 +109,6 @@ fn what_needs_unsafe_is_refused_by_name() {
             "os_term_set_foreground",
         ),
         ("mode", "let _m = os_term_mode(0)?", "os_term_mode"),
-        ("setmode", "os_term_set_mode(0, 1)?", "os_term_set_mode"),
         (
             "tty",
             "let _h = os_spawn_job(\"true\", List[str](), List[int](), 0, 0, 0)?",
@@ -142,12 +141,12 @@ fn what_needs_unsafe_is_refused_by_name() {
 /// (s234: the outside bit moves from 8 — `FLOW` now, as 16 is
 /// `EXTENDED` — to 32, still no field: the same check. s248, is79
 /// (wolf-interp#268): 32, 64 and 128 are fields too — `RAW_CR`,
-/// `RAW_OUTPUT`, `STRIP8` — so it moves again, to bit 24, past `VTIME`.)
+/// `RAW_OUTPUT`, `STRIP8` — so it moves again, to bit 24, past `VTIME`; s272 adds RAW_LF there, so bit 25 is outside.)
 #[test]
 fn a_bad_mode_is_invalid_first() {
     let rec = observe_text(
         "s219-badmode",
-        "fn main() -> !int {\n    var t = \"ok\"\n    os_term_set_mode(0, 16777216) else |e| {\n        \
+        "fn main() -> !int {\n    var t = \"ok\"\n    os_term_set_mode(0, 33554432) else |e| {\n        \
 t = match e {\n            invalid => \"invalid\",\n            io => \"io\",\n            \
 unsupported => \"unsupported\",\n        }\n    }\n    print(t)\n    0\n}\n",
     );

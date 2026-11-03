@@ -95,7 +95,7 @@ fn well_formed_calls_are_refused_by_name() {
             name,
             &format!("fn main() -> !int {{\n    {name}({args})?\n    0\n}}\n"),
         );
-        if cfg!(windows) && name.starts_with("os_") {
+        if cfg!(windows) && name != "fs_statfs" {
             assert_eq!(r["verdict"], "exit(1)", "{name}: {r}");
         } else {
             assert_eq!(r["verdict"], "unsupported", "{name}: {r}");
@@ -169,7 +169,15 @@ fn corpus_rows_at_the_mirror() {
         let r = run(&entry, &dir);
         println!("{name}: {r}");
         if let Some(call) = refusal {
-            if cfg!(windows) {
+            if cfg!(windows) && name != "statfs_rows" {
+                assert_eq!(r["verdict"], "exit(0)", "{name}: {r}");
+                let expected = match name {
+                    "chroot_rows" => "missing: true\nmissing_number: true\ndot=unsupported\ndot_number=0\n".to_owned(),
+                    "priority_rows" => "read=unsupported\nzero=unsupported\n".to_owned(),
+                    "signal_action_rows" => "zero=invalid\ntwo_bits=invalid\npast_table=invalid\nfar_host_number: true\nterm=unsupported\n".to_owned(),
+                    _ => declared_stdout(&entry),
+                };
+                assert_eq!(r["stdout_inline"], expected, "{name}: {r}");
                 continue;
             }
             assert_eq!(r["verdict"], "unsupported", "{name}: {r}");
@@ -179,19 +187,10 @@ fn corpus_rows_at_the_mirror() {
             );
         } else {
             assert_eq!(r["verdict"], "exit(0)", "{name}: {r}");
-            let text = std::fs::read_to_string(entry).unwrap();
-            let first = text.lines().next().unwrap();
-            let encoded = first
-                .split("stdout=")
-                .nth(1)
-                .unwrap()
-                .strip_suffix(')')
-                .unwrap();
-            let mut expected: String = serde_json::from_str(encoded).unwrap();
+            let mut expected = declared_stdout(&entry);
             if cfg!(windows) && name == "term_lf_rows" {
                 expected = expected.replace("=io", "=unsupported");
             }
-            expected.push('\n');
             assert_eq!(r["stdout_inline"], expected, "{name}: {r}");
         }
     }
@@ -282,4 +281,18 @@ fn main() -> !int {
         "unsupported unsupported\nunsupported\ninvalid\n"
     };
     assert_eq!(r["stdout_inline"], expected, "{r}");
+}
+
+fn declared_stdout(entry: &Path) -> String {
+    let text = std::fs::read_to_string(entry).unwrap();
+    let first = text.lines().next().unwrap();
+    let encoded = first
+        .split("stdout=")
+        .nth(1)
+        .unwrap()
+        .strip_suffix(')')
+        .unwrap();
+    let mut result: String = serde_json::from_str(encoded).unwrap();
+    result.push('\n');
+    result
 }

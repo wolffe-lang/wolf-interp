@@ -260,9 +260,9 @@ fn the_canonical_path_outside_the_tree_is_declined_by_name() {
 fn the_restore_rows_answer_as_the_compiled_tiers() {
     let rec = run_fixture("restore_rows.lu");
     let want = if cfg!(unix) {
-        "bit24=invalid negative=invalid forged=io file=io\n"
+        "bit24=io negative=invalid forged=io file=io\n"
     } else {
-        "bit24=invalid negative=invalid forged=unsupported file=unsupported\n"
+        "bit24=unsupported negative=invalid forged=unsupported file=unsupported\n"
     };
     assert_runs(&rec, want, "restore_rows.lu");
 }
@@ -293,9 +293,9 @@ fn main() {
 ",
     );
     let want = if cfg!(unix) {
-        "raw=io vtime=io bit24=invalid\n"
+        "raw=io vtime=io bit24=io\n"
     } else {
-        "raw=unsupported vtime=unsupported bit24=invalid\n"
+        "raw=unsupported vtime=unsupported bit24=unsupported\n"
     };
     assert_runs(&rec, want, "the restore's shape with bits 5..7");
 }
@@ -369,7 +369,7 @@ fn a_well_formed_wait_over_descriptors_is_refused_by_name() {
 
 /// `[os.term.mode]`'s bits 5..7 (ruling #97: each names the setting a
 /// terminal does NOT usually have, so 0 is the usual one) are fields: a set
-/// with them passes the shape, and only bit 24 and above, or a negative
+/// with them passes the shape, and only bit 25 and above, or a negative
 /// mode, is `invalid`. Past the shape the set is refused by name on unix
 /// as it always was (`tcsetattr`), and windows answers `unsupported`.
 /// 0.1.55: `invalid` (its shape row before s248).
@@ -391,7 +391,7 @@ fn the_mode_bits_five_to_seven_pass_the_shape() {
 ",
     );
     if cfg!(unix) {
-        assert_refused_by_name(&rec, "os_term_set_mode", "bits 5..7 set");
+        assert_runs(&rec, "io\n", "bits 5..7 set on a nonterminal");
     } else {
         assert_runs(&rec, "unsupported\n", "bits 5..7 set (windows)");
     }
