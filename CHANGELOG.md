@@ -33,7 +33,7 @@ must complete before publication; a branch build still prints
 
 `os_name`, `os_arch`, `os_core_limit`, `os_set_core_limit` and
 `os_core_off` now use the safe host wrappers (#277). `fs_access` uses
-real/effective credential access checks (#278). Host-specific errors and
+real-credential access checks (#278). Host-specific errors and
 named refusals remain part of those calls; `fs_adopt`, the remaining
 filesystem/job gaps in #278, and the spawn/exec `os_error()` mirror are
 not implemented by this release.
