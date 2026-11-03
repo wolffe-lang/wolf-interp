@@ -120,6 +120,13 @@ head and clean tracked tree at both ends. Each run records its full head.
   red exit. This break never belongs in the release branch. The plant
   is branch-only, with no PR or dispatch.
 
+The first compiled-gate launch at `928efcbf` stopped before its first
+step: the worktree's absolute gitdir was not visible through the `/lane`
+volume alias. This was a rig prerequisite failure, not a test verdict.
+The launcher now also mounts this lane at its original absolute path,
+so both sides of git's worktree metadata resolve without editing it.
+A fresh committed snapshot is used for the corrected launch.
+
 Final-head gauntlet and plant results are pending when this note is
 committed; their logs and actual statuses must be reviewed before the
 final push. The runner writes `records/<profile>-<full-head>.pid`, a

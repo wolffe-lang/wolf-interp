@@ -38,7 +38,7 @@ flock -w 21600 "/home/mfwolffe/lanes/hasu-block-$block.lock" \
     timeout --foreground 7000 podman run --rm --name "r42-$profile-${head:0:12}" \
     --memory 12g --pids-limit 16384 --ulimit nproc=32768:32768 --ulimit core=0 \
     --stop-timeout 30 --userns keep-id:uid=1000,gid=1000 --user 0 \
-    -v "$base:/lane:rw" -w "/lane/builds/$name" \
+    -v "$base:/lane:rw" -v "$base:$base:rw" -w "/lane/builds/$name" \
     -e PATH=/opt/s263-rust/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     -e RUSTUP_HOME=/opt/s263-rustup -e RUSTUP_TOOLCHAIN=1.97.1 \
     -e CARGO_HOME=/lane/cargo -e CARGO_INCREMENTAL=0 -e CARGO_BUILD_JOBS=4 \
