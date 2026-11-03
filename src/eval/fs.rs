@@ -348,6 +348,27 @@ impl FsTable {
         Ok(self.mint(file))
     }
 
+    /// #321: chmod the held file, never a reconstructed name.
+    #[cfg(unix)]
+    fn set_mode_fd(&mut self, handle: i128, mode: u32) -> FsResult<()> {
+        use std::os::unix::fs::PermissionsExt as _;
+        let file = self.handle_file(handle)?;
+        file.set_permissions(std::fs::Permissions::from_mode(mode))
+            .map_err(|e| {
+                note_host_error(&e);
+                FsErr::Row(if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    "denied"
+                } else {
+                    "io"
+                })
+            })
+    }
+
+    #[cfg(not(unix))]
+    fn set_mode_fd(&mut self, _handle: i128, _mode: u32) -> FsResult<()> {
+        Err(FsErr::Row("unsupported"))
+    }
+
     /// s230 (`[os.fs.truncate]`): `fs_truncate(fd, len)` — the file behind
     /// the handle becomes exactly `len` bytes; the offset does not move.
     /// A negative length is `invalid` before the handle is looked at; every
@@ -862,7 +883,27 @@ const READ_CAP: usize = 1 << 20;
 /// rather than folding them together.
 fn open_options(mode: i128) -> Result<OpenOptions, Row> {
     let mut options = OpenOptions::new();
-    match mode {
+    let base = mode & 15;
+    if mode < 0
+        || mode & !63 != 0
+        || base > 5
+        || (mode & 32 != 0 && base != 0 && base != 5)
+        || (!cfg!(unix) && mode & 48 != 0)
+    {
+        return Err("invalid");
+    }
+    let mut flags = 0;
+    #[cfg(unix)]
+    {
+        use nix::fcntl::OFlag;
+        if mode & 16 != 0 {
+            flags |= OFlag::O_NOFOLLOW.bits();
+        }
+        if mode & 32 != 0 {
+            flags |= OFlag::O_DIRECTORY.bits();
+        }
+    }
+    match base {
         0 => {
             options.read(true);
         }
@@ -881,11 +922,12 @@ fn open_options(mode: i128) -> Result<OpenOptions, Row> {
         5 => {
             options.read(true);
             if let Some(flag) = nonblock_flag() {
-                set_custom_flags(&mut options, flag);
+                flags |= flag;
             }
         }
         _ => return Err("invalid"),
     }
+    set_custom_flags(&mut options, flags);
     Ok(options)
 }
 
@@ -987,6 +1029,9 @@ fn open_row(error: std::io::Error) -> FsErr {
         std::io::ErrorKind::NotFound => "not_found",
         std::io::ErrorKind::PermissionDenied => "denied",
         std::io::ErrorKind::AlreadyExists => "exists",
+        std::io::ErrorKind::NotADirectory | std::io::ErrorKind::FilesystemLoop => "invalid",
+        #[cfg(target_os = "freebsd")]
+        _ if error.raw_os_error() == Some(nix::errno::Errno::EMLINK as i32) => "invalid",
         _ => "io",
     })
 }
@@ -1844,8 +1889,95 @@ impl Machine {
         answer
     }
 
+    /// Shapes only: no handle lookup, path join, or host call.
+    fn fs_at_shape(&self, name: &str, args: &[Value]) -> Result<FsResult<()>, Signal> {
+        let mut names = Vec::new();
+        match name {
+            "fs_open_at" => {
+                int_arg(args, 0, name)?;
+                let open = int_arg(args, 2, name)?;
+                let perm = int_arg(args, 3, name)?;
+                if open_options(open).is_err() || !(0..=PERM_MAX).contains(&perm) {
+                    return Ok(Err(FsErr::Row("invalid")));
+                }
+                names.push(self.fs_str_arg(args, 1, name)?);
+            }
+            "fs_create_dir_at" => {
+                int_arg(args, 0, name)?;
+                if !(0..=PERM_MAX).contains(&int_arg(args, 2, name)?) {
+                    return Ok(Err(FsErr::Row("invalid")));
+                }
+                names.push(self.fs_str_arg(args, 1, name)?);
+            }
+            "fs_symlink_at" => {
+                let target = self.fs_str_arg(args, 0, name)?;
+                int_arg(args, 1, name)?;
+                if target.is_empty() {
+                    return Ok(Err(FsErr::Row("invalid")));
+                }
+                names.push(self.fs_str_arg(args, 2, name)?);
+            }
+            "fs_link_at" => {
+                int_arg(args, 0, name)?;
+                int_arg(args, 2, name)?;
+                if !matches!(args.get(4), Some(Value::Bool(_))) {
+                    return Err(Signal::Unsupported(format!(
+                        "`{name}` takes a bool follow flag"
+                    )));
+                }
+                names.push(self.fs_str_arg(args, 1, name)?);
+                names.push(self.fs_str_arg(args, 3, name)?);
+            }
+            "fs_read_dir_entries_at" => {
+                int_arg(args, 0, name)?;
+            }
+            _ => {
+                int_arg(args, 0, name)?;
+                names.push(self.fs_str_arg(args, 1, name)?);
+            }
+        }
+        if names.iter().any(|n| n.is_empty() || n.starts_with('/')) {
+            return Ok(Err(FsErr::Row("invalid")));
+        }
+        Ok(Ok(()))
+    }
+
     fn fs_call_served(&mut self, name: &str, args: &[Value], span: Span) -> EvalOut {
         match name {
+            "fs_statfs" => {
+                let path = self.fs_path_arg(args, 0, name)?;
+                let answer = self.fs_contained(&path, name).and_then(|path| {
+                    std::fs::metadata(path).map_err(|e| path_row(&e))?;
+                    Err(FsErr::Outside(format!(
+                        "`{name}` reads a file-system record; std has no statfs ([os.fs.statfs])"
+                    )))
+                });
+                self.fs_answer(name, answer, span)
+            }
+            "fs_set_mode_fd" => {
+                let fd = int_arg(args, 0, name)?;
+                let mode = int_arg(args, 1, name)?;
+                let answer = if !(0..=MODE_MAX).contains(&mode) {
+                    Err(FsErr::Row("invalid"))
+                } else {
+                    self.shared_fs().set_mode_fd(fd, mode as u32)
+                };
+                self.fs_answer(name, answer.map(|()| Value::Unit), span)
+            }
+            "fs_open_at"
+            | "fs_stat_at"
+            | "fs_lstat_at"
+            | "fs_remove_at"
+            | "fs_remove_dir_at"
+            | "fs_create_dir_at"
+            | "fs_symlink_at"
+            | "fs_link_at"
+            | "fs_read_dir_entries_at" => {
+                let answer = self.fs_at_shape(name, args)?.and_then(|()| {
+                    Err(FsErr::Outside(format!("`{name}` resolves relative to a held directory; std has no descriptor-relative call ([os.fs.at])")))
+                });
+                self.fs_answer(name, answer, span)
+            }
             // -- the open family: one call, three spellings ----------------
             "fs_open" | "fs_create" | "fs_open_mode" => {
                 let path = self.fs_path_arg(args, 0, name)?;
@@ -1854,7 +1986,8 @@ impl Machine {
                     "fs_create" => 1,
                     _ => int_arg(args, 1, name)?,
                 };
-                let answer = self.fs_contained(&path, name).and_then(|path| {
+                let answer = open_options(mode).map_err(FsErr::Row).and_then(|_| {
+                    let path = self.fs_contained(&path, name)?;
                     self.shared_fs()
                         .open(&path, mode)
                         .map(|fd| Value::Int(fd, IntTy::INT))
