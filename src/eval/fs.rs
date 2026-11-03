@@ -1986,7 +1986,11 @@ impl Machine {
             | "fs_link_at"
             | "fs_read_dir_entries_at" => {
                 let answer = self.fs_at_shape(name, args)?.and_then(|()| {
-                    Err(FsErr::Outside(format!("`{name}` resolves relative to a held directory; std has no descriptor-relative call ([os.fs.at])")))
+                    if cfg!(windows) {
+                        Err(FsErr::Row("unsupported"))
+                    } else {
+                        Err(FsErr::Outside(format!("`{name}` resolves relative to a held directory; std has no descriptor-relative call ([os.fs.at])")))
+                    }
                 });
                 self.fs_answer(name, answer, span)
             }
