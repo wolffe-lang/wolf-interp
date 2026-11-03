@@ -4,6 +4,9 @@ use std::process::{Command, Stdio};
 
 fn observe(name: &str, source: &str) -> serde_json::Value {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("is83_{name}"));
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
     std::fs::create_dir_all(dir.join("target")).unwrap();
     let entry = dir.join("main.lu");
     std::fs::write(&entry, source).unwrap();
@@ -202,4 +205,81 @@ fn statfs_missing_path_keeps_the_host_number() {
     );
     assert_eq!(r["verdict"], "exit(0)", "{r}");
     assert_eq!(r["stdout_inline"], "not_found\ntrue\n", "{r}");
+}
+
+#[test]
+fn full_stat_record_uses_the_held_handle() {
+    let r = observe(
+        "full_record",
+        r#"fn main() -> !int {
+    fs_write_text("target/held", "old")?
+    let fd = fs_open("target/held")?
+    let before = fs_fstat_record(fd)?
+    fs_write_text("target/new", "replacement")?
+    fs_rename("target/new", "target/held")?
+    let after = fs_fstat_record(fd)?
+    print("{before.len} {after.len} {after[0]} {after[1]}")
+    print("{before[9] == after[9] && before[10] == after[10]}")
+    fs_close(fd)?
+    fs_fstat_record(fd) else |e| { print("{e}") }
+    fs_fstat_record(1000000) else |e| { print("{e}") }
+    0
+}
+"#,
+    );
+    assert_eq!(r["verdict"], "exit(0)", "{r}");
+    assert_eq!(r["stdout_inline"], "20 20 0 3\ntrue\nio\nio\n", "{r}");
+}
+
+#[test]
+fn directory_read_modes_and_flags_compose() {
+    if !cfg!(unix) {
+        return;
+    }
+    let r = observe(
+        "directory_read",
+        r#"fn main() -> !int {
+    fs_create_dir_all("target/d")?
+    for m in [32, 37, 48, 53] {
+        let h = fs_open_mode("target/d", m)?
+        let r = fs_fstat_record(h)?
+        print("{r[0] == 1}")
+        fs_close(h)?
+        let p = fs_open_perm("target/d", m, 0o777)?
+        fs_close(p)?
+    }
+    0
+}
+"#,
+    );
+    assert_eq!(r["verdict"], "exit(0)", "{r}");
+    assert_eq!(r["stdout_inline"], "true\ntrue\ntrue\ntrue\n", "{r}");
+}
+
+#[test]
+fn held_mode_boundaries_and_closed_handles() {
+    let r = observe(
+        "held_modes",
+        r#"fn row(h: int, m: int) -> str {
+    fs_set_mode_fd(h, m) else |e| { return "{e}" }
+    "ok"
+}
+fn main() -> !int {
+    fs_write_text("target/f", "x")?
+    let h = fs_open("target/f")?
+    print("{row(h, 0)} {row(h, 0o7777)}")
+    fs_close(h)?
+    print(row(h, 0o600))
+    print(row(h, 0o10000))
+    0
+}
+"#,
+    );
+    assert_eq!(r["verdict"], "exit(0)", "{r}");
+    let expected = if cfg!(unix) {
+        "ok ok\nio\ninvalid\n"
+    } else {
+        "unsupported unsupported\nunsupported\ninvalid\n"
+    };
+    assert_eq!(r["stdout_inline"], expected, "{r}");
 }
