@@ -134,6 +134,11 @@ class Gate(unittest.TestCase):
             for key, value in BASE["full"].items():
                 self.assertEqual(json.loads(result.stdout)[key], value)
 
+    def test_release_workflow_stays_tag_only(self):
+        text = (ROOT / ".github/workflows/release.yml").read_text()
+        self.assertNotIn("workflow_dispatch", text)
+        self.assertIn('tags: ["v*"]', text)
+
     def test_nightly_release_and_commands_preserved(self):
         for name, old_jobs in BASE["workflows"].items():
             text = (ROOT / ".github/workflows" / name).read_text()
