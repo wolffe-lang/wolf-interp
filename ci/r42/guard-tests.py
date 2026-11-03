@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Small offline regression checks for r42's diagnostic and lifetime guards."""
 import ast
+import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -74,8 +76,12 @@ class LifetimeGuards(unittest.TestCase):
         self.assertIn('-e R42_LOCK_DEADLINE', runner)
         self.assertIn('ci/r42/lock-budget.sh work', runner)
         self.assertIn('timeout --foreground --kill-after=5 "$work_budget"', runner)
-        self.assertIn('exit $?', runner)
+        self.assertIn('exit "$rc"', runner)
         self.assertNotIn('--pid=host', runner)
+        work = (ROOT / "ci/r42/container-work.sh").read_text()
+        self.assertIn('--reuid=1000 --regid=1000', work)
+        self.assertIn('setsid --fork --wait bash -c', work)
+        self.assertIn('exit "$rc"', work)
 
     def test_remaining_budget_shrinks_after_inner_wait_and_startup(self):
         self.helper()
@@ -105,9 +111,80 @@ class LifetimeGuards(unittest.TestCase):
 
     def test_runner_and_budget_helper_parse_without_running_a_job(self):
         self.helper()
-        for script in (HELPER, ROOT / "ci/r42/hasu-run.sh", ROOT / "ci/r42/gauntlet.sh"):
+        for script in (HELPER, ROOT / "ci/r42/hasu-run.sh", ROOT / "ci/r42/gauntlet.sh",
+                       ROOT / "ci/r42/container-work.sh"):
             result = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class OfflineWrapper(unittest.TestCase):
+    def scratch(self):
+        parent = ROOT / "target/r42-guard-tests"
+        parent.mkdir(parents=True, exist_ok=True)
+        return tempfile.TemporaryDirectory(dir=parent)
+
+    def executable(self, path, text):
+        path.write_text("#!/usr/bin/env bash\nset -eu\n" + text)
+        path.chmod(0o755)
+
+    def test_outer_inner_wrapper_preserves_order_and_nonzero_child_exit(self):
+        with self.scratch() as directory:
+            directory = Path(directory)
+            trace = directory / "trace"
+            self.executable(directory / "timeout", '''printf 'timeout %s\\n' "$*" >> "$TRACE"
+test "$1" = --foreground
+test "$2" = --kill-after=10
+shift 3
+exec "$@"
+''')
+            self.executable(directory / "flock", '''printf 'flock %s\\n' "$*" >> "$TRACE"
+test "$1" = -w && test "$2" = 21600 && test "$3" = --close
+shift 4
+exec "$@"
+''')
+            self.executable(directory / "podman", '''printf 'podman %s\\n' "$*" >> "$TRACE"
+test "$1" = run && test "$2" = --timeout
+test "$3" -gt 0
+exit 7
+''')
+            env = dict(os.environ, PATH=f"{directory}:{os.environ['PATH']}", TRACE=str(trace))
+            result = subprocess.run(["bash", str(HELPER), "outer", "unused-inner.lock",
+                                     str(directory / "podman"), "--rm"],
+                                    env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 7, result.stderr)
+            lines = trace.read_text().splitlines()
+            self.assertEqual(len(lines), 4, lines)
+            self.assertTrue(lines[0].startswith("timeout --foreground --kill-after=10 7000 flock "), lines)
+            self.assertTrue(lines[1].startswith("flock -w 21600 --close unused-inner.lock bash "), lines)
+            self.assertTrue(lines[2].startswith("timeout --foreground --kill-after=10 "), lines)
+            self.assertTrue(lines[3].startswith("podman run --timeout "), lines)
+            self.assertLessEqual(int(lines[2].split()[3]), 6970)
+            self.assertLessEqual(int(lines[3].split()[3]), 6940)
+
+    def test_real_plant_entrypoint_accepts_only_the_named_cargo_failure(self):
+        with self.scratch() as directory:
+            directory = Path(directory)
+            plant = directory / "plant"
+            plant.mkdir()
+            (plant / "Cargo.toml").write_text('[package]\nname = "wolf-interp"\nversion = "0.1.59"\n')
+            (plant / "Cargo.lock").write_text('[[package]]\nname = "wolf-interp"\nversion = "0.1.58"\n')
+            self.executable(directory / "cargo", '''test "$*" = 'check --locked --offline --lib'
+printf '%s\\n' "$DIAGNOSTIC" >&2
+exit 101
+''')
+            env = dict(os.environ, PATH=f"{directory}:{os.environ['PATH']}")
+            for diagnostic, expected in [
+                ("error: cannot update the lock file /lane/Cargo.lock because --locked was passed to prevent this", 0),
+                ("error: failed to download anstyle-wincon; offline was specified", 1),
+            ]:
+                with self.subTest(diagnostic=diagnostic):
+                    env["DIAGNOSTIC"] = diagnostic
+                    log = directory / "plant.log"
+                    result = subprocess.run(["python3", "-I", str(ROOT / "ci/r42/plant-lock.py"),
+                                             str(plant), str(log)], env=env,
+                                            capture_output=True, text=True)
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    self.assertIn("END locked_manifest_refuses_stale_root_version exit=101", log.read_text())
 
 
 if __name__ == "__main__":

@@ -31,13 +31,14 @@ b=$(ps -eo args | grep -c '[f]lock .*hasu-block-B.lock' || true)
 block=A; four=0-3; one=0
 if (( b < a )); then block=B; four=6-9; one=6; fi
 echo "SUBMIT $name waiters_A=$a waiters_B=$b block=$block cpus=$four size_KiB=$size $(date -u +%FT%TZ)"
-# timeout's foreground mode signals its own podman child, never a process group.
-# The 7000s cap leaves teardown time below the two-hour lock-hold ceiling.
-flock -w 21600 "/home/mfwolffe/lanes/hasu-block-$block.lock" \
-    flock -w 21600 "/home/mfwolffe/lanes/hasu-$block.lock" \
-    timeout --foreground 7000 podman run --rm --name "r42-$profile-${head:0:12}" \
+# The outer-held helper starts its deadline before waiting on the inner
+# lock. Both lock waits remain single -w 21600 requests. Workload children
+# inherit neither lock descriptor, and every timeout is foreground-only.
+flock -w 21600 --close "/home/mfwolffe/lanes/hasu-block-$block.lock" \
+    bash "$snapshot/ci/r42/lock-budget.sh" outer "/home/mfwolffe/lanes/hasu-$block.lock" \
+    podman --rm --name "r42-$profile-${head:0:12}" \
     --memory 12g --pids-limit 16384 --ulimit nproc=32768:32768 --ulimit core=0 \
-    --stop-timeout 30 --userns keep-id:uid=1000,gid=1000 --user 0 \
+    --stop-timeout 10 --userns keep-id:uid=1000,gid=1000 --user 0 \
     -v "$base:/lane:rw" -v "$base:$base:rw" -w "/lane/builds/$name" \
     -e PATH=/opt/s263-rust/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     -e RUSTUP_HOME=/opt/s263-rustup -e RUSTUP_TOOLCHAIN=1.97.1 \
@@ -48,15 +49,16 @@ flock -w 21600 "/home/mfwolffe/lanes/hasu-block-$block.lock" \
     -e XDG_CACHE_HOME=/lane/scratch/cache -e LUPIN_SIGNAL_TESTS=1 \
     -e "R42_CPU_FOUR=$four" -e "R42_CPU_ONE=$one" \
     -e "R42_TASKSET_LOG=/lane/records/$name/taskset-translations.log" \
+    -e R42_LOCK_DEADLINE \
     localhost/r41-toolchain:1 bash -c '
         unset CARGO_TARGET_DIR
-        cc -O2 -static ci/r42/taskset-shim.c -o /usr/bin/taskset &&
-        /usr/bin/taskset.real -c "$R42_CPU_FOUR" setpriv \
-            --reuid=1000 --regid=1000 --clear-groups --bounding-set=-all \
-            --inh-caps=-all --ambient-caps=-all --no-new-privs \
-            setsid --fork --wait bash -c '\''bash "$@"; exit $?'\'' bash \
-                ci/r42/gauntlet.sh "$1" "$2" "$3" "$4"
-        exit $?
+        # Recompute after container startup: no relative-budget restart.
+        work_budget=$(bash ci/r42/lock-budget.sh work "$(date +%s)" "$R42_LOCK_DEADLINE") || exit $?
+        timeout --foreground --kill-after=5 "$work_budget" bash ci/r42/container-work.sh "$@"
+        rc=$?
+        # This root bash remains PID 1. Exiting it ends the namespace even
+        # when a killed workload left descendants; timeout is never PID 1.
+        exit "$rc"
     ' bash "$profile" "$head" "/lane/records/$name" "$plant" &
 locker=$!
 echo "$locker" > "$base/records/$name.locker.pid"

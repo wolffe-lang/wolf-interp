@@ -32,6 +32,7 @@ cargo --version
 step exact-head assert_head
 step release-posture python3 -I ci/r42/release-posture.py --version 0.1.59 \
     --pin b16353e8ae616ff3a35bd27adc56b727c50df345
+step guard-tests python3 -I ci/r42/guard-tests.py
 step fmt cargo fmt --check
 step tiers-test python3 -I ci/tiers-test.py
 step dist-test python3 -I ci/is80/dist-test.py
