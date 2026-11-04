@@ -77,20 +77,75 @@ when both are given.
 
 ## Program arguments
 
-A program's argv is an input of the run, as it is on the checked machine
-(`[exec.checked.argv]`): `--argv-hex=HEX` (on `run` and `conform-run`)
-supplies one argument as an even number of hexadecimal digits, repeated in
-OS argv order, argv[0] first. Empty HEX is an empty argument; a NUL byte is
-refused, since no OS argument holds one. Without the option argv is absent,
-never lupin's own arguments. `env_args()` reads argv[1..] as text,
-`env_arg0()` reads argv[0] alone, and `env_args_bytes()` reads every
-argument as bytes; a text reader that meets an argument that is not UTF-8
-traps `argument-utf8`, naming the argument's OS index (`[os.env.argv]`):
+`lupin FILE.lu ARGS…` and `lupin run [OPTIONS] FILE.lu ARGS…` run a
+program with ordinary shell arguments. Every word after FILE belongs to
+the program, unparsed, including `--help`, `--`, and an empty argument.
+Put lupin's options **before** FILE. `--` ends lupin's options, so
+`lupin -- -x.lu a` (or `lupin run -- -x.lu a`) runs a file named `-x.lu`.
+`lupin - a b` reads source from stdin with the same argument convention.
+
+argv[0] is FILE **as given**, not a canonical path or lupin's executable:
+`lupin ./tool.lu a b` supplies `["./tool.lu", "a", "b"]`.
+`env_args()` reads argv[1..] as text, `env_arg0()` reads argv[0] alone,
+and `env_args_bytes()` reads every argument as bytes, argv[0] first.
+Unix OS bytes pass through verbatim; Windows uses WTF-8 (`[os.env.argv]`).
+No lossy decoding occurs. A text reader meeting non-UTF-8 traps
+`argument-utf8`, naming the OS argv index; `env_args()` never decodes
+argv[0], and `env_arg0()` never decodes the trailing arguments.
+
+For exact conformance inputs, repeated `--argv-hex=HEX` remains available
+on `run` and `conform-run` (`[exec.checked.argv]`). It replaces the whole
+argv, **including argv[0]**. HEX is an even number of hexadecimal digits;
+empty HEX is an empty argument; NUL is refused. On `run`, put this option
+before FILE. Combining explicit hex input with trailing words is refused
+by name rather than guessing which input wins. `conform-run` keeps its
+protocol options (including options after FILE), accepts no trailing
+program words, and without hex input still has absent argv, never lupin's
+own arguments. For example:
 
 ```text
 $ lupin conform-run --json name.lu --argv-hex=ff --argv-hex=6f6b
 … "verdict":"trap(argument-utf8)" … "trap_message":"argument 0 is not UTF-8; read it with env_args_bytes()" …
 ```
+
+## Executable scripts
+
+On Linux, start the file with `#!/usr/bin/env lupin`, make it executable
+(`chmod +x tool.lu`), and run `./tool.lu a b`. With lupin on PATH the
+program sees `["./tool.lu", "a", "b"]`. On PAX use `#!/bin/lupin` or
+`#!/bin/env lupin`, with the corresponding binaries installed. The
+interpreter line is trivia only at byte zero (`[gram.lex.shebang]`);
+`#![` remains an inner attribute, not a comment. Host execution and
+interpreter lookup are the host's responsibility; lupin does not emulate
+a shell or split a shebang's option string.
+
+### Why this convention
+
+The comparison uses published documentation only. A script name and the
+interpreter executable's argv[0] are different things in several tools;
+Node does **not** preserve the script spelling as Python does.
+
+| tool | script name / program arguments | option boundary and shebang | non-UTF-8 arguments |
+|---|---|---|---|
+| [Python CLI](https://docs.python.org/3/using/cmdline.html), [sys.argv](https://docs.python.org/3/library/sys.html#sys.argv) | `sys.argv[0]` is the script name as given; following entries are script args | script ends interpreter options; Unix `#!` scripts are supported | Unix filesystem decoding with `surrogateescape`; `os.fsencode` recovers bytes |
+| [Node CLI](https://nodejs.org/api/cli.html), [process.argv](https://nodejs.org/api/process.html#processargv) | executable first, **absolute script path second**, then args; `process.argv0` is original executable argv[0] | CLI synopsis puts options before entry; `--` ends Node options; host runs executable scripts | linked API promises strings, not raw-byte round trips |
+| [Ruby options](https://docs.ruby-lang.org/en/3.4/ruby/options_md.html), [globals](https://docs.ruby-lang.org/en/3.4/globals_rdoc.html) | `$0` is script name, `ARGV` holds given arguments separately | interpreter options precede program; `-s` explicitly parses script switches; `-x` finds an embedded `#!…ruby` | linked pages do not specify raw-byte fidelity |
+| [Perl run](https://perldoc.perl.org/perlrun), [variables](https://perldoc.perl.org/perlvar) | `$0` is program name; `@ARGV` excludes it | `--` ends options; optional `-s` consumes script switches; Perl also examines switches on `#!` | `-CA` requests UTF-8 argv; no general raw-byte contract in these pages |
+| [Deno CLI](https://docs.deno.com/runtime/getting_started/command_line_interface/), [Deno.args](https://docs.deno.com/api/deno/~/Deno.args) | `Deno.args` contains script arguments, not script name | runtime flags before filename; later words are script args | linked pages do not specify raw-byte fidelity or a shebang contract |
+| [go run](https://pkg.go.dev/cmd/go#hdr-Compile_and_run_Go_program), [os.Args](https://pkg.go.dev/os#Args) | `package [arguments…]`; `os.Args` starts with program name, not a documented source spelling | build flags before package; no `--` requirement or shebang contract stated here | linked command page gives no byte policy |
+| [cargo run](https://doc.rust-lang.org/cargo/commands/cargo-run.html), [args_os](https://doc.rust-lang.org/std/env/fn.args_os.html) | runs a binary, not a source filename; first argument traditionally executable path | `--` separates Cargo's flags from all binary args; no script/shebang contract | `args_os` accepts non-Unicode; text `args` can panic |
+| [POSIX sh -c](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/sh.html) | `command_name` becomes `$0`; remaining operands become `$1…` | `--` ends shell options; command operands are not shell flags; `#!` command-file results are unspecified by POSIX | arguments are strings of bytes; locale affects character interpretation |
+
+The compiler's `wolf run --help` likewise says words after the entry file
+are the program's argv. Its generated executable's invocation name need
+not be the source filename: lupin deliberately chooses the source spelling
+for scripts. This is a command convention, not a change to `[os.env.argv]`.
+
+**Migration:** `lupin run FILE --json`, `FILE --seed=N`, and
+`FILE --trace-places` now give those words to the program. Use
+`lupin run --json FILE`, `lupin run --seed=N FILE`, or
+`lupin run --trace-places FILE`. Lupin does not steal a program's flags to
+issue a warning; `run --help` states the boundary.
 
 ## Traps
 
