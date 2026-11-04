@@ -55,9 +55,24 @@ let lupin consume a script's flags. No lossy string conversion occurs.
 - 0c3e893: same-source, black-box wolf run/lupin differential.
 - 3fb12b4: clarify the documentation comparison's stated limits.
 
-Mac focused argv: 12 passed. The compatibility run also exercises CLI
-and std-root behavior; its final status is in the external record.
-Linux record steps include environment, pre-fix-red, fmt, clippy,
+Mac compatibility: argv 12/12, CLI 35/35 and std-root 27/27 passed;
+END mac-command exit=0. This debug run includes both full corpus walks.
+The first Linux record reached its full-test step after green environment,
+pre-fix-red, fmt, clippy, release-build, argv-linux, shebang-lexer and
+differential steps. Its release-profile full suite exposed pre-existing
+differ_cli tests expecting a debug harness. They are deliberately untouched:
+the final test step uses the default debug profile, matching CI. A possible
+separate issue is release-profile coverage of those two test expectations;
+no issue is filed or fixed here.
+
+The legacy core_is77_live skip already states its reason. The local
+gauntlet boundary preserves the raw output and reason word for word,
+prefixes the recorder-stream copy as test output, then emits the strict
+SKIP metadata outside the step. Neither the test nor shared recorder is
+changed. Lack of a nested container engine remains a named skip, not a pass
+for the live core row.
+
+Final Linux record steps include environment, fmt, clippy,
 release-build, argv-linux, shebang-lexer, differential, tests, corpus and
 clean-tree. The final-head record and every actual END line belong to
 the PR evidence, not an invented transcript in this note.
@@ -79,9 +94,11 @@ Linux shebang success is not presented as a PAX result.
 
 R-is84-1 — argv[0]. Recommend the entry filename as given, not a
 canonicalized path or the compiler's generated executable name. Implemented
-for both human front doors. The differential prints wolf's actual
-invocation name alongside lupin's; it compares identical trailing argv
-on the same source without pretending command conventions are identical.
+for both human front doors. The measured Linux wolf 0.2.36 invocation name is DIR/.lu-cache/bin/args,
+while lupin reports DIR/args.lu. The differential now pins both exact
+answers and proves its guard rejects a changed answer on either side. It
+also compares identical trailing argv on the same source without pretending
+command conventions are identical.
 Cost: no runtime/stdlib change.
 
 R-is84-2 — stdin argv. Recommend no new stdin framing mode. Source stdin
@@ -116,5 +133,5 @@ never guess short-option bundling or decode raw bytes lossily. A separate
 byte-oriented API can be designed if needed. Implementation, semantic
 choices and std tests belong to the stdlib track (medium cost); draft only.
 
-README read against the whole change; argument example refreshed. No new
-issue is requested. PAX and Windows execution remain explicitly pending.
+README read against the whole change; argument example refreshed. A potential separate differ_cli release-profile coverage issue is drafted
+above; no issue action is requested within this lane. PAX and Windows execution remain explicitly pending.
