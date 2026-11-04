@@ -46,3 +46,12 @@ macOS because fs_fstat_record does not resolve; flag-composition is red on
 that same missing name. Existing nonterminal mode-set rows will answer io
 once the new pin is carried; RAW_LF bit 24 is legal, bit 25 invalid. Local
 terminal fixtures/assertions move with the upstream corpus, red first.
+
+R-is83-3 prediction, 2026-11-04, before the containment implementation:
+A no-follow open of a plain in-tree final link must inspect only its parent,
+never resolve the link's outside target. Both open spellings should answer
+invalid with ELOOP (directory+nofollow: ENOTDIR), creating nothing outside.
+Raw trailing /, /. and /.. retain full resolution, both for outside links
+(still declined) and inside directory links (still opened as directories).
+Unflagged containment and unrelated non-following APIs remain unchanged.
+The existing helper is reused only after checking the raw final component.
