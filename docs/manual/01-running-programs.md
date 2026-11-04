@@ -123,15 +123,21 @@ a shell or split a shebang's option string.
 
 The comparison uses published documentation only. A script name and the
 interpreter executable's argv[0] are different things in several tools;
-Node does **not** preserve the script spelling as Python does.
+Node does **not** preserve the script spelling as Python does. Python
+[documents executable Unix scripts](https://docs.python.org/3/using/unix.html),
+and Node [documents `#!/usr/bin/env node` plus executable permission](https://nodejs.org/en/learn/command-line/run-nodejs-scripts-from-the-command-line).
+Ruby and Perl also document their invocation as
+`[switches] [--] [programfile] [arguments]` in their `--help`. Where a
+linked page gives no byte, separator or shebang guarantee, the table says
+so rather than inferring behaviour from its implementation.
 
 | tool | script name / program arguments | option boundary and shebang | non-UTF-8 arguments |
 |---|---|---|---|
 | [Python CLI](https://docs.python.org/3/using/cmdline.html), [sys.argv](https://docs.python.org/3/library/sys.html#sys.argv) | `sys.argv[0]` is the script name as given; following entries are script args | script ends interpreter options; Unix `#!` scripts are supported | Unix filesystem decoding with `surrogateescape`; `os.fsencode` recovers bytes |
 | [Node CLI](https://nodejs.org/api/cli.html), [process.argv](https://nodejs.org/api/process.html#processargv) | executable first, **absolute script path second**, then args; `process.argv0` is original executable argv[0] | CLI synopsis puts options before entry; `--` ends Node options; host runs executable scripts | linked API promises strings, not raw-byte round trips |
-| [Ruby options](https://docs.ruby-lang.org/en/3.4/ruby/options_md.html), [globals](https://docs.ruby-lang.org/en/3.4/globals_rdoc.html) | `$0` is script name, `ARGV` holds given arguments separately | interpreter options precede program; `-s` explicitly parses script switches; `-x` finds an embedded `#!…ruby` | linked pages do not specify raw-byte fidelity |
+| [Ruby options](https://docs.ruby-lang.org/en/3.4/ruby/options_md.html), [globals](https://docs.ruby-lang.org/en/3.4/globals_rdoc.html) | `$0` is script name, `ARGV` holds given arguments separately | interpreter options precede program; `--` before program ends switches; `-s` explicitly parses script switches; `-x` finds an embedded `#!…ruby` | linked pages do not specify raw-byte fidelity |
 | [Perl run](https://perldoc.perl.org/perlrun), [variables](https://perldoc.perl.org/perlvar) | `$0` is program name; `@ARGV` excludes it | `--` ends options; optional `-s` consumes script switches; Perl also examines switches on `#!` | `-CA` requests UTF-8 argv; no general raw-byte contract in these pages |
-| [Deno CLI](https://docs.deno.com/runtime/getting_started/command_line_interface/), [Deno.args](https://docs.deno.com/api/deno/~/Deno.args) | `Deno.args` contains script arguments, not script name | runtime flags before filename; later words are script args | linked pages do not specify raw-byte fidelity or a shebang contract |
+| [Deno CLI](https://docs.deno.com/runtime/getting_started/command_line_interface/), [Deno.args](https://docs.deno.com/api/deno/~/Deno.args) | `Deno.args` contains script arguments, not script name | runtime flags before filename; later words are script args; linked pages give no separate `--` or shebang guarantee | linked pages do not specify raw-byte fidelity |
 | [go run](https://pkg.go.dev/cmd/go#hdr-Compile_and_run_Go_program), [os.Args](https://pkg.go.dev/os#Args) | `package [arguments…]`; `os.Args` starts with program name, not a documented source spelling | build flags before package; no `--` requirement or shebang contract stated here | linked command page gives no byte policy |
 | [cargo run](https://doc.rust-lang.org/cargo/commands/cargo-run.html), [args_os](https://doc.rust-lang.org/std/env/fn.args_os.html) | runs a binary, not a source filename; first argument traditionally executable path | `--` separates Cargo's flags from all binary args; no script/shebang contract | `args_os` accepts non-Unicode; text `args` can panic |
 | [POSIX sh -c](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/sh.html) | `command_name` becomes `$0`; remaining operands become `$1…` | `--` ends shell options; command operands are not shell flags; `#!` command-file results are unspecified by POSIX | arguments are strings of bytes; locale affects character interpretation |
