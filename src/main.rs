@@ -20,6 +20,7 @@
 //! `unsupported`.
 
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
@@ -105,15 +106,18 @@ package.",
 from stdin; bare `lupin` opens the REPL). Its exit code is the program's own exit(N); a \
 static-phase rejection exits 2, a trap or UB finding exits 3, `unsupported` exits 4. A \
 subcommand name wins over a file of the same name — run a file literally named `repl` as \
-`lupin run repl`."
+`lupin run repl`. Every word after FILE belongs to the program; put lupin options before FILE, \
+using `--` before FILE when its name starts with `-`."
 )]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
     /// Run FILE directly (`lupin FILE.lu` = `lupin run FILE.lu`); `-` reads
     /// the program from stdin. With nothing at all, the REPL opens.
-    #[arg(value_name = "FILE")]
-    file: Option<PathBuf>,
+    // One trailing variadic positional begins at FILE, not at its first argument.
+    // clap documents trailing_var_arg as capturing everything that follows.
+    #[arg(value_name = "FILE/ARGS", num_args = 1.., trailing_var_arg = true)]
+    file: Vec<OsString>,
     /// Evaluate CODE in a fresh session and print its value as the REPL
     /// would (`lupin -e '1 + 1'` = `lupin eval '1 + 1'`).
     #[arg(short = 'e', value_name = "CODE", conflicts_with = "file")]
@@ -170,8 +174,9 @@ enum Command {
 
 #[derive(Debug, Args)]
 struct RunArgs {
-    /// The wolf program to run, or `-` to read it from stdin.
-    file: PathBuf,
+    /// FILE, then all program arguments unparsed. `-` reads source from stdin.
+    #[arg(value_name = "FILE/ARGS", required = true, num_args = 1.., trailing_var_arg = true)]
+    file: Vec<OsString>,
     /// Request the deterministic schedule seeded per spec 03 §5
     /// (`[conc.det.seed]`) — the same seed replays the same run.
     #[arg(long)]
@@ -207,7 +212,7 @@ struct RunArgs {
     /// One program argument as HEX (an even number of hexadecimal digits,
     /// no NUL byte; empty is an empty argument), repeated in OS argv order,
     /// argv[0] first — `conform-run --checked --argv-hex`'s input
-    /// (`[exec.checked.argv]`). Without it argv is absent.
+    /// (`[exec.checked.argv]`). Otherwise argv is FILE followed by program words.
     #[arg(long = "argv-hex", value_name = "HEX", value_parser = parse_argv_hex)]
     argv_hex: Vec<ArgvHex>,
 }
@@ -331,6 +336,10 @@ struct ConformRunArgs {
     /// process's own arguments.
     #[arg(long = "argv-hex", value_name = "HEX", value_parser = parse_argv_hex)]
     argv_hex: Vec<ArgvHex>,
+    // Parse only to refuse with the exact-input option named. Protocol options
+    // after FILE stay options; conform-run is not the human run interface.
+    #[arg(hide = true, conflicts_with = "argv_hex")]
+    program_args: Vec<OsString>,
 }
 
 /// One `--argv-hex` argument's bytes.
@@ -544,7 +553,7 @@ fn main() -> ExitCode {
         ),
         (Some(command), _, _) => run_command(command),
         (None, Some(code), _) => run_eval(&EvalArgs { code }),
-        (None, None, Some(file)) => run_run(&RunArgs {
+        (None, None, file) if !file.is_empty() => run_run(&RunArgs {
             file,
             seed: None,
             schedule: None,
@@ -555,7 +564,7 @@ fn main() -> ExitCode {
             trace_places: cli.trace_places,
             argv_hex: Vec::new(),
         }),
-        (None, None, None) => run_repl(&ReplArgs {
+        (None, None, _) => run_repl(&ReplArgs {
             script: None,
             seed: None,
             no_edit: false,
@@ -641,8 +650,24 @@ fn render_static_diag(
 /// `exit(N)` as N, a static rejection as 2, a trap or UB finding as 3,
 /// `unsupported` as 4.
 fn run_run(args: &RunArgs) -> u8 {
-    wolf_interp::eval::Machine::observe_with_argv(argv_of(&args.argv_hex));
-    let stdin = args.file.as_os_str() == "-";
+    if !args.argv_hex.is_empty() && args.file.len() > 1 {
+        return tool_error(
+            "`--argv-hex` cannot be combined with trailing program arguments; use one argv input",
+        );
+    }
+    // OS strings never pass through String/to_string_lossy: Unix bytes and
+    // Windows WTF-8 match [os.env.argv], as the filesystem byte helpers do.
+    let argv = if args.argv_hex.is_empty() {
+        args.file
+            .iter()
+            .map(|s| s.as_encoded_bytes().to_vec())
+            .collect()
+    } else {
+        argv_of(&args.argv_hex)
+    };
+    wolf_interp::eval::Machine::observe_with_argv(argv);
+    let entry = Path::new(&args.file[0]); // required by clap, or bare dispatch
+    let stdin = entry.as_os_str() == "-";
     let source = if stdin {
         use std::io::Read;
         let mut source = Vec::new();
@@ -651,7 +676,7 @@ fn run_run(args: &RunArgs) -> u8 {
             Err(e) => return tool_error(&format!("could not read stdin: {e}")),
         }
     } else {
-        match read_program(&args.file) {
+        match read_program(entry) {
             Ok(source) => source,
             Err(code) => return code,
         }
@@ -668,7 +693,7 @@ fn run_run(args: &RunArgs) -> u8 {
             wolf_interp::observe_record_stdin(&source, &request)
         } else {
             wolf_interp::observe_record_scheduled(
-                &args.file,
+                entry,
                 &source,
                 None,
                 wolf_interp::eval::Trace::Off,
@@ -695,9 +720,9 @@ fn run_run(args: &RunArgs) -> u8 {
     let display = if stdin {
         "<stdin>".to_owned()
     } else {
-        wolf_interp::slash_path(&args.file)
+        wolf_interp::slash_path(entry)
     };
-    let file = (!stdin).then_some(args.file.as_path());
+    let file = (!stdin).then_some(entry);
     let places = match &args.trace_places {
         None => None,
         Some(path) => match place_trace_sink(path, &source) {
@@ -1442,6 +1467,11 @@ fn parse_schedule(text: &str) -> Result<wolf_interp::eval::SchedRequest, String>
 }
 
 fn run_conform_run(args: &ConformRunArgs) -> u8 {
+    if !args.program_args.is_empty() {
+        return tool_error(
+            "conform-run accepts no trailing program words; use `run FILE ARGS` or `--argv-hex`",
+        );
+    }
     let source = match read_program(&args.file) {
         Ok(source) => source,
         Err(code) => return code,
