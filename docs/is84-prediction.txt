@@ -1,0 +1,42 @@
+is84 prediction, 2026-11-04, before implementation
+
+Base: wolf-interp 3a477ed1a3831acd95c78190de8e1e44c7462ff0.
+Read specification clauses at wolf-lang 5f1f1c94: gram.lex.shebang,
+os.env.argv, exec.checked.argv. The interpreter pin is not changed.
+Documentation-only comparison precedes implementation; no other
+interpreter, compiler, libc or kernel source is consulted.
+
+Predictions:
+- Existing CLI refuses trailing operands and consumes recognized options
+  after FILE. New named process rows should fail before the fix.
+- Both human run spellings supply FILE as given as argv[0], trailing OS
+  words unparsed, including empty, -- and non-UTF-8 arguments. -- before
+  FILE ends lupin options, allowing a -x.lu file. Conform-run keeps its
+  protocol default empty argv and options after FILE.
+- Explicit --argv-hex remains exact, without an implicit argv[0], but
+  explicit bytes plus trailing program words fail naming --argv-hex.
+- Existing lexer already treats a byte-zero #! line as trivia except
+  #![; executable Linux scripts need CLI changes only, not lexer changes.
+- Text readers retain the existing argument-utf8 trap and OS index.
+- wolf run should agree on trailing arguments but may name its generated
+  executable rather than FILE. Record the black-box answer as R-is84-1;
+  never change language semantics to hide a command convention difference.
+- Old run FILE --json/--seed/--trace-places spellings in tests or docs
+  must move flags before FILE. A hint must not steal legitimate program
+  flags. Conform-run's protocol command line remains unchanged.
+- No dependencies, spec, pin, evaluator, runtime ABI or CI changes needed.
+- Final fail-fast local gate includes fmt, clippy, full tests, corpus,
+  Linux argv/shebang rows, documentation truth and a compiler black-box
+  comparison. Every END line is retained. One local one-hunk plant
+  swallows an argument and must fail a named argv row.
+
+Outside-the-box recommendations (not implementation authorization):
+R-is84-2 stdin argv: defer a separate framing protocol; lupin - already
+reads source and trailing words solve its argv without competing for stdin.
+R-is84-3 -e CODE ARGS: defer; -e already means REPL expression evaluation,
+not python -c program execution. Changing it deserves a separate contract.
+R-is84-4 directory packages: defer package-entry resolution, not an argv fix.
+R-is84-5 completion: defer executing scripts during completion; unsafe and
+requires a script-owned declaration protocol.
+R-is84-6 std.args: draft only: a pure List[str] parser with explicit --,
+long/short flag rules and structured errors belongs in wolf-std.
