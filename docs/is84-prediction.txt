@@ -40,3 +40,16 @@ R-is84-5 completion: defer executing scripts during completion; unsafe and
 requires a script-owned declaration protocol.
 R-is84-6 std.args: draft only: a pure List[str] parser with explicit --,
 long/short flag rules and structured errors belongs in wolf-std.
+
+Resume prediction, 2026-11-04, after the first Linux record:
+- The existing differ_cli tests assume the CI debug profile. They are not
+  changed in this lane. The full test step will use cargo test's default
+  debug profile, matching CI, while release stays on build/argv probes.
+- Legacy core_is77_live already prints an explicit reason after SKIP:.
+  The external recorder boundary will retain that raw line and its exact
+  reason, prefix the step's copy as test output, then emit strict SKIP
+  metadata outside the END line. No test or shared recorder changes.
+- R-is84-1 observed wolf 0.2.36's .lu-cache/bin/args invocation name,
+  versus lupin's source args.lu. Add exact assertions for both answers;
+  the guard must reject a changed answer on either side. Document this
+  deliberate command-convention difference in the comparison table.
