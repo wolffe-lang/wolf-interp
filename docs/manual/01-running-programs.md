@@ -133,6 +133,8 @@ so rather than inferring behaviour from its implementation.
 
 | tool | script name / program arguments | option boundary and shebang | non-UTF-8 arguments |
 |---|---|---|---|
+| lupin (this convention) | FILE as given is argv[0]; subsequent words are program args | options before FILE; `--` before FILE ends options; executable shebang scripts supported | raw Unix bytes / Windows WTF-8; text readers trap rather than replace invalid UTF-8 |
+| `wolf run` (0.2.36, measured on Linux) | argv[0] is the built binary path, e.g. `DIR/.lu-cache/bin/args`, **not** `DIR/args.lu` | documented trailing words go to the program; lupin deliberately chooses the interpreter/source convention for argv[0] | same-source trailing text/empty/Unicode argument differential agrees |
 | [Python CLI](https://docs.python.org/3/using/cmdline.html), [sys.argv](https://docs.python.org/3/library/sys.html#sys.argv) | `sys.argv[0]` is the script name as given; following entries are script args | script ends interpreter options; Unix `#!` scripts are supported | Unix filesystem decoding with `surrogateescape`; `os.fsencode` recovers bytes |
 | [Node CLI](https://nodejs.org/api/cli.html), [process.argv](https://nodejs.org/api/process.html#processargv) | executable first, **absolute script path second**, then args; `process.argv0` is original executable argv[0] | CLI synopsis puts options before entry; `--` ends Node options; host runs executable scripts | linked API promises strings, not raw-byte round trips |
 | [Ruby options](https://docs.ruby-lang.org/en/3.4/ruby/options_md.html), [globals](https://docs.ruby-lang.org/en/3.4/globals_rdoc.html) | `$0` is script name, `ARGV` holds given arguments separately | interpreter options precede program; `--` before program ends switches; `-s` explicitly parses script switches; `-x` finds an embedded `#!…ruby` | linked pages do not specify raw-byte fidelity |
@@ -143,9 +145,10 @@ so rather than inferring behaviour from its implementation.
 | [POSIX sh -c](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/sh.html) | `command_name` becomes `$0`; remaining operands become `$1…` | `--` ends shell options; command operands are not shell flags; `#!` command-file results are unspecified by POSIX | arguments are strings of bytes; locale affects character interpretation |
 
 The compiler's `wolf run --help` likewise says words after the entry file
-are the program's argv. Its generated executable's invocation name need
-not be the source filename: lupin deliberately chooses the source spelling
-for scripts. This is a command convention, not a change to `[os.env.argv]`.
+are the program's argv. The Linux black-box comparison at 0.2.36 observes its generated
+`DIR/.lu-cache/bin/args` as argv[0], while lupin reports `DIR/args.lu`.
+This difference is deliberate: lupin chooses the interpreter/source
+spelling for scripts, and the comparison pins both answers separately. This is a command convention, not a change to `[os.env.argv]`.
 
 **Migration:** `lupin run FILE --json`, `FILE --seed=N`, and
 `FILE --trace-places` now give those words to the program. Use

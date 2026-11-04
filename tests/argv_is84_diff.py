@@ -29,6 +29,23 @@ for name, argv, expected in [
     print(f"PASS differential-{name}: byte-identical stdout")
 source.write_text('//! member: false\nfn main() { print(env_arg0()) }\n')
 wolf, lupin = invoke(a.wolf, []), invoke(a.lupin, [])
-assert lupin == (str(source) + "\n").encode(), ("lupin argv0", lupin)
+def check_names(wolf_name, lupin_name):
+    expected_wolf = (str(root / ".lu-cache/bin/args") + "\n").encode()
+    expected_lupin = (str(source) + "\n").encode()
+    assert wolf_name == expected_wolf, ("wolf argv0 convention changed", wolf_name, expected_wolf)
+    assert lupin_name == expected_lupin, ("lupin argv0 convention changed", lupin_name, expected_lupin)
+
+# Prove this row notices either side changing, not merely the two differing.
+for side, wolf_name, lupin_name in [
+    ("wolf", lupin, lupin),
+    ("lupin", wolf, wolf),
+]:
+    try:
+        check_names(wolf_name, lupin_name)
+    except AssertionError:
+        print(f"PASS differential-argv0-guard: changed {side} answer refused")
+    else:
+        raise AssertionError(f"argv0 guard did not notice a changed {side} answer")
+check_names(wolf, lupin)
 print(f"R-is84-1 wolf argv[0]={wolf.decode().strip()!r}; lupin argv[0]={lupin.decode().strip()!r}")
-print("PASS differential-argv0: source spelling retained; compiler invocation convention recorded")
+print("PASS differential-argv0: exact compiler executable and interpreter source names pinned")
