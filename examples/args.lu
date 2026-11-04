@@ -1,0 +1,5 @@
+//! member: false
+fn main() {
+    print(env_arg0())
+    for arg in env_args() { print("[{arg}]") }
+}

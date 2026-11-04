@@ -90,6 +90,20 @@ $ lupin examples/squares.lu
 sum of squares: 30
 ```
 
+Arguments after the filename belong to the program, not lupin. The
+[`args` example](examples/args.lu) reads `env_arg0()` and `env_args()`:
+
+```console
+$ lupin examples/args.lu a b
+examples/args.lu
+[a]
+[b]
+```
+
+Put lupin options before the filename (`lupin run --json FILE ARGS…`),
+and use `--` before a filename beginning with `-`. On Linux an executable
+file starting `#!/usr/bin/env lupin` runs directly with the same argv.
+
 Failures are reported in full. `examples/overflow.lu` overflows an
 `i32`. Arithmetic is checked in every build profile, so the program
 traps. The diagnostic goes to stderr and cites the spec clause it
