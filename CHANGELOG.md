@@ -24,6 +24,9 @@
 - Close two older filesystem gaps needed by those witnesses: no-follow
   bit 16 composes with the directory/nonblocking flags, and
   `fs_fstat_record` reads the full record from the held handle, not its name.
+  A no-follow open checks only the parent of a plain final entry, so a link
+  to an outside target reaches the host refusal without following it; raw
+  trailing directory suffixes retain full resolution.
 - Recognize the nine directory-relative calls, `fs_statfs`, `os_chroot`,
   `os_getpriority`, `os_setpriority` and `os_signal_action_one`. Check their
   argument shapes before declining unsupported operations by name; a

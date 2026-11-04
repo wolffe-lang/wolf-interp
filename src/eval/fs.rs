@@ -2012,7 +2012,7 @@ impl Machine {
                     _ => int_arg(args, 1, name)?,
                 };
                 let answer = open_options(mode).map_err(FsErr::Row).and_then(|_| {
-                    let path = self.fs_contained(&path, name)?;
+                    let path = self.fs_contained_open(&path, name, mode)?;
                     self.shared_fs()
                         .open(&path, mode)
                         .map(|fd| Value::Int(fd, IntTy::INT))
@@ -2750,7 +2750,7 @@ impl Machine {
     #[cfg(unix)]
     fn fs_open_perm_call(&self, name: &str, path: &str, open: i128, mode: i128) -> FsResult<Value> {
         let bits = u32::try_from(mode).map_err(|_| FsErr::Row("invalid"))?;
-        let resolved = self.fs_contained(path, name)?;
+        let resolved = self.fs_contained_open(path, name, open)?;
         self.shared_fs()
             .open_perm(&resolved, open, bits)
             .map(|fd| Value::Int(fd, IntTy::INT))
@@ -2815,6 +2815,21 @@ impl Machine {
             return Err(FsErr::Outside(outside_reason(name, path)));
         }
         self.files().resolve(&candidate, live).map_err(FsErr::Row)
+    }
+
+    /// No-follow resolves the parent, not a plain final link's target.
+    /// Inspect the raw final component: Path::components normalizes trailing
+    /// slashes and dots, but those force the host to resolve a directory.
+    fn fs_contained_open(&self, path: &str, name: &str, open: i128) -> FsResult<PathBuf> {
+        let plain_final = path
+            .rsplit('/')
+            .next()
+            .is_some_and(|last| !matches!(last, "" | "." | ".."));
+        if open & 16 != 0 && plain_final {
+            self.fs_contained_link(path, name)
+        } else {
+            self.fs_contained(path, name)
+        }
     }
 
     /// s218: containment for a call that does NOT follow the path's final
