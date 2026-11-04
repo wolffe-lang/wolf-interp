@@ -326,7 +326,8 @@ use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 // `conc.mm.atomic.raw{,.1,.2,.3,.4,.5}`, `conc.mm.fence` and
 // `conc.mm.race.1` (kw11).
 // is81 / a5378e3f: the measured covered set grows 313 -> 375.
-const RATCHET_FLOOR: usize = 375;
+// is83 / 5f1f1c94: 375 -> 395, measured from the complete new corpus.
+const RATCHET_FLOOR: usize = 395;
 
 /// The registry size at pin `26fa98e` (306 → 315: `mem.str.empty`,
 /// `mem.str.repeat`, §10's `gram.version` family ×4 — s71/r01's

@@ -29,6 +29,8 @@
   argument shapes before declining unsupported operations by name; a
   missing contained `fs_statfs` path retains its filesystem error (#315,
   #321). Windows answers its declared unsupported rows after the shape.
+- Preserve the requested reference target when declining these calls in
+  portable conformance bundles, rather than using the exporting host.
 - Accept terminal-mode bit 24 (`RAW_LF`) for a set and restore; nonterminal
   handles answer `io`, and bit 25 and above remain `invalid` (#315).
 - Keep the new reset/reuse accounting witness as an exact, retirement-checked
