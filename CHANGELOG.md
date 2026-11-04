@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- `lupin FILE ARGS…` and `lupin run [OPTIONS] FILE ARGS…` now pass
+  ordinary command-line arguments to the program. argv[0] is FILE as
+  given; raw OS bytes, empty arguments and program flags are preserved.
+  `--` before FILE ends lupin options, permitting names such as `-x.lu`.
+  Executable `#!/usr/bin/env lupin` scripts on Unix use the same boundary.
+- **Breaking:** options after FILE are now program arguments, not lupin
+  options. Move `--json`, `--seed`, `--schedule`, `--std-root`,
+  `--trace-places` and `--argv-hex` before FILE on `run`. The manual
+  explains the migration; help names the boundary without swallowing a
+  program's flags to warn about it.
+- `run --argv-hex=HEX FILE` retains byte-exact whole-argv input and
+  refuses mixing it with trailing program words. `conform-run` retains
+  its protocol options and empty argv default; it does not accept trailing
+  program words. No lexer or language-argument semantics changed.
+
 ## 0.1.59 — 2026-11-03
 
 This release carries the 38 commits after 0.1.58: the spec and corpus
