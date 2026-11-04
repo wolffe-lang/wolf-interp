@@ -1,0 +1,120 @@
+is84 — friendly program arguments
+
+Footprint: module
+
+1. Forbidden
+
+No compiler, other interpreter, libc or kernel implementation source was
+read. The inputs were published language/tool documentation, the pinned
+specification and black-box command lines. No dependency, runtime ABI,
+lexer, loader, spec, pin or CI change. No labels, merges, tags, releases,
+issues filed/closed or attribution trailers. PAX execution remains pending
+for the PAX image re-pin; this change does not build or modify a PAX image.
+
+2. Inputs, verified
+
+Base: wolf-interp 3a477ed1a3831acd95c78190de8e1e44c7462ff0.
+Specification read at wolf-lang 5f1f1c94: gram.lex.shebang, os.env.argv,
+exec.checked.argv. The interpreter's existing spec pin is unchanged.
+The manual links the documentation-only Python, Node, Ruby, Perl, Deno,
+go run, cargo run and POSIX sh -c comparison. Node's documented script
+path is absolute, not the source spelling; Python preserves the spelling.
+The compiler's documented wolf run convention models trailing words.
+
+Linux compiler reference: wolf 0.2.36, release archive
+wolf-0.2.36-x86_64-unknown-linux-gnu.tar.gz, SHA-256
+ d383c74c8cd123b9d9dfaa268271d4f004294f85c2b230237d0ef07027d9500d
+verified twice against the release metadata before execution.
+
+3. Prediction
+
+Committed first in 092c392 (docs/is84-prediction.txt). Convention and
+comparison committed in 2b81f3e before the test or implementation edits.
+Trailing operands, exact source spelling, empty/Unicode/raw arguments,
+-- before a hyphen filename, option-looking program words and executable
+shebangs were predicted red first. Conform-run's absent argv and protocol
+options were predicted unchanged. The argv parser uses one trailing
+variadic positional starting at FILE, not a second positional that would
+let lupin consume a script's flags. No lossy string conversion occurs.
+
+4. Evidence index
+
+- d9102af: committed process regressions before the fix. Mac red: 12
+  failed, one protocol control passed, exit 101. Named reds include
+  words_after_file_reach_env_args_on_both_front_doors and
+  executable_env_shebang_sees_script_name_and_args.
+- 4dc3cdd: human argv capture; exact input still replaces the whole argv.
+  Mixing --argv-hex and trailing words refuses by name. Conform-run
+  rejects trailing words while retaining its protocol option placement.
+- 1c85c9e: Linux-only non-UTF-8 filename row and a Windows lone-surrogate
+  WTF-8 row. APFS refused the extra filename row with "Illegal byte
+  sequence" (OS error 92); ordinary non-UTF-8 argument bytes work on Mac.
+- a6d012b: migrate old test spellings so lupin options precede FILE.
+- 992a422: README argument transcript and runnable example.
+- 3ce768b: Unreleased breaking-change/migration entry.
+- 0c3e893: same-source, black-box wolf run/lupin differential.
+- 3fb12b4: clarify the documentation comparison's stated limits.
+
+Mac focused argv: 12 passed. The compatibility run also exercises CLI
+and std-root behavior; its final status is in the external record.
+Linux record steps include environment, pre-fix-red, fmt, clippy,
+release-build, argv-linux, shebang-lexer, differential, tests, corpus and
+clean-tree. The final-head record and every actual END line belong to
+the PR evidence, not an invented transcript in this note.
+
+The existing lexer tests cover byte-zero shebang trivia and the #![
+attribute distinction. New process rows execute an actual chmod'd
+#!/usr/bin/env lupin script. The Linux-only filename row complements
+cross-Unix raw argument-byte tests. The Windows WTF-8 row is committed
+but needs a Windows runner; cross-target clippy is not an execution test.
+
+Pending PAX rows, owned by the next PAX image re-pin carrying lupin:
+- executable #!/bin/lupin script, invoked ./tool.lu a b, reports argv
+  ["./tool.lu", "a", "b"];
+- #!/bin/env lupin equivalent, with /bin/env and PATH configured;
+- empty argument, program flags, --, and raw non-UTF-8 env_args_bytes.
+Linux shebang success is not presented as a PAX result.
+
+5. Rulings and remaining work
+
+R-is84-1 — argv[0]. Recommend the entry filename as given, not a
+canonicalized path or the compiler's generated executable name. Implemented
+for both human front doors. The differential prints wolf's actual
+invocation name alongside lupin's; it compares identical trailing argv
+on the same source without pretending command conventions are identical.
+Cost: no runtime/stdlib change.
+
+R-is84-2 — stdin argv. Recommend no new stdin framing mode. Source stdin
+already works as lupin - ARGS; building that small, unambiguous case is
+included. A second input framing protocol would compete with program
+stdin and needs explicit framing, limits and error rules (medium cost).
+
+R-is84-3 — -e CODE ARGS. Recommend deferring program execution snippets.
+-e already evaluates a REPL expression and prints its typed result; silently
+turning it into Python -c would break users. A separate execution spelling
+needs a source-name/argv[0] convention and documentation (small-to-medium
+cost). Existing -e remains unchanged.
+
+R-is84-4 — directory/package entry. Recommend a separate package-entry
+feature, not implicit file/directory guessing in this pass. It needs entry
+metadata, root discovery, diagnostics and independent package tests
+(medium cost). No directory behavior was added.
+
+R-is84-5 — script-flag completion. Recommend a future declarative script
+metadata protocol; never execute arbitrary scripts to discover flags.
+Shell adapters, escaping and a trust boundary make this medium-to-large
+cost. No implicit completion hook was added.
+
+R-is84-6 — std.args draft. Recommend a pure wolf-std parser taking a
+List[str], with an optional env_args wrapper, not a new interpreter
+builtin. Draft surface: an option schema declaring long names, arity,
+repeatability and optional short names; parse(schema, words) returns
+values plus remaining positionals or an indexed structured error.
+-- terminates flags; --name=value binds one value; unknown flags and
+missing values are explicit errors. Preserve empty values and repetition;
+never guess short-option bundling or decode raw bytes lossily. A separate
+byte-oriented API can be designed if needed. Implementation, semantic
+choices and std tests belong to the stdlib track (medium cost); draft only.
+
+README read against the whole change; argument example refreshed. No new
+issue is requested. PAX and Windows execution remain explicitly pending.
