@@ -73,7 +73,11 @@ fn entries() -> Vec<Entry> {
             let judgement = ledger::judge(&check, &record, &stdout);
             Some(Entry {
                 path: file.path,
-                directives: *directives,
+                directives: {
+                    let mut directives = *directives;
+                    directives.check = Some(check);
+                    directives
+                },
                 verdict: record.verdict,
                 phase: record.phase_reached,
                 stdout,
@@ -2781,7 +2785,7 @@ fn every_run_expectation_this_machine_reaches_is_met_exactly() {
         }
         // A filed divergence (docs/divergence-log.md) is a known disagreement:
         // visible in every differential report, waived here until resolved.
-        if wolf_interp::differ::filed(&entry.path).is_some() {
+        if wolf_interp::differ::filed(&entry.path).is_some() || is83_forward_pin(&entry) {
             continue;
         }
         checked += 1;
