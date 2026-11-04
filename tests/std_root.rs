@@ -695,7 +695,7 @@ fn run_homes(name: &str, source: &str, with_root: bool) -> Output {
     let entry = entry.to_str().expect("utf-8 path");
     let root = root.to_str().expect("utf-8 path");
     if with_root {
-        lupin(&["run", entry, "--std-root", root], &[])
+        lupin(&["run", "--std-root", root, entry], &[])
     } else {
         lupin(&["run", entry], &[])
     }

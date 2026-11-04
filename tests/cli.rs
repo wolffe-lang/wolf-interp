@@ -779,7 +779,7 @@ fn the_stdin_door_reads_a_program_with_file_semantics() {
 fn run_json_is_the_record_surface_and_the_tool_exits_zero() {
     // `run --json` = what conform-run does at the front door: the record
     // carries the outcome, the tool exits 0 ([proto.invoke.exit]).
-    let output = lupin(&["run", "examples/overflow.lu", "--json"]);
+    let output = lupin(&["run", "--json", "examples/overflow.lu"]);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value =
         serde_json::from_str(stdout_of(&output).trim()).expect("one JSON object");
@@ -793,7 +793,7 @@ fn run_json_is_the_record_surface_and_the_tool_exits_zero() {
     // The stdin record reports `-` as the file — the only spelling it had.
     let squares =
         std::fs::read(manifest_dir().join("examples/squares.lu")).expect("the example exists");
-    let output = lupin_with_stdin(&["run", "-", "--json"], &manifest_dir(), &squares);
+    let output = lupin_with_stdin(&["run", "--json", "-"], &manifest_dir(), &squares);
     assert_eq!(output.status.code(), Some(0));
     let value: serde_json::Value =
         serde_json::from_str(stdout_of(&output).trim()).expect("one JSON object");
@@ -808,13 +808,13 @@ fn run_surfaces_the_scheduler_controls() {
         "{}/corpus/conc/select_seeded.lu",
         wolf_interp::upstream_root()
     );
-    let seeded = lupin(&["run", &file, "--seed", "7", "--json"]);
+    let seeded = lupin(&["run", "--seed", "7", "--json", &file]);
     assert_eq!(seeded.status.code(), Some(0));
     let value: serde_json::Value =
         serde_json::from_str(stdout_of(&seeded).trim()).expect("one JSON object");
     assert_eq!(value["seeded"], true);
 
-    let replayed = lupin(&["run", &file, "--schedule", "ev:0", "--json"]);
+    let replayed = lupin(&["run", "--schedule", "ev:0", "--json", &file]);
     assert_eq!(replayed.status.code(), Some(0));
     let value: serde_json::Value =
         serde_json::from_str(stdout_of(&replayed).trim()).expect("one JSON object");
