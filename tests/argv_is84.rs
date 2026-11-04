@@ -199,7 +199,7 @@ fn non_utf8_argument_bytes_pass_verbatim_and_text_traps_at_os_index() {
         "{out:?}"
     );
 }
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 #[test]
 fn non_utf8_file_name_is_preserved_in_argv0_bytes() {
     use std::os::unix::ffi::OsStringExt;
@@ -242,5 +242,29 @@ fn executable_env_shebang_sees_script_name_and_args() {
             .output()
             .unwrap(),
         "./tool.lu\n[a]\n[b]\n",
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_non_unicode_argument_is_wtf8_and_text_traps() {
+    use std::os::windows::ffi::OsStringExt;
+    let rig = Rig::new();
+    let bad = OsString::from_wide(&[120, 0xd800, 121]);
+    rig.write(
+        "tool.lu",
+        "fn main() { let a = env_args_bytes(); for b in a[1] { print(\"{b as int}\") } }",
+    );
+    success(
+        rig.command().arg("tool.lu").arg(&bad).output().unwrap(),
+        "120\n237\n160\n128\n121\n",
+    );
+    rig.write("tool.lu", SOURCE);
+    let out = rig.command().arg("tool.lu").arg(&bad).output().unwrap();
+    assert_eq!(out.status.code(), Some(3));
+    assert!(
+        String::from_utf8_lossy(&out.stderr)
+            .contains("argument 1 is not UTF-8; read it with env_args_bytes()"),
+        "{out:?}"
     );
 }
