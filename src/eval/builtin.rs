@@ -1091,7 +1091,6 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // tier's own table and working directory (`eval::fs`).
         #[cfg(not(target_family = "wasm"))]
         "os_pipe" => machine.os_pipe(span),
-        #[cfg(not(target_family = "wasm"))]
         // #315: recognize the host surface without changing this process's
         // root, priority, or signal dispositions. Shape precedes the refusal.
         #[cfg(not(target_family = "wasm"))]
@@ -1120,6 +1119,7 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                  ([os.proc.chroot], [os.proc.priority], [os.signal.action.one])"
             ))
         }
+        #[cfg(not(target_family = "wasm"))]
         "os_chdir" => {
             let Some(Value::Str(path)) = args.first() else {
                 return unsupported("`os_chdir` takes a `str` path".to_owned());
