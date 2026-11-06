@@ -7,3 +7,10 @@ mac-interp-fix-d76649c.log  the mirror rows green (7 passed); `cargo fmt --check
                             long lines (formatted in 436f213); clippy, all targets, -D
                             warnings; `cargo test --lib`; `--test lint_is61`; the release
                             build kept for the compiler's four-machine rows.
+mac-interp-red-ab87b56.log  the compiler's lowercase-variant rows mirrored, at the
+                            capitalized-only code: 7 passed, 2 failed by name (no W0801 at
+                            [566,570] and [630,634]; the select row `unsupported`, not
+                            `fail(E0806)`).
+mac-interp-fix-b0b521c.log  the case-blind code: the mirror rows 9 passed; fmt; clippy, all
+                            targets, -D warnings; `cargo test --lib`; `--test lint_is61`; the
+                            release build kept for the comparison with the compiler.

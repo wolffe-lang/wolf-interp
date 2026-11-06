@@ -1,0 +1,143 @@
+s282: building at ab87b56a in $LANE/build-interp-ab87b56a
+s282: 05:00:32 mac build lock held by another lane; waiting
+s282: 05:01:02 mac build lock held by another lane; waiting
+s282: 05:01:32 mac build lock held by another lane; waiting
+s282: 05:02:02 mac build lock held by another lane; waiting
+s282: 05:02:32 mac build lock held by another lane; waiting
+s282: 05:03:02 mac build lock held by another lane; waiting
+s282: 05:03:32 mac build lock held by another lane; waiting
+s282: 05:04:02 mac build lock held by another lane; waiting
+s282: 05:04:32 mac build lock held by another lane; waiting
+s282: 05:05:02 mac build lock held by another lane; waiting
+s282: 05:05:32 mac build lock held by another lane; waiting
+s282: 05:06:02 mac build lock held by another lane; waiting
+s282: 05:06:32 mac build lock held by another lane; waiting
+s282: 05:07:02 mac build lock held by another lane; waiting
+s282: 05:07:32 mac build lock held by another lane; waiting
+s282: 05:08:02 mac build lock held by another lane; waiting
+s282: 05:08:33 mac build lock held by another lane; waiting
+s282: 05:09:03 mac build lock held by another lane; waiting
+s282: 05:09:33 mac build lock held by another lane; waiting
+s282: 05:10:03 mac build lock held by another lane; waiting
+s282: 05:10:33 mac build lock held by another lane; waiting
+s282: 05:11:03 mac build lock held by another lane; waiting
+s282: 05:11:33 mac build lock held by another lane; waiting
+s282: 05:12:03 mac build lock held by another lane; waiting
+s282: 05:12:33 mac build lock held by another lane; waiting
+s282: 05:13:03 mac build lock held by another lane; waiting
+s282: 05:13:33 mac build lock held by another lane; waiting
+s282: 05:14:03 mac build lock held by another lane; waiting
+s282: 05:14:33 mac build lock held by another lane; waiting
+s282: 05:15:03 mac build lock held by another lane; waiting
+s282: 05:15:33 mac build lock held by another lane; waiting
+s282: 05:16:03 mac build lock held by another lane; waiting
+s282: 05:16:33 mac build lock held by another lane; waiting
+s282: 05:17:03 mac build lock held by another lane; waiting
+s282: 05:17:33 mac build lock held by another lane; waiting
+s282: 05:18:03 mac build lock held by another lane; waiting
+s282: 05:18:33 mac build lock held by another lane; waiting
+s282: 05:19:03 mac build lock held by another lane; waiting
+s282: 05:19:33 mac build lock held by another lane; waiting
+s282: lock taken 05:20:03, 8863 MiB free, 106 GB disk; running: bash $LANE/rig/mac-interp.sh
+== STEP head 10:20:03
+ab87b56ace8eee8ecc6b577f5ebb2d4595010576
+ab87b56 Pin lupin's lowercase-variant binder warning and select refusal
+       0
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+END head exit=0
+== STEP mirror-rows 10:20:03
+   Compiling libc v0.2.189
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling cfg-if v1.0.4
+   Compiling bitflags v2.13.1
+   Compiling memchr v2.8.3
+   Compiling cfg_aliases v0.2.2
+   Compiling utf8parse v0.2.2
+   Compiling nix v0.31.3
+   Compiling serde_core v1.0.229
+   Compiling syn v3.0.3
+   Compiling anstyle-parse v1.0.0
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle-query v1.1.5
+   Compiling errno v0.3.14
+   Compiling colorchoice v1.0.5
+   Compiling rustix v1.1.4
+   Compiling getrandom v0.4.3
+   Compiling smallvec v1.15.2
+   Compiling zmij v1.0.23
+   Compiling anstyle v1.0.14
+   Compiling anstream v1.0.0
+   Compiling nibble_vec v0.1.0
+   Compiling serde v1.0.229
+   Compiling heck v0.5.0
+   Compiling strsim v0.11.1
+   Compiling signal-hook v0.3.18
+   Compiling clap_lex v1.1.0
+   Compiling endian-type v0.2.0
+   Compiling serde_json v1.0.151
+   Compiling radix_trie v0.3.0
+   Compiling clap_builder v4.6.6
+   Compiling serde_derive v1.0.229
+   Compiling clap_derive v4.6.4
+   Compiling signal-hook-registry v1.4.8
+   Compiling aho-corasick v1.1.5
+   Compiling log v0.4.34
+   Compiling once_cell v1.21.4
+   Compiling unicode-width v0.2.2
+   Compiling itoa v1.0.18
+   Compiling wolf-interp v0.1.59 ($LANE/build-interp-ab87b56a)
+   Compiling unicode-segmentation v1.13.3
+   Compiling thiserror v2.0.20
+   Compiling regex-syntax v0.8.11
+   Compiling fastrand v2.5.0
+   Compiling tempfile v3.27.0
+   Compiling rustyline v18.0.1
+   Compiling regex-automata v0.4.18
+   Compiling clap v4.6.6
+   Compiling thiserror-impl v2.0.20
+   Compiling getrandom v0.2.16
+   Compiling console v0.16.4
+   Compiling similar v2.7.0
+   Compiling regex v1.13.1
+   Compiling comma v1.0.0
+   Compiling rexpect v0.7.1
+   Compiling insta v1.48.0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.03s
+     Running tests/binder_variant_s282.rs (target/debug/deps/binder_variant_s282-066c325d79512334)
+
+running 9 tests
+test a_for_header_that_spells_a_variant_warns ... ok
+test a_select_arm_that_binds_a_lowercase_name_runs ... ok
+test a_select_arm_that_spells_a_lowercase_variant_is_refused ... 
+thread 'a_select_arm_that_spells_a_lowercase_variant_is_refused' (169198460) panicked at tests/binder_variant_s282.rs:119:5:
+assertion `left == right` failed: select_lowercase_variant: a static refusal
+  left: "unsupported"
+ right: "fail(E0806)"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test a_select_arm_that_spells_a_variant_is_refused ... ok
+test an_else_handler_name_that_spells_a_variant_binds_and_warns ... ok
+test an_item_imported_enums_variant_warns_in_a_binder ... ok
+test binders_and_parameters_that_spell_no_test_stay_silent ... ok
+test binders_that_spell_a_lowercase_variant_warn ... 
+thread 'binders_that_spell_a_lowercase_variant_warn' (169198480) panicked at tests/binder_variant_s282.rs:68:5:
+assertion `left == right` failed: lowercase: lupin's warnings against the compiler's
+  left: []
+ right: [("W0801", [566, 570]), ("W0801", [630, 634])]
+FAILED
+test let_and_var_binders_that_spell_a_variant_warn ... ok
+
+failures:
+
+failures:
+    a_select_arm_that_spells_a_lowercase_variant_is_refused
+    binders_that_spell_a_lowercase_variant_warn
+
+test result: FAILED. 7 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `--test binder_variant_s282`
+END mirror-rows exit=101
+== done 2026-11-06T10:20:14Z
+s282: END exit=0 05:20:14
