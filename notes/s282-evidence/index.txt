@@ -1,0 +1,9 @@
+s282 evidence (wolf-interp: lupin's mirror of the binder W0801 and the select-arm E0806).
+Paths are relative to the lane's directory, written $LANE; the Mac is arm64 macOS.
+
+mac-interp-red-7823d8a.log  the mirror rows (tests/binder_variant_s282.rs) at trunk's code:
+                            5 failed by name, the 2 controls passed.
+mac-interp-fix-d76649c.log  the mirror rows green (7 passed); `cargo fmt --check` red on two
+                            long lines (formatted in 436f213); clippy, all targets, -D
+                            warnings; `cargo test --lib`; `--test lint_is61`; the release
+                            build kept for the compiler's four-machine rows.
