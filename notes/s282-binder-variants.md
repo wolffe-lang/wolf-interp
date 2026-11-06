@@ -73,6 +73,18 @@ Committed before the first change (`a1f3ace`, `notes/s282-prediction.md`). Score
 - **The ledger: as predicted.** `lint::PARTIAL` holds W0801; the warns-ledger test enforces it
   one way. No vendored corpus file has a capitalized binder name or a variant-spelled `select`
   receive or handler (a search of the vendored tree), so neither ledger moves.
+- **The direction: this machine's W0801 is a subset of the compiler's.** The compiler may
+  report W0801 where lupin does not; lupin never reports one the compiler does not. lupin built
+  at `b0b521c` and the compiler at its case-blind head were run over every file of the
+  compiler's corpus, these mirror fixtures and the compiler lane's probes, each stopping at a
+  static rung, and their W0801 spans compared file by file (wolf-lang's
+  `notes/s282-evidence/mac-remeasure-83a64499.log`): no span is lupin-only. Two are
+  compiler-only. One is the match-arm half, `lints/binder_capitalized.lu` (449..452), which
+  needs case tables; it is why the ledger stays one way. The other is a real gap in the
+  binder half: an enum declared as `type Kind = enum { Drink, Food }` has no variants in
+  `Module::variants`, so a binder over `Drink` warns on the compiler and not here (and a
+  `match` arm `Drink =>` over it does not apply, `unsupported`, at trunk too). It is in no
+  corpus file; it is filed as an issue. Every other file with a W0801 has equal span sets.
 - **A miss:** the first green take's `cargo fmt --check` failed on two long lines;
   `436f213` formats them.
 
@@ -113,15 +125,21 @@ Test targets:
 - [x] the mirror rows green; clippy; the library tests; the lint mirror rows
       (`mac-interp-fix-d76649c.log`; case-blind, with fmt, `mac-interp-fix-b0b521c.log`)
 - [x] the compiler's rows on lupin built from this branch: verdicts, stdout and W0801 spans equal
+- [x] lupin's W0801 a subset of the compiler's over the corpus, the fixtures and the probes
 - [ ] `run_corpus` and `lupin corpus` at the head (the Mac, before the record)
 - [ ] the gauntlet record at the final head, every `END … exit=0` (in the PR body)
 - [ ] the plant red by name (in the PR body)
 - [ ] the audit, once
 
-Issues, for the orchestrator to file:
+Issues, filed once both PRs are open, each with its program and output (linked from the PR, no
+closing keyword):
 - lupin cannot import a function by item (`use kinds.name`: "`name` does not resolve").
-- lupin reports E0301 on a struct literal whose field is capitalized (`Q { Drink: 5 }`).
-- lupin reads an `else |Boom|` handler name that spells a capitalized tag of the operand's row
-  as a test and refuses statically (E0809); the compiler binds every handler name.
-- The vendored corpus gains the compiler's binder rows at the next pin advance; the mirror rows
-  here are those rows byte for byte, so the advance should move no answer.
+- lupin refuses (E0301) the use of a name a struct pattern's shorthand bound when an enum in
+  scope declares a variant of that name (`let Q { Drink, n } = …`, then `Drink + n`); the
+  compiler binds it.
+- lupin reads an `else |Boom|` handler name that spells a tag of the operand's row as a test
+  and refuses statically (E0809); the compiler binds a bare handler name.
+- At the next pin advance the vendored corpus gains the compiler's binder and `select` rows;
+  the mirror rows here are those rows byte for byte, so the advance should move no answer, and
+  the exact-code lists in `tests/conformance.rs` should gain E0806.
+- lupin does not register the variants of an enum declared as `type Kind = enum { … }`.
