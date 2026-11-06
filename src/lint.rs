@@ -7,7 +7,9 @@
 //! remaining four are **honest-absent** (`[proto.record.warn]`): W0402 needs
 //! float typing, W0601 row typing, W0801 scrutinee case tables, W1001 region
 //! inference — none of which sema-lite has, so this machine simply never
-//! observes those codes rather than guessing. W0301 (partial format, s11)
+//! observes those codes rather than guessing. W0801's binder half (s282, a
+//! binder name that spells a variant in scope) needs resolution alone, so it
+//! runs here too ([`PARTIAL`]); its match-arm half stays absent. W0301 (partial format, s11)
 //! and W1301 (`# Safety:` comment, s22) are grandfathered wolfc lints
 //! outside the shared-analysis set.
 //!
@@ -75,14 +77,26 @@ pub const IMPLEMENTED: &[&str] = &[
 
 /// Compiler-only for now — codes this machine's rungs cannot observe, kept
 /// here so the honest-absent posture is written down beside the implemented
-/// set: W0402 (float typing), W0601 (row typing), W0801 (case tables),
-/// W1001 (region inference), plus the grandfathered W0301/W1301. W0316
+/// set: W0402 (float typing), W0601 (row typing), W1001 (region inference),
+/// plus the grandfathered W0301/W1301. W0801 left this list for [`PARTIAL`]
+/// at s282 (its binder half needs resolution alone). W0316
 /// (ancestor import, s69) sat here from 0.1.6 to is18: its only witness
 /// shape needs the dotted `use outer.inner` nested-module loading, the
 /// detection code stood ready, and is18's module-identity work (#39) is
 /// what finally fed it — `lints/ancestor_import/` runs and warns now, so
 /// W0316 moved to `IMPLEMENTED` at is19 and its ledger is enforced.
-pub const HONEST_ABSENT: &[&str] = &["W0301", "W0402", "W0601", "W0801", "W1001", "W1301"];
+pub const HONEST_ABSENT: &[&str] = &["W0301", "W0402", "W0601", "W1001", "W1301"];
+
+/// Codes this machine runs for ONE half of the compiler's analysis, so what
+/// it observes is a subset of what the compiler does: W0801's binder half
+/// ([`crate::binder`], s282: a capitalized binder name that spells a
+/// variant of an enum in scope), whose rule needs resolution alone. The
+/// match-arm half (a capitalized arm name over a scrutinee with no cases)
+/// needs case tables, which sema-lite does not have. The corpus ledger
+/// enforces these one way — a file whose `warns:` lacks the code must not
+/// observe it here — and the exact spans are the mirror rows' job
+/// (`tests/binder_variant_s282.rs`).
+pub const PARTIAL: &[&str] = &["W0801"];
 
 /// Codes `#[allow(…)]` recognizes — spec/01 §9.2's registered families as of
 /// the 13b811f pin. An argument outside this set suppresses nothing and is
@@ -201,6 +215,7 @@ pub fn analyze(program: &Program) -> Analysis {
             .collect();
         let types = TypeTable::of(module);
         for unit in &module.units {
+            let binder_homes = crate::binder::homes(program, module, unit);
             let mut walk = Walk {
                 source: &unit.source,
                 program,
@@ -213,6 +228,7 @@ pub fn analyze(program: &Program) -> Analysis {
                 impl_self: None,
                 row_tags: &module.row_tags,
                 alias_names: &alias_names,
+                binder_homes: &binder_homes,
                 findings: &mut findings,
                 statics: &mut statics,
                 allows: &mut allows,
@@ -506,6 +522,10 @@ struct Walk<'a> {
     /// collision, W0603's case rule) do not read it — the corpus's own
     /// `rows/error_alias_qualified/main.lu` pins it warning-clean.
     alias_names: &'a BTreeSet<String>,
+    /// Variant name → the enums this FILE names directly that declare it
+    /// (`crate::binder::homes`): the binder half of W0801 and the `select`
+    /// arm's E0806 read it.
+    binder_homes: &'a BTreeMap<String, Vec<String>>,
     /// Locals of the enclosing function, innermost last.
     scopes: Vec<Vec<Local>>,
     /// The enclosing function's declared return-row tags — the expected row
@@ -577,6 +597,63 @@ impl Walk<'_> {
 
     fn declared(&self, name: &str) -> Option<bool> {
         self.local(name).map(|local| local.is_var)
+    }
+
+    /// The enum a message names for a variant spelled `name`, when one in
+    /// scope declares it (`crate::binder::homes`'s first).
+    fn variant_home(&self, name: &str) -> Option<&str> {
+        if !crate::binder::capitalized(name) {
+            return None;
+        }
+        self.binder_homes
+            .get(name)
+            .and_then(|enums| enums.first())
+            .map(String::as_str)
+    }
+
+    /// W0801's binder half (`[gram.pat.binder]` upstream): every
+    /// capitalized name a binder pattern binds that spells a variant of an
+    /// enum in scope still binds, and warns at the name. The std tree is
+    /// not exempt, as the compiler's binder half is not.
+    fn binder_variants(&mut self, pattern: &Pattern) {
+        let mut names = Vec::new();
+        crate::binder::names(pattern, &mut names);
+        for ident in names {
+            if self.variant_home(&ident.name).is_some() {
+                self.findings.push(("W0801".to_owned(), ident.span));
+            }
+        }
+    }
+
+    /// E0806 at a `select` arm whose receive is a bare name that spells a
+    /// variant in scope: a committed receive takes every value its channel
+    /// delivers, so the name cannot test it, and it is refused by name.
+    fn select_arm_variant(&mut self, pattern: &Pattern) {
+        let PatKind::Binding(ident) = &*pattern.kind else {
+            return;
+        };
+        let Some(owner) = self.variant_home(&ident.name).map(str::to_owned) else {
+            return;
+        };
+        let name = &ident.name;
+        let lower = crate::binder::lowercase(name);
+        self.statics.push(
+            Diag::new(
+                "E0806",
+                ident.span,
+                "gram.pat",
+                format!(
+                    "`{name}` is the variant `{owner}.{name}`, and a `select` arm cannot test \
+                     it: a committed receive takes whatever its channel delivers, so the arm's \
+                     pattern only binds. Receive into a name and test it in the arm's body: \
+                     `{lower} from … => match {lower} {{ {owner}.{name} => …, _ => … }}`"
+                ),
+            )
+            .with_help(crate::diag::Help {
+                span: ident.span,
+                note: format!("bind it under a lowercase name: `{lower}`"),
+            }),
+        );
     }
 
     /// The innermost local of this name, if any — the resolution the
@@ -1330,6 +1407,7 @@ impl Walk<'_> {
 
     fn binding(&mut self, binding: &Binding) {
         self.shadow_binding_pattern(&binding.pattern);
+        self.binder_variants(&binding.pattern);
         // W0305's annotated-`let`/`var` position (D52): the annotation's row
         // is the expected row of the initializer.
         if let Some(ty) = &binding.ty {
@@ -1596,6 +1674,7 @@ impl Walk<'_> {
                         // callee's signature is in sight) travels with the
                         // name for the arm-resolution rule (#44/#48).
                         let row = self.operand_row(inner);
+                        self.binder_variants(pattern);
                         self.scopes.push(Vec::new());
                         self.declare_err_binder(pattern, row);
                         self.expr(body);
@@ -1661,6 +1740,7 @@ impl Walk<'_> {
                 body,
             } => {
                 self.expr(iter);
+                self.binder_variants(pattern);
                 self.scopes.push(Vec::new());
                 self.declare_pattern(pattern, false);
                 self.block(body);
@@ -1704,6 +1784,7 @@ impl Walk<'_> {
                     match &arm.kind {
                         crate::ast::SelectArmKind::Recv { pattern, channel } => {
                             self.expr(channel);
+                            self.select_arm_variant(pattern);
                             self.scopes.push(Vec::new());
                             self.declare_pattern(pattern, false);
                             self.expr(&arm.body);
