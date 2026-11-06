@@ -27,7 +27,11 @@ use crate::sema::{Module, Program, SourceUnit};
 /// compiler's order: the module's own enums by name, then the file's item
 /// imports in import order. The first is the one a message names.
 #[must_use]
-pub fn homes(program: &Program, module: &Module, unit: &SourceUnit) -> BTreeMap<String, Vec<String>> {
+pub fn homes(
+    program: &Program,
+    module: &Module,
+    unit: &SourceUnit,
+) -> BTreeMap<String, Vec<String>> {
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (variant, enums) in &module.variants {
         let mut sorted = enums.clone();

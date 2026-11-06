@@ -60,7 +60,11 @@ fn w0801(spans: &[[u64; 2]]) -> Vec<(String, [u64; 2])> {
 fn runs(name: &str, stdout: &str, compiler: &[[u64; 2]]) {
     let a = observe(name);
     assert_eq!(a.verdict, "exit(0)", "{name}: the program runs and binds");
-    assert_eq!(a.stdout.as_deref(), Some(stdout), "{name}: what the names bound");
+    assert_eq!(
+        a.stdout.as_deref(),
+        Some(stdout),
+        "{name}: what the names bound"
+    );
     assert_eq!(
         a.warnings,
         w0801(compiler),
