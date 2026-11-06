@@ -1,8 +1,8 @@
 # s282 — lupin mirrors the binder warning (W0801) and the select-arm refusal (E0806)
 
-The compiler now warns W0801 at a capitalized bare name in a binder position that spells a
-variant of an enum in scope (`let (Drink, n) = pair`), and refuses such a name in a `select`
-arm's receive (E0806); its PR is wolf-lang's of the same name, and its clause is
+The compiler now warns W0801 at a bare name in a binder position that spells a variant of an
+enum in scope, in either letter case (`let (Drink, n) = pair`, `let (fast, n)` over
+`enum Mode { fast, slow }`), and refuses such a name in a `select` arm's receive (E0806); its PR is wolf-lang's of the same name, and its clause is
 `[gram.pat.binder]` there. The rule needs resolution alone (scope decides, not type), so this
 machine runs it at the same rung: its warning walk reports W0801 at the compiler's spans, the
 `select` arm is a static E0806, and an `else |…|` handler whose name spells a variant now binds
@@ -51,12 +51,21 @@ Committed before the first change (`a1f3ace`, `notes/s282-prediction.md`). Score
 - **In scope: as predicted.** The module's enums (`Module::variants`, sorted by name as the
   compiler orders them), then the enums the file imports by item, read off the file's own `use`
   items (`use` is file-scoped), found in their module the way the error-alias reader finds an
-  alias. Only capitalized names. The std tree is not exempt, matching the compiler.
+  alias. The std tree is not exempt, matching the compiler.
+- **Every letter case: a miss, decided against the prediction.** The prediction had only
+  capitalized names count. The compiler's rule is the one its `match` payloads use to decide
+  that a bare name tests a variant, which compares names as written with no letter-case test;
+  this machine's own variant rule is the same (`declares_variant`, `src/eval/mod.rs:6637`,
+  looks the name up in `Module::variants`). So `binder.rs` and the walk drop their capital
+  test (`b0b521c`), and the rename a help names is the snake-case spelling, with a trailing `_`
+  when that is the name itself (`fast` becomes `fast_`). The compiler's lowercase rows
+  (`lints/binder_variant_lowercase.lu`, `conc/select_arm_lowercase_variant.lu`) are mirrored
+  byte for byte, red first (`310c4dd`, `ab87b56`).
 - **The handler binds: hit.** `else |Drink| 7` runs and prints `7` where it refused. Only a bare
   name that spells a variant the module declares changes; every other handler shape (a row tag,
   a lowercase name) goes through the arm rule as before.
-- **E0806: hit.** A static refusal at the resolve rung, at the name's span, naming
-  `Kind.Drink`, with the lowercase receive as its help.
+- **E0806: hit.** A static refusal at the resolve rung, at the name's span, in either letter
+  case, naming `Kind.Drink`, with another name for the receive as its help.
 - **The ledger: as predicted.** `lint::PARTIAL` holds W0801; the warns-ledger test enforces it
   one way. No vendored corpus file has a capitalized binder name or a variant-spelled `select`
   receive or handler (a search of the vendored tree), so neither ledger moves.
