@@ -7393,7 +7393,18 @@ impl Machine {
             ElseHandler::Block(block) => self.eval_block(block),
             ElseHandler::Handler { pattern, body } => {
                 self.push_scope();
-                let matched = self.match_pattern(pattern, &value);
+                // s282 (`[gram.pat.binder]` upstream): the handler's binder is
+                // irrefutable, so a bare name that spells a variant this
+                // module declares binds the error, as the compiler binds it
+                // (and warns W0801), where the arm rule would read a test the
+                // handler cannot make. Every other handler shape is unchanged.
+                let matched = match &*pattern.kind {
+                    PatKind::Binding(ident) if self.declares_variant(None, &ident.name) => {
+                        self.declare(&ident.name, Slot::live(value.clone()));
+                        Ok(true)
+                    }
+                    _ => self.match_pattern(pattern, &value),
+                };
                 let result = match matched {
                     Ok(true) => self.eval(body),
                     Ok(false) => unsupported(
