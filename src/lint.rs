@@ -1737,7 +1737,6 @@ impl Walk<'_> {
                 body,
             } => {
                 self.expr(iter);
-                self.binder_variants(pattern);
                 self.scopes.push(Vec::new());
                 self.declare_pattern(pattern, false);
                 self.block(body);
