@@ -1,16 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.1.60 — 2026-11-06
 
-- W0801 now runs here for binder positions: a bare name in a `let`/`var`
-  binder, a `for` header or an `else |…|` handler that spells a variant of
-  an enum in scope (the module's own, or one the file imports by item), in
-  either letter case, still binds, and warns at the name, at the
-  compiler's spans. Its
-  match-arm half stays honest-absent (it needs case tables). Such a handler
-  name now binds the error, as the compiler binds it, where it used to read
-  as a variant test and refuse at run. A `select` arm's receive spelled that
-  way is refused statically (E0806) instead of at run.
+This release carries the 66 commits after 0.1.59: program arguments the
+way a shell passes them, the OS-call mirror of wolf 0.2.37's two new
+surfaces at the spec and corpus pin wolf-lang `5f1f1c94` (724 anchor
+keys), and the binder warning and `select` refusal of wolf 0.2.38. It is
+prepared to pair with wolf 0.2.38. A branch build prints
+`0.1.60+dev.<commit>`; only the tagged build prints the bare version.
+
+### Program arguments
+
 - `lupin FILE ARGS…` and `lupin run [OPTIONS] FILE ARGS…` now pass
   ordinary command-line arguments to the program. argv[0] is FILE as
   given; raw OS bytes, empty arguments and program flags are preserved.
@@ -25,29 +25,60 @@
   refuses mixing it with trailing program words. `conform-run` retains
   its protocol options and empty argv default; it does not accept trailing
   program words. No lexer or language-argument semantics changed.
-- Advance the spec and corpus pin to wolf-lang `5f1f1c94`, including the
-  descriptor-relative filesystem calls and the newer host-specific rows.
-- Serve directory-open bit 32 on read modes 0 and 5, with shape errors
-  before the host and `ENOTDIR` reported as `invalid` with its host number.
-  Set permissions through the held file with `fs_set_mode_fd` (#321).
-- Close two older filesystem gaps needed by those witnesses: no-follow
-  bit 16 composes with the directory/nonblocking flags, and
-  `fs_fstat_record` reads the full record from the held handle, not its name.
-  A no-follow open checks only the parent of a plain final entry, so a link
-  to an outside target reaches the host refusal without following it; raw
-  trailing directory suffixes retain full resolution.
-- Recognize the nine directory-relative calls, `fs_statfs`, `os_chroot`,
-  `os_getpriority`, `os_setpriority` and `os_signal_action_one`. Check their
-  argument shapes before declining unsupported operations by name; a
-  missing contained `fs_statfs` path retains its filesystem error (#315,
-  #321). Windows answers its declared unsupported rows after the shape.
-- Preserve the requested reference target when declining these calls in
-  portable conformance bundles, rather than using the exporting host.
-- Accept terminal-mode bit 24 (`RAW_LF`) for a set and restore; nonterminal
-  handles answer `io`, and bit 25 and above remain `invalid` (#315).
-- Keep the new reset/reuse accounting witness as an exact, retirement-checked
+
+### The OS calls of wolf 0.2.37
+
+The spec and corpus pin advances to wolf-lang `5f1f1c94`, which carries
+the descriptor-relative filesystem calls and the newer host-specific
+rows. Some of the new calls are served here; the rest are recognized,
+their argument shapes checked, and then declined by name:
+
+| wolf surface | lupin 0.1.60 |
+| --- | --- |
+| directory-open bit 32 (`O_DIRECTORY`) on read modes 0 and 5 | served; `ENOTDIR` is `invalid` with its host number |
+| `fs_set_mode_fd` | served, through the held file (#321) |
+| terminal mode bit 24, `RAW_LF`, for a set and restore | served; a nonterminal handle answers `io`, bit 25 and above stay `invalid` (#315) |
+| no-follow bit 16 with the directory and nonblocking flags | served |
+| `fs_fstat_record` | the full record, read from the held handle, not its name |
+| `fs_open_at`, `fs_stat_at`, `fs_lstat_at`, `fs_remove_at`, `fs_remove_dir_at`, `fs_create_dir_at`, `fs_symlink_at`, `fs_link_at`, `fs_read_dir_entries_at` | shapes checked, then **unsupported** by name |
+| `fs_statfs`, `os_chroot`, `os_getpriority`, `os_setpriority`, `os_signal_action_one` | shapes checked, then **unsupported** by name; a missing contained `fs_statfs` path keeps its filesystem error |
+
+- A no-follow open checks only the parent of a plain final entry, so a
+  link to an outside target reaches the host refusal without following
+  it; raw trailing directory suffixes retain full resolution.
+- Windows answers its declared unsupported rows after the shape.
+- Portable conformance bundles keep the requested reference target when
+  declining these calls, rather than using the exporting host.
+- The new reset/reuse accounting witness is an exact, retirement-checked
   forward pin (`8 false true`, rather than the expected `8 true true`).
-  No unsafe code, dependency or enabled-feature changes accompany this mirror.
+
+The declined calls stay tracked in #315 and #321. No unsafe code,
+dependency or enabled-feature change accompanies this mirror.
+
+### The binder warning and the `select` refusal (wolf 0.2.38's s282)
+
+- W0801 now runs here for binder positions: a bare name in a `let`/`var`
+  binder, a `for` header or an `else |…|` handler that spells a variant of
+  an enum in scope (the module's own, or one the file imports by item), in
+  either letter case, still binds, and warns at the name, at the
+  compiler's spans. Such a handler name now binds the error, as the
+  compiler binds it, where it used to read as a variant test and refuse
+  at run. A `select` arm's receive spelled that way is refused statically
+  (E0806) instead of at run.
+- This machine's W0801 is a strict subset of the compiler's: it never
+  reports a span the compiler does not. Two compiler spans are not
+  reported here. One is W0801's match-arm half, a capitalized arm name
+  over a scrutinee with no cases (`lints/binder_capitalized.lu`), which
+  needs case tables and stays honest-absent, so the corpus ledger holds
+  W0801 one way. The other is a binder over a variant of an enum declared
+  as `type K = enum { … }`, whose variants this machine does not register
+  (#344).
+
+### Continuous integration
+
+- Pull-request CI runs its cheap checks by default and the full and
+  release tiers by label; trunk runs the full tier when shared paths
+  change. The tag-release workflow is unchanged and dispatch-free.
 
 ## 0.1.59 — 2026-11-03
 
@@ -77,6 +108,9 @@ must complete before publication; a branch build still prints
   matches (#302). An aliased module import binds and loads the alias,
   not the original module name (#299). Individual function-item imports
   remain unsupported (wolf-interp#314).
+- An `else` whose fallback is a range, indexing a `str`
+  (`rest[rest.find(":=") else 0 + 2..]`), is no longer refused E0411 by
+  a guess; it is declined by name instead (`5289391`, #334).
 
 ### Host calls and the conformance snapshot
 
