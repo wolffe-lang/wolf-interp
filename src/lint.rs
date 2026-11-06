@@ -89,8 +89,8 @@ pub const HONEST_ABSENT: &[&str] = &["W0301", "W0402", "W0601", "W1001", "W1301"
 
 /// Codes this machine runs for ONE half of the compiler's analysis, so what
 /// it observes is a subset of what the compiler does: W0801's binder half
-/// ([`crate::binder`], s282: a capitalized binder name that spells a
-/// variant of an enum in scope), whose rule needs resolution alone. The
+/// ([`crate::binder`], s282: a binder name that spells a variant of an
+/// enum in scope, in either letter case), whose rule needs resolution alone. The
 /// match-arm half (a capitalized arm name over a scrutinee with no cases)
 /// needs case tables, which sema-lite does not have. The corpus ledger
 /// enforces these one way — a file whose `warns:` lacks the code must not
@@ -602,18 +602,15 @@ impl Walk<'_> {
     /// The enum a message names for a variant spelled `name`, when one in
     /// scope declares it (`crate::binder::homes`'s first).
     fn variant_home(&self, name: &str) -> Option<&str> {
-        if !crate::binder::capitalized(name) {
-            return None;
-        }
         self.binder_homes
             .get(name)
             .and_then(|enums| enums.first())
             .map(String::as_str)
     }
 
-    /// W0801's binder half (`[gram.pat.binder]` upstream): every
-    /// capitalized name a binder pattern binds that spells a variant of an
-    /// enum in scope still binds, and warns at the name. The std tree is
+    /// W0801's binder half (`[gram.pat.binder]` upstream): every name a
+    /// binder pattern binds that spells a variant of an enum in scope, in
+    /// either letter case, still binds, and warns at the name. The std tree is
     /// not exempt, as the compiler's binder half is not.
     fn binder_variants(&mut self, pattern: &Pattern) {
         let mut names = Vec::new();
@@ -636,7 +633,7 @@ impl Walk<'_> {
             return;
         };
         let name = &ident.name;
-        let lower = crate::binder::lowercase(name);
+        let lower = crate::binder::rename(name);
         self.statics.push(
             Diag::new(
                 "E0806",
@@ -651,7 +648,7 @@ impl Walk<'_> {
             )
             .with_help(crate::diag::Help {
                 span: ident.span,
-                note: format!("bind it under a lowercase name: `{lower}`"),
+                note: format!("bind it under another name: `{lower}`"),
             }),
         );
     }

@@ -4,11 +4,13 @@
 //!
 //! A binder pattern — a statement `let`/`var` binder, a `for` header, the
 //! `else |…|` handler's binding form — binds every value it meets, so every
-//! bare name in it is a new binding, at any depth. A name there that begins
-//! with an uppercase letter and spells a variant of an enum *in scope* still
-//! binds, and warns W0801 at the name: it reads as the test it is not. A
-//! `select` arm's receive takes whatever its channel delivers, so the same
-//! name there is refused (E0806).
+//! bare name in it is a new binding, at any depth. A name there that spells
+//! a variant of an enum *in scope*, in either letter case, still binds, and
+//! warns W0801 at the name: it reads as the test it is not. A `select` arm's
+//! receive takes whatever its channel delivers, so the same name there is
+//! refused (E0806). The letter case does not enter, as it does not where a
+//! `match` reads a bare name as a case (this machine's variant-pattern rule
+//! reads `Module::variants` whatever the case, as the compiler does).
 //!
 //! "In scope" is the compiler's set, which needs resolution alone: the enums
 //! the module declares (`Module::variants`), then the enums the FILE imports
@@ -90,14 +92,6 @@ pub fn homes(
     out
 }
 
-/// Does the name read as a variant test: it begins with an uppercase letter
-/// (W0801's "capitalized name"; a lowercase name is already the binding
-/// spelling the warning recommends)?
-#[must_use]
-pub fn capitalized(name: &str) -> bool {
-    name.chars().next().is_some_and(char::is_uppercase)
-}
-
 /// Every name a binder pattern binds, through the shapes a binder admits:
 /// tuples, struct fields (explicit or shorthand) and both sides of `@`. A
 /// refutable shape (a path, a variant, an or-pattern, a literal, a range) is
@@ -131,11 +125,21 @@ pub fn names<'p>(pattern: &'p Pattern, out: &mut Vec<&'p Ident>) {
     }
 }
 
-/// The lowercase spelling the refusal's help names: `Drink` → `drink`,
-/// `HotDrink` → `hot_drink`. Local prose only: the compiler's fix also
-/// steps around taken names, and this machine applies no edits.
+/// The name the refusal's help names: the snake-case spelling, `Drink` →
+/// `drink`, `HotDrink` → `hot_drink`, with `_` appended when that is the name
+/// itself (a lowercase variant's: `fast` → `fast_`). Local prose only: the
+/// compiler's fix also steps around taken names, and this machine applies no
+/// edits.
 #[must_use]
-pub fn lowercase(name: &str) -> String {
+pub fn rename(name: &str) -> String {
+    let mut out = snake_case(name);
+    if out == name {
+        out.push('_');
+    }
+    out
+}
+
+fn snake_case(name: &str) -> String {
     let chars: Vec<char> = name.chars().collect();
     let mut out = String::new();
     for (i, &c) in chars.iter().enumerate() {
@@ -157,12 +161,13 @@ pub fn lowercase(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::lowercase;
+    use super::rename;
 
     #[test]
-    fn lowercase_splits_words_and_acronyms() {
-        assert_eq!(lowercase("Drink"), "drink");
-        assert_eq!(lowercase("HotDrink"), "hot_drink");
-        assert_eq!(lowercase("HTTPCode"), "http_code");
+    fn rename_splits_words_and_steps_past_its_own_spelling() {
+        assert_eq!(rename("Drink"), "drink");
+        assert_eq!(rename("HotDrink"), "hot_drink");
+        assert_eq!(rename("HTTPCode"), "http_code");
+        assert_eq!(rename("fast"), "fast_");
     }
 }
