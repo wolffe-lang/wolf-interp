@@ -60,7 +60,11 @@ Committed before the first change (`a1f3ace`, `notes/s282-prediction.md`). Score
   test (`b0b521c`), and the rename a help names is the snake-case spelling, with a trailing `_`
   when that is the name itself (`fast` becomes `fast_`). The compiler's lowercase rows
   (`lints/binder_variant_lowercase.lu`, `conc/select_arm_lowercase_variant.lu`) are mirrored
-  byte for byte, red first (`310c4dd`, `ab87b56`).
+  byte for byte, red first (`310c4dd`, `ab87b56`): at `ab87b56` (the capitalized-only code)
+  the mirror rows are 7 passed and 2 failed by name, no W0801 against `[566, 570]` and
+  `[630, 634]`, and the `select` row `unsupported` against `fail(E0806)`
+  (`mac-interp-red-ab87b56.log`); at `b0b521c` all 9 pass, with fmt, clippy, the library
+  tests and the lint rows green (`mac-interp-fix-b0b521c.log`).
 - **The handler binds: hit.** `else |Drink| 7` runs and prints `7` where it refused. Only a bare
   name that spells a variant the module declares changes; every other handler shape (a row tag,
   a lowercase name) goes through the arm rule as before.
@@ -78,7 +82,10 @@ Committed before the first change (`a1f3ace`, `notes/s282-prediction.md`). Score
 - `mac-interp-red-7823d8a.log`: the mirror rows at trunk's code, five red by name;
 - `mac-interp-fix-d76649c.log`: the mirror rows green; fmt (red, two lines), clippy (all
   targets, `-D warnings`), the library tests, the lint mirror rows (`lint_is61`), the release
-  build kept for the compiler's four-machine rows.
+  build kept for the compiler's four-machine rows;
+- `mac-interp-red-ab87b56.log`: the lowercase-variant rows at the capitalized-only code, two
+  red by name;
+- `mac-interp-fix-b0b521c.log`: the case-blind code, every mirror row green, and the gates.
 
 The records at the final head live outside the tree. The PR body quotes every `END` line of the
 gauntlet record and of the plant record.
@@ -95,13 +102,16 @@ Commits:
 - `3ea0af1`: the handler binds a variant-spelled name.
 - `d76649c`: the corpus ledger enforces `PARTIAL` one way.
 - `5a39494`: the changelog. `436f213`: formatting.
+- `310c4dd`, `ab87b56`: the compiler's lowercase-variant rows mirrored and pinned, red first.
+- `b0b521c`: binder names read in either letter case. `b18b73e`: the changelog.
 - This note and its evidence.
 
 Test targets:
 - [x] the prediction committed before the first change (`a1f3ace`)
-- [x] the mirror rows red at trunk's code by name (`mac-interp-red-7823d8a.log`)
+- [x] the mirror rows red at trunk's code by name (`mac-interp-red-7823d8a.log`); the
+      lowercase-variant rows red at the capitalized-only code (`mac-interp-red-ab87b56.log`)
 - [x] the mirror rows green; clippy; the library tests; the lint mirror rows
-      (`mac-interp-fix-d76649c.log`)
+      (`mac-interp-fix-d76649c.log`; case-blind, with fmt, `mac-interp-fix-b0b521c.log`)
 - [x] the compiler's rows on lupin built from this branch: verdicts, stdout and W0801 spans equal
 - [ ] `run_corpus` and `lupin corpus` at the head (the Mac, before the record)
 - [ ] the gauntlet record at the final head, every `END … exit=0` (in the PR body)
