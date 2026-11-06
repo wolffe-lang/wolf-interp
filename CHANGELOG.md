@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- W0801 now runs here for binder positions: a capitalized bare name in a
+  `let`/`var` binder, a `for` header or an `else |…|` handler that spells a
+  variant of an enum in scope (the module's own, or one the file imports by
+  item) still binds, and warns at the name, at the compiler's spans. Its
+  match-arm half stays honest-absent (it needs case tables). Such a handler
+  name now binds the error, as the compiler binds it, where it used to read
+  as a variant test and refuse at run. A `select` arm's receive spelled that
+  way is refused statically (E0806) instead of at run.
 - `lupin FILE ARGS…` and `lupin run [OPTIONS] FILE ARGS…` now pass
   ordinary command-line arguments to the program. argv[0] is FILE as
   given; raw OS bytes, empty arguments and program flags are preserved.
