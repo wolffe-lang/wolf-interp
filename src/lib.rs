@@ -27,6 +27,7 @@
 pub mod anchor;
 pub mod ast;
 pub mod attrs;
+pub mod binder;
 pub mod compare;
 pub mod corpus;
 pub mod diag;
