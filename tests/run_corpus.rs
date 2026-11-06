@@ -2657,6 +2657,10 @@ fn the_warns_ledger_is_enforced_for_the_analyses_this_machine_runs() {
     // sides of the comparison are filtered to `lint::IMPLEMENTED` here.
     let implemented: std::collections::BTreeSet<&str> =
         wolf_interp::lint::IMPLEMENTED.iter().copied().collect();
+    // s282: a code this machine runs for one half only (`lint::PARTIAL`) is
+    // enforced one way — never observed where the ledger lacks it.
+    let partial: std::collections::BTreeSet<&str> =
+        wolf_interp::lint::PARTIAL.iter().copied().collect();
     let mut problems = Vec::new();
     let entries = entries();
     for entry in &entries {
@@ -2677,6 +2681,18 @@ fn the_warns_ledger_is_enforced_for_the_analyses_this_machine_runs() {
             .map(|warning| warning.code.as_str())
             .filter(|code| implemented.contains(code))
             .collect();
+        let unledgered: Vec<&str> = warnings
+            .iter()
+            .map(|warning| warning.code.as_str())
+            .filter(|code| partial.contains(code))
+            .filter(|code| !entry.directives.warns.iter().any(|w| w == code))
+            .collect();
+        if !unledgered.is_empty() {
+            problems.push(format!(
+                "  {}: observed {unledgered:?}, which the ledger {:?} does not declare",
+                entry.path, entry.directives.warns
+            ));
+        }
         let differs: std::collections::BTreeSet<&str> =
             expected.symmetric_difference(&observed).copied().collect();
         match WARNS_FILED.iter().find(|(path, ..)| *path == entry.path) {
