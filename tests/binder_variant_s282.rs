@@ -114,17 +114,33 @@ fn binders_and_parameters_that_spell_no_test_stay_silent() {
     runs("controls", "food 3\n5 3\n8\n5\n", &[]);
 }
 
+fn refused(name: &str, span: [u64; 2]) {
+    let a = observe(name);
+    assert_eq!(a.verdict, "fail(E0806)", "{name}: a static refusal");
+    assert_eq!(
+        a.first_diagnostic,
+        Some(("E0806".to_owned(), span)),
+        "{name}: at the name, where the compiler refuses it"
+    );
+}
+
 /// Before this row the arm read as a variant test and the run refused ("the
 /// committed `select` arm's pattern did not match the received value").
 #[test]
 fn a_select_arm_that_spells_a_variant_is_refused() {
-    let a = observe("select_variant");
-    assert_eq!(a.verdict, "fail(E0806)", "a static refusal");
-    assert_eq!(
-        a.first_diagnostic,
-        Some(("E0806".to_owned(), [659, 664])),
-        "at the name, where the compiler refuses it"
-    );
+    refused("select_variant", [659, 664]);
+}
+
+/// Either letter case, as a `match` reads a case: `fast` names a case of
+/// `enum Mode { fast, slow }` as `Drink` names one of `Kind`'s.
+#[test]
+fn binders_that_spell_a_lowercase_variant_warn() {
+    runs("lowercase", "3 4\n12\n", &[[566, 570], [630, 634]]);
+}
+
+#[test]
+fn a_select_arm_that_spells_a_lowercase_variant_is_refused() {
+    refused("select_lowercase_variant", [514, 518]);
 }
 
 #[test]
