@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+s285 — a literal pattern outside its scrutinee's type, the mirror of wolf-lang#1058.
+
+- **A literal pattern its scrutinee's type cannot hold traps `overflow` at the literal.** The
+  compiler now refuses `match v { 300 => … }` with `v: u8` as E0415 at the `300` (wolf-lang#1071,
+  `[gram.pat.lit]`), where native had wrapped the arm into eight bits and matched 44. This machine
+  compared the number and never matched. It has no checker, so it answers E0415 as it answers
+  every other E0415, with the dynamic counterpart: when `match` tests the arm, the run traps
+  `overflow` at the literal, naming the scrutinee's type, the clause and the code. A range's ends
+  are literal patterns too. An unconstrained literal scrutinee reads as its `i32` default, and a
+  `wrapping[T]` ranges at `T`. A program stops at its first trap, which is the compiler's first
+  E0415. A literal that fits tests exactly as before.
+- **A signed literal pattern is refused by name** (E0207, static). The grammar's literal has no
+  sign, and this machine read `-1` in pattern position as the negated literal and ran it. It now
+  answers the compiler's "a literal pattern has no sign" at the signed literal, at a pattern's
+  start and at a range's high end, with the guard spelling (`n if n == -1`) as its help
+  (wolf-interp#349).
+
 ## 0.1.60 — 2026-11-06
 
 This release carries the 66 commits after 0.1.59: program arguments the
