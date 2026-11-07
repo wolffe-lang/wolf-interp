@@ -20,29 +20,32 @@
 
 use std::path::Path;
 
+use wolf_interp::Observed;
 use wolf_interp::protocol::ObservationRecord;
 
-fn observe(name: &str) -> ObservationRecord {
+/// The record, and the human-facing half (the trap's and the diagnostic's
+/// words, never on the wire).
+fn observe(name: &str) -> (ObservationRecord, Observed) {
     let file = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("literal_pattern_s285")
         .join(name)
         .join("main.lu");
     let source = std::fs::read(&file).expect("the shape carries its main.lu");
-    wolf_interp::observe_record(&file, &source, None).0
+    wolf_interp::observe_record(&file, &source, None)
 }
 
 /// The run traps `overflow` at `span`, the compiler's first E0415 in the row,
 /// and says why.
 fn traps_at(name: &str, span: [u64; 2], scrutinee: &str) {
-    let r = observe(name);
+    let (r, seen) = observe(name);
     assert_eq!(r.verdict.to_string(), "trap(overflow)", "{name}: {r:?}");
     assert_eq!(
         r.extensions.get("x-trap-span"),
         Some(&serde_json::json!(span)),
         "{name}: the trap sits at the compiler's first E0415: {r:?}"
     );
-    let message = r.trap_message.clone().unwrap_or_default();
+    let message = seen.trap.map(|t| t.message).unwrap_or_default();
     for text in [scrutinee, "[gram.pat.lit]", "E0415"] {
         assert!(
             message.contains(text),
@@ -86,8 +89,13 @@ fn a_literal_scrutinee_holds_its_pattern_to_i32() {
 /// first of the compiler's four, `[proto.record.first]`.
 #[test]
 fn a_signed_literal_pattern_is_refused_by_name() {
-    let r = observe("signed");
+    let (r, seen) = observe("signed");
     assert_eq!(r.verdict.to_string(), "fail(E0207)", "signed: {r:?}");
+    let words = seen.diagnostic.map(|d| d.message).unwrap_or_default();
+    assert!(
+        words.contains("a literal pattern has no sign"),
+        "signed: the compiler's words: {words}"
+    );
     let first = r
         .diagnostics
         .iter()
@@ -103,7 +111,7 @@ fn a_signed_literal_pattern_is_refused_by_name() {
 /// The in-range edge of every primitive matches, as before.
 #[test]
 fn every_primitives_edge_literal_still_matches() {
-    let r = observe("edge_values");
+    let (r, _) = observe("edge_values");
     assert_eq!(r.verdict.to_string(), "exit(0)", "edge_values: {r:?}");
     assert_eq!(
         r.stdout_inline.as_deref(),
