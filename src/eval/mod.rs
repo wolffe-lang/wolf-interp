@@ -8088,6 +8088,37 @@ impl Machine {
         })))
     }
 
+    /// `[gram.pat.lit]` (wolf-lang#1058): a literal pattern takes its
+    /// scrutinee's type, and one that type cannot hold is the compiler's E0415
+    /// at the literal. This machine has no checker, so it answers as it
+    /// answers every other E0415, with the dynamic counterpart: the overflow
+    /// trap, at the literal, when `match` tests it. It compared the number
+    /// instead, so `300` over a `u8` was a test that was never true, where
+    /// native wrapped it and tested 44. The scrutinee's type is the one the
+    /// value carries; an unconstrained literal reads as its `i32` default
+    /// (`[arith.literal.default]`), and a `wrapping[T]` ranges at `T`.
+    fn literal_pattern_fits(&mut self, literal: i128, scrutinee: IntTy, span: Span) -> EResult<()> {
+        let ty = if scrutinee.literal { IntTy::I32 } else { scrutinee };
+        if ty.holds(literal) {
+            return Ok(());
+        }
+        let (lo, hi) = ty.range();
+        self.trap(
+            TrapKind::Overflow,
+            Rule::ArithChecked,
+            span,
+            format!(
+                "the literal pattern {literal} is outside `{}`, its scrutinee's type, which \
+                 holds {lo}..={hi}: a literal pattern takes its scrutinee's type \
+                 ([gram.pat.lit]) and the checker refuses this arm (E0415), since no `{}` is \
+                 {literal}",
+                ty.name(),
+                ty.name()
+            ),
+            None,
+        )
+    }
+
     fn match_pattern(&mut self, pattern: &Pattern, value: &Value) -> EResult<bool> {
         match &*pattern.kind {
             PatKind::Wildcard => Ok(true),
@@ -8201,6 +8232,9 @@ impl Machine {
                          position; match over `b as int`, or bind the byte and compare"
                     ));
                 }
+                if let (Value::Int(a, _), Value::Int(_, ty)) = (&literal, value) {
+                    self.literal_pattern_fits(*a, *ty, expr.span)?;
+                }
                 Ok(match (&literal, value) {
                     (Value::Int(a, _), Value::Int(b, _)) => a == b,
                     _ => literal == *value,
@@ -8224,7 +8258,11 @@ impl Machine {
                 let low = self.eval(lo)?;
                 let high = self.eval(hi)?;
                 match (&low, &high, value) {
-                    (Value::Int(a, _), Value::Int(b, _), Value::Int(n, _)) => {
+                    (Value::Int(a, _), Value::Int(b, _), Value::Int(n, ty)) => {
+                        // Each end is a literal pattern of the scrutinee's type
+                        // (`[gram.pat.lit]`), the exclusive end included.
+                        self.literal_pattern_fits(*a, *ty, lo.span)?;
+                        self.literal_pattern_fits(*b, *ty, hi.span)?;
                         Ok(n >= a && if *inclusive { n <= b } else { n < b })
                     }
                     (Value::Char(a), Value::Char(b), Value::Char(c)) => {
