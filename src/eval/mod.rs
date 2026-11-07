@@ -8098,7 +8098,11 @@ impl Machine {
     /// value carries; an unconstrained literal reads as its `i32` default
     /// (`[arith.literal.default]`), and a `wrapping[T]` ranges at `T`.
     fn literal_pattern_fits(&mut self, literal: i128, scrutinee: IntTy, span: Span) -> EResult<()> {
-        let ty = if scrutinee.literal { IntTy::I32 } else { scrutinee };
+        let ty = if scrutinee.literal {
+            IntTy::I32
+        } else {
+            scrutinee
+        };
         if ty.holds(literal) {
             return Ok(());
         }
