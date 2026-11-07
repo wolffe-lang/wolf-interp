@@ -757,6 +757,18 @@ impl<'a> Parser<'a> {
     /// `let mut f`): **E0207**, the compiler's "expected a pattern" on all
     /// three lanes (wolf-interp#175, `rows/negative/first_keyword_pattern.lu`,
     /// `first_parse_before_resolve.lu`). The file ending here stays E0202.
+    fn expected_pattern(&self, anchor: &'static str) -> Diag {
+        match self.tok() {
+            Some(tok) => Diag::new(
+                diag::E_EXPECTED_PATTERN,
+                self.span(),
+                anchor,
+                format!("expected a pattern, found {}", tok.describe()),
+            ),
+            None => self.unexpected(anchor, "a pattern"),
+        }
+    }
+
     /// `[gram.pat.lit]`: the parser is at `-` in pattern position. A literal
     /// pattern has no sign, so this is the compiler's E0207, spanning the `-`
     /// and the numeric literal after it (the `-` alone when none follows),
@@ -779,18 +791,6 @@ impl<'a> Parser<'a> {
                    ([gram.pat.lit]); match a negative value in a guard: `n if n == -1 => …`"
                 .to_owned(),
         })
-    }
-
-    fn expected_pattern(&self, anchor: &'static str) -> Diag {
-        match self.tok() {
-            Some(tok) => Diag::new(
-                diag::E_EXPECTED_PATTERN,
-                self.span(),
-                anchor,
-                format!("expected a pattern, found {}", tok.describe()),
-            ),
-            None => self.unexpected(anchor, "a pattern"),
-        }
     }
 
     fn unexpected(&self, anchor: &'static str, wanted: &str) -> Diag {
