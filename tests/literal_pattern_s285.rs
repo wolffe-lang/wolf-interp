@@ -12,7 +12,7 @@
 //! the signed literal, and this machine's too.
 //!
 //! One directory per shape under `tests/literal_pattern_s285/`, each the
-//! compiler's corpus row byte for byte (wolf-lang's `s285b` branch:
+//! compiler's corpus row byte for byte (wolf-lang#1071, trunk `d848fbed`:
 //! `corpus/typecheck/numlit_pattern_*.lu`,
 //! `corpus/grammar/match_pattern_signed_literal.lu`,
 //! `corpus/rows/match_literal_pattern_edges.lu`). The spans are the compiler's
