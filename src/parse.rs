@@ -757,6 +757,30 @@ impl<'a> Parser<'a> {
     /// `let mut f`): **E0207**, the compiler's "expected a pattern" on all
     /// three lanes (wolf-interp#175, `rows/negative/first_keyword_pattern.lu`,
     /// `first_parse_before_resolve.lu`). The file ending here stays E0202.
+    /// `[gram.pat.lit]`: the parser is at `-` in pattern position. A literal
+    /// pattern has no sign, so this is the compiler's E0207, spanning the `-`
+    /// and the numeric literal after it (the `-` alone when none follows),
+    /// with the guard spelling as its help.
+    fn signed_literal_pattern(&self) -> Diag {
+        let minus = self.span();
+        let end = match (self.tok_at(1), self.tokens.get(self.pos + 1)) {
+            (Some(Tok::Int(_) | Tok::Float(_)), Some(t)) => t.span.end,
+            _ => minus.end,
+        };
+        Diag::new(
+            diag::E_EXPECTED_PATTERN,
+            Span::new(minus.start, end),
+            "gram.pat",
+            "a literal pattern has no sign — a signed literal is an expression, not a pattern",
+        )
+        .with_help(diag::Help {
+            span: Span::new(minus.start, end),
+            note: "a literal pattern is a literal, and an integer literal carries no sign \
+                   ([gram.pat.lit]); match a negative value in a guard: `n if n == -1 => …`"
+                .to_owned(),
+        })
+    }
+
     fn expected_pattern(&self, anchor: &'static str) -> Diag {
         match self.tok() {
             Some(tok) => Diag::new(
@@ -2436,10 +2460,12 @@ impl<'a> Parser<'a> {
                 let lo = self.parse_primary()?;
                 self.literal_or_range(lo)?
             }
-            Some(Tok::Minus) => {
-                let lo = self.parse_literal_only()?;
-                self.literal_or_range(lo)?
-            }
+            // `[gram.pat.lit]` (wolf-lang#1058): a literal pattern carries no
+            // sign — `literal`'s INT has none — so `-1` in pattern position is
+            // refused by name at the signed literal, the compiler's E0207 and
+            // its words. This machine read it as the negated literal and ran
+            // it (`-1` over an `i8` holding -1 matched).
+            Some(Tok::Minus) => return Err(self.signed_literal_pattern()),
             // `..hi` and `lo..` are the slice spellings of
             // `[gram.expr.primary]`, not patterns — the leading form reaches
             // pattern position only as a mistake, and the refusal must say
@@ -2571,7 +2597,8 @@ impl<'a> Parser<'a> {
                 | Tok::StrStart(_)
                 | Tok::Kw("true" | "false"),
             ) => self.parse_primary()?,
-            Some(Tok::Minus) => self.parse_literal_only()?,
+            // A range's high end is a literal pattern too (`[gram.pat.lit]`).
+            Some(Tok::Minus) => return Err(self.signed_literal_pattern()),
             _ => {
                 return Err(self.error(
                     diag::E_UNEXPECTED_TOKEN,
