@@ -5086,12 +5086,22 @@ fn body_walk(
     });
     for module in program.modules.values() {
         // Module-level bindings are in scope in every function of the module.
-        let mut globals: Vec<(String, bool)> = Vec::new();
+        let mut globals: Vec<Scoped> = Vec::new();
         for name in &module.bindings {
             if let Some((Def::Binding(binding), _)) = module.items.get(name) {
-                globals.push((name.clone(), binding.kind == crate::ast::BindingKind::Var));
+                let bound = if binding.kind == crate::ast::BindingKind::Var {
+                    Bound::Var
+                } else {
+                    Bound::Let
+                };
+                globals.push(Scoped {
+                    name: name.clone(),
+                    bound,
+                    known: None,
+                });
             }
         }
+        let tests = Tests { program, module };
         let known = raises.then(|| {
             let mut known: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
             known.extend(module.items.keys().cloned());
@@ -5133,6 +5143,8 @@ fn body_walk(
                     nested: Vec::new(),
                 }),
                 moves: moves.then(MoveCtx::default),
+                tests,
+                tested: Vec::new(),
             };
             let diag = walk_fn_assigns(decl, &mut env);
             if let Some(ctx) = env.raise
@@ -5155,6 +5167,8 @@ fn body_walk(
                         nested: Vec::new(),
                     }),
                     moves: moves.then(MoveCtx::default),
+                    tests,
+                    tested: Vec::new(),
                 };
                 let diag = walk_expr_assigns(&binding.value, &mut env);
                 if diag.is_some() {
@@ -5166,9 +5180,55 @@ fn body_walk(
     (None, None)
 }
 
-/// The lexical environment of the reassignment walk: name → is it assignable.
-struct Env {
-    scopes: Vec<Vec<(String, bool)>>,
+/// How a name the reassignment walk sees was bound.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Bound {
+    /// `let` (and `const`): immutable for its scope, fields included.
+    Let,
+    /// `var`.
+    Var,
+    /// A name a pattern binds outside `let` and `var` — a `match` arm, a
+    /// `for` header, an `else |…|` handler, a `select` receive, either side
+    /// of `@` — which binds as `let` does (`[gram.pat.let]`, s288).
+    Pattern,
+    /// A parameter, whose mutability is the mode system's business; a
+    /// closure's parameter (wolf-lang#1076 is open); a `when` operand, which
+    /// the body addresses unlocked (`[conc.when.body]`).
+    Param,
+}
+
+impl Bound {
+    fn assignable(self) -> bool {
+        matches!(self, Bound::Var | Bound::Param)
+    }
+}
+
+/// One name in scope: how it was bound, and what `rowmatch`'s reader knows
+/// it holds (a row match's scrutinee is read through it).
+#[derive(Debug, Clone)]
+struct Scoped {
+    name: String,
+    bound: Bound,
+    known: Option<crate::rowmatch::Known>,
+}
+
+/// What the walk asks of the module a body lives in: which bare arm names
+/// test a case rather than bind (s288, `[gram.pat.nullary.scope]`).
+#[derive(Clone, Copy)]
+struct Tests<'p> {
+    program: &'p Program,
+    module: &'p Module,
+}
+
+/// The lexical environment of the reassignment walk: name → how it is bound.
+struct Env<'p> {
+    scopes: Vec<Vec<Scoped>>,
+    /// The module's case names and its callees' rows, for a bare arm name.
+    tests: Tests<'p>,
+    /// The bare names the enclosing arms test, innermost last: such an arm
+    /// binds nothing, so its body's name is the one outside the `match`, and
+    /// an E0410 there says so.
+    tested: Vec<String>,
     /// Present when the walk is also the eager raise check ([`raise_check`]):
     /// a `return <bare lowercase name>` must resolve *somewhere* — binding,
     /// item, or the enclosing function's declared row — at resolve time.
@@ -5241,10 +5301,18 @@ struct RaiseCtx {
     refusal: Option<String>,
 }
 
-impl Env {
-    fn declare(&mut self, name: &str, assignable: bool) {
+impl Env<'_> {
+    fn declare(&mut self, name: &str, bound: Bound) {
+        self.declare_known(name, bound, None);
+    }
+
+    fn declare_known(&mut self, name: &str, bound: Bound, known: Option<crate::rowmatch::Known>) {
         if let Some(scope) = self.scopes.last_mut() {
-            scope.push((name.to_owned(), assignable));
+            scope.push(Scoped {
+                name: name.to_owned(),
+                bound,
+                known,
+            });
         }
         // A fresh binding is a fresh thing: shadowing (or any pattern
         // rebinding the name) ends the moved-from story the old binding
@@ -5280,39 +5348,96 @@ impl Env {
     fn binding_depth(&self, name: &str) -> Option<usize> {
         self.scopes
             .iter()
-            .rposition(|scope| scope.iter().any(|(n, _)| n == name))
+            .rposition(|scope| scope.iter().any(|local| local.name == name))
             .map(|index| index + 1)
     }
 
     /// The latest binding of `name`, innermost scope first — shadowing means
     /// the most recent entry wins even within one scope.
+    fn local(&self, name: &str) -> Option<&Scoped> {
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.iter().rev().find(|local| local.name == name))
+    }
+
     fn assignable(&self, name: &str) -> Option<bool> {
-        self.scopes.iter().rev().find_map(|scope| {
-            scope
-                .iter()
-                .rev()
-                .find(|(n, _)| n == name)
-                .map(|(_, assignable)| *assignable)
-        })
+        self.local(name).map(|local| local.bound.assignable())
+    }
+
+    /// The row a `match` scrutinee is statically known to carry, read as
+    /// `rowmatch`'s body walk reads it: a call to a declared fn (unless a
+    /// local shadows it), a local bound by one, a `Map` index.
+    fn scrutinee_row(&self, scrutinee: &Expr) -> Option<crate::rowmatch::RowTy> {
+        let locals = |name: &str| self.local(name).and_then(|local| local.known.clone());
+        let callee = |path: &crate::ast::Path| {
+            if path.is_single() && self.local(&path.segments[0].name).is_some() {
+                return None;
+            }
+            crate::rowmatch::callee_row(self.tests.program, &self.tests.module.name, path)
+        };
+        crate::rowmatch::fallible_of_expr(scrutinee, &locals, &callee)
+    }
+
+    /// What a `let`/`var` binding records for its one name.
+    fn known_of_binding(&self, binding: &crate::ast::Binding) -> Option<crate::rowmatch::Known> {
+        let locals = |name: &str| self.local(name).and_then(|local| local.known.clone());
+        let callee = |path: &crate::ast::Path| {
+            if path.is_single() && self.local(&path.segments[0].name).is_some() {
+                return None;
+            }
+            crate::rowmatch::callee_row(self.tests.program, &self.tests.module.name, path)
+        };
+        crate::rowmatch::known_of_binding(binding, &locals, &callee)
     }
 }
 
-/// Declares every name a pattern binds. Pattern bindings are never `let`
-/// bindings, so they are all assignable as far as this rule cares.
-fn declare_pattern(pattern: &Pattern, assignable: bool, env: &mut Env) {
+/// Declares every name a binder pattern binds, as `bound`: a `let` or `var`
+/// binder's kind, or [`Bound::Pattern`] for a `for` header, an `else |…|`
+/// handler and a `select` receive, whose names bind as `let` does
+/// (`[gram.pat.let]`, s288). Every bare name in a binder position binds
+/// (`[gram.pat.binder]`).
+fn declare_pattern(pattern: &Pattern, bound: Bound, env: &mut Env) {
+    declare_names(pattern, bound, None, env);
+}
+
+/// Declares what a `match` arm's pattern binds (s288). A bare name that tests
+/// a case binds nothing (`[gram.pat.nullary.scope]`): it names a variant of
+/// an enum the module declares, as this machine's evaluator reads it, or, at
+/// the top of the arm, a tag of the row the scrutinee is statically known to
+/// carry (`rowmatch`'s reader). Its name is recorded as tested, so the arm's
+/// body sees the binding outside the `match`. Every other name binds as `let`
+/// does.
+fn declare_arm_pattern(pattern: &Pattern, tags: Option<&[String]>, env: &mut Env) {
+    declare_names(pattern, Bound::Pattern, Some(tags.unwrap_or_default()), env);
+}
+
+/// [`declare_pattern`] and [`declare_arm_pattern`]'s walk: `arm` holds the
+/// row's tags in an arm, where a bare name may test, and is `None` in a
+/// binder position, where every name binds.
+fn declare_names(pattern: &Pattern, bound: Bound, arm: Option<&[String]>, env: &mut Env) {
+    let deeper = arm.map(|_| &[][..]);
     match &*pattern.kind {
         // A range binds nothing — it is a test, exactly as a literal is
         // (`[gram.pat.range]`).
         PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } | PatKind::Path(_) => {}
-        PatKind::Binding(ident) => env.declare(&ident.name, assignable),
+        PatKind::Binding(ident) => match arm {
+            Some(tags)
+                if env.tests.module.variants.contains_key(&ident.name)
+                    || tags.contains(&ident.name) =>
+            {
+                env.tested.push(ident.name.clone());
+            }
+            _ => env.declare(&ident.name, bound),
+        },
         PatKind::Variant { fields, .. } => {
             for field in fields {
-                declare_pattern(field, assignable, env);
+                declare_names(field, bound, deeper, env);
             }
         }
         PatKind::Tuple(items) => {
             for item in items {
-                declare_pattern(item, assignable, env);
+                declare_names(item, bound, deeper, env);
             }
         }
         PatKind::Struct { fields, .. } => {
@@ -5320,21 +5445,63 @@ fn declare_pattern(pattern: &Pattern, assignable: bool, env: &mut Env) {
             // an explicit sub-pattern declares what it binds.
             for field in fields {
                 match &field.pattern {
-                    Some(sub) => declare_pattern(sub, assignable, env),
-                    None => env.declare(&field.name.name, assignable),
+                    Some(sub) => declare_names(sub, bound, deeper, env),
+                    None => env.declare(&field.name.name, bound),
                 }
             }
         }
         PatKind::At { name, pattern } => {
-            env.declare(&name.name, assignable);
-            declare_pattern(pattern, assignable, env);
+            env.declare(&name.name, bound);
+            declare_names(pattern, bound, arm, env);
         }
         PatKind::Or(alternatives) => {
             for alternative in alternatives {
-                declare_pattern(alternative, assignable, env);
+                declare_names(alternative, bound, arm, env);
             }
         }
     }
+}
+
+/// E0410 at an assignment to `name` (the place is `span`): a `let`, or since
+/// s288 a name a pattern binds (`[gram.pat.let]`), the whole binding or a
+/// field of it. `tested` says an enclosing arm tests the name, so it binds
+/// nothing there (`[gram.pat.nullary.scope]`). The pinned spec has neither
+/// clause yet, so both cite `[gram.item.let]` and name theirs in the words.
+fn e0410(name: &str, span: Span, bound: Bound, whole: bool, tested: bool) -> Diag {
+    let mut message = match (bound, whole) {
+        (Bound::Pattern, true) => format!(
+            "`{name}` is bound by a pattern, so it cannot be assigned: a name a pattern binds \
+             outside `let` and `var` (in a `match` arm, a `for` header, an `else |…|` handler, a \
+             `select` receive, or either side of `@`) binds as `let` does ([gram.pat.let]), \
+             holding its own value, never a place in what was matched. To update it, shadow it \
+             with a `var` at the start of the body: `var {name} = {name}`"
+        ),
+        (Bound::Pattern, false) => format!(
+            "`{name}` is bound by a pattern, so its fields cannot be assigned either: a name a \
+             pattern binds outside `let` and `var` binds as `let` does ([gram.pat.let]), fields \
+             included, holding its own value, never a place in what was matched. To update it, \
+             shadow it with a `var` at the start of the body: `var {name} = {name}`"
+        ),
+        (_, true) => format!(
+            "`{name}` is bound with `let`, so it cannot be assigned again; declare the binding \
+             with `var` to update it in place (machine-applicable), or shadow it with a second \
+             `let` if the next value is really a new thing"
+        ),
+        (_, false) => format!(
+            "`{name}` is bound with `let`, so its fields cannot be assigned either — `let` names \
+             a value once, and the value includes its fields ([gram.item.let]); declare the \
+             binding with `var` to update a field in place (machine-applicable), or build the \
+             value complete in the `let`"
+        ),
+    };
+    if tested {
+        message.push_str(&format!(
+            ". An arm here tests `{name}`: this pattern tests `{name}` and binds nothing, so \
+             inside its arm every name resolves as it does outside the `match` \
+             ([gram.pat.nullary.scope])"
+        ));
+    }
+    Diag::new("E0410", span, "gram.item.let", message)
 }
 
 fn walk_fn_assigns(decl: &FnDecl, env: &mut Env) -> Option<Diag> {
@@ -5346,8 +5513,10 @@ fn walk_fn_assigns(decl: &FnDecl, env: &mut Env) -> Option<Diag> {
     };
     for param in &decl.params {
         match &param.kind {
-            crate::ast::ParamKind::Named { name, .. } => env.declare(&name.name, true),
-            crate::ast::ParamKind::SelfParam { .. } => env.declare("self", true),
+            crate::ast::ParamKind::Named { name, ty } => {
+                env.declare_known(&name.name, Bound::Param, crate::rowmatch::known_of_type(ty));
+            }
+            crate::ast::ParamKind::SelfParam { .. } => env.declare("self", Bound::Param),
         }
     }
     let diag = walk_block_assigns(body, env);
@@ -5389,34 +5558,24 @@ fn walk_stmt_assigns(stmt: &Stmt, env: &mut Env) -> Option<Diag> {
             if diag.is_some() {
                 return diag;
             }
-            declare_pattern(
-                &binding.pattern,
-                binding.kind == crate::ast::BindingKind::Var,
-                env,
-            );
+            let bound = if binding.kind == crate::ast::BindingKind::Var {
+                Bound::Var
+            } else {
+                Bound::Let
+            };
+            match &*binding.pattern.kind {
+                PatKind::Binding(ident) => {
+                    let known = env.known_of_binding(binding);
+                    env.declare_known(&ident.name, bound, known);
+                }
+                _ => declare_pattern(&binding.pattern, bound, env),
+            }
             None
         }
         StmtKind::Assign { place, value, .. } => {
             let diag = walk_expr_assigns(value, env).or_else(|| walk_expr_assigns(place, env));
             if diag.is_some() {
                 return diag;
-            }
-            if let ExprKind::Path(path) = &*place.kind
-                && path.is_single()
-                && let Some(head) = path.segments.first()
-                && env.assignable(&head.name) == Some(false)
-            {
-                return Some(Diag::new(
-                    "E0410",
-                    place.span,
-                    "gram.item.let",
-                    format!(
-                        "`{}` is bound with `let`, so it cannot be assigned again; declare the \
-                         binding with `var` to update it in place (machine-applicable), or shadow \
-                         it with a second `let` if the next value is really a new thing",
-                        head.name
-                    ),
-                ));
             }
             // `[gram.item.let]` (wolf-lang s154, #331; wolf-interp#99): **a
             // `let` binding's FIELDS are as immutable as the binding** —
@@ -5427,25 +5586,22 @@ fn walk_stmt_assigns(stmt: &Stmt, env: &mut Env) -> Option<Diag> {
             // peeled to its base binding. An INDEX is not part of this
             // (`xs[0] = 1` on a `let` stays in exclusivity/freeze
             // territory), and a bracket is not a `Path`, so the peel stops
-            // there by construction. Clause text read from wolf-lang trunk
-            // past the v0.2.11 pin, which predates s154.
+            // there by construction. s288: a name a pattern binds outside
+            // `let` and `var` binds as `let` does (`[gram.pat.let]`), fields
+            // included, and an arm that tests a name binds nothing
+            // (`[gram.pat.nullary.scope]`), so the name is the one outside.
             if let ExprKind::Path(path) = &*place.kind
-                && !path.is_single()
                 && let Some(head) = path.segments.first()
-                && env.assignable(&head.name) == Some(false)
+                && let Some(local) = env.local(&head.name)
+                && !local.bound.assignable()
             {
-                return Some(Diag::new(
-                    "E0410",
+                let tested = env.tested.contains(&head.name);
+                return Some(e0410(
+                    &head.name,
                     place.span,
-                    "gram.item.let",
-                    format!(
-                        "`{}` is bound with `let`, so its fields cannot be assigned either — \
-                         `let` names a value once, and the value includes its fields \
-                         ([gram.item.let]); declare the binding with `var` to update a field \
-                         in place (machine-applicable), or build the value complete in the \
-                         `let`",
-                        head.name
-                    ),
+                    local.bound,
+                    path.is_single(),
+                    tested,
                 ));
             }
             if let ExprKind::Path(path) = &*place.kind
@@ -5480,6 +5636,8 @@ fn walk_stmt_assigns(stmt: &Stmt, env: &mut Env) -> Option<Diag> {
                     .as_mut()
                     .map(|ctx| std::mem::take(&mut ctx.nested));
                 let mut nested = Env {
+                    tests: env.tests,
+                    tested: Vec::new(),
                     scopes: vec![env.scopes.first().cloned().unwrap_or_default()],
                     raise: env.raise.take(),
                     modes: env.modes.take(),
@@ -5581,7 +5739,7 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
                 crate::ast::ElseHandler::Expr(expr) => walk_expr_assigns(expr, env),
                 crate::ast::ElseHandler::Handler { pattern, body } => {
                     env.scopes.push(Vec::new());
-                    declare_pattern(pattern, true, env);
+                    declare_pattern(pattern, Bound::Pattern, env);
                     let diag = walk_expr_assigns(body, env);
                     env.scopes.pop();
                     diag
@@ -5608,16 +5766,20 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
                 diag
             }),
         ExprKind::Match { scrutinee, arms } => walk_expr_assigns(scrutinee, env).or_else(|| {
+            let row = env.scrutinee_row(scrutinee);
+            let tags = row.as_ref().map(|row| row.tags.as_slice());
             arms.iter().find_map(|arm| {
                 env.scopes.push(Vec::new());
+                let tested = env.tested.len();
                 let snapshot = env.moved_snapshot();
-                declare_pattern(&arm.pattern, true, env);
+                declare_arm_pattern(&arm.pattern, tags, env);
                 let diag = arm
                     .guard
                     .as_ref()
                     .and_then(|guard| walk_expr_assigns(guard, env))
                     .or_else(|| walk_expr_assigns(&arm.body, env));
                 env.moved_restore(snapshot);
+                env.tested.truncate(tested);
                 env.scopes.pop();
                 diag
             })
@@ -5629,7 +5791,7 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
         } => walk_expr_assigns(iter, env).or_else(|| {
             env.scopes.push(Vec::new());
             let snapshot = env.moved_snapshot();
-            declare_pattern(pattern, true, env);
+            declare_pattern(pattern, Bound::Pattern, env);
             let diag = walk_block_assigns(body, env);
             env.moved_restore(snapshot);
             env.scopes.pop();
@@ -5676,7 +5838,8 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
                 env.moves = Some(MoveCtx::default());
             }
             for param in params {
-                env.declare(&param.name.name, true);
+                let known = param.ty.as_ref().and_then(crate::rowmatch::known_of_type);
+                env.declare_known(&param.name.name, Bound::Param, known);
             }
             let diag = walk_expr_assigns(body, env);
             env.moves = outer;
@@ -5695,7 +5858,7 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
             let diag = match &arm.kind {
                 crate::ast::SelectArmKind::Recv { pattern, channel } => {
                     let diag = walk_expr_assigns(channel, env);
-                    declare_pattern(pattern, true, env);
+                    declare_pattern(pattern, Bound::Pattern, env);
                     diag
                 }
                 crate::ast::SelectArmKind::Timeout(expr) => walk_expr_assigns(expr, env),
@@ -5730,7 +5893,7 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
                             && path.is_single()
                             && let Some(head) = path.segments.first()
                         {
-                            env.declare(&head.name, true);
+                            env.declare(&head.name, Bound::Param);
                         }
                     }
                     let diag = walk_block_assigns(body, env);
