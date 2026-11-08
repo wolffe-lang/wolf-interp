@@ -381,6 +381,223 @@ pub fn arm_half(pattern: &Pattern, tags: &[String]) -> Half {
     }
 }
 
+/// How one bare name in a `match` arm reads, statically (s288).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArmName {
+    /// It tests a case and binds nothing (`[gram.pat.nullary.scope]`).
+    Tests,
+    /// It binds, whatever the scrutinee holds.
+    Binds,
+    /// This reader cannot tell: the value there may be an error value
+    /// whose row this reader does not see, or a case of an enum another
+    /// module declares. A check that would refuse on either reading alone
+    /// says nothing here.
+    Unsure,
+}
+
+/// What the value at one position of an arm is statically known to be.
+enum Held<'e> {
+    /// A fallible value whose row's tags are these.
+    Row(Vec<String>),
+    /// No error value can stand here: a literal, an operator's result, a
+    /// value of a declared type that is not fallible, or anything under a
+    /// variant or struct pattern, whose type a declaration fixes.
+    Value,
+    /// A tuple literal's elements, each read in its own right.
+    Tuple(&'e [Expr]),
+    /// A declared tuple type's elements.
+    Types(Vec<Type>),
+    Unknown,
+}
+
+/// What [`arm_names`] asks of the walk that calls it.
+pub struct ArmReader<'r> {
+    /// The row an expression is statically known to carry.
+    pub row_of: &'r dyn Fn(&Expr) -> Option<RowTy>,
+    /// The type a local's binding declared, for a path naming one.
+    pub declared: &'r dyn Fn(&Expr) -> Option<Type>,
+    /// Whether a bare name spells a variant of an enum the module declares.
+    pub is_variant: &'r dyn Fn(&str) -> bool,
+    /// Whether a type name is one no error value can be: a struct or an enum
+    /// the module declares ([`value_type`]).
+    pub is_value_type: &'r dyn Fn(&str) -> bool,
+}
+
+/// Whether `name` is a struct or an enum `module` declares, which no error
+/// value can be. A type alias may name a fallible type, so it is not one.
+#[must_use]
+pub fn value_type(module: &Module, name: &str) -> bool {
+    matches!(
+        module.items.get(name),
+        Some((Def::Struct(_) | Def::Opaque("enum"), _))
+    )
+}
+
+/// The primitive and container types no error value can be.
+const VALUE_TYPES: &[&str] = &[
+    "int",
+    "uint",
+    "i8",
+    "i16",
+    "i32",
+    "i64",
+    "u8",
+    "u16",
+    "u32",
+    "u64",
+    "f32",
+    "f64",
+    "bool",
+    "char",
+    "str",
+    "byte",
+    "wrapping",
+    "saturating",
+    "List",
+    "Map",
+    "Pool",
+];
+
+fn held_of_type<'e>(ty: &Type, reader: &ArmReader<'_>) -> Held<'e> {
+    match &*ty.kind {
+        TypeKind::Fallible { ty: inner, row } => Held::Row(row_of(inner, row).tags),
+        TypeKind::ErrorUnion(_) => Held::Unknown,
+        TypeKind::Tuple(parts) => Held::Types(parts.clone()),
+        TypeKind::Path { path, .. } => match path.segments.as_slice() {
+            [head]
+                if VALUE_TYPES.contains(&head.name.as_str())
+                    || (reader.is_value_type)(&head.name) =>
+            {
+                Held::Value
+            }
+            _ => Held::Unknown,
+        },
+        TypeKind::Prefixed { .. }
+        | TypeKind::RawPointer(_)
+        | TypeKind::Dyn(_)
+        | TypeKind::Fn { .. }
+        | TypeKind::TypeOfTypes
+        | TypeKind::Region => Held::Value,
+    }
+}
+
+fn held<'e>(expr: &'e Expr, reader: &ArmReader<'_>) -> Held<'e> {
+    if let Some(row) = (reader.row_of)(expr) {
+        return Held::Row(row.tags);
+    }
+    if let Some(ty) = (reader.declared)(expr) {
+        return held_of_type(&ty, reader);
+    }
+    match &*expr.kind {
+        ExprKind::Group(inner) => held(inner, reader),
+        ExprKind::Tuple(items) => Held::Tuple(items),
+        ExprKind::Int(_)
+        | ExprKind::Float(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Char(_)
+        | ExprKind::Str(_)
+        | ExprKind::List(_)
+        | ExprKind::StructLit { .. }
+        | ExprKind::Binary { .. }
+        | ExprKind::Range { .. }
+        | ExprKind::Unary {
+            op: crate::ast::UnOp::Not | crate::ast::UnOp::Neg,
+            ..
+        } => Held::Value,
+        _ => Held::Unknown,
+    }
+}
+
+/// How every bare name of one `match` arm's pattern reads, keyed by the
+/// name's span (s288). The evaluator's rule, statically and only as far as
+/// it is certain:
+///
+/// - a name that spells a variant of an enum the module declares tests, at
+///   any depth;
+/// - where the value's row is statically known (a call to a declared fn, a
+///   local bound by one, a declared `T ! {row}`), a tag of that row tests and
+///   every other lowercase name binds;
+/// - where no error value can stand (a literal, an operator's result, a
+///   declared type that is not fallible, a tuple of those, anything under a
+///   variant or struct pattern), a lowercase name binds;
+/// - a capitalized name that is no variant here, and any name where this
+///   reader cannot type the value, is [`ArmName::Unsure`]: it may be a
+///   structural tag of a row this reader does not see, or a case of an enum
+///   another module declares, and the compiler decides it by the type.
+#[must_use]
+pub fn arm_names(
+    pattern: &Pattern,
+    scrutinee: &Expr,
+    reader: &ArmReader<'_>,
+) -> BTreeMap<(usize, usize), ArmName> {
+    fn walk(
+        pattern: &Pattern,
+        at: &Held<'_>,
+        reader: &ArmReader<'_>,
+        out: &mut BTreeMap<(usize, usize), ArmName>,
+    ) {
+        match &*pattern.kind {
+            PatKind::Binding(ident) => {
+                let name = ident.name.as_str();
+                let read = if (reader.is_variant)(name) {
+                    ArmName::Tests
+                } else if let Held::Row(tags) = at
+                    && tags.iter().any(|tag| tag == name)
+                {
+                    ArmName::Tests
+                } else if name.starts_with(char::is_uppercase) {
+                    ArmName::Unsure
+                } else {
+                    match at {
+                        Held::Row(_) | Held::Value | Held::Tuple(_) | Held::Types(_) => {
+                            ArmName::Binds
+                        }
+                        Held::Unknown => ArmName::Unsure,
+                    }
+                };
+                out.insert((ident.span.start, ident.span.end), read);
+            }
+            PatKind::Variant { fields, .. } => {
+                for field in fields {
+                    walk(field, &Held::Value, reader, out);
+                }
+            }
+            PatKind::Struct { fields, .. } => {
+                for field in fields {
+                    if let Some(sub) = &field.pattern {
+                        walk(sub, &Held::Value, reader, out);
+                    }
+                }
+            }
+            PatKind::Tuple(items) => {
+                for (index, item) in items.iter().enumerate() {
+                    let inner = match at {
+                        Held::Tuple(exprs) => exprs
+                            .get(index)
+                            .map_or(Held::Unknown, |expr| held(expr, reader)),
+                        Held::Types(types) => types
+                            .get(index)
+                            .map_or(Held::Unknown, |ty| held_of_type(ty, reader)),
+                        Held::Value => Held::Value,
+                        Held::Row(_) | Held::Unknown => Held::Unknown,
+                    };
+                    walk(item, &inner, reader, out);
+                }
+            }
+            PatKind::At { pattern, .. } => walk(pattern, at, reader, out),
+            PatKind::Or(alternatives) => {
+                for alternative in alternatives {
+                    walk(alternative, at, reader, out);
+                }
+            }
+            PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } | PatKind::Path(_) => {}
+        }
+    }
+    let mut out = BTreeMap::new();
+    walk(pattern, &held(scrutinee, reader), reader, &mut out);
+    out
+}
+
 /// Whether a value pattern matches every value of its type: a binder, `_`,
 /// an `@`, or a product of such. A bare identifier that names an enum
 /// variant in scope (`is_variant`) is a variant pattern, not a binder
@@ -894,6 +1111,10 @@ pub(crate) fn each_child_with_blocks<'a>(expr: &'a Expr, v: &mut dyn FnMut(Child
 // The row-match body walk
 // ---------------------------------------------------------------------------
 
+/// One local: its name, what its binding recorded, and the type it
+/// declared, when it declared one (s288).
+type LocalEntry = (String, Option<Known>, Option<Type>);
+
 /// The walk's view of one module: what resolves a callee and names an enum.
 struct Scope<'a> {
     program: &'a Program,
@@ -903,7 +1124,7 @@ struct Scope<'a> {
     enums: BTreeMap<String, Vec<String>>,
     file: &'a str,
     /// Locals, innermost last; a name maps to what its binding recorded.
-    locals: Vec<Vec<(String, Option<Known>)>>,
+    locals: Vec<Vec<LocalEntry>>,
     findings: Vec<Finding>,
     /// s288: the module's type declarations, for what a pattern binds
     /// (`crate::patnames`).
@@ -915,14 +1136,33 @@ impl Scope<'_> {
         self.locals
             .iter()
             .rev()
-            .find_map(|scope| scope.iter().rev().find(|(n, _)| n == name))
-            .and_then(|(_, known)| known.clone())
+            .find_map(|scope| scope.iter().rev().find(|(n, ..)| n == name))
+            .and_then(|(_, known, _)| known.clone())
+    }
+
+    /// s288: the type a local's binding declared, when it declared one.
+    fn declared(&self, expr: &Expr) -> Option<Type> {
+        match &*expr.kind {
+            ExprKind::Group(inner) => self.declared(inner),
+            ExprKind::Path(path) if path.is_single() => self
+                .locals
+                .iter()
+                .rev()
+                .find_map(|scope| {
+                    scope
+                        .iter()
+                        .rev()
+                        .find(|(n, ..)| *n == path.segments[0].name)
+                })
+                .and_then(|(_, _, ty)| ty.clone()),
+            _ => None,
+        }
     }
 
     fn shadowed(&self, name: &str) -> bool {
         self.locals
             .iter()
-            .any(|scope| scope.iter().any(|(n, _)| n == name))
+            .any(|scope| scope.iter().any(|(n, ..)| n == name))
     }
 
     fn known_of_expr(&self, expr: &Expr) -> Option<Known> {
@@ -944,8 +1184,12 @@ impl Scope<'_> {
     }
 
     fn declare(&mut self, name: &str, known: Option<Known>) {
+        self.declare_typed(name, known, None);
+    }
+
+    fn declare_typed(&mut self, name: &str, known: Option<Known>, ty: Option<Type>) {
         if let Some(scope) = self.locals.last_mut() {
-            scope.push((name.to_owned(), known));
+            scope.push((name.to_owned(), known, ty));
         }
     }
 
@@ -1007,7 +1251,9 @@ impl Scope<'_> {
         self.locals.push(Vec::new());
         for param in &decl.params {
             match &param.kind {
-                ParamKind::Named { name, ty } => self.declare(&name.name, known_of_type(ty)),
+                ParamKind::Named { name, ty } => {
+                    self.declare_typed(&name.name, known_of_type(ty), Some(ty.clone()));
+                }
                 ParamKind::SelfParam { .. } => self.declare("self", None),
             }
         }
@@ -1121,7 +1367,7 @@ impl Scope<'_> {
                 match &*binding.pattern.kind {
                     PatKind::Binding(ident) => {
                         let name = ident.name.clone();
-                        self.declare(&name, known);
+                        self.declare_typed(&name, known, binding.ty.clone());
                     }
                     _ => self.declare_pattern(&binding.pattern),
                 }
@@ -1148,11 +1394,19 @@ impl Scope<'_> {
                 if let Some(row) = &row {
                     self.judge(expr, scrutinee, arms, row);
                 }
-                let tags: Vec<String> =
-                    row.as_ref().map(|row| row.tags.clone()).unwrap_or_default();
                 for arm in arms {
+                    let names = arm_names(
+                        &arm.pattern,
+                        scrutinee,
+                        &ArmReader {
+                            row_of: &|expr| self.fallible_of_expr(expr),
+                            declared: &|expr| self.declared(expr),
+                            is_variant: &|name| self.module.variants.contains_key(name),
+                            is_value_type: &|name| value_type(self.module, name),
+                        },
+                    );
                     self.names(|index, file, out| {
-                        crate::patnames::arm(&arm.pattern, &tags, index, file, out);
+                        crate::patnames::arm(&arm.pattern, &names, index, file, out);
                     });
                     self.locals.push(Vec::new());
                     let is_row_arm = row.as_ref().is_some_and(|row| {
@@ -1173,7 +1427,7 @@ impl Scope<'_> {
                 self.locals.push(Vec::new());
                 for param in params {
                     let known = param.ty.as_ref().and_then(known_of_type);
-                    self.declare(&param.name.name, known);
+                    self.declare_typed(&param.name.name, known, param.ty.clone());
                 }
                 self.expr(body);
                 self.locals.pop();

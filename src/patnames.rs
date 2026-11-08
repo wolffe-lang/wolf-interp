@@ -16,11 +16,14 @@
 //!   not is **E0828** at the alternative that lacks it, naming the name; a
 //!   name bound at two types is **E0401** at the later binding.
 //!
-//! Which bare names test is this machine's evaluator's rule, so the checks and
-//! the run cannot disagree: in a `match` arm, a name that spells a variant of
-//! an enum the module declares, or, at the top of the arm, a tag of the row
-//! the scrutinee is statically known to carry; in a binder position (`let`,
-//! `var`, a `for` header, an `else |…|` handler, a `select` receive), none.
+//! Which bare names bind is `rowmatch::arm_names`'s reading, the one the
+//! assignment walk uses too: in a `match` arm, a name that spells a variant of
+//! an enum the module declares, or, at the top of the arm, a tag of the row the
+//! scrutinee is statically known to carry, tests and binds nothing; a name
+//! this reader cannot sort (a capitalized name that is no variant here, or any
+//! name over a value it cannot type) is never judged; in a binder position
+//! (`let`, `var`, a `for` header, an `else |…|` handler, a `select` receive),
+//! every bare name binds.
 //!
 //! A binding's type is read only from a declaration: a variant's payload at
 //! its position, a struct's field, and a tuple of those. A type that mentions
@@ -38,6 +41,7 @@ use crate::ast::{
     TypeDef, TypeKind,
 };
 use crate::diag::{Diag, Span};
+use crate::rowmatch::ArmName;
 use crate::sema::Module;
 
 /// The type declarations of one module, by name, with the names a type
@@ -198,17 +202,22 @@ struct Binding {
 /// The walk over one pattern.
 struct Walk<'i, 'a> {
     index: &'i TypeIndex<'a>,
-    /// In an arm, the tags of the scrutinee's row (empty when it carries
-    /// none); `None` in a binder position, where every name binds.
-    arm: Option<&'i [String]>,
+    /// In an arm, how each bare name reads (`rowmatch::arm_names`); `None`
+    /// in a binder position, where every name binds.
+    arm: Option<&'i BTreeMap<(usize, usize), ArmName>>,
     file: &'i str,
     out: &'i mut Vec<Diag>,
 }
 
 impl Walk<'_, '_> {
-    fn tests(&self, name: &str, top: bool) -> bool {
-        self.arm.is_some_and(|tags| {
-            self.index.variants.contains_key(name) || (top && tags.iter().any(|tag| tag == name))
+    /// Whether a bare name binds nothing here: it tests a case, or this
+    /// reader cannot tell, and then it is never judged.
+    fn binds_nothing(&self, ident: &crate::ast::Ident) -> bool {
+        self.arm.is_some_and(|names| {
+            matches!(
+                names.get(&(ident.span.start, ident.span.end)),
+                Some(ArmName::Tests | ArmName::Unsure)
+            )
         })
     }
 
@@ -229,13 +238,13 @@ impl Walk<'_, '_> {
         }
     }
 
-    fn names(&mut self, pattern: &Pattern, ty: Option<String>, top: bool) -> Vec<Binding> {
+    fn names(&mut self, pattern: &Pattern, ty: Option<String>) -> Vec<Binding> {
         match &*pattern.kind {
             PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } | PatKind::Path(_) => {
                 Vec::new()
             }
             PatKind::Binding(ident) => {
-                if self.tests(&ident.name, top) {
+                if self.binds_nothing(ident) {
                     Vec::new()
                 } else {
                     vec![Binding {
@@ -250,7 +259,7 @@ impl Walk<'_, '_> {
                 let mut bound = Vec::new();
                 for (at, field) in fields.iter().enumerate() {
                     let ty = payload.get(at).cloned().flatten();
-                    let more = self.names(field, ty, false);
+                    let more = self.names(field, ty);
                     self.join(&mut bound, more);
                 }
                 bound
@@ -260,7 +269,7 @@ impl Walk<'_, '_> {
             PatKind::Tuple(items) => {
                 let mut bound = Vec::new();
                 for item in items {
-                    let more = self.names(item, None, false);
+                    let more = self.names(item, None);
                     self.join(&mut bound, more);
                 }
                 bound
@@ -273,7 +282,7 @@ impl Walk<'_, '_> {
                 {
                     let ty = self.index.field(path, &name.name);
                     let more = match sub {
-                        Some(sub) => self.names(sub, ty, false),
+                        Some(sub) => self.names(sub, ty),
                         None => vec![Binding {
                             name: name.name.clone(),
                             span: name.span,
@@ -290,20 +299,20 @@ impl Walk<'_, '_> {
                     span: name.span,
                     ty: ty.clone(),
                 }];
-                let more = self.names(pattern, ty, top);
+                let more = self.names(pattern, ty);
                 self.join(&mut bound, more);
                 bound
             }
-            PatKind::Or(alternatives) => self.or(alternatives, ty, top),
+            PatKind::Or(alternatives) => self.or(alternatives, ty),
         }
     }
 
     /// An or-pattern: each alternative is one pattern, and together they bind
     /// each of their names once, at the first alternative's binding.
-    fn or(&mut self, alternatives: &[Pattern], ty: Option<String>, top: bool) -> Vec<Binding> {
+    fn or(&mut self, alternatives: &[Pattern], ty: Option<String>) -> Vec<Binding> {
         let each: Vec<Vec<Binding>> = alternatives
             .iter()
-            .map(|alternative| self.names(alternative, ty.clone(), top))
+            .map(|alternative| self.names(alternative, ty.clone()))
             .collect();
         let mut union: Vec<Binding> = Vec::new();
         for bound in &each {
@@ -398,25 +407,25 @@ pub fn binder(pattern: &Pattern, index: &TypeIndex<'_>, file: &str, out: &mut Ve
         file,
         out,
     };
-    walk.names(pattern, None, true);
+    walk.names(pattern, None);
 }
 
-/// A `match` arm's pattern over a scrutinee whose row carries `tags` (empty
-/// when it carries none).
+/// A `match` arm's pattern, each bare name read as `names` says
+/// (`rowmatch::arm_names`).
 pub fn arm(
     pattern: &Pattern,
-    tags: &[String],
+    names: &BTreeMap<(usize, usize), ArmName>,
     index: &TypeIndex<'_>,
     file: &str,
     out: &mut Vec<Diag>,
 ) {
     let mut walk = Walk {
         index,
-        arm: Some(tags),
+        arm: Some(names),
         file,
         out,
     };
-    walk.names(pattern, None, true);
+    walk.names(pattern, None);
 }
 
 /// A function's parameter list.

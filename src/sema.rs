@@ -5125,6 +5125,7 @@ fn body_walk(
                     name: name.clone(),
                     bound,
                     known: None,
+                    ty: binding.ty.clone(),
                 });
             }
         }
@@ -5237,6 +5238,9 @@ struct Scoped {
     name: String,
     bound: Bound,
     known: Option<crate::rowmatch::Known>,
+    /// The type the binding declared, when it declared one: a parameter's,
+    /// an annotation's.
+    ty: Option<Type>,
 }
 
 /// What the walk asks of the module a body lives in: which bare arm names
@@ -5334,11 +5338,22 @@ impl Env<'_> {
     }
 
     fn declare_known(&mut self, name: &str, bound: Bound, known: Option<crate::rowmatch::Known>) {
+        self.declare_typed(name, bound, known, None);
+    }
+
+    fn declare_typed(
+        &mut self,
+        name: &str,
+        bound: Bound,
+        known: Option<crate::rowmatch::Known>,
+        ty: Option<Type>,
+    ) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.push(Scoped {
                 name: name.to_owned(),
                 bound,
                 known,
+                ty,
             });
         }
         // A fresh binding is a fresh thing: shadowing (or any pattern
@@ -5395,6 +5410,17 @@ impl Env<'_> {
     /// The row a `match` scrutinee is statically known to carry, read as
     /// `rowmatch`'s body walk reads it: a call to a declared fn (unless a
     /// local shadows it), a local bound by one, a `Map` index.
+    /// The type a local's binding declared, for a path naming one.
+    fn declared(&self, expr: &Expr) -> Option<Type> {
+        match &*expr.kind {
+            ExprKind::Group(inner) => self.declared(inner),
+            ExprKind::Path(path) if path.is_single() => self
+                .local(&path.segments[0].name)
+                .and_then(|local| local.ty.clone()),
+            _ => None,
+        }
+    }
+
     fn scrutinee_row(&self, scrutinee: &Expr) -> Option<crate::rowmatch::RowTy> {
         let locals = |name: &str| self.local(name).and_then(|local| local.known.clone());
         let callee = |path: &crate::ast::Path| {
@@ -5428,43 +5454,48 @@ fn declare_pattern(pattern: &Pattern, bound: Bound, env: &mut Env) {
     declare_names(pattern, bound, None, env);
 }
 
-/// Declares what a `match` arm's pattern binds (s288). A bare name that tests
-/// a case binds nothing (`[gram.pat.nullary.scope]`): it names a variant of
-/// an enum the module declares, as this machine's evaluator reads it, or, at
-/// the top of the arm, a tag of the row the scrutinee is statically known to
-/// carry (`rowmatch`'s reader). Its name is recorded as tested, so the arm's
-/// body sees the binding outside the `match`. Every other name binds as `let`
-/// does.
-fn declare_arm_pattern(pattern: &Pattern, tags: Option<&[String]>, env: &mut Env) {
-    declare_names(pattern, Bound::Pattern, Some(tags.unwrap_or_default()), env);
+/// Declares what a `match` arm's pattern binds (s288), each bare name as
+/// `rowmatch::arm_names` reads it. A name that tests a case binds nothing
+/// (`[gram.pat.nullary.scope]`): it is recorded as tested, so the arm's body
+/// sees the binding outside the `match`. A name that binds, binds as `let`
+/// does. A name this reader cannot sort is declared assignable, so it hides
+/// the outer binding and no write to it is refused: the permissive direction.
+fn declare_arm_pattern(
+    pattern: &Pattern,
+    names: &BTreeMap<(usize, usize), crate::rowmatch::ArmName>,
+    env: &mut Env,
+) {
+    declare_names(pattern, Bound::Pattern, Some(names), env);
 }
 
-/// [`declare_pattern`] and [`declare_arm_pattern`]'s walk: `arm` holds the
-/// row's tags in an arm, where a bare name may test, and is `None` in a
-/// binder position, where every name binds.
-fn declare_names(pattern: &Pattern, bound: Bound, arm: Option<&[String]>, env: &mut Env) {
-    let deeper = arm.map(|_| &[][..]);
+/// [`declare_pattern`] and [`declare_arm_pattern`]'s walk: `arm` holds how an
+/// arm's bare names read, and is `None` in a binder position, where every
+/// name binds.
+fn declare_names(
+    pattern: &Pattern,
+    bound: Bound,
+    arm: Option<&BTreeMap<(usize, usize), crate::rowmatch::ArmName>>,
+    env: &mut Env,
+) {
     match &*pattern.kind {
         // A range binds nothing — it is a test, exactly as a literal is
         // (`[gram.pat.range]`).
         PatKind::Wildcard | PatKind::Literal(_) | PatKind::Range { .. } | PatKind::Path(_) => {}
-        PatKind::Binding(ident) => match arm {
-            Some(tags)
-                if env.tests.module.variants.contains_key(&ident.name)
-                    || tags.contains(&ident.name) =>
-            {
-                env.tested.push(ident.name.clone());
+        PatKind::Binding(ident) => {
+            match arm.and_then(|names| names.get(&(ident.span.start, ident.span.end))) {
+                Some(crate::rowmatch::ArmName::Tests) => env.tested.push(ident.name.clone()),
+                Some(crate::rowmatch::ArmName::Unsure) => env.declare(&ident.name, Bound::Param),
+                Some(crate::rowmatch::ArmName::Binds) | None => env.declare(&ident.name, bound),
             }
-            _ => env.declare(&ident.name, bound),
-        },
+        }
         PatKind::Variant { fields, .. } => {
             for field in fields {
-                declare_names(field, bound, deeper, env);
+                declare_names(field, bound, arm, env);
             }
         }
         PatKind::Tuple(items) => {
             for item in items {
-                declare_names(item, bound, deeper, env);
+                declare_names(item, bound, arm, env);
             }
         }
         PatKind::Struct { fields, .. } => {
@@ -5472,7 +5503,7 @@ fn declare_names(pattern: &Pattern, bound: Bound, arm: Option<&[String]>, env: &
             // an explicit sub-pattern declares what it binds.
             for field in fields {
                 match &field.pattern {
-                    Some(sub) => declare_names(sub, bound, deeper, env),
+                    Some(sub) => declare_names(sub, bound, arm, env),
                     None => env.declare(&field.name.name, bound),
                 }
             }
@@ -5541,7 +5572,12 @@ fn walk_fn_assigns(decl: &FnDecl, env: &mut Env) -> Option<Diag> {
     for param in &decl.params {
         match &param.kind {
             crate::ast::ParamKind::Named { name, ty } => {
-                env.declare_known(&name.name, Bound::Param, crate::rowmatch::known_of_type(ty));
+                env.declare_typed(
+                    &name.name,
+                    Bound::Param,
+                    crate::rowmatch::known_of_type(ty),
+                    Some(ty.clone()),
+                );
             }
             crate::ast::ParamKind::SelfParam { .. } => env.declare("self", Bound::Param),
         }
@@ -5593,7 +5629,7 @@ fn walk_stmt_assigns(stmt: &Stmt, env: &mut Env) -> Option<Diag> {
             match &*binding.pattern.kind {
                 PatKind::Binding(ident) => {
                     let known = env.known_of_binding(binding);
-                    env.declare_known(&ident.name, bound, known);
+                    env.declare_typed(&ident.name, bound, known, binding.ty.clone());
                 }
                 _ => declare_pattern(&binding.pattern, bound, env),
             }
@@ -5765,8 +5801,18 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
                 crate::ast::ElseHandler::Block(block) => walk_block_assigns(block, env),
                 crate::ast::ElseHandler::Expr(expr) => walk_expr_assigns(expr, env),
                 crate::ast::ElseHandler::Handler { pattern, body } => {
+                    // s288: `|e|` holds the error value, whose row is the
+                    // handled expression's, so a `match e` reads its tags.
+                    let row = env.scrutinee_row(inner);
                     env.scopes.push(Vec::new());
-                    declare_pattern(pattern, Bound::Pattern, env);
+                    match &*pattern.kind {
+                        PatKind::Binding(ident) => env.declare_known(
+                            &ident.name,
+                            Bound::Pattern,
+                            row.map(crate::rowmatch::Known::Fallible),
+                        ),
+                        _ => declare_pattern(pattern, Bound::Pattern, env),
+                    }
                     let diag = walk_expr_assigns(body, env);
                     env.scopes.pop();
                     diag
@@ -5793,13 +5839,21 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
                 diag
             }),
         ExprKind::Match { scrutinee, arms } => walk_expr_assigns(scrutinee, env).or_else(|| {
-            let row = env.scrutinee_row(scrutinee);
-            let tags = row.as_ref().map(|row| row.tags.as_slice());
             arms.iter().find_map(|arm| {
+                let names = crate::rowmatch::arm_names(
+                    &arm.pattern,
+                    scrutinee,
+                    &crate::rowmatch::ArmReader {
+                        row_of: &|expr| env.scrutinee_row(expr),
+                        declared: &|expr| env.declared(expr),
+                        is_variant: &|name| env.tests.module.variants.contains_key(name),
+                        is_value_type: &|name| crate::rowmatch::value_type(env.tests.module, name),
+                    },
+                );
                 env.scopes.push(Vec::new());
                 let tested = env.tested.len();
                 let snapshot = env.moved_snapshot();
-                declare_arm_pattern(&arm.pattern, tags, env);
+                declare_arm_pattern(&arm.pattern, &names, env);
                 let diag = arm
                     .guard
                     .as_ref()
@@ -5866,7 +5920,7 @@ fn walk_expr_assigns(expr: &Expr, env: &mut Env) -> Option<Diag> {
             }
             for param in params {
                 let known = param.ty.as_ref().and_then(crate::rowmatch::known_of_type);
-                env.declare_known(&param.name.name, Bound::Param, known);
+                env.declare_typed(&param.name.name, Bound::Param, known, param.ty.clone());
             }
             let diag = walk_expr_assigns(body, env);
             env.moves = outer;
