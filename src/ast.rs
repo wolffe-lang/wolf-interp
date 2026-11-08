@@ -407,6 +407,99 @@ pub struct Type {
     pub anchor: &'static str,
 }
 
+impl Path {
+    /// The path as written, segments joined by `.`, with no spans.
+    #[must_use]
+    pub fn spelling(&self) -> String {
+        self.segments
+            .iter()
+            .map(|segment| segment.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+}
+
+impl ErrorRow {
+    /// The row as written (`{Io(str), none, ..}`), with no spans.
+    #[must_use]
+    pub fn spelling(&self) -> String {
+        let mut parts: Vec<String> = self
+            .entries
+            .iter()
+            .map(|entry| {
+                if entry.payload.is_empty() {
+                    entry.path.spelling()
+                } else {
+                    format!("{}({})", entry.path.spelling(), Type::list(&entry.payload))
+                }
+            })
+            .collect();
+        if self.open {
+            parts.push("..".to_owned());
+        }
+        format!("{{{}}}", parts.join(", "))
+    }
+}
+
+impl Type {
+    /// The type as written, with no spans: two types that spell the same
+    /// compare equal here wherever they were written (`List[(int, L)]`,
+    /// `int ! {Bad(str)}`). A const argument, which this reader does not
+    /// evaluate, spells `…`.
+    #[must_use]
+    pub fn spelling(&self) -> String {
+        match &*self.kind {
+            TypeKind::Path { path, args } if args.is_empty() => path.spelling(),
+            TypeKind::Path { path, args } => {
+                let args: Vec<String> = args
+                    .iter()
+                    .map(|arg| match arg {
+                        TypeArg::Type(ty) => ty.spelling(),
+                        TypeArg::Expr(_) => "…".to_owned(),
+                    })
+                    .collect();
+                format!("{}[{}]", path.spelling(), args.join(", "))
+            }
+            TypeKind::ErrorUnion(ty) => format!("!{}", ty.spelling()),
+            TypeKind::Fallible { ty, row } => format!("{} ! {}", ty.spelling(), row.spelling()),
+            TypeKind::Prefixed { kw, ty } => {
+                let kw = match kw {
+                    PrefixTypeKw::Shared => "shared",
+                    PrefixTypeKw::Handle => "handle",
+                    PrefixTypeKw::Weak => "weak",
+                    PrefixTypeKw::Distinct => "distinct",
+                };
+                format!("{kw} {}", ty.spelling())
+            }
+            TypeKind::RawPointer(ty) => format!("*{}", ty.spelling()),
+            TypeKind::Dyn(path) => format!("dyn {}", path.spelling()),
+            TypeKind::Tuple(parts) => format!("({})", Type::list(parts)),
+            TypeKind::Fn { params, ret } => {
+                let head = format!("fn({})", Type::list(params));
+                match ret {
+                    None => head,
+                    Some(ret) => match &ret.row {
+                        None => format!("{head} -> {}", ret.ty.spelling()),
+                        Some(row) => {
+                            format!("{head} -> {} ! {}", ret.ty.spelling(), row.spelling())
+                        }
+                    },
+                }
+            }
+            TypeKind::TypeOfTypes => "type".to_owned(),
+            TypeKind::Region => "region".to_owned(),
+        }
+    }
+
+    fn list(types: &[Type]) -> String {
+        types
+            .iter()
+            .map(Type::spelling)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
 /// `prefix_type_kw ::= 'shared' | 'handle' | 'weak' | 'distinct'`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrefixTypeKw {
