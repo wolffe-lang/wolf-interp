@@ -1,0 +1,30 @@
+s285 evidence (wolf-interp: lupin's mirror of the literal-pattern rule, wolf-lang#1071).
+Paths are relative to the lane's directory, written $LANE; the Mac is arm64 macOS. Each log
+is one take behind the Mac build lock, in a build worktree detached at the named commit.
+
+mac-interp-red-4ba74a6.log  the mirror rows (tests/literal_pattern_s285.rs) at trunk's code:
+                            1 passed, 6 failed by name. The one that passed is the edge row,
+                            every_primitives_edge_literal_still_matches; the five trap rows
+                            answer exit(...) where trap(overflow) is due, the signed row
+                            exit(2) where fail(E0207) is due.
+mac-interp-fix-6ff573e.log  the fix: the rows 2 passed (signed, edge), 5 failed at the message
+                            check (each trap's verdict and span held; the rows read the words
+                            from the record, which carries only the program's own message,
+                            read from the observation in 4a6a9ab); `cargo fmt --check` red on
+                            one call (formatted in e0b8369); clippy, all targets, -D warnings;
+                            `cargo test --lib` (796); the s282 binder rows (9); the corpus
+                            harness (10); run_corpus 15 of 16 passed, the sixteenth
+                            (evaluation_is_deterministic_over_the_corpus, two serial walks in
+                            a debug build) stopped by the lane after 84 minutes, its pid only
+                            (exit 101 is that stop); conformance (10); divergence (6).
+rig/                        the Mac scripts as run: build-at-interp.sh (the worktree at a
+                            commit), locked.sh (the lock, the turn gap, the memory and disk
+                            gates), mac-interp.sh (the steps), queue-interp-take.sh (a take,
+                            detached), plant-take.sh and mac-interp-plant.sh (the plant),
+                            gauntlet-record.sh (the org's recorder, byte for byte),
+                            sanitize.sh (these logs).
+rig/linux/                  the Linux gauntlet (adapted by copy from s282's): launch.sh (a
+                            fresh GitHub clone of the branch, checked against the head),
+                            job.sh (pid, status, exit marker), driver.sh (one block, every step
+                            its own lock take, in the toolchain container), record.sh (the
+                            org's recorder, byte for byte), steps/.

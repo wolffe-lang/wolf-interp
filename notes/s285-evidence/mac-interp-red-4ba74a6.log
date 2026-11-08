@@ -1,0 +1,307 @@
+s285: building at 4ba74a6 in $LANE/build-interp
+s285: 15:56:33 mac build lock held by another lane; waiting
+s285: 15:57:03 mac build lock held by another lane; waiting
+s285: 15:57:33 mac build lock held by another lane; waiting
+s285: 15:58:04 mac build lock held by another lane; waiting
+s285: 15:58:34 mac build lock held by another lane; waiting
+s285: 15:59:04 mac build lock held by another lane; waiting
+s285: 15:59:34 mac build lock held by another lane; waiting
+s285: 16:00:04 mac build lock held by another lane; waiting
+s285: 16:00:34 mac build lock held by another lane; waiting
+s285: 16:01:04 mac build lock held by another lane; waiting
+s285: 16:01:34 mac build lock held by another lane; waiting
+s285: 16:02:04 mac build lock held by another lane; waiting
+s285: 16:02:34 mac build lock held by another lane; waiting
+s285: 16:03:04 mac build lock held by another lane; waiting
+s285: 16:03:34 mac build lock held by another lane; waiting
+s285: 16:04:04 mac build lock held by another lane; waiting
+s285: 16:04:34 mac build lock held by another lane; waiting
+s285: 16:05:04 mac build lock held by another lane; waiting
+s285: 16:05:34 mac build lock held by another lane; waiting
+s285: 16:06:04 mac build lock held by another lane; waiting
+s285: 16:06:34 mac build lock held by another lane; waiting
+s285: 16:07:04 mac build lock held by another lane; waiting
+s285: 16:07:34 mac build lock held by another lane; waiting
+s285: 16:08:04 mac build lock held by another lane; waiting
+s285: 16:08:34 mac build lock held by another lane; waiting
+s285: 16:09:04 mac build lock held by another lane; waiting
+s285: 16:09:34 mac build lock held by another lane; waiting
+s285: 16:10:04 mac build lock held by another lane; waiting
+s285: 16:10:34 mac build lock held by another lane; waiting
+s285: 16:11:04 mac build lock held by another lane; waiting
+s285: 16:11:34 mac build lock held by another lane; waiting
+s285: 16:12:04 mac build lock held by another lane; waiting
+s285: 16:12:34 mac build lock held by another lane; waiting
+s285: 16:13:04 mac build lock held by another lane; waiting
+s285: 16:13:34 mac build lock held by another lane; waiting
+s285: 16:14:04 mac build lock held by another lane; waiting
+s285: 16:14:34 mac build lock held by another lane; waiting
+s285: 16:15:04 mac build lock held by another lane; waiting
+s285: 16:15:34 mac build lock held by another lane; waiting
+s285: 16:16:04 mac build lock held by another lane; waiting
+s285: 16:16:34 mac build lock held by another lane; waiting
+s285: 16:17:04 mac build lock held by another lane; waiting
+s285: 16:17:34 mac build lock held by another lane; waiting
+s285: 16:18:04 mac build lock held by another lane; waiting
+s285: 16:18:34 mac build lock held by another lane; waiting
+s285: 16:19:04 mac build lock held by another lane; waiting
+s285: 16:19:34 mac build lock held by another lane; waiting
+s285: 16:20:04 mac build lock held by another lane; waiting
+s285: 16:20:34 mac build lock held by another lane; waiting
+s285: 16:21:04 mac build lock held by another lane; waiting
+s285: 16:21:34 mac build lock held by another lane; waiting
+s285: 16:22:05 mac build lock held by another lane; waiting
+s285: 16:22:35 mac build lock held by another lane; waiting
+s285: 16:23:05 mac build lock held by another lane; waiting
+s285: 16:23:35 mac build lock held by another lane; waiting
+s285: 16:24:05 mac build lock held by another lane; waiting
+s285: 16:24:35 mac build lock held by another lane; waiting
+s285: 16:25:05 mac build lock held by another lane; waiting
+s285: 16:25:35 mac build lock held by another lane; waiting
+s285: 16:26:05 mac build lock held by another lane; waiting
+s285: 16:26:35 mac build lock held by another lane; waiting
+s285: 16:27:05 mac build lock held by another lane; waiting
+s285: 16:27:35 mac build lock held by another lane; waiting
+s285: 16:28:05 mac build lock held by another lane; waiting
+s285: 16:28:35 mac build lock held by another lane; waiting
+s285: 16:29:05 mac build lock held by another lane; waiting
+s285: 16:29:35 mac build lock held by another lane; waiting
+s285: 16:30:05 mac build lock held by another lane; waiting
+s285: 16:30:35 mac build lock held by another lane; waiting
+s285: 16:31:05 mac build lock held by another lane; waiting
+s285: 16:31:35 mac build lock held by another lane; waiting
+s285: 16:32:05 mac build lock held by another lane; waiting
+s285: 16:32:35 mac build lock held by another lane; waiting
+s285: 16:33:05 mac build lock held by another lane; waiting
+s285: 16:33:35 mac build lock held by another lane; waiting
+s285: 16:34:05 mac build lock held by another lane; waiting
+s285: 16:34:35 mac build lock held by another lane; waiting
+s285: 16:35:05 mac build lock held by another lane; waiting
+s285: 16:35:35 mac build lock held by another lane; waiting
+s285: 16:36:05 mac build lock held by another lane; waiting
+s285: 16:36:35 mac build lock held by another lane; waiting
+s285: 16:37:05 mac build lock held by another lane; waiting
+s285: 16:37:35 mac build lock held by another lane; waiting
+s285: 16:38:05 mac build lock held by another lane; waiting
+s285: 16:38:35 mac build lock held by another lane; waiting
+s285: 16:39:05 mac build lock held by another lane; waiting
+s285: 16:39:35 mac build lock held by another lane; waiting
+s285: 16:40:05 mac build lock held by another lane; waiting
+s285: 16:40:35 mac build lock held by another lane; waiting
+s285: 16:41:05 mac build lock held by another lane; waiting
+s285: 16:41:35 mac build lock held by another lane; waiting
+s285: 16:42:05 mac build lock held by another lane; waiting
+s285: 16:42:35 mac build lock held by another lane; waiting
+s285: 16:43:05 mac build lock held by another lane; waiting
+s285: 16:43:35 mac build lock held by another lane; waiting
+s285: 16:44:05 mac build lock held by another lane; waiting
+s285: 16:44:35 mac build lock held by another lane; waiting
+s285: 16:45:05 mac build lock held by another lane; waiting
+s285: 16:45:35 mac build lock held by another lane; waiting
+s285: 16:46:06 mac build lock held by another lane; waiting
+s285: 16:46:36 mac build lock held by another lane; waiting
+s285: 16:47:06 mac build lock held by another lane; waiting
+s285: 16:47:36 mac build lock held by another lane; waiting
+s285: 16:48:06 mac build lock held by another lane; waiting
+s285: 16:48:36 mac build lock held by another lane; waiting
+s285: 16:49:06 mac build lock held by another lane; waiting
+s285: 16:49:36 mac build lock held by another lane; waiting
+s285: 16:50:06 mac build lock held by another lane; waiting
+s285: 16:50:36 mac build lock held by another lane; waiting
+s285: 16:51:06 mac build lock held by another lane; waiting
+s285: 16:51:36 mac build lock held by another lane; waiting
+s285: 16:52:06 mac build lock held by another lane; waiting
+s285: 16:52:36 mac build lock held by another lane; waiting
+s285: 16:53:06 mac build lock held by another lane; waiting
+s285: 16:53:36 mac build lock held by another lane; waiting
+s285: 16:54:06 mac build lock held by another lane; waiting
+s285: 16:54:36 mac build lock held by another lane; waiting
+s285: 16:55:06 mac build lock held by another lane; waiting
+s285: 16:55:36 mac build lock held by another lane; waiting
+s285: 16:56:06 mac build lock held by another lane; waiting
+s285: 16:56:36 mac build lock held by another lane; waiting
+s285: 16:57:06 mac build lock held by another lane; waiting
+s285: 16:57:36 mac build lock held by another lane; waiting
+s285: lock taken 16:58:06, 17003 MiB free, 130 GB disk; running: bash $LANE/rig/mac-interp.sh
+== STEP head 21:58:06
+4ba74a65a6fb8f1e01bf725664a4b9c8896a6cb9
+4ba74a6 Hold lupin to the compiler's literal pattern answers
+       0
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+END head exit=0
+== STEP build 21:58:07
+   Compiling proc-macro2 v1.0.107
+   Compiling libc v0.2.189
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+   Compiling utf8parse v0.2.2
+   Compiling cfg_aliases v0.2.2
+   Compiling serde_core v1.0.229
+   Compiling nix v0.31.3
+   Compiling anstyle-parse v1.0.0
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling colorchoice v1.0.5
+   Compiling zmij v1.0.23
+   Compiling syn v3.0.3
+   Compiling cfg-if v1.0.4
+   Compiling anstyle v1.0.14
+   Compiling smallvec v1.15.2
+   Compiling anstyle-query v1.1.5
+   Compiling nibble_vec v0.1.0
+   Compiling anstream v1.0.0
+   Compiling errno v0.3.14
+   Compiling endian-type v0.2.0
+   Compiling strsim v0.11.1
+   Compiling memchr v2.8.3
+   Compiling signal-hook v0.3.18
+   Compiling heck v0.5.0
+   Compiling serde v1.0.229
+   Compiling bitflags v2.13.1
+   Compiling clap_lex v1.1.0
+   Compiling serde_json v1.0.151
+   Compiling clap_builder v4.6.6
+   Compiling clap_derive v4.6.4
+   Compiling serde_derive v1.0.229
+   Compiling radix_trie v0.3.0
+   Compiling signal-hook-registry v1.4.8
+   Compiling unicode-segmentation v1.13.3
+   Compiling unicode-width v0.2.2
+   Compiling log v0.4.34
+   Compiling itoa v1.0.18
+   Compiling wolf-interp v0.1.60 ($LANE/build-interp)
+   Compiling rustyline v18.0.1
+   Compiling clap v4.6.6
+   Compiling getrandom v0.2.16
+    Finished `release` profile [optimized] target(s) in 25.95s
+END build exit=0
+== STEP mirror-rows 21:58:33
+   Compiling libc v0.2.189
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling cfg-if v1.0.4
+   Compiling memchr v2.8.3
+   Compiling bitflags v2.13.1
+   Compiling cfg_aliases v0.2.2
+   Compiling utf8parse v0.2.2
+   Compiling nix v0.31.3
+   Compiling serde_core v1.0.229
+   Compiling anstyle-parse v1.0.0
+   Compiling syn v3.0.3
+   Compiling smallvec v1.15.2
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling rustix v1.1.4
+   Compiling anstyle-query v1.1.5
+   Compiling errno v0.3.14
+   Compiling getrandom v0.4.3
+   Compiling colorchoice v1.0.5
+   Compiling anstyle v1.0.14
+   Compiling zmij v1.0.23
+   Compiling anstream v1.0.0
+   Compiling nibble_vec v0.1.0
+   Compiling serde v1.0.229
+   Compiling serde_json v1.0.151
+   Compiling signal-hook v0.3.18
+   Compiling clap_lex v1.1.0
+   Compiling strsim v0.11.1
+   Compiling endian-type v0.2.0
+   Compiling heck v0.5.0
+   Compiling radix_trie v0.3.0
+   Compiling clap_builder v4.6.6
+   Compiling clap_derive v4.6.4
+   Compiling serde_derive v1.0.229
+   Compiling signal-hook-registry v1.4.8
+   Compiling aho-corasick v1.1.5
+   Compiling unicode-width v0.2.2
+   Compiling once_cell v1.21.4
+   Compiling log v0.4.34
+   Compiling regex-syntax v0.8.11
+   Compiling itoa v1.0.18
+   Compiling fastrand v2.5.0
+   Compiling wolf-interp v0.1.60 ($LANE/build-interp)
+   Compiling thiserror v2.0.20
+   Compiling unicode-segmentation v1.13.3
+   Compiling rustyline v18.0.1
+   Compiling tempfile v3.27.0
+   Compiling regex-automata v0.4.18
+   Compiling clap v4.6.6
+   Compiling thiserror-impl v2.0.20
+   Compiling getrandom v0.2.16
+   Compiling regex v1.13.1
+   Compiling console v0.16.4
+   Compiling comma v1.0.0
+   Compiling similar v2.7.0
+   Compiling rexpect v0.7.1
+   Compiling insta v1.48.0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.26s
+     Running tests/literal_pattern_s285.rs (target/debug/deps/literal_pattern_s285-a2600e5044fa7983)
+
+running 7 tests
+test a_literal_scrutinee_holds_its_pattern_to_i32 ... FAILED
+test a_nested_literal_outside_its_type_traps ... FAILED
+test a_range_end_outside_its_type_traps ... FAILED
+test a_signed_literal_pattern_is_refused_by_name ... FAILED
+test an_arm_literal_outside_a_u8_traps_at_the_literal ... FAILED
+test every_primitives_edge_literal_still_matches ... ok
+test the_first_primitive_past_its_maximum_traps ... FAILED
+
+failures:
+
+---- a_literal_scrutinee_holds_its_pattern_to_i32 stdout ----
+
+thread 'a_literal_scrutinee_holds_its_pattern_to_i32' (5205905) panicked at tests/literal_pattern_s285.rs:39:5:
+assertion `left == right` failed: default: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.60", commit: "4ba74a6", file: "/$LANE/build-interp/tests/literal_pattern_s285/default/main.lu", phase_reached: Run, seeded: false, files: None, diagnostics: [], warnings: Some([]), verdict: Exit(0), trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {} }
+  left: "exit(0)"
+ right: "trap(overflow)"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- a_nested_literal_outside_its_type_traps stdout ----
+
+thread 'a_nested_literal_outside_its_type_traps' (5205912) panicked at tests/literal_pattern_s285.rs:39:5:
+assertion `left == right` failed: positions: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.60", commit: "4ba74a6", file: "/$LANE/build-interp/tests/literal_pattern_s285/positions/main.lu", phase_reached: Run, seeded: false, files: None, diagnostics: [], warnings: Some([]), verdict: Exit(0), trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {} }
+  left: "exit(0)"
+ right: "trap(overflow)"
+
+---- a_range_end_outside_its_type_traps stdout ----
+
+thread 'a_range_end_outside_its_type_traps' (5205916) panicked at tests/literal_pattern_s285.rs:39:5:
+assertion `left == right` failed: range: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.60", commit: "4ba74a6", file: "/$LANE/build-interp/tests/literal_pattern_s285/range/main.lu", phase_reached: Run, seeded: false, files: None, diagnostics: [], warnings: Some([]), verdict: Exit(0), trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {} }
+  left: "exit(0)"
+ right: "trap(overflow)"
+
+---- a_signed_literal_pattern_is_refused_by_name stdout ----
+
+thread 'a_signed_literal_pattern_is_refused_by_name' (5205924) panicked at tests/literal_pattern_s285.rs:90:5:
+assertion `left == right` failed: signed: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.60", commit: "4ba74a6", file: "/$LANE/build-interp/tests/literal_pattern_s285/signed/main.lu", phase_reached: Run, seeded: false, files: None, diagnostics: [], warnings: Some([]), verdict: Exit(2), trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {} }
+  left: "exit(2)"
+ right: "fail(E0207)"
+
+---- an_arm_literal_outside_a_u8_traps_at_the_literal stdout ----
+
+thread 'an_arm_literal_outside_a_u8_traps_at_the_literal' (5205928) panicked at tests/literal_pattern_s285.rs:39:5:
+assertion `left == right` failed: wraps: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.60", commit: "4ba74a6", file: "/$LANE/build-interp/tests/literal_pattern_s285/wraps/main.lu", phase_reached: Run, seeded: false, files: None, diagnostics: [], warnings: Some([]), verdict: Exit(2), trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {} }
+  left: "exit(2)"
+ right: "trap(overflow)"
+
+---- the_first_primitive_past_its_maximum_traps stdout ----
+
+thread 'the_first_primitive_past_its_maximum_traps' (5205943) panicked at tests/literal_pattern_s285.rs:39:5:
+assertion `left == right` failed: edges: ObservationRecord { protocol: 1, impl_name: "lupin", impl_version: "0.1.60", commit: "4ba74a6", file: "/$LANE/build-interp/tests/literal_pattern_s285/edges/main.lu", phase_reached: Run, seeded: false, files: None, diagnostics: [], warnings: Some([]), verdict: Exit(0), trap_message: None, stdout_sha256: None, stdout_inline: None, extensions: {} }
+  left: "exit(0)"
+ right: "trap(overflow)"
+
+
+failures:
+    a_literal_scrutinee_holds_its_pattern_to_i32
+    a_nested_literal_outside_its_type_traps
+    a_range_end_outside_its_type_traps
+    a_signed_literal_pattern_is_refused_by_name
+    an_arm_literal_outside_a_u8_traps_at_the_literal
+    the_first_primitive_past_its_maximum_traps
+
+test result: FAILED. 1 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+error: test failed, to rerun pass `--test literal_pattern_s285`
+END mirror-rows exit=101
+== done 2026-11-07T21:58:46Z
+s285: END exit=0 16:58:46
