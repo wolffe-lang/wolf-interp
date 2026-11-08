@@ -1548,42 +1548,66 @@ fn variant_value_check(program: &Program) -> Option<Diag> {
     earliest
 }
 
+/// The resolve rung's first refusal, when there is one ([`resolve_refusal`]).
 pub fn resolve_check(program: &Program) -> Option<Diag> {
-    cycle_check(program)
-        .or_else(|| error_alias_check(program))
-        .or_else(|| dup_check(program))
-        .or_else(|| private_check(program))
-        .or_else(|| unused_check(program))
-        .or_else(|| reassign_check(program))
-        .or_else(|| mode_check(program))
-        .or_else(|| move_check(program))
-        .or_else(|| unsafe_sig_check(program))
+    resolve_refusal(program).and_then(|diags| diags.into_iter().next())
+}
+
+/// The resolve rung's refusal: the first check in the chain that finds
+/// anything decides. A check that judges one family reports every finding of
+/// it, as the compiler lists them (s288: the error-row diagnostics the load
+/// recorded, E0302 for a member declared twice, E0404 for each cycle, and
+/// E0827, E0828 and E0401 over patterns); every other check reports its first.
+/// The first diagnostic returned is the record's verdict.
+pub fn resolve_refusal(program: &Program) -> Option<Vec<Diag>> {
+    fn one(diag: Option<Diag>) -> Option<Vec<Diag>> {
+        diag.map(|diag| vec![diag])
+    }
+    fn all(diags: Vec<Diag>) -> Option<Vec<Diag>> {
+        (!diags.is_empty()).then_some(diags)
+    }
+    one(cycle_check(program))
+        .or_else(|| all(error_alias_check(program)))
+        .or_else(|| one(dup_check(program)))
+        // s288 (`[gram.item.type.names]`): the item collector's other half.
+        .or_else(|| all(member_dup_check(program)))
+        .or_else(|| one(private_check(program)))
+        .or_else(|| one(unused_check(program)))
+        .or_else(|| one(reassign_check(program)))
+        .or_else(|| one(mode_check(program)))
+        .or_else(|| one(move_check(program)))
+        .or_else(|| one(unsafe_sig_check(program)))
         // is74: E1307, E1308, E1309 — kw07's and kw11's resolve-phase codes,
         // before the ring's E1301 (typecheck) in the tier walk.
-        .or_else(|| crate::rawops::raw_op_check(program))
-        .or_else(|| tier_check(program))
-        .or_else(|| scalar_check(program))
-        .or_else(|| list_lit_check(program))
-        .or_else(|| tail_check(program))
-        .or_else(|| never_check(program))
-        .or_else(|| bound_check(program))
-        .or_else(|| row_operand_check(program))
-        .or_else(|| annotation_check(program))
-        .or_else(|| variant_value_check(program))
+        .or_else(|| one(crate::rawops::raw_op_check(program)))
+        .or_else(|| one(tier_check(program)))
+        .or_else(|| one(scalar_check(program)))
+        .or_else(|| one(list_lit_check(program)))
+        .or_else(|| one(tail_check(program)))
+        .or_else(|| one(never_check(program)))
+        .or_else(|| one(bound_check(program)))
+        .or_else(|| one(row_operand_check(program)))
+        .or_else(|| one(annotation_check(program)))
+        .or_else(|| one(variant_value_check(program)))
         // is67: `[type.row.defer]`'s E0611 and `[type.row.match]`'s E0801,
         // last in the chain so a file that trips an older check keeps the
         // diagnostic it had.
-        .or_else(|| crate::rowmatch::defer_try_check(program))
-        .or_else(|| crate::rowmatch::row_match_check(program))
+        .or_else(|| one(crate::rowmatch::defer_try_check(program)))
+        .or_else(|| one(crate::rowmatch::row_match_check(program)))
         // is68: `[type.unit.context]`'s static half (wolf-interp#103) and
         // `[mem.str.ws]`'s arity (wolf-interp#125), then `str` and `bool` in
         // the declared-scalar lattice (wolf-interp#138), last in the chain
         // for the same reason.
-        .or_else(|| tier_late_check(program))
-        .or_else(|| scalar_wide_check(program))
+        .or_else(|| one(tier_late_check(program)))
+        .or_else(|| one(scalar_wide_check(program)))
         // is70: `errdefer` in a function that cannot fail is E0607
         // (wolf-interp#179's second half), last for the same reason.
-        .or_else(|| crate::rowmatch::errdefer_unit_check(program))
+        .or_else(|| one(crate::rowmatch::errdefer_unit_check(program)))
+        // s288: `[type.rec]`'s E0404, a declaration's own refusal, then
+        // `[gram.pat.names]`'s E0827 and `[gram.pat.or]`'s E0828 and E0401
+        // over every pattern, last in the chain for the same reason.
+        .or_else(|| all(crate::recursion::check(program)))
+        .or_else(|| all(crate::rowmatch::pattern_names_check(program)))
 }
 
 /// `[type.list.lit]` (s158, wolf-lang#154; wolf-interp#106) — the list
@@ -2036,16 +2060,19 @@ fn misfit(items: &[Expr], expected: Option<(LitShape, Span)>) -> Option<Diag> {
 
 /// `[type.err.alias]` (s158, wolf-lang#36; wolf-interp#106): the refusals
 /// [`expand_error_aliases`] recorded while rewriting the module's rows —
-/// E0610 for a cycle, E0601 for a payload on an alias entry — reported at
-/// the resolve rung, earliest span first, right after the import-cycle
-/// check they are the sibling of.
-fn error_alias_check(program: &Program) -> Option<Diag> {
-    program
+/// E0610 for a cycle, E0601 for a payload on an alias entry, and since s288
+/// E0601 for a tag a row spells twice and E0609 for a tag an alias brings
+/// with another payload — reported at the resolve rung, every one, earliest
+/// span first, right after the import-cycle check they are the sibling of.
+fn error_alias_check(program: &Program) -> Vec<Diag> {
+    let mut diags: Vec<Diag> = program
         .modules
         .values()
         .flat_map(|module| module.alias_diags.iter())
-        .min_by_key(|diag| diag.span.start)
         .cloned()
+        .collect();
+    diags.sort_by_key(|diag| diag.span.start);
+    diags
 }
 
 /// Rewrites every error row in `units` through the module's error-set

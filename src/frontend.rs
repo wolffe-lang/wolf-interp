@@ -222,8 +222,14 @@ fn admit_with(program: &sema::Program, statics: Vec<crate::diag::Diag>) -> Optio
     if let Some(diag) = crate::variadic::check(program) {
         return Some(Refusal::Reject(Box::new(diag)));
     }
-    if let Some(diag) = sema::resolve_check(program) {
-        return Some(Refusal::Reject(Box::new(diag)));
+    // s288: a check that judges one family reports every finding of it, as
+    // the compiler lists them (`sema::resolve_refusal`).
+    if let Some(mut diags) = sema::resolve_refusal(program) {
+        return Some(if diags.len() == 1 {
+            Refusal::Reject(Box::new(diags.remove(0)))
+        } else {
+            Refusal::RejectAll(diags)
+        });
     }
     // is73 (wolf-interp#188): the layout queries' static half (E0708,
     // E0403) and a lent packed field (E0819), every site listed.
