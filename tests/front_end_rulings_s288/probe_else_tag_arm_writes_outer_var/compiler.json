@@ -1,0 +1,14 @@
+{
+ "commit": "unknown",
+ "diagnostics": [],
+ "file": "probe_else_tag_arm_writes_outer_var/main.lu",
+ "impl": "wolfgang",
+ "impl_version": "0.2.38+dev.unknown",
+ "phase_reached": "run",
+ "protocol": 1,
+ "seeded": false,
+ "stdout_inline": "exists 0\n",
+ "stdout_sha256": "e11720f9f37a91843e5eb66b562c41a517176ecfc985cc8f0784c39b383635cb",
+ "verdict": "exit(0)",
+ "warnings": []
+}

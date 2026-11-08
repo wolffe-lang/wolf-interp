@@ -1,0 +1,11 @@
+fn g() -> int ! {exists, io} { return exists }
+
+fn main() -> int {
+    var exists = "none"
+    let a = g() else |e| match e {
+        exists => { exists = "exists"; 0 },
+        _ => { exists = "other"; 0 },
+    }
+    print("{exists} {a}")
+    0
+}

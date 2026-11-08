@@ -772,3 +772,13 @@ fn a_recursion_that_grows_its_arguments_is_not_reported() {
     assert_eq!(got["verdict"], "exit(0)", "{got}");
     assert_eq!(first_error(&got["diagnostics"]), None, "{got}");
 }
+
+/// `else |e| match e { exists => { exists = "exists"; 0 }, … }`: `e` holds
+/// the handled call's error, so `exists` tests that row's tag and binds
+/// nothing, and the arm writes the outer `var` (`[gram.pat.nullary.scope]`).
+/// The shape of `tests/net_unix.rs`'s bind rows, which a reader that did not
+/// see the handler's row refused as E0410.
+#[test]
+fn an_else_handlers_tag_arm_writes_the_outer_var() {
+    runs("probe_else_tag_arm_writes_outer_var", 0);
+}
