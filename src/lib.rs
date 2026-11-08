@@ -51,6 +51,7 @@ pub mod patnames;
 pub mod phase;
 pub mod protocol;
 pub mod rawops;
+pub mod recursion;
 pub mod rowinfer;
 pub mod rowmatch;
 pub mod schema;
