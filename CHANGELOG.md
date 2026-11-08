@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+s288 — the compiler's front-end rulings of wolf-lang#1079 and #1080, mirrored: this machine gives
+the compiler's code at the compiler's span, at its resolve rung.
+
+- **A name a pattern binds outside `let` and `var` binds as `let` does** (E0410,
+  `[gram.pat.let]`). Assigning a name a `match` arm, a `for` header, an `else |…|` handler, a
+  `select` receive or either side of `@` binds, or a field of it, is refused at the assignment.
+  The fix is `var x = x` at the start of the body. Before, the write went to the arm's own copy:
+  under `fn bump(mut v: E)`, `match v { A(x) => { x = x + 1 } }` updated nothing.
+- **A bare arm name that tests a case binds nothing** (E0410, `[gram.pat.nullary.scope]`): under
+  `let Done`, `Done => { Done = 9 }` writes the `let`, which is refused, as it is for a row tag and
+  for a field. Under `var Done` the arm writes the `var`.
+- **A variant or a field declared twice is E0302** at the later declaration, used or not, in all
+  four spellings (`[gram.item.type.names]`).
+- **A name bound twice in one pattern, or a parameter declared twice, is E0827** at the later
+  binding, in every position, a function's and a closure's parameters included
+  (`[gram.pat.names]`). Two tests of one variant bind nothing, and a comma group still shadows.
+- **An or-pattern's alternatives bind the same names, at one type** (`[gram.pat.or]`): E0828 at
+  an alternative that lacks a name, E0401 at the later binding of a name its declarations type
+  two ways. Alternatives that agree still run.
+- **An error row spells each tag once** (E0601 at the later spelling, `[gram.type.row.dup]`), and
+  an alias's tags merge with the row's own in any order: a payload that disagrees is E0609, at
+  the row's own spelling or at the later alias entry (`[type.err.alias.union]`). An alias's own
+  row is judged where it is declared, used or not.
+- **A type that contains itself by value is E0404** (`[type.rec]`), once per cycle, at the member
+  through which the cycle's first-declared type reaches itself, the cycle named in full; a
+  generic is walked at its arguments. Recursion through `List`, `Map`, `handle` and the other
+  containers that hold their element elsewhere runs as before.
+- A check that finds one family now reports every finding of its code, as the compiler lists
+  them. The vendored corpus's `rows/negative/dup_tags.lu` now answers the E0601 it pins. Its
+  `memory/elem_loop_induction_written_mut.lu`, which writes its `for` header's `i`, is filed as a
+  known divergence until the next pin advance carries wolf-lang's copy (`var i = i`).
+
 s285 — a literal pattern outside its scrutinee's type, the mirror of wolf-lang#1058.
 
 - **A literal pattern its scrutinee's type cannot hold traps `overflow` at the literal.** The
