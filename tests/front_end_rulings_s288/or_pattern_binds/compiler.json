@@ -1,0 +1,22 @@
+{
+ "commit": "unknown",
+ "diagnostics": [],
+ "file": "corpus/typecheck/or_pattern_binds.lu",
+ "impl": "wolfgang",
+ "impl_version": "0.2.38+dev.unknown",
+ "phase_reached": "mem",
+ "protocol": 1,
+ "seeded": false,
+ "stdout_inline": null,
+ "stdout_sha256": null,
+ "verdict": "unsupported",
+ "warnings": [],
+ "x-unsupported-col": 16,
+ "x-unsupported-construct": "or-patterns with bindings in checked execution",
+ "x-unsupported-file": "wolf-lang/corpus/typecheck/or_pattern_binds.lu",
+ "x-unsupported-line": 16,
+ "x-unsupported-span": [
+  522,
+  526
+ ]
+}

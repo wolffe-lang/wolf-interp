@@ -1,0 +1,23 @@
+{
+ "commit": "unknown",
+ "diagnostics": [
+  {
+   "code": "E0302",
+   "severity": "error",
+   "span": [
+    348,
+    349
+   ]
+  }
+ ],
+ "file": "corpus/resolve/enum_variant_twice.lu",
+ "impl": "wolfgang",
+ "impl_version": "0.2.38+dev.unknown",
+ "phase_reached": "resolve",
+ "protocol": 1,
+ "seeded": false,
+ "stdout_inline": null,
+ "stdout_sha256": null,
+ "verdict": "fail(E0302)",
+ "warnings": []
+}

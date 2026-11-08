@@ -1,0 +1,23 @@
+{
+ "commit": "unknown",
+ "diagnostics": [
+  {
+   "code": "E0404",
+   "severity": "error",
+   "span": [
+    256,
+    260
+   ]
+  }
+ ],
+ "file": "corpus/typecheck/rec_by_value_errunion.lu",
+ "impl": "wolfgang",
+ "impl_version": "0.2.38+dev.unknown",
+ "phase_reached": "typecheck",
+ "protocol": 1,
+ "seeded": false,
+ "stdout_inline": null,
+ "stdout_sha256": null,
+ "verdict": "fail(E0404)",
+ "warnings": []
+}

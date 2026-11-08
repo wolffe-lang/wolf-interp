@@ -1,0 +1,23 @@
+{
+ "commit": "unknown",
+ "diagnostics": [
+  {
+   "code": "E0828",
+   "severity": "error",
+   "span": [
+    325,
+    329
+   ]
+  }
+ ],
+ "file": "corpus/typecheck/or_pattern_binds_missing_left.lu",
+ "impl": "wolfgang",
+ "impl_version": "0.2.38+dev.unknown",
+ "phase_reached": "typecheck",
+ "protocol": 1,
+ "seeded": false,
+ "stdout_inline": null,
+ "stdout_sha256": null,
+ "verdict": "fail(E0828)",
+ "warnings": []
+}

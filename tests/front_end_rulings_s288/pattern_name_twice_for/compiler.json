@@ -1,0 +1,23 @@
+{
+ "commit": "unknown",
+ "diagnostics": [
+  {
+   "code": "E0827",
+   "severity": "error",
+   "span": [
+    251,
+    252
+   ]
+  }
+ ],
+ "file": "corpus/typecheck/pattern_name_twice_for.lu",
+ "impl": "wolfgang",
+ "impl_version": "0.2.38+dev.unknown",
+ "phase_reached": "typecheck",
+ "protocol": 1,
+ "seeded": false,
+ "stdout_inline": null,
+ "stdout_sha256": null,
+ "verdict": "fail(E0827)",
+ "warnings": []
+}

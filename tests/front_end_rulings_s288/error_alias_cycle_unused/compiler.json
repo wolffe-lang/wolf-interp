@@ -1,0 +1,23 @@
+{
+ "commit": "unknown",
+ "diagnostics": [
+  {
+   "code": "E0610",
+   "severity": "error",
+   "span": [
+    441,
+    442
+   ]
+  }
+ ],
+ "file": "corpus/rows/negative/error_alias_cycle_unused.lu",
+ "impl": "wolfgang",
+ "impl_version": "0.2.38+dev.unknown",
+ "phase_reached": "typecheck",
+ "protocol": 1,
+ "seeded": false,
+ "stdout_inline": null,
+ "stdout_sha256": null,
+ "verdict": "fail(E0610)",
+ "warnings": []
+}

@@ -1,0 +1,20 @@
+//! check: fail(E0404)
+//! phase: resolve
+//! conforms: type.rec
+//!
+//! Through a struct and an enum ([type.rec]): `N` holds an `L` inline and
+//! `L` holds an `N`. One E0404 for the cycle, at `next`, through which
+//! `N`, the first declared, reaches itself. The checked machine and lupin
+//! ran it (exit 5); native refused it.
+
+struct N { v: int, next: L }
+
+enum L { Nil, More(N) }
+
+fn main() -> int {
+    let l = L.More(N { v: 5, next: L.Nil })
+    match l {
+        Nil => 0,
+        More(n) => n.v,
+    }
+}

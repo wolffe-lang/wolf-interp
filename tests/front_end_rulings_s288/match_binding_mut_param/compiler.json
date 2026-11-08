@@ -1,0 +1,39 @@
+{
+ "commit": "unknown",
+ "diagnostics": [
+  {
+   "code": "W1002",
+   "severity": "warning",
+   "span": [
+    375,
+    378
+   ]
+  },
+  {
+   "code": "E0410",
+   "severity": "error",
+   "span": [
+    419,
+    420
+   ]
+  }
+ ],
+ "file": "corpus/typecheck/match_binding_mut_param.lu",
+ "impl": "wolfgang",
+ "impl_version": "0.2.38+dev.unknown",
+ "phase_reached": "typecheck",
+ "protocol": 1,
+ "seeded": false,
+ "stdout_inline": null,
+ "stdout_sha256": null,
+ "verdict": "fail(E0410)",
+ "warnings": [
+  {
+   "code": "W1002",
+   "span": [
+    375,
+    378
+   ]
+  }
+ ]
+}

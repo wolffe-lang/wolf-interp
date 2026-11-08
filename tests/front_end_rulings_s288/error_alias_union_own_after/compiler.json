@@ -1,0 +1,14 @@
+{
+ "commit": "unknown",
+ "diagnostics": [],
+ "file": "corpus/rows/error_alias_union_own_after.lu",
+ "impl": "wolfgang",
+ "impl_version": "0.2.38+dev.unknown",
+ "phase_reached": "run",
+ "protocol": 1,
+ "seeded": false,
+ "stdout_inline": null,
+ "stdout_sha256": null,
+ "verdict": "exit(1)",
+ "warnings": []
+}
