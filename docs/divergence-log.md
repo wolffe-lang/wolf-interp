@@ -110,6 +110,31 @@ the tier selects which of the *counterparty's* engines answers.
 
 ## Open findings
 
+### DIV-2026-029 — `memory/elem_loop_induction_written_mut.lu` — **OPEN, filed at the 5f1f1c94 pin (s288); resolves with the next pin advance past wolf-lang a57276f2**
+
+The vendored witness for `[mem.model.place.elem]` item 4 writes its `for`
+header's `i` (`i = 0`) to show an exclusivity refusal: `check: fail(E1002)`
+at `typecheck`, and this machine trapped `exclusivity`, the clause's dynamic
+counterpart. wolf-lang a57276f2 (#1080) adds `[gram.pat.let]`: a name a `for`
+header binds binds as `let` does, and assigning it is E0410. This machine
+now refuses the write E0410 at resolve, before the claim the row was written
+for, so the snapshot's `check:` and this machine disagree by code.
+
+Triage (`[proto.cmp.triage]`, the spec is the defendant first). The clause
+is clear, and both machines now follow it: wolf-lang's compiled tiers refuse
+the same write E0410, and wolf-lang's own copy of the row was adjusted in the
+same change to copy the index into a `var` first (`var i = i`, the clause's
+own fix), so the index the claim reads is still one the body writes and E1002
+still holds. The defect is the snapshot's age, not either machine. The
+vendored tree stays as the snapshot at its pin and is not edited by hand.
+
+Added to `differ::FILED_DIVERGENCES`. That stops `tests/run_corpus.rs`
+asserting on this row, and the differential report keeps it visible as
+`x-filed`. The row left the run ledger (it no longer reaches `run`). The
+entry retires at the next pin advance, whose copy of the row writes
+`var i = i` and traps `exclusivity` here again; the row then returns to the
+run ledger.
+
 ### DIV-2026-028 — `conc/atomic_race_plain.lu` — **OPEN, filed at the 294d626d pin (r30, lupin 0.1.48); resolves with wolffe-lang/wolf-lang#603**
 
 kw11's plain racy counter (`check: pass`, `phase: wir`, conforms

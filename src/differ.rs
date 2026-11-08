@@ -223,6 +223,20 @@ pub const FILED_DIVERGENCES: &[(&str, &str, &str)] = &[
          promises only that it compiles and cannot spell the permitted \
          detection (wolf-lang#603)",
     ),
+    // DIV-2026-029 FILED at the 5f1f1c94 pin (s288; wolf-lang a57276f2,
+    // `[gram.pat.let]`): the snapshot's witness writes its `for` header's
+    // `i` and pins E1002; a `for` header's name binds as `let` does now, so
+    // this machine refuses the write E0410 first. wolf-lang's copy writes
+    // `var i = i` first, and the next pin advance re-vendors it.
+    (
+        "memory/elem_loop_induction_written_mut.lu",
+        "DIV-2026-029",
+        "a write to a `for` header's name: this machine refuses it E0410 \
+         ([gram.pat.let], wolf-lang a57276f2), where the snapshot at this pin \
+         pins E1002 on the write's consequence; wolf-lang's copy of the row \
+         shadows the index with `var i = i` first, and the next pin advance \
+         re-vendors it",
+    ),
 ];
 
 // DIV-2026-022 (`wordcount.lu`) and DIV-2026-023
@@ -1775,7 +1789,10 @@ mod tests {
         // DIV-2026-019 CLOSED at the b16353e8 pin (is82, wolf-interp#304):
         // the broken sibling answers E0202 at the compiler's opener. Four
         // became three.
-        assert_eq!(FILED_DIVERGENCES.len(), 3);
+        // DIV-2026-029 FILED at the 5f1f1c94 pin (s288): the snapshot's
+        // witness writes a `for` header's name, E0410 here since
+        // `[gram.pat.let]`, where it pins E1002. Three became four.
+        assert_eq!(FILED_DIVERGENCES.len(), 4);
         let (id, _) = filed("upstream/corpus/conc/atomic_race_plain.lu")
             .expect("DIV-2026-028 is filed against the plain racy counter");
         assert_eq!(id, "DIV-2026-028");

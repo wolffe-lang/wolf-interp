@@ -1990,10 +1990,13 @@ const RUN_LEDGER: &[(&str, &str)] = &[
         "trap(exclusivity)",
     ),
     ("memory/elem_loop_induction_mut.lu", "exit(0)"),
-    (
-        "memory/elem_loop_induction_written_mut.lu",
-        "trap(exclusivity)",
-    ),
+    // `memory/elem_loop_induction_written_mut.lu` trapped `exclusivity` here
+    // until s288: its body writes its `for` header's `i`, which binds as
+    // `let` does since wolf-lang a57276f2 (`[gram.pat.let]`), so this machine
+    // refuses it E0410 at resolve. The snapshot at this pin still pins
+    // E1002; wolf-lang's copy now writes `var i = i` first. Filed as
+    // DIV-2026-029 until the next pin advance re-vendors it; the re-vendored
+    // copy traps `exclusivity` again and returns here.
     ("memory/elem_loop_nonliteral_range_mut.lu", "exit(0)"),
     ("memory/elem_offset_mut_pair.lu", "exit(0)"),
     ("memory/elem_offset_negative_mut.lu", "exit(0)"),
