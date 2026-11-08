@@ -2940,6 +2940,101 @@ fn dup_check(program: &Program) -> Option<Diag> {
     None
 }
 
+/// `[gram.item.type.names]` (wolf-lang#1060, s288): the variants of one enum
+/// have distinct names, and so do the fields of one struct, in all four
+/// spellings (`enum E {…}`, `type E = enum {…}`, `struct P {…}`, `type P =
+/// struct {…}`). A name declared again is E0302 at the later declaration's
+/// name, used or not, as the item collector reports two items of one module.
+/// Names compare as spelled, so `a` and `A` are two variants. Every repeat is
+/// reported, in source order, as the compiler lists them (an enum with three
+/// `A`s is two E0302s).
+///
+/// The pinned spec (`5f1f1c94`) has no `[gram.item.type.names]` yet, so the
+/// diagnostic cites `[gram.item.type]` and names the clause in its words.
+fn member_dup_check(program: &Program) -> Vec<Diag> {
+    fn members<'a>(
+        names: impl Iterator<Item = &'a crate::ast::Ident>,
+        kind: &str,
+        owner: &str,
+        file: &str,
+        out: &mut Vec<Diag>,
+    ) {
+        let (plural, container) = if kind == "variant" {
+            ("variants", "enum")
+        } else {
+            ("fields", "struct")
+        };
+        let mut seen: Vec<&crate::ast::Ident> = Vec::new();
+        for name in names {
+            if let Some(first) = seen.iter().find(|ident| ident.name == name.name) {
+                out.push(
+                    Diag::new(
+                        "E0302",
+                        name.span,
+                        "gram.item.type",
+                        format!(
+                            "the {kind} `{}` is declared twice in this {container} (`{owner}`, \
+                             first declared at {}): the {plural} of one {container} have \
+                             distinct names, as the items of one module do \
+                             ([gram.item.type.names]), so a name must pick out one {kind}. \
+                             Rename or remove one of the declarations",
+                            name.name, first.span
+                        ),
+                    )
+                    .in_file(file.to_owned()),
+                );
+            } else {
+                seen.push(name);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for module in program.modules.values() {
+        for unit in &module.units {
+            for item in &unit.unit.items {
+                let (owner, def): (_, Option<&crate::ast::TypeDef>) = match &item.kind {
+                    ItemKind::TypeAlias(alias) => (Some(&alias.name), Some(&alias.def)),
+                    _ => (None, None),
+                };
+                let owner = owner.map_or("_", |ident| ident.name.as_str());
+                let (fields, variants) = match (&item.kind, def) {
+                    (ItemKind::Struct(def), _) | (_, Some(crate::ast::TypeDef::Struct(def))) => {
+                        (Some(&def.fields), None)
+                    }
+                    (ItemKind::Enum(def), _) | (_, Some(crate::ast::TypeDef::Enum(def))) => {
+                        (None, Some(&def.variants))
+                    }
+                    _ => (None, None),
+                };
+                let owner = match &item.kind {
+                    ItemKind::Struct(def) => def.name.as_ref().map_or(owner, |n| n.name.as_str()),
+                    ItemKind::Enum(def) => def.name.as_ref().map_or(owner, |n| n.name.as_str()),
+                    _ => owner,
+                };
+                if let Some(fields) = fields {
+                    members(
+                        fields.iter().map(|field| &field.name),
+                        "field",
+                        owner,
+                        &unit.file,
+                        &mut out,
+                    );
+                }
+                if let Some(variants) = variants {
+                    members(
+                        variants.iter().map(|variant| &variant.name),
+                        "variant",
+                        owner,
+                        &unit.file,
+                        &mut out,
+                    );
+                }
+            }
+        }
+    }
+    out
+}
+
 /// `[mod.vis.private]` (D32): private is the default; only `pub`/`pub(pkg)`
 /// items are visible across modules. E0304 at the referencing member ident.
 fn private_check(program: &Program) -> Option<Diag> {
