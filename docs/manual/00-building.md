@@ -56,9 +56,13 @@ cargo run -- corpus
 The corpus walk at the end checks every pinned conformance file against
 this implementation and prints the ledger. Its last line counts
 mismatches; on a healthy checkout every mismatch it counts is one that
-is explicitly accounted for. On Unix the count is `4`: one exact
+is explicitly accounted for. On Unix the count is `5`: one exact
 reset/reuse accounting forward pin in `tests/run_corpus.rs`, plus the
-three filed findings in `docs/divergence-log.md`: DIV-2026-027's two failing `assert_msg_*` rows, whose
+four filed findings in `docs/divergence-log.md`: DIV-2026-029, the vendored
+`memory/elem_loop_induction_written_mut.lu`, which writes its `for` header's
+name and pins E1002 where this machine now answers E0410 (`[gram.pat.let]`,
+wolf-lang `a57276f2`) until the next pin advance carries its `var i = i`;
+DIV-2026-027's two failing `assert_msg_*` rows, whose
 `stdout=` pins the dropped rendering of an assert message this machine
 renders as a line (wolf-lang#556), and DIV-2026-028, kw11's plain racy
 counter, whose `check: pass` cannot spell the `trap(race)` this machine
@@ -82,7 +86,7 @@ $ lupin corpus
 1253 file(s) under upstream/corpus: 1191 entries, 62 member(s), 0 failure(s)
 499 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 959 entries reach the `run` rung; 888 match their `check:` expectation, 136 are the dynamic counterpart of the static code the corpus pins, 67 are static-conservatism entries (the compiler rejects statically what this machine never checks), 96 are out of scope, 4 mismatch
+lupin: 957 entries reach the `run` rung; 889 match their `check:` expectation, 135 are the dynamic counterpart of the static code the corpus pins, 66 are static-conservatism entries (the compiler rejects statically what this machine never checks), 96 are out of scope, 5 mismatch
 ```
 
 On Windows, `os/ids_read.lu` and `os/signal_reserved_rows.lu` handle the
@@ -101,7 +105,7 @@ $ lupin corpus
 1253 file(s) under upstream/corpus: 1191 entries, 62 member(s), 0 failure(s)
 499 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 968 entries reach the `run` rung; 893 match their `check:` expectation, 136 are the dynamic counterpart of the static code the corpus pins, 67 are static-conservatism entries (the compiler rejects statically what this machine never checks), 87 are out of scope, 8 mismatch
+lupin: 966 entries reach the `run` rung; 894 match their `check:` expectation, 135 are the dynamic counterpart of the static code the corpus pins, 66 are static-conservatism entries (the compiler rejects statically what this machine never checks), 87 are out of scope, 9 mismatch
 ```
 
 ## Bumping the pin
