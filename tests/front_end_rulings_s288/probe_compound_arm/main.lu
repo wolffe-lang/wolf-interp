@@ -1,0 +1,12 @@
+enum E { A(int) }
+
+fn f(v: E) -> int {
+    match v {
+        A(x) => {
+            x += 1
+            x
+        },
+    }
+}
+
+fn main() -> int { f(E.A(3)) }

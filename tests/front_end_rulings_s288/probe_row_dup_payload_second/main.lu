@@ -1,0 +1,7 @@
+fn go() -> int ! {Io, Io(str)} {
+    7
+}
+
+fn main() -> !int {
+    go() else 0
+}

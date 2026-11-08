@@ -1,0 +1,5 @@
+error A = {Bad(int)}
+
+error C = {A, Bad(str)}
+
+fn main() -> int { 0 }

@@ -1,0 +1,3 @@
+enum L[T] { Nil, Cons(T, L[(T, T)]) }
+
+fn main() -> int { 0 }

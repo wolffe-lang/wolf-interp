@@ -598,3 +598,177 @@ fn the_mut_parameter_trap_is_e0410() {
 fn a_var_shadow_of_a_match_binding_is_assignable() {
     runs("match_binding_var_shadow", 4);
 }
+
+// ------------------------------------------------- the compiler's edges --
+//
+// Programs of this lane's own, `probe_<shape>/main.lu`, each beside the
+// compiler's record of it (wolf-lang `a57276f2`, `conform-run --json
+// --checked`; native and release agree), measured before the mirror was
+// written. They pin what the rows leave open: how many diagnostics a repeat
+// gives, where a span starts and ends, and what stays legal.
+
+/// Each repeat is its own diagnostic: `{x, x, x}` is two E0601s.
+#[test]
+fn every_repeat_of_a_tag_is_its_own_e0601() {
+    refused(
+        "probe_row_dup_three",
+        "E0601",
+        &["the tag `x` appears twice"],
+    );
+}
+
+/// `{Io, Io(str)}`: E0601 at the second tag's name, not its payload, beside
+/// the first's W0603.
+#[test]
+fn a_repeated_tag_is_refused_at_its_name() {
+    refused(
+        "probe_row_dup_payload_second",
+        "E0601",
+        &["the tag `Io` appears twice"],
+    );
+}
+
+/// An alias entry is not a spelling of the row: `{A, A}` runs.
+#[test]
+fn an_alias_named_twice_in_a_row_runs() {
+    runs("probe_alias_twice", 1);
+}
+
+/// `{Bad(str), A}`: the row's own spelling first, the alias after; E0609 at
+/// the spelling all the same.
+#[test]
+fn a_payload_conflict_before_an_alias_is_e0609_at_the_spelling() {
+    refused(
+        "probe_own_before_alias_payload",
+        "E0609",
+        &["`Bad(str)` here"],
+    );
+}
+
+/// Inside an alias's own declaration, used or not: at the later alias
+/// entry, and at the declaration's own spelling.
+#[test]
+fn an_alias_declaration_is_judged_where_it_stands() {
+    refused(
+        "probe_alias_decl_payload_conflict",
+        "E0609",
+        &["from the alias `B`"],
+    );
+    refused(
+        "probe_alias_decl_own_conflict",
+        "E0609",
+        &["`Bad(str)` here"],
+    );
+}
+
+/// Three `A`s are two E0302s; a struct's two repeated fields are two.
+#[test]
+fn every_repeated_member_is_its_own_e0302() {
+    refused(
+        "probe_enum_three",
+        "E0302",
+        &["the variant `A` is declared twice"],
+    );
+    refused(
+        "probe_struct_two_dups",
+        "E0302",
+        &["the field `a` is declared twice"],
+    );
+}
+
+/// `(x, x, x)` is two E0827s, and a shorthand field binds its name.
+#[test]
+fn every_repeated_binding_is_its_own_e0827() {
+    refused("probe_tuple_three", "E0827", &["`x` is bound twice"]);
+    refused(
+        "probe_struct_shorthand_twice",
+        "E0827",
+        &["`a` is bound twice"],
+    );
+}
+
+/// `x @ A(x)`: the payload's `x` is the second binding.
+#[test]
+fn a_payload_under_an_at_binds_after_it() {
+    refused("probe_at_payload", "E0827", &["`x` is bound twice"]);
+}
+
+/// `(A(x) | B(x), x)`: the or-pattern binds `x` once, and the tuple's second
+/// `x` is a second binding.
+#[test]
+fn an_or_pattern_binds_its_names_once_in_the_pattern_around_it() {
+    refused("probe_or_then_tuple", "E0827", &["`x` is bound twice"]);
+}
+
+/// Two alternatives that lack `x` are two E0828s.
+#[test]
+fn every_alternative_that_lacks_a_name_is_its_own_e0828() {
+    refused(
+        "probe_or_three",
+        "E0828",
+        &["this alternative binds no `x`"],
+    );
+}
+
+/// A struct pattern's shorthand field takes the field's declared type.
+#[test]
+fn a_shorthand_field_at_two_types_is_e0401() {
+    refused("probe_or_types_struct", "E0401", &["`n` is `int`"]);
+}
+
+/// A compound assignment, a field of a `for` binding, and a qualified arm
+/// that binds nothing.
+#[test]
+fn every_write_to_a_pattern_binding_is_e0410() {
+    refused(
+        "probe_compound_arm",
+        "E0410",
+        &["`x` is bound by a pattern"],
+    );
+    refused(
+        "probe_for_field_assign",
+        "E0410",
+        &["its fields cannot be assigned"],
+    );
+    refused(
+        "probe_nullary_qualified",
+        "E0410",
+        &["`Done` is bound with `let`"],
+    );
+}
+
+/// A closure's parameter stays assignable (wolf-lang#1076 is open).
+#[test]
+fn a_closure_parameter_is_still_assignable() {
+    runs("probe_closure_param_assign", 2);
+}
+
+/// One cycle through two members is one E0404, at the first.
+#[test]
+fn a_cycle_through_two_members_is_one_e0404() {
+    refused("probe_rec_two_members", "E0404", &["L -> L"]);
+}
+
+/// An alias is transparent and names no step; `distinct` is nominal and
+/// does; `!T` holds its `T` inline; a generic that holds itself at its own
+/// parameters is a cycle.
+#[test]
+fn what_holds_a_type_inline() {
+    refused("probe_rec_alias_type", "E0404", &["N -> N"]);
+    refused("probe_rec_distinct", "E0404", &["N -> M -> N"]);
+    refused("probe_rec_errunion_ok", "E0404", &["N -> N"]);
+    refused("probe_rec_generic_self", "E0404", &["L -> L"]);
+}
+
+/// A recursion that only grows its arguments never repeats one type, so the
+/// walk stops and reports nothing (`[type.rec]`'s last sentence). This
+/// machine stops at 32 inline levels or a 4096-character spelling, its own
+/// bound; the compiler at `a57276f2` does not return on this program
+/// (wolf-lang#1081), so the row holds this machine alone.
+#[test]
+fn a_recursion_that_grows_its_arguments_is_not_reported() {
+    let (record, _) = observe("probe_rec_grows");
+    let got = serde_json::to_value(&record).expect("the record serializes");
+    assert_eq!(got["verdict"], "exit(0)", "{got}");
+    assert_eq!(first_error(&got["diagnostics"]), None, "{got}");
+}

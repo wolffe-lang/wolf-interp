@@ -1,0 +1,10 @@
+struct P { a: int }
+
+fn main() -> int {
+    var t = 0
+    for p in [P { a: 1 }] {
+        p.a = 5
+        t = t + p.a
+    }
+    t
+}

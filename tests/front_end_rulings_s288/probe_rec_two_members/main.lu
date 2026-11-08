@@ -1,0 +1,3 @@
+enum L { Nil, A(L), B(L) }
+
+fn main() -> int { 0 }

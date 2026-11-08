@@ -1,0 +1,5 @@
+struct N { v: int, next: M }
+
+type M = distinct N
+
+fn main() -> int { 0 }

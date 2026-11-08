@@ -1,0 +1,39 @@
+{
+ "commit": "unknown",
+ "diagnostics": [
+  {
+   "code": "W0603",
+   "severity": "warning",
+   "span": [
+    18,
+    20
+   ]
+  },
+  {
+   "code": "E0601",
+   "severity": "error",
+   "span": [
+    22,
+    24
+   ]
+  }
+ ],
+ "file": "probe_row_dup_payload_second/main.lu",
+ "impl": "wolfgang",
+ "impl_version": "0.2.38+dev.unknown",
+ "phase_reached": "typecheck",
+ "protocol": 1,
+ "seeded": false,
+ "stdout_inline": null,
+ "stdout_sha256": null,
+ "verdict": "fail(E0601)",
+ "warnings": [
+  {
+   "code": "W0603",
+   "span": [
+    18,
+    20
+   ]
+  }
+ ]
+}

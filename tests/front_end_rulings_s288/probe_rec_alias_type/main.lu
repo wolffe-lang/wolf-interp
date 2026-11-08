@@ -1,0 +1,5 @@
+struct N { v: int, next: Pair }
+
+type Pair = (int, N)
+
+fn main() -> int { 0 }

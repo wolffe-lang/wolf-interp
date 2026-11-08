@@ -1,0 +1,23 @@
+{
+ "commit": "unknown",
+ "diagnostics": [
+  {
+   "code": "E0609",
+   "severity": "error",
+   "span": [
+    36,
+    44
+   ]
+  }
+ ],
+ "file": "probe_alias_decl_own_conflict/main.lu",
+ "impl": "wolfgang",
+ "impl_version": "0.2.38+dev.unknown",
+ "phase_reached": "typecheck",
+ "protocol": 1,
+ "seeded": false,
+ "stdout_inline": null,
+ "stdout_sha256": null,
+ "verdict": "fail(E0609)",
+ "warnings": []
+}

@@ -1,0 +1,13 @@
+struct A { n: int }
+
+struct B { n: bool }
+
+enum Msg { Left(A), Right(B) }
+
+fn pick(m: Msg) -> int {
+    match m {
+        Msg.Left(A { n }) | Msg.Right(B { n }) => 1,
+    }
+}
+
+fn main() -> int { pick(Msg.Left(A { n: 4 })) }
