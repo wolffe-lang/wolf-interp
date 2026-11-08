@@ -1,0 +1,10 @@
+s288: the embedded-program sweep with trunk 1ed91d1's release lupin (base) and c8f3c48's (head:
+the code of 45db484, before the arm-reading fix), each built in its own worktree on the Linux
+check host; the sweep-old step of one check take, its other steps omitted.
+== STEP sweep-old 15:38:39
+  programs 1273
+  MOVED 00283 tests/net_unix.rs:159
+    base: pass []
+    head: fail(E0410) [('E0410', [126, 132])]
+  sweep: 1273 programs, 1 moved
+END sweep-old exit=0

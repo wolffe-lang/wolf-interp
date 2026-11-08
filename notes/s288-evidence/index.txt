@@ -16,6 +16,13 @@ linux-check-c8f3c48.log     the code head's checks: the 63 rows, fmt, clippy (al
                             and the corpus walk that census.txt reads.
 linux-census-1ed91d14.log   the same corpus walk at trunk 1ed91d1, the census's base.
 census.txt                  the vendored corpus, base against head, file by file: two files move.
+linux-redprobe-59c2d97.log  the else-handler row (da7659f) cherry-picked onto 45db484, the code
+                            before the arm-reading fix: red by name, fail(E0410), 63 others pass.
+linux-sweep-old.log         every embedded wolf program (1,273) at the resolve rung, trunk's lupin
+                            against the code before the fix: one moves, tests/net_unix.rs's.
+linux-check-da7659f.log     the fixed head's checks (64 rows, fmt, clippy, the library tests, the
+                            binder and literal-pattern rows, the corpus harness, conformance), the
+                            corpus walk (census unchanged), and the sweep: none moves.
 rig/mac/                    the Mac scripts as run: locked.sh (the lock, the turn gap, the memory and
                             disk gates), at-commit.sh (one worktree per commit), queue.sh (a take,
                             detached), mac-interp.sh (the steps), wolf-build.sh (the compiler build),
@@ -32,4 +39,6 @@ rig/linux/                  the Linux gauntlet, adapted by copy from s285's (37 
                             byte for byte), steps/.
 rig/linux-check/            the check takes: take.sh (a git bundle of the commit, a worktree at its
                             sha before any lock, crates fetched as a light job, then both locks and
-                            the gate) and steps.sh.
+                            the gate), steps.sh, sweep.py and sweep.sh (the embedded programs),
+                            full-job.sh (every test target, --no-fail-fast, each its own take of
+                            both locks, then the gauntlet at the same commit if all pass).

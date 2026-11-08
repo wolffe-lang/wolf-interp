@@ -101,6 +101,28 @@ Committed before the first change (`7949b51`, `notes/s288-prediction.md`). Score
   (`clipboard-win 5.4.3` among them) and restores the committed `Cargo.lock` byte for byte. The
   committed lockfile still builds (`--locked` uses a yanked version it already pins), and CI's
   online regeneration picks the same replacements.
+- **A miss of the census, and of R-s288-4's claim, found by the second Linux take:** `END shard-3
+  exit=101` at `45db484`, `tests/net_unix.rs`'s `every_bind_and_dial_row_is_about_the_path`. The
+  census walked the vendored corpus and not the programs this repository's tests embed. That
+  test's program reads `else |e| match e { exists => { exists = "exists"; 0 }, … }`: `e` holds the
+  handled call's error, so `exists` tests that row's tag and binds nothing, and the arm writes the
+  outer `var exists`. wolf-lang `a57276f2` accepts the program as written (`pass` at typecheck,
+  `exit(0)`), so the program stays as it is and the miss is this machine's. Its arm reading did
+  not see the handler's row, read `exists` as a binding, and refused the write E0410: more than
+  the compiler, which the decision below says this machine never does. Fixed (`60b14ef`): an
+  `else |e|` name carries the handled expression's row, both walks read an arm's bare names from
+  one reader (`rowmatch::arm_names`), and a name that reader cannot sort is never refused. The
+  take is void. Red first for the fix: the new row
+  `an_else_handlers_tag_arm_writes_the_outer_var` (`da7659f`) on the old code fails by name with
+  `fail(E0410)` and the other 63 pass (`linux-redprobe-59c2d97.log`, the row cherry-picked onto
+  `45db484`).
+- **The embedded programs, swept:** every wolf program this repository's Rust sources embed in a
+  string (1,273, from `tests/` and `src/`; `rig/linux-check/sweep.py`) judged at the resolve rung
+  by trunk's lupin and the head's. At the old code one moved, the net_unix row's
+  (`linux-sweep-old.log`); at the fixed head none moves (`linux-check-da7659f.log`). A program a
+  test builds with `format!` is read with its doubled braces and fails to parse on both builds
+  alike, so the sweep cannot see it; the whole workspace's test targets, `--no-fail-fast`, each in
+  its own take, run before the gauntlet (their record is in the PR body).
 - **The plant:** in the PR body (a record cannot predate the head it names).
 
 ## Decisions
@@ -116,13 +138,19 @@ Committed before the first change (`7949b51`, `notes/s288-prediction.md`). Score
   report. Filed as wolf-lang#1081. This machine's walk stops at 32 inline levels or a
   4096-character type spelling, its own bound, not the spec's, and answers the program `exit(0)`
   (`a_recursion_that_grows_its_arguments_is_not_reported`).
-- **R-s288-4:** whether a bare arm name tests or binds is this machine's evaluator's rule, so the
-  checks and the run cannot disagree. It tests when it names a variant of an enum the module
-  declares, or, at the top of the arm, a tag of the row the scrutinee is statically known to carry
-  (`rowmatch`'s reader). The compiler decides by the scrutinee's type. They differ where an arm
-  names a variant of an enum other than the scrutinee's type (a test here, a binding there) or of
-  an imported enum (a binding here): there this machine reports no E0827 or E0410 the compiler
-  might, the permissive direction, and never one the compiler would not.
+- **R-s288-4:** whether a bare arm name tests or binds is read once, by `rowmatch::arm_names`,
+  for the assignment walk and the pattern-names pass alike, and only as far as it is certain. A
+  name tests when it names a variant of an enum the module declares, or a tag of the row the value
+  there is statically known to carry: a call to a declared fn, a local bound by one or declared
+  `T ! {row}`, and an `else |e|` name, which holds the handled expression's error. A lowercase name
+  binds where no error value can stand: a literal, an operator's result, a local whose declared
+  type is a primitive, a container, or a struct or enum the module declares, a tuple of those,
+  anything under a variant or struct pattern. Every other name is unsure: a capitalized name that
+  is no variant here (a structural tag, or a case of an enum another module declares), and any
+  name where the value's type is not visible. An unsure name hides the outer binding and is never
+  refused, and it never counts for E0827 or E0828. The compiler decides every name by the
+  scrutinee's type, so where the two readings differ this machine reports less than the compiler,
+  never more. The first reading claimed this and missed the `else |e|` row (Prediction, above).
 - **R-s288-5:** E0609 between the layers of a nested row with no alias (`T ! {a} ! {b}`,
   `rows/negative/nested_row_conflict.lu`) is not on the list and stays as it was; it is a
   follow-on.
@@ -143,8 +171,11 @@ Committed before the first change (`7949b51`, `notes/s288-prediction.md`). Score
 `notes/s288-evidence/index.txt` lists every file:
 - `mac-wolf-build-a57276f.log`: the compiler build whose records the fixtures carry;
 - `mac-red-49fce84.log`: the rows at trunk's code, red by name;
-- `linux-check-c8f3c48.log`, `linux-census-1ed91d14.log`, `census.txt`: the code head's checks
-  and the corpus census against trunk;
+- `linux-check-c8f3c48.log`, `linux-census-1ed91d14.log`, `census.txt`: the first code head's
+  checks and the corpus census against trunk;
+- `linux-redprobe-59c2d97.log`, `linux-sweep-old.log`, `linux-check-da7659f.log`: the else-handler
+  row red on the old code, the embedded-program sweep at the old code and at the fixed head, and
+  the fixed head's checks;
 - `rig/`: the scripts as run, the Linux gauntlet's among them.
 
 The Linux gauntlet record at the final head and the plant record on it live outside the tree, and
@@ -168,6 +199,8 @@ Commits:
 - `cac3fdb`: the vendored witness filed as DIV-2026-029.
 - `e65b7e5`: the 23 probes of the compiler's edges.
 - `c8f3c48`: the changelog.
+- `60b14ef`: an arm's bare names read once for both walks, and an unsure one never refused.
+  `da7659f`: the else-handler row.
 - This note and its evidence.
 
 Test targets:
@@ -176,7 +209,13 @@ Test targets:
 - [x] the rows and probes green at the code head, the compiler's diagnostics byte for byte
       (63 tests), with fmt, clippy (all targets, `-D warnings`), the library tests, the binder
       and literal-pattern rows, the corpus harness and conformance (`linux-check-c8f3c48.log`)
-- [x] the vendored corpus walk green, two files moved and named (`census.txt`)
+- [x] the vendored corpus walk green, two files moved and named (`census.txt`); the same at the
+      fixed head
+- [x] the else-handler row red on the old code by name, green at the fix, with the 63 others
+- [x] every embedded program swept: one moved at the old code, none at the fixed head
+- [x] at the fixed head: the 64 rows, fmt, clippy, the library tests, the binder and
+      literal-pattern rows, the corpus harness and conformance (`linux-check-da7659f.log`)
+- [ ] every test target of the workspace, `--no-fail-fast`, each its own take (in the PR body)
 - [ ] the Linux gauntlet record at the final head, every `END … exit=` (in the PR body)
 - [ ] the plant red by name (in the PR body)
 - [ ] the audit, once

@@ -15,7 +15,7 @@ trap 'on_signal 143' TERM; trap 'on_signal 130' INT; trap 'on_signal 129' HUP
 g() { git -c commit.gpgsign=false "$@"; }
 mkdir -p "$lane/tmp" "$lane/cargo-home"
 if [ ! -d "$lane/base" ]; then g clone -q https://github.com/wolffe-lang/wolf-interp.git "$lane/base" || { echo 1 > "$mark"; exit 1; }; fi
-g -C "$lane/base" fetch -q "$bundle" "+refs/heads/s288:refs/remotes/bundle/s288" || { echo 1 > "$mark"; exit 1; }
+g -C "$lane/base" fetch -q "$bundle" "+refs/heads/*:refs/remotes/bundle/*" || { echo 1 > "$mark"; exit 1; }
 w=$lane/iter-${sha:0:8}
 if [ ! -d "$w" ]; then g -C "$lane/base" worktree add -q --detach "$w" "$sha" || { echo 1 > "$mark"; exit 1; }; fi
 test "$(g -C "$w" rev-parse HEAD)" = "$sha" || { echo 1 > "$mark"; exit 1; }
