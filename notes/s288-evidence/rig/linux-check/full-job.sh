@@ -6,7 +6,7 @@
 # only if every target passed, the gauntlet job at the same commit, detached.
 # A pid file, a status file and an exit marker; TERM, INT and HUP write their
 # own nonzero codes.
-#   full-job.sh SHA BUNDLE
+#   [ONLY_TARGETS='t1 t2'] full-job.sh SHA BUNDLE
 set -u
 lane=$LANE/interp
 sha=$1; bundle=$2
@@ -55,7 +55,9 @@ take() {
 }
 worst=0
 take build cargo test --locked --no-run || { echo "build failed"; echo 1 > "$mark"; exit 1; }
-for t in $(cd "$w" && bash ci/test-shards.sh targets); do
+# ONLY_TARGETS narrows the run to the named targets (a re-run of one).
+targets=${ONLY_TARGETS:-$(cd "$w" && bash ci/test-shards.sh targets)}
+for t in $targets; do
   case "$t" in
     lib) take lib cargo test --locked --no-fail-fast --lib || worst=1 ;;
     bins) take bins cargo test --locked --no-fail-fast --bins || worst=1 ;;

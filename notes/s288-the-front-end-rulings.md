@@ -123,6 +123,21 @@ Committed before the first change (`7949b51`, `notes/s288-prediction.md`). Score
   test builds with `format!` is read with its doubled braces and fails to parse on both builds
   alike, so the sweep cannot see it; the whole workspace's test targets, `--no-fail-fast`, each in
   its own take, run before the gauntlet (their record is in the PR body).
+- **A miss of the manual, found by the whole-workspace run at `4b470a1`:** 112 `END` lines, one
+  nonzero, `END doc_truth exit=101`: `docs/manual/00-building.md` documents `lupin corpus`'s
+  summary, and the two files the census names move its counts. Every moved number is theirs:
+  - `rows/negative/dup_tags.lu`, `exit(7)` at `run` (conservatism) to `fail(E0601)` at resolve
+    (match): the entries reaching `run` 959 to 958, the conservatism entries 67 to 66, the
+    matches 888 to 889;
+  - `memory/elem_loop_induction_written_mut.lu`, `trap(exclusivity)` at `run` (the dynamic
+    counterpart of its E1002) to `fail(E0410)` at resolve (a mismatch, filed as DIV-2026-029): the
+    entries reaching `run` 958 to 957, the dynamic counterparts 136 to 135, the mismatches 4 to 5;
+  - the out-of-scope entries stay 96.
+  The Unix block now carries the head's line, read from the binary in that run
+  (`957 … 889 … 135 … 66 … 96 … 5`), and the prose counts five accounted mismatches, DIV-2026-029
+  among them. The Windows block takes the same six moves by derivation, not measurement (both
+  files answer alike on every host, and Windows runs only in CI): 968 to 966, 893 to 894, 136 to
+  135, 67 to 66, 87 unchanged, 8 to 9.
 - **The plant:** in the PR body (a record cannot predate the head it names).
 
 ## Decisions
@@ -201,6 +216,7 @@ Commits:
 - `c8f3c48`: the changelog.
 - `60b14ef`: an arm's bare names read once for both walks, and an unsure one never refused.
   `da7659f`: the else-handler row.
+- The manual's corpus summary at this head.
 - This note and its evidence.
 
 Test targets:
@@ -215,7 +231,10 @@ Test targets:
 - [x] every embedded program swept: one moved at the old code, none at the fixed head
 - [x] at the fixed head: the 64 rows, fmt, clippy, the library tests, the binder and
       literal-pattern rows, the corpus harness and conformance (`linux-check-da7659f.log`)
-- [ ] every test target of the workspace, `--no-fail-fast`, each its own take (in the PR body)
+- [x] every test target of the workspace at `4b470a1`, `--no-fail-fast`, each its own take: 112
+      `END` lines, one red (`doc_truth`, the manual's corpus summary), fixed here
+      (`linux-full-4b470a1.log`)
+- [ ] `doc_truth` at the final head, on its own (in the PR body)
 - [ ] the Linux gauntlet record at the final head, every `END … exit=` (in the PR body)
 - [ ] the plant red by name (in the PR body)
 - [ ] the audit, once

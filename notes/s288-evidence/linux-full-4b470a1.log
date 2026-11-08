@@ -1,0 +1,932 @@
+light: waiting on $LANES/H2-light.lock at 2026-11-08T15:46:44Z
+light: holding $LANES/H2-light.lock on cpus 4-7,12-15 (package 46 C, MemAvailable 20 GiB) at 2026-11-08T15:46:44Z
+light: released $LANES/H2-light.lock rc=0 at 2026-11-08T15:46:44Z
+START build 2026-11-08T15:46:44Z
+  WAIT build elapsed=30s 15:47:14
+  WAIT build elapsed=60s 15:47:44
+  WAIT build elapsed=90s 15:48:14
+  WAIT build elapsed=120s 15:48:44
+  WAIT build elapsed=150s 15:49:14
+END build exit=0 secs=150
+START adapter_cast_is79 2026-11-08T15:49:14Z
+  WAIT adapter_cast_is79 elapsed=30s 15:49:44
+  WAIT adapter_cast_is79 elapsed=60s 15:50:14
+  WAIT adapter_cast_is79 elapsed=90s 15:50:44
+  WAIT adapter_cast_is79 elapsed=120s 15:51:14
+  WAIT adapter_cast_is79 elapsed=150s 15:51:44
+  WAIT adapter_cast_is79 elapsed=180s 15:52:14
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END adapter_cast_is79 exit=0 secs=180
+START anchor_admission 2026-11-08T15:52:14Z
+  WAIT anchor_admission elapsed=30s 15:52:44
+  test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END anchor_admission exit=0 secs=30
+START argv_is84 2026-11-08T15:52:44Z
+  WAIT argv_is84 elapsed=30s 15:53:14
+  test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END argv_is84 exit=0 secs=30
+START binder_variant_s282 2026-11-08T15:53:14Z
+  WAIT binder_variant_s282 elapsed=30s 15:53:44
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END binder_variant_s282 exit=0 secs=30
+START bins 2026-11-08T15:53:44Z
+  WAIT bins elapsed=30s 15:54:14
+  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END bins exit=0 secs=30
+START build_stamp 2026-11-08T15:54:14Z
+  WAIT build_stamp elapsed=30s 15:54:44
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.49s
+END build_stamp exit=0 secs=30
+START byte_domain 2026-11-08T15:54:44Z
+  WAIT byte_domain elapsed=30s 15:55:14
+  WAIT byte_domain elapsed=60s 15:55:44
+  WAIT byte_domain elapsed=90s 15:56:14
+  WAIT byte_domain elapsed=120s 15:56:44
+  WAIT byte_domain elapsed=150s 15:57:14
+  WAIT byte_domain elapsed=180s 15:57:44
+  test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END byte_domain exit=0 secs=180
+START byte_scalar 2026-11-08T15:57:44Z
+  WAIT byte_scalar elapsed=30s 15:58:14
+  test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+END byte_scalar exit=0 secs=30
+START byte_surface 2026-11-08T15:58:14Z
+  WAIT byte_surface elapsed=30s 15:58:44
+  test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.04s
+END byte_surface exit=0 secs=30
+START cast_matrix 2026-11-08T15:58:44Z
+  WAIT cast_matrix elapsed=30s 15:59:14
+  test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END cast_matrix exit=0 secs=30
+START char_scalar 2026-11-08T15:59:14Z
+  WAIT char_scalar elapsed=30s 15:59:44
+  test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END char_scalar exit=0 secs=30
+START cli 2026-11-08T15:59:44Z
+  WAIT cli elapsed=30s 16:00:14
+  WAIT cli elapsed=60s 16:00:44
+  WAIT cli elapsed=90s 16:01:14
+  WAIT cli elapsed=120s 16:01:44
+  WAIT cli elapsed=150s 16:02:14
+  WAIT cli elapsed=180s 16:02:44
+  WAIT cli elapsed=210s 16:03:14
+  WAIT cli elapsed=240s 16:03:44
+  WAIT cli elapsed=270s 16:04:14
+  WAIT cli elapsed=300s 16:04:44
+  WAIT cli elapsed=330s 16:05:14
+  WAIT cli elapsed=360s 16:05:44
+  WAIT cli elapsed=390s 16:06:14
+  WAIT cli elapsed=420s 16:06:44
+  WAIT cli elapsed=450s 16:07:14
+  WAIT cli elapsed=480s 16:07:44
+  WAIT cli elapsed=510s 16:08:14
+  WAIT cli elapsed=540s 16:08:44
+  WAIT cli elapsed=570s 16:09:14
+  WAIT cli elapsed=600s 16:09:44
+  WAIT cli elapsed=630s 16:10:14
+  WAIT cli elapsed=660s 16:10:44
+  WAIT cli elapsed=690s 16:11:14
+  WAIT cli elapsed=720s 16:11:44
+  WAIT cli elapsed=750s 16:12:14
+  WAIT cli elapsed=780s 16:12:44
+  WAIT cli elapsed=810s 16:13:14
+  WAIT cli elapsed=840s 16:13:44
+  WAIT cli elapsed=870s 16:14:14
+  WAIT cli elapsed=900s 16:14:44
+  WAIT cli elapsed=930s 16:15:14
+  WAIT cli elapsed=960s 16:15:44
+  WAIT cli elapsed=990s 16:16:14
+  WAIT cli elapsed=1020s 16:16:44
+  WAIT cli elapsed=1050s 16:17:14
+  WAIT cli elapsed=1080s 16:17:44
+  WAIT cli elapsed=1110s 16:18:14
+  WAIT cli elapsed=1140s 16:18:44
+  WAIT cli elapsed=1170s 16:19:14
+  WAIT cli elapsed=1200s 16:19:44
+  WAIT cli elapsed=1230s 16:20:14
+  WAIT cli elapsed=1260s 16:20:44
+  WAIT cli elapsed=1290s 16:21:14
+  WAIT cli elapsed=1320s 16:21:44
+  WAIT cli elapsed=1350s 16:22:14
+  WAIT cli elapsed=1380s 16:22:44
+  WAIT cli elapsed=1410s 16:23:14
+  WAIT cli elapsed=1440s 16:23:44
+  WAIT cli elapsed=1470s 16:24:14
+  WAIT cli elapsed=1500s 16:24:44
+  WAIT cli elapsed=1530s 16:25:14
+  test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1504.74s
+END cli exit=0 secs=1530
+START conc_machine 2026-11-08T16:25:14Z
+  WAIT conc_machine elapsed=30s 16:25:44
+  test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+END conc_machine exit=0 secs=30
+START conformance 2026-11-08T16:25:44Z
+  WAIT conformance elapsed=30s 16:26:14
+  test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.23s
+END conformance exit=0 secs=30
+START core_is77 2026-11-08T16:26:14Z
+  WAIT core_is77 elapsed=30s 16:26:44
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+END core_is77 exit=0 secs=30
+START cores_s137 2026-11-08T16:26:44Z
+  WAIT cores_s137 elapsed=30s 16:27:14
+  test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END cores_s137 exit=0 secs=30
+START corpus_harness 2026-11-08T16:27:14Z
+  WAIT corpus_harness elapsed=30s 16:27:44
+  test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+END corpus_harness exit=0 secs=30
+START cwd_r41 2026-11-08T16:27:44Z
+  WAIT cwd_r41 elapsed=30s 16:28:14
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+END cwd_r41 exit=0 secs=30
+START differ_cli 2026-11-08T16:28:14Z
+  WAIT differ_cli elapsed=30s 16:28:44
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.65s
+END differ_cli exit=0 secs=30
+START divergence 2026-11-08T16:28:44Z
+  WAIT divergence elapsed=30s 16:29:14
+  WAIT divergence elapsed=60s 16:29:44
+  WAIT divergence elapsed=90s 16:30:14
+  WAIT divergence elapsed=120s 16:30:44
+  WAIT divergence elapsed=150s 16:31:14
+  WAIT divergence elapsed=180s 16:31:44
+  WAIT divergence elapsed=210s 16:32:14
+  WAIT divergence elapsed=240s 16:32:44
+  WAIT divergence elapsed=270s 16:33:14
+  WAIT divergence elapsed=300s 16:33:44
+  WAIT divergence elapsed=330s 16:34:14
+  WAIT divergence elapsed=360s 16:34:44
+  WAIT divergence elapsed=390s 16:35:14
+  WAIT divergence elapsed=420s 16:35:44
+  WAIT divergence elapsed=450s 16:36:14
+  WAIT divergence elapsed=480s 16:36:44
+  WAIT divergence elapsed=510s 16:37:14
+  WAIT divergence elapsed=540s 16:37:44
+  WAIT divergence elapsed=570s 16:38:14
+  WAIT divergence elapsed=600s 16:38:44
+  test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 575.77s
+END divergence exit=0 secs=600
+START doc 2026-11-08T16:38:44Z
+  WAIT doc elapsed=30s 16:39:14
+  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END doc exit=0 secs=30
+START doc_truth 2026-11-08T16:39:14Z
+  WAIT doc_truth elapsed=30s 16:39:44
+  WAIT doc_truth elapsed=60s 16:40:14
+  WAIT doc_truth elapsed=90s 16:40:44
+  WAIT doc_truth elapsed=120s 16:41:14
+  WAIT doc_truth elapsed=150s 16:41:44
+  WAIT doc_truth elapsed=180s 16:42:14
+  WAIT doc_truth elapsed=210s 16:42:44
+  WAIT doc_truth elapsed=240s 16:43:14
+  WAIT doc_truth elapsed=270s 16:43:44
+  WAIT doc_truth elapsed=300s 16:44:14
+  WAIT doc_truth elapsed=330s 16:44:44
+  WAIT doc_truth elapsed=360s 16:45:14
+  WAIT doc_truth elapsed=390s 16:45:44
+  WAIT doc_truth elapsed=420s 16:46:14
+  WAIT doc_truth elapsed=450s 16:46:44
+  WAIT doc_truth elapsed=480s 16:47:14
+  WAIT doc_truth elapsed=510s 16:47:44
+  WAIT doc_truth elapsed=540s 16:48:14
+  WAIT doc_truth elapsed=570s 16:48:44
+  WAIT doc_truth elapsed=600s 16:49:14
+  WAIT doc_truth elapsed=630s 16:49:44
+  WAIT doc_truth elapsed=660s 16:50:14
+  WAIT doc_truth elapsed=690s 16:50:44
+  WAIT doc_truth elapsed=720s 16:51:14
+  WAIT doc_truth elapsed=750s 16:51:44
+  WAIT doc_truth elapsed=780s 16:52:14
+  WAIT doc_truth elapsed=810s 16:52:44
+  WAIT doc_truth elapsed=840s 16:53:14
+  WAIT doc_truth elapsed=870s 16:53:44
+  WAIT doc_truth elapsed=900s 16:54:14
+  WAIT doc_truth elapsed=930s 16:54:44
+  WAIT doc_truth elapsed=960s 16:55:14
+  WAIT doc_truth elapsed=990s 16:55:44
+  WAIT doc_truth elapsed=1020s 16:56:14
+  WAIT doc_truth elapsed=1050s 16:56:44
+  WAIT doc_truth elapsed=1080s 16:57:14
+  WAIT doc_truth elapsed=1110s 16:57:44
+  WAIT doc_truth elapsed=1140s 16:58:14
+  WAIT doc_truth elapsed=1170s 16:58:44
+  WAIT doc_truth elapsed=1200s 16:59:14
+  WAIT doc_truth elapsed=1230s 16:59:44
+  WAIT doc_truth elapsed=1260s 17:00:14
+  WAIT doc_truth elapsed=1290s 17:00:44
+  WAIT doc_truth elapsed=1320s 17:01:14
+  WAIT doc_truth elapsed=1350s 17:01:44
+  WAIT doc_truth elapsed=1380s 17:02:14
+  WAIT doc_truth elapsed=1410s 17:02:44
+  WAIT doc_truth elapsed=1440s 17:03:14
+  WAIT doc_truth elapsed=1470s 17:03:44
+  WAIT doc_truth elapsed=1500s 17:04:14
+  WAIT doc_truth elapsed=1530s 17:04:44
+  WAIT doc_truth elapsed=1560s 17:05:14
+  WAIT doc_truth elapsed=1590s 17:05:44
+  WAIT doc_truth elapsed=1620s 17:06:14
+  WAIT doc_truth elapsed=1650s 17:06:44
+  WAIT doc_truth elapsed=1680s 17:07:14
+  WAIT doc_truth elapsed=1710s 17:07:44
+  thread 'a_misspelled_console_host_cannot_silently_disable_a_transcript' (14) panicked at tests/doc_truth.rs:95:21:
+  thread 'every_documented_output_is_the_binary_output' (15) panicked at tests/doc_truth.rs:293:5:
+  entry   rows/handler_diverge_trap.lu                                   phase=run        check=run(exit=trap(assert), stdout="FAILED: neg")  lupin=trap(assert)@run              match         conforms=err.union, err.rows, conf.trap.set
+  entry   rows/negative/payload_mismatch.lu                              phase=resolve    check=failtest every_documented_output_is_the_binary_output ... FAILED
+  test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1702.91s
+  error: test failed, to rerun pass `--test doc_truth`
+  error: 1 target failed:
+END doc_truth exit=101 secs=1710
+START editor_calls_is79 2026-11-08T17:07:44Z
+  WAIT editor_calls_is79 elapsed=30s 17:08:14
+  WAIT editor_calls_is79 elapsed=60s 17:08:44
+  WAIT editor_calls_is79 elapsed=90s 17:09:14
+  WAIT editor_calls_is79 elapsed=120s 17:09:44
+  WAIT editor_calls_is79 elapsed=150s 17:10:14
+  WAIT editor_calls_is79 elapsed=180s 17:10:44
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s
+END editor_calls_is79 exit=0 secs=180
+START exec_s225 2026-11-08T17:10:44Z
+  WAIT exec_s225 elapsed=30s 17:11:14
+  test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END exec_s225 exit=0 secs=30
+START exec_sigpipe_r41e 2026-11-08T17:11:14Z
+  WAIT exec_sigpipe_r41e elapsed=30s 17:11:44
+  test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END exec_sigpipe_r41e exit=0 secs=30
+START explore_corpus 2026-11-08T17:11:44Z
+  WAIT explore_corpus elapsed=30s 17:12:14
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+END explore_corpus exit=0 secs=30
+START explore_machine 2026-11-08T17:12:14Z
+  WAIT explore_machine elapsed=30s 17:12:44
+  test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+END explore_machine exit=0 secs=30
+START export 2026-11-08T17:12:44Z
+  WAIT export elapsed=30s 17:13:14
+  WAIT export elapsed=60s 17:13:44
+  WAIT export elapsed=90s 17:14:14
+  WAIT export elapsed=120s 17:14:44
+  WAIT export elapsed=150s 17:15:14
+  WAIT export elapsed=180s 17:15:44
+  WAIT export elapsed=210s 17:16:14
+  WAIT export elapsed=240s 17:16:44
+  WAIT export elapsed=270s 17:17:14
+  WAIT export elapsed=300s 17:17:44
+  WAIT export elapsed=330s 17:18:14
+  WAIT export elapsed=360s 17:18:44
+  WAIT export elapsed=390s 17:19:14
+  WAIT export elapsed=420s 17:19:44
+  WAIT export elapsed=450s 17:20:14
+  WAIT export elapsed=480s 17:20:44
+  WAIT export elapsed=510s 17:21:14
+  WAIT export elapsed=540s 17:21:44
+  WAIT export elapsed=570s 17:22:14
+  WAIT export elapsed=600s 17:22:44
+  WAIT export elapsed=630s 17:23:14
+  WAIT export elapsed=660s 17:23:44
+  WAIT export elapsed=690s 17:24:14
+  WAIT export elapsed=720s 17:24:44
+  WAIT export elapsed=750s 17:25:14
+  WAIT export elapsed=780s 17:25:44
+  WAIT export elapsed=810s 17:26:14
+  WAIT export elapsed=840s 17:26:44
+  WAIT export elapsed=870s 17:27:14
+  WAIT export elapsed=900s 17:27:44
+  WAIT export elapsed=930s 17:28:14
+  WAIT export elapsed=960s 17:28:44
+  WAIT export elapsed=990s 17:29:14
+  WAIT export elapsed=1020s 17:29:44
+  WAIT export elapsed=1050s 17:30:14
+  WAIT export elapsed=1080s 17:30:44
+  WAIT export elapsed=1110s 17:31:14
+  WAIT export elapsed=1140s 17:31:44
+  WAIT export elapsed=1170s 17:32:14
+  WAIT export elapsed=1200s 17:32:44
+  WAIT export elapsed=1230s 17:33:14
+  WAIT export elapsed=1260s 17:33:44
+  WAIT export elapsed=1290s 17:34:14
+  WAIT export elapsed=1320s 17:34:44
+  WAIT export elapsed=1350s 17:35:14
+  WAIT export elapsed=1380s 17:35:44
+  WAIT export elapsed=1410s 17:36:14
+  WAIT export elapsed=1440s 17:36:44
+  WAIT export elapsed=1470s 17:37:14
+  WAIT export elapsed=1500s 17:37:44
+  WAIT export elapsed=1530s 17:38:14
+  WAIT export elapsed=1560s 17:38:44
+  WAIT export elapsed=1590s 17:39:14
+  WAIT export elapsed=1620s 17:39:44
+  WAIT export elapsed=1650s 17:40:14
+  WAIT export elapsed=1680s 17:40:44
+  WAIT export elapsed=1710s 17:41:14
+  WAIT export elapsed=1740s 17:41:44
+  WAIT export elapsed=1770s 17:42:14
+  WAIT export elapsed=1800s 17:42:44
+  WAIT export elapsed=1830s 17:43:14
+  WAIT export elapsed=1860s 17:43:44
+  WAIT export elapsed=1890s 17:44:14
+  WAIT export elapsed=1920s 17:44:44
+  WAIT export elapsed=1950s 17:45:14
+  WAIT export elapsed=1980s 17:45:44
+  WAIT export elapsed=2010s 17:46:14
+  WAIT export elapsed=2040s 17:46:44
+  WAIT export elapsed=2070s 17:47:14
+  WAIT export elapsed=2100s 17:47:44
+  WAIT export elapsed=2130s 17:48:14
+  WAIT export elapsed=2161s 17:48:45
+  WAIT export elapsed=2191s 17:49:15
+  WAIT export elapsed=2221s 17:49:45
+  WAIT export elapsed=2251s 17:50:15
+  WAIT export elapsed=2281s 17:50:45
+  test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2250.94s
+END export exit=0 secs=2281
+START fault_snapshots 2026-11-08T17:50:45Z
+  WAIT fault_snapshots elapsed=30s 17:51:15
+  test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+END fault_snapshots exit=0 secs=30
+START fork_is79 2026-11-08T17:51:15Z
+  WAIT fork_is79 elapsed=30s 17:51:45
+  test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+END fork_is79 exit=0 secs=30
+START front_end_rulings_s288 2026-11-08T17:51:45Z
+  WAIT front_end_rulings_s288 elapsed=30s 17:52:15
+  WAIT front_end_rulings_s288 elapsed=60s 17:52:45
+  WAIT front_end_rulings_s288 elapsed=90s 17:53:15
+  test result: ok. 64 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END front_end_rulings_s288 exit=0 secs=90
+START frontend_snapshots 2026-11-08T17:53:15Z
+  WAIT frontend_snapshots elapsed=30s 17:53:45
+  test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END frontend_snapshots exit=0 secs=30
+START fs_change_s230 2026-11-08T17:53:45Z
+  WAIT fs_change_s230 elapsed=30s 17:54:15
+  test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+END fs_change_s230 exit=0 secs=30
+START fs_family 2026-11-08T17:54:15Z
+  WAIT fs_family elapsed=30s 17:54:45
+  test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END fs_family exit=0 secs=30
+START fs_offset 2026-11-08T17:54:45Z
+  WAIT fs_offset elapsed=30s 17:55:15
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END fs_offset exit=0 secs=30
+START fuzz_smoke 2026-11-08T17:55:15Z
+  WAIT fuzz_smoke elapsed=30s 17:55:45
+  WAIT fuzz_smoke elapsed=60s 17:56:15
+  WAIT fuzz_smoke elapsed=90s 17:56:45
+  test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 72.80s
+END fuzz_smoke exit=0 secs=90
+START group_s241 2026-11-08T17:56:45Z
+  WAIT group_s241 elapsed=30s 17:57:15
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END group_s241 exit=0 secs=30
+START ids_s236 2026-11-08T17:57:15Z
+  WAIT ids_s236 elapsed=30s 17:57:45
+  test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+END ids_s236 exit=0 secs=30
+START index_origin 2026-11-08T17:57:45Z
+  WAIT index_origin elapsed=30s 17:58:15
+  test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END index_origin exit=0 secs=30
+START index_store 2026-11-08T17:58:15Z
+  WAIT index_store elapsed=30s 17:58:45
+  test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END index_store exit=0 secs=30
+START int_truth_s220 2026-11-08T17:58:45Z
+  WAIT int_truth_s220 elapsed=30s 17:59:15
+  test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+END int_truth_s220 exit=0 secs=30
+START iter_str_assert 2026-11-08T17:59:15Z
+  WAIT iter_str_assert elapsed=30s 17:59:45
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END iter_str_assert exit=0 secs=30
+START job_refused_is76 2026-11-08T17:59:45Z
+  WAIT job_refused_is76 elapsed=30s 18:00:15
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END job_refused_is76 exit=0 secs=30
+START job_s219 2026-11-08T18:00:15Z
+  WAIT job_s219 elapsed=30s 18:00:45
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END job_s219 exit=0 secs=30
+START job_wait_s242 2026-11-08T18:00:45Z
+  WAIT job_wait_s242 elapsed=30s 18:01:15
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END job_wait_s242 exit=0 secs=30
+START json_dup_s224 2026-11-08T18:01:15Z
+  WAIT json_dup_s224 elapsed=30s 18:01:45
+  test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+END json_dup_s224 exit=0 secs=30
+START let_group_locus 2026-11-08T18:01:45Z
+  WAIT let_group_locus elapsed=30s 18:02:15
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END let_group_locus exit=0 secs=30
+START lex_corpus 2026-11-08T18:02:15Z
+  WAIT lex_corpus elapsed=30s 18:02:45
+  test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+END lex_corpus exit=0 secs=30
+START lib 2026-11-08T18:02:45Z
+  WAIT lib elapsed=30s 18:03:15
+  test result: ok. 797 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+END lib exit=0 secs=30
+START lint_is61 2026-11-08T18:03:15Z
+  WAIT lint_is61 elapsed=30s 18:03:45
+  test result: ok. 118 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+END lint_is61 exit=0 secs=30
+START literal_pattern_s285 2026-11-08T18:03:45Z
+  WAIT literal_pattern_s285 elapsed=30s 18:04:15
+  test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END literal_pattern_s285 exit=0 secs=30
+START mirror_is81 2026-11-08T18:04:15Z
+  WAIT mirror_is81 elapsed=30s 18:04:45
+  test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+END mirror_is81 exit=0 secs=30
+START mirror_is82 2026-11-08T18:04:45Z
+  WAIT mirror_is82 elapsed=30s 18:05:15
+  test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+END mirror_is82 exit=0 secs=30
+START mode_read_iteration 2026-11-08T18:05:15Z
+  WAIT mode_read_iteration elapsed=30s 18:05:45
+  test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END mode_read_iteration exit=0 secs=30
+START net_accept_race 2026-11-08T18:05:45Z
+  WAIT net_accept_race elapsed=30s 18:06:15
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.01s
+END net_accept_race exit=0 secs=30
+START net_error_is76 2026-11-08T18:06:15Z
+  WAIT net_error_is76 elapsed=30s 18:06:45
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+END net_error_is76 exit=0 secs=30
+START net_family 2026-11-08T18:06:45Z
+  WAIT net_family elapsed=30s 18:07:15
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.63s
+END net_family exit=0 secs=30
+START net_s141 2026-11-08T18:07:15Z
+  WAIT net_s141 elapsed=30s 18:07:45
+  test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.89s
+END net_s141 exit=0 secs=30
+START net_unix 2026-11-08T18:07:45Z
+  WAIT net_unix elapsed=30s 18:08:15
+  test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END net_unix exit=0 secs=30
+START nofollow_boundary_is83 2026-11-08T18:08:15Z
+  WAIT nofollow_boundary_is83 elapsed=30s 18:08:45
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END nofollow_boundary_is83 exit=0 secs=30
+START os_mirror_is83 2026-11-08T18:08:45Z
+  WAIT os_mirror_is83 elapsed=30s 18:09:15
+  test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+END os_mirror_is83 exit=0 secs=30
+START os_mirror_target_is83 2026-11-08T18:09:15Z
+  WAIT os_mirror_target_is83 elapsed=30s 18:09:45
+  test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+END os_mirror_target_is83 exit=0 secs=30
+START os_process 2026-11-08T18:09:45Z
+  WAIT os_process elapsed=30s 18:10:15
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END os_process exit=0 secs=30
+START os_random_is80 2026-11-08T18:10:15Z
+  WAIT os_random_is80 elapsed=30s 18:10:45
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+END os_random_is80 exit=0 secs=30
+START place_trace 2026-11-08T18:10:45Z
+  WAIT place_trace elapsed=30s 18:11:15
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.04s
+END place_trace exit=0 secs=30
+START proc_fd_s215 2026-11-08T18:11:15Z
+  WAIT proc_fd_s215 elapsed=30s 18:11:45
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END proc_fd_s215 exit=0 secs=30
+START protocol_fixtures 2026-11-08T18:11:45Z
+  WAIT protocol_fixtures elapsed=30s 18:12:15
+  test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END protocol_fixtures exit=0 secs=30
+START prov_machine 2026-11-08T18:12:15Z
+  WAIT prov_machine elapsed=30s 18:12:45
+  test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+END prov_machine exit=0 secs=30
+START region_copyout 2026-11-08T18:12:45Z
+  WAIT region_copyout elapsed=30s 18:13:15
+  test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END region_copyout exit=0 secs=30
+START region_machine 2026-11-08T18:13:15Z
+  WAIT region_machine elapsed=30s 18:13:45
+  WAIT region_machine elapsed=60s 18:14:15
+  WAIT region_machine elapsed=90s 18:14:45
+  WAIT region_machine elapsed=120s 18:15:15
+  WAIT region_machine elapsed=150s 18:15:45
+  WAIT region_machine elapsed=180s 18:16:15
+  WAIT region_machine elapsed=210s 18:16:45
+  WAIT region_machine elapsed=240s 18:17:15
+  WAIT region_machine elapsed=270s 18:17:45
+  WAIT region_machine elapsed=300s 18:18:15
+  WAIT region_machine elapsed=330s 18:18:45
+  WAIT region_machine elapsed=360s 18:19:15
+  WAIT region_machine elapsed=390s 18:19:45
+  WAIT region_machine elapsed=420s 18:20:15
+  WAIT region_machine elapsed=450s 18:20:45
+  WAIT region_machine elapsed=480s 18:21:15
+  WAIT region_machine elapsed=510s 18:21:45
+  WAIT region_machine elapsed=540s 18:22:15
+  WAIT region_machine elapsed=570s 18:22:45
+  WAIT region_machine elapsed=600s 18:23:15
+  WAIT region_machine elapsed=630s 18:23:45
+  WAIT region_machine elapsed=660s 18:24:15
+  WAIT region_machine elapsed=690s 18:24:45
+  WAIT region_machine elapsed=720s 18:25:15
+  WAIT region_machine elapsed=750s 18:25:45
+  WAIT region_machine elapsed=780s 18:26:15
+  WAIT region_machine elapsed=810s 18:26:45
+  WAIT region_machine elapsed=840s 18:27:15
+  WAIT region_machine elapsed=870s 18:27:45
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 862.59s
+END region_machine exit=0 secs=870
+START region_scalar_is79 2026-11-08T18:27:45Z
+  WAIT region_scalar_is79 elapsed=30s 18:28:15
+  test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+END region_scalar_is79 exit=0 secs=30
+START repl_edit_pty 2026-11-08T18:28:15Z
+  WAIT repl_edit_pty elapsed=30s 18:28:45
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.81s
+END repl_edit_pty exit=0 secs=30
+START repl_session 2026-11-08T18:28:45Z
+  WAIT repl_session elapsed=30s 18:29:15
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+END repl_session exit=0 secs=30
+START resolve_ambient 2026-11-08T18:29:15Z
+  WAIT resolve_ambient elapsed=30s 18:29:45
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END resolve_ambient exit=0 secs=30
+START rows_option 2026-11-08T18:29:45Z
+  WAIT rows_option elapsed=30s 18:30:15
+  test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END rows_option exit=0 secs=30
+START rule_registry 2026-11-08T18:30:15Z
+  WAIT rule_registry elapsed=30s 18:30:45
+  WAIT rule_registry elapsed=60s 18:31:15
+  WAIT rule_registry elapsed=90s 18:31:45
+  WAIT rule_registry elapsed=120s 18:32:15
+  WAIT rule_registry elapsed=150s 18:32:45
+  WAIT rule_registry elapsed=180s 18:33:15
+  WAIT rule_registry elapsed=210s 18:33:45
+  WAIT rule_registry elapsed=240s 18:34:15
+  WAIT rule_registry elapsed=270s 18:34:45
+  WAIT rule_registry elapsed=300s 18:35:15
+  WAIT rule_registry elapsed=330s 18:35:45
+  WAIT rule_registry elapsed=360s 18:36:15
+  WAIT rule_registry elapsed=390s 18:36:45
+  WAIT rule_registry elapsed=420s 18:37:15
+  WAIT rule_registry elapsed=450s 18:37:45
+  WAIT rule_registry elapsed=480s 18:38:15
+  WAIT rule_registry elapsed=510s 18:38:45
+  WAIT rule_registry elapsed=540s 18:39:15
+  WAIT rule_registry elapsed=570s 18:39:45
+  WAIT rule_registry elapsed=600s 18:40:15
+  WAIT rule_registry elapsed=630s 18:40:45
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 624.80s
+END rule_registry exit=0 secs=630
+START rulings_eg00 2026-11-08T18:40:45Z
+  WAIT rulings_eg00 elapsed=30s 18:41:15
+  test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END rulings_eg00 exit=0 secs=30
+START rulings_is58 2026-11-08T18:41:15Z
+  WAIT rulings_is58 elapsed=30s 18:41:45
+  test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END rulings_is58 exit=0 secs=30
+START rulings_is59 2026-11-08T18:41:45Z
+  WAIT rulings_is59 elapsed=30s 18:42:15
+  test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END rulings_is59 exit=0 secs=30
+START rulings_is60 2026-11-08T18:42:15Z
+  WAIT rulings_is60 elapsed=30s 18:42:45
+  test result: ok. 82 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+END rulings_is60 exit=0 secs=30
+START rulings_is62 2026-11-08T18:42:45Z
+  WAIT rulings_is62 elapsed=30s 18:43:15
+  test result: ok. 53 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+END rulings_is62 exit=0 secs=30
+START rulings_is63 2026-11-08T18:43:15Z
+  WAIT rulings_is63 elapsed=30s 18:43:45
+  test result: ok. 58 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+END rulings_is63 exit=0 secs=30
+START rulings_is65 2026-11-08T18:43:45Z
+  WAIT rulings_is65 elapsed=30s 18:44:15
+  test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END rulings_is65 exit=0 secs=30
+START rulings_is67 2026-11-08T18:44:15Z
+  WAIT rulings_is67 elapsed=30s 18:44:45
+  test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END rulings_is67 exit=0 secs=30
+START rulings_is68 2026-11-08T18:44:45Z
+  WAIT rulings_is68 elapsed=30s 18:45:15
+  test result: ok. 108 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+END rulings_is68 exit=0 secs=30
+START rulings_is69 2026-11-08T18:45:15Z
+  WAIT rulings_is69 elapsed=30s 18:45:45
+  test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END rulings_is69 exit=0 secs=30
+START rulings_is70 2026-11-08T18:45:45Z
+  WAIT rulings_is70 elapsed=30s 18:46:15
+  test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+END rulings_is70 exit=0 secs=30
+START rulings_is73 2026-11-08T18:46:15Z
+  WAIT rulings_is73 elapsed=30s 18:46:45
+  test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.96s
+END rulings_is73 exit=0 secs=30
+START rulings_is74 2026-11-08T18:46:45Z
+  WAIT rulings_is74 elapsed=30s 18:47:15
+  test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.66s
+END rulings_is74 exit=0 secs=30
+START rulings_s182 2026-11-08T18:47:15Z
+  WAIT rulings_s182 elapsed=30s 18:47:45
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END rulings_s182 exit=0 secs=30
+START rulings_s208 2026-11-08T18:47:45Z
+  WAIT rulings_s208 elapsed=30s 18:48:15
+  test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END rulings_s208 exit=0 secs=30
+START rulings_s213 2026-11-08T18:48:15Z
+  WAIT rulings_s213 elapsed=30s 18:48:45
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END rulings_s213 exit=0 secs=30
+START run_corpus 2026-11-08T18:48:45Z
+  WAIT run_corpus elapsed=30s 18:49:15
+  WAIT run_corpus elapsed=60s 18:49:45
+  WAIT run_corpus elapsed=90s 18:50:15
+  WAIT run_corpus elapsed=120s 18:50:45
+  WAIT run_corpus elapsed=150s 18:51:15
+  WAIT run_corpus elapsed=180s 18:51:45
+  WAIT run_corpus elapsed=210s 18:52:15
+  WAIT run_corpus elapsed=240s 18:52:45
+  WAIT run_corpus elapsed=270s 18:53:15
+  WAIT run_corpus elapsed=300s 18:53:45
+  WAIT run_corpus elapsed=330s 18:54:15
+  WAIT run_corpus elapsed=360s 18:54:45
+  WAIT run_corpus elapsed=390s 18:55:15
+  WAIT run_corpus elapsed=420s 18:55:45
+  WAIT run_corpus elapsed=450s 18:56:15
+  WAIT run_corpus elapsed=480s 18:56:45
+  WAIT run_corpus elapsed=510s 18:57:15
+  WAIT run_corpus elapsed=540s 18:57:45
+  WAIT run_corpus elapsed=570s 18:58:15
+  WAIT run_corpus elapsed=600s 18:58:45
+  WAIT run_corpus elapsed=630s 18:59:15
+  WAIT run_corpus elapsed=660s 18:59:45
+  WAIT run_corpus elapsed=690s 19:00:15
+  WAIT run_corpus elapsed=720s 19:00:45
+  WAIT run_corpus elapsed=750s 19:01:15
+  WAIT run_corpus elapsed=780s 19:01:45
+  WAIT run_corpus elapsed=810s 19:02:15
+  WAIT run_corpus elapsed=840s 19:02:45
+  WAIT run_corpus elapsed=870s 19:03:15
+  WAIT run_corpus elapsed=900s 19:03:45
+  WAIT run_corpus elapsed=930s 19:04:15
+  WAIT run_corpus elapsed=960s 19:04:45
+  WAIT run_corpus elapsed=990s 19:05:15
+  WAIT run_corpus elapsed=1020s 19:05:45
+  WAIT run_corpus elapsed=1050s 19:06:15
+  WAIT run_corpus elapsed=1080s 19:06:45
+  WAIT run_corpus elapsed=1110s 19:07:15
+  WAIT run_corpus elapsed=1140s 19:07:45
+  WAIT run_corpus elapsed=1170s 19:08:15
+  WAIT run_corpus elapsed=1200s 19:08:45
+  WAIT run_corpus elapsed=1230s 19:09:15
+  WAIT run_corpus elapsed=1260s 19:09:45
+  WAIT run_corpus elapsed=1290s 19:10:15
+  WAIT run_corpus elapsed=1320s 19:10:45
+  WAIT run_corpus elapsed=1350s 19:11:15
+  WAIT run_corpus elapsed=1380s 19:11:45
+  WAIT run_corpus elapsed=1410s 19:12:15
+  WAIT run_corpus elapsed=1440s 19:12:45
+  WAIT run_corpus elapsed=1470s 19:13:15
+  WAIT run_corpus elapsed=1500s 19:13:45
+  WAIT run_corpus elapsed=1530s 19:14:15
+  WAIT run_corpus elapsed=1560s 19:14:45
+  WAIT run_corpus elapsed=1590s 19:15:15
+  WAIT run_corpus elapsed=1620s 19:15:45
+  WAIT run_corpus elapsed=1650s 19:16:15
+  WAIT run_corpus elapsed=1680s 19:16:45
+  WAIT run_corpus elapsed=1710s 19:17:15
+  WAIT run_corpus elapsed=1740s 19:17:45
+  WAIT run_corpus elapsed=1770s 19:18:15
+  WAIT run_corpus elapsed=1800s 19:18:45
+  WAIT run_corpus elapsed=1830s 19:19:15
+  WAIT run_corpus elapsed=1860s 19:19:45
+  WAIT run_corpus elapsed=1890s 19:20:15
+  WAIT run_corpus elapsed=1920s 19:20:45
+  WAIT run_corpus elapsed=1950s 19:21:15
+  WAIT run_corpus elapsed=1980s 19:21:45
+  WAIT run_corpus elapsed=2010s 19:22:15
+  WAIT run_corpus elapsed=2040s 19:22:45
+  WAIT run_corpus elapsed=2070s 19:23:15
+  WAIT run_corpus elapsed=2100s 19:23:45
+  WAIT run_corpus elapsed=2130s 19:24:15
+  WAIT run_corpus elapsed=2160s 19:24:45
+  WAIT run_corpus elapsed=2190s 19:25:15
+  WAIT run_corpus elapsed=2220s 19:25:45
+  WAIT run_corpus elapsed=2250s 19:26:15
+  WAIT run_corpus elapsed=2280s 19:26:45
+  WAIT run_corpus elapsed=2310s 19:27:15
+  WAIT run_corpus elapsed=2340s 19:27:45
+  WAIT run_corpus elapsed=2370s 19:28:15
+  WAIT run_corpus elapsed=2400s 19:28:45
+  WAIT run_corpus elapsed=2430s 19:29:15
+  WAIT run_corpus elapsed=2460s 19:29:45
+  WAIT run_corpus elapsed=2490s 19:30:15
+  WAIT run_corpus elapsed=2520s 19:30:45
+  WAIT run_corpus elapsed=2550s 19:31:15
+  WAIT run_corpus elapsed=2580s 19:31:45
+  WAIT run_corpus elapsed=2610s 19:32:15
+  WAIT run_corpus elapsed=2640s 19:32:45
+  WAIT run_corpus elapsed=2670s 19:33:15
+  WAIT run_corpus elapsed=2700s 19:33:45
+  WAIT run_corpus elapsed=2730s 19:34:15
+  WAIT run_corpus elapsed=2760s 19:34:45
+  WAIT run_corpus elapsed=2790s 19:35:15
+  WAIT run_corpus elapsed=2820s 19:35:45
+  WAIT run_corpus elapsed=2850s 19:36:15
+  WAIT run_corpus elapsed=2880s 19:36:45
+  WAIT run_corpus elapsed=2910s 19:37:15
+  WAIT run_corpus elapsed=2940s 19:37:45
+  WAIT run_corpus elapsed=2970s 19:38:15
+  WAIT run_corpus elapsed=3000s 19:38:45
+  WAIT run_corpus elapsed=3030s 19:39:15
+  WAIT run_corpus elapsed=3060s 19:39:45
+  WAIT run_corpus elapsed=3090s 19:40:15
+  WAIT run_corpus elapsed=3120s 19:40:45
+  WAIT run_corpus elapsed=3150s 19:41:15
+  WAIT run_corpus elapsed=3180s 19:41:45
+  WAIT run_corpus elapsed=3210s 19:42:15
+  WAIT run_corpus elapsed=3240s 19:42:45
+  WAIT run_corpus elapsed=3270s 19:43:15
+  WAIT run_corpus elapsed=3300s 19:43:45
+  WAIT run_corpus elapsed=3330s 19:44:15
+  WAIT run_corpus elapsed=3360s 19:44:45
+  WAIT run_corpus elapsed=3390s 19:45:15
+  WAIT run_corpus elapsed=3420s 19:45:45
+  WAIT run_corpus elapsed=3450s 19:46:15
+  WAIT run_corpus elapsed=3480s 19:46:45
+  WAIT run_corpus elapsed=3510s 19:47:15
+  WAIT run_corpus elapsed=3540s 19:47:45
+  WAIT run_corpus elapsed=3570s 19:48:15
+  WAIT run_corpus elapsed=3600s 19:48:45
+  WAIT run_corpus elapsed=3630s 19:49:15
+  WAIT run_corpus elapsed=3660s 19:49:45
+  WAIT run_corpus elapsed=3690s 19:50:15
+  WAIT run_corpus elapsed=3720s 19:50:45
+  WAIT run_corpus elapsed=3750s 19:51:15
+  WAIT run_corpus elapsed=3780s 19:51:45
+  WAIT run_corpus elapsed=3810s 19:52:15
+  WAIT run_corpus elapsed=3840s 19:52:45
+  WAIT run_corpus elapsed=3870s 19:53:15
+  WAIT run_corpus elapsed=3900s 19:53:45
+  WAIT run_corpus elapsed=3930s 19:54:15
+  WAIT run_corpus elapsed=3960s 19:54:45
+  WAIT run_corpus elapsed=3990s 19:55:15
+  WAIT run_corpus elapsed=4020s 19:55:45
+  WAIT run_corpus elapsed=4050s 19:56:15
+  WAIT run_corpus elapsed=4080s 19:56:45
+  WAIT run_corpus elapsed=4110s 19:57:15
+  WAIT run_corpus elapsed=4140s 19:57:45
+  WAIT run_corpus elapsed=4170s 19:58:15
+  WAIT run_corpus elapsed=4200s 19:58:45
+  WAIT run_corpus elapsed=4230s 19:59:15
+  WAIT run_corpus elapsed=4260s 19:59:45
+  WAIT run_corpus elapsed=4290s 20:00:15
+  WAIT run_corpus elapsed=4320s 20:00:45
+  WAIT run_corpus elapsed=4350s 20:01:15
+  WAIT run_corpus elapsed=4380s 20:01:45
+  WAIT run_corpus elapsed=4410s 20:02:15
+  WAIT run_corpus elapsed=4440s 20:02:45
+  WAIT run_corpus elapsed=4470s 20:03:15
+  WAIT run_corpus elapsed=4500s 20:03:45
+  WAIT run_corpus elapsed=4530s 20:04:15
+  WAIT run_corpus elapsed=4560s 20:04:45
+  WAIT run_corpus elapsed=4590s 20:05:15
+  WAIT run_corpus elapsed=4620s 20:05:45
+  WAIT run_corpus elapsed=4650s 20:06:15
+  WAIT run_corpus elapsed=4680s 20:06:45
+  WAIT run_corpus elapsed=4710s 20:07:15
+  WAIT run_corpus elapsed=4740s 20:07:45
+  WAIT run_corpus elapsed=4770s 20:08:15
+  WAIT run_corpus elapsed=4800s 20:08:45
+  WAIT run_corpus elapsed=4830s 20:09:15
+  WAIT run_corpus elapsed=4860s 20:09:45
+  WAIT run_corpus elapsed=4890s 20:10:15
+  WAIT run_corpus elapsed=4920s 20:10:45
+  WAIT run_corpus elapsed=4950s 20:11:15
+  WAIT run_corpus elapsed=4980s 20:11:45
+  WAIT run_corpus elapsed=5010s 20:12:15
+  WAIT run_corpus elapsed=5040s 20:12:45
+  WAIT run_corpus elapsed=5070s 20:13:15
+  WAIT run_corpus elapsed=5100s 20:13:45
+  WAIT run_corpus elapsed=5130s 20:14:15
+  WAIT run_corpus elapsed=5160s 20:14:45
+  WAIT run_corpus elapsed=5190s 20:15:15
+  WAIT run_corpus elapsed=5220s 20:15:45
+  WAIT run_corpus elapsed=5250s 20:16:15
+  WAIT run_corpus elapsed=5280s 20:16:45
+  WAIT run_corpus elapsed=5310s 20:17:15
+  WAIT run_corpus elapsed=5340s 20:17:45
+  WAIT run_corpus elapsed=5370s 20:18:15
+  WAIT run_corpus elapsed=5400s 20:18:45
+  WAIT run_corpus elapsed=5430s 20:19:15
+  WAIT run_corpus elapsed=5460s 20:19:45
+  WAIT run_corpus elapsed=5490s 20:20:15
+  WAIT run_corpus elapsed=5520s 20:20:45
+  WAIT run_corpus elapsed=5550s 20:21:15
+  WAIT run_corpus elapsed=5580s 20:21:45
+  WAIT run_corpus elapsed=5610s 20:22:15
+  WAIT run_corpus elapsed=5640s 20:22:45
+  WAIT run_corpus elapsed=5670s 20:23:15
+  WAIT run_corpus elapsed=5700s 20:23:45
+  WAIT run_corpus elapsed=5730s 20:24:15
+  WAIT run_corpus elapsed=5760s 20:24:45
+  WAIT run_corpus elapsed=5790s 20:25:15
+  WAIT run_corpus elapsed=5820s 20:25:45
+  WAIT run_corpus elapsed=5850s 20:26:15
+  WAIT run_corpus elapsed=5880s 20:26:45
+  WAIT run_corpus elapsed=5910s 20:27:15
+  WAIT run_corpus elapsed=5940s 20:27:45
+  WAIT run_corpus elapsed=5970s 20:28:15
+  WAIT run_corpus elapsed=6000s 20:28:45
+  WAIT run_corpus elapsed=6030s 20:29:15
+  WAIT run_corpus elapsed=6060s 20:29:45
+  WAIT run_corpus elapsed=6090s 20:30:15
+  WAIT run_corpus elapsed=6120s 20:30:45
+  WAIT run_corpus elapsed=6150s 20:31:15
+  test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6143.02s
+END run_corpus exit=0 secs=6150
+START shift_is76 2026-11-08T20:31:15Z
+  WAIT shift_is76 elapsed=30s 20:31:45
+  test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.69s
+END shift_is76 exit=0 secs=30
+START signal_listen_is77 2026-11-08T20:31:45Z
+  WAIT signal_listen_is77 elapsed=30s 20:32:15
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END signal_listen_is77 exit=0 secs=30
+START signal_one_is77 2026-11-08T20:32:15Z
+  WAIT signal_one_is77 elapsed=30s 20:32:45
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+END signal_one_is77 exit=0 secs=30
+START signal_shell_s232 2026-11-08T20:32:45Z
+  WAIT signal_shell_s232 elapsed=30s 20:33:15
+  test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+END signal_shell_s232 exit=0 secs=30
+START signal_text_is77 2026-11-08T20:33:15Z
+  WAIT signal_text_is77 elapsed=30s 20:33:45
+  test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END signal_text_is77 exit=0 secs=30
+START snapshot_exemplar 2026-11-08T20:33:45Z
+  WAIT snapshot_exemplar elapsed=30s 20:34:15
+  test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END snapshot_exemplar exit=0 secs=30
+START spec_extract 2026-11-08T20:34:15Z
+  WAIT spec_extract elapsed=30s 20:34:45
+  test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END spec_extract exit=0 secs=31
+START static_wrapping_is79 2026-11-08T20:34:46Z
+  WAIT static_wrapping_is79 elapsed=30s 20:35:16
+  test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END static_wrapping_is79 exit=0 secs=30
+START std_root 2026-11-08T20:35:16Z
+  WAIT std_root elapsed=30s 20:35:46
+  test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+END std_root exit=0 secs=30
+START str_append_d62 2026-11-08T20:35:46Z
+  WAIT str_append_d62 elapsed=30s 20:36:16
+  test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END str_append_d62 exit=0 secs=30
+START str_escape_code 2026-11-08T20:36:16Z
+  WAIT str_escape_code elapsed=30s 20:36:46
+  test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END str_escape_code exit=0 secs=30
+START str_layout_d74 2026-11-08T20:36:46Z
+  WAIT str_layout_d74 elapsed=30s 20:37:16
+  test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END str_layout_d74 exit=0 secs=30
+START term_editor_s234 2026-11-08T20:37:16Z
+  WAIT term_editor_s234 elapsed=30s 20:37:46
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END term_editor_s234 exit=0 secs=30
+START to_int_range 2026-11-08T20:37:46Z
+  WAIT to_int_range elapsed=30s 20:38:16
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END to_int_range exit=0 secs=30
+START type_shape_is79 2026-11-08T20:38:16Z
+  WAIT type_shape_is79 elapsed=30s 20:38:46
+  test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+END type_shape_is79 exit=0 secs=30
+START ub_coverage 2026-11-08T20:38:46Z
+  WAIT ub_coverage elapsed=30s 20:39:16
+  test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END ub_coverage exit=0 secs=30
+START variadic_is81 2026-11-08T20:39:16Z
+  WAIT variadic_is81 elapsed=30s 20:39:46
+  test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+END variadic_is81 exit=0 secs=30
+START wrapping_count_is79 2026-11-08T20:39:46Z
+  WAIT wrapping_count_is79 elapsed=30s 20:40:16
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+END wrapping_count_is79 exit=0 secs=30
+FULL 4b470a16 worst=1 2026-11-08T20:40:16Z

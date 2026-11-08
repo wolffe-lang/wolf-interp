@@ -20,6 +20,9 @@ linux-redprobe-59c2d97.log  the else-handler row (da7659f) cherry-picked onto 45
                             before the arm-reading fix: red by name, fail(E0410), 63 others pass.
 linux-sweep-old.log         every embedded wolf program (1,273) at the resolve rung, trunk's lupin
                             against the code before the fix: one moves, tests/net_unix.rs's.
+linux-full-4b470a1.log      every test target of the workspace at 4b470a1, --no-fail-fast, each its
+                            own take of both locks (the build, then lib, bins, doc and each tests/
+                            target): 112 END lines, one red, doc_truth (the manual's corpus summary).
 linux-check-da7659f.log     the fixed head's checks (64 rows, fmt, clippy, the library tests, the
                             binder and literal-pattern rows, the corpus harness, conformance), the
                             corpus walk (census unchanged), and the sweep: none moves.
