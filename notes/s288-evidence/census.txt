@@ -1,0 +1,17 @@
+s288 census: `lupin corpus --json` over the vendored corpus (vendor/upstream/corpus, pin 5f1f1c94),
+from a release build at trunk 1ed91d1 (the base) and at c8f3c48 (the changelog head, whose code
+is e65b7e5's), each in its own worktree on the Linux check host, slot A
+(linux-census-1ed91d14.log, linux-check-c8f3c48.log). The two JSON outputs stay in the lane; sha256:
+  base 1a840c2ed709b84a3e5f0b5f3bb2215a3f98cf69aa03d8a2ec612684947d6698
+  head 1d2867b6bbc1f9afd2cf16247cd8302b7827a296110e124f334a05bd26d3b17c
+base: total=1253 entries=1191 members=62 failures=0 green=True unknown_anchors=0
+head: total=1253 entries=1191 members=62 failures=0 green=True unknown_anchors=0
+files compared: 1253; moved: 2
+  memory/elem_loop_induction_written_mut.lu
+    base: trap(exclusivity)@run [dynamic-counterpart] E1002 statically ⇄ trap(exclusivity) dynamically
+    head: fail(E0410)@resolve [MISMATCH] expected fail(E1002), observed fail(E0410)
+  rows/negative/dup_tags.lu
+    base: exit(7)@run [conservatism] the corpus expects the static rejection E0601; this implementation does not perform that phase and observed exit(7)
+    head: fail(E0601)@resolve [match] fail(E0601)
+The head's MISMATCH is DIV-2026-029 (differ::FILED_DIVERGENCES), which the walk does not count
+as a failure. Every other file's status and judgement is unchanged.

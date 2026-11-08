@@ -1,0 +1,33 @@
+s288 evidence (wolf-interp: lupin's mirror of the compiler's front-end rulings, wolf-lang#1079 and
+#1080). Paths are relative to the lane's directory, written $LANE; other lanes' shared paths are
+$LANES. The Mac is arm64 macOS, each take behind the Mac build lock in a worktree detached at the
+named commit. The Linux check host is x86-64, one slot of eight CPUs behind both of its locks, in
+the CI toolchain's container (Rust 1.97.1); its name is written H2, in the rig copies too.
+
+mac-wolf-build-a57276f.log  the compiler at wolf-lang a57276f2, a debug build in its own worktree
+                            (binary sha256 a9a07c7048d3c2ec8bafe7f7252842916db0918793207b8764f7702b9f0d0d6c).
+                            Its records of the 50 rows and 23 probes are the fixtures' compiler.json,
+                            from `conform-run --json --checked`; --native and --release agreed on all.
+mac-red-49fce84.log         the rows at trunk's code, red by name: 11 passed, 36 failed, each at the
+                            verdict with lupin's present answer.
+linux-check-c8f3c48.log     the code head's checks: the 63 rows, fmt, clippy (all targets, -D
+                            warnings), the library tests (797), the binder rows (9), the
+                            literal-pattern rows (7), the corpus harness (10), conformance (10),
+                            and the corpus walk that census.txt reads.
+linux-census-1ed91d14.log   the same corpus walk at trunk 1ed91d1, the census's base.
+census.txt                  the vendored corpus, base against head, file by file: two files move.
+rig/mac/                    the Mac scripts as run: locked.sh (the lock, the turn gap, the memory and
+                            disk gates), at-commit.sh (one worktree per commit), queue.sh (a take,
+                            detached), mac-interp.sh (the steps), wolf-build.sh (the compiler build),
+                            sanitize.sh (these copies), gauntlet-record.sh (the org's recorder, byte
+                            for byte).
+rig/linux/                  the Linux gauntlet, adapted by copy from s285's (37 files, sha256 read on
+                            both sides): job.sh (pid, status, exit marker, the sensor log), launch.sh
+                            (a fresh GitHub clone of the branch, checked against the head; crates
+                            fetched first, outside the locks), driver.sh (every step its own take of
+                            both locks), gate.sh (inside the locks: no wineserver, the package at or
+                            under 95 C), pkg-temp.sh, prefetch.sh, record.sh (the org's recorder,
+                            byte for byte), steps/.
+rig/linux-check/            the check takes: take.sh (a git bundle of the commit, a worktree at its
+                            sha before any lock, crates fetched as a light job, then both locks and
+                            the gate) and steps.sh.

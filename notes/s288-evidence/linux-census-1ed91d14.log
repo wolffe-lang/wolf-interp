@@ -1,0 +1,58 @@
+TAKE trunk at 1ed91d147837698088f6c55664d4793d47bd5a8d in $LANE/interp/iter-1ed91d14 2026-11-08T15:00:04Z
+light: waiting on $LANES/H2-light.lock at 2026-11-08T15:00:04Z
+light: holding $LANES/H2-light.lock on cpus 4-7,12-15 (package 59 C, MemAvailable 21 GiB) at 2026-11-08T15:00:04Z
+light: released $LANES/H2-light.lock rc=0 at 2026-11-08T15:00:05Z
+  GATE open: package 59 C, no wineserver, at 2026-11-08T15:00:05Z
+== STEP head 15:00:05
+  1ed91d147837698088f6c55664d4793d47bd5a8d
+  rustc 1.97.1 (8bab26f4f 2026-07-14)
+  cargo 1.97.1 (c980f4866 2026-06-30)
+END head exit=0
+== STEP census 15:00:05
+     Compiling libc v0.2.189
+     Compiling proc-macro2 v1.0.107
+     Compiling quote v1.0.47
+     Compiling unicode-ident v1.0.24
+     Compiling utf8parse v0.2.2
+     Compiling cfg_aliases v0.2.2
+     Compiling serde_core v1.0.229
+     Compiling anstyle-query v1.1.5
+     Compiling nix v0.31.3
+     Compiling anstyle-parse v1.0.0
+     Compiling is_terminal_polyfill v1.70.2
+     Compiling smallvec v1.15.2
+     Compiling colorchoice v1.0.5
+     Compiling cfg-if v1.0.4
+     Compiling anstyle v1.0.14
+     Compiling zmij v1.0.23
+     Compiling serde v1.0.229
+     Compiling nibble_vec v0.1.0
+     Compiling heck v0.5.0
+     Compiling anstream v1.0.0
+     Compiling memchr v2.8.3
+     Compiling endian-type v0.2.0
+     Compiling serde_json v1.0.151
+     Compiling strsim v0.11.1
+     Compiling signal-hook v0.3.18
+     Compiling clap_lex v1.1.0
+     Compiling bitflags v2.13.1
+     Compiling clap_builder v4.6.6
+     Compiling radix_trie v0.3.0
+     Compiling syn v3.0.3
+     Compiling unicode-width v0.2.2
+     Compiling log v0.4.34
+     Compiling itoa v1.0.18
+     Compiling unicode-segmentation v1.13.3
+     Compiling wolf-interp v0.1.60 (/work)
+     Compiling errno v0.3.14
+     Compiling getrandom v0.2.16
+     Compiling signal-hook-registry v1.4.8
+     Compiling rustyline v18.0.1
+     Compiling clap_derive v4.6.4
+     Compiling serde_derive v1.0.229
+     Compiling clap v4.6.6
+      Finished `release` profile [optimized] target(s) in 27.03s
+  rc=0
+END census exit=0
+== done 2026-11-08T15:01:22Z
+TAKE-END trunk rc=0 2026-11-08T15:01:22Z

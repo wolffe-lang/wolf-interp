@@ -1,0 +1,435 @@
+s288: at wolf-interp 49fce84 in $LANE/build-wolf-interp-49fce84
+s288: 09:31:31 mac build lock held by another lane; waiting
+s288: 09:32:01 mac build lock held by another lane; waiting
+s288: 09:32:31 mac build lock held by another lane; waiting
+s288: 09:33:01 mac build lock held by another lane; waiting
+s288: 09:33:32 mac build lock held by another lane; waiting
+s288: 09:34:02 mac build lock held by another lane; waiting
+s288: 09:34:32 mac build lock held by another lane; waiting
+s288: 09:35:02 mac build lock held by another lane; waiting
+s288: 09:35:32 mac build lock held by another lane; waiting
+s288: 09:36:02 mac build lock held by another lane; waiting
+s288: 09:36:32 mac build lock held by another lane; waiting
+s288: lock taken 09:37:02, 11757 MiB free, 98 GB disk; running: bash $LANE/rig/mac-interp.sh
+== STEP head 14:37:02
+  49fce84845de79a616c1494d45b314af5a506d81
+  49fce84 Hold lupin to the compiler's records of the front-end rulings' rows
+         0
+  rustc 1.97.1 (8bab26f4f 2026-07-14)
+  cargo 1.97.1 (c980f4866 2026-06-30)
+END head exit=0
+== STEP build 14:37:02
+     Compiling libc v0.2.189
+     Compiling proc-macro2 v1.0.107
+     Compiling unicode-ident v1.0.24
+     Compiling quote v1.0.47
+     Compiling cfg-if v1.0.4
+     Compiling bitflags v2.13.1
+     Compiling memchr v2.8.3
+     Compiling cfg_aliases v0.2.2
+     Compiling utf8parse v0.2.2
+     Compiling nix v0.31.3
+     Compiling serde_core v1.0.229
+     Compiling anstyle-parse v1.0.0
+     Compiling syn v3.0.3
+     Compiling zmij v1.0.23
+     Compiling rustix v1.1.4
+     Compiling errno v0.3.14
+     Compiling anstyle v1.0.14
+     Compiling anstyle-query v1.1.5
+     Compiling smallvec v1.15.2
+     Compiling colorchoice v1.0.5
+     Compiling getrandom v0.4.3
+     Compiling is_terminal_polyfill v1.70.2
+     Compiling nibble_vec v0.1.0
+     Compiling anstream v1.0.0
+     Compiling heck v0.5.0
+     Compiling serde v1.0.229
+     Compiling strsim v0.11.1
+     Compiling serde_json v1.0.151
+     Compiling signal-hook v0.3.18
+     Compiling clap_lex v1.1.0
+     Compiling endian-type v0.2.0
+     Compiling radix_trie v0.3.0
+     Compiling clap_builder v4.6.6
+     Compiling serde_derive v1.0.229
+     Compiling clap_derive v4.6.4
+     Compiling signal-hook-registry v1.4.8
+     Compiling aho-corasick v1.1.5
+     Compiling unicode-width v0.2.2
+     Compiling itoa v1.0.18
+     Compiling fastrand v2.5.0
+     Compiling thiserror v2.0.20
+     Compiling once_cell v1.21.4
+     Compiling regex-syntax v0.8.11
+     Compiling log v0.4.34
+     Compiling unicode-segmentation v1.13.3
+     Compiling wolf-interp v0.1.60 ($LANE/build-wolf-interp-49fce84)
+     Compiling rustyline v18.0.1
+     Compiling tempfile v3.27.0
+     Compiling regex-automata v0.4.18
+     Compiling clap v4.6.6
+     Compiling thiserror-impl v2.0.20
+     Compiling getrandom v0.2.16
+     Compiling console v0.16.4
+     Compiling similar v2.7.0
+     Compiling regex v1.13.1
+     Compiling comma v1.0.0
+     Compiling insta v1.48.0
+     Compiling rexpect v0.7.1
+      Finished `test` profile [unoptimized + debuginfo] target(s) in 13.48s
+    Executable tests/front_end_rulings_s288.rs (target/debug/deps/front_end_rulings_s288-70a3c3de581fb904)
+END build exit=0
+== STEP mirror-rows 14:37:16
+      Finished `test` profile [unoptimized + debuginfo] target(s) in 0.07s
+       Running tests/front_end_rulings_s288.rs (target/debug/deps/front_end_rulings_s288-70a3c3de581fb904)
+  
+  running 47 tests
+  test a_closure_parameter_declared_twice_is_e0827 ... FAILED
+  test a_comma_group_rebinds_by_shadowing ... ok
+  test a_cycle_through_a_generic_struct_is_e0404 ... FAILED
+  test a_cycle_through_a_tuple_payload_is_e0404 ... FAILED
+  test a_cycle_through_an_error_union_is_e0404 ... FAILED
+  test a_for_header_that_binds_a_name_twice_is_e0827 ... FAILED
+  test a_let_pattern_that_binds_a_name_twice_is_e0827 ... FAILED
+  test a_name_bound_twice_at_two_types_is_e0827 ... FAILED
+  test a_name_on_both_sides_of_at_is_e0827 ... FAILED
+  test a_nested_name_bound_twice_is_e0827 ... FAILED
+  test a_nullary_arm_writes_an_outer_var ... ok
+  test a_parameter_declared_twice_is_e0827 ... FAILED
+  test a_payload_conflict_after_an_alias_is_e0609_at_the_spelling ... FAILED
+  test a_struct_and_enum_cycle_is_one_e0404 ... FAILED
+  test a_struct_field_declared_twice_is_e0302 ... FAILED
+  test a_struct_pattern_that_binds_a_name_twice_is_e0827 ... FAILED
+  test a_tag_spelled_after_its_alias_merges ... ok
+  test a_tag_the_row_spells_twice_after_its_alias_is_e0601_at_the_second ... FAILED
+  test a_tag_the_row_spells_twice_is_e0601 ... FAILED
+  test a_used_alias_loop_keeps_one_e0610 ... ok
+  test a_var_shadow_of_a_match_binding_is_assignable ... ok
+  test a_variant_declared_twice_is_e0302 ... FAILED
+  test a_variant_declared_twice_with_two_payloads_is_e0302 ... FAILED
+  test an_enum_that_contains_itself_by_value_is_e0404 ... FAILED
+  test an_or_pattern_alternative_that_lacks_a_name_is_e0828 ... FAILED
+  test an_or_pattern_name_at_two_types_is_e0401 ... FAILED
+  test an_or_pattern_whose_alternatives_agree_checks ... ok
+  test an_unused_alias_that_names_itself_is_e0610 ... ok
+  test an_unused_alias_that_spells_a_tag_twice_is_e0601 ... FAILED
+  test an_unused_struct_that_holds_itself_is_e0404 ... FAILED
+  test an_unused_two_alias_loop_is_one_e0610 ... ok
+  test assigning_a_for_binding_is_e0410 ... FAILED
+  test assigning_a_let_through_a_nullary_arm_is_e0410 ... FAILED
+  test assigning_a_let_through_a_row_tag_arm_is_e0410 ... FAILED
+  test assigning_a_lets_field_through_a_nullary_arm_is_e0410 ... FAILED
+  test assigning_a_match_binding_is_e0410 ... FAILED
+  test assigning_a_match_bindings_field_is_e0410 ... FAILED
+  test assigning_a_select_binding_is_e0410 ... FAILED
+  test assigning_an_at_name_is_e0410 ... FAILED
+  test assigning_an_else_binding_is_e0410 ... FAILED
+  test recursion_through_containers_is_legal ... ok
+  test the_general_type_spellings_refuse_a_member_declared_twice ... FAILED
+  test the_left_alternative_that_lacks_a_name_is_e0828 ... FAILED
+  test the_mut_parameter_trap_is_e0410 ... FAILED
+  test two_aliases_that_disagree_are_e0609_at_the_later ... FAILED
+  test two_tests_of_one_variant_are_not_a_name_bound_twice ... ok
+  test variant_names_differing_in_case_are_two_variants ... ok
+  
+  failures:
+  
+  ---- a_closure_parameter_declared_twice_is_e0827 stdout ----
+  
+  thread 'a_closure_parameter_declared_twice_is_e0827' (14832573) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: param_name_twice_closure: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/param_name_twice_closure/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(2)","warnings":[]}
+    left: String("exit(2)")
+   right: "fail(E0827)"
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  
+  ---- a_cycle_through_a_generic_struct_is_e0404 stdout ----
+  
+  thread 'a_cycle_through_a_generic_struct_is_e0404' (14832581) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: rec_by_value_generic: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/rec_by_value_generic/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(0)","warnings":[]}
+    left: String("exit(0)")
+   right: "fail(E0404)"
+  
+  ---- a_cycle_through_a_tuple_payload_is_e0404 stdout ----
+  
+  thread 'a_cycle_through_a_tuple_payload_is_e0404' (14832585) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: rec_by_value_tuple: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/rec_by_value_tuple/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(7)","warnings":[]}
+    left: String("exit(7)")
+   right: "fail(E0404)"
+  
+  ---- a_cycle_through_an_error_union_is_e0404 stdout ----
+  
+  thread 'a_cycle_through_an_error_union_is_e0404' (14832589) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: rec_by_value_errunion: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/rec_by_value_errunion/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(0)","warnings":[]}
+    left: String("exit(0)")
+   right: "fail(E0404)"
+  
+  ---- a_for_header_that_binds_a_name_twice_is_e0827 stdout ----
+  
+  thread 'a_for_header_that_binds_a_name_twice_is_e0827' (14832593) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: pattern_name_twice_for: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/pattern_name_twice_for/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(2)","warnings":[]}
+    left: String("exit(2)")
+   right: "fail(E0827)"
+  
+  ---- a_let_pattern_that_binds_a_name_twice_is_e0827 stdout ----
+  
+  thread 'a_let_pattern_that_binds_a_name_twice_is_e0827' (14832597) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: pattern_name_twice_let: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/pattern_name_twice_let/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(2)","warnings":[]}
+    left: String("exit(2)")
+   right: "fail(E0827)"
+  
+  ---- a_name_bound_twice_at_two_types_is_e0827 stdout ----
+  
+  thread 'a_name_bound_twice_at_two_types_is_e0827' (14832601) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: pattern_name_twice_types: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/pattern_name_twice_types/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(2)","warnings":[]}
+    left: String("exit(2)")
+   right: "fail(E0827)"
+  
+  ---- a_name_on_both_sides_of_at_is_e0827 stdout ----
+  
+  thread 'a_name_on_both_sides_of_at_is_e0827' (14832605) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: pattern_name_twice_at: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/pattern_name_twice_at/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(5)","warnings":[]}
+    left: String("exit(5)")
+   right: "fail(E0827)"
+  
+  ---- a_nested_name_bound_twice_is_e0827 stdout ----
+  
+  thread 'a_nested_name_bound_twice_is_e0827' (14832609) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: pattern_name_twice_nested: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/pattern_name_twice_nested/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(5)","warnings":[]}
+    left: String("exit(5)")
+   right: "fail(E0827)"
+  
+  ---- a_parameter_declared_twice_is_e0827 stdout ----
+  
+  thread 'a_parameter_declared_twice_is_e0827' (14832617) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: param_name_twice: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/param_name_twice/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(2)","warnings":[]}
+    left: String("exit(2)")
+   right: "fail(E0827)"
+  
+  ---- a_payload_conflict_after_an_alias_is_e0609_at_the_spelling stdout ----
+  
+  thread 'a_payload_conflict_after_an_alias_is_e0609_at_the_spelling' (14832621) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: error_alias_union_own_after_payload: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/error_alias_union_own_after_payload/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(1)","warnings":[]}
+    left: String("exit(1)")
+   right: "fail(E0609)"
+  
+  ---- a_struct_and_enum_cycle_is_one_e0404 stdout ----
+  
+  thread 'a_struct_and_enum_cycle_is_one_e0404' (14832625) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: rec_by_value_mutual: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/rec_by_value_mutual/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(5)","warnings":[]}
+    left: String("exit(5)")
+   right: "fail(E0404)"
+  
+  ---- a_struct_field_declared_twice_is_e0302 stdout ----
+  
+  thread 'a_struct_field_declared_twice_is_e0302' (14832629) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: struct_field_twice: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/struct_field_twice/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(0)","warnings":[]}
+    left: String("exit(0)")
+   right: "fail(E0302)"
+  
+  ---- a_struct_pattern_that_binds_a_name_twice_is_e0827 stdout ----
+  
+  thread 'a_struct_pattern_that_binds_a_name_twice_is_e0827' (14832633) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: pattern_name_twice_struct: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/pattern_name_twice_struct/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(2)","warnings":[]}
+    left: String("exit(2)")
+   right: "fail(E0827)"
+  
+  ---- a_tag_the_row_spells_twice_after_its_alias_is_e0601_at_the_second stdout ----
+  
+  thread 'a_tag_the_row_spells_twice_after_its_alias_is_e0601_at_the_second' (14832641) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: error_alias_union_own_twice: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/error_alias_union_own_twice/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(1)","warnings":[]}
+    left: String("exit(1)")
+   right: "fail(E0601)"
+  
+  ---- a_tag_the_row_spells_twice_is_e0601 stdout ----
+  
+  thread 'a_tag_the_row_spells_twice_is_e0601' (14832645) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: error_row_own_dup_bare: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/error_row_own_dup_bare/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(1)","warnings":[]}
+    left: String("exit(1)")
+   right: "fail(E0601)"
+  
+  ---- a_variant_declared_twice_is_e0302 stdout ----
+  
+  thread 'a_variant_declared_twice_is_e0302' (14832656) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: enum_variant_twice: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/enum_variant_twice/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(3)","warnings":[]}
+    left: String("exit(3)")
+   right: "fail(E0302)"
+  
+  ---- a_variant_declared_twice_with_two_payloads_is_e0302 stdout ----
+  
+  thread 'a_variant_declared_twice_with_two_payloads_is_e0302' (14832660) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: enum_variant_twice_payload: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/enum_variant_twice_payload/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(5)","warnings":[]}
+    left: String("exit(5)")
+   right: "fail(E0302)"
+  
+  ---- an_enum_that_contains_itself_by_value_is_e0404 stdout ----
+  
+  thread 'an_enum_that_contains_itself_by_value_is_e0404' (14832664) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: rec_by_value_enum: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/rec_by_value_enum/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(1)","warnings":[]}
+    left: String("exit(1)")
+   right: "fail(E0404)"
+  
+  ---- an_or_pattern_alternative_that_lacks_a_name_is_e0828 stdout ----
+  
+  thread 'an_or_pattern_alternative_that_lacks_a_name_is_e0828' (14832668) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: or_pattern_binds_missing: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/or_pattern_binds_missing/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"resolve","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"unsupported","warnings":[],"x-unsupported":"`x` does not resolve","x-unsupported-at":"run"}
+    left: String("unsupported")
+   right: "fail(E0828)"
+  
+  ---- an_or_pattern_name_at_two_types_is_e0401 stdout ----
+  
+  thread 'an_or_pattern_name_at_two_types_is_e0401' (14832672) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: or_pattern_binds_types: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/or_pattern_binds_types/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(1)","warnings":[]}
+    left: String("exit(1)")
+   right: "fail(E0401)"
+  
+  ---- an_unused_alias_that_spells_a_tag_twice_is_e0601 stdout ----
+  
+  thread 'an_unused_alias_that_spells_a_tag_twice_is_e0601' (14832690) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: error_alias_own_dup_unused: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/error_alias_own_dup_unused/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(0)","warnings":[]}
+    left: String("exit(0)")
+   right: "fail(E0601)"
+  
+  ---- an_unused_struct_that_holds_itself_is_e0404 stdout ----
+  
+  thread 'an_unused_struct_that_holds_itself_is_e0404' (14832694) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: rec_by_value_unused: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/rec_by_value_unused/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(0)","warnings":[]}
+    left: String("exit(0)")
+   right: "fail(E0404)"
+  
+  ---- assigning_a_for_binding_is_e0410 stdout ----
+  
+  thread 'assigning_a_for_binding_is_e0410' (14832701) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: for_binding_assign: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/for_binding_assign/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(12)","warnings":[]}
+    left: String("exit(12)")
+   right: "fail(E0410)"
+  
+  ---- assigning_a_let_through_a_nullary_arm_is_e0410 stdout ----
+  
+  thread 'assigning_a_let_through_a_nullary_arm_is_e0410' (14832705) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: nullary_arm_let_assign: {"commit":"49fce84","diagnostics":[{"code":"W0801","severity":"warning","span":[637,641]}],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/nullary_arm_let_assign/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(9)","warnings":[{"code":"W0801","span":[637,641]}]}
+    left: String("exit(9)")
+   right: "fail(E0410)"
+  
+  ---- assigning_a_let_through_a_row_tag_arm_is_e0410 stdout ----
+  
+  thread 'assigning_a_let_through_a_row_tag_arm_is_e0410' (14832709) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: nullary_arm_tag_assign: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/nullary_arm_tag_assign/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(9)","warnings":[]}
+    left: String("exit(9)")
+   right: "fail(E0410)"
+  
+  ---- assigning_a_lets_field_through_a_nullary_arm_is_e0410 stdout ----
+  
+  thread 'assigning_a_lets_field_through_a_nullary_arm_is_e0410' (14832713) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: nullary_arm_field_assign: {"commit":"49fce84","diagnostics":[{"code":"W0801","severity":"warning","span":[430,434]}],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/nullary_arm_field_assign/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(9)","warnings":[{"code":"W0801","span":[430,434]}]}
+    left: String("exit(9)")
+   right: "fail(E0410)"
+  
+  ---- assigning_a_match_binding_is_e0410 stdout ----
+  
+  thread 'assigning_a_match_binding_is_e0410' (14832717) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: match_binding_assign: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/match_binding_assign/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(4)","warnings":[]}
+    left: String("exit(4)")
+   right: "fail(E0410)"
+  
+  ---- assigning_a_match_bindings_field_is_e0410 stdout ----
+  
+  thread 'assigning_a_match_bindings_field_is_e0410' (14832721) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: match_binding_field_assign: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/match_binding_field_assign/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(9)","warnings":[]}
+    left: String("exit(9)")
+   right: "fail(E0410)"
+  
+  ---- assigning_a_select_binding_is_e0410 stdout ----
+  
+  thread 'assigning_a_select_binding_is_e0410' (14832725) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: select_binding_assign: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/select_binding_assign/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(5)","warnings":[]}
+    left: String("exit(5)")
+   right: "fail(E0410)"
+  
+  ---- assigning_an_at_name_is_e0410 stdout ----
+  
+  thread 'assigning_an_at_name_is_e0410' (14832729) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: match_binding_at_assign: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/match_binding_at_assign/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(6)","warnings":[]}
+    left: String("exit(6)")
+   right: "fail(E0410)"
+  
+  ---- assigning_an_else_binding_is_e0410 stdout ----
+  
+  thread 'assigning_an_else_binding_is_e0410' (14832733) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: else_binding_assign: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/else_binding_assign/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(5)","warnings":[]}
+    left: String("exit(5)")
+   right: "fail(E0410)"
+  
+  ---- the_general_type_spellings_refuse_a_member_declared_twice stdout ----
+  
+  thread 'the_general_type_spellings_refuse_a_member_declared_twice' (14832742) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: type_decl_member_twice: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/type_decl_member_twice/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(0)","warnings":[]}
+    left: String("exit(0)")
+   right: "fail(E0302)"
+  
+  ---- the_left_alternative_that_lacks_a_name_is_e0828 stdout ----
+  
+  thread 'the_left_alternative_that_lacks_a_name_is_e0828' (14832746) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: or_pattern_binds_missing_left: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/or_pattern_binds_missing_left/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(1)","warnings":[]}
+    left: String("exit(1)")
+   right: "fail(E0828)"
+  
+  ---- the_mut_parameter_trap_is_e0410 stdout ----
+  
+  thread 'the_mut_parameter_trap_is_e0410' (14832750) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: match_binding_mut_param: {"commit":"49fce84","diagnostics":[{"code":"W1002","severity":"warning","span":[375,378]}],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/match_binding_mut_param/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(3)","warnings":[{"code":"W1002","span":[375,378]}]}
+    left: String("exit(3)")
+   right: "fail(E0410)"
+  
+  ---- two_aliases_that_disagree_are_e0609_at_the_later stdout ----
+  
+  thread 'two_aliases_that_disagree_are_e0609_at_the_later' (14832754) panicked at tests/front_end_rulings_s288.rs:98:5:
+  assertion `left == right` failed: error_alias_union_two_aliases_payload: {"commit":"49fce84","diagnostics":[],"file":"/$LANE/build-wolf-interp-49fce84/tests/front_end_rulings_s288/error_alias_union_two_aliases_payload/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(1)","warnings":[]}
+    left: String("exit(1)")
+   right: "fail(E0609)"
+  
+  
+  failures:
+      a_closure_parameter_declared_twice_is_e0827
+      a_cycle_through_a_generic_struct_is_e0404
+      a_cycle_through_a_tuple_payload_is_e0404
+      a_cycle_through_an_error_union_is_e0404
+      a_for_header_that_binds_a_name_twice_is_e0827
+      a_let_pattern_that_binds_a_name_twice_is_e0827
+      a_name_bound_twice_at_two_types_is_e0827
+      a_name_on_both_sides_of_at_is_e0827
+      a_nested_name_bound_twice_is_e0827
+      a_parameter_declared_twice_is_e0827
+      a_payload_conflict_after_an_alias_is_e0609_at_the_spelling
+      a_struct_and_enum_cycle_is_one_e0404
+      a_struct_field_declared_twice_is_e0302
+      a_struct_pattern_that_binds_a_name_twice_is_e0827
+      a_tag_the_row_spells_twice_after_its_alias_is_e0601_at_the_second
+      a_tag_the_row_spells_twice_is_e0601
+      a_variant_declared_twice_is_e0302
+      a_variant_declared_twice_with_two_payloads_is_e0302
+      an_enum_that_contains_itself_by_value_is_e0404
+      an_or_pattern_alternative_that_lacks_a_name_is_e0828
+      an_or_pattern_name_at_two_types_is_e0401
+      an_unused_alias_that_spells_a_tag_twice_is_e0601
+      an_unused_struct_that_holds_itself_is_e0404
+      assigning_a_for_binding_is_e0410
+      assigning_a_let_through_a_nullary_arm_is_e0410
+      assigning_a_let_through_a_row_tag_arm_is_e0410
+      assigning_a_lets_field_through_a_nullary_arm_is_e0410
+      assigning_a_match_binding_is_e0410
+      assigning_a_match_bindings_field_is_e0410
+      assigning_a_select_binding_is_e0410
+      assigning_an_at_name_is_e0410
+      assigning_an_else_binding_is_e0410
+      the_general_type_spellings_refuse_a_member_declared_twice
+      the_left_alternative_that_lacks_a_name_is_e0828
+      the_mut_parameter_trap_is_e0410
+      two_aliases_that_disagree_are_e0609_at_the_later
+  
+  test result: FAILED. 11 passed; 36 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+  
+  error: test failed, to rerun pass `--test front_end_rulings_s288`
+END mirror-rows exit=101
+== done 2026-11-08T14:37:16Z
+s288: END exit=0 09:37:16
