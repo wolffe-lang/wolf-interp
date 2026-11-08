@@ -92,7 +92,11 @@ fn first_error(diagnostics: &serde_json::Value) -> Option<(String, [u64; 2])> {
 fn refused(name: &str, code: &str, texts: &[&str]) {
     let want = compiler(name);
     let verdict = format!("fail({code})");
-    assert_eq!(want["verdict"], verdict.as_str(), "{name}: the stored record");
+    assert_eq!(
+        want["verdict"],
+        verdict.as_str(),
+        "{name}: the stored record"
+    );
     let (record, seen) = observe(name);
     let got = serde_json::to_value(&record).expect("the record serializes");
     assert_eq!(got["verdict"], verdict.as_str(), "{name}: {got}");
@@ -120,7 +124,11 @@ fn refused(name: &str, code: &str, texts: &[&str]) {
 fn runs(name: &str, want: u8) {
     let compiled = compiler(name);
     let verdict = format!("exit({want})");
-    assert_eq!(compiled["verdict"], verdict.as_str(), "{name}: the stored record");
+    assert_eq!(
+        compiled["verdict"],
+        verdict.as_str(),
+        "{name}: the stored record"
+    );
     let (record, _) = observe(name);
     let got = serde_json::to_value(&record).expect("the record serializes");
     assert_eq!(got["verdict"], verdict.as_str(), "{name}: {got}");
@@ -149,7 +157,10 @@ fn an_unused_alias_that_spells_a_tag_twice_is_e0601() {
     refused(
         "error_alias_own_dup_unused",
         "E0601",
-        &["the tag `x` appears twice in this error row", "[gram.type.row.dup]"],
+        &[
+            "the tag `x` appears twice in this error row",
+            "[gram.type.row.dup]",
+        ],
     );
 }
 
@@ -393,11 +404,21 @@ fn a_tag_the_row_spells_twice_is_e0601() {
 /// machine runs them, and its checks find nothing.
 fn or_pattern_runs(name: &str, want: u8) {
     let compiled = compiler(name);
-    assert_eq!(compiled["verdict"], "unsupported", "{name}: the stored record");
-    assert_eq!(compiled["phase_reached"], "mem", "{name}: the stored record");
+    assert_eq!(
+        compiled["verdict"], "unsupported",
+        "{name}: the stored record"
+    );
+    assert_eq!(
+        compiled["phase_reached"], "mem",
+        "{name}: the stored record"
+    );
     let (record, _) = observe(name);
     let got = serde_json::to_value(&record).expect("the record serializes");
-    assert_eq!(got["verdict"], format!("exit({want})").as_str(), "{name}: {got}");
+    assert_eq!(
+        got["verdict"],
+        format!("exit({want})").as_str(),
+        "{name}: {got}"
+    );
     assert_eq!(first_error(&got["diagnostics"]), None, "{name}: {got}");
 }
 
