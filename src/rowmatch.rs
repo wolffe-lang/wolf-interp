@@ -425,6 +425,9 @@ enum Finding {
     /// A refusal by name — `[proto.record.unsupported]`'s conservatism
     /// class, before anything runs.
     Unsupported(String),
+    /// s288: what a pattern or a parameter list binds — E0827, E0828,
+    /// E0401 ([`pattern_names_check`]).
+    Pattern(Diag),
 }
 
 /// `[type.row.match]`'s two codes, at the resolve rung: E0816 for a row tag
@@ -438,7 +441,7 @@ pub fn row_match_check(program: &Program) -> Option<Diag> {
         .into_iter()
         .find_map(|finding| match finding {
             Finding::Diag(diag) => Some(diag),
-            Finding::Unsupported(_) => None,
+            Finding::Unsupported(_) | Finding::Pattern(_) => None,
         })
 }
 
@@ -452,8 +455,27 @@ pub fn by_name_refusal(program: &Program) -> Option<String> {
         .into_iter()
         .find_map(|finding| match finding {
             Finding::Unsupported(reason) => Some(reason),
-            Finding::Diag(_) => None,
+            Finding::Diag(_) | Finding::Pattern(_) => None,
         })
+}
+
+/// s288: `[gram.pat.names]`'s E0827 and `[gram.pat.or]`'s E0828 and E0401,
+/// at every pattern and parameter list the body walk reaches (items, impl
+/// methods, nested fns, closures), every one, earliest span first —
+/// `crate::patnames` says what each judges. The checker reports them at its
+/// typecheck rung, and `[proto.cmp.rung]` makes this rung's emission
+/// agreement.
+#[must_use]
+pub fn pattern_names_check(program: &Program) -> Vec<Diag> {
+    let mut diags: Vec<Diag> = findings(program)
+        .into_iter()
+        .filter_map(|finding| match finding {
+            Finding::Pattern(diag) => Some(diag),
+            Finding::Diag(_) | Finding::Unsupported(_) => None,
+        })
+        .collect();
+    diags.sort_by_key(|diag| diag.span.start);
+    diags
 }
 
 /// `[type.row.defer]` (s196, E0611): a `?` anywhere inside a `defer` or
@@ -883,6 +905,9 @@ struct Scope<'a> {
     /// Locals, innermost last; a name maps to what its binding recorded.
     locals: Vec<Vec<(String, Option<Known>)>>,
     findings: Vec<Finding>,
+    /// s288: the module's type declarations, for what a pattern binds
+    /// (`crate::patnames`).
+    index: &'a crate::patnames::TypeIndex<'a>,
 }
 
 impl Scope<'_> {
@@ -924,6 +949,14 @@ impl Scope<'_> {
         }
     }
 
+    /// s288: what a pattern or a parameter list binds (`crate::patnames`),
+    /// its refusals kept as findings of their own kind.
+    fn names(&mut self, judge: impl FnOnce(&crate::patnames::TypeIndex<'_>, &str, &mut Vec<Diag>)) {
+        let mut out = Vec::new();
+        judge(self.index, self.file, &mut out);
+        self.findings.extend(out.into_iter().map(Finding::Pattern));
+    }
+
     fn declare_pattern(&mut self, pattern: &Pattern) {
         match &*pattern.kind {
             PatKind::Binding(ident) => self.declare(&ident.name, None),
@@ -956,12 +989,18 @@ impl Scope<'_> {
                     self.item(member);
                 }
             }
-            ItemKind::Binding(binding) => self.expr(&binding.value),
+            ItemKind::Binding(binding) => {
+                self.expr(&binding.value);
+                self.names(|index, file, out| {
+                    crate::patnames::binder(&binding.pattern, index, file, out);
+                });
+            }
             _ => {}
         }
     }
 
     fn fn_decl(&mut self, decl: &FnDecl) {
+        self.names(|_, file, out| crate::patnames::params(&decl.params, file, out));
         let Some(body) = &decl.body else {
             return;
         };
@@ -1063,6 +1102,9 @@ impl Scope<'_> {
                 if let Some(diag) = self.binding_row_check(binding) {
                     self.findings.push(Finding::Diag(diag));
                 }
+                self.names(|index, file, out| {
+                    crate::patnames::binder(&binding.pattern, index, file, out);
+                });
                 let known = match &*binding.pattern.kind {
                     PatKind::Binding(_) => {
                         let locals = |name: &str| self.local(name);
@@ -1106,7 +1148,12 @@ impl Scope<'_> {
                 if let Some(row) = &row {
                     self.judge(expr, scrutinee, arms, row);
                 }
+                let tags: Vec<String> =
+                    row.as_ref().map(|row| row.tags.clone()).unwrap_or_default();
                 for arm in arms {
+                    self.names(|index, file, out| {
+                        crate::patnames::arm(&arm.pattern, &tags, index, file, out);
+                    });
                     self.locals.push(Vec::new());
                     let is_row_arm = row.as_ref().is_some_and(|row| {
                         matches!(arm_half(&arm.pattern, &row.tags), Half::Row(_))
@@ -1122,6 +1169,7 @@ impl Scope<'_> {
                 }
             }
             ExprKind::Closure { params, body, .. } => {
+                self.names(|_, file, out| crate::patnames::closure_params(params, file, out));
                 self.locals.push(Vec::new());
                 for param in params {
                     let known = param.ty.as_ref().and_then(known_of_type);
@@ -1136,6 +1184,7 @@ impl Scope<'_> {
                 body,
             } => {
                 self.expr(iter);
+                self.names(|index, file, out| crate::patnames::binder(pattern, index, file, out));
                 self.locals.push(Vec::new());
                 self.declare_pattern(pattern);
                 self.block(body);
@@ -1150,6 +1199,9 @@ impl Scope<'_> {
                     ElseHandler::Block(block) => self.block(block),
                     ElseHandler::Expr(fallback) => self.expr(fallback),
                     ElseHandler::Handler { pattern, body } => {
+                        self.names(|index, file, out| {
+                            crate::patnames::binder(pattern, index, file, out);
+                        });
                         self.locals.push(Vec::new());
                         self.declare_pattern(pattern);
                         self.expr(body);
@@ -1163,6 +1215,9 @@ impl Scope<'_> {
                     match &arm.kind {
                         crate::ast::SelectArmKind::Recv { pattern, channel } => {
                             self.expr(channel);
+                            self.names(|index, file, out| {
+                                crate::patnames::binder(pattern, index, file, out);
+                            });
                             self.declare_pattern(pattern);
                         }
                         crate::ast::SelectArmKind::Timeout(deadline) => self.expr(deadline),
@@ -1424,6 +1479,7 @@ fn findings(program: &Program) -> Vec<Finding> {
                     .push(variant.clone());
             }
         }
+        let index = crate::patnames::TypeIndex::of(module);
         for unit in &module.units {
             let mut scope = Scope {
                 program,
@@ -1432,6 +1488,7 @@ fn findings(program: &Program) -> Vec<Finding> {
                 file: &unit.file,
                 locals: Vec::new(),
                 findings: Vec::new(),
+                index: &index,
             };
             for item in &unit.unit.items {
                 scope.item(item);

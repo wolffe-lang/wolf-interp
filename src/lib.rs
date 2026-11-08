@@ -47,6 +47,7 @@ pub mod lex;
 pub mod lint;
 pub(crate) mod numinfer;
 pub mod parse;
+pub mod patnames;
 pub mod phase;
 pub mod protocol;
 pub mod rawops;
