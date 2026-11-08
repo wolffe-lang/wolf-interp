@@ -655,6 +655,8 @@ fn expand_foreign_aliases(program: &mut Program) {
                 diags: Vec::new(),
                 changed: false,
                 spelled: BTreeSet::new(),
+                judge: None,
+                rewrite: true,
             };
             for item in &mut unit.unit.items {
                 if !matches!(item.kind, ItemKind::ErrorAlias(_)) {
@@ -2095,8 +2097,32 @@ pub fn expand_error_aliases(units: &mut [Unit]) -> Vec<Diag> {
             }
         }
     }
+    // s288 (`[gram.type.row.dup]`): every row is judged for a tag it spells
+    // twice, with or without an alias in the module. A name a `use` binds may
+    // be a foreign alias, which only `expand_foreign_aliases` can read, so it
+    // is never judged as a tag here.
+    let bound: Vec<BTreeSet<String>> = units.iter().map(use_bound_names).collect();
     if declared.is_empty() {
-        return Vec::new();
+        let flat = BTreeMap::new();
+        let private = BTreeSet::new();
+        let mut diags = Vec::new();
+        for (unit, bound) in units.iter_mut().zip(&bound) {
+            let mut judge = RowRewriter {
+                flat: &flat,
+                private: &private,
+                diags: Vec::new(),
+                changed: false,
+                spelled: BTreeSet::new(),
+                judge: Some(bound),
+                rewrite: false,
+            };
+            for item in &mut unit.items {
+                judge.item(item);
+            }
+            diags.extend(judge.diags);
+        }
+        diags.sort_by_key(|d| d.span.start);
+        return diags;
     }
     let mut diags = Vec::new();
 
@@ -2248,27 +2274,93 @@ pub fn expand_error_aliases(units: &mut [Unit]) -> Vec<Diag> {
         flatten(name, &declared, &mut flat, &mut Vec::new());
     }
 
-    // 5. The rewrite: every row in every unit, alias entries spliced out for
-    //    their tags. The alias items themselves are left as written (the
-    //    REPL and the lints read them by name).
+    // s288: each alias's own row, judged where it is declared, used or not
+    // (`[gram.type.row.dup]`, `[type.err.alias.union]`): a tag it spells
+    // twice is E0601, and a tag a named alias brings with another payload is
+    // E0609, as in any row.
+    let every_bound: BTreeSet<String> = bound.iter().flatten().cloned().collect();
     let private = BTreeSet::new();
-    let mut rewriter = RowRewriter {
-        flat: &flat,
-        private: &private,
-        diags: Vec::new(),
-        changed: false,
-        spelled: BTreeSet::new(),
-    };
-    for unit in units.iter_mut() {
+    for name in &order {
+        let mut judge = RowRewriter {
+            flat: &flat,
+            private: &private,
+            diags: Vec::new(),
+            changed: false,
+            spelled: BTreeSet::new(),
+            judge: Some(&every_bound),
+            rewrite: false,
+        };
+        judge.judge_row(&declared[name]);
+        diags.extend(judge.diags);
+    }
+
+    // 5. The rewrite: every row in every unit, alias entries spliced out for
+    //    their tags, each judged first. The alias items themselves are left
+    //    as written (the REPL and the lints read them by name).
+    for (unit, bound) in units.iter_mut().zip(&bound) {
+        let mut rewriter = RowRewriter {
+            flat: &flat,
+            private: &private,
+            diags: Vec::new(),
+            changed: false,
+            spelled: BTreeSet::new(),
+            judge: Some(bound),
+            rewrite: true,
+        };
         for item in &mut unit.items {
             if !matches!(item.kind, ItemKind::ErrorAlias(_)) {
                 rewriter.item(item);
             }
         }
+        diags.extend(rewriter.diags);
     }
-    diags.extend(rewriter.diags);
     diags.sort_by_key(|d| d.span.start);
     diags
+}
+
+/// The names the `use` decls of one file bind (alias, list item, or last
+/// segment), as `collect_use` reads them.
+fn use_bound_names(unit: &Unit) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for item in &unit.items {
+        let ItemKind::Use(decl) = &item.kind else {
+            continue;
+        };
+        if decl.list.is_empty() {
+            if let Some(name) = decl.alias.as_ref().or_else(|| decl.path.segments.last()) {
+                out.insert(name.name.clone());
+            }
+        } else {
+            out.extend(decl.list.iter().map(|item| item.name.clone()));
+        }
+    }
+    out
+}
+
+/// `[type.err.alias.union]`'s E0609 at `at`, naming the tag's two shapes.
+fn payload_conflict(tag: &str, at: Span, shapes: &str) -> Diag {
+    Diag::new(
+        "E0609",
+        at,
+        "type.err.alias.union",
+        format!(
+            "the tag `{tag}` reaches this error row with two different payloads ({shapes}): an \
+             error-set alias is one more layer of the row it is named in \
+             ([type.err.alias.union]), so its tags meet the row's own and every other alias's as \
+             one set, and one tag carries one payload shape ([gram.type.row.flatten]); give one \
+             of the two tags another name, or wrap one payload in a nominal type of its own"
+        ),
+    )
+}
+
+/// A tag as a diagnostic spells it: `Bad(int)`, or a bare `x`.
+fn tag_spelling(entry: &crate::ast::RowEntry) -> String {
+    let payload: Vec<String> = entry.payload.iter().map(Type::spelling).collect();
+    if payload.is_empty() {
+        entry.path.spelling()
+    } else {
+        format!("{}({})", entry.path.spelling(), payload.join(", "))
+    }
 }
 
 /// Two row-entry paths spell the same tag when their segments do — spans
@@ -2299,10 +2391,114 @@ struct RowRewriter<'a> {
     /// Every spelling spliced or refused, so the import it reached through
     /// still counts as used once the row holds only tags (E0305).
     spelled: BTreeSet<String>,
+    /// s288: judge each row before it is rewritten ([`RowRewriter::judge_row`]),
+    /// never reading a name a `use` binds (this set) as a tag. `None` for the
+    /// foreign pass, whose rows were judged when their module loaded.
+    judge: Option<&'a BTreeSet<String>>,
+    /// Rewrite the rows; `false` only judges them, leaving every row as
+    /// written (a module with no alias of its own).
+    rewrite: bool,
 }
 
 impl RowRewriter<'_> {
+    /// s288: one row's own refusals, read off its entries as written.
+    ///
+    /// - **E0601** (`[gram.type.row.dup]`, wolf-lang#1065): the entries a row
+    ///   spells itself name each tag once, so `{x, x}` and `{Io(str), Io}`
+    ///   are E0601 at each later spelling's tag name. An alias entry is not a
+    ///   spelling of this row (`{A, A}` runs), and neither is a name a `use`
+    ///   binds, which may be a foreign alias. A qualified tag (`io.Eof`) is
+    ///   not judged here: the permissive direction.
+    /// - **E0609** (`[type.err.alias.union]`): an alias's tags meet the row's
+    ///   own in any order, and a tag whose two sources disagree on its
+    ///   payload is E0609 — at the row's own spelling, payload included, when
+    ///   one source is the row's own, and at the later alias entry when two
+    ///   aliases disagree.
+    ///
+    /// The pinned spec (`5f1f1c94`) has neither `[gram.type.row.dup]` nor the
+    /// amended `[type.err.alias.union]`, so E0601 cites `[gram.type.row]` and
+    /// both name the clause in their words.
+    fn judge_row(&mut self, row: &crate::ast::ErrorRow) {
+        let Some(bound) = self.judge else {
+            return;
+        };
+        // (tag, its spelling with the payload, where it came from: the row's
+        // own entry, or the alias entry that brought it)
+        let mut seen: Vec<(String, String, Option<String>, Span)> = Vec::new();
+        let mut own: Vec<&str> = Vec::new();
+        for entry in &row.entries {
+            let spelling = entry.path.spelling();
+            if self.private.contains(&spelling) {
+                continue;
+            }
+            if let Some(tags) = self.flat.get(&spelling) {
+                let alias = spelling.clone();
+                for tag in tags {
+                    let name = tag.path.spelling();
+                    let shape = tag_spelling(tag);
+                    match seen.iter().find(|(seen, ..)| *seen == name) {
+                        Some((_, other, from, site)) if *other != shape => {
+                            let (at, message) = match from {
+                                None => (
+                                    *site,
+                                    format!("`{other}` here, `{shape}` from the alias `{alias}`"),
+                                ),
+                                Some(earlier) => (
+                                    entry.span,
+                                    format!(
+                                        "`{shape}` from the alias `{alias}`, `{other}` from the \
+                                         alias `{earlier}`"
+                                    ),
+                                ),
+                            };
+                            self.diags.push(payload_conflict(&name, at, &message));
+                        }
+                        Some(_) => {}
+                        None => seen.push((name, shape, Some(alias.clone()), entry.span)),
+                    }
+                }
+                continue;
+            }
+            let name = spelling;
+            let shape = tag_spelling(entry);
+            if entry.path.is_single() && !bound.contains(&name) {
+                if own.contains(&name.as_str()) {
+                    self.diags.push(Diag::new(
+                        "E0601",
+                        entry.path.span,
+                        "gram.type.row",
+                        format!(
+                            "the tag `{name}` appears twice in this error row: an error row is a \
+                             set of tags, not a list — each tag appears once, and its payload is \
+                             part of that one entry ([gram.type.row.dup]); delete the duplicate"
+                        ),
+                    ));
+                    continue;
+                }
+                own.push(&entry.path.segments[0].name);
+            }
+            match seen.iter().find(|(seen, ..)| *seen == name) {
+                Some((_, other, Some(alias), _)) if *other != shape => {
+                    let message = format!("`{shape}` here, `{other}` from the alias `{alias}`");
+                    self.diags
+                        .push(payload_conflict(&name, entry.span, &message));
+                }
+                Some(_) => {}
+                None => seen.push((name, shape, None, entry.span)),
+            }
+        }
+    }
+
     fn row(&mut self, row: &mut crate::ast::ErrorRow) {
+        self.judge_row(row);
+        if !self.rewrite {
+            for entry in &mut row.entries {
+                for ty in &mut entry.payload {
+                    self.ty(ty);
+                }
+            }
+            return;
+        }
         let mut out: Vec<crate::ast::RowEntry> = Vec::with_capacity(row.entries.len());
         for entry in row.entries.drain(..) {
             let spelling = entry
