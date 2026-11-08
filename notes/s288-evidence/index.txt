@@ -26,7 +26,9 @@ rig/linux/                  the Linux gauntlet, adapted by copy from s285's (37 
                             (a fresh GitHub clone of the branch, checked against the head; crates
                             fetched first, outside the locks), driver.sh (every step its own take of
                             both locks), gate.sh (inside the locks: no wineserver, the package at or
-                            under 95 C), pkg-temp.sh, prefetch.sh, record.sh (the org's recorder,
+                            under 95 C), pkg-temp.sh, prefetch.sh (the crates of the committed
+                            lockfile and of the one independence-lock regenerates, fetched as a
+                            light job before any heavy lock), record.sh (the org's recorder,
                             byte for byte), steps/.
 rig/linux-check/            the check takes: take.sh (a git bundle of the commit, a worktree at its
                             sha before any lock, crates fetched as a light job, then both locks and

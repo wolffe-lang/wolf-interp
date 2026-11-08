@@ -93,6 +93,14 @@ Committed before the first change (`7949b51`, `notes/s288-prediction.md`). Score
 - **A miss of the rig, not of the machine:** the first build of the fix named its scope entry
   `Local`, which `sema.rs` already uses for a type alias; it was renamed before any test ran.
   Clippy's `manual_contains` and `cargo fmt` each wanted one change before the checks were green.
+- **A miss of the rig, found by the first Linux take:** the gauntlet's `independence-lock` step
+  regenerates the lockfile offline (CI regenerates it online), and `clipboard-win 5.4.1`, which
+  the committed `Cargo.lock` pins, has since been yanked, so an offline resolution refused it: `END
+  independence-lock exit=101` at the first head, before any test step. The take is void. The
+  prefetch, outside the locks, now also stages the crates the regenerated lockfile picks
+  (`clipboard-win 5.4.3` among them) and restores the committed `Cargo.lock` byte for byte. The
+  committed lockfile still builds (`--locked` uses a yanked version it already pins), and CI's
+  online regeneration picks the same replacements.
 - **The plant:** in the PR body (a record cannot predate the head it names).
 
 ## Decisions
