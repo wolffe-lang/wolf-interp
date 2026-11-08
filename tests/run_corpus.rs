@@ -130,7 +130,11 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("rows/coarsen.lu", "exit(0)"),
     ("rows/hof_tail.lu", "exit(0)"),
     ("rows/inferred_private.lu", "exit(0)"),
-    ("rows/negative/dup_tags.lu", "exit(7)"),
+    // `rows/negative/dup_tags.lu` ran `exit(7)` here from the bd41920 pin
+    // through 0.1.60 (conservatism: the corpus pins E0601). s288 refuses a
+    // tag a row spells twice, E0601 at the second spelling
+    // (`[gram.type.row.dup]`, wolf-lang#1065), as the corpus pins, so it LEFT
+    // this ledger: a static refusal, not a lost run.
     // `rows/negative/errdefer_infallible.lu` ran `exit(1)` here from the
     // bd41920 pin through 0.1.45 (conservatism: the corpus pins E0607).
     // is70 (wolf-interp#179's errdefer half) refuses it E0607 at resolve,

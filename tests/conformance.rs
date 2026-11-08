@@ -186,6 +186,12 @@ fn declaration_read_code(case: &Case) -> Option<&str> {
         // Do not claim the separate comptime-function E0706 row.
         "E0706" => ["type.int.shift"].as_slice(),
         "E0610" => ["type.err.alias"].as_slice(),
+        // s288 (`[gram.type.row.dup]`, wolf-lang#1065): a tag a row spells
+        // twice is decided from the row's own spelling at resolve. The pin's
+        // one E0601 row, `rows/negative/dup_tags.lu`, tags `err.rows`
+        // (wolf-lang's later copy adds `gram.type.row.dup`). Measured red
+        // first: `left: Fail("E0601"), right: Pass`.
+        "E0601" => ["err.rows", "gram.type.row.dup"].as_slice(),
         // `[type.row.match]` joins at the dfcc2f13 pin (r27, wolf-lang
         // v0.2.21; is67 mirrored ruling #21): a `match` over a fallible value
         // is judged from the scrutinee's row at resolve, so its E0801 (an
