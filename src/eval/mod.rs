@@ -8237,7 +8237,6 @@ impl Machine {
                     ));
                 }
                 if let (Value::Int(a, _), Value::Int(_, ty)) = (&literal, value) {
-                    self.literal_pattern_fits(*a, *ty, expr.span)?;
                 }
                 Ok(match (&literal, value) {
                     (Value::Int(a, _), Value::Int(b, _)) => a == b,
