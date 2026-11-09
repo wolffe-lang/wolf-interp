@@ -1,0 +1,196 @@
+s289: Air at fae400a7 in $LANE/build-wolf-interp-fae400a
+s289: lock taken 14:38:22, 10764 MiB free, 82 GB disk; running: $LANE/rig/lupin-check.sh
+== STEP head 19:38:22
+fae400a7d1bea704e4d41441ff185d6ab30eb5d7
+       0
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+END head exit=0
+== STEP build 19:38:23
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded anstream v1.0.0
+  Downloaded anstyle v1.0.14
+  Downloaded colorchoice v1.0.5
+  Downloaded signal-hook-registry v1.4.8
+  Downloaded cfg_aliases v0.2.2
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded anstyle-query v1.1.5
+  Downloaded clap_lex v1.1.0
+  Downloaded endian-type v0.2.0
+  Downloaded nibble_vec v0.1.0
+  Downloaded utf8parse v0.2.2
+  Downloaded strsim v0.11.1
+  Downloaded anstyle-parse v1.0.0
+  Downloaded getrandom v0.2.16
+  Downloaded clap_derive v4.6.4
+  Downloaded signal-hook v0.3.18
+  Downloaded log v0.4.34
+  Downloaded clap v4.6.6
+  Downloaded unicode-segmentation v1.13.3
+  Downloaded rustyline v18.0.1
+  Downloaded clap_builder v4.6.6
+  Downloaded radix_trie v0.3.0
+  Downloaded unicode-width v0.2.2
+  Downloaded nix v0.31.3
+   Compiling proc-macro2 v1.0.107
+   Compiling libc v0.2.189
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+   Compiling utf8parse v0.2.2
+   Compiling serde_core v1.0.229
+   Compiling cfg_aliases v0.2.2
+   Compiling nix v0.31.3
+   Compiling anstyle-parse v1.0.0
+   Compiling anstyle v1.0.14
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling colorchoice v1.0.5
+   Compiling smallvec v1.15.2
+   Compiling cfg-if v1.0.4
+   Compiling zmij v1.0.23
+   Compiling syn v3.0.3
+   Compiling anstyle-query v1.1.5
+   Compiling anstream v1.0.0
+   Compiling errno v0.3.14
+   Compiling nibble_vec v0.1.0
+   Compiling serde_json v1.0.151
+   Compiling endian-type v0.2.0
+   Compiling clap_lex v1.1.0
+   Compiling bitflags v2.13.1
+   Compiling heck v0.5.0
+   Compiling signal-hook v0.3.18
+   Compiling memchr v2.8.3
+   Compiling serde v1.0.229
+   Compiling strsim v0.11.1
+   Compiling clap_builder v4.6.6
+   Compiling radix_trie v0.3.0
+   Compiling signal-hook-registry v1.4.8
+   Compiling wolf-interp v0.1.60 ($LANE/build-wolf-interp-fae400a)
+   Compiling unicode-segmentation v1.13.3
+   Compiling itoa v1.0.18
+   Compiling clap_derive v4.6.4
+   Compiling serde_derive v1.0.229
+   Compiling log v0.4.34
+   Compiling unicode-width v0.2.2
+   Compiling rustyline v18.0.1
+   Compiling clap v4.6.6
+   Compiling getrandom v0.2.16
+END build exit=0
+== STEP mirror 19:38:36
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 13.58s
+ Downloading crates ...
+  Downloaded comma v1.0.0
+  Downloaded rexpect v0.7.1
+  Downloaded thiserror v2.0.20
+  Downloaded thiserror-impl v2.0.20
+  Downloaded regex v1.13.1
+  Downloaded aho-corasick v1.1.5
+  Downloaded regex-automata v0.4.18
+   Compiling bitflags v2.13.1
+   Compiling nix v0.31.3
+   Compiling getrandom v0.4.3
+   Compiling rustix v1.1.4
+   Compiling aho-corasick v1.1.5
+   Compiling fastrand v2.5.0
+   Compiling once_cell v1.21.4
+   Compiling regex-syntax v0.8.11
+   Compiling thiserror v2.0.20
+   Compiling rustyline v18.0.1
+   Compiling tempfile v3.27.0
+   Compiling thiserror-impl v2.0.20
+   Compiling regex-automata v0.4.18
+   Compiling wolf-interp v0.1.60 ($LANE/build-wolf-interp-fae400a)
+   Compiling console v0.16.4
+   Compiling similar v2.7.0
+   Compiling comma v1.0.0
+   Compiling regex v1.13.1
+   Compiling rexpect v0.7.1
+   Compiling insta v1.48.0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.90s
+     Running tests/diagnostics_sweep_s289.rs (target/debug/deps/diagnostics_sweep_s289-a7c7d775a8c6b6bb)
+
+running 8 tests
+test an_undeclared_name_called_with_a_payload_is_e0301 ... FAILED
+test an_undeclared_name_in_a_fallible_functions_let_is_e0301 ... FAILED
+test an_undeclared_name_as_a_tail_is_e0301 ... FAILED
+test an_undeclared_name_assigned_is_e0301_without_the_fallible_advice ... FAILED
+test the_functions_own_tag_where_it_cannot_fail_is_e0604 ... FAILED
+test an_undeclared_name_in_a_let_is_e0301 ... FAILED
+test an_undeclared_name_returned_is_e0301 ... FAILED
+test a_bare_name_an_imported_module_defines_is_e0301 ... FAILED
+
+failures:
+
+---- an_undeclared_name_called_with_a_payload_is_e0301 stdout ----
+
+thread 'an_undeclared_name_called_with_a_payload_is_e0301' (12700675) panicked at tests/diagnostics_sweep_s289.rs:106:5:
+assertion `left == right` failed: tag_undeclared_payload: {"commit":"fae400a","diagnostics":[],"file":"/$LANE/build-wolf-interp-fae400a/tests/diagnostics_sweep_s289/tag_undeclared_payload/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":"error: Bad\n","stdout_sha256":"3639c2bc3ab83ca3c4871d866f5b8ab287a0d60d1a2a29b3016f383d5b9d811b","verdict":"exit(1)","warnings":[]}
+  left: String("exit(1)")
+ right: "fail(E0301)"
+
+---- an_undeclared_name_in_a_fallible_functions_let_is_e0301 stdout ----
+
+thread 'an_undeclared_name_in_a_fallible_functions_let_is_e0301' (12700676) panicked at tests/diagnostics_sweep_s289.rs:106:5:
+assertion `left == right` failed: tag_undeclared_fallible_let: {"commit":"fae400a","diagnostics":[],"file":"/$LANE/build-wolf-interp-fae400a/tests/diagnostics_sweep_s289/tag_undeclared_fallible_let/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(1)","warnings":[]}
+  left: String("exit(1)")
+ right: "fail(E0301)"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- an_undeclared_name_as_a_tail_is_e0301 stdout ----
+
+thread 'an_undeclared_name_as_a_tail_is_e0301' (12700673) panicked at tests/diagnostics_sweep_s289.rs:106:5:
+assertion `left == right` failed: tag_undeclared_tail: {"commit":"fae400a","diagnostics":[],"file":"/$LANE/build-wolf-interp-fae400a/tests/diagnostics_sweep_s289/tag_undeclared_tail/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":"error: OPEN\n","stdout_sha256":"8460f352a3c871cf0e70aaef402f39b704fd33a0c94fbcfcf44a285690a03d4f","verdict":"exit(1)","warnings":[]}
+  left: String("exit(1)")
+ right: "fail(E0301)"
+
+---- an_undeclared_name_assigned_is_e0301_without_the_fallible_advice stdout ----
+
+thread 'an_undeclared_name_assigned_is_e0301_without_the_fallible_advice' (12700674) panicked at tests/diagnostics_sweep_s289.rs:106:5:
+assertion `left == right` failed: tag_undeclared_assign: {"commit":"fae400a","diagnostics":[],"file":"/$LANE/build-wolf-interp-fae400a/tests/diagnostics_sweep_s289/tag_undeclared_assign/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":"error: INPUT\n","stdout_sha256":"e88dc57d245940b89be1b0718739ac80760cd3211b13dfec0cac5dfbaff0d84e","verdict":"exit(1)","warnings":[]}
+  left: String("exit(1)")
+ right: "fail(E0301)"
+
+---- the_functions_own_tag_where_it_cannot_fail_is_e0604 stdout ----
+
+thread 'the_functions_own_tag_where_it_cannot_fail_is_e0604' (12700679) panicked at tests/diagnostics_sweep_s289.rs:106:5:
+assertion `left == right` failed: tag_known_cannot_fail: {"commit":"fae400a","diagnostics":[],"file":"/$LANE/build-wolf-interp-fae400a/tests/diagnostics_sweep_s289/tag_known_cannot_fail/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"resolve","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"unsupported","warnings":[],"x-unsupported":"`bad` does not resolve at this raise site: it is not a binding, not a module-level name, and not a tag of the enclosing function's declared row"}
+  left: String("unsupported")
+ right: "fail(E0604)"
+
+---- an_undeclared_name_in_a_let_is_e0301 stdout ----
+
+thread 'an_undeclared_name_in_a_let_is_e0301' (12700677) panicked at tests/diagnostics_sweep_s289.rs:106:5:
+assertion `left == right` failed: tag_undeclared_let: {"commit":"fae400a","diagnostics":[],"file":"/$LANE/build-wolf-interp-fae400a/tests/diagnostics_sweep_s289/tag_undeclared_let/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":"error: OPEN\n","stdout_sha256":"8460f352a3c871cf0e70aaef402f39b704fd33a0c94fbcfcf44a285690a03d4f","verdict":"exit(1)","warnings":[]}
+  left: String("exit(1)")
+ right: "fail(E0301)"
+
+---- an_undeclared_name_returned_is_e0301 stdout ----
+
+thread 'an_undeclared_name_returned_is_e0301' (12700678) panicked at tests/diagnostics_sweep_s289.rs:106:5:
+assertion `left == right` failed: tag_undeclared_return: {"commit":"fae400a","diagnostics":[],"file":"/$LANE/build-wolf-interp-fae400a/tests/diagnostics_sweep_s289/tag_undeclared_return/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(1)","warnings":[]}
+  left: String("exit(1)")
+ right: "fail(E0301)"
+
+---- a_bare_name_an_imported_module_defines_is_e0301 stdout ----
+
+thread 'a_bare_name_an_imported_module_defines_is_e0301' (12700672) panicked at tests/diagnostics_sweep_s289.rs:106:5:
+assertion `left == right` failed: tag_undeclared_module_item: {"commit":"fae400a","diagnostics":[],"file":"/$LANE/build-wolf-interp-fae400a/tests/diagnostics_sweep_s289/tag_undeclared_module_item/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"run","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"exit(0)","warnings":[]}
+  left: String("exit(0)")
+ right: "fail(E0301)"
+
+
+failures:
+    a_bare_name_an_imported_module_defines_is_e0301
+    an_undeclared_name_as_a_tail_is_e0301
+    an_undeclared_name_assigned_is_e0301_without_the_fallible_advice
+    an_undeclared_name_called_with_a_payload_is_e0301
+    an_undeclared_name_in_a_fallible_functions_let_is_e0301
+    an_undeclared_name_in_a_let_is_e0301
+    an_undeclared_name_returned_is_e0301
+    the_functions_own_tag_where_it_cannot_fail_is_e0604
+
+test result: FAILED. 0 passed; 8 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+END mirror exit=101
+== done 2026-11-09T19:38:47Z
+error: test failed, to rerun pass `--test diagnostics_sweep_s289`
+s289: END exit=0 14:38:47
