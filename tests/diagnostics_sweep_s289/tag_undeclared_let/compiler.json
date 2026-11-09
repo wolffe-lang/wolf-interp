@@ -1,0 +1,23 @@
+{
+ "commit": "unknown",
+ "diagnostics": [
+  {
+   "code": "E0301",
+   "severity": "error",
+   "span": [
+    483,
+    487
+   ]
+  }
+ ],
+ "file": "typecheck/tag_undeclared_let.lu",
+ "impl": "wolfgang",
+ "impl_version": "0.2.38+dev.unknown",
+ "phase_reached": "typecheck",
+ "protocol": 1,
+ "seeded": false,
+ "stdout_inline": null,
+ "stdout_sha256": null,
+ "verdict": "fail(E0301)",
+ "warnings": []
+}

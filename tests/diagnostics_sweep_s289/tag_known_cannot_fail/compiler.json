@@ -1,0 +1,23 @@
+{
+ "commit": "unknown",
+ "diagnostics": [
+  {
+   "code": "E0604",
+   "severity": "error",
+   "span": [
+    672,
+    675
+   ]
+  }
+ ],
+ "file": "typecheck/tag_known_cannot_fail.lu",
+ "impl": "wolfgang",
+ "impl_version": "0.2.38+dev.unknown",
+ "phase_reached": "typecheck",
+ "protocol": 1,
+ "seeded": false,
+ "stdout_inline": null,
+ "stdout_sha256": null,
+ "verdict": "fail(E0604)",
+ "warnings": []
+}
