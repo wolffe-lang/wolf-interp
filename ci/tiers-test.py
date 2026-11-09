@@ -35,7 +35,10 @@
       but `release-matrix` a noop's; the
       bundle is compared across the OSes the plan says ran a ladder; a red
       nightly, and only a nightly, runs ci/nightly-red.py from the tier
-      job, whose token may write issues.
+      job, whose token may write issues; every heavy test entry (three
+      shards and the ladder, every OS) builds at opt-level 2 with debug
+      assertions and overflow checks on, and the smoke unoptimized
+      (is85).
   T5  the tripwire: no tracked path the planner calls prose is named by a
       line of src/, tests/, build.rs or ci/*.sh that reads a file. The
       search is shown to fire on the three it must find. (A WARN, not a
@@ -363,6 +366,18 @@ perms = re.search(r"^    permissions:\n((?:      .*\n)+)", t, re.M)
 say(perms is not None and sorted(perms.group(1).split()) == sorted(["contents:", "read", "actions:", "read", "issues:", "write"])
     and wf.count("issues: write") == 1,
     "T4 the tier job's token may read the code and the run and write issues; no other job may write issues")
+
+# is85: the heavy entries build optimized with every debug check on; the smoke
+# does not. One recipe for every OS, so the env is the test job's own.
+OPT = "2"
+tenv = re.search(r"^    env:\n((?:      [A-Z_]+: .*\n)+)", blocks["test"], re.M)
+tenv = dict(re.findall(r"^      ([A-Z_]+): (.*)$", tenv.group(1), re.M)) if tenv else {}
+want = {"CARGO_PROFILE_%s_%s" % (p, k): v for p in ("DEV", "TEST") for k, v in (
+    ("OPT_LEVEL", "${{ matrix.shard == 'smoke' && '0' || '%s' }}" % OPT),
+    ("DEBUG_ASSERTIONS", '"true"'), ("OVERFLOW_CHECKS", '"true"'))}
+say(all(tenv.get(k) == v for k, v in want.items()) and not re.search(r"CARGO_PROFILE_\w+_(DEBUG_ASSERTIONS|OVERFLOW_CHECKS): .*false", wf),
+    "T4 every heavy test entry builds at opt-level %s with debug assertions and overflow checks on, and the smoke unoptimized (is85; %s)" % (
+        OPT, " ".join("%s=%s" % (k, tenv.get(k, "unset")) for k in sorted(want))))
 
 # --- T7 the change read from git ----------------------------------------------------
 def git(repo, *args):
