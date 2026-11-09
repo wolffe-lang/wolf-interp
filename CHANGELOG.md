@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+s289 — the compiler's diagnostics sweep, first change (wolf-lang#1085), mirrored: an undeclared
+name where no error row takes it is refused at this machine's resolve rung, with the compiler's
+code at the compiler's span.
+
+- **A capitalized name that nothing declares is E0301 where no error row takes it**
+  (`[gram.expr.tagident]`). This machine read every such name as a tag value and ran the program:
+  `OPEN` as the tail of a function that returns `int`, a field assigned `INPUT`, a `let`
+  initialized with it, `return CANCEL`, `Bad(3)`, all exited 1 with `error: OPEN`. They are now
+  E0301 at the name, with the fixes the position allows (declare or import the constant; at a
+  `return` or tail of a function that cannot fail, `-> !T`; inside a fallible one, `return Name`).
+  A raise in a function that can fail is unchanged.
+- **A tag the function spells in a row, where the function cannot fail, is E0604** at the tag.
+- A call argument, an annotated `let`'s initializer, a closure's body and a bracket's argument may
+  meet a row this machine cannot see, so a name there is left alone; the check errs toward
+  saying nothing.
+
 is86 — wolf-lang s290's calls for a new session (wolf-lang#1089), mirrored: `os_spawn_session`,
 `os_setsid` and `os_sid` resolve. lupin 0.1.60 answered "does not resolve" for each.
 
