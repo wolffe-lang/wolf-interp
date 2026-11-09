@@ -12,18 +12,146 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
+use wolf_interp::Observed;
 use wolf_interp::corpus::{self, Outcome};
 use wolf_interp::directive::{Check, Directives, ExitSpec};
 use wolf_interp::ledger::{self, Judgement};
 use wolf_interp::phase::Phase;
-use wolf_interp::protocol::Verdict;
+use wolf_interp::protocol::{ObservationRecord, Verdict};
 use wolf_interp::trap::TrapKind;
 
 fn corpus_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(wolf_interp::upstream_root())
         .join("corpus")
+}
+
+/// One corpus entry, observed at the deepest rung this machine reaches:
+/// exactly what `observe_record(path, source, None)` returned for it.
+struct Observation {
+    path: String,
+    directives: Directives,
+    source: Vec<u8>,
+    record: ObservationRecord,
+    observed: Observed,
+}
+
+/// THE WALK, ONCE (is85). Every test below that reads the corpus's
+/// observations reads THESE: one `observe_record(path, source, None)` per
+/// entry, taken the first time a test asks and shared by the rest. Each
+/// test used to take its own, so this binary walked the whole corpus a
+/// dozen times over, and on windows that was more than four hours of one
+/// job (wolf-interp's nightly at 725d86da, cancelled at 330 minutes). The
+/// assertions are the ones they were, over the same observations; only
+/// the number of times the corpus is evaluated changed. The one test that
+/// needs a SECOND observation, `evaluation_is_deterministic_over_the_corpus`,
+/// takes its own fresh walk and compares it against this one.
+///
+/// The walk runs on up to four threads (`observe_each`). A file whose
+/// observation panics is recorded as that panic, and every test that reads
+/// the walk fails with it, rather than each re-walking the corpus to find it
+/// again.
+fn observations() -> &'static [Observation] {
+    static WALK: OnceLock<Result<Vec<Observation>, String>> = OnceLock::new();
+    let walk = WALK.get_or_init(|| {
+        let root = corpus_root();
+        let report = corpus::walk(&root, None).expect("the pinned corpus is walkable");
+        let files: Vec<(String, Directives)> = report
+            .files
+            .into_iter()
+            .filter_map(|file| match file.outcome {
+                Outcome::Entry(directives) => Some((file.path, *directives)),
+                _ => None,
+            })
+            .collect();
+        let observed = observe_each(&root, files.iter().map(|(path, _)| path.as_str()));
+        files
+            .into_iter()
+            .zip(observed)
+            .map(|((path, directives), result)| {
+                let (source, record, observed) =
+                    result.map_err(|panic| format!("{path}: the observation panicked: {panic}"))?;
+                Ok(Observation {
+                    path,
+                    directives,
+                    source,
+                    record,
+                    observed,
+                })
+            })
+            .collect()
+    });
+    match walk {
+        Ok(observations) => observations,
+        Err(panic) => panic!("the shared corpus walk failed: {panic}"),
+    }
+}
+
+/// The most threads one walk takes: the hosted runners' core count (four;
+/// three on macOS, which `available_parallelism` reports). Two walks run at
+/// once (the shared one and the determinism test's), and a heavy corpus
+/// program holds a large list, so a bigger host does not get more.
+const WALKERS: usize = 4;
+
+/// One file's observation by `observe_each`: its bytes, its record and the
+/// human-facing half, or the message of the panic that stopped it.
+type FileObservation = Result<(Vec<u8>, ObservationRecord, Observed), String>;
+
+/// `observe_record(path, source, None)` for each corpus-relative path, on
+/// up to `WALKERS` threads, answered in the order asked. The scheduling is
+/// the only thing this adds: each file is still read and observed exactly
+/// as the tests did one by one, and a panic stays that file's own result.
+fn observe_each<'a>(root: &Path, paths: impl Iterator<Item = &'a str>) -> Vec<FileObservation> {
+    let paths: Vec<&str> = paths.collect();
+    let next = AtomicUsize::new(0);
+    let workers = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZero::get)
+        .clamp(1, WALKERS)
+        .min(paths.len().max(1));
+    let mut results: Vec<Option<FileObservation>> = (0..paths.len()).map(|_| None).collect();
+    std::thread::scope(|scope| {
+        let (next, paths) = (&next, &paths);
+        let handles: Vec<_> = (0..workers)
+            .map(|_| {
+                scope.spawn(move || {
+                    let mut done = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, Ordering::Relaxed);
+                        let Some(path) = paths.get(i) else {
+                            break done;
+                        };
+                        let full = root.join(path);
+                        let result = std::panic::catch_unwind(|| {
+                            let source = std::fs::read(&full).expect("readable");
+                            let (record, observed) =
+                                wolf_interp::observe_record(&full, &source, None);
+                            (source, record, observed)
+                        })
+                        .map_err(|payload| {
+                            payload
+                                .downcast_ref::<&str>()
+                                .map(|s| (*s).to_owned())
+                                .or_else(|| payload.downcast_ref::<String>().cloned())
+                                .unwrap_or_else(|| "a non-string panic".to_owned())
+                        });
+                        done.push((i, result));
+                    }
+                })
+            })
+            .collect();
+        for handle in handles {
+            for (i, result) in handle.join().expect("a walker catches its own panics") {
+                results[i] = Some(result);
+            }
+        }
+    });
+    results
+        .into_iter()
+        .map(|result| result.expect("every path was taken by one walker"))
+        .collect()
 }
 
 struct Entry {
@@ -39,27 +167,19 @@ struct Entry {
 }
 
 fn entries() -> Vec<Entry> {
-    let root = corpus_root();
-    let report = corpus::walk(&root, None).expect("the pinned corpus is walkable");
-    report
-        .files
-        .into_iter()
-        .filter_map(|file| {
-            let Outcome::Entry(directives) = file.outcome else {
-                return None;
-            };
-            let full = root.join(&file.path);
-            let source = std::fs::read(&full).expect("readable");
-            let (record, observed) = wolf_interp::observe_record(&full, &source, None);
+    observations()
+        .iter()
+        .map(|observation| {
+            let record = &observation.record;
             // The directive matcher compares "the program's stdout"
             // (`[conf.directive.check]`) — the observation's, whatever the
             // verdict. A trap pin with `stdout="…"` judges the bytes printed
             // before the fault (`rows/handler_diverge_trap.lu`), which the
             // wire record deliberately omits (`[proto.record.fields]`).
-            let stdout = observed.stdout.clone();
-            let mut check = directives.check.as_ref().expect("an entry pins a check").clone();
+            let stdout = observation.observed.stdout.clone();
+            let mut check = observation.directives.check.as_ref().expect("an entry pins a check").clone();
             if cfg!(windows) {
-                let want = match file.path.as_str() {
+                let want = match observation.path.as_str() {
                     "os/chroot_rows.lu" => Some("missing: true\nmissing_number: true\ndot=unsupported\ndot_number=0\n"),
                     "os/priority_rows.lu" => Some("read=unsupported\nzero=unsupported\n"),
                     "os/signal_action_rows.lu" => Some("zero=invalid\ntwo_bits=invalid\npast_table=invalid\nfar_host_number: true\nterm=unsupported\n"),
@@ -70,20 +190,20 @@ fn entries() -> Vec<Entry> {
                     check = Check::Run { exit: ExitSpec::Code(0), stdout: Some(want.to_owned()) };
                 }
             }
-            let judgement = ledger::judge(&check, &record, &stdout);
-            Some(Entry {
-                path: file.path,
+            let judgement = ledger::judge(&check, record, &stdout);
+            Entry {
+                path: observation.path.clone(),
                 directives: {
-                    let mut directives = *directives;
+                    let mut directives = observation.directives.clone();
                     directives.check = Some(check);
                     directives
                 },
-                verdict: record.verdict,
+                verdict: record.verdict.clone(),
                 phase: record.phase_reached,
                 stdout,
                 judgement,
-                warnings: record.warnings,
-            })
+                warnings: record.warnings.clone(),
+            }
         })
         .collect()
 }
@@ -2906,21 +3026,14 @@ fn unsafe_free_corpus_programs_never_produce_a_ub_verdict() {
     // than argued. The filter is the source text: a file with no `unsafe`
     // block, no `asm`, and no `import c` is safe-tier by construction, and its
     // verdict must never be `ub(…)`.
-    let root = corpus_root();
-    let report = corpus::walk(&root, None).expect("walkable");
     let mut safe = 0usize;
-    for file in &report.files {
-        if !matches!(file.outcome, Outcome::Entry(_)) {
-            continue;
-        }
-        let full = root.join(&file.path);
-        let source = std::fs::read(&full).expect("readable");
-        let text = String::from_utf8_lossy(&source);
+    for file in observations() {
+        let text = String::from_utf8_lossy(&file.source);
         if text.contains("unsafe") || text.contains("import c ") || text.contains("asm ") {
             continue;
         }
         safe += 1;
-        let (record, observed) = wolf_interp::observe_record(&full, &source, None);
+        let (record, observed) = (&file.record, &file.observed);
         assert!(
             !matches!(record.verdict, Verdict::Ub(_)),
             "{}: a safe-tier program reached §7/{} — either the machine is wrong or `[mem.ub]`'s \
@@ -2944,15 +3057,8 @@ fn every_unsupported_file_says_why() {
     // "the protocol verdict carries no payload — `[proto.record.verdict]`; the
     // reason rides an `x-` extension key". A reasonless `unsupported` is a hole
     // in the conservatism ledger.
-    let root = corpus_root();
-    let report = corpus::walk(&root, None).expect("walkable");
-    for file in &report.files {
-        if !matches!(file.outcome, Outcome::Entry(_)) {
-            continue;
-        }
-        let full = root.join(&file.path);
-        let source = std::fs::read(&full).expect("readable");
-        let (record, _) = wolf_interp::observe_record(&full, &source, None);
+    for file in observations() {
+        let record = &file.record;
         if record.verdict != Verdict::Unsupported {
             continue;
         }
@@ -2974,16 +3080,9 @@ fn every_record_is_schema_valid_including_the_running_ones() {
     // A record with stdout has to carry both the digest and the inline text
     // (`[proto.record.fields]`), and this implementation must never emit one
     // its own validator would reject.
-    let root = corpus_root();
-    let report = corpus::walk(&root, None).expect("walkable");
-    for file in &report.files {
-        if !matches!(file.outcome, Outcome::Entry(_)) {
-            continue;
-        }
-        let full = root.join(&file.path);
-        let source = std::fs::read(&full).expect("readable");
-        let (record, _) = wolf_interp::observe_record(&full, &source, None);
-        let value = serde_json::to_value(&record).expect("serializes");
+    for file in observations() {
+        let record = &file.record;
+        let value = serde_json::to_value(record).expect("serializes");
         assert_eq!(
             wolf_interp::schema::validate(&value),
             Ok(()),
@@ -3120,16 +3219,28 @@ fn evaluation_is_deterministic_over_the_corpus() {
     // Two runs, same verdict, same bytes. Cheap, and it catches the whole class
     // of bugs where a result depends on hash iteration or allocation order —
     // which would make every differential comparison meaningless.
+    //
+    // is85: the first run is the shared walk's (`observations`); this test
+    // takes the second itself, fresh, over the same entries in the same
+    // (sorted) order. It starts its own before it reads the shared one, so
+    // the two walks run at once and each fills the cores the other's last
+    // heavy files leave idle.
     let root = corpus_root();
     let report = corpus::walk(&root, None).expect("walkable");
-    for file in &report.files {
-        if !matches!(file.outcome, Outcome::Entry(_)) {
-            continue;
-        }
-        let full = root.join(&file.path);
-        let source = std::fs::read(&full).expect("readable");
-        let (first, _) = wolf_interp::observe_record(&full, &source, None);
-        let (second, _) = wolf_interp::observe_record(&full, &source, None);
-        assert_eq!(first, second, "{} observed differently twice", file.path);
+    let entries: Vec<&str> = report
+        .files
+        .iter()
+        .filter(|file| matches!(file.outcome, Outcome::Entry(_)))
+        .map(|file| file.path.as_str())
+        .collect();
+    let second = observe_each(&root, entries.iter().copied());
+    for (file, second) in observations().iter().zip(second) {
+        let (_, second, _) = second
+            .unwrap_or_else(|panic| panic!("{}: the observation panicked: {panic}", file.path));
+        assert_eq!(
+            file.record, second,
+            "{} observed differently twice",
+            file.path
+        );
     }
 }
