@@ -107,6 +107,50 @@ pub struct FileScope {
     /// That errs towards saying nothing, which is the safe direction for a
     /// refusal whose fix-it rewrites the source.
     pub binders: BTreeSet<String>,
+    /// s289 (wolf-lang#1085): every bare name an error row might take, met in
+    /// an expression — a capitalized one, or one its function spells in a row
+    /// — with where it stood. [`undeclared_tag_check`] reads them.
+    pub tag_sites: Vec<TagSite>,
+    /// The functions those sites sit in, by [`TagSite::func`].
+    pub tag_fns: Vec<TagFn>,
+    /// Where the walk is, for the sites it records.
+    pub tag_ctx: TagCtx,
+}
+
+/// One function, as [`undeclared_tag_check`] needs it.
+#[derive(Debug, Clone, Default)]
+pub struct TagFn {
+    pub name: String,
+    /// The declared result can carry an error row (`-> !T`, `-> T ! {…}`).
+    pub fallible: bool,
+    /// Every tag the function spells in a row: its signature's, and its body's
+    /// annotations' (the compiler's lexical set, `lexical_row_tags`).
+    pub row_tags: BTreeSet<String>,
+    pub generics: BTreeSet<String>,
+}
+
+/// A bare name in an expression that an error row might take.
+#[derive(Debug, Clone)]
+pub struct TagSite {
+    pub name: String,
+    pub span: Span,
+    /// The operand of `return`, or the function's tail (through a block's,
+    /// an `if`'s or a `match` arm's tail): where the function's result row
+    /// is the expected one.
+    pub raise: bool,
+    /// A call argument, an annotated `let`'s initializer, a closure's body: a
+    /// row this machine cannot see may take the tag, so it says nothing.
+    pub lenient: bool,
+    pub func: Option<usize>,
+}
+
+/// The walk's position, for the sites ([`FileScope::tag_ctx`]).
+#[derive(Debug, Clone, Default)]
+pub struct TagCtx {
+    pub func: Option<usize>,
+    /// The expression whose value the function's result row takes.
+    pub raise: Option<Span>,
+    pub lenient: u32,
 }
 
 /// A second definition of a name in one module (D32: file boundaries create no
@@ -1548,6 +1592,106 @@ fn variant_value_check(program: &Program) -> Option<Diag> {
     earliest
 }
 
+/// `[gram.expr.tagident]` (s289, wolf-lang#1085) — a bare name that no
+/// error row takes is not a tag.
+///
+/// A capitalized name that nothing declares reads as an error tag, and a tag
+/// is a value only where an error row takes it: as the operand of `return` or
+/// the tail of a function that can fail, a call argument against a row, an
+/// annotated `let`. Anywhere else the name names nothing, and the compiler
+/// says E0301 at it ("nothing named `OPEN` is in scope"), where this machine
+/// used to read it as a tag value and run (`error: OPEN`, exit 1). A tag the
+/// function does spell in some row, used in a function whose result cannot
+/// fail, is the compiler's E0604.
+///
+/// **What this must not touch.** A raise in a fallible function stays a
+/// raise, and a fallible function's own tag anywhere else is left to the
+/// machine (`[type.unit.discard]` discards one in a unit position). A call
+/// argument, an annotated `let`'s initializer and a closure's body may meet a
+/// row this machine cannot see, so a name there is left alone: the check errs
+/// toward saying nothing. A name resolves as the variant check's do (a binder
+/// of the file, an item, an import, a module), and also as an ambient name, a
+/// generic parameter of its function, a variant (the variant check's own) or
+/// an error-set alias.
+///
+/// Runs after the variant check, so a bare variant keeps its E0301 and fix.
+fn undeclared_tag_check(program: &Program) -> Option<Diag> {
+    let mut earliest: Option<Diag> = None;
+    for module in program.modules.values() {
+        for scope in &module.scopes {
+            for site in &scope.tag_sites {
+                let func = site.func.map(|f| &scope.tag_fns[f]);
+                let name = site.name.as_str();
+                let resolved = scope.binders.contains(name)
+                    || module.items.contains_key(name)
+                    || module.uses.iter().any(|bound| bound == name)
+                    || scope.uses.iter().any(|u| u.name == name)
+                    || program.modules.contains_key(name)
+                    || module.variants.contains_key(name)
+                    || module.error_aliases.contains_key(name)
+                    || crate::eval::builtin::AMBIENT_NAMES.contains(&name)
+                    || name == "Self"
+                    || func.is_some_and(|f| f.generics.contains(name));
+                if resolved {
+                    continue;
+                }
+                let Some(func) = func else { continue };
+                let diag = if func.row_tags.contains(name) {
+                    if func.fallible || site.lenient {
+                        continue;
+                    }
+                    Diag::new(
+                        "E0604",
+                        site.span,
+                        "gram.expr.tagident",
+                        format!(
+                            "`{name}` is an error tag, and `{f}` cannot fail: its signature \
+                             declares no error row, so the error would have nowhere to go; \
+                             make `{f}` fallible (`! {{{name}}}`), or handle the error with \
+                             `else`",
+                            f = func.name
+                        ),
+                    )
+                } else {
+                    if site.lenient || (func.fallible && site.raise) {
+                        continue;
+                    }
+                    let advice = if func.fallible {
+                        format!("; to raise it as an error here, write `return {name}`")
+                    } else if site.raise {
+                        format!(
+                            "; if it is an error, make `{}` fallible (`-> !T`): it returns \
+                             no error row",
+                            func.name
+                        )
+                    } else {
+                        String::new()
+                    };
+                    Diag::new(
+                        "E0301",
+                        site.span,
+                        "gram.expr.tagident",
+                        format!(
+                            "nothing named `{name}` is in scope: a bare capitalized name that \
+                             names nothing is read as an error tag, and no error row takes \
+                             one here. If `{name}` is a constant, declare it, or import the \
+                             module that defines it{advice}"
+                        ),
+                    )
+                };
+                let diag = diag.in_file(scope.file.clone());
+                if earliest
+                    .as_ref()
+                    .is_none_or(|held| site.span.start < held.span.start)
+                {
+                    earliest = Some(diag);
+                }
+            }
+        }
+    }
+    earliest
+}
+
 /// The resolve rung's first refusal, when there is one ([`resolve_refusal`]).
 pub fn resolve_check(program: &Program) -> Option<Diag> {
     resolve_refusal(program).and_then(|diags| diags.into_iter().next())
@@ -1589,6 +1733,9 @@ pub fn resolve_refusal(program: &Program) -> Option<Vec<Diag>> {
         .or_else(|| one(row_operand_check(program)))
         .or_else(|| one(annotation_check(program)))
         .or_else(|| one(variant_value_check(program)))
+        // s289: `[gram.expr.tagident]`'s E0301 and E0604, after the variant
+        // check so a bare variant keeps its own E0301.
+        .or_else(|| one(undeclared_tag_check(program)))
         // is67: `[type.row.defer]`'s E0611 and `[type.row.match]`'s E0801,
         // last in the chain so a file that trips an older check keeps the
         // diagnostic it had.
@@ -6295,6 +6442,28 @@ fn collect_operator_refs(traits: &'static [&'static str], scope: &mut FileScope)
 }
 
 fn collect_fn_refs(decl: &FnDecl, scope: &mut FileScope) {
+    // s289: the function's own frame for the tag sites its body holds.
+    let mut row_tags = BTreeSet::new();
+    collect_signature_tags(decl, &mut row_tags);
+    scope.tag_fns.push(TagFn {
+        name: decl.name.name.clone(),
+        fallible: crate::rowmatch::can_fail(decl),
+        row_tags,
+        generics: decl.generics.iter().map(|g| g.name.name.clone()).collect(),
+    });
+    let saved = std::mem::replace(
+        &mut scope.tag_ctx,
+        TagCtx {
+            func: Some(scope.tag_fns.len() - 1),
+            raise: None,
+            lenient: 0,
+        },
+    );
+    collect_fn_refs_inner(decl, scope);
+    scope.tag_ctx = saved;
+}
+
+fn collect_fn_refs_inner(decl: &FnDecl, scope: &mut FileScope) {
     collect_generic_refs(&decl.generics, scope);
     for param in &decl.params {
         if let crate::ast::ParamKind::Named { name, ty } = &param.kind {
@@ -6309,8 +6478,29 @@ fn collect_fn_refs(decl: &FnDecl, scope: &mut FileScope) {
         }
     }
     if let Some(body) = &decl.body {
-        collect_block_refs(body, scope);
+        collect_raise_block_refs(body, scope);
     }
+}
+
+/// A block whose tail the function's result row takes (s289): its own body,
+/// or a block at such a tail.
+fn collect_raise_block_refs(block: &Block, scope: &mut FileScope) {
+    for stmt in &block.stmts {
+        collect_stmt_refs(stmt, scope);
+    }
+    if let Some(tail) = &block.tail {
+        let saved = scope.tag_ctx.raise.replace(tail.span);
+        collect_expr_refs(tail, scope);
+        scope.tag_ctx.raise = saved;
+    }
+}
+
+/// Walk `expr` with the tag context's leniency raised (s289): a position
+/// where a row this machine cannot see may take a tag.
+fn collect_lenient_refs(expr: &Expr, scope: &mut FileScope) {
+    scope.tag_ctx.lenient += 1;
+    collect_expr_refs(expr, scope);
+    scope.tag_ctx.lenient -= 1;
 }
 
 /// `[type.err.alias.qualified]` (wolf-lang#434; wolf-interp#134) — a ROW is a
@@ -6356,8 +6546,17 @@ fn collect_stmt_refs(stmt: &Stmt, scope: &mut FileScope) {
             collect_pattern_refs(&binding.pattern, scope);
             if let Some(ty) = &binding.ty {
                 collect_type_refs(ty, scope);
+                // s289: an annotation's row is the function's too, and its
+                // initializer is a position a row may take.
+                let mut tags = Vec::new();
+                type_row_tags(ty, &mut tags);
+                if let Some(f) = scope.tag_ctx.func {
+                    scope.tag_fns[f].row_tags.extend(tags);
+                }
+                collect_lenient_refs(&binding.value, scope);
+            } else {
+                collect_expr_refs(&binding.value, scope);
             }
-            collect_expr_refs(&binding.value, scope);
         }
         StmtKind::Assign { place, value, .. } => {
             collect_expr_refs(place, scope);
@@ -6415,6 +6614,22 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
             {
                 scope.bare_caps.push((only.name.clone(), only.span));
             }
+            // s289: and every name an error row might take, with its position.
+            if let [only] = path.segments.as_slice() {
+                let spelled = scope
+                    .tag_ctx
+                    .func
+                    .is_some_and(|f| scope.tag_fns[f].row_tags.contains(&only.name));
+                if only.name.starts_with(char::is_uppercase) || spelled {
+                    scope.tag_sites.push(TagSite {
+                        name: only.name.clone(),
+                        span: only.span,
+                        raise: scope.tag_ctx.raise == Some(expr.span),
+                        lenient: scope.tag_ctx.lenient > 0,
+                        func: scope.tag_ctx.func,
+                    });
+                }
+            }
             collect_path_ref(path, scope);
         }
         ExprKind::StructLit { path, fields } => {
@@ -6438,6 +6653,9 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
         | ExprKind::Try(inner)
         | ExprKind::FromEnd(inner)
         | ExprKind::Freeze(inner) => collect_expr_refs(inner, scope),
+        ExprKind::Block(block) if scope.tag_ctx.raise == Some(expr.span) => {
+            collect_raise_block_refs(block, scope);
+        }
         ExprKind::Block(block) | ExprKind::Loop { body: block } => {
             collect_block_refs(block, scope);
         }
@@ -6455,9 +6673,16 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
             collect_type_refs(ty, scope);
         }
         ExprKind::Call { callee, args } => {
+            // s289: `Bad(3)` where a raise would go is a raise of `Bad`.
+            let raise = scope.tag_ctx.raise == Some(expr.span);
+            let saved = scope.tag_ctx.raise;
+            if raise {
+                scope.tag_ctx.raise = Some(callee.span);
+            }
             collect_expr_refs(callee, scope);
+            scope.tag_ctx.raise = saved;
             for arg in args {
-                collect_expr_refs(&arg.expr, scope);
+                collect_lenient_refs(&arg.expr, scope);
             }
         }
         ExprKind::BracketApply { base, args, .. } => {
@@ -6498,20 +6723,37 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
             then,
             otherwise,
         } => {
+            // s289: an `if` where a raise would go hands that to its arms.
+            let raise = scope.tag_ctx.raise == Some(expr.span);
             collect_expr_refs(cond, scope);
-            collect_block_refs(then, scope);
+            if raise {
+                collect_raise_block_refs(then, scope);
+            } else {
+                collect_block_refs(then, scope);
+            }
             if let Some(otherwise) = otherwise {
+                let saved = scope.tag_ctx.raise;
+                if raise {
+                    scope.tag_ctx.raise = Some(otherwise.span);
+                }
                 collect_expr_refs(otherwise, scope);
+                scope.tag_ctx.raise = saved;
             }
         }
         ExprKind::Match { scrutinee, arms } => {
+            let raise = scope.tag_ctx.raise == Some(expr.span);
             collect_expr_refs(scrutinee, scope);
             for arm in arms {
                 collect_pattern_refs(&arm.pattern, scope);
                 if let Some(guard) = &arm.guard {
                     collect_expr_refs(guard, scope);
                 }
+                let saved = scope.tag_ctx.raise;
+                if raise {
+                    scope.tag_ctx.raise = Some(arm.body.span);
+                }
                 collect_expr_refs(&arm.body, scope);
+                scope.tag_ctx.raise = saved;
             }
         }
         ExprKind::For {
@@ -6527,7 +6769,15 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
             collect_expr_refs(cond, scope);
             collect_block_refs(body, scope);
         }
-        ExprKind::Return(value) | ExprKind::Break(value) => {
+        ExprKind::Return(value) => {
+            // s289: the operand of `return` is where a raise goes.
+            if let Some(value) = value {
+                let saved = scope.tag_ctx.raise.replace(value.span);
+                collect_expr_refs(value, scope);
+                scope.tag_ctx.raise = saved;
+            }
+        }
+        ExprKind::Break(value) => {
             if let Some(value) = value {
                 collect_expr_refs(value, scope);
             }
@@ -6540,7 +6790,10 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
                     collect_type_refs(ty, scope);
                 }
             }
-            collect_expr_refs(body, scope);
+            // s289: a closure's result row is its own, unseen here.
+            let saved = scope.tag_ctx.raise.take();
+            collect_lenient_refs(body, scope);
+            scope.tag_ctx.raise = saved;
         }
         ExprKind::RegionSugar { body, .. } => collect_block_refs(body, scope),
         ExprKind::RegionValue { .. } => {}
@@ -6552,7 +6805,7 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
         ExprKind::SpawnProc { path, args } => {
             collect_path_ref(path, scope);
             for arg in args {
-                collect_expr_refs(&arg.expr, scope);
+                collect_lenient_refs(&arg.expr, scope);
             }
         }
         ExprKind::Select { arms } => {
