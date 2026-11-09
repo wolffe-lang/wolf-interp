@@ -262,6 +262,26 @@ jobs:
     if: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-matrix') || contains(github.event.pull_request.labels.*.name, 'ci') || contains(github.event.pull_request.labels.*.name, 'release-matrix')) && (contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'test')) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.shard == 'smoke' && 30 || 330 }}
+    # is85: THE HEAVY ENTRIES BUILD OPTIMIZED, WITH EVERY DEBUG CHECK ON. The
+    # three shards and the ladder, on every OS, build `cargo test` and `cargo
+    # run` at opt-level 2 with debug assertions and overflow checks on, as an
+    # unoptimized build has them: every `debug_assert!`, the debug build's
+    # receiver copy in `src/eval/mod.rs` and every overflow check still run,
+    # and `BUILD_PROFILE` still reads `debug`. Only the code generation
+    # changes. Unoptimized, 30 of the 36 windows heavy jobs from 11-01 ran
+    # over 220 minutes and two were cancelled at 330 (ci/is85.md): a corpus
+    # walk is a few programs of tens of thousands of container calls, and
+    # the slow windows machines are 1.7-1.9 times the fast. The smokes keep
+    # the unoptimized build, so every tier still builds and tests it on
+    # macOS and windows; a smoke is mostly build, against its 30 minutes.
+    # `ci/tiers-test.py` holds both.
+    env:
+      CARGO_PROFILE_DEV_OPT_LEVEL: ${{ matrix.shard == 'smoke' && '0' || '2' }}
+      CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.shard == 'smoke' && '0' || '2' }}
+      CARGO_PROFILE_DEV_DEBUG_ASSERTIONS: "true"
+      CARGO_PROFILE_TEST_DEBUG_ASSERTIONS: "true"
+      CARGO_PROFILE_DEV_OVERFLOW_CHECKS: "true"
+      CARGO_PROFILE_TEST_OVERFLOW_CHECKS: "true"
     strategy:
       fail-fast: false
       matrix:
