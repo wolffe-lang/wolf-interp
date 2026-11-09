@@ -65,6 +65,19 @@ SHARDS=3
 # lasts until `run_corpus` alone passes the cap — about 2.4x today's corpus
 # against a 330-minute timeout. Splitting *inside* a target is the next move,
 # and it is a different mechanism.
+#
+# Re-measured at 725d86da (is85, ci/is85.md): one corpus file made every
+# walk 1.47 times dearer on 11-01, and the windows fleet's slow machines run
+# 1.7-1.9 times its fast ones. On the slowest, unoptimized, in seconds:
+#
+#   shard 1  run_corpus past 15,873 (cancelled) + divergence 3,777
+#   shard 2  doc_truth 11,969 + region_machine 4,353 + rule_registry 3,635
+#   shard 3  export 9,444 + cli 8,240 + fuzz_smoke 577
+#
+# The assignment stands. is85 cut the work instead: `run_corpus` evaluates
+# the corpus once and shares it (twelve walks became two, at once), and the
+# heavy entries build at opt-level 2 with every debug check on (2.45 times
+# faster a walk), which the workflow's `test` job sets.
 shard_of() {
   case "$1" in
     run_corpus)     echo 1 ;;
