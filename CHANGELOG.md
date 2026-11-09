@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+is85 — the windows corpus walk fits its jobs again. No test or assertion changed.
+
+- **`tests/run_corpus.rs` evaluates the corpus once.** Its walking tests read one shared walk
+  instead of each taking its own: twelve evaluations of every entry became two (the shared walk
+  and the determinism test's second, which run at once), on up to four threads.
+- **CI: the heavy test entries build optimized, with every debug check on.** The three shards
+  and the ladder, on every OS, build `cargo test` and `cargo run` at opt-level 2 with debug
+  assertions and overflow checks on, so every `debug_assert!` and overflow check still runs and
+  the build still reads as `debug`. The smokes keep the unoptimized build. From 11-01, 30 of
+  36 windows heavy jobs had run over 220 minutes and two were cancelled at their 330-minute
+  limit; one corpus file, `memory/region_outer_write_push_copy_call.lu`, made every walk 1.47
+  times dearer. The measurement is `ci/is85/`, the record `ci/is85.md`.
+
 s288 — the compiler's front-end rulings of wolf-lang#1079 and #1080, mirrored: this machine gives
 the compiler's code at the compiler's span, at its resolve rung.
 
