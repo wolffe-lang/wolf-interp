@@ -1,0 +1,129 @@
+run	date	head	step	minutes
+37923434609	2026-10-09	17f17c22	corpus harness	72.3
+37923434609	2026-10-09	17f17c22	conform-run rungs	3.9
+37923434609	2026-10-09	17f17c22	place trace identity (release, whole corpus)	12.1
+37923434609	2026-10-09	17f17c22	conformance bundle (determinism + dry run)	70.3
+38045742760	2026-10-10	f619d8c4	corpus harness	75.2
+38045742760	2026-10-10	f619d8c4	conform-run rungs	4.1
+38045742760	2026-10-10	f619d8c4	place trace identity (release, whole corpus)	12.9
+38045742760	2026-10-10	f619d8c4	conformance bundle (determinism + dry run)	73.2
+38133581993	2026-10-11	32b970da	corpus harness	73.7
+38133581993	2026-10-11	32b970da	conform-run rungs	4.0
+38133581993	2026-10-11	32b970da	place trace identity (release, whole corpus)	12.4
+38133581993	2026-10-11	32b970da	conformance bundle (determinism + dry run)	72.0
+38247308518	2026-10-12	71b8d974	corpus harness	75.0
+38247308518	2026-10-12	71b8d974	conform-run rungs	4.1
+38247308518	2026-10-12	71b8d974	place trace identity (release, whole corpus)	12.2
+38247308518	2026-10-12	71b8d974	conformance bundle (determinism + dry run)	77.0
+38393569978	2026-10-13	a9f94bd4	corpus harness	44.8
+38393569978	2026-10-13	a9f94bd4	conform-run rungs	2.7
+38393569978	2026-10-13	a9f94bd4	place trace identity (release, whole corpus)	8.0
+38393569978	2026-10-13	a9f94bd4	conformance bundle (determinism + dry run)	43.3
+38543468953	2026-10-14	d4a96e84	corpus harness	71.6
+38543468953	2026-10-14	d4a96e84	conform-run rungs	3.8
+38543468953	2026-10-14	d4a96e84	place trace identity (release, whole corpus)	11.8
+38543468953	2026-10-14	d4a96e84	conformance bundle (determinism + dry run)	70.7
+38711353581	2026-10-15	7896eddc	corpus harness	46.9
+38711353581	2026-10-15	7896eddc	conform-run rungs	3.0
+38711353581	2026-10-15	7896eddc	place trace identity (release, whole corpus)	8.8
+38711353581	2026-10-15	7896eddc	conformance bundle (determinism + dry run)	45.1
+38878155928	2026-10-16	7896eddc	corpus harness	72.1
+38878155928	2026-10-16	7896eddc	conform-run rungs	4.0
+38878155928	2026-10-16	7896eddc	place trace identity (release, whole corpus)	12.7
+38878155928	2026-10-16	7896eddc	conformance bundle (determinism + dry run)	71.3
+39018148802	2026-10-17	acc77984	corpus harness	73.5
+39018148802	2026-10-17	acc77984	conform-run rungs	3.9
+39018148802	2026-10-17	acc77984	place trace identity (release, whole corpus)	12.0
+39018148802	2026-10-17	acc77984	conformance bundle (determinism + dry run)	73.1
+39113301601	2026-10-18	0e536e8f	corpus harness	73.7
+39113301601	2026-10-18	0e536e8f	conform-run rungs	4.1
+39113301601	2026-10-18	0e536e8f	place trace identity (release, whole corpus)	12.9
+39113301601	2026-10-18	0e536e8f	conformance bundle (determinism + dry run)	72.8
+39234506264	2026-10-19	0e536e8f	corpus harness	43.6
+39234506264	2026-10-19	0e536e8f	conform-run rungs	2.8
+39234506264	2026-10-19	0e536e8f	place trace identity (release, whole corpus)	7.8
+39234506264	2026-10-19	0e536e8f	conformance bundle (determinism + dry run)	41.1
+39401118911	2026-10-20	6fe347ca	corpus harness	62.4
+39401118911	2026-10-20	6fe347ca	conform-run rungs	3.3
+39401118911	2026-10-20	6fe347ca	place trace identity (release, whole corpus)	9.7
+39401118911	2026-10-20	6fe347ca	conformance bundle (determinism + dry run)	62.5
+39576922223	2026-10-21	e642f263	corpus harness	62.1
+39576922223	2026-10-21	e642f263	conform-run rungs	3.2
+39576922223	2026-10-21	e642f263	place trace identity (release, whole corpus)	9.8
+39576922223	2026-10-21	e642f263	conformance bundle (determinism + dry run)	61.4
+39755756059	2026-10-22	4c9e6159	corpus harness	44.8
+39755756059	2026-10-22	4c9e6159	conform-run rungs	2.7
+39755756059	2026-10-22	4c9e6159	place trace identity (release, whole corpus)	8.6
+39755756059	2026-10-22	4c9e6159	conformance bundle (determinism + dry run)	43.4
+39931717969	2026-10-23	28547b43	corpus harness	59.8
+39931717969	2026-10-23	28547b43	conform-run rungs	3.4
+39931717969	2026-10-23	28547b43	place trace identity (release, whole corpus)	10.2
+39931717969	2026-10-23	28547b43	conformance bundle (determinism + dry run)	60.8
+40079992456	2026-10-24	a1a394d9	corpus harness	46.5
+40079992456	2026-10-24	a1a394d9	conform-run rungs	3.2
+40079992456	2026-10-24	a1a394d9	place trace identity (release, whole corpus)	8.3
+40079992456	2026-10-24	a1a394d9	conformance bundle (determinism + dry run)	45.9
+40179765529	2026-10-25	b684303c	corpus harness	74.7
+40179765529	2026-10-25	b684303c	conform-run rungs	4.8
+40179765529	2026-10-25	b684303c	place trace identity (release, whole corpus)	15.1
+40179765529	2026-10-25	b684303c	conformance bundle (determinism + dry run)	74.9
+40306091707	2026-10-26	b684303c	corpus harness	76.8
+40306091707	2026-10-26	b684303c	conform-run rungs	5.0
+40306091707	2026-10-26	b684303c	place trace identity (release, whole corpus)	15.4
+40306091707	2026-10-26	b684303c	conformance bundle (determinism + dry run)	76.2
+40484218534	2026-10-27	6240efe5	corpus harness	75.5
+40484218534	2026-10-27	6240efe5	conform-run rungs	4.8
+40484218534	2026-10-27	6240efe5	place trace identity (release, whole corpus)	14.8
+40484218534	2026-10-27	6240efe5	conformance bundle (determinism + dry run)	74.7
+40673977128	2026-10-28	6240efe5	corpus harness	75.2
+40673977128	2026-10-28	6240efe5	conform-run rungs	5.1
+40673977128	2026-10-28	6240efe5	place trace identity (release, whole corpus)	15.5
+40673977128	2026-10-28	6240efe5	conformance bundle (determinism + dry run)	78.6
+40861593132	2026-10-29	6240efe5	corpus harness	78.3
+40861593132	2026-10-29	6240efe5	conform-run rungs	5.3
+40861593132	2026-10-29	6240efe5	place trace identity (release, whole corpus)	16.3
+40861593132	2026-10-29	6240efe5	conformance bundle (determinism + dry run)	75.8
+41044267107	2026-10-30	6240efe5	corpus harness	75.7
+41044267107	2026-10-30	6240efe5	conform-run rungs	4.8
+41044267107	2026-10-30	6240efe5	place trace identity (release, whole corpus)	15.6
+41044267107	2026-10-30	6240efe5	conformance bundle (determinism + dry run)	75.4
+41192818338	2026-10-31	6240efe5	corpus harness	76.7
+41192818338	2026-10-31	6240efe5	conform-run rungs	5.2
+41192818338	2026-10-31	6240efe5	place trace identity (release, whole corpus)	15.5
+41192818338	2026-10-31	6240efe5	conformance bundle (determinism + dry run)	75.8
+41301550395	2026-11-01	ed711840	corpus harness	112.9
+41301550395	2026-11-01	ed711840	conform-run rungs	5.2
+41301550395	2026-11-01	ed711840	place trace identity (release, whole corpus)	15.8
+41301550395	2026-11-01	ed711840	conformance bundle (determinism + dry run)	112.9
+41446217180	2026-11-02	ed711840	corpus harness	114.2
+41446217180	2026-11-02	ed711840	conform-run rungs	5.3
+41446217180	2026-11-02	ed711840	place trace identity (release, whole corpus)	15.4
+41446217180	2026-11-02	ed711840	conformance bundle (determinism + dry run)	112.8
+41632543732	2026-11-03	ed711840	corpus harness	116.8
+41632543732	2026-11-03	ed711840	conform-run rungs	5.1
+41632543732	2026-11-03	ed711840	place trace identity (release, whole corpus)	15.9
+41632543732	2026-11-03	ed711840	conformance bundle (determinism + dry run)	115.8
+41827955839	2026-11-04	3a477ed1	corpus harness	74.6
+41827955839	2026-11-04	3a477ed1	conform-run rungs	3.5
+41827955839	2026-11-04	3a477ed1	place trace identity (release, whole corpus)	9.5
+41827955839	2026-11-04	3a477ed1	conformance bundle (determinism + dry run)	74.4
+42027831936	2026-11-05	bf6fb9d2	corpus harness	118.7
+42027831936	2026-11-05	bf6fb9d2	conform-run rungs	5.2
+42027831936	2026-11-05	bf6fb9d2	place trace identity (release, whole corpus)	16.3
+42027831936	2026-11-05	bf6fb9d2	conformance bundle (determinism + dry run)	117.8
+42216202515	2026-11-06	f8c2ff71	corpus harness	116.4
+42216202515	2026-11-06	f8c2ff71	conform-run rungs	5.0
+42216202515	2026-11-06	f8c2ff71	place trace identity (release, whole corpus)	15.7
+42216202515	2026-11-06	f8c2ff71	conformance bundle (determinism + dry run)	115.2
+42367041587	2026-11-07	17bd5223	corpus harness	70.8
+42367041587	2026-11-07	17bd5223	conform-run rungs	3.2
+42367041587	2026-11-07	17bd5223	place trace identity (release, whole corpus)	8.7
+42367041587	2026-11-07	17bd5223	conformance bundle (determinism + dry run)	65.7
+42475442935	2026-11-08	1ed91d14	corpus harness	133.4
+42475442935	2026-11-08	1ed91d14	conform-run rungs	5.2
+42475442935	2026-11-08	1ed91d14	place trace identity (release, whole corpus)	16.8
+42475442935	2026-11-08	1ed91d14	conformance bundle (determinism + dry run)	135.3
+42621872032	2026-11-09	725d86da	corpus harness	116.3
+42621872032	2026-11-09	725d86da	conform-run rungs	5.5
+42621872032	2026-11-09	725d86da	place trace identity (release, whole corpus)	16.1
+42621872032	2026-11-09	725d86da	conformance bundle (determinism + dry run)	115.7
