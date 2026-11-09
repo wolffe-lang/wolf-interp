@@ -147,6 +147,9 @@ pub struct TagSite {
 /// The walk's position, for the sites ([`FileScope::tag_ctx`]).
 #[derive(Debug, Clone, Default)]
 pub struct TagCtx {
+    /// An enclosing `impl`'s or `trait`'s generic parameters, which its
+    /// members' bodies name too.
+    pub outer_generics: BTreeSet<String>,
     pub func: Option<usize>,
     /// The expression whose value the function's result row takes.
     pub raise: Option<Span>,
@@ -6347,6 +6350,12 @@ fn collect_item_refs(item: &Item, scope: &mut FileScope) {
         }
         ItemKind::Trait(def) => {
             collect_generic_refs(&def.generics, scope);
+            // s289: its members' bodies name these generics too.
+            let outer = scope.tag_ctx.outer_generics.clone();
+            scope
+                .tag_ctx
+                .outer_generics
+                .extend(def.generics.iter().map(|g| g.name.name.clone()));
             if let Some(crate::ast::Bound::Paths(paths)) = &def.alias {
                 for path in paths {
                     if let Some(head) = path.segments.first() {
@@ -6360,9 +6369,16 @@ fn collect_item_refs(item: &Item, scope: &mut FileScope) {
             for member in &def.members {
                 collect_item_refs(member, scope);
             }
+            scope.tag_ctx.outer_generics = outer;
         }
         ItemKind::Impl(def) => {
             collect_generic_refs(&def.generics, scope);
+            // s289: its members' bodies name these generics too.
+            let outer = scope.tag_ctx.outer_generics.clone();
+            scope
+                .tag_ctx
+                .outer_generics
+                .extend(def.generics.iter().map(|g| g.name.name.clone()));
             collect_type_refs(&def.trait_or_subject, scope);
             if let Some(subject) = &def.subject {
                 collect_type_refs(subject, scope);
@@ -6370,6 +6386,7 @@ fn collect_item_refs(item: &Item, scope: &mut FileScope) {
             for member in &def.members {
                 collect_item_refs(member, scope);
             }
+            scope.tag_ctx.outer_generics = outer;
         }
         ItemKind::Use(_) | ItemKind::ImportC(_) => {}
     }
@@ -6449,11 +6466,17 @@ fn collect_fn_refs(decl: &FnDecl, scope: &mut FileScope) {
         name: decl.name.name.clone(),
         fallible: crate::rowmatch::can_fail(decl),
         row_tags,
-        generics: decl.generics.iter().map(|g| g.name.name.clone()).collect(),
+        generics: decl
+            .generics
+            .iter()
+            .map(|g| g.name.name.clone())
+            .chain(scope.tag_ctx.outer_generics.iter().cloned())
+            .collect(),
     });
     let saved = std::mem::replace(
         &mut scope.tag_ctx,
         TagCtx {
+            outer_generics: BTreeSet::new(),
             func: Some(scope.tag_fns.len() - 1),
             raise: None,
             lenient: 0,
@@ -6689,7 +6712,9 @@ fn collect_expr_refs(expr: &Expr, scope: &mut FileScope) {
             collect_expr_refs(base, scope);
             for arg in args {
                 match arg {
-                    crate::ast::IndexArg::Value(arg) => collect_expr_refs(&arg.expr, scope),
+                    // s289: a bracket's argument may be a type (`List[T]()`),
+                    // never a tag this check can judge.
+                    crate::ast::IndexArg::Value(arg) => collect_lenient_refs(&arg.expr, scope),
                     crate::ast::IndexArg::Type(ty) => collect_type_refs(ty, scope),
                 }
             }
