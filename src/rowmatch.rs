@@ -793,7 +793,7 @@ pub fn errdefer_unit_check(program: &Program) -> Option<Diag> {
 }
 
 /// Whether a function's declared result can carry an error row.
-fn can_fail(decl: &FnDecl) -> bool {
+pub(crate) fn can_fail(decl: &FnDecl) -> bool {
     let Some(ret) = &decl.ret else {
         return false;
     };
