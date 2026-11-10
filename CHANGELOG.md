@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+is86 — wolf-lang s290's calls for a new session (wolf-lang#1089), mirrored: `os_spawn_session`,
+`os_setsid` and `os_sid` resolve. lupin 0.1.60 answered "does not resolve" for each.
+
+- **`os_spawn_session(exe, args, map, defaults)`** (`[os.proc.session]`): its shape is answered on
+  every host, `invalid` for every map `os_spawn_fds` calls invalid and for a `defaults` below 0 or
+  with a bit outside the twenty listenable meanings; then a windows target answers the
+  `unsupported` row. Every other call is refused by name: Rust's standard library has no stable
+  way to start a child in a new session, and this machine admits no `unsafe`.
+- **`os_setsid()` and `os_sid()`** (`[os.term.session]`): a windows target answers the
+  `unsupported` row; every other host refuses each by name, since the standard library has no
+  `setsid` on the calling process and no `getsid`.
+- The windows rows follow the observation's target, as `os_pgid`'s do, so a bundle observed as
+  linux answers as linux on any exporter. wolf-lang's `corpus/os/session_rows.lu` prints its four
+  `invalid` lines and stops at the forged-source spawn, refused by name; `tests/session_s290.rs`
+  carries it byte for byte. The vendored corpus is unchanged.
+
 is85 — the windows corpus walk fits its jobs again. No existing test or assertion changed.
 
 - **`tests/run_corpus.rs` evaluates the corpus once.** Its walking tests read one shared walk
