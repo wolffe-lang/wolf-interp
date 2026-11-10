@@ -1170,6 +1170,19 @@ fn observe_entry(
 }
 
 fn print_corpus_report(report: &corpus::CorpusReport) {
+    print_corpus_report_with(report, &mut observe_entry);
+}
+
+/// What [`observe_entry`] answers for one entry: its status, and how that
+/// sits against the entry's `check:`.
+type EntryAnswer = (String, Option<Judgement>);
+
+/// How a report asks for one entry's answer: [`observe_entry`], or a test's
+/// counter (wolf-interp#358).
+type Observe<'a> = dyn FnMut(&Path, &str, &wolf_interp::directive::Directives) -> EntryAnswer + 'a;
+
+/// [`print_corpus_report`], asking `observe` for each entry's answer.
+fn print_corpus_report_with(report: &corpus::CorpusReport, observe: &mut Observe<'_>) {
     let width = report
         .files
         .iter()
@@ -1180,7 +1193,7 @@ fn print_corpus_report(report: &corpus::CorpusReport) {
     for file in &report.files {
         match &file.outcome {
             Outcome::Entry(directives) => {
-                let (status, judgement) = observe_entry(&report.root, &file.path, directives);
+                let (status, judgement) = observe(&report.root, &file.path, directives);
                 let verdict = judgement
                     .as_ref()
                     .map_or_else(|| "-".to_owned(), |j| j.label().to_owned());
@@ -1269,7 +1282,7 @@ fn print_corpus_report(report: &corpus::CorpusReport) {
         let Outcome::Entry(directives) = &file.outcome else {
             continue;
         };
-        let (status, judgement) = observe_entry(&report.root, &file.path, directives);
+        let (status, judgement) = observe(&report.root, &file.path, directives);
         if status.ends_with("@run") {
             reached_run += 1;
         }
@@ -1293,12 +1306,17 @@ fn print_corpus_report(report: &corpus::CorpusReport) {
 }
 
 fn corpus_json(report: &corpus::CorpusReport) -> serde_json::Value {
+    corpus_json_with(report, &mut observe_entry)
+}
+
+/// [`corpus_json`], asking `observe` for each entry's answer.
+fn corpus_json_with(report: &corpus::CorpusReport, observe: &mut Observe<'_>) -> serde_json::Value {
     let files: Vec<serde_json::Value> = report
         .files
         .iter()
         .map(|file| match &file.outcome {
             Outcome::Entry(directives) => {
-                let (status, judgement) = observe_entry(&report.root, &file.path, directives);
+                let (status, judgement) = observe(&report.root, &file.path, directives);
                 serde_json::json!({
                     "file": file.path,
                     "kind": "entry",
@@ -2281,5 +2299,68 @@ fn self_oracle(source: &str, mode: Mode) -> Option<(&'static str, String)> {
             format!("a defined-by-construction program produced {verdict}"),
         )),
         (_, Mode::Boundary) => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Each entry of the pinned corpus, and how many times `report` asked
+    /// for its answer; a member is never asked.
+    fn asked(
+        report: impl FnOnce(&corpus::CorpusReport, &mut Observe<'_>),
+    ) -> (Vec<String>, BTreeMap<String, usize>) {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(upstream_root())
+            .join("corpus");
+        let walk = corpus::walk(&root, None).expect("the pinned corpus is walkable");
+        let mut asked: BTreeMap<String, usize> = BTreeMap::new();
+        report(&walk, &mut |_, path, _| {
+            *asked.entry(path.to_owned()).or_default() += 1;
+            ("exit(0)@run".to_owned(), None)
+        });
+        let entries = walk
+            .files
+            .iter()
+            .filter(|file| matches!(file.outcome, Outcome::Entry(_)))
+            .map(|file| file.path.clone())
+            .collect();
+        (entries, asked)
+    }
+
+    fn once_each(entries: &[String], asked: &BTreeMap<String, usize>) {
+        assert!(entries.len() > 1000, "only {} entries", entries.len());
+        let other: Vec<(&String, &usize)> = asked.iter().filter(|(_, n)| **n != 1).collect();
+        assert!(
+            other.is_empty(),
+            "{} of {} entries were asked other than once, e.g. {:?}",
+            other.len(),
+            entries.len(),
+            other.first()
+        );
+        assert_eq!(
+            asked.keys().collect::<Vec<_>>(),
+            entries.iter().collect::<Vec<_>>(),
+            "every entry, and nothing else, is asked"
+        );
+    }
+
+    /// wolf-interp#358: `lupin corpus`'s text report evaluates each entry
+    /// once over the whole pinned corpus; its tally reads the listing's
+    /// answers instead of evaluating the corpus again.
+    #[test]
+    fn the_text_report_evaluates_each_entry_once() {
+        let (entries, asked) = asked(|report, observe| print_corpus_report_with(report, observe));
+        once_each(&entries, &asked);
+    }
+
+    /// The `--json` form evaluates each entry once too.
+    #[test]
+    fn the_json_report_evaluates_each_entry_once() {
+        let (entries, asked) = asked(|report, observe| {
+            corpus_json_with(report, observe);
+        });
+        once_each(&entries, &asked);
     }
 }
