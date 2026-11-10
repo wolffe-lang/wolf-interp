@@ -1,0 +1,30 @@
+TAKE stress-green-d6d5886 sha=d6d58861b015cdf076447a93ec04973bce6ec017 mode=stress-green start=2026-11-10T21:16:18Z
+CLONE $LANE/wi-d6d5886 at d6d5886 Write argv_is84's scripts through cp, never with a descriptor of the test's own
+  GATE open: package 68 C, no wineserver, at 2026-11-10T21:16:18Z
+START head
+  d6d58861b015cdf076447a93ec04973bce6ec017
+  d6d5886 Write argv_is84's scripts through cp, never with a descriptor of the test's own
+  rustc 1.97.1 (8bab26f4f 2026-07-14)
+  cargo 1.97.1 (c980f4866 2026-06-30)
+  8
+  7.2.14-arch1-1
+  SigBlk:	0000000000000000
+  SigIgn:	0000000000000000
+  CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_DEV_OPT_LEVEL=2
+  CARGO_PROFILE_DEV_OVERFLOW_CHECKS=true
+  CARGO_PROFILE_TEST_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_TEST_OPT_LEVEL=2
+  CARGO_PROFILE_TEST_OVERFLOW_CHECKS=true
+END head exit=0 secs=0
+START build
+      Finished `test` profile [optimized + debuginfo] target(s) in 0.03s
+    Executable tests/argv_is84.rs (target/debug/deps/argv_is84-e73b825317ff2c87)
+    Executable tests/pty_s292.rs (target/debug/deps/pty_s292-cde46d7c50282095)
+END build exit=0 secs=0
+START stress
+  binary /work/target/debug/deps/argv_is84-e73b825317ff2c87; 200 runs, 4 at once, on 8 CPUs
+  STRESS runs=200 failed_runs=0
+END stress exit=0 secs=33
+TAKE-BOX done 2026-11-10T21:16:51Z
+TAKE-END stress-green-d6d5886 exit=0 end=2026-11-10T21:16:51Z

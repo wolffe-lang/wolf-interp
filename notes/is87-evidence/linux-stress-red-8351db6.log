@@ -1,0 +1,81 @@
+TAKE stress-red-8351db6 sha=8351db68f4a58bf5ae3005b122ad39dce6611af6 mode=stress-red start=2026-11-10T21:16:14Z
+CLONE $LANE/wi-8351db6 at 8351db6 Add argv_is84's row for a script written while siblings spawn, red on linux
+  GATE open: package 65 C, no wineserver, at 2026-11-10T21:16:14Z
+START head
+  8351db68f4a58bf5ae3005b122ad39dce6611af6
+  8351db6 Add argv_is84's row for a script written while siblings spawn, red on linux
+  rustc 1.97.1 (8bab26f4f 2026-07-14)
+  cargo 1.97.1 (c980f4866 2026-06-30)
+  8
+  7.2.14-arch1-1
+  SigBlk:	0000000000000000
+  SigIgn:	0000000000000000
+  CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_DEV_OPT_LEVEL=2
+  CARGO_PROFILE_DEV_OVERFLOW_CHECKS=true
+  CARGO_PROFILE_TEST_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_TEST_OPT_LEVEL=2
+  CARGO_PROFILE_TEST_OVERFLOW_CHECKS=true
+END head exit=0 secs=0
+START build
+      Finished `test` profile [optimized + debuginfo] target(s) in 0.05s
+    Executable tests/argv_is84.rs (target/debug/deps/argv_is84-e73b825317ff2c87)
+    Executable tests/pty_s292.rs (target/debug/deps/pty_s292-cde46d7c50282095)
+END build exit=0 secs=0
+START stress
+  binary /work/target/debug/deps/argv_is84-e73b825317ff2c87; 40 runs, 4 at once, on 8 CPUs
+  STRESS runs=40 failed_runs=40
+  FAILED-TEST      40 test a_script_written_while_siblings_spawn_always_runs ... FAILED
+  FAILED-TEST       1 test executable_env_shebang_sees_script_name_and_args ... FAILED
+  ETXTBSY-LINES       1 Text file busy
+  ROW-REPORT       1 1 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 889 children
+  ROW-REPORT       1 1 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 919 children
+  ROW-REPORT       1 1 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 947 children
+  ROW-REPORT       1 2 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 833 children
+  ROW-REPORT       1 2 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 856 children
+  ROW-REPORT       1 2 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 919 children
+  ROW-REPORT       1 2 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 936 children
+  ROW-REPORT       1 2 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 941 children
+  ROW-REPORT       1 3 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 872 children
+  ROW-REPORT       1 3 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 897 children
+  ROW-REPORT       1 3 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 917 children
+  ROW-REPORT       1 4 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 884 children
+  ROW-REPORT       1 4 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 887 children
+  ROW-REPORT       1 4 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 917 children
+  ROW-REPORT       1 4 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 922 children
+  ROW-REPORT       1 4 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 934 children
+  ROW-REPORT       1 4 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 955 children
+  ROW-REPORT       1 4 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 966 children
+  ROW-REPORT       1 5 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 821 children
+  ROW-REPORT       1 5 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 841 children
+  ROW-REPORT       1 5 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 846 children
+  ROW-REPORT       1 5 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 944 children
+  ROW-REPORT       1 6 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 849 children
+  ROW-REPORT       1 6 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 891 children
+  ROW-REPORT       1 6 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 925 children
+  ROW-REPORT       1 6 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 929 children
+  ROW-REPORT       1 6 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 931 children
+  ROW-REPORT       1 6 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 933 children
+  ROW-REPORT       1 7 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 855 children
+  ROW-REPORT       1 7 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 952 children
+  ROW-REPORT       1 7 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 973 children
+  ROW-REPORT       1 7 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 982 children
+  ROW-REPORT       1 8 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 793 children
+  ROW-REPORT       1 8 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 844 children
+  ROW-REPORT       1 8 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 903 children
+  ROW-REPORT       1 8 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 952 children
+  ROW-REPORT       1 9 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 890 children
+  ROW-REPORT       1 9 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 908 children
+  ROW-REPORT       1 9 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 924 children
+  ROW-REPORT       1 9 of 200 scripts were refused with ETXTBSY while 4 siblings spawned 941 children
+  --- first failing run: /lane/tmp/stress-3/run-1.log
+  thread 'a_script_written_while_siblings_spawn_always_runs' (73) panicked at tests/argv_is84.rs:274:5:
+  7 of 200 scripts were refused with ETXTBSY (tries [65, 92, 95, 126, 161, 180, 195]) while 4 siblings spawned 952 children
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  
+  
+  failures:
+      a_script_written_while_siblings_spawn_always_runs
+END stress exit=1 secs=3
+TAKE-BOX done 2026-11-10T21:16:18Z
+TAKE-END stress-red-8351db6 exit=0 end=2026-11-10T21:16:18Z

@@ -1,0 +1,49 @@
+is87 evidence (lupin's mirror of wolf-lang s292's pty calls; argv_is84's ETXTBSY, wolf-interp#360)
+
+Every take below ran on one Linux x86-64 host (written H2; kernel 7.2.14), in the CI toolchain's
+container (Rust 1.97.1), on one slot of eight CPUs with the slot's locks held, from a fresh clone
+of the pushed branch checked out at the commit named, with CI's heavy-entry profile (opt-level 2,
+debug assertions and overflow checks on). Paths are written $LANE (this lane's directory) and
+$LANES (the lanes' shared directory).
+
+linux-red-8351db6.log
+  The rows at trunk's code (8351db6: the prediction, the fixture, the rows and their literal fix,
+  argv_is84's new row). pty_s292: 0 passed, 15 failed, each at "does not resolve".
+  argv_is84: 13 passed, 1 failed: a_script_written_while_siblings_spawn_always_runs, "7 of 200
+  scripts were refused with ETXTBSY".
+
+linux-green-d6d5886.log
+  The change (d6d5886: the five names resolve, their rows answered, argv_is84's writer through
+  cp). pty_s292 15 passed; argv_is84 14 passed; fmt; clippy of every target; the library's 797;
+  the neighbouring terminal and OS rows (editor_calls_is79 11, fs_family 25, job_s219 4,
+  os_mirror_is83 12, os_mirror_target_is83 2, session_s290 8, term_editor_s234 4). Every END
+  exit=0.
+
+linux-stress-red-8351db6.log
+  The argv_is84 binary built at 8351db6 (the old writer), run 40 times, 4 at once: 40 of 40 runs
+  red at the new row, 202 of 8,000 scripts refused with ETXTBSY (1 to 9 a run); the original
+  shebang test, executable_env_shebang_sees_script_name_and_args, red in 1 of the 40 runs with
+  "Text file busy", the issue's failure.
+
+linux-stress-green-d6d5886.log
+  The argv_is84 binary built at d6d5886 (the writer through cp), run 200 times, 4 at once on the
+  slot's 8 CPUs, each run with its 14 tests in parallel: 0 of 200 runs failed. That is 40,000
+  scripts written and run beside four spawning threads, and 200 runs of the shebang test, with no
+  ETXTBSY.
+
+rig/linux/take.sh, take-box.sh, chain2.sh
+  The development takes above: the clone at the commit, the locks and the heat gate, the
+  container, the steps and the stress loop.
+
+rig/linux/gauntlet/
+  The local gauntlet and plant rig, adapted by copy from the previous mirror's (its lane path,
+  names, branch and the plant's test target), with the org's recorder (record.sh). Its records are
+  in the pull request: a record cannot predate the head it names.
+
+Not taken: the macOS legs. The Mac's free disk was under its build floor, so no macOS build ran
+for this change. The macOS answers are held in process as the darwin target on Linux
+(each_target_lacks_its_own_ops_and_reads_the_handle_for_the_rest, the declared rows); the corpus
+file on a macOS host and the stress row on macOS run on CI's macOS runner. Nor the wasm
+library's clippy or a windows-target clippy: the container carries neither target, and both are
+CI's legs. The wasm change is five names added to the decline arm, and every new helper is
+compiled out there.

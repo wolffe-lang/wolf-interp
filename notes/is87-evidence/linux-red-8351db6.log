@@ -1,0 +1,263 @@
+TAKE red-8351db6 sha=8351db68f4a58bf5ae3005b122ad39dce6611af6 mode=red start=2026-11-10T21:12:46Z
+CLONE $LANE/wi-8351db6 at 8351db6 Add argv_is84's row for a script written while siblings spawn, red on linux
+  GATE open: package 57 C, no wineserver, at 2026-11-10T21:12:53Z
+START head
+  8351db68f4a58bf5ae3005b122ad39dce6611af6
+  8351db6 Add argv_is84's row for a script written while siblings spawn, red on linux
+  rustc 1.97.1 (8bab26f4f 2026-07-14)
+  cargo 1.97.1 (c980f4866 2026-06-30)
+  8
+  7.2.14-arch1-1
+  SigBlk:	0000000000000000
+  SigIgn:	0000000000000000
+  CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_DEV_OPT_LEVEL=2
+  CARGO_PROFILE_DEV_OVERFLOW_CHECKS=true
+  CARGO_PROFILE_TEST_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_TEST_OPT_LEVEL=2
+  CARGO_PROFILE_TEST_OVERFLOW_CHECKS=true
+END head exit=0 secs=0
+START build
+     Compiling libc v0.2.189
+     Compiling proc-macro2 v1.0.107
+     Compiling quote v1.0.47
+     Compiling unicode-ident v1.0.24
+     Compiling cfg-if v1.0.4
+     Compiling memchr v2.8.3
+     Compiling bitflags v2.13.1
+     Compiling syn v3.0.3
+     Compiling cfg_aliases v0.2.2
+     Compiling utf8parse v0.2.2
+     Compiling nix v0.31.3
+     Compiling serde_core v1.0.229
+     Compiling anstyle-parse v1.0.0
+     Compiling zmij v1.0.23
+     Compiling anstyle v1.0.14
+     Compiling rustix v1.1.4
+     Compiling is_terminal_polyfill v1.70.2
+     Compiling anstyle-query v1.1.5
+     Compiling colorchoice v1.0.5
+     Compiling getrandom v0.4.3
+     Compiling smallvec v1.15.2
+     Compiling anstream v1.0.0
+     Compiling nibble_vec v0.1.0
+     Compiling errno v0.3.14
+     Compiling serde v1.0.229
+     Compiling heck v0.5.0
+     Compiling strsim v0.11.1
+     Compiling endian-type v0.2.0
+     Compiling signal-hook v0.3.18
+     Compiling clap_lex v1.1.0
+     Compiling linux-raw-sys v0.12.1
+     Compiling serde_json v1.0.151
+     Compiling serde_derive v1.0.229
+     Compiling clap_derive v4.6.4
+     Compiling clap_builder v4.6.6
+     Compiling radix_trie v0.3.0
+     Compiling signal-hook-registry v1.4.8
+     Compiling aho-corasick v1.1.5
+     Compiling itoa v1.0.18
+     Compiling unicode-segmentation v1.13.3
+     Compiling fastrand v2.5.0
+     Compiling regex-syntax v0.8.11
+     Compiling wolf-interp v0.1.60 (/work)
+     Compiling unicode-width v0.2.2
+     Compiling once_cell v1.21.4
+     Compiling thiserror v2.0.20
+     Compiling log v0.4.34
+     Compiling rustyline v18.0.1
+     Compiling regex-automata v0.4.18
+     Compiling tempfile v3.27.0
+     Compiling clap v4.6.6
+     Compiling thiserror-impl v2.0.20
+     Compiling getrandom v0.2.16
+     Compiling regex v1.13.1
+     Compiling console v0.16.4
+     Compiling similar v2.7.0
+     Compiling comma v1.0.0
+     Compiling rexpect v0.7.1
+     Compiling insta v1.48.0
+      Finished `test` profile [optimized + debuginfo] target(s) in 56.13s
+    Executable tests/argv_is84.rs (target/debug/deps/argv_is84-e73b825317ff2c87)
+    Executable tests/pty_s292.rs (target/debug/deps/pty_s292-cde46d7c50282095)
+END build exit=0 secs=56
+START pty-rows
+      Finished `test` profile [optimized + debuginfo] target(s) in 0.04s
+       Running tests/pty_s292.rs (target/debug/deps/pty_s292-cde46d7c50282095)
+  
+  running 15 tests
+  test a_set_speed_outside_the_table_is_unsupported_before_the_handle ... FAILED
+  test the_declared_rows_discriminate_a_handler_s_arms ... FAILED
+  test a_closed_or_forged_handle_is_io_on_every_unix_target ... FAILED
+  test the_name_on_a_standard_stream_is_refused_by_name_on_every_unix_target ... FAILED
+  test the_open_is_refused_by_name_on_every_unix_target ... FAILED
+  test a_handle_that_is_not_a_terminal_is_io_and_the_name_on_it_is_refused ... FAILED
+  test a_closed_or_forged_handle_is_io ... FAILED
+  test each_target_lacks_its_own_ops_and_reads_the_handle_for_the_rest ... FAILED
+  test the_shapes_precede_the_host_on_every_target ... FAILED
+  test windows_answers_the_unsupported_row_after_the_shape ... FAILED
+  test the_corpus_rows_run_to_exit_zero_with_the_declared_stdout ... FAILED
+  test the_shapes_are_invalid_on_this_host ... FAILED
+  test the_open_on_this_host ... FAILED
+  test this_host_lacks_its_own_ops ... FAILED
+  test a_call_that_reaches_a_terminal_is_refused_by_name ... FAILED
+  
+  failures:
+  
+  ---- a_set_speed_outside_the_table_is_unsupported_before_the_handle stdout ----
+  
+  thread 'a_set_speed_outside_the_table_is_unsupported_before_the_handle' (1473) panicked at tests/pty_s292.rs:337:17:
+  assertion `left == right` failed: os_term_set_attr(1000000, 128, 0) as x86_64-unknown-linux-gnu: Some("`os_term_set_attr` does not resolve")
+    left: Unsupported
+   right: Exit(0)
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  
+  ---- the_declared_rows_discriminate_a_handler_s_arms stdout ----
+  
+  thread 'the_declared_rows_discriminate_a_handler_s_arms' (1477) panicked at tests/pty_s292.rs:631:9:
+  assertion `left == right` failed: os_term_set_size(1000000, -1, 0, 0, 0) [io => 1, unsupported => 2, invalid => 3] as x86_64-unknown-linux-gnu: Some("`os_term_set_size` does not resolve")
+    left: Unsupported
+   right: Exit(3)
+  
+  ---- a_closed_or_forged_handle_is_io_on_every_unix_target stdout ----
+  
+  thread 'a_closed_or_forged_handle_is_io_on_every_unix_target' (1471) panicked at tests/pty_s292.rs:402:9:
+  assertion `left == right` failed: as x86_64-unknown-linux-gnu: Some("`os_term_pty_name` does not resolve")
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- the_name_on_a_standard_stream_is_refused_by_name_on_every_unix_target stdout ----
+  
+  thread 'the_name_on_a_standard_stream_is_refused_by_name_on_every_unix_target' (1499) panicked at tests/pty_s292.rs:152:5:
+  x86_64-unknown-linux-gnu: `os_term_pty_name` must resolve: `os_term_pty_name` does not resolve
+  
+  ---- the_open_is_refused_by_name_on_every_unix_target stdout ----
+  
+  thread 'the_open_is_refused_by_name_on_every_unix_target' (1500) panicked at tests/pty_s292.rs:152:5:
+  x86_64-unknown-linux-gnu: `os_term_open_pty` must resolve: `os_term_open_pty` does not resolve
+  
+  ---- a_handle_that_is_not_a_terminal_is_io_and_the_name_on_it_is_refused stdout ----
+  
+  thread 'a_handle_that_is_not_a_terminal_is_io_and_the_name_on_it_is_refused' (1472) panicked at tests/pty_s292.rs:148:5:
+  the name on a file: the reason must name `os_term_pty_name`: `os_term_set_size` does not resolve
+  
+  ---- a_closed_or_forged_handle_is_io stdout ----
+  
+  thread 'a_closed_or_forged_handle_is_io' (1470) panicked at tests/pty_s292.rs:384:5:
+  assertion `left == right` failed: {"commit":"8351db6","diagnostics":[],"file":"//work/target/tmp/is87_closed_or_forged/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"resolve","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"unsupported","warnings":[],"x-unsupported":"`os_term_pty_name` does not resolve","x-unsupported-at":"run"}
+    left: String("unsupported")
+   right: "exit(0)"
+  
+  ---- each_target_lacks_its_own_ops_and_reads_the_handle_for_the_rest stdout ----
+  
+  thread 'each_target_lacks_its_own_ops_and_reads_the_handle_for_the_rest' (1474) panicked at tests/pty_s292.rs:312:9:
+  assertion `left == right` failed: as x86_64-unknown-linux-gnu: Some("`os_term_attr` does not resolve")
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- the_shapes_precede_the_host_on_every_target stdout ----
+  
+  thread 'the_shapes_precede_the_host_on_every_target' (1515) panicked at tests/pty_s292.rs:236:13:
+  assertion `left == right` failed: os_term_set_size(1000000, -1, 80, 0, 0) as x86_64-pc-windows-msvc: Some("`os_term_set_size` does not resolve")
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- windows_answers_the_unsupported_row_after_the_shape stdout ----
+  
+  thread 'windows_answers_the_unsupported_row_after_the_shape' (1522) panicked at tests/pty_s292.rs:270:9:
+  assertion `left == right` failed: os_term_open_pty() as windows: Some("`os_term_open_pty` does not resolve")
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- the_corpus_rows_run_to_exit_zero_with_the_declared_stdout stdout ----
+  
+  thread 'the_corpus_rows_run_to_exit_zero_with_the_declared_stdout' (1475) panicked at tests/pty_s292.rs:665:5:
+  assertion `left == right` failed: {"commit":"8351db6","diagnostics":[],"file":"//work/tests/fixtures/pty_s292/pty_rows.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"resolve","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"unsupported","warnings":[],"x-unsupported":"`os_term_set_size` does not resolve","x-unsupported-at":"run"}
+    left: String("unsupported")
+   right: "exit(0)"
+  
+  ---- the_shapes_are_invalid_on_this_host stdout ----
+  
+  thread 'the_shapes_are_invalid_on_this_host' (1514) panicked at tests/pty_s292.rs:225:9:
+  assertion `left == right` failed: os_term_set_size(1000000, -1, 80, 0, 0): {"commit":"8351db6","diagnostics":[],"file":"//work/target/tmp/is87_shape_0/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"resolve","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"unsupported","warnings":[],"x-unsupported":"`os_term_set_size` does not resolve","x-unsupported-at":"run"}
+    left: String("unsupported")
+   right: "exit(0)"
+  
+  ---- the_open_on_this_host stdout ----
+  
+  thread 'the_open_on_this_host' (1512) panicked at tests/pty_s292.rs:152:5:
+  the open: `os_term_open_pty` must resolve: `os_term_open_pty` does not resolve
+  
+  ---- this_host_lacks_its_own_ops stdout ----
+  
+  thread 'this_host_lacks_its_own_ops' (1520) panicked at tests/pty_s292.rs:326:5:
+  assertion `left == right` failed: {"commit":"8351db6","diagnostics":[],"file":"//work/target/tmp/is87_every_op/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"resolve","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"unsupported","warnings":[],"x-unsupported":"`os_term_attr` does not resolve","x-unsupported-at":"run"}
+    left: String("unsupported")
+   right: "exit(0)"
+  
+  ---- a_call_that_reaches_a_terminal_is_refused_by_name stdout ----
+  
+  thread 'a_call_that_reaches_a_terminal_is_refused_by_name' (1469) panicked at tests/pty_s292.rs:536:5:
+  os_term_set_size(0, 24, 80, 0, 0): the rows before the terminal print first: //work/target/tmp/is87_terminal_os_term_set_size/main.lu: unsupported: `os_term_set_size` does not resolve
+  
+  
+  
+  failures:
+      a_call_that_reaches_a_terminal_is_refused_by_name
+      a_closed_or_forged_handle_is_io
+      a_closed_or_forged_handle_is_io_on_every_unix_target
+      a_handle_that_is_not_a_terminal_is_io_and_the_name_on_it_is_refused
+      a_set_speed_outside_the_table_is_unsupported_before_the_handle
+      each_target_lacks_its_own_ops_and_reads_the_handle_for_the_rest
+      the_corpus_rows_run_to_exit_zero_with_the_declared_stdout
+      the_declared_rows_discriminate_a_handler_s_arms
+      the_name_on_a_standard_stream_is_refused_by_name_on_every_unix_target
+      the_open_is_refused_by_name_on_every_unix_target
+      the_open_on_this_host
+      the_shapes_are_invalid_on_this_host
+      the_shapes_precede_the_host_on_every_target
+      this_host_lacks_its_own_ops
+      windows_answers_the_unsupported_row_after_the_shape
+  
+  test result: FAILED. 0 passed; 15 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+  
+  error: test failed, to rerun pass `--test pty_s292`
+END pty-rows exit=101 secs=0
+START argv-rows
+      Finished `test` profile [optimized + debuginfo] target(s) in 0.03s
+       Running tests/argv_is84.rs (target/debug/deps/argv_is84-e73b825317ff2c87)
+  
+  running 14 tests
+  test empty_and_unicode_arguments_survive ... ok
+  test lupin_options_before_file_still_control_the_run ... ok
+  test non_utf8_argument_bytes_pass_verbatim_and_text_traps_at_os_index ... ok
+  test conform_run_keeps_protocol_options_and_absent_argv ... ok
+  test executable_env_shebang_sees_script_name_and_args ... ok
+  test after_file_all_option_spellings_are_program_words ... ok
+  test argv0_is_file_as_given_even_without_trailing_words ... ok
+  test explicit_hex_replaces_whole_argv_and_mixing_is_refused_by_name ... ok
+  test stdin_source_accepts_trailing_arguments_without_using_stdin_for_argv ... ok
+  test double_dash_ends_options_and_allows_a_hyphen_file ... ok
+  test non_utf8_file_name_is_preserved_in_argv0_bytes ... ok
+  test subcommand_collision_can_be_escaped_with_double_dash ... ok
+  test words_after_file_reach_env_args_on_both_front_doors ... ok
+  test a_script_written_while_siblings_spawn_always_runs ... FAILED
+  
+  failures:
+  
+  ---- a_script_written_while_siblings_spawn_always_runs stdout ----
+  
+  thread 'a_script_written_while_siblings_spawn_always_runs' (1550) panicked at tests/argv_is84.rs:274:5:
+  7 of 200 scripts were refused with ETXTBSY (tries [17, 41, 56, 59, 102, 122, 165]) while 4 siblings spawned 955 children
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  
+  
+  failures:
+      a_script_written_while_siblings_spawn_always_runs
+  
+  test result: FAILED. 13 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+  
+  error: test failed, to rerun pass `--test argv_is84`
+END argv-rows exit=101 secs=0
+TAKE-BOX done 2026-11-10T21:13:50Z
+TAKE-END red-8351db6 exit=0 end=2026-11-10T21:13:50Z
