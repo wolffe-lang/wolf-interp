@@ -1531,3 +1531,44 @@ wolf-lang's `corpus/os/session_rows.lu` therefore prints its four `invalid`
 lines here and stops at the forged-source spawn, refused by name;
 `tests/session_s290.rs` carries it byte for byte (wolf-lang `cc0274c2`)
 beside rows for each step above.
+
+### 6.23 A pseudo-terminal and its settings: every row before a terminal answered, every other call refused by name (is87)
+
+wolf-lang s292 (#1091; `[os.term.pty]`, `[os.term.size.set]`,
+`[os.term.attr]`, `[os.term.pty.note]`) added five names, and lupin 0.1.60
+resolved none: `os_term_open_pty()`, a pseudo-terminal's master and slave;
+`os_term_pty_name(fd)`, the slave's name for a master; `os_term_set_size(fd,
+rows, columns, xpixels, ypixels)`, the window's size set; and
+`os_term_attr(fd, op)` and `os_term_set_attr(fd, op, value)`, one of the
+terminal's settings read or set by RFC 4254 section 8's opcode (with RFC
+8160's 42). Rust's standard library has no `posix_openpt`, `ptsname`,
+`tcgetattr`, `tcsetattr` or window-size `ioctl`, and this machine admits no
+`unsafe`, so it answers every row the clauses decide before a terminal is
+reached, in their order:
+
+- **The shape, on every host:** `invalid` for a size field outside
+  0..65535; for an op outside the 56 (1..18, 30..42, 50..62, 70..75, 90..93,
+  128 and 129); and for a set's value outside its op's range (a character
+  -1..255, a flag or a size 0..1, a speed 0..4294967295).
+- **Then the host:** `unsupported` on a windows target for all five; for an
+  op the target's `termios` lacks (macOS 15, 16, 37, 52 and 71; linux and
+  every other unix target 11, 15 and 17); and for a set speed outside the
+  runtime's table (0, 50, 75, 110, 134, 150, 200, 300, 600, 1200, 1800, 2400,
+  4800, 9600, 19200, 38400, 57600, 115200, 230400). The target is the
+  observation's, as for every `[os.term]` call here.
+- **Then the handle:** `io` for a closed or forged one, and, for the size
+  and the two settings calls, one that is not a terminal (std's
+  `IsTerminal`). The name answers `io` only for a closed or forged handle:
+  telling a master from a slave, a file or another terminal is the host's
+  `ptsname_r` to answer, so the name on any open handle is refused by name.
+- **Every other call is refused by name**, the reason naming the call and
+  its clause: the open on every host but windows, and the other four on a
+  live terminal, a read of a speed included.
+
+wolf-lang's `corpus/os/pty_rows.lu` therefore runs to `exit(0)` here with
+its declared stdout; `tests/pty_s292.rs` carries it byte for byte (wolf-lang
+`5e89fdbe`) beside rows for each step above, a terminal row on a pty the test
+opens around lupin included. The file reads its host's lacking ops by
+`os_name()`, which answers the host this machine runs on, while the rows
+follow the observation's target: read in process as another target, it
+prints its mismatch lines.
