@@ -2,14 +2,19 @@
 
 ## Unreleased
 
-is85 — the windows corpus walk fits its jobs again. No test or assertion changed.
+is85 — the windows corpus walk fits its jobs again. No existing test or assertion changed.
 
 - **`tests/run_corpus.rs` evaluates the corpus once.** Its walking tests read one shared walk
   instead of each taking its own: twelve evaluations of every entry became two (the shared walk
   and the determinism test's second, which run at once), on up to four threads.
 - **The other whole-corpus test walks run on four threads too** (`region_machine`, `rule_registry`,
-  `divergence`), and the tamper test's and the ladder's two bundle exports run at once. The shard
-  key moves `region_machine` beside `run_corpus` in shard 1; `ci/test-shards-test.sh` holds the pins.
+  `divergence`), and the ladder's two bundle exports run at once. The shard key moves
+  `region_machine` beside `run_corpus` in shard 1; `ci/test-shards-test.sh` holds the pins.
+- **`tests/export.rs` exports three bundles where it exported five, all at once**: the bundle
+  every test reads, the re-export and the CLI's export start together. The re-export and the CLI's
+  export used to start only after the bundle, so the binary was two exports long end to end. The
+  tamper test spoils two copies of the shared bundle instead of two exports of its own. Each test
+  still asserts what it did; a new row, `the_shared_exports_run_at_once`, holds the schedule.
 - **`lupin corpus` evaluates each entry once** (wolf-interp#358). Its text report evaluated the
   whole corpus a second time for its closing tally; the output is unchanged.
 - **CI: the heavy test entries build optimized, with every debug check on.** The three shards
