@@ -214,17 +214,75 @@ fn non_utf8_file_name_is_preserved_in_argv0_bytes() {
         "120\n255\n46\n108\n117\n",
     );
 }
+/// Writes `text` as the rig's executable `name`, which the test then runs.
+#[cfg(unix)]
+fn write_script(rig: &Rig, name: &str, text: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    rig.write(name, text);
+    std::fs::set_permissions(rig.0.join(name), std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// wolf-interp#360: a script written in this process and run at once, while
+/// other threads of the process start children. A child forked while the
+/// script's write descriptor is open holds a copy of it until its own exec,
+/// and linux refuses to exec a file a process holds open for writing
+/// (`ETXTBSY`). Siblings spawn in a loop here so that a fork lands inside a
+/// write often; every script written must run.
+#[cfg(unix)]
+#[test]
+fn a_script_written_while_siblings_spawn_always_runs() {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    const SIBLINGS: usize = 4;
+    const TRIES: usize = 200;
+    let rig = Rig::new();
+    let stop = Arc::new(AtomicBool::new(false));
+    let siblings: Vec<_> = (0..SIBLINGS)
+        .map(|_| {
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || {
+                let mut spawned = 0usize;
+                while !stop.load(Ordering::Relaxed) {
+                    Command::new("true")
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .status()
+                        .unwrap();
+                    spawned += 1;
+                }
+                spawned
+            })
+        })
+        .collect();
+    let mut busy = Vec::new();
+    for at in 0..TRIES {
+        let name = format!("script-{at}.sh");
+        write_script(&rig, &name, "#!/bin/sh\nexit 0\n");
+        match Command::new(format!("./{name}"))
+            .current_dir(&rig.0)
+            .stdin(Stdio::null())
+            .status()
+        {
+            Ok(status) => assert!(status.success(), "{name}: {status}"),
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => busy.push(at),
+            Err(e) => panic!("{name}: {e}"),
+        }
+    }
+    stop.store(true, Ordering::Relaxed);
+    let spawned: usize = siblings.into_iter().map(|t| t.join().unwrap()).sum();
+    assert!(
+        busy.is_empty(),
+        "{} of {TRIES} scripts were refused with ETXTBSY (tries {busy:?}) while {SIBLINGS} siblings spawned {spawned} children",
+        busy.len()
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn executable_env_shebang_sees_script_name_and_args() {
-    use std::os::unix::fs::PermissionsExt;
     let rig = Rig::new();
-    rig.write("tool.lu", &format!("#!/usr/bin/env lupin\n{SOURCE}"));
-    std::fs::set_permissions(
-        rig.0.join("tool.lu"),
-        std::fs::Permissions::from_mode(0o755),
-    )
-    .unwrap();
+    write_script(&rig, "tool.lu", &format!("#!/usr/bin/env lupin\n{SOURCE}"));
     let mut paths = vec![
         Path::new(env!("CARGO_BIN_EXE_lupin"))
             .parent()
