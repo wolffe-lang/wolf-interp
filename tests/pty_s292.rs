@@ -168,14 +168,28 @@ fn shapes() -> Vec<String> {
         (24, 80, 65536, 0),
         (24, 80, 0, -1),
         (24, 80, 0, 70000),
-        (-65536, -1, 65536, 4294967296),
+        (-65536, -1, 65536, 4_294_967_296_i64),
     ] {
         calls.push(format!(
             "os_term_set_size({FORGED}, {rows}, {columns}, {xp}, {yp})"
         ));
     }
     for op in [
-        0, 19, 29, 43, 49, 63, 69, 76, 89, 94, 127, 130, 160, -1, 4294967296,
+        0,
+        19,
+        29,
+        43,
+        49,
+        63,
+        69,
+        76,
+        89,
+        94,
+        127,
+        130,
+        160,
+        -1,
+        4_294_967_296_i64,
     ] {
         calls.push(format!("os_term_attr({FORGED}, {op})"));
         calls.push(format!("os_term_set_attr({FORGED}, {op}, 0)"));
@@ -197,7 +211,7 @@ fn shapes() -> Vec<String> {
         (93, -1),
         (128, -1),
         (129, -1),
-        (129, 4294967296),
+        (129, 4_294_967_296_i64),
     ] {
         calls.push(format!("os_term_set_attr({FORGED}, {op}, {value})"));
     }
@@ -323,7 +337,7 @@ fn a_set_speed_outside_the_table_is_unsupported_before_the_handle() {
                 assert_eq!(verdict, Verdict::Exit(0), "{call} as {target}: {why:?}");
                 assert_eq!(stdout, "io\n", "{call} as {target}");
             }
-            for speed in [1, 49, 51, 12345, 7200, 460800, 921600, 4294967295] {
+            for speed in [1, 49, 51, 12345, 7200, 460800, 921600, 4_294_967_295_i64] {
                 let call = format!("os_term_set_attr({FORGED}, {op}, {speed})");
                 let (verdict, stdout, why) = observe_as(target, &handled(&call));
                 assert_eq!(verdict, Verdict::Exit(0), "{call} as {target}: {why:?}");
