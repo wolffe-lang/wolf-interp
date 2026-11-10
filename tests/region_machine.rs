@@ -23,6 +23,7 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use wolf_interp::corpus::{self, Outcome};
 use wolf_interp::directive::{Check, ExitSpec};
@@ -30,6 +31,8 @@ use wolf_interp::eval::Trace;
 use wolf_interp::phase::Phase;
 use wolf_interp::protocol::Verdict;
 use wolf_interp::trap::TrapKind;
+
+mod common;
 
 fn tests_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests")
@@ -39,6 +42,44 @@ fn corpus_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(wolf_interp::upstream_root())
         .join("corpus")
+}
+
+/// The two whole-corpus tests below read ONE walk (is85): every entry's
+/// `observe_record(path, source, None)`, taken the first time either asks,
+/// on up to four threads (`common::each`), in walk order. Each used to take
+/// its own. A file whose observation panics fails both, by name.
+fn corpus_observations() -> &'static [(String, Verdict, wolf_interp::Observed)] {
+    static WALK: OnceLock<Result<Vec<(String, Verdict, wolf_interp::Observed)>, String>> =
+        OnceLock::new();
+    let walk = WALK.get_or_init(|| {
+        let root = corpus_root();
+        let report = corpus::walk(&root, None).expect("walkable");
+        let entries: Vec<String> = report
+            .files
+            .into_iter()
+            .filter(|file| matches!(file.outcome, Outcome::Entry(_)))
+            .map(|file| file.path)
+            .collect();
+        let observed = common::each(entries.len(), |i| {
+            let full = root.join(&entries[i]);
+            let source = std::fs::read(&full).expect("readable");
+            let (record, observed) = wolf_interp::observe_record(&full, &source, None);
+            (record.verdict, observed)
+        });
+        entries
+            .into_iter()
+            .zip(observed)
+            .map(|(path, result)| {
+                let (verdict, observed) =
+                    result.map_err(|panic| format!("{path}: the observation panicked: {panic}"))?;
+                Ok((path, verdict, observed))
+            })
+            .collect()
+    });
+    match walk {
+        Ok(observations) => observations,
+        Err(panic) => panic!("the shared corpus walk failed: {panic}"),
+    }
 }
 
 /// Every `.lu` directly under `dir`, sorted.
@@ -199,24 +240,16 @@ fn no_program_that_exits_cleanly_leaks_a_region() {
     // Scoped to *clean exits* deliberately: a program that traps left its
     // scopes without running them, and the regions it still holds are the
     // crash-cleanup oracle's subject rather than a leak.
-    let root = corpus_root();
-    let report = corpus::walk(&root, None).expect("walkable");
     let mut ran = 0usize;
-    for file in &report.files {
-        if !matches!(file.outcome, Outcome::Entry(_)) {
-            continue;
-        }
-        let full = root.join(&file.path);
-        let source = std::fs::read(&full).expect("readable");
-        let (record, observed) = wolf_interp::observe_record(&full, &source, None);
-        if !matches!(record.verdict, Verdict::Exit(_)) {
+    for (path, verdict, observed) in corpus_observations() {
+        if !matches!(verdict, Verdict::Exit(_)) {
             continue;
         }
         ran += 1;
         assert!(
             observed.leaks.is_empty(),
             "{} exited cleanly holding region(s) {:?}",
-            file.path,
+            path,
             observed.leaks
         );
     }
@@ -228,16 +261,8 @@ fn the_forest_invariant_holds_over_the_whole_corpus() {
     // "After every mutation, a debug assertion re-walks the region graph and
     // asserts the forest invariant." The assertion records rather than panics,
     // so this is where a recorded break becomes a failure.
-    let root = corpus_root();
-    let report = corpus::walk(&root, None).expect("walkable");
-    for file in &report.files {
-        if !matches!(file.outcome, Outcome::Entry(_)) {
-            continue;
-        }
-        let full = root.join(&file.path);
-        let source = std::fs::read(&full).expect("readable");
-        let (_, observed) = wolf_interp::observe_record(&full, &source, None);
-        assert_eq!(observed.forest, Ok(()), "{}", file.path);
+    for (path, _, observed) in corpus_observations() {
+        assert_eq!(observed.forest, Ok(()), "{}", path);
     }
 }
 
