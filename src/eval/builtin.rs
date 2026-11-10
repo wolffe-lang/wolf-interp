@@ -357,6 +357,20 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "os_spawn_session",
     "os_setsid",
     "os_sid",
+    // s292 (wolf-lang#1091; `[os.term.pty]`, `[os.term.size.set]`,
+    // `[os.term.attr]`): a pseudo-terminal, its slave's name, the window's
+    // size set, and one setting of a terminal by RFC 4254's opcode. The
+    // names resolve; every row decided before a terminal is reached is
+    // answered (the shapes, windows, the target's lacking ops, a set speed
+    // outside the table, a closed, forged or non-terminal handle), and every
+    // other call is refused by name — std has no `posix_openpt`, `ptsname`,
+    // `tcgetattr`, `tcsetattr` or window-size `ioctl`, and this machine
+    // admits no `unsafe`.
+    "os_term_open_pty",
+    "os_term_pty_name",
+    "os_term_set_size",
+    "os_term_attr",
+    "os_term_set_attr",
     // s236 (wolf-lang#633, #742; `[os.proc.ids]`, `[os.proc.ids.set]`): who
     // the process runs as, and the drop. The names resolve and their
     // SHAPE and HOST rows are answered; a well-formed call on a host that
@@ -1032,7 +1046,12 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_fork"
         | "os_spawn_session"
         | "os_setsid"
-        | "os_sid" => unsupported(hosted_tier_decline(name)),
+        | "os_sid"
+        | "os_term_open_pty"
+        | "os_term_pty_name"
+        | "os_term_set_size"
+        | "os_term_attr"
+        | "os_term_set_attr" => unsupported(hosted_tier_decline(name)),
         // `[os.proc.inherit]` (s137, wolf-lang#235): the program named apart
         // from its arguments, and the descriptors it hands down.
         //
@@ -4466,6 +4485,11 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "os_spawn_session" => &["unsupported", "invalid", "not_found", "denied", "io"],
         "os_setsid" => &["denied", "io", "unsupported"],
         "os_sid" => &["unsupported"],
+        // s292 (`[os.host.sigs]`'s five lines).
+        "os_term_open_pty" | "os_term_pty_name" => &["io", "unsupported"],
+        "os_term_set_size" | "os_term_attr" | "os_term_set_attr" => {
+            &["invalid", "io", "unsupported"]
+        }
         // s234 (`[os.host.sigs]`'s three lines).
         "os_term_size" | "os_term_chars" | "os_signal_wait_fd" => &["unsupported", "io"],
         "os_chroot" => &["denied", "io", "not_found", "unsupported"],
