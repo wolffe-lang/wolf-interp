@@ -10,8 +10,9 @@
 //! cannot test three.
 
 use std::path::{Path, PathBuf};
+use std::process::Output;
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use wolf_interp::export::{self, CheckImpl, ExportOptions, ExportSummary};
 
@@ -567,14 +568,84 @@ fn options(out: &str) -> ExportOptions {
     }
 }
 
+/// The binary itself, run from the crate root.
+fn lupin(args: &[&str]) -> std::io::Result<Output> {
+    std::process::Command::new(env!("CARGO_BIN_EXE_lupin"))
+        .args(args)
+        .current_dir(crate_root())
+        .output()
+}
+
+/// The work's result and when it started and ended.
+fn timed<T>(work: impl FnOnce() -> T) -> (T, (Instant, Instant)) {
+    let start = Instant::now();
+    let value = work();
+    (value, (start, Instant::now()))
+}
+
+/// The three exports this binary's tests compare: the bundle every test
+/// shares, the re-export `re_export_is_byte_identical` holds it to, and the
+/// CLI's own export `the_cli_speaks_the_bundle_end_to_end` checks. Each test
+/// asserts on its own export's result; the spans are when each ran.
+struct Exports {
+    bundle: (ExportOptions, ExportSummary),
+    again: (ExportOptions, Result<ExportSummary, String>),
+    cli: (PathBuf, std::io::Result<Output>),
+    spans: [(Instant, Instant); 3],
+}
+
+/// The three exports, made once, the first time any test asks for one: the
+/// bundle, then the re-export and the CLI's export.
+fn exports() -> &'static Exports {
+    static EXPORTS: OnceLock<Exports> = OnceLock::new();
+    EXPORTS.get_or_init(|| {
+        let first = options("test-bundle");
+        let again = options("test-bundle-again");
+        let cli = crate_root().join("target/test-bundle-cli");
+        let (summary, bundle_span) = timed(|| export::export(&first));
+        let summary = summary.expect("the export must succeed");
+        let ((again_summary, again_span), (exported, cli_span)) = std::thread::scope(|scope| {
+            let again = scope.spawn(|| timed(|| export::export(&again)));
+            let exported = scope.spawn(|| {
+                let out = cli.to_str().expect("utf-8");
+                timed(|| lupin(&["conformance", "export", "--out", out, "--json"]))
+            });
+            (
+                again.join().expect("the re-export's thread"),
+                exported.join().expect("the CLI export's thread"),
+            )
+        });
+        Exports {
+            bundle: (first, summary),
+            again: (again, again_summary),
+            cli: (cli, exported),
+            spans: [bundle_span, again_span, cli_span],
+        }
+    })
+}
+
 /// One bundle, exported once, shared by every test in this binary.
 fn bundle() -> &'static (ExportOptions, ExportSummary) {
-    static BUNDLE: OnceLock<(ExportOptions, ExportSummary)> = OnceLock::new();
-    BUNDLE.get_or_init(|| {
-        let options = options("test-bundle");
-        let summary = export::export(&options).expect("the export must succeed");
-        (options, summary)
-    })
+    &exports().bundle
+}
+
+#[test]
+fn the_shared_exports_run_at_once() {
+    // is85: the bundle, the re-export and the CLI's export run together, so
+    // this binary is one export long end to end, not two. Each of the three
+    // starts before any of them ends.
+    let spans = &exports().spans;
+    let origin = spans.iter().map(|span| span.0).min().expect("three spans");
+    let last_start = spans.iter().map(|span| span.0).max().expect("three spans");
+    let first_end = spans.iter().map(|span| span.1).min().expect("three spans");
+    let seconds: Vec<(u64, u64)> = spans
+        .iter()
+        .map(|(start, end)| ((*start - origin).as_secs(), (*end - origin).as_secs()))
+        .collect();
+    assert!(
+        last_start < first_end,
+        "the bundle, the re-export and the CLI's export ran in turn, (start, end) in seconds: {seconds:?}"
+    );
 }
 
 /// Every file under a directory, as (relative slash path, bytes), sorted.
@@ -609,8 +680,8 @@ fn tree(root: &Path) -> Vec<(String, Vec<u8>)> {
 #[test]
 fn re_export_is_byte_identical() {
     let (first_options, first) = bundle();
-    let second_options = options("test-bundle-again");
-    let second = export::export(&second_options).expect("the re-export must succeed");
+    let (second_options, second) = &exports().again;
+    let second = second.as_ref().expect("the re-export must succeed");
     assert_eq!(first.bundle_sha256, second.bundle_sha256);
 
     // The root hash covers every file except the manifest; compare the whole
@@ -1055,22 +1126,11 @@ fn the_cli_speaks_the_bundle_end_to_end() {
     // The process contract: export prints the summary and exits 0; check in
     // replay mode is the dry run and exits 0; check of a tampered bundle is
     // a *tool* error (exit 2) — corrupted expectations are never verdicts.
-    let root = crate_root();
-    let out = root.join("target/test-bundle-cli");
-    let run = |args: &[&str]| {
-        std::process::Command::new(env!("CARGO_BIN_EXE_lupin"))
-            .args(args)
-            .current_dir(&root)
-            .output()
-            .expect("the binary runs")
-    };
-    let exported = run(&[
-        "conformance",
-        "export",
-        "--out",
-        out.to_str().expect("utf-8"),
-        "--json",
-    ]);
+    // The export (`conformance export --out <out> --json`) is the CLI's
+    // span in `exports()`.
+    let run = |args: &[&str]| lupin(args).expect("the binary runs");
+    let (out, exported) = &exports().cli;
+    let exported = exported.as_ref().expect("the binary runs");
     assert!(exported.status.success());
     let summary: serde_json::Value =
         serde_json::from_slice(&exported.stdout).expect("the summary is JSON");
