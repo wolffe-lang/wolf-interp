@@ -44,13 +44,15 @@ fn corpus_root() -> PathBuf {
         .join("corpus")
 }
 
+/// One corpus entry's path, verdict and observation.
+type Observation = (String, Verdict, wolf_interp::Observed);
+
 /// The two whole-corpus tests below read ONE walk (is85): every entry's
 /// `observe_record(path, source, None)`, taken the first time either asks,
 /// on up to four threads (`common::each`), in walk order. Each used to take
 /// its own. A file whose observation panics fails both, by name.
-fn corpus_observations() -> &'static [(String, Verdict, wolf_interp::Observed)] {
-    static WALK: OnceLock<Result<Vec<(String, Verdict, wolf_interp::Observed)>, String>> =
-        OnceLock::new();
+fn corpus_observations() -> &'static [Observation] {
+    static WALK: OnceLock<Result<Vec<Observation>, String>> = OnceLock::new();
     let walk = WALK.get_or_init(|| {
         let root = corpus_root();
         let report = corpus::walk(&root, None).expect("walkable");
