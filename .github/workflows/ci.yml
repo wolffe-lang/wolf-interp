@@ -198,6 +198,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: python3 ci/tiers-test.py
+      - run: bash ci/test-shards-test.sh
       - run: python3 ci/is80/dist-test.py
       - name: pinned anchor keys agree both ways
         run: python3 ci/is81-variadic/anchors.py
