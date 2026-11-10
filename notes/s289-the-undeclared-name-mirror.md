@@ -20,8 +20,15 @@ or `/var/folders`, and no commit was made on a Linux host.
 
 ## Inputs, verified
 
-- **Base:** wolf-interp trunk `725d86da`. lupin 0.1.60 is the paired release. Nothing between
-  them touches the reading of a bare name or the ambient table.
+- **Base:** wolf-interp trunk `bbc431dd`.
+  - The rows and the check were written and taken on trunk `725d86da`. lupin 0.1.60 is the paired
+    release, and nothing between it and that commit touches the reading of a bare name or the
+    ambient table.
+  - Trunk then moved by 42 commits: the windows corpus walk's rework, and the new-session mirror's
+    builtins in `src/eval/builtin.rs`. None touches `src/sema.rs` or `src/rowmatch.rs`.
+  - This change was rebased onto it (`notes/s289-evidence/rebase-map.txt`). Every patch is the
+    same but the changelog's, whose entry now sits above the two that landed first. The Air logs
+    are named by the commits they ran at; the Linux records are at this head.
 - **The compiler's side:** wolf-lang's s289 branch at `67bd054f`. The eight rows are copied byte
   for byte, with `wolf conform-run --json --checked` records from a debug build of that commit on
   arm64 macOS; native and release agree with the checked machine on every row.
@@ -32,11 +39,11 @@ or `/var/folders`, and no commit was made on a Linux host.
 
 `notes/s289-prediction.md` (the mirror's prediction, made on the compiler's side before this
 repository's first change, and what the first take moved):
-- At the rows' commit, `fae400a`, the eight mirror tests were red by name: lupin exits 1, 1, 1,
+- At the rows' commit, `3875de2`, the eight mirror tests were red by name: lupin exits 1, 1, 1,
   1, 1, 1, 0 and "unsupported" where the compiler says E0301 or E0604.
-- At the check's first take, `6e5220a`, the eight were green and one library test went red: an
-  `impl`'s generic inside a bracket, `List[T]()`. It is held by `ada66b3`.
-- At `ada66b3` the mirror test (8), the s288 mirror (64), the library's tests (796), the corpus
+- At the check's first take, `86a253a`, the eight were green and one library test went red: an
+  `impl`'s generic inside a bracket, `List[T]()`. It is held by `03c0f6f`.
+- At `03c0f6f` the mirror test (8), the s288 mirror (64), the library's tests (796), the corpus
   harness, fmt and clippy are green.
 
 ## Evidence index
@@ -45,17 +52,18 @@ repository's first change, and what the first take moved):
 - `red-fae400a-air.log`: the rows red at their commit.
 - `fix-6e5220a-air.log`: the first take, the library test red.
 - `fix-ada66b3-air.log`: the take at the fix, green.
+- `rebase-map.txt`: the logged commits and the commits they are now.
 
 The gauntlet's record at this change's head is cited in the PR.
 
 ## Done-when
 
 Commits:
-- `eaf4641`: the eight rows and the compiler's records; `fae400a`: the test that holds this
+- `a1e7031`: the eight rows and the compiler's records; `3875de2`: the test that holds this
   machine to them.
-- `4c076a7`: `can_fail` for the resolve rung; `6e5220a`: the check; `ada66b3`: an `impl`'s
+- `fe2e646`: `can_fail` for the resolve rung; `86a253a`: the check; `03c0f6f`: an `impl`'s
   generics and a bracket's arguments.
-- `7315d56`: the prediction's record; `285db60`: the changelog; this note and its evidence.
+- `8d22390`: the prediction's record; `928aad2`: the changelog; this note and its evidence.
 
 Test targets:
 - [x] the rows red at their commit, by name (`red-fae400a-air.log`)

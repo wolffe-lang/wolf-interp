@@ -1,0 +1,8 @@
+eaf4641 a1e7031 same-patch Copy the diagnostics sweep's undeclared-name rows and the compiler's records of them
+fae400a 3875de2 same-patch Hold lupin to the compiler's records of the undeclared-name rows
+4c076a7 fe2e646 same-patch Let the resolve rung ask whether a function can fail
+6e5220a 86a253a same-patch Report an undeclared name where no error row takes it, and a function's own tag where it cannot fail
+ada66b3 03c0f6f same-patch Read an impl's generics and a bracket's arguments as names, never tags
+7315d56 8d22390 same-patch Record the mirror's prediction and what its first take moved
+285db60 928aad2 changed Note the mirror in the changelog
+7ed3c66 e3a43f2 same-patch Keep the mirror's takes and note it
