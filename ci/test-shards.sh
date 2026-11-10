@@ -74,16 +74,23 @@ SHARDS=3
 #   shard 2  doc_truth 11,969 + region_machine 4,353 + rule_registry 3,635
 #   shard 3  export 9,444 + cli 8,240 + fuzz_smoke 577
 #
-# The assignment stands. is85 cut the work instead: `run_corpus` evaluates
-# the corpus once and shares it (twelve walks became two, at once), and the
-# heavy entries build at opt-level 2 with every debug check on (2.45 times
-# faster a walk), which the workflow's `test` job sets.
+# is85 cut the work: `run_corpus` evaluates the corpus once and shares it
+# (twelve walks became two, at once), the other corpus walks run on four
+# threads, `lupin corpus` evaluates each entry once, and the heavy entries
+# build at opt-level 2 with every debug check on, which the workflow's `test`
+# job sets. Its first hosted run (42706939411) still put windows shard 2 at
+# 236 minutes on a machine twice as slow as shard 1's for this work:
+# `doc_truth` 8,057 s, `region_machine` 3,088, `rule_registry` 2,677. So
+# `region_machine` moved to shard 1, beside `run_corpus` (1,316 s there)
+# and `divergence` (1,455), and `doc_truth` keeps shard 2 with
+# `rule_registry`. `ci/test-shards-test.sh` holds the pins.
 shard_of() {
   case "$1" in
     run_corpus)     echo 1 ;;
     divergence)     echo 1 ;;
+    # is85: beside run_corpus, off doc_truth's shard (ci/is85.md).
+    region_machine) echo 1 ;;
     doc_truth)      echo 2 ;;
-    region_machine) echo 2 ;;
     rule_registry)  echo 2 ;;
     export)         echo 3 ;;
     cli)            echo 3 ;;
