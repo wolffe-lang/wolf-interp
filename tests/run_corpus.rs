@@ -13,7 +13,6 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use wolf_interp::Observed;
 use wolf_interp::corpus::{self, Outcome};
@@ -22,6 +21,8 @@ use wolf_interp::ledger::{self, Judgement};
 use wolf_interp::phase::Phase;
 use wolf_interp::protocol::{ObservationRecord, Verdict};
 use wolf_interp::trap::TrapKind;
+
+mod common;
 
 fn corpus_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -50,10 +51,10 @@ struct Observation {
 /// needs a SECOND observation, `evaluation_is_deterministic_over_the_corpus`,
 /// takes its own fresh walk and compares it against this one.
 ///
-/// The walk runs on up to four threads (`observe_each`). A file whose
-/// observation panics is recorded as that panic, and every test that reads
-/// the walk fails with it, rather than each re-walking the corpus to find it
-/// again.
+/// The walk runs on up to four threads (`observe_each`, `common::each`). A
+/// file whose observation panics is recorded as that panic, and every test
+/// that reads the walk fails with it, rather than each re-walking the corpus
+/// to find it again.
 fn observations() -> &'static [Observation] {
     static WALK: OnceLock<Result<Vec<Observation>, String>> = OnceLock::new();
     let walk = WALK.get_or_init(|| {
@@ -90,68 +91,23 @@ fn observations() -> &'static [Observation] {
     }
 }
 
-/// The most threads one walk takes: the hosted runners' core count (four;
-/// three on macOS, which `available_parallelism` reports). Two walks run at
-/// once (the shared one and the determinism test's), and a heavy corpus
-/// program holds a large list, so a bigger host does not get more.
-const WALKERS: usize = 4;
-
 /// One file's observation by `observe_each`: its bytes, its record and the
 /// human-facing half, or the message of the panic that stopped it.
 type FileObservation = Result<(Vec<u8>, ObservationRecord, Observed), String>;
 
 /// `observe_record(path, source, None)` for each corpus-relative path, on
-/// up to `WALKERS` threads, answered in the order asked. The scheduling is
-/// the only thing this adds: each file is still read and observed exactly
-/// as the tests did one by one, and a panic stays that file's own result.
+/// up to `common::WALKERS` threads, answered in the order asked. The
+/// scheduling is the only thing this adds: each file is still read and
+/// observed exactly as the tests did one by one, and a panic stays that
+/// file's own result.
 fn observe_each<'a>(root: &Path, paths: impl Iterator<Item = &'a str>) -> Vec<FileObservation> {
     let paths: Vec<&str> = paths.collect();
-    let next = AtomicUsize::new(0);
-    let workers = std::thread::available_parallelism()
-        .map_or(1, std::num::NonZero::get)
-        .clamp(1, WALKERS)
-        .min(paths.len().max(1));
-    let mut results: Vec<Option<FileObservation>> = (0..paths.len()).map(|_| None).collect();
-    std::thread::scope(|scope| {
-        let (next, paths) = (&next, &paths);
-        let handles: Vec<_> = (0..workers)
-            .map(|_| {
-                scope.spawn(move || {
-                    let mut done = Vec::new();
-                    loop {
-                        let i = next.fetch_add(1, Ordering::Relaxed);
-                        let Some(path) = paths.get(i) else {
-                            break done;
-                        };
-                        let full = root.join(path);
-                        let result = std::panic::catch_unwind(|| {
-                            let source = std::fs::read(&full).expect("readable");
-                            let (record, observed) =
-                                wolf_interp::observe_record(&full, &source, None);
-                            (source, record, observed)
-                        })
-                        .map_err(|payload| {
-                            payload
-                                .downcast_ref::<&str>()
-                                .map(|s| (*s).to_owned())
-                                .or_else(|| payload.downcast_ref::<String>().cloned())
-                                .unwrap_or_else(|| "a non-string panic".to_owned())
-                        });
-                        done.push((i, result));
-                    }
-                })
-            })
-            .collect();
-        for handle in handles {
-            for (i, result) in handle.join().expect("a walker catches its own panics") {
-                results[i] = Some(result);
-            }
-        }
-    });
-    results
-        .into_iter()
-        .map(|result| result.expect("every path was taken by one walker"))
-        .collect()
+    common::each(paths.len(), |i| {
+        let full = root.join(paths[i]);
+        let source = std::fs::read(&full).expect("readable");
+        let (record, observed) = wolf_interp::observe_record(&full, &source, None);
+        (source, record, observed)
+    })
 }
 
 struct Entry {
