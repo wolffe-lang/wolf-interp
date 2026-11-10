@@ -23,6 +23,8 @@ use std::path::{Path, PathBuf};
 use wolf_interp::anchor::{self, Namespace};
 use wolf_interp::eval::rules::{self, Row, RowError, Rule};
 
+mod common;
+
 fn upstream() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(wolf_interp::upstream_root())
 }
@@ -284,6 +286,21 @@ fn every_cited_memory_clause_actually_appears_in_the_document() {
     }
 }
 
+/// A trace line's rule and anchor: `<start>..<end> <Rule> [<anchor>] <detail>`.
+fn rule_and_anchor(line: &str) -> (String, &str) {
+    let rule = line
+        .split_whitespace()
+        .nth(1)
+        .unwrap_or_default()
+        .to_owned();
+    let anchor = line
+        .split('[')
+        .nth(1)
+        .and_then(|rest| rest.split(']').next())
+        .unwrap_or_default();
+    (rule, anchor)
+}
+
 #[test]
 fn the_trace_only_ever_names_registered_rules() {
     // The behavioural half: run every corpus file that evaluates, with
@@ -295,39 +312,53 @@ fn the_trace_only_ever_names_registered_rules() {
     let anchors: BTreeSet<&str> = rules::registry().iter().map(|row| row.anchor).collect();
     let names: BTreeSet<String> = Rule::ALL.iter().map(|r| format!("{r:?}")).collect();
 
-    let mut fired: BTreeSet<String> = BTreeSet::new();
-    for file in &report.files {
-        if !matches!(file.outcome, wolf_interp::corpus::Outcome::Entry(_)) {
-            continue;
-        }
-        let full = root.join(&file.path);
+    // is85: the traced walk runs on up to four threads (`common::each`).
+    // Each file's trace is read on the thread that made it, so no trace is
+    // held past its own file: that thread keeps the first line whose rule or
+    // anchor is not registered, and the rules the trace fired. The asserts
+    // below then run in walk order, on that line, as they ran on every line.
+    let entries: Vec<&str> = report
+        .files
+        .iter()
+        .filter(|file| matches!(file.outcome, wolf_interp::corpus::Outcome::Entry(_)))
+        .map(|file| file.path.as_str())
+        .collect();
+    let traced = common::each(entries.len(), |i| {
+        let full = root.join(entries[i]);
         let source = std::fs::read(&full).expect("readable");
         let (_, observed) =
             wolf_interp::observe_record_traced(&full, &source, None, wolf_interp::eval::Trace::All);
+        let mut first_unknown = None;
+        let mut fired: BTreeSet<String> = BTreeSet::new();
         for line in observed.trace {
-            // `<start>..<end> <Rule> [<anchor>] <detail>`
-            let rule = line
-                .split_whitespace()
-                .nth(1)
-                .unwrap_or_default()
-                .to_owned();
-            let anchor = line
-                .split('[')
-                .nth(1)
-                .and_then(|rest| rest.split(']').next())
-                .unwrap_or_default();
+            let (rule, anchor) = rule_and_anchor(&line);
+            if !names.contains(&rule) || !anchors.contains(anchor) {
+                first_unknown = Some(line);
+                break;
+            }
+            fired.insert(rule);
+        }
+        (first_unknown, fired)
+    });
+
+    let mut fired: BTreeSet<String> = BTreeSet::new();
+    for (path, result) in entries.iter().zip(traced) {
+        let (first_unknown, file_fired) =
+            result.unwrap_or_else(|panic| panic!("{path}: the observation panicked: {panic}"));
+        if let Some(line) = first_unknown {
+            let (rule, anchor) = rule_and_anchor(&line);
             assert!(
                 names.contains(&rule),
                 "{}: unknown rule in trace: {line}",
-                file.path
+                path
             );
             assert!(
                 anchors.contains(anchor),
                 "{}: unregistered anchor in trace: {line}",
-                file.path
+                path
             );
-            fired.insert(rule);
         }
+        fired.extend(file_fired);
     }
 
     // The corpus does not exercise every rule — local borrows and view sets have
