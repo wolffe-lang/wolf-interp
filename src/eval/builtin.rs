@@ -1879,6 +1879,135 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                     .to_owned(),
             )
         }
+        // s292 (wolf-lang#1091; `[os.term.pty]`, `[os.term.pty.note]`): a
+        // pseudo-terminal's pair, and its slave's name. The open has no shape:
+        // a windows observation target answers the `unsupported` row, and
+        // every other host refuses it by name. The name answers windows' row,
+        // then `io` for a closed or forged handle; any other handle is refused
+        // by name, since telling a master from a slave, a file or another
+        // terminal is the host's `ptsname_r` to answer. std has no
+        // `posix_openpt`, `grantpt`, `unlockpt` or `ptsname`, and this machine
+        // admits no `unsafe`.
+        #[cfg(not(target_family = "wasm"))]
+        "os_term_open_pty" | "os_term_pty_name" => {
+            let handle = if name == "os_term_pty_name" {
+                let Some(Value::Int(fd, _)) = args.first() else {
+                    return unsupported("`os_term_pty_name` takes an integer handle".to_owned());
+                };
+                Some(*fd)
+            } else {
+                if !args.is_empty() {
+                    return unsupported("`os_term_open_pty` takes no argument".to_owned());
+                }
+                None
+            };
+            let row = if crate::attrs::build_target().contains("-windows-") {
+                Some("unsupported")
+            } else if let Some(fd) = handle
+                && machine.files().is_terminal(fd).is_none()
+            {
+                Some("io")
+            } else {
+                None
+            };
+            if let Some(tag) = row {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`{name}` yields the `{tag}` row"),
+                );
+                return Ok(error_value(name, tag));
+            }
+            if name == "os_term_open_pty" {
+                return unsupported(
+                    "`os_term_open_pty` makes a pseudo-terminal and opens its master and its \
+                     slave (`posix_openpt`, `grantpt`, `unlockpt`): std has no call for it, and \
+                     this machine admits no `unsafe` ([os.term.pty], [os.term.pty.note])"
+                        .to_owned(),
+                );
+            }
+            unsupported(
+                "`os_term_pty_name` asks the host for a master's slave name (`ptsname_r`): std \
+                 has no call for it, and this machine admits no `unsafe` ([os.term.pty])"
+                    .to_owned(),
+            )
+        }
+        // s292 (wolf-lang#1091; `[os.term.size.set]`, `[os.term.attr]`): the
+        // window's size set, and one setting read or set by RFC 4254 section
+        // 8's opcode (with RFC 8160's 42). The order of refusal is the
+        // clauses', and every step before the terminal's own answer needs no
+        // host call: the SHAPE (`invalid`: a size field outside 0..65535; an
+        // op outside the vocabulary, or a set's value outside its op's range),
+        // then the HOST (`unsupported`: a windows observation target, an op
+        // the target's `termios` lacks, a set speed the runtime's table does
+        // not name), then the HANDLE (`io`: closed, forged or not a terminal;
+        // std's `IsTerminal` answers the last). A call that reaches a terminal
+        // is refused by name: the size is a `TIOCSWINSZ` `ioctl` and the
+        // settings `tcgetattr` and `tcsetattr`, none in std, and this machine
+        // admits no `unsafe`. The target is the observation's, as for every
+        // `[os.term]` call here.
+        #[cfg(not(target_family = "wasm"))]
+        "os_term_set_size" | "os_term_attr" | "os_term_set_attr" => {
+            let arity = match name {
+                "os_term_set_size" => 5,
+                "os_term_attr" => 2,
+                _ => 3,
+            };
+            let ints: Vec<i128> = args
+                .iter()
+                .filter_map(|v| match v {
+                    Value::Int(n, _) => Some(*n),
+                    _ => None,
+                })
+                .collect();
+            if args.len() != arity || ints.len() != arity {
+                return unsupported(format!("`{name}` takes {arity} integers"));
+            }
+            let (fd, rest) = (ints[0], &ints[1..]);
+            let shaped = match name {
+                "os_term_set_size" => rest.iter().all(|n| (0..=65_535).contains(n)),
+                "os_term_attr" => term_op(rest[0]).is_some(),
+                _ => term_op(rest[0]).is_some_and(|kind| term_value_shaped(kind, rest[1])),
+            };
+            let lacks = name != "os_term_set_size"
+                && (term_op_lacking(rest[0])
+                    || (name == "os_term_set_attr"
+                        && term_op(rest[0]) == Some(TermOp::Speed)
+                        && !TERM_SPEEDS.contains(&rest[1])));
+            let row = if !shaped {
+                Some("invalid")
+            } else if crate::attrs::build_target().contains("-windows-") || lacks {
+                Some("unsupported")
+            } else if machine.files().is_terminal(fd) != Some(true) {
+                Some("io")
+            } else {
+                None
+            };
+            if let Some(tag) = row {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`{name}` yields the `{tag}` row"),
+                );
+                return Ok(error_value(name, tag));
+            }
+            let why = match name {
+                "os_term_set_size" => {
+                    "sets a terminal's window size, a `TIOCSWINSZ` `ioctl`: std has no call for \
+                     it, and this machine admits no `unsafe` ([os.term.size.set])"
+                }
+                "os_term_attr" => {
+                    "reads one of a terminal's settings (`tcgetattr`): std has no call for it, \
+                     and this machine admits no `unsafe` ([os.term.attr])"
+                }
+                _ => {
+                    "sets one of a terminal's settings and reads it back (`tcsetattr`, \
+                     `tcgetattr`): std has no call for either, and this machine admits no \
+                     `unsafe` ([os.term.attr])"
+                }
+            };
+            unsupported(format!("`{name}` {why}"))
+        }
         // s248 (wolf-lang#795, `[os.signal.wait.fds]`; ruling #93 R2 A;
         // wolf-interp#268): one wait over several descriptors, a set and a
         // deadline. Its rows in the clause's order — a set the shape rule
@@ -4978,6 +5107,67 @@ fn fd_map_of(flat: &[i128]) -> Option<Vec<(i128, Option<i128>)>> {
 fn term_mode_shape(mode: i128) -> bool {
     mode >= 0 && mode & !0x01FF_FFFF == 0
 }
+
+/// s292 (`[os.term.attr]`): what RFC 4254 section 8's opcode (with RFC
+/// 8160's 42) names, which fixes the range of a value set through it.
+#[cfg(not(target_family = "wasm"))]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TermOp {
+    /// 1..18, a `c_cc` character: -1..255.
+    Char,
+    /// 30..42, 50..62, 70..75, 92 and 93, a flag: 0..1.
+    Flag,
+    /// 90 CS7 and 91 CS8, the character size: 0..1.
+    Size,
+    /// 128 and 129, a speed in bits per second: 0..4294967295.
+    Speed,
+}
+
+/// s292: the kind of the op, or `None` outside the 56 of the vocabulary (0,
+/// 19..29, 43..49, 63..69, 76..89, 94..127, 130 and up, a negative).
+#[cfg(not(target_family = "wasm"))]
+fn term_op(op: i128) -> Option<TermOp> {
+    match op {
+        1..=18 => Some(TermOp::Char),
+        30..=42 | 50..=62 | 70..=75 | 92 | 93 => Some(TermOp::Flag),
+        90 | 91 => Some(TermOp::Size),
+        128 | 129 => Some(TermOp::Speed),
+        _ => None,
+    }
+}
+
+/// s292: whether a set's `value` is inside its op's range.
+#[cfg(not(target_family = "wasm"))]
+fn term_value_shaped(kind: TermOp, value: i128) -> bool {
+    match kind {
+        TermOp::Char => (-1..=255).contains(&value),
+        TermOp::Flag | TermOp::Size => (0..=1).contains(&value),
+        TermOp::Speed => (0..=4_294_967_295).contains(&value),
+    }
+}
+
+/// s292 (`[os.term.attr]`): whether the observation target's `termios`
+/// lacks the op — macOS 15, 16, 37, 52 and 71; linux 11, 15 and 17 (and
+/// PAX, which runs linux's static binaries). Every other unix target reads
+/// linux's, as `corpus/os/pty_rows.lu`'s own `lacks` does. A decision about
+/// the target, never a host call, so a bundle observed as linux answers as
+/// linux on any exporter.
+#[cfg(not(target_family = "wasm"))]
+fn term_op_lacking(op: i128) -> bool {
+    if crate::attrs::build_target().ends_with("-darwin") {
+        matches!(op, 15 | 16 | 37 | 52 | 71)
+    } else {
+        matches!(op, 11 | 15 | 17)
+    }
+}
+
+/// s292 (`[os.term.attr]`): the runtime's own table of the speeds every host
+/// names, in bits per second; a set of any other is `unsupported`.
+#[cfg(not(target_family = "wasm"))]
+const TERM_SPEEDS: [i128; 19] = [
+    0, 50, 75, 110, 134, 150, 200, 300, 600, 1200, 1800, 2400, 4800, 9600, 19200, 38400, 57600,
+    115_200, 230_400,
+];
 
 /// s232 (wolf-lang#679, `[os.signal.set]`): the twenty listenable meanings
 /// (bits 0..19).
