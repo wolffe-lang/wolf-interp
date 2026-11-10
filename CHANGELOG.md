@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+is87 — wolf-lang s292's pseudo-terminal calls (wolf-lang#1091), mirrored: `os_term_open_pty`,
+`os_term_pty_name`, `os_term_set_size`, `os_term_attr` and `os_term_set_attr` resolve. lupin
+0.1.60 answered "does not resolve" for each. And `argv_is84`'s shebang test no longer races its
+siblings' forks (wolf-interp#360).
+
+- **Every row decided before a terminal is answered**, in the clauses' order. The shape on every
+  host: `invalid` for a size field outside 0..65535, an op outside RFC 4254 section 8's 56 (with
+  RFC 8160's 42), and a set's value outside its op's range. Then the host: `unsupported` on a
+  windows target, for an op the target lacks (macOS 15, 16, 37, 52, 71; linux 11, 15, 17) and for
+  a set speed outside the runtime's table. Then the handle: `io` for a closed or forged one, and
+  for the size and the settings, one that is not a terminal.
+- **Every other call is refused by name**: the open on every host but windows, the name on any
+  open handle, and the size and the settings on a live terminal. Rust's standard library has no
+  `posix_openpt`, `tcgetattr`, `tcsetattr` or window-size `ioctl`, and this machine admits no
+  `unsafe`.
+- The rows follow the observation's target, as every terminal call's do. wolf-lang's
+  `corpus/os/pty_rows.lu` runs to `exit(0)` with its declared stdout; `tests/pty_s292.rs` carries
+  it byte for byte. The vendored corpus is unchanged.
+- **`argv_is84` writes the scripts it runs through `cp`** (wolf-interp#360). The test wrote its
+  script in its own process while other tests forked children; a child forked with the script's
+  write descriptor open kept a copy until its own exec, and linux refused to run the script
+  (`ETXTBSY`). The script is now a new file `cp` writes and exits from before the run, so no
+  descriptor of the test's can reach it. A new row runs 200 scripts while four threads spawn
+  children in a loop.
+
 s289 — the compiler's diagnostics sweep, first change (wolf-lang#1085), mirrored: an undeclared
 name where no error row takes it is refused at this machine's resolve rung, with the compiler's
 code at the compiler's span.
