@@ -935,8 +935,16 @@ fn the_consumption_dry_run_is_green() {
 
 #[test]
 fn a_tampered_bundle_is_refused() {
+    // is85: the two bundles this test spoils are exported at once, each on
+    // its own thread, and then spoiled and opened in turn as before.
     let tampered = options("test-bundle-tampered");
-    export::export(&tampered).expect("exports");
+    let truncated = options("test-bundle-truncated");
+    std::thread::scope(|scope| {
+        let one = scope.spawn(|| export::export(&tampered).map(|_| ()));
+        let two = scope.spawn(|| export::export(&truncated).map(|_| ()));
+        one.join().expect("the export thread").expect("exports");
+        two.join().expect("the export thread").expect("exports");
+    });
     let hello = tampered.out.join("corpus/hello.lu");
     let mut bytes = std::fs::read(&hello).expect("readable");
     bytes.extend_from_slice(b"\n// tampered\n");
@@ -946,8 +954,6 @@ fn a_tampered_bundle_is_refused() {
     assert!(err.contains("corpus/hello.lu"), "{err}");
 
     // A missing file is refused just as loudly as a modified one.
-    let truncated = options("test-bundle-truncated");
-    export::export(&truncated).expect("exports");
     std::fs::remove_file(truncated.out.join("vocab/traps.json")).expect("removable");
     let err = export::open_bundle(&truncated.out).expect_err("a truncated bundle must be refused");
     assert!(err.contains("vocab/traps.json"), "{err}");
