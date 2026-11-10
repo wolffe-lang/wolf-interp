@@ -348,6 +348,15 @@ pub const AMBIENT_NAMES: &[&str] = &[
     // by name on a host that has one (std has no fork, and this machine
     // admits no `unsafe`) and windows answers the `unsupported` row.
     "os_fork",
+    // s290 (wolf-lang#1089; `[os.proc.session]`, `[os.term.session]`): a
+    // child in a new session, this process into one, and its session id.
+    // The names resolve; the spawn's SHAPE rows and windows' `unsupported`
+    // row are answered, and every other call is refused by name — std has
+    // no stable new-session spawn, no `setsid` on the calling process and no
+    // `getsid`, and this machine admits no `unsafe`.
+    "os_spawn_session",
+    "os_setsid",
+    "os_sid",
     // s236 (wolf-lang#633, #742; `[os.proc.ids]`, `[os.proc.ids.set]`): who
     // the process runs as, and the drop. The names resolve and their
     // SHAPE and HOST rows are answered; a well-formed call on a host that
@@ -1020,7 +1029,10 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_wait_poll_core"
         | "os_term_restore_at_exit"
         | "os_signal_wait_fds"
-        | "os_fork" => unsupported(hosted_tier_decline(name)),
+        | "os_fork"
+        | "os_spawn_session"
+        | "os_setsid"
+        | "os_sid" => unsupported(hosted_tier_decline(name)),
         // `[os.proc.inherit]` (s137, wolf-lang#235): the program named apart
         // from its arguments, and the descriptors it hands down.
         //
@@ -4348,6 +4360,10 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         // s248's two terminal-side lines; s247's fork (`busy`, ruling #95 R7 A).
         "os_term_restore_at_exit" | "os_signal_wait_fds" => &["invalid", "io", "unsupported"],
         "os_fork" => &["busy", "io", "unsupported"],
+        // s290 (`[os.host.sigs]`'s three lines).
+        "os_spawn_session" => &["unsupported", "invalid", "not_found", "denied", "io"],
+        "os_setsid" => &["denied", "io", "unsupported"],
+        "os_sid" => &["unsupported"],
         // s234 (`[os.host.sigs]`'s three lines).
         "os_term_size" | "os_term_chars" | "os_signal_wait_fd" => &["unsupported", "io"],
         "os_chroot" => &["denied", "io", "not_found", "unsupported"],
