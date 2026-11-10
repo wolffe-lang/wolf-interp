@@ -632,6 +632,21 @@ fn bundle() -> &'static (ExportOptions, ExportSummary) {
     &exports().bundle
 }
 
+/// A fresh copy of the shared bundle, file for file, under `target/<name>`.
+fn copy_of_bundle(name: &str) -> PathBuf {
+    let (options, _) = bundle();
+    let to = crate_root().join("target").join(name);
+    if to.exists() {
+        std::fs::remove_dir_all(&to).expect("removable");
+    }
+    for (relative, bytes) in tree(&options.out) {
+        let path = to.join(&relative);
+        std::fs::create_dir_all(path.parent().expect("under the copy")).expect("creatable");
+        std::fs::write(&path, bytes).expect("writable");
+    }
+    to
+}
+
 #[test]
 fn the_shared_exports_run_at_once() {
     // is85: the bundle, the re-export and the CLI's export run together, so
@@ -1009,27 +1024,22 @@ fn the_consumption_dry_run_is_green() {
 
 #[test]
 fn a_tampered_bundle_is_refused() {
-    // is85: the two bundles this test spoils are exported at once, each on
-    // its own thread, and then spoiled and opened in turn as before.
-    let tampered = options("test-bundle-tampered");
-    let truncated = options("test-bundle-truncated");
-    std::thread::scope(|scope| {
-        let one = scope.spawn(|| export::export(&tampered).map(|_| ()));
-        let two = scope.spawn(|| export::export(&truncated).map(|_| ()));
-        one.join().expect("the export thread").expect("exports");
-        two.join().expect("the export thread").expect("exports");
-    });
-    let hello = tampered.out.join("corpus/hello.lu");
+    // is85: the two bundles this test spoils are copies of the shared one,
+    // file for file (`re_export_is_byte_identical` holds a fresh export to
+    // it byte for byte), then spoiled and opened in turn as before.
+    let tampered = copy_of_bundle("test-bundle-tampered");
+    let truncated = copy_of_bundle("test-bundle-truncated");
+    let hello = tampered.join("corpus/hello.lu");
     let mut bytes = std::fs::read(&hello).expect("readable");
     bytes.extend_from_slice(b"\n// tampered\n");
     std::fs::write(&hello, bytes).expect("writable");
-    let err = export::open_bundle(&tampered.out).expect_err("a tampered bundle must be refused");
+    let err = export::open_bundle(&tampered).expect_err("a tampered bundle must be refused");
     assert!(err.contains("integrity"), "{err}");
     assert!(err.contains("corpus/hello.lu"), "{err}");
 
     // A missing file is refused just as loudly as a modified one.
-    std::fs::remove_file(truncated.out.join("vocab/traps.json")).expect("removable");
-    let err = export::open_bundle(&truncated.out).expect_err("a truncated bundle must be refused");
+    std::fs::remove_file(truncated.join("vocab/traps.json")).expect("removable");
+    let err = export::open_bundle(&truncated).expect_err("a truncated bundle must be refused");
     assert!(err.contains("vocab/traps.json"), "{err}");
 }
 
