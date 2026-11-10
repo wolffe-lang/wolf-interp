@@ -214,20 +214,44 @@ fn non_utf8_file_name_is_preserved_in_argv0_bytes() {
         "120\n255\n46\n108\n117\n",
     );
 }
-/// Writes `text` as the rig's executable `name`, which the test then runs.
+/// Writes `text` as the rig's executable `name`, which the test then runs,
+/// without this process ever holding a write descriptor on it
+/// (wolf-interp#360). Every test here spawns children from its own thread,
+/// and a child forked while this process holds such a descriptor keeps a
+/// copy until its own exec closes it; linux refuses to exec a file that any
+/// process holds open for writing (`ETXTBSY`). So the text goes to a
+/// side file, which is never run, and `cp` writes the script under a name
+/// removed first (a new file, never opened here): `cp`'s descriptor lives
+/// only in `cp`, which no sibling's child can inherit, and `cp` is reaped
+/// before the script runs.
 #[cfg(unix)]
 fn write_script(rig: &Rig, name: &str, text: &str) {
     use std::os::unix::fs::PermissionsExt;
-    rig.write(name, text);
-    std::fs::set_permissions(rig.0.join(name), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let text_file = format!("{name}.text");
+    rig.write(&text_file, text);
+    let script = rig.0.join(name);
+    match std::fs::remove_file(&script) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => panic!("{}: {e}", script.display()),
+    }
+    let status = Command::new("cp")
+        .arg(&text_file)
+        .arg(name)
+        .current_dir(&rig.0)
+        .stdin(Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success(), "cp {text_file} {name}: {status}");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-/// wolf-interp#360: a script written in this process and run at once, while
-/// other threads of the process start children. A child forked while the
-/// script's write descriptor is open holds a copy of it until its own exec,
-/// and linux refuses to exec a file a process holds open for writing
-/// (`ETXTBSY`). Siblings spawn in a loop here so that a fork lands inside a
-/// write often; every script written must run.
+/// wolf-interp#360: a script the test writes and runs at once, while other
+/// threads of the process start children. A child forked while the
+/// script's write descriptor is open in this process holds a copy of it
+/// until its own exec, and linux refuses to exec a file a process holds
+/// open for writing (`ETXTBSY`). Siblings spawn in a loop here so that a
+/// fork lands inside a write often; every script written must run.
 #[cfg(unix)]
 #[test]
 fn a_script_written_while_siblings_spawn_always_runs() {
