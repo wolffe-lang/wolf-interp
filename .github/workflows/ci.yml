@@ -733,8 +733,18 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cargo run --quiet -- conformance export --out target/bundle-a --json | tee bundle-a.json
-          cargo run --quiet -- conformance export --out target/bundle-b >/dev/null
+          # is85: the two exports run at once, from one build; the
+          # comparison and the dry run below are as they were.
+          cargo build --quiet
+          bin=target/debug/lupin
+          [ -f "$bin.exe" ] && bin="$bin.exe"
+          "$bin" conformance export --out target/bundle-a --json > bundle-a.json &
+          first=$!
+          "$bin" conformance export --out target/bundle-b > /dev/null &
+          second=$!
+          wait "$first"
+          wait "$second"
+          cat bundle-a.json
           if ! diff -r target/bundle-a target/bundle-b; then
             echo "::error::re-export is not byte-identical on ${{ matrix.os }}"; exit 1
           fi
