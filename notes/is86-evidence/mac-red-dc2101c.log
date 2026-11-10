@@ -1,0 +1,157 @@
+is86: at wolf-interp dc2101c in build-dc2101c
+is86: memory_pressure: System-wide memory free percentage: 63%
+is86: lock taken 07:26:16, memory free 63%, 61 GB disk; running: bash $LANE/rig/take.sh
+== STEP head 12:26:16
+  dc2101cce59581e7ba1282d44e4943633c7772de
+  dc2101c Add the new-session rows, red
+         0
+  rustc 1.97.1 (8bab26f4f 2026-07-14)
+  cargo 1.97.1 (c980f4866 2026-06-30)
+END head exit=0
+== STEP build 12:26:17
+     Compiling libc v0.2.189
+     Compiling proc-macro2 v1.0.107
+     Compiling quote v1.0.47
+     Compiling unicode-ident v1.0.24
+     Compiling cfg-if v1.0.4
+     Compiling errno v0.3.14
+     Compiling bitflags v2.13.1
+     Compiling memchr v2.8.3
+     Compiling syn v3.0.3
+     Compiling utf8parse v0.2.2
+     Compiling cfg_aliases v0.2.2
+     Compiling nix v0.31.3
+     Compiling serde_core v1.0.229
+     Compiling anstyle-parse v1.0.0
+     Compiling is_terminal_polyfill v1.70.2
+     Compiling getrandom v0.4.3
+     Compiling anstyle v1.0.14
+     Compiling smallvec v1.15.2
+     Compiling colorchoice v1.0.5
+     Compiling anstyle-query v1.1.5
+     Compiling rustix v1.1.4
+     Compiling zmij v1.0.23
+     Compiling anstream v1.0.0
+     Compiling nibble_vec v0.1.0
+     Compiling strsim v0.11.1
+     Compiling serde v1.0.229
+     Compiling serde_json v1.0.151
+     Compiling heck v0.5.0
+     Compiling clap_lex v1.1.0
+     Compiling endian-type v0.2.0
+     Compiling signal-hook v0.3.18
+     Compiling radix_trie v0.3.0
+     Compiling clap_derive v4.6.4
+     Compiling clap_builder v4.6.6
+     Compiling serde_derive v1.0.229
+     Compiling aho-corasick v1.1.5
+     Compiling signal-hook-registry v1.4.8
+     Compiling regex-syntax v0.8.11
+     Compiling log v0.4.34
+     Compiling unicode-segmentation v1.13.3
+     Compiling itoa v1.0.18
+     Compiling wolf-interp v0.1.60 ($LANE/build-dc2101c)
+     Compiling unicode-width v0.2.2
+     Compiling fastrand v2.5.0
+     Compiling once_cell v1.21.4
+     Compiling thiserror v2.0.20
+     Compiling tempfile v3.27.0
+     Compiling regex-automata v0.4.18
+     Compiling rustyline v18.0.1
+     Compiling clap v4.6.6
+     Compiling thiserror-impl v2.0.20
+     Compiling getrandom v0.2.16
+     Compiling regex v1.13.1
+     Compiling console v0.16.4
+     Compiling similar v2.7.0
+     Compiling comma v1.0.0
+     Compiling rexpect v0.7.1
+     Compiling insta v1.48.0
+      Finished `test` profile [unoptimized + debuginfo] target(s) in 20.97s
+    Executable tests/session_s290.rs (target/debug/deps/session_s290-c1c878f6ee9e320e)
+END build exit=0
+== STEP session-rows 12:26:38
+      Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s
+       Running tests/session_s290.rs (target/debug/deps/session_s290-c1c878f6ee9e320e)
+  
+  running 8 tests
+  test every_unix_target_and_the_bundle_refuse_by_name ... FAILED
+  test the_corpus_rows_print_the_same_four_lines_in_process ... FAILED
+  test the_declared_rows_discriminate_a_handler_s_arms ... FAILED
+  test the_spawn_s_shape_is_invalid_on_this_host ... FAILED
+  test the_spawn_s_shape_precedes_the_host_on_every_target ... FAILED
+  test well_formed_calls_are_refused_by_name_on_this_host ... FAILED
+  test the_corpus_rows_stop_at_the_forged_source_spawn_by_name ... FAILED
+  test windows_answers_the_unsupported_row_after_the_shape ... FAILED
+  
+  failures:
+  
+  ---- every_unix_target_and_the_bundle_refuse_by_name stdout ----
+  
+  thread 'every_unix_target_and_the_bundle_refuse_by_name' (6895357) panicked at tests/session_s290.rs:159:5:
+  plain: `os_spawn_session` must resolve: `os_spawn_session` does not resolve
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  
+  ---- the_corpus_rows_print_the_same_four_lines_in_process stdout ----
+  
+  thread 'the_corpus_rows_print_the_same_four_lines_in_process' (6895358) panicked at tests/session_s290.rs:342:9:
+  assertion `left == right` failed: as x86_64-unknown-linux-gnu
+    left: ""
+   right: "map_odd=invalid\nmap_target_twice=invalid\ndefaults_outside=invalid\ndefaults_negative=invalid\n"
+  
+  ---- the_declared_rows_discriminate_a_handler_s_arms stdout ----
+  
+  thread 'the_declared_rows_discriminate_a_handler_s_arms' (6895366) panicked at tests/session_s290.rs:269:9:
+  assertion `left == right` failed: os_spawn_session("true", List[str](), [1], 0) [denied => 1, not_found => 2, io => 3, unsupported => 4, invalid => 5]: Some("`os_spawn_session` does not resolve")
+    left: Unsupported
+   right: Exit(5)
+  
+  ---- the_spawn_s_shape_is_invalid_on_this_host stdout ----
+  
+  thread 'the_spawn_s_shape_is_invalid_on_this_host' (6895371) panicked at tests/session_s290.rs:174:9:
+  assertion `left == right` failed: map_odd: {"commit":"dc2101c","diagnostics":[],"file":"/$LANE/build-dc2101c/target/tmp/is86_shape_map_odd/main.lu","impl":"lupin","impl_version":"0.1.60","phase_reached":"resolve","protocol":1,"seeded":false,"stdout_inline":null,"stdout_sha256":null,"verdict":"unsupported","warnings":[],"x-unsupported":"`os_spawn_session` does not resolve","x-unsupported-at":"run"}
+    left: String("unsupported")
+   right: "exit(0)"
+  
+  ---- the_spawn_s_shape_precedes_the_host_on_every_target stdout ----
+  
+  thread 'the_spawn_s_shape_precedes_the_host_on_every_target' (6895418) panicked at tests/session_s290.rs:187:13:
+  assertion `left == right` failed: map_odd as x86_64-pc-windows-msvc: Some("`os_spawn_session` does not resolve")
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- well_formed_calls_are_refused_by_name_on_this_host stdout ----
+  
+  thread 'well_formed_calls_are_refused_by_name_on_this_host' (6895423) panicked at tests/session_s290.rs:159:5:
+  plain: `os_spawn_session` must resolve: `os_spawn_session` does not resolve
+  
+  ---- the_corpus_rows_stop_at_the_forged_source_spawn_by_name stdout ----
+  
+  thread 'the_corpus_rows_stop_at_the_forged_source_spawn_by_name' (6895365) panicked at tests/session_s290.rs:159:5:
+  session_rows.lu: `os_spawn_session` must resolve: `os_spawn_session` does not resolve
+  
+  ---- windows_answers_the_unsupported_row_after_the_shape stdout ----
+  
+  thread 'windows_answers_the_unsupported_row_after_the_shape' (6895431) panicked at tests/session_s290.rs:217:9:
+  assertion `left == right` failed: plain as windows: Some("`os_spawn_session` does not resolve")
+    left: Unsupported
+   right: Exit(0)
+  
+  
+  failures:
+      every_unix_target_and_the_bundle_refuse_by_name
+      the_corpus_rows_print_the_same_four_lines_in_process
+      the_corpus_rows_stop_at_the_forged_source_spawn_by_name
+      the_declared_rows_discriminate_a_handler_s_arms
+      the_spawn_s_shape_is_invalid_on_this_host
+      the_spawn_s_shape_precedes_the_host_on_every_target
+      well_formed_calls_are_refused_by_name_on_this_host
+      windows_answers_the_unsupported_row_after_the_shape
+  
+  test result: FAILED. 0 passed; 8 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.90s
+  
+  error: test failed, to rerun pass `--test session_s290`
+END session-rows exit=101
+== done 2026-11-10T12:26:39Z
+is86: END exit=0 07:26:39
+exit=0

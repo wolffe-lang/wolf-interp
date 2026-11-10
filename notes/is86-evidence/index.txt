@@ -1,0 +1,34 @@
+is86 evidence (wolf-interp: lupin's mirror of wolf-lang s290's calls for a new session,
+wolf-lang#1089). Paths are relative to the lane's directory, written $LANE; other lanes' shared
+paths are $LANES. The Mac is arm64 macOS, each take behind the Mac build lock (two cargo jobs,
+two test threads) in a worktree detached at the named commit, one target directory per commit.
+The Linux host is x86-64, written H1: its light jobs run on two CPUs beside a block, its heavy
+steps each take the block's three locks in order (block, slot, light) and run on the block's six
+CPUs, all in the CI toolchain's container (Rust 1.97.1), from a fresh GitHub clone of the head.
+
+mac-red-dc2101c.log     the rows at trunk's code (dc2101c): 0 passed, 8 failed, each at
+                        "does not resolve" or at the empty stdout 0.1.60's refusal leaves.
+mac-green-4e0e7a1.log   the change (4e0e7a1): the 8 rows, fmt, clippy (all targets, -D
+                        warnings), the library tests (796), and the neighbouring OS rows
+                        (job_s219, job_refused_is76, group_s241, os_mirror_is83,
+                        os_mirror_target_is83, fork_is79).
+mac-cross-4e0e7a1.log   the wasm library's clippy (CI's wasm leg) and a windows-target clippy of
+                        every target, both -D warnings, both clean.
+linux-cheap-a90507c.log the gauntlet's cheap steps (toolchain, fmt, plans, the three
+                        independence checks that need no lockfile), clippy, the library tests,
+                        the 8 rows and the neighbouring rows (with proc_fd_s215, exec_s225 and
+                        resolve_ambient), as one light job, every END exit=0. Its wasm step
+                        SKIPs (the image has no wasm target); mac-cross ran that leg.
+rig/mac/                the Mac scripts as run: locked.sh (the lock, the turn gap, the memory
+                        and disk gates), at-commit.sh (a worktree per commit), take.sh (the
+                        rows and checks), cross.sh (wasm and windows clippy), plant.sh (the
+                        plant take under the org's recorder), sanitize.sh (these copies; its
+                        list of private words is the lane's and is not reproduced).
+rig/linux/              the Linux rig, adapted by copy from s288's and is83's: job.sh (pid,
+                        status, exit marker), checkout.sh (a fresh clone per head, checked
+                        against it), prefetch.sh (crates staged as a light job, outside every
+                        heavy lock), launch.sh (the record), driver.sh (every step its own take
+                        of the three locks), cheap.sh and cheap-inner.sh (the light gates),
+                        record.sh (the org's recorder, byte for byte), verify-profile.py (the
+                        profile check, with session_s290 required), steps/ (s288's steps, with
+                        bundle.sh brought to CI's step as is85 left it).
