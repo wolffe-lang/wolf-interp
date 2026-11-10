@@ -1943,6 +1943,108 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
                     .to_owned(),
             )
         }
+        // s290 (wolf-lang#1089; `[os.proc.session]`, `[os.proc.session.note]`):
+        // the spawn in a new session, `os_spawn_job` with a `setsid` first in
+        // the child in place of the group and the terminal. Its order of
+        // refusal is the clause's, and the first two steps need no host call:
+        // the SHAPE (`invalid`: a map `[os.proc.fds]` calls invalid, a
+        // `defaults` below 0 or with a bit outside the twenty listenable
+        // meanings), then the HOST (a windows observation target answers the
+        // `unsupported` row). Every other call is refused by name, before the
+        // sources and the program: Rust's standard library has no stable way
+        // to start a child in a new session (`process_setsid` is unstable),
+        // and this machine admits no `unsafe` for a hook of its own. The
+        // target is the observation's, as for `os_pgid`, so a bundle observed
+        // as linux answers as linux on any exporter.
+        #[cfg(not(target_family = "wasm"))]
+        "os_spawn_session" => {
+            let (
+                Some(Value::Str(_)),
+                Some(Value::List(args_list, _, _)),
+                Some(Value::List(map, _, _)),
+                Some(Value::Int(defaults, _)),
+            ) = (args.first(), args.get(1), args.get(2), args.get(3))
+            else {
+                return unsupported(
+                    "`os_spawn_session` takes an executable `str`, a `List[str]` of arguments, a \
+                     `List[int]` descriptor map and an integer"
+                        .to_owned(),
+                );
+            };
+            if let Some(slot) = args_list
+                .iter()
+                .find(|slot| !matches!(slot.value, Value::Str(_)))
+            {
+                return unsupported(format!(
+                    "`os_spawn_session`'s arguments hold {}, not `str`",
+                    slot.value.kind()
+                ));
+            }
+            let mut flat = Vec::with_capacity(map.len());
+            for slot in map.iter() {
+                let Value::Int(n, _) = &slot.value else {
+                    return unsupported(format!(
+                        "`os_spawn_session`'s map holds {}, not `int`",
+                        slot.value.kind()
+                    ));
+                };
+                flat.push(*n);
+            }
+            machine.set_last_os_error(0);
+            let defaults = *defaults;
+            let row =
+                if fd_map_of(&flat).is_none() || defaults < 0 || defaults & !SIG_LISTENABLE != 0 {
+                    Some("invalid")
+                } else if crate::attrs::build_target().contains("-windows-") {
+                    Some("unsupported")
+                } else {
+                    None
+                };
+            if let Some(tag) = row {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`os_spawn_session` yields the `{tag}` row"),
+                );
+                return Ok(error_value(name, tag));
+            }
+            unsupported(
+                "`os_spawn_session` starts a child in a new session, a `setsid` in the child \
+                 before its exec: Rust's standard library has no stable call for it \
+                 (`process_setsid` is unstable), and this machine admits no `unsafe` \
+                 ([os.proc.session], [os.proc.session.note])"
+                    .to_owned(),
+            )
+        }
+        // s290 (wolf-lang#1089; `[os.term.session]`): this process into a
+        // session of its own, and its session id. Neither has a shape: the
+        // HOST first (a windows observation target answers the `unsupported`
+        // row), then the host's own answer, which this machine cannot ask —
+        // std has no `setsid` on the calling process and no `getsid`, and this
+        // machine admits no `unsafe` — so a call anywhere else is refused by
+        // name.
+        #[cfg(not(target_family = "wasm"))]
+        "os_setsid" | "os_sid" => {
+            if !args.is_empty() {
+                return unsupported(format!("`{name}` takes no argument"));
+            }
+            if crate::attrs::build_target().contains("-windows-") {
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`{name}` yields the `unsupported` row"),
+                );
+                return Ok(error_value(name, "unsupported"));
+            }
+            let why = if name == "os_setsid" {
+                "moves this process into a new session: std has no `setsid` on the calling process"
+            } else {
+                "reads this process's session id: std has no `getsid`"
+            };
+            unsupported(format!(
+                "`{name}` {why}, and this machine admits no `unsafe` ([os.term.session])"
+            ))
+        }
         // s219 (`[os.proc.job]`): the job spawn — SHAPE (`invalid`), HOST
         // (windows: any option or a non-empty map is `unsupported`), then
         // this machine's limits by name (a `tty` handoff or `defaults` need
