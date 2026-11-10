@@ -1498,3 +1498,36 @@ And the rules:
   and an imported struct's literal names every field (E0408). The compiled
   tiers answer `unsupported` ("this struct-literal head") for the local
   shape at 0.2.34; this machine answers the clause's E0301.
+
+### 6.22 A new session: its shape answered, every other call refused by name (is86)
+
+wolf-lang s290 (#1089; `[os.proc.session]`, `[os.term.session]`,
+`[os.proc.session.note]`) added three names, and lupin 0.1.60 resolved none:
+`os_spawn_session(exe, args, map, defaults)`, `os_spawn_job` with a `setsid`
+first in the child in place of the group and the terminal; `os_setsid()`,
+this process into a session of its own; and `os_sid()`, its session id.
+Rust's standard library has no stable way to start a child in a new session
+(`process_setsid` is unstable), no `setsid` on the calling process and no
+`getsid`, and this machine admits no `unsafe`, so it answers only what it
+can decide without a host call, in the clauses' order:
+
+- **The spawn's shape, on every host:** `invalid` for every map
+  `[os.proc.fds]` calls invalid (an odd length, a target outside 0..255, a
+  target named twice, a source below -1, more than 64 pairs) and for a
+  `defaults` below 0 or with a bit outside the twenty listenable meanings,
+  read by `os_spawn_job`'s own map reader and mask.
+- **Then the host:** a windows target answers the `unsupported` row for all
+  three calls (`os_setsid` and `os_sid` have no shape). The target is the
+  observation's, as for `os_pgid` and `os_set_pgid`, since every answer here
+  is decided without the host: a bundle observed as linux answers as linux
+  on any exporter.
+- **Every other call is refused by name**, the reason naming the call and
+  its clause. For the spawn that is before the sources (`io`) and the
+  program (`not_found`, `denied`): a forged source and an empty program are
+  refused as a well-formed call is, since no child is ever made to reach
+  them.
+
+wolf-lang's `corpus/os/session_rows.lu` therefore prints its four `invalid`
+lines here and stops at the forged-source spawn, refused by name;
+`tests/session_s290.rs` carries it byte for byte (wolf-lang `cc0274c2`)
+beside rows for each step above.
