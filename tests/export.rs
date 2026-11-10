@@ -594,27 +594,30 @@ struct Exports {
     spans: [(Instant, Instant); 3],
 }
 
-/// The three exports, made once, the first time any test asks for one: the
-/// bundle, then the re-export and the CLI's export.
+/// The three exports, made once, the first time any test asks for one, all
+/// at once, each on its own thread (is85: the re-export and the CLI's export
+/// used to start only after the bundle, so the binary was two exports long).
 fn exports() -> &'static Exports {
     static EXPORTS: OnceLock<Exports> = OnceLock::new();
     EXPORTS.get_or_init(|| {
         let first = options("test-bundle");
         let again = options("test-bundle-again");
         let cli = crate_root().join("target/test-bundle-cli");
-        let (summary, bundle_span) = timed(|| export::export(&first));
-        let summary = summary.expect("the export must succeed");
-        let ((again_summary, again_span), (exported, cli_span)) = std::thread::scope(|scope| {
-            let again = scope.spawn(|| timed(|| export::export(&again)));
-            let exported = scope.spawn(|| {
-                let out = cli.to_str().expect("utf-8");
-                timed(|| lupin(&["conformance", "export", "--out", out, "--json"]))
+        let ((summary, bundle_span), (again_summary, again_span), (exported, cli_span)) =
+            std::thread::scope(|scope| {
+                let bundle = scope.spawn(|| timed(|| export::export(&first)));
+                let again = scope.spawn(|| timed(|| export::export(&again)));
+                let exported = scope.spawn(|| {
+                    let out = cli.to_str().expect("utf-8");
+                    timed(|| lupin(&["conformance", "export", "--out", out, "--json"]))
+                });
+                (
+                    bundle.join().expect("the bundle's thread"),
+                    again.join().expect("the re-export's thread"),
+                    exported.join().expect("the CLI export's thread"),
+                )
             });
-            (
-                again.join().expect("the re-export's thread"),
-                exported.join().expect("the CLI export's thread"),
-            )
-        });
+        let summary = summary.expect("the export must succeed");
         Exports {
             bundle: (first, summary),
             again: (again, again_summary),
