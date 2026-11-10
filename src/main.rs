@@ -1190,6 +1190,9 @@ fn print_corpus_report_with(report: &corpus::CorpusReport, observe: &mut Observe
         .max()
         .unwrap_or(0);
 
+    // Each entry is evaluated ONCE, here, and the tally below reads these
+    // answers (wolf-interp#358): it used to evaluate the whole corpus again.
+    let mut answers: Vec<EntryAnswer> = Vec::new();
     for file in &report.files {
         match &file.outcome {
             Outcome::Entry(directives) => {
@@ -1219,6 +1222,7 @@ fn print_corpus_report_with(report: &corpus::CorpusReport, observe: &mut Observe
                 {
                     println!("        {judgement}");
                 }
+                answers.push((status, judgement));
             }
             Outcome::Member(directives) => {
                 let tags = if directives.conforms.is_empty() {
@@ -1278,11 +1282,7 @@ fn print_corpus_report_with(report: &corpus::CorpusReport, observe: &mut Observe
     // visible, never silent).
     let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
     let mut reached_run = 0usize;
-    for file in &report.files {
-        let Outcome::Entry(directives) = &file.outcome else {
-            continue;
-        };
-        let (status, judgement) = observe(&report.root, &file.path, directives);
+    for (status, judgement) in answers {
         if status.ends_with("@run") {
             reached_run += 1;
         }
