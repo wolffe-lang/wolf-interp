@@ -22,6 +22,8 @@ use wolf_interp::compare::{self, Class};
 use wolf_interp::phase::Phase;
 use wolf_interp::protocol::{Diagnostic, ObservationRecord, PROTOCOL_VERSION, Verdict};
 
+mod common;
+
 fn corpus(relative: &str) -> (PathBuf, Vec<u8>) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(wolf_interp::upstream_root())
@@ -131,13 +133,19 @@ fn our_unsupported_verdicts_never_file_against_a_deeper_counterparty() {
         .join(wolf_interp::upstream_root())
         .join("corpus");
     let report = wolf_interp::corpus::walk(&root, None).expect("walkable");
-    let mut filed = Vec::new();
-    for file in &report.files {
-        let path = root.join(&file.path);
+    // is85: the walk runs on up to four threads (`common::each`), and the
+    // records are read back in walk order.
+    let records = common::each(report.files.len(), |i| {
+        let path = root.join(&report.files[i].path);
         let source = std::fs::read(&path).expect("readable");
         // No `--phase`: we go as deep as we can, which is `parse`/unsupported
         // for everything well-formed.
-        let (ours, _) = wolf_interp::observe_record(&path, &source, None);
+        wolf_interp::observe_record(&path, &source, None).0
+    });
+    let mut filed = Vec::new();
+    for (file, ours) in report.files.iter().zip(records) {
+        let ours =
+            ours.unwrap_or_else(|panic| panic!("{}: the observation panicked: {panic}", file.path));
         if ours.verdict != Verdict::Unsupported {
             continue;
         }
