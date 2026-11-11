@@ -1,6 +1,39 @@
 # Changelog
 
-## Unreleased
+## 0.1.61 — 2026-11-11
+
+This release carries the 98 commits after 0.1.60: the mirror of wolf
+0.2.39's new-session and pseudo-terminal calls, of its front-end rulings,
+of its undeclared-name diagnostic and of its literal-pattern rule, at the
+unchanged spec and corpus pin wolf-lang `5f1f1c94` (724 anchor keys). It
+is prepared to pair with wolf 0.2.39. A branch build prints
+`0.1.61+dev.<commit>`; only the tagged build prints the bare version.
+
+The eight new names resolve: a program that calls them is no longer
+`unsupported` because a name "does not resolve". Each call's shape is
+answered as the compiler answers it, and every call that would reach a
+session or a terminal is refused by name, since Rust's standard library
+offers no stable way to make either and this machine admits no `unsafe`.
+wolf 0.2.39's `min` on every tier and its prelude-stub classes (its s289
+second and third changes) are not mirrored here.
+
+### The new-session and pseudo-terminal calls of wolf 0.2.39
+
+is86 — wolf-lang s290's calls for a new session (wolf-lang#1089), mirrored: `os_spawn_session`,
+`os_setsid` and `os_sid` resolve. lupin 0.1.60 answered "does not resolve" for each.
+
+- **`os_spawn_session(exe, args, map, defaults)`** (`[os.proc.session]`): its shape is answered on
+  every host, `invalid` for every map `os_spawn_fds` calls invalid and for a `defaults` below 0 or
+  with a bit outside the twenty listenable meanings; then a windows target answers the
+  `unsupported` row. Every other call is refused by name: Rust's standard library has no stable
+  way to start a child in a new session, and this machine admits no `unsafe`.
+- **`os_setsid()` and `os_sid()`** (`[os.term.session]`): a windows target answers the
+  `unsupported` row; every other host refuses each by name, since the standard library has no
+  `setsid` on the calling process and no `getsid`.
+- The windows rows follow the observation's target, as `os_pgid`'s do, so a bundle observed as
+  linux answers as linux on any exporter. wolf-lang's `corpus/os/session_rows.lu` prints its four
+  `invalid` lines and stops at the forged-source spawn, refused by name; `tests/session_s290.rs`
+  carries it byte for byte. The vendored corpus is unchanged.
 
 is87 — wolf-lang s292's pseudo-terminal calls (wolf-lang#1091), mirrored: `os_term_open_pty`,
 `os_term_pty_name`, `os_term_set_size`, `os_term_attr` and `os_term_set_attr` resolve. lupin
@@ -27,60 +60,7 @@ siblings' forks (wolf-interp#360).
   descriptor of the test's can reach it. A new row runs 200 scripts while four threads spawn
   children in a loop.
 
-s289 — the compiler's diagnostics sweep, first change (wolf-lang#1085), mirrored: an undeclared
-name where no error row takes it is refused at this machine's resolve rung, with the compiler's
-code at the compiler's span.
-
-- **A capitalized name that nothing declares is E0301 where no error row takes it**
-  (`[gram.expr.tagident]`). This machine read every such name as a tag value and ran the program:
-  `OPEN` as the tail of a function that returns `int`, a field assigned `INPUT`, a `let`
-  initialized with it, `return CANCEL`, `Bad(3)`, all exited 1 with `error: OPEN`. They are now
-  E0301 at the name, with the fixes the position allows (declare or import the constant; at a
-  `return` or tail of a function that cannot fail, `-> !T`; inside a fallible one, `return Name`).
-  A raise in a function that can fail is unchanged.
-- **A tag the function spells in a row, where the function cannot fail, is E0604** at the tag.
-- A call argument, an annotated `let`'s initializer, a closure's body and a bracket's argument may
-  meet a row this machine cannot see, so a name there is left alone; the check errs toward
-  saying nothing.
-
-is86 — wolf-lang s290's calls for a new session (wolf-lang#1089), mirrored: `os_spawn_session`,
-`os_setsid` and `os_sid` resolve. lupin 0.1.60 answered "does not resolve" for each.
-
-- **`os_spawn_session(exe, args, map, defaults)`** (`[os.proc.session]`): its shape is answered on
-  every host, `invalid` for every map `os_spawn_fds` calls invalid and for a `defaults` below 0 or
-  with a bit outside the twenty listenable meanings; then a windows target answers the
-  `unsupported` row. Every other call is refused by name: Rust's standard library has no stable
-  way to start a child in a new session, and this machine admits no `unsafe`.
-- **`os_setsid()` and `os_sid()`** (`[os.term.session]`): a windows target answers the
-  `unsupported` row; every other host refuses each by name, since the standard library has no
-  `setsid` on the calling process and no `getsid`.
-- The windows rows follow the observation's target, as `os_pgid`'s do, so a bundle observed as
-  linux answers as linux on any exporter. wolf-lang's `corpus/os/session_rows.lu` prints its four
-  `invalid` lines and stops at the forged-source spawn, refused by name; `tests/session_s290.rs`
-  carries it byte for byte. The vendored corpus is unchanged.
-
-is85 — the windows corpus walk fits its jobs again. No existing test or assertion changed.
-
-- **`tests/run_corpus.rs` evaluates the corpus once.** Its walking tests read one shared walk
-  instead of each taking its own: twelve evaluations of every entry became two (the shared walk
-  and the determinism test's second, which run at once), on up to four threads.
-- **The other whole-corpus test walks run on four threads too** (`region_machine`, `rule_registry`,
-  `divergence`), and the ladder's two bundle exports run at once. The shard key moves
-  `region_machine` beside `run_corpus` in shard 1; `ci/test-shards-test.sh` holds the pins.
-- **`tests/export.rs` exports three bundles where it exported five, all at once**: the bundle
-  every test reads, the re-export and the CLI's export start together. The re-export and the CLI's
-  export used to start only after the bundle, so the binary was two exports long end to end. The
-  tamper test spoils two copies of the shared bundle instead of two exports of its own. Each test
-  still asserts what it did; a new row, `the_shared_exports_run_at_once`, holds the schedule.
-- **`lupin corpus` evaluates each entry once** (wolf-interp#358). Its text report evaluated the
-  whole corpus a second time for its closing tally; the output is unchanged.
-- **CI: the heavy test entries build optimized, with every debug check on.** The three shards
-  and the ladder, on every OS, build `cargo test` and `cargo run` at opt-level 2 with debug
-  assertions and overflow checks on, so every `debug_assert!` and overflow check still runs and
-  the build still reads as `debug`. The smokes keep the unoptimized build. From 11-01, 30 of
-  36 windows heavy jobs had run over 220 minutes and two were cancelled at their 330-minute
-  limit; one corpus file, `memory/region_outer_write_push_copy_call.lu`, made every walk 1.47
-  times dearer. The measurement is `ci/is85/`, the record `ci/is85.md`.
+### The front-end rulings, the undeclared name and the literal pattern
 
 s288 — the compiler's front-end rulings of wolf-lang#1079 and #1080, mirrored: this machine gives
 the compiler's code at the compiler's span, at its resolve rung.
@@ -114,6 +94,22 @@ the compiler's code at the compiler's span, at its resolve rung.
   `memory/elem_loop_induction_written_mut.lu`, which writes its `for` header's `i`, is filed as a
   known divergence until the next pin advance carries wolf-lang's copy (`var i = i`).
 
+s289 — the compiler's diagnostics sweep, first change (wolf-lang#1085), mirrored: an undeclared
+name where no error row takes it is refused at this machine's resolve rung, with the compiler's
+code at the compiler's span.
+
+- **A capitalized name that nothing declares is E0301 where no error row takes it**
+  (`[gram.expr.tagident]`). This machine read every such name as a tag value and ran the program:
+  `OPEN` as the tail of a function that returns `int`, a field assigned `INPUT`, a `let`
+  initialized with it, `return CANCEL`, `Bad(3)`, all exited 1 with `error: OPEN`. They are now
+  E0301 at the name, with the fixes the position allows (declare or import the constant; at a
+  `return` or tail of a function that cannot fail, `-> !T`; inside a fallible one, `return Name`).
+  A raise in a function that can fail is unchanged.
+- **A tag the function spells in a row, where the function cannot fail, is E0604** at the tag.
+- A call argument, an annotated `let`'s initializer, a closure's body and a bracket's argument may
+  meet a row this machine cannot see, so a name there is left alone; the check errs toward
+  saying nothing.
+
 s285 — a literal pattern outside its scrutinee's type, the mirror of wolf-lang#1058.
 
 - **A literal pattern its scrutinee's type cannot hold traps `overflow` at the literal.** The
@@ -130,6 +126,31 @@ s285 — a literal pattern outside its scrutinee's type, the mirror of wolf-lang
   answers the compiler's "a literal pattern has no sign" at the signed literal, at a pattern's
   start and at a range's high end, with the guard spelling (`n if n == -1`) as its help
   (wolf-interp#349).
+
+### Tests and CI
+
+is85 — the windows corpus walk fits its jobs again. No existing test or assertion changed.
+
+- **`tests/run_corpus.rs` evaluates the corpus once.** Its walking tests read one shared walk
+  instead of each taking its own: twelve evaluations of every entry became two (the shared walk
+  and the determinism test's second, which run at once), on up to four threads.
+- **The other whole-corpus test walks run on four threads too** (`region_machine`, `rule_registry`,
+  `divergence`), and the ladder's two bundle exports run at once. The shard key moves
+  `region_machine` beside `run_corpus` in shard 1; `ci/test-shards-test.sh` holds the pins.
+- **`tests/export.rs` exports three bundles where it exported five, all at once**: the bundle
+  every test reads, the re-export and the CLI's export start together. The re-export and the CLI's
+  export used to start only after the bundle, so the binary was two exports long end to end. The
+  tamper test spoils two copies of the shared bundle instead of two exports of its own. Each test
+  still asserts what it did; a new row, `the_shared_exports_run_at_once`, holds the schedule.
+- **`lupin corpus` evaluates each entry once** (wolf-interp#358). Its text report evaluated the
+  whole corpus a second time for its closing tally; the output is unchanged.
+- **CI: the heavy test entries build optimized, with every debug check on.** The three shards
+  and the ladder, on every OS, build `cargo test` and `cargo run` at opt-level 2 with debug
+  assertions and overflow checks on, so every `debug_assert!` and overflow check still runs and
+  the build still reads as `debug`. The smokes keep the unoptimized build. From 11-01, 30 of
+  36 windows heavy jobs had run over 220 minutes and two were cancelled at their 330-minute
+  limit; one corpus file, `memory/region_outer_write_push_copy_call.lu`, made every walk 1.47
+  times dearer. The measurement is `ci/is85/`, the record `ci/is85.md`.
 
 ## 0.1.60 — 2026-11-06
 
