@@ -1,0 +1,263 @@
+MAC-TAKE sha=3e24d2ed2ee9e9bc10fa9779474ac7775510de7f start=2026-11-12T04:47:38Z pid=40387
+LOCK taken 2026-11-12T04:47:38Z
+GATE memory 12804 MiB free+inactive+speculative
+GATE disk 18 GB free
+START head
+  3e24d2ed2ee9e9bc10fa9779474ac7775510de7f
+  rustc 1.97.1 (8bab26f4f 2026-07-14)
+  cargo 1.97.1 (c980f4866 2026-06-30)
+  ProductName:		macOS
+  ProductVersion:		26.4.1
+  BuildVersion:		25E253
+  arm64
+  CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_DEV_OPT_LEVEL=2
+  CARGO_PROFILE_DEV_OVERFLOW_CHECKS=true
+  CARGO_PROFILE_TEST_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_TEST_OPT_LEVEL=2
+  CARGO_PROFILE_TEST_OVERFLOW_CHECKS=true
+END head exit=0 secs=0
+START build
+     Compiling libc v0.2.189
+     Compiling proc-macro2 v1.0.107
+     Compiling unicode-ident v1.0.24
+     Compiling quote v1.0.47
+     Compiling cfg-if v1.0.4
+     Compiling errno v0.3.14
+     Compiling bitflags v2.13.1
+     Compiling syn v3.0.3
+     Compiling memchr v2.8.3
+     Compiling cfg_aliases v0.2.2
+     Compiling utf8parse v0.2.2
+     Compiling nix v0.31.3
+     Compiling serde_core v1.0.229
+     Compiling anstyle-parse v1.0.0
+     Compiling is_terminal_polyfill v1.70.2
+     Compiling anstyle-query v1.1.5
+     Compiling anstyle v1.0.14
+     Compiling getrandom v0.4.3
+     Compiling colorchoice v1.0.5
+     Compiling rustix v1.1.4
+     Compiling smallvec v1.15.2
+     Compiling zmij v1.0.23
+     Compiling nibble_vec v0.1.0
+     Compiling anstream v1.0.0
+     Compiling serde_json v1.0.151
+     Compiling endian-type v0.2.0
+     Compiling clap_lex v1.1.0
+     Compiling signal-hook v0.3.18
+     Compiling heck v0.5.0
+     Compiling strsim v0.11.1
+     Compiling serde v1.0.229
+     Compiling clap_builder v4.6.6
+     Compiling clap_derive v4.6.4
+     Compiling radix_trie v0.3.0
+     Compiling serde_derive v1.0.229
+     Compiling aho-corasick v1.1.5
+     Compiling signal-hook-registry v1.4.8
+     Compiling unicode-segmentation v1.13.3
+     Compiling log v0.4.34
+     Compiling once_cell v1.21.4
+     Compiling fastrand v2.5.0
+     Compiling regex-syntax v0.8.11
+     Compiling thiserror v2.0.20
+     Compiling wolf-interp v0.1.61 ($LANE/build-3e24d2e)
+     Compiling itoa v1.0.18
+     Compiling unicode-width v0.2.2
+     Compiling rustyline v18.0.1
+     Compiling regex-automata v0.4.18
+     Compiling tempfile v3.27.0
+     Compiling clap v4.6.6
+     Compiling thiserror-impl v2.0.20
+     Compiling getrandom v0.2.16
+     Compiling regex v1.13.1
+     Compiling console v0.16.4
+     Compiling comma v1.0.0
+     Compiling similar v2.7.0
+     Compiling insta v1.48.0
+     Compiling rexpect v0.7.1
+      Finished `test` profile [optimized + debuginfo] target(s) in 1m 26s
+    Executable tests/net_error_is76.rs (target/debug/deps/net_error_is76-883cb1469cfb70c7)
+    Executable tests/net_family.rs (target/debug/deps/net_family-66c78d728dbe6c65)
+    Executable tests/net_s141.rs (target/debug/deps/net_s141-aad9a7d3caa70df3)
+    Executable tests/net_unix.rs (target/debug/deps/net_unix-5d4617114d593249)
+    Executable tests/os_mirror_target_is83.rs (target/debug/deps/os_mirror_target_is83-e2268dddb1ccd16b)
+    Executable tests/pty_s292.rs (target/debug/deps/pty_s292-9a5904feb4851411)
+    Executable tests/ready_s290.rs (target/debug/deps/ready_s290-0e3e8c6555d39b17)
+    Executable tests/session_s290.rs (target/debug/deps/session_s290-9e3f893ea1bd1c67)
+END build exit=0 secs=86
+START rows
+      Finished `test` profile [optimized + debuginfo] target(s) in 0.07s
+       Running tests/ready_s290.rs (target/debug/deps/ready_s290-0e3e8c6555d39b17)
+  
+  running 17 tests
+  test a_closed_handle_of_either_table_is_io_in_the_wait ... ok
+  test a_full_unix_stream_answers_busy_and_takes_again_after_the_drain ... ok
+  test a_full_tcp_stream_answers_busy_and_takes_again_after_the_drain ... ok
+  test a_send_after_the_peer_left_answers_closed ... ok
+  test a_well_formed_wait_is_refused_by_name_on_every_unix_target ... ok
+  test an_accepted_unix_stream_s_credentials_are_refused_by_name ... ok
+  test the_corpus_rows_on_this_host ... ok
+  test the_corpus_rows_read_as_each_target ... ok
+  test the_credentials_answer_io_for_every_handle_but_a_unix_stream ... ok
+  test the_credentials_answer_unsupported_on_a_windows_target_whatever_the_handle ... ok
+  test the_declared_rows_discriminate_a_handler_s_arms ... ok
+  test the_open_is_refused_by_name_on_every_unix_target ... ok
+  test the_send_answers_io_for_a_handle_it_cannot_send_on ... ok
+  test the_set_rows_on_every_target ... ok
+  test the_wait_on_this_host_answers_its_rows_then_refuses_by_name ... ok
+  test the_wait_s_shape_and_host_rows_on_every_target ... ok
+  test one_send_answers_its_count_and_the_peer_reads_it_whole ... ok
+  
+  test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+  
+END rows exit=0 secs=1
+START neighbours
+      Finished `test` profile [optimized + debuginfo] target(s) in 0.03s
+       Running tests/net_error_is76.rs (target/debug/deps/net_error_is76-883cb1469cfb70c7)
+  
+  running 2 tests
+  test the_unix_rows_carry_the_binds_and_the_dials_number ... ok
+  test each_net_row_carries_the_hosts_number_or_zero ... ok
+  
+  test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+  
+       Running tests/net_family.rs (target/debug/deps/net_family-66c78d728dbe6c65)
+  
+  running 11 tests
+  test a_handler_over_a_builtin_raised_row_discriminates_in_both_arm_orders ... ok
+  test a_deadline_resolves_an_accept_park_as_the_timeout_row ... ok
+  test a_non_byte_element_is_the_invalid_row_and_nothing_reaches_the_wire ... ok
+  test a_lone_concurrent_sleeper_parks_the_world_for_exactly_its_duration ... ok
+  test a_zero_length_byte_read_answers_the_empty_list_never_a_false_closed ... ok
+  test a_zero_length_read_answers_the_empty_string_never_a_false_closed ... ok
+  test shapes_outside_the_declared_surface_refuse_by_name ... ok
+  test the_byte_tier_round_trips_raw_bytes_including_non_utf8 ... ok
+  test the_probed_edge_rows_answer_as_the_compiled_lanes_do ... ok
+  test the_probed_row_tags_are_exact_on_the_propagation_path ... ok
+  test a_sleeping_sibling_does_not_starve_an_armed_deadline ... ok
+  
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s
+  
+       Running tests/net_s141.rs (target/debug/deps/net_s141-aad9a7d3caa70df3)
+  
+  running 5 tests
+  test a_closed_handle_is_io_on_both_new_calls ... ok
+  test nodelay_on_a_unix_domain_stream_is_io_and_the_gather_still_serves_it ... ok
+  test the_degenerate_gathers_complete_and_send_nothing ... ok
+  test the_head_gather_takes_every_degenerate_shape_and_a_multibyte_head ... ok
+  test a_fired_budget_answers_the_row_the_call_declares_and_not_a_wider_tag ... ok
+  
+  test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.75s
+  
+       Running tests/net_unix.rs (target/debug/deps/net_unix-5d4617114d593249)
+  
+  running 6 tests
+  test a_socket_path_that_climbs_out_of_the_working_directory_is_refused_by_name ... ok
+  test a_socket_path_is_judged_resolved_not_lexically ... ok
+  test a_stream_close_never_touches_the_path ... ok
+  test the_byte_pair_serves_a_unix_stream_call_for_call ... ok
+  test every_bind_and_dial_row_is_about_the_path ... ok
+  test the_family_serves_an_echo_and_the_listener_close_unlinks_its_path ... ok
+  
+  test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+  
+       Running tests/os_mirror_target_is83.rs (target/debug/deps/os_mirror_target_is83-e2268dddb1ccd16b)
+  
+  running 2 tests
+  test raw_lf_nonterminal_rows_use_the_reference_target ... ok
+  test declined_os_calls_use_the_reference_target ... ok
+  
+  test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+  
+       Running tests/pty_s292.rs (target/debug/deps/pty_s292-9a5904feb4851411)
+  
+  running 15 tests
+  test a_closed_or_forged_handle_is_io ... ok
+  test a_closed_or_forged_handle_is_io_on_every_unix_target ... ok
+  test a_handle_that_is_not_a_terminal_is_io_and_the_name_on_it_is_refused ... ok
+  test a_set_speed_outside_the_table_is_unsupported_before_the_handle ... ok
+  test each_target_lacks_its_own_ops_and_reads_the_handle_for_the_rest ... ok
+  test the_corpus_rows_run_to_exit_zero_with_the_declared_stdout ... ok
+  test the_declared_rows_discriminate_a_handler_s_arms ... ok
+  test the_name_on_a_standard_stream_is_refused_by_name_on_every_unix_target ... ok
+  test the_open_is_refused_by_name_on_every_unix_target ... ok
+  test the_open_on_this_host ... ok
+  test the_shapes_are_invalid_on_this_host ... ok
+  test the_shapes_precede_the_host_on_every_target ... ok
+  test this_host_lacks_its_own_ops ... ok
+  test windows_answers_the_unsupported_row_after_the_shape ... ok
+  test a_call_that_reaches_a_terminal_is_refused_by_name ... ok
+  
+  test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.64s
+  
+       Running tests/session_s290.rs (target/debug/deps/session_s290-9e3f893ea1bd1c67)
+  
+  running 8 tests
+  test the_corpus_rows_print_the_same_four_lines_in_process ... ok
+  test every_unix_target_and_the_bundle_refuse_by_name ... ok
+  test the_declared_rows_discriminate_a_handler_s_arms ... ok
+  test the_corpus_rows_stop_at_the_forged_source_spawn_by_name ... ok
+  test the_spawn_s_shape_precedes_the_host_on_every_target ... ok
+  test the_spawn_s_shape_is_invalid_on_this_host ... ok
+  test well_formed_calls_are_refused_by_name_on_this_host ... ok
+  test windows_answers_the_unsupported_row_after_the_shape ... ok
+  
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+  
+END neighbours exit=0 secs=4
+START clippy
+      Checking libc v0.2.189
+      Checking cfg-if v1.0.4
+      Checking bitflags v2.13.1
+      Checking memchr v2.8.3
+      Checking utf8parse v0.2.2
+      Checking anstyle-parse v1.0.0
+      Checking anstyle-query v1.1.5
+      Checking errno v0.3.14
+      Checking smallvec v1.15.2
+      Checking is_terminal_polyfill v1.70.2
+      Checking colorchoice v1.0.5
+      Checking anstyle v1.0.14
+      Checking nibble_vec v0.1.0
+      Checking nix v0.31.3
+      Checking anstream v1.0.0
+      Checking serde_core v1.0.229
+      Checking clap_lex v1.1.0
+      Checking strsim v0.11.1
+      Checking endian-type v0.2.0
+      Checking radix_trie v0.3.0
+      Checking clap_builder v4.6.6
+      Checking rustix v1.1.4
+      Checking zmij v1.0.23
+      Checking getrandom v0.4.3
+      Checking signal-hook-registry v1.4.8
+      Checking aho-corasick v1.1.5
+      Checking unicode-segmentation v1.13.3
+      Checking once_cell v1.21.4
+      Checking fastrand v2.5.0
+      Checking itoa v1.0.18
+      Checking regex-syntax v0.8.11
+     Compiling wolf-interp v0.1.61 ($LANE/build-3e24d2e)
+      Checking unicode-width v0.2.2
+      Checking log v0.4.34
+      Checking rustyline v18.0.1
+      Checking regex-automata v0.4.18
+      Checking serde_json v1.0.151
+      Checking tempfile v3.27.0
+      Checking serde v1.0.229
+      Checking clap v4.6.6
+      Checking signal-hook v0.3.18
+      Checking getrandom v0.2.16
+      Checking thiserror v2.0.20
+      Checking regex v1.13.1
+      Checking console v0.16.4
+      Checking comma v1.0.0
+      Checking similar v2.7.0
+      Checking rexpect v0.7.1
+      Checking insta v1.48.0
+      Finished `dev` profile [optimized + debuginfo] target(s) in 12.43s
+END clippy exit=0 secs=13
+WORKTREE removed $LANE/build-3e24d2e
+LOCK released 2026-11-12T04:49:23Z
+MAC-TAKE end=2026-11-12T04:49:23Z disk=18GB

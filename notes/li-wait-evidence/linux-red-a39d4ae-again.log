@@ -1,0 +1,197 @@
+TAKE red-a39d4ae sha=a39d4ae9ec26512a8f4c0d2385d144eeaff8b0ba mode=red block=A cpus=0-5 start=2026-11-12T04:36:51Z
+CLONE $LANE/wi-a39d4ae at a39d4ae Add the one-wait rows, red
+light: waiting on $LANES/H1-A-light.lock at 2026-11-12T04:36:51Z
+light: holding $LANES/H1-A-light.lock on cpus 4-5 (MemAvailable 36 GiB) at 2026-11-12T04:43:22Z
+light: released $LANES/H1-A-light.lock rc=0 at 2026-11-12T04:43:23Z
+FETCHED 2026-11-12T04:43:23Z
+START head
+  a39d4ae9ec26512a8f4c0d2385d144eeaff8b0ba
+  a39d4ae Add the one-wait rows, red
+  rustc 1.97.1 (8bab26f4f 2026-07-14)
+  cargo 1.97.1 (c980f4866 2026-06-30)
+  6
+  7.2.4
+  SigBlk:	0000000000000000
+  SigIgn:	0000000000000000
+  CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_DEV_OPT_LEVEL=2
+  CARGO_PROFILE_DEV_OVERFLOW_CHECKS=true
+  CARGO_PROFILE_TEST_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_TEST_OPT_LEVEL=2
+  CARGO_PROFILE_TEST_OVERFLOW_CHECKS=true
+END head exit=0 secs=0
+START build
+      Finished `test` profile [optimized + debuginfo] target(s) in 0.05s
+    Executable tests/ready_s290.rs (target/debug/deps/ready_s290-895c19fad151fcbf)
+END build exit=0 secs=0
+START rows
+      Finished `test` profile [optimized + debuginfo] target(s) in 0.02s
+       Running tests/ready_s290.rs (target/debug/deps/ready_s290-895c19fad151fcbf)
+  
+  running 17 tests
+  test a_send_after_the_peer_left_answers_closed ... FAILED
+  test a_full_unix_stream_answers_busy_and_takes_again_after_the_drain ... FAILED
+  test a_full_tcp_stream_answers_busy_and_takes_again_after_the_drain ... FAILED
+  test an_accepted_unix_stream_s_credentials_are_refused_by_name ... FAILED
+  test one_send_answers_its_count_and_the_peer_reads_it_whole ... FAILED
+  test the_corpus_rows_on_this_host ... FAILED
+  test a_well_formed_wait_is_refused_by_name_on_every_unix_target ... FAILED
+  test a_closed_handle_of_either_table_is_io_in_the_wait ... FAILED
+  test the_corpus_rows_read_as_each_target ... FAILED
+  test the_declared_rows_discriminate_a_handler_s_arms ... FAILED
+  test the_open_is_refused_by_name_on_every_unix_target ... FAILED
+  test the_credentials_answer_unsupported_on_a_windows_target_whatever_the_handle ... FAILED
+  test the_credentials_answer_io_for_every_handle_but_a_unix_stream ... FAILED
+  test the_set_rows_on_every_target ... FAILED
+  test the_wait_s_shape_and_host_rows_on_every_target ... FAILED
+  test the_wait_on_this_host_answers_its_rows_then_refuses_by_name ... FAILED
+  test the_send_answers_io_for_a_handle_it_cannot_send_on ... FAILED
+  
+  failures:
+  
+  ---- a_send_after_the_peer_left_answers_closed stdout ----
+  
+  thread 'a_send_after_the_peer_left_answers_closed' (53) panicked at tests/ready_s290.rs:681:9:
+  assertion `left == right` failed: unix: //work/target/tmp/li_wait_gone_unix/main.lu: unsupported: `net_write_some` does not resolve
+  
+    left: Some(4)
+   right: Some(0)
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  
+  ---- a_full_unix_stream_answers_busy_and_takes_again_after_the_drain stdout ----
+  
+  thread 'a_full_unix_stream_answers_busy_and_takes_again_after_the_drain' (52) panicked at tests/ready_s290.rs:591:5:
+  assertion `left == right` failed: unix: //work/target/tmp/li_wait_busy_unix/main.lu: unsupported: `net_write_some` does not resolve
+  
+    left: Some(4)
+   right: Some(0)
+  
+  ---- a_full_tcp_stream_answers_busy_and_takes_again_after_the_drain stdout ----
+  
+  thread 'a_full_tcp_stream_answers_busy_and_takes_again_after_the_drain' (51) panicked at tests/ready_s290.rs:591:5:
+  assertion `left == right` failed: tcp: //work/target/tmp/li_wait_busy_tcp/main.lu: unsupported: `net_write_some` does not resolve
+  
+    left: Some(4)
+   right: Some(0)
+  
+  ---- an_accepted_unix_stream_s_credentials_are_refused_by_name stdout ----
+  
+  thread 'an_accepted_unix_stream_s_credentials_are_refused_by_name' (69) panicked at tests/ready_s290.rs:157:5:
+  an accepted Unix stream: `net_peer_cred` must resolve: //work/target/tmp/li_wait_cred_accepted/main.lu: unsupported: `net_peer_cred` does not resolve
+  
+  
+  ---- one_send_answers_its_count_and_the_peer_reads_it_whole stdout ----
+  
+  thread 'one_send_answers_its_count_and_the_peer_reads_it_whole' (70) panicked at tests/ready_s290.rs:533:9:
+  assertion `left == right` failed: tcp: //work/target/tmp/li_wait_one_send_tcp/main.lu: unsupported: `net_write_some` does not resolve
+  
+    left: ""
+   right: "count=5 next=6 0\nread=5 true true\nempty=0 0\nafter_empty=timeout\n"
+  
+  ---- the_corpus_rows_on_this_host stdout ----
+  
+  thread 'the_corpus_rows_on_this_host' (81) panicked at tests/ready_s290.rs:157:5:
+  the corpus rows: `os_wait_ready` must resolve: `os_wait_ready` does not resolve
+  
+  ---- a_well_formed_wait_is_refused_by_name_on_every_unix_target stdout ----
+  
+  thread 'a_well_formed_wait_is_refused_by_name_on_every_unix_target' (67) panicked at tests/ready_s290.rs:157:5:
+  os_wait_ready([p.0, p.1 + 4611686018427387904], 0, 0): `os_wait_ready` must resolve: `os_wait_ready` does not resolve
+  
+  ---- a_closed_handle_of_either_table_is_io_in_the_wait stdout ----
+  
+  thread 'a_closed_handle_of_either_table_is_io_in_the_wait' (50) panicked at tests/ready_s290.rs:273:13:
+  assertion `left == right` failed: os_wait_ready([p.0], 0, 0) as x86_64-unknown-linux-gnu: Some("`os_wait_ready` does not resolve")
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- the_corpus_rows_read_as_each_target stdout ----
+  
+  thread 'the_corpus_rows_read_as_each_target' (82) panicked at tests/ready_s290.rs:963:5:
+  assertion `left == right` failed: as windows: Some("`os_wait_ready` does not resolve") 
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- the_declared_rows_discriminate_a_handler_s_arms stdout ----
+  
+  thread 'the_declared_rows_discriminate_a_handler_s_arms' (101) panicked at tests/ready_s290.rs:890:9:
+  assertion `left == right` failed: os_wait_ready([0], 1048576, 0) [invalid => 1, unsupported => 2, io => 3] as x86_64-unknown-linux-gnu: Some("`os_wait_ready` does not resolve")
+    left: Unsupported
+   right: Exit(3)
+  
+  ---- the_open_is_refused_by_name_on_every_unix_target stdout ----
+  
+  thread 'the_open_is_refused_by_name_on_every_unix_target' (106) panicked at tests/ready_s290.rs:157:5:
+  x86_64-unknown-linux-gnu: `os_ready_open` must resolve: `os_ready_open` does not resolve
+  
+  ---- the_credentials_answer_unsupported_on_a_windows_target_whatever_the_handle stdout ----
+  
+  thread 'the_credentials_answer_unsupported_on_a_windows_target_whatever_the_handle' (100) panicked at tests/ready_s290.rs:780:5:
+  assertion `left == right` failed: Some("`net_peer_cred` does not resolve")
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- the_credentials_answer_io_for_every_handle_but_a_unix_stream stdout ----
+  
+  thread 'the_credentials_answer_io_for_every_handle_but_a_unix_stream' (96) panicked at tests/ready_s290.rs:733:5:
+  assertion `left == right` failed: //work/target/tmp/li_wait_cred_host/main.lu: unsupported: `net_peer_cred` does not resolve
+  
+    left: ""
+   right: "forged=io\nnegative=io\ntcp_listener=io\ntcp_dialed=io\ntcp_accepted=io\nunix_listener=io\nclosed=io\n"
+  
+  ---- the_set_rows_on_every_target stdout ----
+  
+  thread 'the_set_rows_on_every_target' (114) panicked at tests/ready_s290.rs:169:13:
+  assertion `left == right` failed: os_ready_set(0, 0, 4, 1) as x86_64-unknown-linux-gnu: Some("`os_ready_set` does not resolve") 
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- the_wait_s_shape_and_host_rows_on_every_target stdout ----
+  
+  thread 'the_wait_s_shape_and_host_rows_on_every_target' (119) panicked at tests/ready_s290.rs:169:13:
+  assertion `left == right` failed: os_wait_ready([0], 1048576, 0) as x86_64-unknown-linux-gnu: Some("`os_wait_ready` does not resolve") 
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- the_wait_on_this_host_answers_its_rows_then_refuses_by_name stdout ----
+  
+  thread 'the_wait_on_this_host_answers_its_rows_then_refuses_by_name' (115) panicked at tests/ready_s290.rs:357:5:
+  assertion `left == right` failed: //work/target/tmp/li_wait_wait_host/main.lu: unsupported: `os_wait_ready` does not resolve
+  
+    left: ""
+   right: "bad_set=io\ndeadline_below=invalid\nclosed_listener=io\n"
+  
+  ---- the_send_answers_io_for_a_handle_it_cannot_send_on stdout ----
+  
+  thread 'the_send_answers_io_for_a_handle_it_cannot_send_on' (113) panicked at tests/ready_s290.rs:480:5:
+  assertion `left == right` failed: //work/target/tmp/li_wait_send_io/main.lu: unsupported: `net_write_some` does not resolve
+  
+    left: ""
+   right: "forged=io 0\nnegative=io 0\nzero=io\nforged_empty=io\nlistener=io 0\nlistener_empty=io\nunix_listener=io\nunix_listener_empty=io\nclosed=io 0\nclosed_empty=io\n"
+  
+  
+  failures:
+      a_closed_handle_of_either_table_is_io_in_the_wait
+      a_full_tcp_stream_answers_busy_and_takes_again_after_the_drain
+      a_full_unix_stream_answers_busy_and_takes_again_after_the_drain
+      a_send_after_the_peer_left_answers_closed
+      a_well_formed_wait_is_refused_by_name_on_every_unix_target
+      an_accepted_unix_stream_s_credentials_are_refused_by_name
+      one_send_answers_its_count_and_the_peer_reads_it_whole
+      the_corpus_rows_on_this_host
+      the_corpus_rows_read_as_each_target
+      the_credentials_answer_io_for_every_handle_but_a_unix_stream
+      the_credentials_answer_unsupported_on_a_windows_target_whatever_the_handle
+      the_declared_rows_discriminate_a_handler_s_arms
+      the_open_is_refused_by_name_on_every_unix_target
+      the_send_answers_io_for_a_handle_it_cannot_send_on
+      the_set_rows_on_every_target
+      the_wait_on_this_host_answers_its_rows_then_refuses_by_name
+      the_wait_s_shape_and_host_rows_on_every_target
+  
+  test result: FAILED. 0 passed; 17 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+  
+  error: test failed, to rerun pass `--test ready_s290`
+END rows exit=101 secs=0
+TAKE-BOX done 2026-11-12T04:43:23Z
+TAKE-END red-a39d4ae exit=0 end=2026-11-12T04:43:23Z

@@ -1,0 +1,71 @@
+# li-wait: wolf-interp's linux gauntlet as recorder steps on one H1 block (BLOCK in the
+# environment), adapted by copy from the previous mirrors' driver: every step but the profile
+# header runs in the CI toolchain's container through box.sh, which takes the block's three
+# locks per step. CI's own legs are not steps here: the glibc floor (ubuntu 22.04), windows, the
+# cross-OS bundle comparison and the wasm clippy (the image has no wasm target).
+engine $LANES/H1-env/bin/podman --memory 1g --network none
+floor 35 $LANES
+rig gauntlet.manifest committed=$LANE/rig-g:HEAD:gauntlet.manifest
+rig box.sh committed=$LANE/rig-g:HEAD:box.sh
+rig profile.sh committed=$LANE/rig-g:HEAD:profile.sh
+rig verify-profile.py committed=$LANE/rig-g:HEAD:verify-profile.py
+rig steps/toolchain.sh committed=$LANE/rig-g:HEAD:steps/toolchain.sh
+rig steps/fmt.sh committed=$LANE/rig-g:HEAD:steps/fmt.sh
+rig steps/clippy.sh committed=$LANE/rig-g:HEAD:steps/clippy.sh
+rig steps/profile-artifacts.sh committed=$LANE/rig-g:HEAD:steps/profile-artifacts.sh
+rig steps/plans.sh committed=$LANE/rig-g:HEAD:steps/plans.sh
+rig steps/independence-lock.sh committed=$LANE/rig-g:HEAD:steps/independence-lock.sh
+rig steps/independence-inputs.sh committed=$LANE/rig-g:HEAD:steps/independence-inputs.sh
+rig steps/independence-pin.sh committed=$LANE/rig-g:HEAD:steps/independence-pin.sh
+rig steps/independence-imports.sh committed=$LANE/rig-g:HEAD:steps/independence-imports.sh
+rig steps/shard-1.sh committed=$LANE/rig-g:HEAD:steps/shard-1.sh
+rig steps/shard-2.sh committed=$LANE/rig-g:HEAD:steps/shard-2.sh
+rig steps/shard-3.sh committed=$LANE/rig-g:HEAD:steps/shard-3.sh
+rig steps/heavy-run_corpus.sh committed=$LANE/rig-g:HEAD:steps/heavy-run_corpus.sh
+rig steps/heavy-divergence.sh committed=$LANE/rig-g:HEAD:steps/heavy-divergence.sh
+rig steps/heavy-doc_truth.sh committed=$LANE/rig-g:HEAD:steps/heavy-doc_truth.sh
+rig steps/heavy-region_machine.sh committed=$LANE/rig-g:HEAD:steps/heavy-region_machine.sh
+rig steps/heavy-rule_registry.sh committed=$LANE/rig-g:HEAD:steps/heavy-rule_registry.sh
+rig steps/heavy-export.sh committed=$LANE/rig-g:HEAD:steps/heavy-export.sh
+rig steps/heavy-cli.sh committed=$LANE/rig-g:HEAD:steps/heavy-cli.sh
+rig steps/heavy-fuzz_smoke.sh committed=$LANE/rig-g:HEAD:steps/heavy-fuzz_smoke.sh
+rig steps/shard-coverage.sh committed=$LANE/rig-g:HEAD:steps/shard-coverage.sh
+rig steps/corpus.sh committed=$LANE/rig-g:HEAD:steps/corpus.sh
+rig steps/rungs.sh committed=$LANE/rig-g:HEAD:steps/rungs.sh
+rig steps/explorer.sh committed=$LANE/rig-g:HEAD:steps/explorer.sh
+rig steps/protocol.sh committed=$LANE/rig-g:HEAD:steps/protocol.sh
+rig steps/differ.sh committed=$LANE/rig-g:HEAD:steps/differ.sh
+rig steps/fuzz.sh committed=$LANE/rig-g:HEAD:steps/fuzz.sh
+rig steps/trace-identity.sh committed=$LANE/rig-g:HEAD:steps/trace-identity.sh
+rig steps/bundle.sh committed=$LANE/rig-g:HEAD:steps/bundle.sh
+
+step profile-header tools=printenv script=profile.sh
+step toolchain image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- toolchain
+step fmt image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- fmt
+step clippy image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- clippy
+step profile-artifacts image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- profile-artifacts
+step plans image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- plans
+step independence-lock image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- independence-lock
+step independence-inputs image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- independence-inputs
+step independence-pin image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- independence-pin
+step independence-imports image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- independence-imports
+step shard-1 image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- shard-1
+step shard-2 image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- shard-2
+step shard-3 image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- shard-3
+step heavy-run_corpus image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- heavy-run_corpus
+step heavy-divergence image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- heavy-divergence
+step heavy-doc_truth image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- heavy-doc_truth
+step heavy-region_machine image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- heavy-region_machine
+step heavy-rule_registry image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- heavy-rule_registry
+step heavy-export image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- heavy-export
+step heavy-cli image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- heavy-cli
+step heavy-fuzz_smoke image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- heavy-fuzz_smoke
+step shard-coverage needs=shard-1,shard-2,shard-3,heavy-run_corpus,heavy-divergence,heavy-doc_truth,heavy-region_machine,heavy-rule_registry,heavy-export,heavy-cli,heavy-fuzz_smoke image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- shard-coverage
+step corpus image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- corpus
+step rungs image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- rungs
+step explorer image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- explorer
+step protocol image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- protocol
+step differ image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- differ
+step fuzz image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- fuzz
+step trace-identity image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- trace-identity
+step bundle image=localhost/r41-toolchain:1 tools=bash,python3,git,taskset.real,setsid script=box.sh -- bundle

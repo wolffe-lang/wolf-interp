@@ -1,0 +1,14 @@
+# li-wait: the plant's record on one H1 block (BLOCK in the environment): its head and hunk,
+# the build, the controls (every row of ready_s290 but the planted two) and the planted rows,
+# which print FAIL lines at column 0. Each container step takes the block's three locks.
+engine $LANES/H1-env/bin/podman --memory 1g --network none
+floor 35 $LANES
+rig plant.manifest committed=$LANE/rig-g:HEAD:plant.manifest
+rig pbox.sh committed=$LANE/rig-g:HEAD:pbox.sh
+rig plant-box.sh committed=$LANE/rig-g:HEAD:plant-box.sh
+rig plant-head.sh committed=$LANE/rig-g:HEAD:plant-head.sh
+
+step plant-head tools=git script=plant-head.sh
+step plant-build image=localhost/r41-toolchain:1 tools=bash,taskset.real,setsid script=pbox.sh -- build
+step plant-controls needs=plant-build image=localhost/r41-toolchain:1 tools=bash,taskset.real,setsid script=pbox.sh -- controls a_full_unix_stream_answers_busy_and_takes_again_after_the_drain a_full_tcp_stream_answers_busy_and_takes_again_after_the_drain
+step plant-rows needs=plant-build image=localhost/r41-toolchain:1 tools=bash,taskset.real,setsid script=pbox.sh -- rows a_full_unix_stream_answers_busy_and_takes_again_after_the_drain a_full_tcp_stream_answers_busy_and_takes_again_after_the_drain

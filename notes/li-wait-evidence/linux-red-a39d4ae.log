@@ -1,0 +1,323 @@
+TAKE red-a39d4ae-B sha=a39d4ae9ec26512a8f4c0d2385d144eeaff8b0ba mode=red block=B cpus=6-11 start=2026-11-12T04:38:53Z
+CLONE $LANE/wi-a39d4ae at a39d4ae Add the one-wait rows, red
+START head
+  a39d4ae9ec26512a8f4c0d2385d144eeaff8b0ba
+  a39d4ae Add the one-wait rows, red
+  rustc 1.97.1 (8bab26f4f 2026-07-14)
+  cargo 1.97.1 (c980f4866 2026-06-30)
+  6
+  7.2.4
+  SigBlk:	0000000000000000
+  SigIgn:	0000000000000000
+  CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_DEV_OPT_LEVEL=2
+  CARGO_PROFILE_DEV_OVERFLOW_CHECKS=true
+  CARGO_PROFILE_TEST_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_TEST_OPT_LEVEL=2
+  CARGO_PROFILE_TEST_OVERFLOW_CHECKS=true
+END head exit=0 secs=1
+START fetch
+      Updating crates.io index
+   Downloading crates ...
+    Downloaded signal-hook v0.3.18
+    Downloaded nibble_vec v0.1.0
+    Downloaded windows-link v0.2.1
+    Downloaded endian-type v0.2.0
+    Downloaded itoa v1.0.18
+    Downloaded heck v0.5.0
+    Downloaded strsim v0.11.1
+    Downloaded cfg_aliases v0.2.2
+    Downloaded colorchoice v1.0.5
+    Downloaded once_cell_polyfill v1.70.2
+    Downloaded errno v0.3.14
+    Downloaded anstyle-wincon v3.0.11
+    Downloaded comma v1.0.0
+    Downloaded is_terminal_polyfill v1.70.2
+    Downloaded utf8parse v0.2.2
+    Downloaded cfg-if v1.0.4
+    Downloaded error-code v3.4.0
+    Downloaded anstyle-query v1.1.5
+    Downloaded clap_lex v1.1.0
+    Downloaded zmij v1.0.23
+    Downloaded rexpect v0.7.1
+    Downloaded fastrand v2.5.0
+    Downloaded thiserror v2.0.20
+    Downloaded thiserror-impl v2.0.20
+    Downloaded anstyle-parse v1.0.0
+    Downloaded clipboard-win v5.4.1
+    Downloaded quote v1.0.47
+    Downloaded anstyle v1.0.14
+    Downloaded smallvec v1.15.2
+    Downloaded anstream v1.0.0
+    Downloaded tempfile v3.27.0
+    Downloaded console v0.16.4
+    Downloaded wasi v0.11.1+wasi-snapshot-preview1
+    Downloaded once_cell v1.21.4
+    Downloaded signal-hook-registry v1.4.8
+    Downloaded clap_derive v4.6.4
+    Downloaded serde_derive v1.0.229
+    Downloaded r-efi v6.0.0
+    Downloaded getrandom v0.2.16
+    Downloaded proc-macro2 v1.0.107
+    Downloaded getrandom v0.4.3
+    Downloaded encode_unicode v1.0.0
+    Downloaded log v0.4.34
+    Downloaded unicode-ident v1.0.24
+    Downloaded clap v4.6.6
+    Downloaded serde_core v1.0.229
+    Downloaded similar v2.7.0
+    Downloaded bitflags v2.13.1
+    Downloaded serde v1.0.229
+    Downloaded memchr v2.8.3
+    Downloaded unicode-segmentation v1.13.3
+    Downloaded insta v1.48.0
+    Downloaded regex v1.13.1
+    Downloaded rustyline v18.0.1
+    Downloaded serde_json v1.0.151
+    Downloaded aho-corasick v1.1.5
+    Downloaded clap_builder v4.6.6
+    Downloaded radix_trie v0.3.0
+    Downloaded unicode-width v0.2.2
+    Downloaded syn v3.0.3
+    Downloaded nix v0.31.3
+    Downloaded regex-syntax v0.8.11
+    Downloaded rustix v1.1.4
+    Downloaded regex-automata v0.4.18
+    Downloaded libc v0.2.189
+    Downloaded windows-sys v0.61.2
+    Downloaded linux-raw-sys v0.12.1
+END fetch exit=0 secs=7
+START build
+     Compiling libc v0.2.189
+     Compiling proc-macro2 v1.0.107
+     Compiling quote v1.0.47
+     Compiling unicode-ident v1.0.24
+     Compiling cfg-if v1.0.4
+     Compiling memchr v2.8.3
+     Compiling bitflags v2.13.1
+     Compiling cfg_aliases v0.2.2
+     Compiling utf8parse v0.2.2
+     Compiling nix v0.31.3
+     Compiling syn v3.0.3
+     Compiling serde_core v1.0.229
+     Compiling anstyle-parse v1.0.0
+     Compiling smallvec v1.15.2
+     Compiling is_terminal_polyfill v1.70.2
+     Compiling getrandom v0.4.3
+     Compiling zmij v1.0.23
+     Compiling rustix v1.1.4
+     Compiling anstyle v1.0.14
+     Compiling colorchoice v1.0.5
+     Compiling anstyle-query v1.1.5
+     Compiling nibble_vec v0.1.0
+     Compiling anstream v1.0.0
+     Compiling errno v0.3.14
+     Compiling signal-hook v0.3.18
+     Compiling serde v1.0.229
+     Compiling endian-type v0.2.0
+     Compiling serde_json v1.0.151
+     Compiling strsim v0.11.1
+     Compiling linux-raw-sys v0.12.1
+     Compiling clap_lex v1.1.0
+     Compiling heck v0.5.0
+     Compiling clap_derive v4.6.4
+     Compiling clap_builder v4.6.6
+     Compiling serde_derive v1.0.229
+     Compiling radix_trie v0.3.0
+     Compiling signal-hook-registry v1.4.8
+     Compiling aho-corasick v1.1.5
+     Compiling log v0.4.34
+     Compiling thiserror v2.0.20
+     Compiling once_cell v1.21.4
+     Compiling unicode-segmentation v1.13.3
+     Compiling wolf-interp v0.1.61 (/work)
+     Compiling regex-syntax v0.8.11
+     Compiling unicode-width v0.2.2
+     Compiling itoa v1.0.18
+     Compiling fastrand v2.5.0
+     Compiling tempfile v3.27.0
+     Compiling regex-automata v0.4.18
+     Compiling rustyline v18.0.1
+     Compiling clap v4.6.6
+     Compiling thiserror-impl v2.0.20
+     Compiling getrandom v0.2.16
+     Compiling regex v1.13.1
+     Compiling console v0.16.4
+     Compiling similar v2.7.0
+     Compiling comma v1.0.0
+     Compiling rexpect v0.7.1
+     Compiling insta v1.48.0
+      Finished `test` profile [optimized + debuginfo] target(s) in 49.12s
+    Executable tests/ready_s290.rs (target/debug/deps/ready_s290-895c19fad151fcbf)
+END build exit=0 secs=49
+START rows
+      Finished `test` profile [optimized + debuginfo] target(s) in 0.11s
+       Running tests/ready_s290.rs (target/debug/deps/ready_s290-895c19fad151fcbf)
+  
+  running 17 tests
+  test a_closed_handle_of_either_table_is_io_in_the_wait ... FAILED
+  test a_well_formed_wait_is_refused_by_name_on_every_unix_target ... FAILED
+  test a_send_after_the_peer_left_answers_closed ... FAILED
+  test an_accepted_unix_stream_s_credentials_are_refused_by_name ... FAILED
+  test one_send_answers_its_count_and_the_peer_reads_it_whole ... FAILED
+  test a_full_tcp_stream_answers_busy_and_takes_again_after_the_drain ... FAILED
+  test a_full_unix_stream_answers_busy_and_takes_again_after_the_drain ... FAILED
+  test the_credentials_answer_unsupported_on_a_windows_target_whatever_the_handle ... FAILED
+  test the_declared_rows_discriminate_a_handler_s_arms ... FAILED
+  test the_corpus_rows_read_as_each_target ... FAILED
+  test the_credentials_answer_io_for_every_handle_but_a_unix_stream ... FAILED
+  test the_open_is_refused_by_name_on_every_unix_target ... FAILED
+  test the_set_rows_on_every_target ... FAILED
+  test the_wait_s_shape_and_host_rows_on_every_target ... FAILED
+  test the_send_answers_io_for_a_handle_it_cannot_send_on ... FAILED
+  test the_wait_on_this_host_answers_its_rows_then_refuses_by_name ... FAILED
+  test the_corpus_rows_on_this_host ... FAILED
+  
+  failures:
+  
+  ---- a_closed_handle_of_either_table_is_io_in_the_wait stdout ----
+  
+  thread 'a_closed_handle_of_either_table_is_io_in_the_wait' (1412) panicked at tests/ready_s290.rs:273:13:
+  assertion `left == right` failed: os_wait_ready([p.0], 0, 0) as x86_64-unknown-linux-gnu: Some("`os_wait_ready` does not resolve")
+    left: Unsupported
+   right: Exit(0)
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  
+  ---- a_well_formed_wait_is_refused_by_name_on_every_unix_target stdout ----
+  
+  thread 'a_well_formed_wait_is_refused_by_name_on_every_unix_target' (1428) panicked at tests/ready_s290.rs:157:5:
+  os_wait_ready([p.0, p.1 + 4611686018427387904], 0, 0): `os_wait_ready` must resolve: `os_wait_ready` does not resolve
+  
+  ---- a_send_after_the_peer_left_answers_closed stdout ----
+  
+  thread 'a_send_after_the_peer_left_answers_closed' (1415) panicked at tests/ready_s290.rs:681:9:
+  assertion `left == right` failed: unix: //work/target/tmp/li_wait_gone_unix/main.lu: unsupported: `net_write_some` does not resolve
+  
+    left: Some(4)
+   right: Some(0)
+  
+  ---- an_accepted_unix_stream_s_credentials_are_refused_by_name stdout ----
+  
+  thread 'an_accepted_unix_stream_s_credentials_are_refused_by_name' (1432) panicked at tests/ready_s290.rs:157:5:
+  an accepted Unix stream: `net_peer_cred` must resolve: //work/target/tmp/li_wait_cred_accepted/main.lu: unsupported: `net_peer_cred` does not resolve
+  
+  
+  ---- one_send_answers_its_count_and_the_peer_reads_it_whole stdout ----
+  
+  thread 'one_send_answers_its_count_and_the_peer_reads_it_whole' (1437) panicked at tests/ready_s290.rs:533:9:
+  assertion `left == right` failed: tcp: //work/target/tmp/li_wait_one_send_tcp/main.lu: unsupported: `net_write_some` does not resolve
+  
+    left: ""
+   right: "count=5 next=6 0\nread=5 true true\nempty=0 0\nafter_empty=timeout\n"
+  
+  ---- a_full_tcp_stream_answers_busy_and_takes_again_after_the_drain stdout ----
+  
+  thread 'a_full_tcp_stream_answers_busy_and_takes_again_after_the_drain' (1413) panicked at tests/ready_s290.rs:591:5:
+  assertion `left == right` failed: tcp: //work/target/tmp/li_wait_busy_tcp/main.lu: unsupported: `net_write_some` does not resolve
+  
+    left: Some(4)
+   right: Some(0)
+  
+  ---- a_full_unix_stream_answers_busy_and_takes_again_after_the_drain stdout ----
+  
+  thread 'a_full_unix_stream_answers_busy_and_takes_again_after_the_drain' (1414) panicked at tests/ready_s290.rs:591:5:
+  assertion `left == right` failed: unix: //work/target/tmp/li_wait_busy_unix/main.lu: unsupported: `net_write_some` does not resolve
+  
+    left: Some(4)
+   right: Some(0)
+  
+  ---- the_credentials_answer_unsupported_on_a_windows_target_whatever_the_handle stdout ----
+  
+  thread 'the_credentials_answer_unsupported_on_a_windows_target_whatever_the_handle' (1454) panicked at tests/ready_s290.rs:780:5:
+  assertion `left == right` failed: Some("`net_peer_cred` does not resolve")
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- the_declared_rows_discriminate_a_handler_s_arms stdout ----
+  
+  thread 'the_declared_rows_discriminate_a_handler_s_arms' (1459) panicked at tests/ready_s290.rs:890:9:
+  assertion `left == right` failed: os_wait_ready([0], 1048576, 0) [invalid => 1, unsupported => 2, io => 3] as x86_64-unknown-linux-gnu: Some("`os_wait_ready` does not resolve")
+    left: Unsupported
+   right: Exit(3)
+  
+  ---- the_corpus_rows_read_as_each_target stdout ----
+  
+  thread 'the_corpus_rows_read_as_each_target' (1448) panicked at tests/ready_s290.rs:963:5:
+  assertion `left == right` failed: as windows: Some("`os_wait_ready` does not resolve") 
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- the_credentials_answer_io_for_every_handle_but_a_unix_stream stdout ----
+  
+  thread 'the_credentials_answer_io_for_every_handle_but_a_unix_stream' (1452) panicked at tests/ready_s290.rs:733:5:
+  assertion `left == right` failed: //work/target/tmp/li_wait_cred_host/main.lu: unsupported: `net_peer_cred` does not resolve
+  
+    left: ""
+   right: "forged=io\nnegative=io\ntcp_listener=io\ntcp_dialed=io\ntcp_accepted=io\nunix_listener=io\nclosed=io\n"
+  
+  ---- the_open_is_refused_by_name_on_every_unix_target stdout ----
+  
+  thread 'the_open_is_refused_by_name_on_every_unix_target' (1466) panicked at tests/ready_s290.rs:157:5:
+  x86_64-unknown-linux-gnu: `os_ready_open` must resolve: `os_ready_open` does not resolve
+  
+  ---- the_set_rows_on_every_target stdout ----
+  
+  thread 'the_set_rows_on_every_target' (1473) panicked at tests/ready_s290.rs:169:13:
+  assertion `left == right` failed: os_ready_set(0, 0, 4, 1) as x86_64-unknown-linux-gnu: Some("`os_ready_set` does not resolve") 
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- the_wait_s_shape_and_host_rows_on_every_target stdout ----
+  
+  thread 'the_wait_s_shape_and_host_rows_on_every_target' (1484) panicked at tests/ready_s290.rs:169:13:
+  assertion `left == right` failed: os_wait_ready([0], 1048576, 0) as x86_64-unknown-linux-gnu: Some("`os_wait_ready` does not resolve") 
+    left: Unsupported
+   right: Exit(0)
+  
+  ---- the_send_answers_io_for_a_handle_it_cannot_send_on stdout ----
+  
+  thread 'the_send_answers_io_for_a_handle_it_cannot_send_on' (1471) panicked at tests/ready_s290.rs:480:5:
+  assertion `left == right` failed: //work/target/tmp/li_wait_send_io/main.lu: unsupported: `net_write_some` does not resolve
+  
+    left: ""
+   right: "forged=io 0\nnegative=io 0\nzero=io\nforged_empty=io\nlistener=io 0\nlistener_empty=io\nunix_listener=io\nunix_listener_empty=io\nclosed=io 0\nclosed_empty=io\n"
+  
+  ---- the_wait_on_this_host_answers_its_rows_then_refuses_by_name stdout ----
+  
+  thread 'the_wait_on_this_host_answers_its_rows_then_refuses_by_name' (1477) panicked at tests/ready_s290.rs:357:5:
+  assertion `left == right` failed: //work/target/tmp/li_wait_wait_host/main.lu: unsupported: `os_wait_ready` does not resolve
+  
+    left: ""
+   right: "bad_set=io\ndeadline_below=invalid\nclosed_listener=io\n"
+  
+  ---- the_corpus_rows_on_this_host stdout ----
+  
+  thread 'the_corpus_rows_on_this_host' (1444) panicked at tests/ready_s290.rs:157:5:
+  the corpus rows: `os_wait_ready` must resolve: `os_wait_ready` does not resolve
+  
+  
+  failures:
+      a_closed_handle_of_either_table_is_io_in_the_wait
+      a_full_tcp_stream_answers_busy_and_takes_again_after_the_drain
+      a_full_unix_stream_answers_busy_and_takes_again_after_the_drain
+      a_send_after_the_peer_left_answers_closed
+      a_well_formed_wait_is_refused_by_name_on_every_unix_target
+      an_accepted_unix_stream_s_credentials_are_refused_by_name
+      one_send_answers_its_count_and_the_peer_reads_it_whole
+      the_corpus_rows_on_this_host
+      the_corpus_rows_read_as_each_target
+      the_credentials_answer_io_for_every_handle_but_a_unix_stream
+      the_credentials_answer_unsupported_on_a_windows_target_whatever_the_handle
+      the_declared_rows_discriminate_a_handler_s_arms
+      the_open_is_refused_by_name_on_every_unix_target
+      the_send_answers_io_for_a_handle_it_cannot_send_on
+      the_set_rows_on_every_target
+      the_wait_on_this_host_answers_its_rows_then_refuses_by_name
+      the_wait_s_shape_and_host_rows_on_every_target
+  
+  test result: FAILED. 0 passed; 17 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  
+  error: test failed, to rerun pass `--test ready_s290`
+END rows exit=101 secs=0
+TAKE-BOX done 2026-11-12T04:39:50Z
+TAKE-END red-a39d4ae-B exit=0 end=2026-11-12T04:39:50Z

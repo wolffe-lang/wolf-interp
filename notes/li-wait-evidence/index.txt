@@ -1,0 +1,59 @@
+li-wait evidence (lupin's mirror of wolf-lang s290's second lane: the one wait, the set the kernel
+holds, the send that counts, the peer's credentials; wolf-lang#1102)
+
+The Linux takes ran on one Linux x86-64 host (written H1; kernel 7.2.4), in the CI toolchain's
+container (Rust 1.97.1), on one block of six CPUs with the block's locks held, from a clone of
+the lane's commits checked out detached at the commit named, with CI's heavy-entry profile
+(opt-level 2, debug assertions and overflow checks on). The macOS take ran on an Apple silicon
+Mac (macOS 26.4.1, arm64) behind its build lock, two cargo jobs, the same profile, in a worktree
+pinned to the commit. Paths are written $LANE (this lane's directory) and $LANES (the lanes'
+shared directory); the logs and the rig copies below differ from the run copies only there.
+
+linux-red-a39d4ae.log
+  The rows at trunk's code (a39d4ae: the prediction, the fixture, the rows). ready_s290: 0 passed,
+  17 failed, each at "does not resolve" (`os_wait_ready`, `os_ready_open`, `os_ready_set`,
+  `net_write_some`, `net_peer_cred`, as the row's first call names).
+
+linux-red-a39d4ae-again.log
+  The same commit, a second take on another block (queued first, it ran last): 0 passed, 17
+  failed, the same reasons.
+
+linux-build-red-45f648e.log
+  The first take of the change: a borrow error in the credentials arm (the table's guard held
+  across the answer), fixed in the same commit before it left this machine (a0ea816).
+
+linux-green-a0ea816.log
+  The change (a0ea816: the names, the wait and set arms, the send, the credentials). ready_s290:
+  15 passed, 2 failed, both busy rows, on their own line count: each printed the seven lines
+  they hold, every one as predicted (`full=busy`, `errno=11`, `again=busy 11`, the drain, `room=1
+  0`), and asserted eight. Fixed in the row (3e24d2e). fmt, clippy of every target, the
+  library's 797, and ten neighbouring targets green.
+
+linux-green-3e24d2e.log
+  The change with the row's count fixed (3e24d2e). ready_s290 17 passed; fmt; clippy of every
+  target; the library's 797; the neighbours fs_family 25, net_accept_race 3, net_error_is76 3,
+  net_family 11, net_s141 5, net_unix 6, os_mirror_is83 12, os_mirror_target_is83 2, pty_s292 15,
+  session_s290 8. Every END exit=0.
+
+macos-green-3e24d2e.log
+  The same commit on macOS. ready_s290 17 passed (EAGAIN 35 is the host's number its busy rows
+  hold there); net_error_is76 2, net_family 11, net_s141 5, net_unix 6, os_mirror_target_is83 2,
+  pty_s292 15, session_s290 8; clippy of every target on macOS clean. Every END exit=0.
+
+rig/linux/take.sh, take-box.sh
+  The first development take (the crates fetched as a light job beside the block).
+rig/linux/take2.sh, take-box2.sh
+  The development takes above (the crates fetched in the container, under the block's locks).
+rig/macos/mac-take.sh
+  The macOS take: the build lock, the memory and disk gates, the worktree, the steps.
+rig/linux/launch-g.sh, rig/linux/gauntlet/ (gauntlet.manifest, box.sh, profile.sh,
+verify-profile.py, steps/)
+  The local gauntlet: a fresh clone of the pushed head, the crates prefetched, then the org's
+  recorder in steps mode (keep-going, preflight) over the manifest, each step in the toolchain
+  container under the block's three locks; the steps adapted by copy from the previous mirror's.
+rig/linux/launch-p.sh, rig/linux/gauntlet/ (plant.manifest, pbox.sh, plant-box.sh,
+plant-head.sh)
+  The plant's record on the pushed plant branch.
+
+The Linux gauntlet record at the final head and the plant record on it are in the pull request (a
+record cannot predate the head it names).

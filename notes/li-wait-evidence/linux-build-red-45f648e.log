@@ -1,0 +1,98 @@
+TAKE green-45f648e sha=45f648ecbf3fbbaf608b5ed66d2ed8597c9fbc36 mode=green block=B cpus=6-11 start=2026-11-12T04:42:17Z
+CLONE $LANE/wi-45f648e at 45f648e Answer net_peer_cred's rows, refuse a Unix stream's by name
+START head
+  45f648ecbf3fbbaf608b5ed66d2ed8597c9fbc36
+  45f648e Answer net_peer_cred's rows, refuse a Unix stream's by name
+  rustc 1.97.1 (8bab26f4f 2026-07-14)
+  cargo 1.97.1 (c980f4866 2026-06-30)
+  6
+  7.2.4
+  SigBlk:	0000000000000000
+  SigIgn:	0000000000000000
+  CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_DEV_OPT_LEVEL=2
+  CARGO_PROFILE_DEV_OVERFLOW_CHECKS=true
+  CARGO_PROFILE_TEST_DEBUG_ASSERTIONS=true
+  CARGO_PROFILE_TEST_OPT_LEVEL=2
+  CARGO_PROFILE_TEST_OVERFLOW_CHECKS=true
+END head exit=0 secs=0
+START fetch
+END fetch exit=0 secs=0
+START build
+     Compiling libc v0.2.189
+     Compiling proc-macro2 v1.0.107
+     Compiling quote v1.0.47
+     Compiling unicode-ident v1.0.24
+     Compiling cfg-if v1.0.4
+     Compiling bitflags v2.13.1
+     Compiling memchr v2.8.3
+     Compiling cfg_aliases v0.2.2
+     Compiling utf8parse v0.2.2
+     Compiling syn v3.0.3
+     Compiling nix v0.31.3
+     Compiling serde_core v1.0.229
+     Compiling anstyle-parse v1.0.0
+     Compiling zmij v1.0.23
+     Compiling smallvec v1.15.2
+     Compiling anstyle v1.0.14
+     Compiling colorchoice v1.0.5
+     Compiling is_terminal_polyfill v1.70.2
+     Compiling getrandom v0.4.3
+     Compiling anstyle-query v1.1.5
+     Compiling rustix v1.1.4
+     Compiling anstream v1.0.0
+     Compiling nibble_vec v0.1.0
+     Compiling errno v0.3.14
+     Compiling strsim v0.11.1
+     Compiling endian-type v0.2.0
+     Compiling clap_lex v1.1.0
+     Compiling serde v1.0.229
+     Compiling linux-raw-sys v0.12.1
+     Compiling signal-hook v0.3.18
+     Compiling serde_json v1.0.151
+     Compiling heck v0.5.0
+     Compiling clap_builder v4.6.6
+     Compiling clap_derive v4.6.4
+     Compiling serde_derive v1.0.229
+     Compiling radix_trie v0.3.0
+     Compiling signal-hook-registry v1.4.8
+     Compiling aho-corasick v1.1.5
+     Compiling wolf-interp v0.1.61 (/work)
+     Compiling unicode-width v0.2.2
+     Compiling itoa v1.0.18
+     Compiling unicode-segmentation v1.13.3
+     Compiling log v0.4.34
+     Compiling once_cell v1.21.4
+     Compiling fastrand v2.5.0
+     Compiling thiserror v2.0.20
+     Compiling regex-syntax v0.8.11
+     Compiling tempfile v3.27.0
+     Compiling rustyline v18.0.1
+     Compiling regex-automata v0.4.18
+     Compiling clap v4.6.6
+     Compiling thiserror-impl v2.0.20
+     Compiling getrandom v0.2.16
+     Compiling regex v1.13.1
+     Compiling console v0.16.4
+     Compiling comma v1.0.0
+     Compiling similar v2.7.0
+     Compiling rexpect v0.7.1
+  error[E0502]: cannot borrow `*self` as mutable because it is also borrowed as immutable
+      --> src/eval/net.rs:1306:28
+       |
+  1305 |                 if let Err(row) = self.net().peer_cred_kind(fd) {
+       |                                   ----------
+       |                                   |
+       |                                   immutable borrow occurs here
+       |                                   a temporary with access to the immutable borrow is created here ...
+  1306 |                     return self.net_answer(name, Err(row), span);
+       |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable borrow occurs here
+  1307 |                 }
+       |                 - ... and the immutable borrow might be used here, when that temporary is dropped and runs the `Drop` code for type `std::sync::MutexGuard`
+  
+     Compiling insta v1.48.0
+  For more information about this error, try `rustc --explain E0502`.
+  error: could not compile `wolf-interp` (lib) due to 1 previous error
+  warning: build failed, waiting for other jobs to finish...
+END build exit=101 secs=23
+TAKE-END green-45f648e exit=101 end=2026-11-12T04:42:41Z
