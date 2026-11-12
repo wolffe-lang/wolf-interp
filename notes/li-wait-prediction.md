@@ -73,7 +73,7 @@ seventh, `net_write_some`, is one write on a stream this machine already holds n
    clause, never "does not resolve".
 
 The windows rows follow the observation's target, as the session and pseudo-terminal mirrors'
-do (R-li-wait-1).
+do (decision 1 below).
 
 ## Rows, red first
 
@@ -134,37 +134,37 @@ rows; its controls green: the handle rows, the one send, the `closed` rows and t
 `os_wait_ready`. With this change lupin's reason names `os_wait_ready` and never says "does not
 resolve", so the row stays green. It cannot tell this mirror from 0.1.61 until wolf-lang's
 `PAIRING` names a release that carries it, because CI's sibling lupin is `PAIRING`'s release.
-Predicted: no wolf-lang change is needed now (R-li-wait-7).
+Predicted: no wolf-lang change is needed now (decision 7 below).
 
 ## Decisions
 
-- **R-li-wait-1, the target the host rows follow.** (A) The observation's target
+- **1. The target the host rows follow.** (A) The observation's target
   (`attrs::build_target()`), as `os_spawn_session`'s and the pseudo-terminal calls' rows do: the
   windows rows are held in process on every host, and a bundle observed as linux answers as
   linux on any exporter. (B) The build's `cfg!(windows)`, as `os_signal_wait_fds` does.
   **Recommend A.**
-- **R-li-wait-2, a wait with nothing to poll** (no element, set 0, a deadline of 0 or more).
+- **2. A wait with nothing to poll** (no element, set 0, a deadline of 0 or more).
   (A) Refused by name with every other well-formed wait, as the section's mirror says. (B)
   Served: a park until the deadline answering `([], 0)`, with the clause's kill look and a task
   baton. **Recommend A**: no program needs this machine to sleep through a wait that names
   nothing, and B is new park surface with no witness that reaches it.
-- **R-li-wait-3, the set calls after the host row.** (A) `io`, every set number forged, as the
+- **3. The set calls after the host row.** (A) `io`, every set number forged, as the
   section says and as the clause says for the close. (B) Refused by name. **Recommend A**: the
   answer is decided without the host, and B would refuse a call whose row the clause gives.
-- **R-li-wait-4, `net_write_some`'s payload against its handle.** (A) The width first, whole,
+- **4. `net_write_some`'s payload against its handle.** (A) The width first, whole,
   before the socket is asked, as this machine's `net_write_bytes` does. (B) The handle first.
   **Recommend A.** No typed program reaches the difference: a `List[byte]` holds only bytes.
-- **R-li-wait-5, the send.** (A) One `write` on the stream this machine already holds
+- **5. The send.** (A) One `write` on the stream this machine already holds
   non-blocking (every stream it mints is; Rust's runtime ignores SIGPIPE, so a peer gone is
   EPIPE, never a signal); a write the host interrupted took nothing and is made again; a write
   that takes 0 of a non-empty list is `closed`, as `net_write`'s poll answers it. (B) `send(2)`
   with `MSG_DONTWAIT` and `MSG_NOSIGNAL` through nix's `socket` feature. **Recommend A**: the
   same single call on a non-blocking descriptor, with no new crate feature.
-- **R-li-wait-6, the credentials of a Unix-domain stream.** (A) Refused by name, as the section
+- **6. The credentials of a Unix-domain stream.** (A) Refused by name, as the section
   says. (B) Served through nix's `socket` feature (`SO_PEERCRED`; `LOCAL_PEERCRED` and
   `LOCAL_PEERPID`). **Recommend A**: a new crate feature is its own decision, as the
   pseudo-terminal mirror recorded.
-- **R-li-wait-7, wolf-lang's lupin row.** (A) No wolf-lang change now: the change that moves
+- **7. wolf-lang's lupin row.** (A) No wolf-lang change now: the change that moves
   `PAIRING` to a release carrying this mirror pins the row by version in the same commit,
   `0.1.60` and `0.1.61` "does not resolve", any other release refused by name naming
   `os_wait_ready` and never "does not resolve" (the text is in the lane note). (B) A separate
