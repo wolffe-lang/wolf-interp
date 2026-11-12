@@ -1572,3 +1572,53 @@ opens around lupin included. The file reads its host's lacking ops by
 `os_name()`, which answers the host this machine runs on, while the rows
 follow the observation's target: read in process as another target, it
 prints its mismatch lines.
+
+### 6.24 One wait, the set the kernel holds, a send that counts, a peer's credentials: the send served, the rest answered before the host or refused by name (li-wait)
+
+wolf-lang s290's second lane (#1102; `[os.ready.wait]`, `[os.ready.set]`,
+`[os.ready.facts]`, `[os.ready.note]`, `[os.net.write.some]`,
+`[os.net.peer.cred]`) added seven names, and lupin 0.1.61 resolved none:
+`os_wait_ready(entries, set, deadline_ms)`, one wait over handles of both
+tables and a meaning set that answers every ready element; `os_ready_open()`,
+`os_ready_set(r, handle, interest, key)`, `os_ready_wait(r, set,
+deadline_ms)` and `os_ready_close(r)`, the readiness set the kernel holds;
+`net_write_some(fd, bytes)`, one send that says what it took; and
+`net_peer_cred(fd)`, the pid and effective ids of a Unix-domain stream's
+peer. Rust's standard library has no `poll`, `epoll` or `kqueue`, its
+`peer_cred` is unstable, and this machine admits no `unsafe`, so it answers
+what it can decide without those calls, in the clauses' order, and serves
+the send:
+
+- **The wait:** a non-zero set the shape rule refuses (a bit outside the
+  twenty listenable meanings, a negative set) `io`; a deadline below -1
+  `invalid`; a windows target `unsupported`; a wait nothing could end (no
+  element, set 0, deadline -1) `io`; a negative element, or one that names
+  no live handle of its table (bit 61 a net handle, bit 62 write interest),
+  `io`. Every other wait is refused by name, an empty one included.
+- **The set:** the open answers `unsupported` on a windows target and is
+  refused by name everywhere else. No set can be made here, so every set
+  number is forged, which the clause answers `io`: a change of an entry after
+  its `invalid` row (an interest outside 0..3, a negative key) and windows'
+  `unsupported`; a wait after its set's shape (`io`), its deadline
+  (`invalid`) and windows; and the close on every host.
+- **The send, served on every host:** a forged, closed or negative handle
+  and a listener of either family `io`; an empty list 0, the handle checked
+  and nothing sent; then one write on the stream, which this machine made
+  non-blocking when it minted it. It answers the count the host took, never
+  parks, and ignores a `net_deadline` budget; would-block is `busy` with the
+  host's EAGAIN in `os_error()`, and a peer that has gone `closed` (EPIPE or
+  ECONNRESET) with its number. A payload element outside a byte, which no
+  typed program builds, is `invalid` before the socket is asked, as for
+  `net_write_bytes`.
+- **The credentials:** a windows target `unsupported`, whatever the handle;
+  then a forged, closed or negative handle, a TCP stream and a listener of
+  either family `io`; a Unix-domain stream, dialed or accepted, refused by
+  name.
+
+The windows rows follow the observation's target, as the session and
+pseudo-terminal calls' do. wolf-lang's `corpus/os/ready_rows.lu` is refused
+by name at its first wait here, which is well-formed, before a line prints;
+read as windows by the windows target, every one of its lines is `true`.
+`tests/ready_s290.rs` carries it byte for byte (wolf-lang `ead70b82`) beside
+rows for each step above, `busy` and `closed` on a loopback TCP stream and a
+Unix-domain stream included.
