@@ -575,7 +575,7 @@ dependencies = [
 
 [[package]]
 name = "wolf-interp"
-version = "0.1.61"
+version = "0.1.62"
 dependencies = [
  "clap",
  "getrandom 0.2.16",
