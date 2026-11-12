@@ -371,6 +371,24 @@ pub const AMBIENT_NAMES: &[&str] = &[
     "os_term_set_size",
     "os_term_attr",
     "os_term_set_attr",
+    // s290's second lane (wolf-lang#1102; `[os.ready.wait]`,
+    // `[os.ready.set]`, `[os.net.write.some]`, `[os.net.peer.cred]`): one
+    // wait over files, sockets and signals, the readiness set the kernel
+    // holds, a send that says what it took, and a Unix-domain peer's
+    // credentials. The names resolve; every row decided without a host call
+    // this machine lacks is answered (the shapes, windows, a wait nothing
+    // could end, a forged or closed element or handle, and every set number,
+    // since no set can be made here), the send is served on the stream this
+    // machine already holds non-blocking, and every other call is refused by
+    // name — std has no `poll`, `epoll` or `kqueue`, its `peer_cred` is
+    // unstable, and this machine admits no `unsafe`.
+    "os_wait_ready",
+    "os_ready_open",
+    "os_ready_set",
+    "os_ready_wait",
+    "os_ready_close",
+    "net_write_some",
+    "net_peer_cred",
     // s236 (wolf-lang#633, #742; `[os.proc.ids]`, `[os.proc.ids.set]`): who
     // the process runs as, and the drop. The names resolve and their
     // SHAPE and HOST rows are answered; a well-formed call on a host that
@@ -1051,7 +1069,12 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         | "os_term_pty_name"
         | "os_term_set_size"
         | "os_term_attr"
-        | "os_term_set_attr" => unsupported(hosted_tier_decline(name)),
+        | "os_term_set_attr"
+        | "os_wait_ready"
+        | "os_ready_open"
+        | "os_ready_set"
+        | "os_ready_wait"
+        | "os_ready_close" => unsupported(hosted_tier_decline(name)),
         // `[os.proc.inherit]` (s137, wolf-lang#235): the program named apart
         // from its arguments, and the descriptors it hands down.
         //
@@ -2878,7 +2901,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         "net_listen" | "net_listen_unix" | "net_listen_with" | "net_adopt_listener"
         | "net_wait" | "net_port" | "net_accept" | "net_connect" | "net_connect_unix"
         | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes" | "net_writev"
-        | "net_writev_head" | "net_nodelay" | "net_close" | "net_deadline" => unsupported(format!(
+        | "net_writev_head" | "net_nodelay" | "net_close" | "net_deadline" | "net_write_some"
+        | "net_peer_cred" => unsupported(format!(
             "`{name}` is the s39 net tier; this wasm build has no sockets to open, so the \
                  tier is declined rather than mocked"
         )),
@@ -4614,6 +4638,11 @@ pub(crate) fn declared_row(name: &str) -> &'static [&'static str] {
         "os_spawn_session" => &["unsupported", "invalid", "not_found", "denied", "io"],
         "os_setsid" => &["denied", "io", "unsupported"],
         "os_sid" => &["unsupported"],
+        // s290's second lane (`[os.host.sigs]`'s seven lines).
+        "os_wait_ready" | "os_ready_set" | "os_ready_wait" => &["invalid", "io", "unsupported"],
+        "os_ready_open" | "net_peer_cred" => &["io", "unsupported"],
+        "os_ready_close" => &["io"],
+        "net_write_some" => &["busy", "closed", "invalid", "io"],
         // s292 (`[os.host.sigs]`'s five lines).
         "os_term_open_pty" | "os_term_pty_name" => &["io", "unsupported"],
         "os_term_set_size" | "os_term_attr" | "os_term_set_attr" => {
