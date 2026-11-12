@@ -94,30 +94,30 @@ Committed before the first change (`273812c`, `notes/li-wait-prediction.md`).
 Each was decided before the code, from the options in the prediction; what is implemented is what
 was recommended.
 
-- **R-li-wait-1, the target the host rows follow: A, the observation's target**
+- **1. The target the host rows follow: A, the observation's target**
   (`attrs::build_target()`), as the session and pseudo-terminal calls' rows do; not the build's
   `cfg!(windows)`, which `os_signal_wait_fds` still reads. The windows rows are held in process
   on every host, and a bundle observed as linux answers as linux on any exporter.
-- **R-li-wait-2, a wait with nothing to poll: A, refused by name** with every other well-formed
+- **2. A wait with nothing to poll: A, refused by name** with every other well-formed
   wait, as the section says, rather than served as a park until the deadline: no program needs
   this machine to sleep through a wait that names nothing, and serving it is new park surface
   (the kill look, the task baton) no witness reaches.
-- **R-li-wait-3, the set calls after the host row: A, `io`**, every set number forged, as the
+- **3. The set calls after the host row: A, `io`**, every set number forged, as the
   section says and as the clause says for the close ("where no set can be made every number is
   forged").
-- **R-li-wait-4, the send's payload against its handle: A, the width first**, whole, before the
+- **4. The send's payload against its handle: A, the width first**, whole, before the
   socket is asked, as this machine's `net_write_bytes` checks it. No typed program reaches the
   difference.
-- **R-li-wait-5, the send: A, one `write` on the stream this machine already holds non-blocking**;
+- **5. The send: A, one `write` on the stream this machine already holds non-blocking**;
   an interrupted write took nothing and is made again; a write of 0 from a non-empty list is
   `closed`, as `net_write`'s poll answers it. Not `send(2)` with `MSG_DONTWAIT` and `MSG_NOSIGNAL`
   through nix's `socket` feature: the same single call on a non-blocking descriptor, with no new
   crate feature, and Rust's runtime already ignores SIGPIPE here.
-- **R-li-wait-6, a Unix stream's credentials: A, refused by name**, as the section says, rather
+- **6. A Unix stream's credentials: A, refused by name**, as the section says, rather
   than served through nix's `socket` feature (`SO_PEERCRED`; `LOCAL_PEERCRED` and
   `LOCAL_PEERPID`): a new crate feature is its own decision, as the pseudo-terminal mirror
   recorded.
-- **R-li-wait-7, wolf-lang's lupin row: A, no wolf-lang change now** (section 5).
+- **7. wolf-lang's lupin row: A, no wolf-lang change now** (section 5).
 
 ## 5. wolf-lang's lupin row
 
