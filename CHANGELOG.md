@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+li-wait — wolf-lang s290's second lane (wolf-lang#1102), mirrored: `os_wait_ready`,
+`os_ready_open`, `os_ready_set`, `os_ready_wait`, `os_ready_close`, `net_write_some` and
+`net_peer_cred` resolve. lupin 0.1.61 answered "does not resolve" for each.
+
+- **`net_write_some(fd, bytes)` is served** (`[os.net.write.some]`): one write on the stream,
+  which this machine already holds non-blocking, answering the count the host took. It never
+  parks: `busy` when the socket can take nothing now (the host's EAGAIN in `os_error()`), `closed`
+  for a peer that has gone (EPIPE or ECONNRESET), `io` for a listener, a forged or closed handle,
+  and 0 for an empty list.
+- **The wait and the set answer every row decided before the host** (`[os.ready.wait]`,
+  `[os.ready.set]`): a refused meaning set `io`, a deadline below -1 `invalid`, a windows target
+  `unsupported`, a wait nothing could end and a forged or closed element `io`; an interest outside
+  0..3 or a negative key `invalid`. No set can be made here, so every set number is forged: the
+  change of an entry, the set's wait and the close answer `io`. Every other wait, and the open on
+  every host but windows, is refused by name: Rust's standard library has no `poll`, `epoll` or
+  `kqueue`, and this machine admits no `unsafe`.
+- **`net_peer_cred(fd)`** (`[os.net.peer.cred]`): a windows target `unsupported`; a forged or
+  closed handle, a TCP stream and a listener `io`; a Unix-domain stream refused by name, since
+  std's `peer_cred` is unstable.
+- The windows rows follow the observation's target. wolf-lang's `corpus/os/ready_rows.lu` is
+  refused by name at its first wait; `tests/ready_s290.rs` carries it byte for byte. The vendored
+  corpus is unchanged.
+
 ## 0.1.61 — 2026-11-11
 
 This release carries the 98 commits after 0.1.60: the mirror of wolf
