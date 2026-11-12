@@ -621,6 +621,43 @@ impl NetTable {
         Ok(true)
     }
 
+    /// `[os.net.write.some]` (s290's second lane, wolf-lang#1102): ONE send
+    /// of `bytes`, all of them or a first part, answering how many the host
+    /// took.
+    ///
+    /// Every stream this table mints is non-blocking from birth (`adopt_tcp`,
+    /// the unix accept and dial), so one `write` is the clause's one send
+    /// that never parks: there is no poll loop and no budget, since nothing
+    /// waits. A listener (of either family), a forged and a closed handle are
+    /// `io` with no host number; an empty list is 0, the handle checked and
+    /// nothing sent. Would-block is `busy`, with the host's EAGAIN noted for
+    /// `os_error()`; a peer that has gone is `closed` (EPIPE, ECONNRESET), as
+    /// `net_write` answers it, and Rust's runtime ignores SIGPIPE, so no
+    /// signal ends the program; any other refusal is `io` with its number. A
+    /// write the host interrupted took nothing and is made again, and a write
+    /// that took 0 of a non-empty list is `closed`, as `poll_write` answers
+    /// it.
+    fn write_some(&mut self, fd: i128, bytes: &[u8]) -> NetResult<i128> {
+        let sock = self.sock(fd)?;
+        let Some(stream) = sock.duplex() else {
+            return Err(NetErr::Row("io"));
+        };
+        if bytes.is_empty() {
+            return Ok(0);
+        }
+        loop {
+            match stream.write(bytes) {
+                Ok(0) => return Err(NetErr::Row("closed")),
+                Ok(took) => return Ok(i128::try_from(took).unwrap_or(i128::MAX)),
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    return Err(host(&error, "busy"));
+                }
+                Err(error) => return Err(host(&error, closed_or_io(&error))),
+            }
+        }
+    }
+
     /// s290's second lane (`[os.ready.wait]`): does `fd` name a live socket
     /// of this table — a listener or a stream of either family? A forged,
     /// spent or closed number names none. Asked without touching the socket.
@@ -1198,6 +1235,40 @@ impl Machine {
                     table.poll_writev(fd, &parts, &mut cursor)
                 })?;
                 self.net_answer(name, answer.map(|()| Value::Unit), span)
+            }
+            // `[os.net.write.some]` (s290's second lane, wolf-lang#1102): one
+            // send that says what it took — the server's half of a write
+            // loop over many clients, which keeps the rest in the client's
+            // queue. The payload is checked whole before the socket is
+            // asked, as `net_write_bytes` checks it, and the send never
+            // parks (`NetTable::write_some`).
+            "net_write_some" => {
+                let fd = int_arg(args, 0, name)?;
+                let Some(slots) = args.get(1).and_then(Value::seq_slots) else {
+                    return Err(Signal::Unsupported(format!(
+                        "`{name}` takes an fd and a `List[byte]` payload"
+                    )));
+                };
+                let mut bytes = Vec::with_capacity(slots.len());
+                for slot in slots {
+                    match &slot.value {
+                        Value::Byte(b) => bytes.push(*b),
+                        Value::Int(v, _) if (0..=255).contains(v) => {
+                            bytes.push(u8::try_from(*v).expect("checked 0..=255"));
+                        }
+                        Value::Int(..) => {
+                            return self.net_answer(name, Err(NetErr::Row("invalid")), span);
+                        }
+                        other => {
+                            return Err(Signal::Unsupported(format!(
+                                "`{name}`'s payload elements must be bytes, got {}",
+                                other.kind()
+                            )));
+                        }
+                    }
+                }
+                let answer = self.net().write_some(fd, &bytes);
+                self.net_answer(name, answer.map(|n| Value::Int(n, IntTy::INT)), span)
             }
             // `[os.net.nodelay]` (s141, wolf-lang#254). The DEFAULT half is
             // in `adopt_tcp`, on every TCP stream this table mints; this is
