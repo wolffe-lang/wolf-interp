@@ -1,6 +1,23 @@
 # Changelog
 
-## Unreleased
+## 0.1.62 — 2026-11-12
+
+This release carries the 14 commits after 0.1.61: the mirror of wolf
+0.2.40's one wait over files, sockets and signals, its socket send that
+counts and its Unix peer's credentials, at the unchanged spec and corpus
+pin wolf-lang `5f1f1c94` (724 anchor keys). It is prepared to pair with
+wolf 0.2.40. A branch build prints `0.1.62+dev.<commit>`; only the tagged
+build prints the bare version.
+
+The seven new names resolve: a program that calls them is no longer
+`unsupported` because a name "does not resolve". `net_write_some` is
+served. The wait, the set and the credentials answer every row the
+compiler decides before the host, and every call that would reach the
+host's readiness machinery or a Unix peer's credentials is refused by
+name: Rust's standard library has no `poll`, `epoll` or `kqueue`, its
+`peer_cred` is unstable, and this machine admits no `unsafe`.
+
+### The one-wait calls of wolf 0.2.40
 
 li-wait — wolf-lang s290's second lane (wolf-lang#1102), mirrored: `os_wait_ready`,
 `os_ready_open`, `os_ready_set`, `os_ready_wait`, `os_ready_close`, `net_write_some` and
