@@ -3029,9 +3029,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         "net_listen" | "net_listen_unix" | "net_listen_with" | "net_adopt_listener"
         | "net_wait" | "net_port" | "net_accept" | "net_connect" | "net_connect_unix"
         | "net_read" | "net_write" | "net_read_bytes" | "net_write_bytes" | "net_writev"
-        | "net_writev_head" | "net_nodelay" | "net_close" | "net_deadline" | "net_write_some" => {
-            machine.net_call(name, &args, span)
-        }
+        | "net_writev_head" | "net_nodelay" | "net_close" | "net_deadline" | "net_write_some"
+        | "net_peer_cred" => machine.net_call(name, &args, span),
         other => unsupported(format!(
             "`{other}` is in the ambient std stub but has no pinned semantics; the real std \
              surface is not specified yet, and guessing it would put invented behavior into a \

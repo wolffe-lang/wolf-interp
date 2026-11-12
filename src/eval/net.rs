@@ -658,6 +658,24 @@ impl NetTable {
         }
     }
 
+    /// `[os.net.peer.cred]` (s290's second lane): what this machine can say
+    /// of the credentials of `fd`'s peer before the host is asked. A forged,
+    /// closed or negative handle, a TCP stream and a listener of either family
+    /// are `io` — the kind is the runtime's to check, because the hosts answer
+    /// the wrong kinds differently. `Ok(())` is a Unix-domain stream, whose
+    /// credentials only the host has: the caller refuses it by name.
+    fn peer_cred_kind(&mut self, fd: i128) -> NetResult<()> {
+        let sock = self.sock(fd)?;
+        #[cfg(unix)]
+        if matches!(sock.kind, SockKind::UnixStream(_)) {
+            return Ok(());
+        }
+        // No unix family here: every live handle is a TCP socket.
+        #[cfg(not(unix))]
+        let _ = sock;
+        Err(NetErr::Row("io"))
+    }
+
     /// s290's second lane (`[os.ready.wait]`): does `fd` name a live socket
     /// of this table — a listener or a stream of either family? A forged,
     /// spent or closed number names none. Asked without touching the socket.
@@ -1269,6 +1287,31 @@ impl Machine {
                 }
                 let answer = self.net().write_some(fd, &bytes);
                 self.net_answer(name, answer.map(|n| Value::Int(n, IntTy::INT)), span)
+            }
+            // `[os.net.peer.cred]` (s290's second lane, wolf-lang#1102): the
+            // pid and the effective ids of a Unix-domain stream's peer. A
+            // windows observation target answers the family's `unsupported`
+            // row first, whatever the handle; then every handle that is not a
+            // Unix-domain stream is `io`, decided from this table; and a Unix
+            // stream, dialed or accepted, is refused by name: the answer is
+            // the host's `SO_PEERCRED` or `LOCAL_PEERCRED` and
+            // `LOCAL_PEERPID`, std's `peer_cred` is unstable, and this machine
+            // admits no `unsafe`.
+            "net_peer_cred" => {
+                let fd = int_arg(args, 0, name)?;
+                if crate::attrs::build_target().contains("-windows-") {
+                    return self.net_answer(name, Err(NetErr::Row("unsupported")), span);
+                }
+                let kind = self.net().peer_cred_kind(fd);
+                if let Err(row) = kind {
+                    return self.net_answer(name, Err(row), span);
+                }
+                Err(Signal::Unsupported(
+                    "`net_peer_cred` asks the host for a Unix-domain stream's peer \
+                     (`SO_PEERCRED`; `LOCAL_PEERCRED` and `LOCAL_PEERPID`): std's `peer_cred` \
+                     is unstable, and this machine admits no `unsafe` ([os.net.peer.cred])"
+                        .to_owned(),
+                ))
             }
             // `[os.net.nodelay]` (s141, wolf-lang#254). The DEFAULT half is
             // in `adopt_tcp`, on every TCP stream this table mints; this is
