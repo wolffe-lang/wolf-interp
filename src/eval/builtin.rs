@@ -2031,6 +2031,125 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             };
             unsupported(format!("`{name}` {why}"))
         }
+        // s290's second lane (wolf-lang#1102; `[os.ready.wait]`,
+        // `[os.ready.note]`): one wait over handles of both tables and a
+        // meaning set, answering every ready element. Its rows in the
+        // clause's order, each decided without the host: a non-zero set the
+        // shape rule refuses `io`; a deadline below -1 `invalid`; a windows
+        // observation target `unsupported`; a wait nothing could end (no
+        // element, set 0, deadline -1) `io`; a negative element, or one that
+        // names no live handle of its table (bit 61 a net handle, bit 62 write
+        // interest), `io`. Every other wait is refused by name: the wait is
+        // `poll(2)` over the descriptors and the hub's wake pipe, std has no
+        // `poll`, and this machine never listens. The target is the
+        // observation's, as for the session and pseudo-terminal calls.
+        #[cfg(not(target_family = "wasm"))]
+        "os_wait_ready" => {
+            let (
+                Some(Value::List(items, _, _)),
+                Some(Value::Int(set, _)),
+                Some(Value::Int(deadline, _)),
+            ) = (args.first(), args.get(1), args.get(2))
+            else {
+                return unsupported(
+                    "`os_wait_ready` takes a `List[int]` of elements, an integer meaning set and \
+                     a deadline in ms"
+                        .to_owned(),
+                );
+            };
+            let mut entries = Vec::with_capacity(items.len());
+            for slot in items.iter() {
+                let Value::Int(entry, _) = &slot.value else {
+                    return unsupported(format!(
+                        "`os_wait_ready`'s elements hold {}, not an integer",
+                        slot.value.kind()
+                    ));
+                };
+                entries.push(*entry);
+            }
+            let row = if ready_set_refused(*set) {
+                Some("io")
+            } else if *deadline < -1 {
+                Some("invalid")
+            } else if crate::attrs::build_target().contains("-windows-") {
+                Some("unsupported")
+            } else if (entries.is_empty() && *set == 0 && *deadline == -1)
+                || !entries.iter().all(|e| ready_element_live(machine, *e))
+            {
+                Some("io")
+            } else {
+                None
+            };
+            if let Some(tag) = row {
+                machine.set_last_os_error(0);
+                machine.note(
+                    Rule::ErrUnion,
+                    span,
+                    &format!("`os_wait_ready` yields the `{tag}` row"),
+                );
+                return Ok(error_value(name, tag));
+            }
+            unsupported(
+                "`os_wait_ready` waits on handles of both tables and a meaning set, answering \
+                 every ready one: that is `poll(2)` and the signal hub's wake pipe, std has no \
+                 `poll`, this machine never listens, and it admits no `unsafe` \
+                 ([os.ready.wait], [os.ready.note])"
+                    .to_owned(),
+            )
+        }
+        // s290's second lane (wolf-lang#1102; `[os.ready.set]`): the
+        // readiness set the kernel holds, in four calls. A set is an `epoll`
+        // or `kqueue` object; std has neither, and this machine admits no
+        // `unsafe`, so the open is refused by name (a windows observation
+        // target answers its `unsupported` row first). No set can be made
+        // here, so every set number is forged, which the clause answers
+        // `io`: the change of an entry after its `invalid` and windows rows,
+        // the wait after its set's shape, its deadline and windows, and the
+        // close on every host ("where no set can be made every number is
+        // forged").
+        #[cfg(not(target_family = "wasm"))]
+        "os_ready_open" | "os_ready_set" | "os_ready_wait" | "os_ready_close" => {
+            let arity = match name {
+                "os_ready_open" => 0,
+                "os_ready_set" => 4,
+                "os_ready_wait" => 3,
+                _ => 1,
+            };
+            let ints: Vec<i128> = args
+                .iter()
+                .filter_map(|v| match v {
+                    Value::Int(n, _) => Some(*n),
+                    _ => None,
+                })
+                .collect();
+            if args.len() != arity || ints.len() != arity {
+                return unsupported(format!("`{name}` takes {arity} integers"));
+            }
+            let windows = crate::attrs::build_target().contains("-windows-");
+            let tag = match name {
+                "os_ready_open" if windows => "unsupported",
+                "os_ready_open" => {
+                    return unsupported(
+                        "`os_ready_open` makes a readiness set the kernel holds (`epoll`, \
+                         `kqueue`): std has neither, and this machine admits no `unsafe` \
+                         ([os.ready.set], [os.ready.note])"
+                            .to_owned(),
+                    );
+                }
+                "os_ready_set" if !(0..=3).contains(&ints[2]) || ints[3] < 0 => "invalid",
+                "os_ready_wait" if ready_set_refused(ints[1]) => "io",
+                "os_ready_wait" if ints[2] < -1 => "invalid",
+                "os_ready_set" | "os_ready_wait" if windows => "unsupported",
+                _ => "io",
+            };
+            machine.set_last_os_error(0);
+            machine.note(
+                Rule::ErrUnion,
+                span,
+                &format!("`{name}` yields the `{tag}` row"),
+            );
+            Ok(error_value(name, tag))
+        }
         // s248 (wolf-lang#795, `[os.signal.wait.fds]`; ruling #93 R2 A;
         // wolf-interp#268): one wait over several descriptors, a set and a
         // deadline. Its rows in the clause's order — a set the shape rule
@@ -5202,6 +5321,44 @@ const TERM_SPEEDS: [i128; 19] = [
 /// (bits 0..19).
 #[cfg(not(target_family = "wasm"))]
 const SIG_LISTENABLE: i128 = (1 << 20) - 1;
+
+/// s290's second lane (`[os.ready.wait]`): an element's bit 61, a net
+/// handle, and bit 62, write interest (`[os.signal.wait.write]`'s mark).
+#[cfg(not(target_family = "wasm"))]
+const READY_NET: i128 = 1 << 61;
+#[cfg(not(target_family = "wasm"))]
+const READY_WRITE: i128 = 1 << 62;
+
+/// s290's second lane (`[os.ready.wait]`, `[os.ready.set]`): whether a wait's
+/// meaning set is one `[os.signal.set]`'s shape rule refuses. Set 0 asks for
+/// no meaning and passes; any other set is held to the rule: a bit outside
+/// the twenty listenable meanings, or a negative set, is refused.
+#[cfg(not(target_family = "wasm"))]
+fn ready_set_refused(set: i128) -> bool {
+    set != 0 && set & !SIG_LISTENABLE != 0
+}
+
+/// s290's second lane (`[os.ready.wait]`): whether one element names a live
+/// handle of its table. A negative element names none; bit 61 reads the
+/// rest as a net handle (a listener or a stream of either family), and
+/// without it the rest is an fs handle as `os_signal_wait_fds` takes one (0..2
+/// the standard streams, 3 and up the fs table); bit 62 asks for write
+/// interest and names nothing itself. Any other high bit leaves a number no
+/// table holds.
+#[cfg(not(target_family = "wasm"))]
+fn ready_element_live(machine: &Machine, element: i128) -> bool {
+    if element < 0 {
+        return false;
+    }
+    let handle = element & !(READY_NET | READY_WRITE);
+    if element & READY_NET != 0 {
+        let mut net = machine.net();
+        net.names_a_socket(handle)
+    } else {
+        let mut files = machine.files();
+        files.names_a_stream(handle)
+    }
+}
 
 /// s232: one meaning of the whole table — the twenty, `KILL`, `STOP` and
 /// the six fault signals (bits 0..27).

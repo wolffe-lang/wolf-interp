@@ -621,6 +621,13 @@ impl NetTable {
         Ok(true)
     }
 
+    /// s290's second lane (`[os.ready.wait]`): does `fd` name a live socket
+    /// of this table — a listener or a stream of either family? A forged,
+    /// spent or closed number names none. Asked without touching the socket.
+    pub(crate) fn names_a_socket(&mut self, fd: i128) -> bool {
+        self.sock(fd).is_ok()
+    }
+
     /// Every fd in the set names a live socket, or the whole call is `io`.
     ///
     /// `[os.net.wait]`: a forged or closed handle ANYWHERE in the set is
