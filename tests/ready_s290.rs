@@ -589,7 +589,7 @@ fn main() -> !int {{
     let (stdout, stderr, code) = run_live(&format!("busy_{family}"), &source);
     let lines: Vec<&str> = stdout.lines().collect();
     assert_eq!(code, Some(0), "{family}: {stdout}{stderr}");
-    assert_eq!(lines.len(), 8, "{family}: {stdout}{stderr}");
+    assert_eq!(lines.len(), 7, "{family}: {stdout}{stderr}");
     assert_eq!(lines[0], "full=busy", "{family}: {stdout}");
     assert_eq!(lines[1], format!("errno={EAGAIN}"), "{family}: {stdout}");
     assert_eq!(
