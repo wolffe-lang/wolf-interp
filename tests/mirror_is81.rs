@@ -387,7 +387,12 @@ fn main() -> !int {{
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
-    assert_eq!(output.stdout, b"0 0\n");
+    // `[os.proc.spawn]`: the child writes its version line to the stdout it
+    // inherited, ahead of the program's own (wolf-interp#117).
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let (child, program) = stdout.split_once('\n').expect("the child's line");
+    assert!(child.starts_with("lupin "), "{stdout}");
+    assert_eq!(program, "0 0\n");
     std::fs::remove_dir_all(root).unwrap();
 }
 

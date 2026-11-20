@@ -56,7 +56,12 @@ fn a_real_child_spawns_waits_to_its_code_and_the_handle_is_spent() {
     let output = run_program(&dir, &source);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(output.status.code(), Some(0), "{stdout}\n{output:?}");
-    assert_eq!(stdout, "code 0\nspent\nkill-spent\n");
+    // `[os.proc.spawn]`: the child's stdout is the parent's, so its version
+    // line lands first (wolf-interp#117; lupin 0.1.62 sent it to the null
+    // device and printed only the program's three lines).
+    let (child, program) = stdout.split_once('\n').expect("the child's line");
+    assert!(child.starts_with("lupin "), "{stdout}");
+    assert_eq!(program, "code 0\nspent\nkill-spent\n");
 }
 
 #[test]
