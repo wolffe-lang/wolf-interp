@@ -247,7 +247,18 @@ impl Machine {
         }
         let proc = self.shared.sched.proc_of(self.task);
         let name = format!("task@{}", span.start);
-        let ambient = self.store().current();
+        // wolf-interp#229: "tasks run with the process root as their ambient
+        // region" (`[conc.task.par.cost]`), and a task inside a proc
+        // allocates in the proc's own region (`[conc.proc.1]`;
+        // `[exec.checked.task]` states both for the checked machine). The
+        // spawner's ambient region is not the task's: a task spawned inside
+        // `region r { … }` does not allocate in `r` (lupin 0.1.62 seeded
+        // the task with the spawner's current region, so `r` grew).
+        let ambient = self
+            .shared
+            .sched
+            .proc_region(proc)
+            .unwrap_or_else(super::region::Store::root);
         let task = self
             .shared
             .sched

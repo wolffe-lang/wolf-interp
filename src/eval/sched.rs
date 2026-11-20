@@ -2535,6 +2535,14 @@ impl Sched {
         self.lock().tasks[task].proc
     }
 
+    /// The region `proc`'s own allocations land in: the proc's region, or
+    /// `None` for proc 0, the root domain, whose region is the program's
+    /// (the store's root).
+    #[must_use]
+    pub fn proc_region(&self, proc: ProcId) -> Option<RegionId> {
+        self.lock().procs[proc].region
+    }
+
     /// The REPL's `:schedule seed` (is08): re-seed the decision generator for
     /// every decision from here on. The world (tasks, channels, clocks) is
     /// untouched — only future `sched-ev/0` choices change — and the reseed
