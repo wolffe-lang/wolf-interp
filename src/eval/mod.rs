@@ -217,6 +217,42 @@ struct Args {
     protectors: Vec<prov::TagId>,
 }
 
+/// One declared parameter as an argument position sees it, where the
+/// callee's declaration is in sight from the call site.
+#[derive(Debug, Clone)]
+struct ParamSite {
+    /// The parameter's declared row tags: D52's expected row
+    /// (`[gram.expr.tagident]`).
+    row: Vec<String>,
+    /// What the parameter's type makes of a literal term written as the
+    /// argument (`[type.numlit.propagate]`).
+    context: ArgContext,
+}
+
+impl ParamSite {
+    fn of(param: &crate::ast::Param) -> ParamSite {
+        match &param.kind {
+            ParamKind::Named { ty, .. } => ParamSite {
+                row: crate::sema::type_tags(ty),
+                context: arg_context(ty),
+            },
+            ParamKind::SelfParam { .. } => ParamSite {
+                row: Vec::new(),
+                context: ArgContext::None,
+            },
+        }
+    }
+}
+
+/// The numeric context a declared type gives a literal term
+/// (wolf-interp#256): an integer type, a float type, or neither.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArgContext {
+    None,
+    Int(IntTy),
+    Float,
+}
+
 /// How a place-shaped expression's value is about to be used
 /// (wolf-interp#143).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3795,10 +3831,10 @@ impl Machine {
         &mut self,
         args: &[Arg],
         callee: Callee,
-        param_rows: Option<&[Vec<String>]>,
+        params: Option<&[ParamSite]>,
     ) -> EResult<Args> {
         let call = self.access.open_call();
-        let evaluated = self.eval_arg_list(args, callee, param_rows, call)?;
+        let evaluated = self.eval_arg_list(args, callee, params, call)?;
         self.access.enter_call(call);
         Ok(evaluated)
     }
@@ -3815,7 +3851,7 @@ impl Machine {
         &mut self,
         args: &[Arg],
         callee: Callee,
-        param_rows: Option<&[Vec<String>]>,
+        params: Option<&[ParamSite]>,
         call: CallId,
     ) -> EResult<Args> {
         let mut list = Args {
@@ -3825,7 +3861,7 @@ impl Machine {
             retags: Vec::new(),
             protectors: Vec::new(),
         };
-        match self.fill_arg_list(args, callee, param_rows, call, &mut list) {
+        match self.fill_arg_list(args, callee, params, call, &mut list) {
             Ok(()) => Ok(list),
             Err(signal) => {
                 let span = args.first().map_or(Span::new(0, 0), |arg| arg.span);
@@ -3842,7 +3878,7 @@ impl Machine {
         &mut self,
         args: &[Arg],
         callee: Callee,
-        param_rows: Option<&[Vec<String>]>,
+        params: Option<&[ParamSite]>,
         call: CallId,
         list: &mut Args,
     ) -> EResult<()> {
@@ -3918,11 +3954,35 @@ impl Machine {
                     // asked FIRST — a local place would have shadowed inside
                     // `declared_row_tag`, and everything else (module items,
                     // prelude names, the unresolvable) loses to the tag.
-                    if let Some(row) = param_rows.and_then(|rows| rows.get(index))
-                        && let Some(value) = self.declared_row_tag(&arg.expr, row)
+                    let site = params.and_then(|sites| sites.get(index));
+                    if let Some(site) = site
+                        && let Some(value) = self.declared_row_tag(&arg.expr, &site.row)
                     {
                         values.push(value);
                         continue;
+                    }
+                    // wolf-interp#256, `[type.numlit.propagate]`: "into a call
+                    // it reaches only the declared parameter type" — the
+                    // parameter's type is a literal TERM's context, as an
+                    // annotation is, so `id(1 << 12)` under `x: wrapping[u8]`
+                    // computes at `wrapping[u8]` (16), `id(255 + 1 - 1)` under
+                    // `x: u8` leaves `u8` at `255 + 1` (overflow), and
+                    // `half(1 / 2)` under `x: f64` divides as floats (0.5).
+                    // lupin 0.1.62 computed the term wide and converted the
+                    // result at the parameter (4096, 255, 0). A bare literal,
+                    // a name or a call keeps the route below.
+                    match site.map(|site| site.context) {
+                        Some(ArgContext::Int(ty)) if is_int_term(&arg.expr) => {
+                            let value = self.eval_int_expected(&arg.expr, ty)?;
+                            values.push(value);
+                            continue;
+                        }
+                        Some(ArgContext::Float) if is_float_term(&arg.expr) => {
+                            let value = self.eval_float_expected(&arg.expr)?;
+                            values.push(value);
+                            continue;
+                        }
+                        _ => {}
                     }
                     // Default mode: immutable for the whole call, caller retains
                     // (`[mem.tier0.mode.read]`).
@@ -8698,8 +8758,9 @@ impl Machine {
         // happens), so the honest verdict is a refusal.
         //
         // The same declaration, where it is in sight, carries the parameter
-        // rows D52's argument position resolves against (`param_rows` below).
-        let mut param_rows: Option<Vec<Vec<String>>> = None;
+        // rows D52's argument position resolves against, and the types a
+        // literal term written as an argument adopts (`params` below).
+        let mut params: Option<Vec<ParamSite>> = None;
         if let Value::Fn(qualified) = &target
             && let (module, name) = split_qualified(qualified)
             && let Some(Def::Fn(decl)) = self.shared.program.lookup(&module, &name, false)
@@ -8719,15 +8780,7 @@ impl Machine {
                     ));
                 }
             }
-            param_rows = Some(
-                decl.params
-                    .iter()
-                    .map(|param| match &param.kind {
-                        ParamKind::Named { ty, .. } => crate::sema::type_tags(ty),
-                        ParamKind::SelfParam { .. } => Vec::new(),
-                    })
-                    .collect(),
-            );
+            params = Some(decl.params.iter().map(ParamSite::of).collect());
         }
         // wolf-interp#169: a moded nested fn carries its declaration, so the
         // same residue holds for it — a direct call that disagreed was
@@ -8745,17 +8798,9 @@ impl Machine {
                     ));
                 }
             }
-            param_rows = Some(
-                decl.params
-                    .iter()
-                    .map(|param| match &param.kind {
-                        ParamKind::Named { ty, .. } => crate::sema::type_tags(ty),
-                        ParamKind::SelfParam { .. } => Vec::new(),
-                    })
-                    .collect(),
-            );
+            params = Some(decl.params.iter().map(ParamSite::of).collect());
         }
-        let evaluated = self.eval_args_for(args, Callee::of(&target), param_rows.as_deref())?;
+        let evaluated = self.eval_args_for(args, Callee::of(&target), params.as_deref())?;
         // Handed to `call_fn` across `apply`, which performs no evaluation of
         // its own between here and the callee's parameter binding.
         self.pending_retags = vec![None; evaluated.values.len()];
@@ -9446,28 +9491,47 @@ impl Machine {
                 why: HeldWhy::Pending(call),
             });
         }
-        let evaluated =
-            self.eval_arg_list(args, Callee::Wolf, None, call)
-                .and_then(|mut evaluated| {
-                    if method == "push"
-                        && mode == Some(ParamMode::Mut)
-                        && let Some(path) = &path
-                    {
-                        let into = self.copy_destination(path);
-                        for (arg, value) in args.iter().zip(&mut evaluated.values) {
-                            *value = if is_copy_syntax(&arg.expr) {
-                                self.materialize_store(&arg.expr, value.clone(), into)?
-                            } else if arg.mode == Some(ParamMode::Take) {
-                                value.clone()
-                            } else {
-                                // A plain push copies its element where the
-                                // push runs (wolf-interp#310).
-                                self.plain_store_copy(value.clone(), arg.span)?
-                            };
-                        }
+        // wolf-interp#256: an impl method's declared parameter types are its
+        // arguments' literal-term contexts, as a free function's are (the
+        // `self` parameter is the receiver, so the rest line up with the
+        // arguments). Only the numeric context: the declared-row argument
+        // position (D52) keeps the reach it had here. A lent receiver is a
+        // builtin container, whose methods have no declaration.
+        let sites: Option<Vec<ParamSite>> = value
+            .as_ref()
+            .and_then(|value| self.method_of(value, method))
+            .map(|(_, decl)| {
+                decl.params
+                    .iter()
+                    .filter(|param| !matches!(param.kind, ParamKind::SelfParam { .. }))
+                    .map(|param| ParamSite {
+                        row: Vec::new(),
+                        context: ParamSite::of(param).context,
+                    })
+                    .collect()
+            });
+        let evaluated = self
+            .eval_arg_list(args, Callee::Wolf, sites.as_deref(), call)
+            .and_then(|mut evaluated| {
+                if method == "push"
+                    && mode == Some(ParamMode::Mut)
+                    && let Some(path) = &path
+                {
+                    let into = self.copy_destination(path);
+                    for (arg, value) in args.iter().zip(&mut evaluated.values) {
+                        *value = if is_copy_syntax(&arg.expr) {
+                            self.materialize_store(&arg.expr, value.clone(), into)?
+                        } else if arg.mode == Some(ParamMode::Take) {
+                            value.clone()
+                        } else {
+                            // A plain push copies its element where the
+                            // push runs (wolf-interp#310).
+                            self.plain_store_copy(value.clone(), arg.span)?
+                        };
                     }
-                    Ok(evaluated)
-                });
+                }
+                Ok(evaluated)
+            });
         for claimed in &receiver_claims {
             self.access.withdraw(call, claimed);
         }
@@ -11870,6 +11934,33 @@ fn is_int_term(expr: &Expr) -> bool {
         ExprKind::Group(inner) => is_int_term(inner),
         ExprKind::Binary { op, .. } => is_int_term_op(*op),
         _ => false,
+    }
+}
+
+/// [`is_int_term`]'s float twin: an arithmetic term (through `(…)` groups),
+/// the shape a declared float parameter reaches into
+/// ([`Machine::eval_float_expected`]; wolf-interp#256). A bare literal keeps
+/// its own adoption at the parameter, and a name or a call is no term.
+fn is_float_term(expr: &Expr) -> bool {
+    match &*expr.kind {
+        ExprKind::Group(inner) => is_float_term(inner),
+        ExprKind::Binary { op, .. } => matches!(
+            op,
+            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem
+        ),
+        _ => false,
+    }
+}
+
+/// What a declared parameter type makes of a literal term written as its
+/// argument (wolf-interp#256, `[type.numlit.propagate]`).
+fn arg_context(ty: &Type) -> ArgContext {
+    if float_ty_name(ty).is_some() {
+        ArgContext::Float
+    } else if let Some(int) = int_of_type(ty) {
+        ArgContext::Int(int)
+    } else {
+        ArgContext::None
     }
 }
 
