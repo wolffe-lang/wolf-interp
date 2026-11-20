@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+Six programs that lupin 0.1.62 ran to an answer the specification does not give, with no
+diagnostic. Each now gets the spec's answer; `tests/silent_answers_l1.rs` holds each against
+wolf 0.2.40's.
+
+- **A method call on a payload-less variant written as a path** (`[gram.expr.variant]`,
+  wolf-interp#325): `Line.Void.cents()` calls `cents` on the value `Line.Void`. lupin 0.1.62
+  answered `Line.Void` itself.
+- **Module state is one value shared by every task** (`[mem.static]`, wolf-interp#229). A task's
+  writes reach the program, and two tasks' accesses to a module `var` with no order between them
+  are a data race the detector traps (`[conc.mm.race.3]`), as it traps raw memory and pool slots.
+  lupin 0.1.62 gave each task a private copy, so its writes were lost.
+- **A scope task allocates in its proc's region**, or the program's for the root domain
+  (`[conc.task.par.cost]`, wolf-interp#229), not in the region its spawner had open. `par`
+  workers are unchanged.
+- **A call argument's declared parameter type is a literal term's context**
+  (`[type.numlit.propagate]`, wolf-interp#256), for a function and for an impl method:
+  `id(1 << 12)` under `x: wrapping[u8]` is 16, `id(255 + 1 - 1)` under `x: u8` traps `overflow`,
+  and `half(1 / 2)` under `x: f64` is 0.5. lupin 0.1.62 computed the term wide and converted the
+  result.
+- **UB on a proc's task ends the run with the finding** (`[conc.proc.exit]` contains only traps,
+  wolf-interp#228), and a refusal there ends it `unsupported`. lupin 0.1.62 handed both to the
+  proc's `join` as an error value and went on to `exit(0)`.
+- **A child started by a spawn inherits stdout and stderr**, with the null device for stdin
+  (`[os.proc.spawn]`; `[os.proc.fds]` for what a descriptor map leaves out; wolf-interp#117).
+  Under `conform-run` a child's bytes reach the host stream ahead of the record, as the clause
+  states for the checked machine. lupin 0.1.62 wired all three to the null device.
+
 ## 0.1.62 — 2026-11-12
 
 This release carries the 14 commits after 0.1.61: the mirror of wolf
