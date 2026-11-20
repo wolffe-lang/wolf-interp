@@ -8866,7 +8866,7 @@ impl Machine {
             ExprKind::Path(path) if path.segments.len() >= 2 => {
                 let head = &path.segments[0].name;
                 if !self.local_exists(head) && self.global_key(head).is_none() {
-                    return Ok(None);
+                    return Ok(self.variant_path_receiver(callee, path));
                 }
                 let Ok(mut place) = self.place_of(callee) else {
                     return Ok(None);
@@ -8878,6 +8878,41 @@ impl Machine {
             }
             _ => Ok(None),
         }
+    }
+
+    /// `Line.Void.cents()` (wolf-interp#325, `[gram.expr.variant]`): a
+    /// payload-less enum variant written as a path is a VALUE of its enum,
+    /// and `.cents()` on it is an ordinary method call, as it is on a
+    /// binding of the same value or on `Line.Item(3)`. The grammar's `path`
+    /// production swallows the dots, so the call arrives as the one path
+    /// `Line.Void.cents`, whose evaluation read only its first two segments
+    /// and answered `Line.Void` itself (lupin 0.1.62). The receiver is the
+    /// `Enum.Variant` prefix when the enum in scope declares the variant;
+    /// any other shape keeps the routes it always took.
+    fn variant_path_receiver(
+        &self,
+        callee: &Expr,
+        path: &crate::ast::Path,
+    ) -> Option<(Receiver, String, Option<ParamMode>)> {
+        let [owner, variant, method] = path.segments.as_slice() else {
+            return None;
+        };
+        if self.shared.program.modules.contains_key(&owner.name)
+            || !variant.name.starts_with(char::is_uppercase)
+            || !self.declares_variant(Some(&owner.name), &variant.name)
+        {
+            return None;
+        }
+        let span = Span::new(owner.span.start, variant.span.end);
+        let receiver = Expr {
+            kind: Box::new(ExprKind::Path(crate::ast::Path {
+                segments: vec![owner.clone(), variant.clone()],
+                span,
+            })),
+            span,
+            anchor: callee.anchor,
+        };
+        Some((Receiver::Expr(receiver), method.name.clone(), None))
     }
 
     fn is_module_expr(&self, expr: &Expr) -> bool {
