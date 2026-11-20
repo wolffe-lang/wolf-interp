@@ -59,7 +59,10 @@ impl Machine {
     /// Runs one scheduler operation that may park this task: the task's open
     /// stack is swapped out of the store first and back in afterwards, so the
     /// store always holds the *running* task's scope stack. The lock order
-    /// (store, then scheduler) is this function's alone.
+    /// (store, then scheduler) is this function's alone. Module state goes
+    /// the same way (wolf-interp#229): handed over before the park, the
+    /// newest copy taken after it, so whichever task runs holds the program's
+    /// one module state (`[mem.static]`).
     pub(super) fn sched_block<T>(
         &mut self,
         f: impl FnOnce(&super::sched::Sched, super::sched::TaskId) -> T,
@@ -69,8 +72,10 @@ impl Machine {
             self.store().swap_open(&mut stack);
             self.shared.sched.save_stack(self.task, stack);
         }
+        self.publish_statics();
         let sched = self.shared.sched.clone();
         let out = f(&sched, self.task);
+        self.pull_statics();
         {
             let mut stack = self.shared.sched.restore_stack(self.task);
             self.store().swap_open(&mut stack);
@@ -265,7 +270,6 @@ impl Machine {
             .spawn_task(self.task, Some(scope), proc, name.clone());
         self.shared.sched.seed_stack(task, vec![ambient]);
         let shared = self.shared.clone();
-        let globals = self.globals.clone();
         let body = closure.clone();
         let module = self
             .frames
@@ -276,7 +280,7 @@ impl Machine {
             .name(name)
             .stack_size(TASK_STACK)
             .spawn(move || {
-                Machine::for_task(shared, task, globals).run_spawned(&body, module);
+                Machine::for_task(shared, task).run_spawned(&body, module);
             })
             .expect("a task thread must spawn");
         self.shared.sched.register_thread(task, handle);
@@ -399,7 +403,6 @@ impl Machine {
                 .spawn_task(self.task, Some(scope), proc, name.clone());
             self.shared.sched.seed_stack(task, vec![ambient]);
             let shared = self.shared.clone();
-            let globals = self.globals.clone();
             let body = ParChunk {
                 f: f.clone(),
                 items: items.clone(),
@@ -412,7 +415,7 @@ impl Machine {
                 .name(name)
                 .stack_size(TASK_STACK)
                 .spawn(move || {
-                    Machine::for_task(shared, task, globals).run_par_chunk(&body, module);
+                    Machine::for_task(shared, task).run_par_chunk(&body, module);
                 })
                 .expect("a par chunk's thread must spawn");
             self.shared.sched.register_thread(task, handle);
@@ -471,6 +474,7 @@ impl Machine {
             self.shared.sched.dispatch_next();
             return;
         }
+        self.pull_statics();
         {
             let mut stack = self.shared.sched.restore_stack(self.task);
             self.store().swap_open(&mut stack);
@@ -519,6 +523,7 @@ impl Machine {
             self.shared.sched.dispatch_next();
             return;
         }
+        self.pull_statics();
         {
             let mut stack = self.shared.sched.restore_stack(self.task);
             self.store().swap_open(&mut stack);
@@ -562,6 +567,9 @@ impl Machine {
             self.store().swap_open(&mut stack);
             self.shared.sched.save_stack(self.task, stack);
         }
+        // The baton leaves this task for good: what it did to module state
+        // stays the program's (wolf-interp#229).
+        self.publish_statics();
         let end = match result {
             Ok(Value::Error(err)) | Err(Signal::Return(Value::Error(err))) => TaskEnd::Error(err),
             Ok(value) | Err(Signal::Return(value)) => TaskEnd::Value(value),
@@ -660,12 +668,11 @@ impl Machine {
         let (proc, task) = self.shared.sched.spawn_proc(self.task, name, region);
         self.shared.sched.seed_stack(task, vec![region]);
         let shared = self.shared.clone();
-        let globals = self.globals.clone();
         let handle = std::thread::Builder::new()
             .name(format!("proc#{proc}"))
             .stack_size(TASK_STACK)
             .spawn(move || {
-                Machine::for_task(shared, task, globals).run_proc(&decl, &module, values, span);
+                Machine::for_task(shared, task).run_proc(&decl, &module, values, span);
             })
             .expect("a proc thread must spawn");
         self.shared.sched.register_thread(task, handle);
@@ -682,6 +689,7 @@ impl Machine {
             self.shared.sched.dispatch_next();
             return;
         }
+        self.pull_statics();
         {
             let mut stack = self.shared.sched.restore_stack(self.task);
             self.store().swap_open(&mut stack);

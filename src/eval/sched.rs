@@ -539,16 +539,21 @@ pub struct RaceReport {
 
 /// The kinds of memory two tasks can actually share in this machine.
 ///
-/// Closures capture by value, globals are per-task, region transfer is
-/// checked at the send, frozen data is immutable and `Mutex` serializes — so
-/// the only mutable memory reachable from two tasks at once is **pool slots
-/// in an unmoved region** and **raw allocations** (Tier 3/FFI, exactly the
-/// reachability `[conc.mm.race.1]` names). Detection over these two surfaces
-/// is therefore *exact* over the interleavings the schedule realizes.
+/// Closures capture by value, region transfer is checked at the send, frozen
+/// data is immutable and `Mutex` serializes — so the only mutable memory
+/// reachable from two tasks at once is **pool slots in an unmoved region**,
+/// **raw allocations** (Tier 3/FFI, exactly the reachability
+/// `[conc.mm.race.1]` names) and **module state**, one value for the whole
+/// run shared by every task, every `var` access raw-tier (`[mem.static]`,
+/// `[mem.static.2]`; through 0.1.62 each task had its own copy,
+/// wolf-interp#229). Detection over these surfaces is therefore *exact* over
+/// the interleavings the schedule realizes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RaceKey {
     Pool(usize, usize),
     Alloc(usize),
+    /// A module item, by its interned key.
+    Static(usize),
 }
 
 /// The shared scheduler. One per program run.
@@ -2651,13 +2656,25 @@ impl Sched {
             return Some(report);
         }
         let tick = state.tasks[me].vc.get(me).copied().unwrap_or(0);
-        state.accesses.entry(key).or_default().push(Access {
-            task: me,
-            tick,
-            lo,
-            hi,
-            write,
-        });
+        // One entry per task, range and kind, at its latest tick: a later
+        // access that a reader's clock orders orders every earlier one of the
+        // same task, and one it does not order is itself the race, so the
+        // latest is all the check needs — and the history stays bounded by
+        // the program's distinct shared words rather than by how long it
+        // loops (a module `var` read in a loop, wolf-interp#229).
+        let history = state.accesses.entry(key).or_default();
+        match history.iter_mut().find(|prior| {
+            prior.task == me && prior.lo == lo && prior.hi == hi && prior.write == write
+        }) {
+            Some(prior) => prior.tick = prior.tick.max(tick),
+            None => history.push(Access {
+                task: me,
+                tick,
+                lo,
+                hi,
+                write,
+            }),
+        }
         None
     }
 

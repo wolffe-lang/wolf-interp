@@ -217,6 +217,22 @@ struct Args {
     protectors: Vec<prov::TagId>,
 }
 
+/// Module state's one copy between tasks (`[mem.static]`; wolf-interp#229).
+/// The running task works on its own [`Machine::globals`]; this is where it
+/// hands them over when it gives up the baton, and where the next task to
+/// run takes them from.
+#[derive(Debug, Default)]
+struct Statics {
+    /// The newest module state a task handed over.
+    map: BTreeMap<String, Slot>,
+    /// Bumped at every hand-over, so a task whose copy is current skips the
+    /// clone.
+    version: u64,
+    /// One race-detector key per module `var` (`sched::RaceKey::Static`);
+    /// `None` for a `const` or `let`, which no access can race on.
+    ids: BTreeMap<String, Option<usize>>,
+}
+
 /// One declared parameter as an argument position sees it, where the
 /// callee's declaration is in sight from the call site.
 #[derive(Debug, Clone)]
@@ -578,6 +594,9 @@ struct Shared {
     steps: Arc<AtomicU64>,
     /// The sim scheduler (is06): tasks, channels, procs, virtual time.
     sched: Arc<sched::Sched>,
+    /// Module state, the program's one copy (`[mem.static]`; wolf-interp
+    /// #229). See [`Statics`].
+    statics: Arc<Mutex<Statics>>,
     tracing: Trace,
     /// is72: `--trace-places`' tracer, when the front door asked for one.
     /// Read by nothing that decides an outcome.
@@ -663,11 +682,23 @@ pub struct Machine {
     task: sched::TaskId,
     frames: Vec<Frame>,
     access: AccessSet,
-    /// Item-level bindings. Evaluated at program start on task 0 and
-    /// snapshotted into each task at spawn: cross-task global mutation is not
-    /// a channel this machine provides (the compiler's E1101 rejects the
-    /// shape statically; `docs/approximation-contract.md` records the choice).
+    /// Item-level bindings — module state (`[mem.static]`), as the task now
+    /// RUNNING sees it. Root items are evaluated at program start on task 0,
+    /// a module's on first touch. Module state is "one value for the whole
+    /// run of the program, shared by every task", and one task runs at a
+    /// time, so this map travels with the baton through [`Shared::statics`]:
+    /// a task hands its copy over whenever it parks or ends having touched
+    /// it, and takes the newest copy whenever it starts or wakes
+    /// ([`Machine::publish_statics`], [`Machine::pull_statics`]). Through
+    /// 0.1.62 each task had a private snapshot taken at its spawn, and its
+    /// writes were lost (wolf-interp#229).
     globals: BTreeMap<String, Slot>,
+    /// The [`Statics::version`] this machine's `globals` were last taken
+    /// from or handed over as.
+    statics_seen: u64,
+    /// This machine has resolved a `globals` slot for writing since its last
+    /// hand-over (a read through the same route counts: conservative).
+    statics_dirty: bool,
     /// The module initializers being evaluated, outermost first
     /// (`[mem.static.3]`; wolf-interp#190). An initializer that reaches one
     /// of these again depends on its own value, which the static check
@@ -845,19 +876,24 @@ impl Machine {
             files: Arc::new(Mutex::new(fs::FsTable::default())),
             #[cfg(not(target_family = "wasm"))]
             epoch: std::time::Instant::now(),
+            statics: Arc::new(Mutex::new(Statics::default())),
         };
-        Machine::for_task(shared, 0, BTreeMap::new())
+        Machine::for_task(shared, 0)
     }
 
-    /// A task's machine: its own frames over the shared world.
-    fn for_task(shared: Shared, task: sched::TaskId, globals: BTreeMap<String, Slot>) -> Machine {
+    /// A task's machine: its own frames over the shared world. Its module
+    /// state is taken from [`Shared::statics`] when it is first scheduled
+    /// ([`Machine::pull_statics`]).
+    fn for_task(shared: Shared, task: sched::TaskId) -> Machine {
         let tracing = shared.tracing;
         Machine {
             shared,
             task,
             frames: Vec::new(),
             access: AccessSet::new(),
-            globals,
+            globals: BTreeMap::new(),
+            statics_seen: 0,
+            statics_dirty: false,
             initializing: Vec::new(),
             unsafe_depth: 0,
             when_held: Vec::new(),
@@ -871,6 +907,87 @@ impl Machine {
             place_events: Vec::new(),
             last_os_error: 0,
         }
+    }
+
+    /// Hands this task's module state over (wolf-interp#229), as it gives
+    /// up the baton: before it parks ([`Machine::sched_block`]) and when it
+    /// ends. One task runs at a time, so the copy handed over last is the
+    /// program's module state. Nothing to do when the task has not touched
+    /// it since it last took or handed it.
+    pub(super) fn publish_statics(&mut self) {
+        if !self.statics_dirty {
+            return;
+        }
+        let mut statics = self.shared.statics.lock().expect("statics lock");
+        statics.map.clone_from(&self.globals);
+        statics.version += 1;
+        self.statics_seen = statics.version;
+        self.statics_dirty = false;
+    }
+
+    /// Takes the newest module state (wolf-interp#229), as this task gets
+    /// the baton: when it first runs and whenever it wakes from a park.
+    pub(super) fn pull_statics(&mut self) {
+        let statics = self.shared.statics.lock().expect("statics lock");
+        if statics.version != self.statics_seen {
+            self.globals.clone_from(&statics.map);
+            self.statics_seen = statics.version;
+        }
+    }
+
+    /// The race detector's key for module item `key` (wolf-interp#229), when
+    /// the item is a `var`: a `const` or a `let` is immutable data
+    /// (`[mem.static.1]`), and reads never race with reads.
+    fn static_id(&self, key: &str) -> Option<usize> {
+        let mut statics = self.shared.statics.lock().expect("statics lock");
+        if let Some(id) = statics.ids.get(key) {
+            return *id;
+        }
+        let (module, name) = split_qualified(key);
+        let id = match self.shared.program.lookup(&module, &name, false) {
+            Some(Def::Binding(binding)) if binding.kind == crate::ast::BindingKind::Var => {
+                Some(statics.ids.values().flatten().count())
+            }
+            _ => None,
+        };
+        statics.ids.insert(key.to_owned(), id);
+        id
+    }
+
+    /// One access to module state against the race detector
+    /// (`[conc.mm.race.3]`; wolf-interp#229). Module state is one value
+    /// shared by every task (`[mem.static]`), and every access to a `var`
+    /// is raw-tier (`[mem.static.2]`), so two tasks' accesses to one item,
+    /// at least one a write, with no happens-before order between them, are
+    /// `[conc.mm.race.1]`'s data race — trapped at the second access, as the
+    /// detector traps a raw allocation's or a pool slot's.
+    fn race_check_static(&mut self, path: &Path, write: bool, span: Span) -> EResult<()> {
+        let Some(id) = self.static_id(&path.base) else {
+            return Ok(());
+        };
+        let report =
+            self.shared
+                .sched
+                .race_check(self.task, sched::RaceKey::Static(id), 0, 1, write);
+        self.drain_sched();
+        if let Some(report) = report {
+            return self.trap(
+                TrapKind::Race,
+                Rule::RaceDetect,
+                span,
+                format!(
+                    "data race on module state `{}`: this {} conflicts with an unordered {} by \
+                     {} — module state is one value shared by every task ([mem.static]), and no \
+                     happens-before edge orders the two ([conc.mm.hb])",
+                    path.base,
+                    if write { "write" } else { "read" },
+                    if report.other_write { "write" } else { "read" },
+                    report.other_task
+                ),
+                None,
+            );
+        }
+        Ok(())
     }
 
     /// Mints a [`Frame::serial`] — every frame construction calls this.
@@ -1139,6 +1256,7 @@ impl Machine {
             match self.initialize(&name, &binding) {
                 Ok(value) => {
                     self.globals.insert(name, Slot::live(value));
+                    self.statics_dirty = true;
                 }
                 Err(signal) => return self.finish(Err(signal)),
             }
@@ -1828,6 +1946,7 @@ impl Machine {
     /// the leaf's own state.
     fn resolve(&mut self, path: &Path) -> Option<(&mut Slot, Option<(Span, usize)>)> {
         let mut slot: &mut Slot = if path.frame == usize::MAX {
+            self.statics_dirty = true;
             self.globals.get_mut(&path.base)?
         } else {
             let frame = self.frames.get_mut(path.frame)?;
@@ -2567,6 +2686,13 @@ impl Machine {
     /// the borrows a program actually creates rather than by the reads it
     /// performs. The first retag of a place is what mints its root.
     fn access_place(&mut self, path: &Path, kind: AccessKind, span: Span) -> EResult<()> {
+        // Module state is what two tasks can share in safe syntax
+        // (wolf-interp#229): the race detector sees every access to it once
+        // a second task exists, ahead of the `[mem.ub]` rows as for raw
+        // memory.
+        if path.frame == usize::MAX && self.shared.sched.ever_concurrent() {
+            self.race_check_static(path, kind == AccessKind::Write, span)?;
+        }
         let key = self.place_key(path);
         let access = self.prov().access_place(&key, kind, span);
         match access {
@@ -6782,6 +6908,7 @@ impl Machine {
                 let binding = binding.clone();
                 let value = self.initialize(name, &binding)?;
                 self.globals.insert(key, Slot::live(value.clone()));
+                self.statics_dirty = true;
                 Ok(value)
             }
             // `[abi.link.extern]`: the symbol's address is the link's, and
