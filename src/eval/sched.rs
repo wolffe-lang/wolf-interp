@@ -617,6 +617,11 @@ struct State {
     concurrent: bool,
     /// The root supervisor is reaping; scheduling is shutdown's alone.
     shutdown: bool,
+    /// The answer that ended the run from inside a proc: a UB finding (and
+    /// a refusal) on a proc's task, which no failure domain contains
+    /// (wolf-interp#228). Set once; every proc, the root domain's included,
+    /// is killed when it is, and `main`'s machine answers it.
+    fatal: Option<TaskEnd>,
 }
 
 impl State {
@@ -1362,6 +1367,37 @@ impl State {
         }
         self.deliver_exit(proc, &ExitReason::Killed)
     }
+
+    /// wolf-interp#228: an answer on a proc's task that no failure domain
+    /// contains ends the run with that answer. It is kept as the run's
+    /// [`State::fatal`], and the root supervisor ends the world as it would
+    /// after a root-domain death (`[conc.proc.root]`): every live proc is
+    /// killed — the ending one's other tasks, every other proc, and the root
+    /// domain with `main` — so no further user code runs anywhere, and
+    /// `main`'s machine, woken `Killed`, answers the kept finding instead of
+    /// the root domain's death. Returns the regions to bulk-free.
+    fn end_the_run(&mut self, end: TaskEnd) -> Vec<RegionId> {
+        let label = match &end {
+            TaskEnd::Ub(finding) => format!("ub({})", finding.anchor()),
+            TaskEnd::Unsupported(_) => "unsupported".to_owned(),
+            _ => "an uncontained answer".to_owned(),
+        };
+        self.note(
+            Rule::ProcExit,
+            format!(
+                "{label} on a proc's task is no exit reason ([conc.proc.exit]): the run ends \
+                 with it, and every proc is killed"
+            ),
+        );
+        if self.fatal.is_none() {
+            self.fatal = Some(end);
+        }
+        let mut regions = Vec::new();
+        for proc in 0..self.procs.len() {
+            regions.extend(self.kill_proc(proc));
+        }
+        regions
+    }
 }
 
 /// FNV-1a, 128-bit — the canonical-state and outcome digest. Not
@@ -1498,6 +1534,7 @@ impl Sched {
             atomic_clocks: std::collections::BTreeMap::new(),
             concurrent: false,
             shutdown: false,
+            fatal: None,
         };
         // Task 0: `main`, running, under the root supervisor
         // (`[conc.task.root]`): the process runs under a root scope of
@@ -2010,29 +2047,34 @@ impl Sched {
             let proc = state.tasks[me].proc;
             if state.procs[proc].root == me && proc != 0 {
                 let reason = match &end {
-                    TaskEnd::Value(value) => ExitReason::Normal(value.clone()),
-                    TaskEnd::Error(err) => ExitReason::Error(err.clone()),
+                    TaskEnd::Value(value) => Some(ExitReason::Normal(value.clone())),
+                    TaskEnd::Error(err) => Some(ExitReason::Error(err.clone())),
                     // `[conc.proc.exit]`, s132's amendment: a contained trap
                     // is `fault(kind)`, not an error value that happens to be
                     // tagged "trap" — the class is a reason of its own, and
                     // `is_error()` is false on it.
-                    TaskEnd::Trapped(trap) => ExitReason::Fault(trap.kind),
-                    TaskEnd::Ub(finding) => ExitReason::Error(Box::new(ErrorValue {
-                        tag: "ub".to_owned(),
-                        payload: vec![Value::Str(finding.anchor().into())],
-                        enum_variant: false,
-                        row: Vec::new(),
-                    })),
-                    TaskEnd::Unsupported(reason) => ExitReason::Error(Box::new(ErrorValue {
+                    TaskEnd::Trapped(trap) => Some(ExitReason::Fault(trap.kind)),
+                    // wolf-interp#228: containment is a TRAP's. `fault(kind)`
+                    // names one kind of `[conf.trap.set]`'s closed vocabulary
+                    // and a UB finding is none, so no exit reason carries
+                    // it: the run ends with the finding (`[exec.checked.task]`
+                    // states the same for the checked machine). lupin 0.1.62
+                    // delivered it as `error("ub")`, so `join` answered an
+                    // error value and the run went on to `exit(0)`.
+                    TaskEnd::Ub(_) => None,
+                    TaskEnd::Unsupported(reason) => Some(ExitReason::Error(Box::new(ErrorValue {
                         tag: "unsupported".to_owned(),
                         payload: vec![Value::Str(reason.clone().into())],
                         enum_variant: false,
                         row: Vec::new(),
-                    })),
-                    TaskEnd::Cancelled => ExitReason::Cancelled,
-                    TaskEnd::Killed => ExitReason::Killed,
+                    }))),
+                    TaskEnd::Cancelled => Some(ExitReason::Cancelled),
+                    TaskEnd::Killed => Some(ExitReason::Killed),
                 };
-                regions = state.deliver_exit(proc, &reason);
+                regions = match reason {
+                    Some(reason) => state.deliver_exit(proc, &reason),
+                    None => state.end_the_run(end.clone()),
+                };
             }
         }
         regions
@@ -2533,6 +2575,13 @@ impl Sched {
     #[must_use]
     pub fn proc_of(&self, task: TaskId) -> ProcId {
         self.lock().tasks[task].proc
+    }
+
+    /// The answer that ended the run from inside a proc, if one did
+    /// (wolf-interp#228; [`State::end_the_run`]).
+    #[must_use]
+    pub fn fatal(&self) -> Option<TaskEnd> {
+        self.lock().fatal.clone()
     }
 
     /// The region `proc`'s own allocations land in: the proc's region, or

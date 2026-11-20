@@ -826,6 +826,16 @@ impl Session {
     /// code/kind and its clause anchor.
     fn render_signal(&mut self, signal: &Signal, stmt: Option<&Stmt>, out: &mut Vec<String>) {
         let _ = stmt;
+        // wolf-interp#228: a root domain killed because a proc's task found
+        // UB answers the finding, as a run does.
+        let found;
+        let signal = match (signal, self.machine.shared.sched.fatal()) {
+            (Signal::ProcKilled, Some(super::sched::TaskEnd::Ub(finding))) => {
+                found = Signal::Ub(finding);
+                &found
+            }
+            _ => signal,
+        };
         match signal {
             Signal::Trap(trap) => {
                 self.note_fault(SessionFault::Dynamic);
