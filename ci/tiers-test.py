@@ -328,7 +328,7 @@ say(re.search(r"^      tier:\n        description: .*\n        type: string\n   
     and re.search(r"^      entries:\n        description: .*\n        type: string\n        default: \"\"\n", wf, re.M) is not None
     and "IN_TIER: ${{ inputs.tier }}" in blocks["plan"] and "IN_ENTRIES: ${{ inputs.entries }}" in blocks["plan"],
     "T4 a dispatch takes the tier and entries inputs, empty by default, and the plan reads them")
-want = [{"os": o + "-latest", "osid": o, "shard": s} for o in ("ubuntu", "macos", "windows") for s in ("1", "2", "3", "ladder")]
+want = [{"os": "ubuntu-24.04" if o == "ubuntu" else o + "-latest", "osid": o, "shard": s} for o in ("ubuntu", "macos", "windows") for s in ("1", "2", "3", "ladder")]
 smoke = {"os": "windows-latest", "osid": "windows", "shard": "smoke"}
 r = plan(event="schedule")
 say(r["matrix"] == want + [smoke] and r["shard_oses"] == "ubuntu macos windows" and r["ladder_oses"] == "ubuntu macos windows",
@@ -459,7 +459,7 @@ JOBS_TSV = "\n".join("\t".join(x) for x in [
     ("plan", "success", "https://x/j/1"),
     ("test (windows-latest, test shard 2 of 3)", "failure", "https://x/j/2"),
     ("test (windows-latest, the ladder and the bundle)", "cancelled", "https://x/j/3"),
-    ("test (ubuntu-latest, test shard 1 of 3)", "success", "https://x/j/4"),
+    ("test (ubuntu-24.04, test shard 1 of 3)", "success", "https://x/j/4"),
     ("tier release", "", "https://x/j/5"),
 ]) + "\n"
 RED_TITLE = "nightly red: tier release on trunk"
@@ -500,7 +500,7 @@ else:
     say(rc == 0 and len(made) == 1 and made[0][made[0].index("--title") + 1] == RED_TITLE
         and made[0][made[0].index("--label") + 1] == "nightly-red" and call(calls, "label", "create", "nightly-red")
         and "test (windows-latest, test shard 2 of 3)" in b and "the ladder and the bundle)`: cancelled" in b
-        and "test (ubuntu-latest" not in b and "`plan`" not in b and "/o/r/actions/runs/123456789" in b
+        and "test (ubuntu-24.04" not in b and "`plan`" not in b and "/o/r/actions/runs/123456789" in b
         and "owes" in b and not call(calls, "issue", "comment"),
         "T8 no open issue: one opened, labelled, naming the red jobs (failed and cancelled) and the run, and no green job%s" % (
             "" if rc == 0 else " (rc %d: %s)" % (rc, out.strip()[-200:])))

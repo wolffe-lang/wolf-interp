@@ -209,7 +209,7 @@ def matrix_of(tier, entries=None):
     matrix = []
     for n in names:
         osid, shard = n.split("/")
-        matrix.append({"os": osid + "-latest", "osid": osid, "shard": shard})
+        matrix.append({"os": "ubuntu-24.04" if osid == "ubuntu" else osid + "-latest", "osid": osid, "shard": shard})
     shard_oses = [o for o in OSES if all("%s/%s" % (o, s) in names for s in ("1", "2", "3"))]
     ladder_oses = [o for o in OSES if "%s/ladder" % o in names]
     return matrix, " ".join(shard_oses), " ".join(ladder_oses)
