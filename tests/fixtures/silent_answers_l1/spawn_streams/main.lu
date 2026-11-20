@@ -1,0 +1,6 @@
+fn main() -> !int {
+    let pid = os_spawn(["/bin/sh", "-c", "echo OUT; echo ERR 1>&2; read l; echo \"READ:$l\""])?
+    let st = os_wait(pid)?
+    print("status {st}")
+    0
+}

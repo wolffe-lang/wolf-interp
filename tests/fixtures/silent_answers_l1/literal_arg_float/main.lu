@@ -1,0 +1,7 @@
+fn half(x: f64) -> f64 {
+    x
+}
+
+fn main() {
+    print("{half(1 / 2)}")
+}

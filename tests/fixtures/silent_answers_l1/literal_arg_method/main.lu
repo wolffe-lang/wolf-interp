@@ -1,0 +1,14 @@
+struct P {
+    v: int,
+}
+
+impl P {
+    fn id(self, x: wrapping[u8]) -> wrapping[u8] {
+        x
+    }
+}
+
+fn main() {
+    let p = P { v: 1 }
+    print("{p.id(1 << 12)}")
+}

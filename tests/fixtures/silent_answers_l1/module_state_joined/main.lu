@@ -1,0 +1,24 @@
+var hits: int = 0
+
+fn bump() {
+    // # Safety: each write is ordered by its scope's join.
+    unsafe {
+        hits = hits + 1
+    }
+}
+
+fn main() -> !int {
+    scope s {
+        s.spawn(fn() { bump() })
+    }
+    scope t {
+        t.spawn(fn() { bump() })
+    }
+    var n = 0
+    // # Safety: read after both joins.
+    unsafe {
+        n = hits
+    }
+    print("{n}")
+    0
+}

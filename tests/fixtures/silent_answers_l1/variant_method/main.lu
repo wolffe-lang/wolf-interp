@@ -1,0 +1,18 @@
+enum Line { Item(int), Void }
+
+impl Line {
+    fn cents(self) -> int {
+        match self {
+            Item(c) => c,
+            Void => 0,
+        }
+    }
+}
+
+fn main() -> !int {
+    let v = Line.Void
+    print("{v.cents()}")
+    print("{Line.Void.cents()}")
+    print("{Line.Item(3).cents()}")
+    0
+}

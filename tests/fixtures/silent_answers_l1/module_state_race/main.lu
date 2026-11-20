@@ -1,0 +1,22 @@
+var hits: int = 0
+
+fn bump() {
+    // # Safety: DELIBERATELY UNSOUND — module state written by two tasks.
+    unsafe {
+        hits = hits + 1
+    }
+}
+
+fn main() -> !int {
+    scope s {
+        s.spawn(fn() { bump() })
+        s.spawn(fn() { bump() })
+    }
+    var n = 0
+    // # Safety: read after the join.
+    unsafe {
+        n = hits
+    }
+    print("{n}")
+    0
+}

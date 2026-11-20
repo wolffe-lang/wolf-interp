@@ -1,0 +1,7 @@
+fn id(x: wrapping[u8]) -> wrapping[u8] {
+    x
+}
+
+fn main() {
+    print("{id(1 << 12)}")
+}

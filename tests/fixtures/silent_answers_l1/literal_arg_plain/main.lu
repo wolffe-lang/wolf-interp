@@ -1,0 +1,7 @@
+fn id(x: u8) -> u8 {
+    x
+}
+
+fn main() {
+    print("{id(255 + 1 - 1)}")
+}

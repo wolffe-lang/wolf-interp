@@ -1,0 +1,24 @@
+var hits: int = 0
+
+fn bump() -> int {
+    // # Safety: one proc writes; main reads after the join.
+    unsafe {
+        hits = hits + 1
+    }
+    7
+}
+
+fn main() -> !int {
+    let w = spawn proc bump()
+    let v = w.join() else |e| {
+        print("joined: {e}")
+        return 0
+    }
+    var n = 0
+    // # Safety: read after the join.
+    unsafe {
+        n = hits
+    }
+    print("{v} {n}")
+    0
+}

@@ -1,0 +1,23 @@
+import c "stdlib.h"
+
+fn bad() -> int {
+    // # Safety: DELIBERATELY UNSOUND — a read after free.
+    unsafe {
+        let m = c.malloc(8)
+        let p = m as *u64
+        p[0] = 1
+        c.free(m)
+        let x = p[0]
+    }
+    7
+}
+
+fn main() -> !int {
+    let w = spawn proc bad()
+    let v = w.join() else |e| {
+        print("joined: {e}")
+        return 0
+    }
+    print("value {v}")
+    0
+}

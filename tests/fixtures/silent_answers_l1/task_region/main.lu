@@ -1,0 +1,18 @@
+fn main() -> !int {
+    var before = 0
+    var after = 0
+    region r {
+        before = region_bytes(r)
+        scope s {
+            s.spawn(fn() {
+                var xs = List[int]()
+                for i in 0..100 { (mut xs).push(i) }
+                print("built {xs.len}")
+            })
+        }
+        after = region_bytes(r)
+    }
+    let grew = after > before
+    print("grew {grew}")
+    0
+}
