@@ -152,7 +152,7 @@ jobs:
   # reads `jobs` and runs only when it is named there.
   plan:
     name: plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       tier: ${{ steps.plan.outputs.tier }}
@@ -193,7 +193,7 @@ jobs:
     name: the planner's own test
     needs: plan
     if: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-matrix') || contains(github.event.pull_request.labels.*.name, 'ci') || contains(github.event.pull_request.labels.*.name, 'release-matrix')) && (contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'plan-test')) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
@@ -795,7 +795,7 @@ jobs:
   # every full run was before is78.
   shard-coverage:
     name: shards cover the suite
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: [plan, test]
     if: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-matrix') || contains(github.event.pull_request.labels.*.name, 'ci') || contains(github.event.pull_request.labels.*.name, 'release-matrix')) && (contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'shard-coverage')) }}
@@ -827,7 +827,7 @@ jobs:
   # output that went missing compares more, never less.
   bundle-identical:
     name: bundle identical across OSes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: [plan, test]
     if: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-matrix') || contains(github.event.pull_request.labels.*.name, 'ci') || contains(github.event.pull_request.labels.*.name, 'release-matrix')) && (contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'bundle-identical')) }}
@@ -848,19 +848,19 @@ jobs:
           fi
           shift
           for os in "$@"; do
-            if ! diff bundle-manifest-ubuntu-latest/MANIFEST.json \
+            if ! diff bundle-manifest-ubuntu-24.04/MANIFEST.json \
                       "bundle-manifest-$os-latest/MANIFEST.json"; then
               echo "::error::the $os bundle differs from the linux one — a normalization regression; the per-file hashes above name the culprits"
               exit 1
             fi
           done
           echo "the bundles of $LADDER_OSES are hash-identical:"
-          grep '"bundle_sha256"' bundle-manifest-ubuntu-latest/MANIFEST.json
+          grep '"bundle_sha256"' bundle-manifest-ubuntu-24.04/MANIFEST.json
 
   # The independence doctrine as a CI law: no wolf-lang code, ever.
   independence:
     name: independence
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     needs: plan
     if: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-matrix') || contains(github.event.pull_request.labels.*.name, 'ci') || contains(github.event.pull_request.labels.*.name, 'release-matrix')) && (contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'independence')) }}
@@ -1010,7 +1010,7 @@ jobs:
       - bundle-identical
       - independence
       - dist-floor
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
