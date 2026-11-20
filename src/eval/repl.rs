@@ -827,11 +827,15 @@ impl Session {
     fn render_signal(&mut self, signal: &Signal, stmt: Option<&Stmt>, out: &mut Vec<String>) {
         let _ = stmt;
         // wolf-interp#228: a root domain killed because a proc's task found
-        // UB answers the finding, as a run does.
+        // UB, or met a refusal, answers that, as a run does.
         let found;
         let signal = match (signal, self.machine.shared.sched.fatal()) {
             (Signal::ProcKilled, Some(super::sched::TaskEnd::Ub(finding))) => {
                 found = Signal::Ub(finding);
+                &found
+            }
+            (Signal::ProcKilled, Some(super::sched::TaskEnd::Unsupported(reason))) => {
+                found = Signal::Unsupported(reason);
                 &found
             }
             _ => signal,

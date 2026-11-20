@@ -1379,9 +1379,14 @@ impl Machine {
             Err(Signal::ProcKilled) => {
                 // wolf-interp#228: the root domain was killed because a
                 // proc's task found UB, which ends the run with the finding
-                // (`[conc.proc.exit]` contains only traps).
-                if let Some(sched::TaskEnd::Ub(finding)) = self.shared.sched.fatal() {
-                    return Outcome::Ub(finding);
+                // (`[conc.proc.exit]` contains only traps), or met a
+                // refusal, which ends it `unsupported`.
+                match self.shared.sched.fatal() {
+                    Some(sched::TaskEnd::Ub(finding)) => return Outcome::Ub(finding),
+                    Some(sched::TaskEnd::Unsupported(reason)) => {
+                        return Outcome::Unsupported(reason);
+                    }
+                    _ => {}
                 }
                 // `[conc.proc.root]`: the root supervisor's domain is the
                 // process. A linked partner's abnormal exit reached it, so

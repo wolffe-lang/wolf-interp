@@ -2067,12 +2067,14 @@ impl Sched {
                     // delivered it as `error("ub")`, so `join` answered an
                     // error value and the run went on to `exit(0)`.
                     TaskEnd::Ub(_) => None,
-                    TaskEnd::Unsupported(reason) => Some(ExitReason::Error(Box::new(ErrorValue {
-                        tag: "unsupported".to_owned(),
-                        payload: vec![Value::Str(reason.clone().into())],
-                        enum_variant: false,
-                        row: Vec::new(),
-                    }))),
+                    // The same for a refusal: `error(value)` is an error value
+                    // the program made crossing the boundary, and this
+                    // machine declining part of the program is none — the
+                    // record says `unsupported` (`[proto.record.unsupported]`),
+                    // as the checked machine's does. lupin 0.1.62 delivered
+                    // `error("unsupported")` and recorded an observation it
+                    // had not made.
+                    TaskEnd::Unsupported(_) => None,
                     TaskEnd::Cancelled => Some(ExitReason::Cancelled),
                     TaskEnd::Killed => Some(ExitReason::Killed),
                 };
