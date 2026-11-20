@@ -1,0 +1,20 @@
+fn child() -> int {
+    let inherit = List[int]()
+    (mut inherit).push(0)
+    let argv = List[str]()
+    let kid = os_spawn_with("/bin/true", argv, inherit) else |e| {
+        print("refused {e}")
+        return 1
+    }
+    0
+}
+
+fn main() -> !int {
+    let w = spawn proc child()
+    let v = w.join() else |e| {
+        print("joined: {e}")
+        return 0
+    }
+    print("value {v}")
+    0
+}

@@ -139,6 +139,22 @@ fn ub_inside_a_proc_ends_the_program() {
     );
 }
 
+/// #228's twin, in the same match: a refusal on a proc's task. This machine
+/// refuses a non-empty `os_spawn_with` inherit set by name, so it cannot
+/// observe this program; `[conc.proc.exit]`'s `error(value)` is an error
+/// value the program made crossing the boundary, and a refusal is none, so
+/// the honest record is `unsupported` (`[proto.record.unsupported]`), as
+/// the checked machine answers (`[exec.checked.task]`: "a refusal ... on
+/// any task ends the run with that answer at once"). wolf 0.2.40: checked
+/// `unsupported`; native `refused io`, `value 1`. lupin 0.1.62 delivered
+/// the refusal to the join as `error`: `exit(0)`, `joined: error` — an
+/// observation it never made.
+#[test]
+fn refusal_inside_a_proc_ends_the_program() {
+    let r = record("refusal_in_proc");
+    assert_eq!(r["verdict"], "unsupported", "refusal_in_proc: {r}");
+}
+
 /// #117's spawn row, `[os.proc.spawn]`: a child started by `os_spawn` gets
 /// descriptor 0 wired to the null device and descriptors 1 and 2
 /// inherited, on every tier. The child here prints `OUT`, `ERR` on its
