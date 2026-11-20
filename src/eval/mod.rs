@@ -9049,7 +9049,7 @@ impl Machine {
             ExprKind::Path(path) if path.segments.len() >= 2 => {
                 let head = &path.segments[0].name;
                 if !self.local_exists(head) && self.global_key(head).is_none() {
-                    return Ok(self.variant_path_receiver(callee, path));
+                    return Ok(None);
                 }
                 let Ok(mut place) = self.place_of(callee) else {
                     return Ok(None);
