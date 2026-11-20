@@ -1019,9 +1019,9 @@ and not on memory-order reasoning.
 ### 10.2 Captures copy; cross-task shared mutability is (almost) inexpressible
 
 Closures capture by value (`[gram.expr.closure]`), and that decision
-does the heavy lifting: a spawned task writes its own copies, globals are
-snapshotted per task, region transfer is checked at the send, frozen data
-is immutable, and `Mutex` payloads move through the scheduler. The shapes
+does the heavy lifting: a spawned task writes its own copies, region
+transfer is checked at the send, frozen data is immutable, and `Mutex`
+payloads move through the scheduler. The shapes
 the compiler rejects statically (E1101/E1102) therefore mostly *cannot
 misbehave* here. Through 0.1.5 they ran, with task-local effects (the
 then-standing conservatism class; `conc/store_buffer.lu` was the exemplar,
@@ -1032,13 +1032,20 @@ spans: E1101 (a task writes a captured bare name; `when` bodies exempt),
 E1102 (a spelled `List`/`Map` channel payload), E1103 (lexically nested
 `when`). Capture-by-value remains the runtime semantics for everything the
 static walk cannot see, which is the sema-lite posture: track what is
-visible, never guess. The two memories two tasks can share mutably are
-pool slots in an unmoved region and raw allocations, which is
-`[conc.mm.race.1]`'s reachability. A vector-clock race detector
-watches both and traps `race` (`[conc.mm.race.3]`) at the conflicting
-interleaving the schedule realized. Detection is per byte range (raw) and
-per slot (pools): no over-approximation, so the forbidden direction
-(faulting a compiler-accepted program wrongly) stays closed.
+visible, never guess. The memories two tasks can share mutably are pool
+slots in an unmoved region, raw allocations (`[conc.mm.race.1]`'s
+reachability) and module state: a module `var` is one value for the whole
+run, shared by every task, and every access to it is raw-tier
+(`[mem.static]`, `[mem.static.2]`). One task runs at a time, so module
+state travels with the baton: a task hands its copy over when it parks or
+ends, and the next task to run takes the newest. (Through 0.1.62 each
+task had a private snapshot taken at its spawn, so a task's writes were
+lost: wolf-interp#229.) A vector-clock race detector watches all three and
+traps `race` (`[conc.mm.race.3]`) at the conflicting interleaving the
+schedule realized. Detection is per byte range (raw), per slot (pools) and
+per item (module `var`s; a `const` or `let` is immutable data and never
+races): no over-approximation, so the forbidden direction (faulting a
+compiler-accepted program wrongly) stays closed.
 
 The silent-write-loss face of this choice is a task closure writing its
 captured copy while the enclosing state never sees it. It was routed
