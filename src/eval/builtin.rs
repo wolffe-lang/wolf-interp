@@ -1000,8 +1000,9 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
             Err(Signal::Exit(code.rem_euclid(256) as u8))
         }
         // The s40 process trio, over `std::process` (is18 — see `eval::os`
-        // for the semantics and their witnesses). argv-array ONLY, stdio
-        // null-wired, rows never traps: {not_found, denied, io} on spawn,
+        // for the semantics and their witnesses). argv-array ONLY, stdin
+        // the null device and stdout and stderr inherited (`[os.proc.spawn]`),
+        // rows never traps: {not_found, denied, io} on spawn,
         // {signal, io} on wait (which REAPS), {io} on kill (which never
         // tombstones). No `std::process` on wasm: the tier declines there.
         #[cfg(target_family = "wasm")]
@@ -2410,7 +2411,8 @@ pub fn call(machine: &mut Machine, name: &str, args: Vec<Value>, span: Span) -> 
         // admits no `unsafe` to make — then the SOURCES (`io`), then the
         // program. Targets 0, 1 and 2 are served from this machine's own fs
         // table (a pipe end, an open file) or its standard streams; an
-        // unmapped one keeps this machine's spawn posture, the null device.
+        // unmapped one keeps `[os.proc.spawn]`'s posture: 0 the null device,
+        // 1 and 2 inherited.
         #[cfg(not(target_family = "wasm"))]
         "os_spawn_fds" => {
             let (

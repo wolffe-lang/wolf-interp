@@ -13,9 +13,16 @@
 //!   by construction (injection off the table). An EMPTY argv names no
 //!   program: the `not_found` row (witnessed), exactly like a program path
 //!   that resolves to nothing (probed).
-//! - v0 stdio is null-wired — the child inherits no stream of the
-//!   interpreter's, so a child's output can never leak into a record's
-//!   stdout comparison surface.
+//! - **descriptor 0 is the null device, 1 and 2 are inherited**
+//!   (`[os.proc.spawn]`, every tier; `[os.proc.fds]` keeps that posture for
+//!   any descriptor a map does not name): the child reads immediate
+//!   end-of-file and writes where the interpreter's own stdout and stderr
+//!   go. The record's `stdout_inline` is the machine's `print` buffer, which
+//!   a child's descriptor-level writes cannot enter, so under `conform-run`
+//!   a child's bytes reach the host stream ahead of the record — the
+//!   asymmetry the clause states for the checked machine. Through 0.1.62
+//!   all three were null-wired (wolf-interp#117), and a child's output went
+//!   nowhere.
 //! - **`wait` reaps** (the #50 lesson): a handle whose child was waited is
 //!   spent — a second `wait`, or a `kill`, on it is the `io` row (probed).
 //!   `signal` is a child that died without an exit code (killed on unix);
@@ -135,7 +142,8 @@ impl ChildTable {
         false
     }
 
-    /// `os_spawn`: argv-array only, null-wired stdio.
+    /// `os_spawn`: argv-array only; descriptor 0 the null device, 1 and 2
+    /// inherited (`[os.proc.spawn]`).
     ///
     /// # Errors
     ///
@@ -167,12 +175,13 @@ impl ChildTable {
         command
             .args(&argv[1..])
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
         if let Some(dir) = cwd {
             command.current_dir(dir);
         }
         self.hand_env(&mut command);
+        flush_own_streams();
         match command.spawn() {
             Ok(child) => {
                 self.slots.push(Some(child));
@@ -199,10 +208,10 @@ impl ChildTable {
     /// already-reaped handle, or a wait the host refuses.
     /// s215 (`[os.proc.fds]`): spawn `argv` with the child's descriptors
     /// 0, 1 and 2 set from `stdio` — `Some(file)` the child receives that
-    /// file AS the descriptor, `None` this machine's posture for an
-    /// unmapped one (the null device: a child's output never leaks into a
-    /// record's stdout) — in `cwd` when the program has moved its working
-    /// directory. A map that names a descriptor above 2, or closes one,
+    /// file AS the descriptor, `None` the clause's posture for an unmapped
+    /// one, `[os.proc.spawn]`'s: 0 the null device, 1 and 2 inherited — in
+    /// `cwd` when the program has moved its working directory. A map that
+    /// names a descriptor above 2, or closes one,
     /// never reaches here: the builtin refuses it by name, because placing
     /// either needs `unsafe` this crate forbids.
     pub(crate) fn spawn_fds(
@@ -234,7 +243,10 @@ impl ChildTable {
             return Err("not_found");
         }
         let [zero, one, two] = stdio;
-        let wire = |f: Option<std::fs::File>| f.map_or_else(Stdio::null, Stdio::from);
+        // What the map does not name keeps `[os.proc.spawn]`'s posture
+        // (`[os.proc.fds]`): 0 the null device, 1 and 2 inherited.
+        let input = |f: Option<std::fs::File>| f.map_or_else(Stdio::null, Stdio::from);
+        let output = |f: Option<std::fs::File>| f.map_or_else(Stdio::inherit, Stdio::from);
         #[cfg(unix)]
         if self.rejects_executable_header(program, cwd) {
             self.spawn_error = i128::from(nix::errno::Errno::ENOEXEC as i32);
@@ -243,13 +255,14 @@ impl ChildTable {
         let mut command = Command::new(program);
         command
             .args(&argv[1..])
-            .stdin(wire(zero))
-            .stdout(wire(one))
-            .stderr(wire(two));
+            .stdin(input(zero))
+            .stdout(output(one))
+            .stderr(output(two));
         if let Some(dir) = cwd {
             command.current_dir(dir);
         }
         self.hand_env(&mut command);
+        flush_own_streams();
         #[cfg(unix)]
         if let Some(g) = group {
             use std::os::unix::process::CommandExt as _;
@@ -431,6 +444,18 @@ fn has_known_executable_header(prefix: &[u8]) -> bool {
         ]
         .iter()
         .any(|magic| prefix.starts_with(magic))
+}
+
+/// Writes out whatever this process has buffered on its own stdout and
+/// stderr before a child that inherits them starts (`[os.proc.spawn]`), so
+/// a line the program printed before the spawn lands before the child's
+/// output, as it does natively. Under `lupin run` a program's `print` goes
+/// to the process stdout; under `conform-run` it is the machine's buffer,
+/// and this writes nothing.
+fn flush_own_streams() {
+    use std::io::Write as _;
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
 }
 
 /// SIGKILL to the process group `pgid` (its leader's pid), through the
