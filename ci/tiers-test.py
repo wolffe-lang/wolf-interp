@@ -58,6 +58,14 @@
       commented on and none is opened; an open issue of another title
       does not dedupe; a run with no red job says the verdict is red; a
       `gh` that fails makes the reporter exit 1, never 0.
+  T9  no job a pull_request (or pull_request_target) event can reach may
+      write, by its own permissions or the workflow's: a job whose `if:`
+      can be true on such an event, for any value of what the `if:` cannot
+      decide (failure(), cancelled(), needs.*, a label, an input), reads
+      only. A workflow with no permissions of its own counts as one that
+      can write, since the repository's setting would decide. The check is
+      shown to say no to a job that runs unless cancelled, and to pass one
+      that runs on a red schedule alone.
 
 Exit 0 when every check passes, 1 otherwise.
 """
@@ -593,6 +601,66 @@ if files:
         print("tiers-test: PASS T5 every one of %d tracked paths has a rule" % len(files))
 else:
     say(False, "T5 not a git checkout: the tracked paths cannot be listed")
+
+
+
+# --- T9 no job a pull request reaches may write ---------------------------------------------
+def reach_on(cond, event):
+    """Whether a job's `if:` can be true on EVENT: False only when no value of what it cannot decide makes it so."""
+    if not cond.strip():
+        return True
+    e = re.sub(r"^\$\{\{\s*|\s*\}\}$", "", cond.strip())
+    e = re.sub(r"github\.event_name\s*(==|!=)\s*'([a-z_]+)'", lambda m: " %s " % ((m.group(2) == event) == (m.group(1) == "==")), e)
+    atoms = []
+
+    def atom(m):
+        atoms.append(m.group(0))
+        return " v%d " % (len(atoms) - 1)
+    e = re.sub(r"\b(?:contains|startsWith|endsWith|format|toJSON|fromJSON|hashFiles)\((?:[^()]|\([^()]*\))*\)(?:\s*(?:==|!=)\s*'[^']*')?", atom, e)
+    e = re.sub(r"\b(?:always|success|failure|cancelled)\(\)", atom, e)
+    e = re.sub(r"[A-Za-z_][\w.*-]*\s*(?:==|!=)\s*'[^']*'", atom, e)
+    e = re.sub(r"\b(?!True\b|False\b|v\d+\b)[A-Za-z_][\w.*-]*", atom, e)
+    e = e.replace("&&", " and ").replace("||", " or ").replace("!", " not ")
+    if len(atoms) > 12:
+        return True
+    for bits in range(1 << len(atoms)):
+        try:
+            if eval(e, {"__builtins__": {}}, {"v%d" % i: bool(bits >> i & 1) for i in range(len(atoms))}):
+                return True
+        except Exception:
+            return True
+    return False
+
+
+def job_writes(block):
+    """A job's write permissions, its own or (with none of its own) the workflow's."""
+    own = re.search(r"^    permissions:[ \t]*(\S*)\n((?:      .*\n)*)", block, re.M)
+    if own:
+        text = own.group(1) + " " + own.group(2)
+    else:
+        top = re.search(r"^permissions:[ \t]*(\S*)\n((?:  .*\n)*)", wf, re.M)
+        text = (top.group(1) + " " + top.group(2)) if top else "write-all"
+    return re.findall(r"([\w-]+: write|write-all)", text)
+
+
+pr_events = [e for e in ("pull_request", "pull_request_target")
+             if re.search(r"^on:\n(?:(?:  .*|\s*#.*|\s*)\n)*?  %s:" % e, wf, re.M)]
+reached = []
+for j in JOBS:
+    cond = (re.search(r"^    if: (.*)$", blocks[j], re.M) or [None, ""])[1]
+    w = job_writes(blocks[j])
+    hit = [e for e in pr_events if reach_on(cond, e)]
+    if w and hit:
+        reached.append("%s (%s, on %s)" % (j, ", ".join(w), " ".join(hit)))
+writers = [j for j in JOBS if job_writes(blocks[j])]
+says_no = (reach_on("${{ !cancelled() }}", "pull_request")
+           and not reach_on("${{ failure() && github.event_name == 'schedule' }}", "pull_request")
+           and not reach_on("github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", "pull_request")
+           and reach_on("${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci')) && (!cancelled()) }}", "pull_request"))
+say(bool(pr_events) and not reached and says_no,
+    "T9 no job a pull request can reach may write: the jobs that may (%s) run where none does%s%s"
+    % (" ".join(writers) or "none", ("; reached: " + "; ".join(reached)) if reached else "",
+       "" if says_no else "; the check does not say no to a job that runs unless cancelled"))
 
 print("tiers-test: %s" % ("PASS" if fails == 0 else "FAIL (%d)" % fails))
 sys.exit(1 if fails else 0)
