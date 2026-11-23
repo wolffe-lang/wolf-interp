@@ -34,8 +34,9 @@
       request's runs are a `gate` and a `release` group, and every label
       but `release-matrix` a noop's; the
       bundle is compared across the OSes the plan says ran a ladder; a red
-      nightly, and only a nightly, runs ci/nightly-red.py from the tier
-      job, whose token may write issues; every heavy test entry (three
+      nightly, and only a nightly, runs ci/nightly-red.py, from a job of
+      its own after the tier job and the one whose token may write issues
+      (the tier job reads); every heavy test entry (three
       shards and the ladder, every OS) builds at opt-level 2 with debug
       assertions and overflow checks on, and the smoke unoptimized
       (is85).
@@ -113,7 +114,7 @@ def plan(paths=None, **kw):
 
 wf = open(WORKFLOW, encoding="utf-8").read()
 JOBS = re.findall(r"^  ([A-Za-z0-9_-]+):\s*$", wf[wf.index("\njobs:\n"):], re.M)
-EVERY = [j for j in JOBS if j not in ("plan", "tier")]
+EVERY = [j for j in JOBS if j not in ("plan", "tier", "nightly-red")]
 FULL_JOBS = [j for j in EVERY if j != "bundle-identical"]  # tl29: one ladder, no bundle to compare
 
 
@@ -293,7 +294,7 @@ blocks = {}
 for j in JOBS:
     m = re.search(r"^  %s:\s*\n(.*?)(?=^  [A-Za-z0-9_-]+:\s*$|\Z)" % re.escape(j), wf, re.M | re.S)
     blocks[j] = m.group(1) if m else ""
-say(JOBS[:1] == ["plan"] and JOBS[-1:] == ["tier"], "T4 the plan is the first job and the tier is the last")
+say(JOBS[:1] == ["plan"] and JOBS[-2:] == ["tier", "nightly-red"], "T4 the plan is the first job, the tier the last but the nightly's issue")
 for j in EVERY:
     b = blocks[j]
     needs = re.search(r"^    needs: (.*)$", b, re.M)
@@ -366,14 +367,17 @@ say("      LADDER_OSES: ${{ needs.plan.outputs.ladder_oses || 'ubuntu macos wind
     "T4 the bundle is compared across the OSes the plan says ran a ladder, all three when it says nothing")
 say("      SHARD_OSES: ${{ needs.plan.outputs.shard_oses || 'ubuntu macos windows' }}\n" in blocks["shard-coverage"],
     "T4 shard coverage checks the OSes the plan says were sharded, all three when it says nothing")
-steps = re.findall(r"^      - name: a red nightly opens an issue\n        if: (.*)\n((?:        .*\n)+)", t, re.M)
-say(len(steps) == 1 and steps[0][0] == "failure() && github.event_name == 'schedule'" and "run: python3 ci/nightly-red.py" in steps[0][1]
-    and "GH_TOKEN: ${{ github.token }}" in steps[0][1] and t.index("ci/tiers.py verdict") < t.index("ci/nightly-red.py"),
-    "T4 a red nightly, and only a nightly, runs ci/nightly-red.py, after the verdict")
-perms = re.search(r"^    permissions:\n((?:      .*\n)+)", t, re.M)
+nb = blocks.get("nightly-red", "")
+steps = re.findall(r"^      - name: open the nightly's issue, or comment on the open one\n((?:        .*\n)+)", nb, re.M)
+say(len(steps) == 1 and "run: python3 ci/nightly-red.py" in steps[0] and "GH_TOKEN: ${{ github.token }}" in steps[0]
+    and "    needs: [plan, tier]\n" in nb and "    if: ${{ failure() && github.event_name == 'schedule' }}\n" in nb
+    and "run: python3 ci/nightly-red.py" not in t,
+    "T4 a red nightly, and only a nightly, runs ci/nightly-red.py, in a job of its own after the verdict's")
+perms = re.search(r"^    permissions:\n((?:      .*\n)+)", nb, re.M)
+tperms = re.search(r"^    permissions:\n((?:      .*\n)+)", t, re.M)
 say(perms is not None and sorted(perms.group(1).split()) == sorted(["contents:", "read", "actions:", "read", "issues:", "write"])
-    and wf.count("issues: write") == 1,
-    "T4 the tier job's token may read the code and the run and write issues; no other job may write issues")
+    and tperms is not None and tperms.group(1).split() == ["contents:", "read"] and wf.count("issues: write") == 1,
+    "T4 the nightly's issue job may read the code and the run and write issues; the tier job reads; no other job may write issues")
 
 # is85: the heavy entries build optimized with every debug check on; the smoke
 # does not. One recipe for every OS, so the env is the test job's own.

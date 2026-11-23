@@ -129,6 +129,12 @@ on:
 # a single pending run: a trunk push queued behind a running one is dropped
 # when the next arrives, and each trunk push's full run is the coverage that
 # merge is owed.
+# The repository's default token, written out (contents and packages read), so
+# that ci/tiers-test.py's T9 can hold that no job a pull request reaches may write.
+permissions:
+  contents: read
+  packages: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}-{1}', github.head_ref, (github.event.action == 'labeled' && github.event.label.name != 'release-matrix') && format('noop-{0}', github.run_id) || (contains(github.event.pull_request.labels.*.name, 'release-matrix') && 'release' || 'gate')) || format('{0}-{1}', github.event_name, github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1012,10 +1018,9 @@ jobs:
       - dist-floor
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    # It reads; the one job that may write issues is the nightly's, below.
     permissions:
       contents: read
-      actions: read
-      issues: write
     steps:
       - uses: actions/checkout@v5
 
@@ -1024,8 +1029,24 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: python3 ci/tiers.py verdict
 
-      - name: a red nightly opens an issue
-        if: failure() && github.event_name == 'schedule'
+  # A red nightly opens an issue (ci/nightly-red.py), in a job of its own: the
+  # schedule's runs alone reach it, so no pull request, push or dispatch is
+  # handed the workflow's one token that can write issues (ci/tiers-test.py's
+  # T9). It reads the run's jobs to name the red ones.
+  nightly-red:
+    name: a red nightly opens an issue
+    needs: [plan, tier]
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: open the nightly's issue, or comment on the open one
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}

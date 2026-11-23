@@ -84,7 +84,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKFLOW = ".github/workflows/ci.yml"
 FULL_LABEL = "full-matrix"
 RELEASE_LABEL = "release-matrix"
-NOT_SELECTABLE = ("plan", "tier")
+NOT_SELECTABLE = ("plan", "tier", "nightly-red")
 # The jobs the merge gate leaves to the release matrix: one ladder
 # (ubuntu's) has no bundle to compare (tl29).
 FULL_SKIPS = ("bundle-identical",)
