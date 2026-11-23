@@ -117,6 +117,12 @@ on:
         type: string
         default: ""
 
+# The repository's default token, written out (contents and packages read), so
+# that ci/tiers-test.py's T9 can hold that no job a pull request reaches may write.
+permissions:
+  contents: read
+  packages: read
+
 # PR runs: one group per branch and per mode, cancel-in-progress, so a push
 # to a lane branch frees its old slots. The release run and the gate run
 # live in SEPARATE groups: adding `release-matrix` must not cancel the gate
@@ -129,12 +135,6 @@ on:
 # a single pending run: a trunk push queued behind a running one is dropped
 # when the next arrives, and each trunk push's full run is the coverage that
 # merge is owed.
-# The repository's default token, written out (contents and packages read), so
-# that ci/tiers-test.py's T9 can hold that no job a pull request reaches may write.
-permissions:
-  contents: read
-  packages: read
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}-{1}', github.head_ref, (github.event.action == 'labeled' && github.event.label.name != 'release-matrix') && format('noop-{0}', github.run_id) || (contains(github.event.pull_request.labels.*.name, 'release-matrix') && 'release' || 'gate')) || format('{0}-{1}', github.event_name, github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
