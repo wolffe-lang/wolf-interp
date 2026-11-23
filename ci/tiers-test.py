@@ -67,6 +67,10 @@
       can write, since the repository's setting would decide. The check is
       shown to say no to a job that runs unless cancelled, and to pass one
       that runs on a red schedule alone.
+  T10 every checkout whose job then runs a command keeps no git
+      credentials (`persist-credentials: false`): no later step runs a git
+      command that needs them. A job that ever does is named here with why
+      (none today); checkouts of other repositories are counted apart.
 
 Exit 0 when every check passes, 1 otherwise.
 """
@@ -665,6 +669,27 @@ say(bool(pr_events) and not reached and says_no,
     "T9 no job a pull request can reach may write: the jobs that may (%s) run where none does%s%s"
     % (" ".join(writers) or "none", ("; reached: " + "; ".join(reached)) if reached else "",
        "" if says_no else "; the check does not say no to a job that runs unless cancelled"))
+
+# --- T10 checkouts keep no credentials they do not need ---------------------------------------
+PERSIST_OK = {}  # job -> why its checkout keeps git credentials for a later git command (none today)
+own_co, other_co, kept = 0, 0, []
+for j in JOBS:
+    steps_ = re.split(r"(?m)^(?=      - )", blocks[j])
+    for i, st in enumerate(steps_):
+        if not re.search(r"^(?:      - |        )uses: actions/checkout@", st, re.M):
+            continue
+        if not any(re.search(r"^(?:      - |        )run: ", later, re.M) for later in steps_[i + 1:]):
+            continue
+        if re.search(r"^          repository: ", st, re.M):
+            other_co += 1
+        else:
+            own_co += 1
+        if not re.search(r"^          persist-credentials: false$", st, re.M) and j not in PERSIST_OK:
+            kept.append(j)
+say(own_co > 0 and not kept,
+    "T10 every checkout whose job then runs a command keeps no git credentials (%d of this repository, %d of others; kept for a "
+    "later git command by: %s)%s" % (own_co, other_co, ", ".join("%s (%s)" % kv for kv in PERSIST_OK.items()) or "none",
+                                     (": still kept in %d: %s" % (len(kept), " ".join(kept))) if kept else ""))
 
 print("tiers-test: %s" % ("PASS" if fails == 0 else "FAIL (%d)" % fails))
 sys.exit(1 if fails else 0)
