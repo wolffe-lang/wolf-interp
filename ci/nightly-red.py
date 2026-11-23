@@ -67,7 +67,7 @@ def main():
         "The nightly (`tier %s`) on trunk at `%s` is red: %s\n\n"
         "The red job(s):\n%s\n\n"
         "The windows heavy shards and the ladder run only in the nightly and at the release tier, so this may "
-        "be the first sight of a windows regression. It is to be looked at before the next merge.\n\n"
+        "be the first sight of a windows regression. It is to be looked at before the next merge (crawl rule).\n\n"
         "Opened by `ci/nightly-red.py` from the nightly's issue job; a later red nightly comments here "
         "while this stays open."
     ) % (tier, sha, url, named)
