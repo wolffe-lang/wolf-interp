@@ -517,7 +517,7 @@ else:
         and made[0][made[0].index("--label") + 1] == "nightly-red" and call(calls, "label", "create", "nightly-red")
         and "test (windows-latest, test shard 2 of 3)" in b and "the ladder and the bundle)`: cancelled" in b
         and "test (ubuntu-24.04" not in b and "`plan`" not in b and "/o/r/actions/runs/123456789" in b
-        and "owes" in b and not call(calls, "issue", "comment"),
+        and "looked at before the next merge" in b and not call(calls, "issue", "comment"),
         "T8 no open issue: one opened, labelled, naming the red jobs (failed and cancelled) and the run, and no green job%s" % (
             "" if rc == 0 else " (rc %d: %s)" % (rc, out.strip()[-200:])))
     rc, calls, out = nightly_red(JOBS_TSV, [{"number": 41, "title": "something else"}, {"number": 42, "title": RED_TITLE}])

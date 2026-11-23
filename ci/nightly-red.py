@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""ci/nightly-red.py — a red nightly opens an issue (is78, ruling #92 R2).
+"""ci/nightly-red.py — a red nightly opens an issue.
 
     ci/nightly-red.py        (REPO, RUN_ID, SHA, TIER; GH_TOKEN for `gh`)
 
-The `tier` job's last step runs this when the nightly `schedule` run is red
-(`failure() && github.event_name == 'schedule'`). Since is78 the windows
-heavy shards and ladder run only there and at the release tier, so a red
-nightly is the one place a windows regression shows before a tag, and it
-must not wait for someone to read the Actions tab.
+The nightly's issue job (`nightly-red`, after the `tier` job) runs this when the
+scheduled run is red (`failure() && github.event_name == 'schedule'`). The windows
+heavy shards and ladder run only there and at the release tier, so a red nightly
+is the one place a windows regression shows before a tag, and it must not wait
+for someone to read the Actions tab.
 
 It names the run's red jobs (from the run's own job list: a conclusion of
-failure, cancelled or timed_out; the `tier` job itself is still running),
-then, DEDUPED ON THE TITLE, opens one issue labelled `nightly-red` or, when
-an open issue already has that title, comments on it. One title for every
-red nightly: the issue is the debt, and the crawl's rule is that the next
-lane on wolf-interp owes it before its own merge, so a second red night
-adds to the same debt rather than starting another.
+failure, cancelled, timed_out or startup_failure), then, DEDUPED ON THE TITLE,
+opens one issue labelled `nightly-red` or, when an open issue already has that
+title, comments on it. One title for every red nightly: a second red night adds
+to the open issue rather than starting another, and the issue is to be looked
+at before the next merge. Everything it writes is public (ci/tiers-test.py T8
+refuses an internal word in it).
 
-`gh` is whatever `gh` is on PATH (ci/tiers-test.py T8 puts a recording
-fake there). Exit 0 when the issue was opened or commented on; 1 when `gh`
-failed, loudly: a reporter that fails quietly is a red nobody hears.
+`gh` is whatever `gh` is on PATH (ci/tiers-test.py T8 puts a recording fake
+there). Exit 0 when the issue was opened or commented on; 1 when `gh` failed,
+loudly: a reporter that fails quietly is a red nobody hears.
 """
 import json
 import os
@@ -66,10 +66,9 @@ def main():
     body = (
         "The nightly (`tier %s`) on trunk at `%s` is red: %s\n\n"
         "The red job(s):\n%s\n\n"
-        "Since is78 (ruling #92 R2) the windows heavy shards and ladder run only nightly and at the release "
-        "tier, so this may be the first sight of a windows regression. **The next lane on wolf-interp owes "
-        "this before its own merge** (crawl rule).\n\n"
-        "Opened by `ci/nightly-red.py` from the run's `tier` job; a later red nightly comments here "
+        "The windows heavy shards and the ladder run only in the nightly and at the release tier, so this may "
+        "be the first sight of a windows regression. It is to be looked at before the next merge.\n\n"
+        "Opened by `ci/nightly-red.py` from the nightly's issue job; a later red nightly comments here "
         "while this stays open."
     ) % (tier, sha, url, named)
 
@@ -81,7 +80,7 @@ def main():
         print("nightly-red: commented on #%d (%s)" % (same[0], TITLE))
         return 0
     gh("label", "create", LABEL, "-R", repo, "--force", "--color", "B60205",
-       "--description", "the nightly (tier release) on trunk is red; the next lane owes it")
+       "--description", "the nightly (tier release) on trunk is red; to be looked at before the next merge")
     out = gh("issue", "create", "-R", repo, "--title", TITLE, "--label", LABEL, "--body", body)
     print("nightly-red: opened %s" % out.strip())
     return 0
