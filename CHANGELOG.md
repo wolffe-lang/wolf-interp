@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased
+## 0.1.63 — 2026-11-24
+
+This release carries the 21 commits after 0.1.62: six programs that
+0.1.62 ran to a wrong answer with no diagnostic now get the
+specification's answer, at the unchanged spec and corpus pin wolf-lang
+`5f1f1c94` (724 anchor keys). It is prepared to pair with wolf 0.2.41. A
+branch build prints `0.1.63+dev.<commit>`; only the tagged build prints
+the bare version.
+
+wolf 0.2.41's four new calls are not mirrored in this release. A program
+that calls `net_connect_within`, `os_subreaper_set`, `os_subreaper` or
+`os_wait_adopted_poll` ends `unsupported` because the name
+"does not resolve", never with a wrong answer. The other eight commits
+change only the repository's CI.
+
+### Six silent wrong answers
 
 Six programs that lupin 0.1.62 ran to an answer the specification does not give, with no
 diagnostic. Each now gets the spec's answer; `tests/silent_answers_l1.rs` holds each against
