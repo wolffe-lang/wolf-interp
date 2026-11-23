@@ -116,6 +116,10 @@ on:
         description: "with jobs naming test: the test entries to run, os/shard, space-separated (windows/2 ubuntu/ladder macos/smoke); empty: tier release's"
         type: string
         default: ""
+      rehearse:
+        description: "nightly-red: rehearse the nightly's issue job after a red tier, with a recording gh (this branch only; never on trunk)"
+        type: string
+        default: ""
 
 # PR runs: one group per branch and per mode, cancel-in-progress, so a push
 # to a lane branch frees its old slots. The release run and the gate run
@@ -1049,7 +1053,9 @@ jobs:
   nightly-red:
     name: a red nightly opens an issue
     needs: [plan, tier]
-    if: ${{ failure() && github.event_name == 'schedule' }}
+    # The rehearsal (branch ci10-rehearse-nightly-red, never merged): a dispatch with rehearse=nightly-red runs
+    # this job too, after a red tier, with a recording gh ahead of the real one (ci/rehearse/gh).
+    if: ${{ failure() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.rehearse == 'nightly-red')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -1061,6 +1067,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: a recording gh ahead of the real one (the rehearsal's; it passes reads, records writes, refuses the rest)
+        run: |
+          mkdir -p "$RUNNER_TEMP/rehearsal-bin"
+          cp ci/rehearse/gh "$RUNNER_TEMP/rehearsal-bin/gh"
+          chmod +x "$RUNNER_TEMP/rehearsal-bin/gh"
+          echo "REAL_GH=$(command -v gh)" >> "$GITHUB_ENV"
+          echo "GH_RECORD=$RUNNER_TEMP/gh-record.log" >> "$GITHUB_ENV"
+          : > "$RUNNER_TEMP/gh-record.log"
+          echo "$RUNNER_TEMP/rehearsal-bin" >> "$GITHUB_PATH"
+          echo "the real gh: $(command -v gh); the recorder: $RUNNER_TEMP/rehearsal-bin/gh"
+
       - name: open the nightly's issue, or comment on the open one
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1068,4 +1085,10 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           SHA: ${{ github.sha }}
           TIER: ${{ needs.plan.outputs.tier || 'unplanned' }}
-        run: python3 ci/nightly-red.py
+        run: |
+          echo "gh on PATH: $(command -v gh)"
+          python3 ci/nightly-red.py
+
+      - name: what the recording gh passed through, recorded and refused
+        if: always()
+        run: cat "$GH_RECORD"

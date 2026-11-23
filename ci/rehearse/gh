@@ -1,0 +1,51 @@
+#!/bin/sh
+# ci/rehearse/gh — the recording `gh` of the nightly-red rehearsal (branch ci10-rehearse-nightly-red only;
+# never on trunk). ci/nightly-red.py runs `gh` from PATH; ahead of the real one, this:
+#   passes through, to $REAL_GH, the reporter's reads: `gh api` with no method, field or input (a GET),
+#     `gh issue list`, `gh issue view`, `gh label list`;
+#   records and does not send the reporter's three writes: `gh issue create` (answering with a URL that
+#     says it was not created), `gh issue comment`, `gh label create`;
+#   refuses by name anything else (exit 3), so an unexpected verb fails the step and writes nothing.
+# Every call is logged, one line each, to $GH_RECORD, long arguments cut to 120 characters; a recorded
+# write's --body follows it in full, each line marked `    | `.
+set -u
+log=${GH_RECORD:?GH_RECORD is not set}
+real=${REAL_GH:?REAL_GH is not set}
+args() {
+    for a in "$@"; do
+        printf ' %s' "$(printf '%s' "$a" | tr '\n' ' ' | cut -c1-120)"
+    done
+}
+refuse() {
+    printf 'gh-rehearsal: refused, not sent: gh%s (%s)\n' "$(args "$@")" "$why" | tee -a "$log" >&2
+    exit 3
+}
+case "${1:-} ${2:-}" in
+    "api "*)
+        for a in "$@"; do
+            case $a in
+                -X|--method|-X*|--method=*|-f|-F|--field|--raw-field|--input|-f*|-F*|--field=*|--raw-field=*|--input=*)
+                    why="a gh api call with a method, a field or an input, which may write"
+                    refuse "$@" ;;
+            esac
+        done
+        printf 'gh-rehearsal: passed through: gh%s\n' "$(args "$@")" >> "$log"
+        exec "$real" "$@" ;;
+    "issue list"|"issue view"|"label list")
+        printf 'gh-rehearsal: passed through: gh%s\n' "$(args "$@")" >> "$log"
+        exec "$real" "$@" ;;
+    "issue create"|"issue comment"|"label create")
+        printf 'gh-rehearsal: recorded, not sent: gh%s\n' "$(args "$@")" >> "$log"
+        prev=
+        for a in "$@"; do
+            [ "$prev" = --body ] && printf '%s\n' "$a" | sed 's/^/    | /' >> "$log"
+            prev=$a
+        done
+        if [ "$1 $2" = "issue create" ]; then
+            echo "https://github.com/${REPO:-?}/issues/0 (the rehearsal's: not created)"
+        fi
+        exit 0 ;;
+    *)
+        why="neither a read it passes nor a write it records"
+        refuse "$@" ;;
+esac
