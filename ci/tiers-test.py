@@ -541,6 +541,19 @@ else:
     env = clean_env()
     r = subprocess.run([sys.executable, NIGHTLY_RED], capture_output=True, text=True, env=env)
     say(r.returncode == 1 and "is not set" in r.stderr, "T8 the reporter refuses to run without REPO and RUN_ID")
+    # What the reporter writes is public: the issue's title and body, a comment, the label's description.
+    INTERNAL = re.compile(r"\b(?:lanes?|rulings?|crawls?|sprints?)\b|\b[a-z]{2}\d{2,3}[a-z]?\b", re.I)
+    writes = []
+    for issues in ([], [{"number": 42, "title": RED_TITLE}]):
+        for c in nightly_red(JOBS_TSV, issues)[1]:
+            if c[:2] in (["issue", "create"], ["issue", "comment"], ["label", "create"]):
+                for flag in ("--title", "--body", "--description"):
+                    if flag in c:
+                        writes.append((" ".join(c[:2]) + " " + flag, c[c.index(flag) + 1]))
+    said = sorted({"%s: %s" % (w, m.group(0)) for w, t in writes for m in INTERNAL.finditer(t)})
+    say(bool(writes) and not said,
+        "T8 nothing the reporter writes in public (the issue's title and body, a comment, the label's description) carries a "
+        "lane, ruling, crawl or sprint word or an internal tag%s" % ((": " + "; ".join(said)) if said else ""))
 
 # --- T5 the tripwire: what the planner calls prose, nothing reads ---------------------
 READS = re.compile(r"read_to_string|include_str!|include_bytes!|File::open|fs::read\b|read_dir|\.join\(|Path::new|PathBuf::from|\bcat\b|\bcp\b|\bgrep\b|\bsed\b")
