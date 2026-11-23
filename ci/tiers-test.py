@@ -691,5 +691,7 @@ say(own_co > 0 and not kept,
     "later git command by: %s)%s" % (own_co, other_co, ", ".join("%s (%s)" % kv for kv in PERSIST_OK.items()) or "none",
                                      (": still kept in %d: %s" % (len(kept), " ".join(kept))) if kept else ""))
 
+say(False, "R0 the rehearsal: plan-test is red on purpose, so the tier job is red and the nightly's issue job runs")
+
 print("tiers-test: %s" % ("PASS" if fails == 0 else "FAIL (%d)" % fails))
 sys.exit(1 if fails else 0)
