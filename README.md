@@ -182,7 +182,7 @@ checker and region checker are the compiler's. Every property they
 prove statically is enforced dynamically here, so an ownership
 violation surfaces as a runtime trap where the compiler would refuse
 the program ([manual](docs/manual/03-phases.md)). Of the 1191 entry
-files in the pinned corpus, 959 reach the `run` rung on Unix. Windows
+files in the pinned corpus, 957 reach the `run` rung on Unix. Windows
 handles more calls through its specified unsupported host-error rows
 instead of encountering named Unix refusals; the
 [manual census](docs/manual/00-building.md) distinguishes those answers.
