@@ -69,7 +69,7 @@ def main():
         "The windows heavy shards and the ladder run only in the nightly and at the release tier, so this may "
         "be the first sight of a windows regression. It is to be looked at before the next merge.\n\n"
         "Opened by `ci/nightly-red.py` from the nightly's issue job; a later red nightly comments here "
-        "while this stays open."
+        "while this stays open: close it once a nightly is green again (a `tier skipped` night is not one)."
     ) % (tier, sha, url, named)
 
     issues = json.loads(gh("issue", "list", "-R", repo, "--state", "open", "--label", LABEL,
