@@ -811,7 +811,7 @@ def covered(checks, runs=None, event="schedule", fail=False, total=None, drop=()
         runs = [wrun()] if runs is None else runs
         env = clean_env(PATH=d + os.pathsep + os.environ.get("PATH", ""), FAKE_GH_LOG=log, REPO="o/r", SHA=COV_SHA,
                         TIER=NIGHTLY_TIER, RUN_ID="999", EVENT=event, GITHUB_EVENT_NAME="schedule",
-                        FAKE_RUN=json.dumps({"id": 999, "created_at": "2026-11-20T12:00:00Z"}),
+                        FAKE_RUN=json.dumps({"id": 999, "check_suite_id": 9, "created_at": "2026-11-20T12:00:00Z"}),
                         FAKE_CHECKS=json.dumps({"total_count": len(checks) if total is None else total, "check_runs": checks}),
                         FAKE_RUNS=json.dumps({"total_count": len(runs), "workflow_runs": runs}))
         for k in drop:
@@ -863,6 +863,8 @@ else:
                     runs=[wrun(), wrun(suite=2, rid=778)]), "none")
     cexpect("the latest word: a red first attempt, then a green rerun",
             covered([check(concl="failure", done="2026-11-18T10:00:00Z"), check(done="2026-11-18T12:00:00Z")]), "release")
+    cexpect("an earlier attempt of tonight's own run, green (a rerun of a green night)",
+            covered([check(suite=9)], runs=[wrun(suite=9, rid=999)]), "none")
     res = covered([check()], event="push")
     cexpect("a push: never covered", res, "none")
     say(res[0] == 0 and not res[2] and "not the nightly" in res[1].get("reason", ""),
