@@ -9,7 +9,8 @@
 Only the nightly (`schedule`) is ever covered; for any other event this answers `none` without asking GitHub.
 For the nightly it asks for every check run at SHA named `tier TIER` (the `tier` job of .github/workflows/ci.yml
 names itself for the tier its plan chose) and keeps those whose app is GitHub Actions and whose workflow run is
-one of .github/workflows/ci.yml at that same commit. The most recent of them to complete, across every run and
+one of .github/workflows/ci.yml at that same commit, other than tonight's own run (a rerun of a green night
+runs again). The most recent of them to complete, across every run and
 every attempt, has the last word: the night is covered when it succeeded and completed at most 144 hours before
 tonight's run was created. A skipped night's own tier job is `tier skipped`, never `tier TIER`, so a skipped
 night never covers the next one, and a commit that does not move is tested in full at least every seventh night.
@@ -61,7 +62,8 @@ def answer(repo, sha, tier, run_id, event):
     """-> (covered, covered_by, covered_at, covered_run, reason)."""
     if event != "schedule":
         return "none", "", "", "", "not the nightly (%s): only a schedule is ever skipped" % (event or "no event")
-    created = when(gh("repos/%s/actions/runs/%s" % (repo, run_id))["created_at"])
+    tonight = gh("repos/%s/actions/runs/%s" % (repo, run_id))
+    created = when(tonight["created_at"])
     name = "tier " + tier
     cr = gh("repos/%s/commits/%s/check-runs?check_name=%s&filter=all&per_page=%d" % (repo, sha, urllib.parse.quote(name), PAGE))
     checks = cr.get("check_runs") or []
@@ -76,10 +78,11 @@ def answer(repo, sha, tier, run_id, event):
     if (wr.get("total_count") or 0) >= PAGE or len(runs) >= PAGE:
         return "none", "", "", "", "more workflow runs at this commit than one page holds"
     ours = {r.get("check_suite_id"): r for r in runs
-            if (r.get("path") or "").split("@")[0] == WORKFLOW and r.get("head_sha") == sha}
+            if (r.get("path") or "").split("@")[0] == WORKFLOW and r.get("head_sha") == sha
+            and r.get("check_suite_id") != tonight.get("check_suite_id")}
     checks = [c for c in checks if (c.get("check_suite") or {}).get("id") in ours]
     if not checks:
-        return "none", "", "", "", "no %s check run at this commit is of %s" % (name, WORKFLOW)
+        return "none", "", "", "", "no %s check run at this commit is of %s in a run other than tonight's" % (name, WORKFLOW)
     last = max(checks, key=lambda c: c["completed_at"])
     run = ours[last["check_suite"]["id"]]
     at = last["completed_at"]
