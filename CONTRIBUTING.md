@@ -251,6 +251,7 @@ held by `ci/tiers-test.py`; is75, is78, tl29, tl30b):
 |---|---|---|
 | **every push of a pull request that changes code** (opened, synchronize, reopened), a push to `trunk`, `workflow_dispatch` | **`tier full`**, the merge gate | ubuntu's three shards and ladder in full, one **macOS** and one **windows smoke** (build, fmt, clippy, every test target except the heavy ones `SMOKE_OMITS` names, the fast ladder rungs; 30-minute cap), shard coverage, independence, the dist floor: 13 jobs, about 400 job-minutes, two hours |
 | the nightly `schedule` (04:23 UTC), `gh workflow run CI --ref <branch> -f tier=release`, a pull request carrying the **`release-matrix`** label | **`tier release`** | every job on every OS: the macOS and windows heavy shards and ladders, and the bundle compared across all three |
+| the nightly `schedule` at a commit whose latest `tier release` is green and completed at most 144 hours earlier (`ci/covered.py`) | `tier skipped` | nothing: the plan and the verdict; the run's warning and summary name the green run that covers it |
 | a pull request that changes **only prose**, labelled or not | `tier noop` | nothing: the plan and the verdict |
 | any label added but `release-matrix` (**`full-matrix` included**) | `tier noop` | nothing |
 | `gh workflow run CI --ref <branch> -f jobs=plan-test` | `tier partial` | the jobs it names (a plant); with `-f entries="windows/2"`, only those test entries |
@@ -273,7 +274,14 @@ Every run's last job is named for what the run was, and is red unless the
 plan succeeded, every job the plan chose succeeded and every other job
 was skipped: **`tier full`** (the merge gate), **`tier release`** (every
 job on every OS), **`tier noop`** (nothing ran), `tier partial` (a
-dispatch that named jobs).
+dispatch that named jobs), `tier skipped` (a nightly at a commit already
+green in full: nothing ran).
+
+A skipped night's run is green but tested nothing. Its tier job is named
+`tier skipped`, and the run's page carries a warning naming the run that
+covers it. To find the last night that tested trunk, look for the last
+`tier release` check, not the last green scheduled run. A commit that
+does not move is still tested in full at least every seventh night.
 
 **A PR merges only with a green `tier full` (or `tier release`) at its
 head**, and that is **the pull request's own run** at its final head
