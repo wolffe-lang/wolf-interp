@@ -6,13 +6,15 @@ tl30b: ruling #101 C).
                      [--merge [--head-sha SHA] | --paths-from FILE]
                      [--jobs "J ..."] [--entries "OS/SHARD ..."]
                      [--tier T] [--repo DIR]
+                     [--covered T --covered-by URL --covered-at TIME --covered-run ID]
                      [--github-output FILE] [--json]
     ci/tiers.py verdict        (NEEDS: the `tier` job's `toJSON(needs)`)
     ci/tiers.py classify PATH...
 
 `plan` options also read an environment variable of their name in capitals
-(EVENT, ACTION, LABEL, LABELS, HEAD_SHA, IN_JOBS, IN_ENTRIES, IN_TIER),
-which is how the workflow's `plan` job passes the event in.
+(EVENT, ACTION, LABEL, LABELS, HEAD_SHA, IN_JOBS, IN_ENTRIES, IN_TIER,
+COVERED, COVERED_BY, COVERED_AT, COVERED_RUN), which is how the
+workflow's `plan` job passes the event in, and ci/covered.py's answer.
 
 THE TIERS. A job is a job of .github/workflows/ci.yml other than `plan`
 and `tier`. The `test` job's entries are an OS and a shard: `1`, `2`, `3`
@@ -51,6 +53,15 @@ and `tier`. The `test` job's entries are an OS and a shard: `1`, `2`, `3`
            names (is78: a plant on one shard needs one runner, not
            thirteen). It is never `full` or `release`, whatever it names:
            a green `tier full` says every job ran.
+  skipped  the nightly at a commit already green in full: ci/covered.py
+           says the commit's latest `tier release` check run of this
+           workflow is green, completed at most 144 hours before tonight's
+           run. Nothing runs but the plan and the verdict; the plan's log,
+           a warning on the run's page and the run's summary say so and
+           name the covering run. The tier job is `tier skipped`, which
+           ci/covered.py never counts, so a skipped night never covers the
+           next one: a commit that does not move is tested in full at
+           least every seventh night. No dispatch may ask for it.
 
 PROSE IS NARROW (RULES, below): the CHANGELOG, CONTRIBUTING, the lane
 notes under ci/, and the engineering documents no test reads. README.md,
@@ -67,13 +78,15 @@ job was skipped; 1 otherwise. GitHub leaves an EMPTY output out of
 
 `plan` prints `tier=`, `jobs=` (a JSON list), `matrix=` (the `test` job's
 entries), `shard_oses=` (the OSes whose three shards `shard-coverage`
-checks) and `ladder_oses=` (the OSes whose bundles `bundle-identical`
-compares), to --github-output (appended) and to standard output; with
+checks), `ladder_oses=` (the OSes whose bundles `bundle-identical`
+compares) and `covered_by=` (a skipped night's covering check run; empty
+otherwise), to --github-output (appended) and to standard output; with
 --json, one JSON object. The reasons, one line per changed path, go to
 standard error, so a run's log says why it has the jobs it has. Exit 0;
 2 on a usage error.
 """
 import argparse
+import datetime
 import json
 import os
 import re
@@ -89,7 +102,10 @@ NOT_SELECTABLE = ("plan", "tier", "nightly-red")
 # (ubuntu's) has no bundle to compare (tl29).
 FULL_SKIPS = ("bundle-identical",)
 # tl30b (ruling #101 C): no `pr` tier; a code pull request's run is `full`.
-TIERS = ("release", "full", "noop", "partial")
+TIERS = ("release", "full", "noop", "partial", "skipped")
+# The nightly's own tier, and how long a green one at the same commit covers a night (ci/covered.py).
+NIGHTLY = "release"
+COVER_HOURS = 144
 # What `-f tier=` may ask for (with no `jobs`).
 DISPATCH_TIERS = ("full", "release")
 # The `test` job's entries, in the matrix's order: every OS's three test
@@ -285,7 +301,20 @@ def plan(a):
         log.append("dispatch asking for tier %s: %s" % (a.tier, a.tier))
         return result(a.tier)
     if ev == "schedule":
-        log.append("the nightly: release")
+        if a.covered == NIGHTLY:
+            try:
+                due = (datetime.datetime.strptime(a.covered_at or "", "%Y-%m-%dT%H:%M:%SZ")
+                       + datetime.timedelta(hours=COVER_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            except ValueError:
+                due = "?"
+            line = ("the nightly: skipped, nothing tested tonight: tier %s green at this commit in run %s (%s), completed %s; "
+                    "a full night is due by %s" % (NIGHTLY, a.covered_run or "?", a.covered_by or "?", a.covered_at or "?", due))
+            log.append(line)
+            r = result("skipped")
+            r["covered_by"], r["notice"] = a.covered_by or "", line
+            return r
+        log.append("the nightly: release%s" % ("" if a.covered in (None, "", "none") else
+                                               " (covered=%s is not tier %s: no skip)" % (a.covered, NIGHTLY)))
         return result("release")
     if ev != "pull_request":
         log.append("%s: full" % ev)
@@ -342,6 +371,9 @@ def verdict(needs):
         return 1
     every = [j for j in needs if j != "plan"]
     bad = 0
+    if tier == "skipped":
+        print("tier skipped: nothing was tested this night; tier %s is green at this commit in %s" % (
+            NIGHTLY, out.get("covered_by") or "the run the plan named"))
     if tier == "partial":
         if not chosen:
             print("tier: a partial run that chose no job")
@@ -384,6 +416,10 @@ def main():
     ap.add_argument("--jobs", default=env("IN_JOBS"))
     ap.add_argument("--entries", default=env("IN_ENTRIES"))
     ap.add_argument("--tier", default=env("IN_TIER"))
+    ap.add_argument("--covered", default=env("COVERED"))
+    ap.add_argument("--covered-by", default=env("COVERED_BY"))
+    ap.add_argument("--covered-at", default=env("COVERED_AT"))
+    ap.add_argument("--covered-run", default=env("COVERED_RUN"))
     ap.add_argument("--merge", action="store_true")
     ap.add_argument("--paths-from")
     ap.add_argument("--repo")
@@ -396,8 +432,16 @@ def main():
     if a.json:
         print(json.dumps({k: r[k] for k in ("tier", "jobs", "matrix", "shard_oses", "ladder_oses")}))
         return
-    out = "tier=%s\njobs=%s\nmatrix=%s\nshard_oses=%s\nladder_oses=%s\n" % (
-        r["tier"], json.dumps(r["jobs"]), json.dumps(r["matrix"], separators=(",", ":")), r["shard_oses"], r["ladder_oses"])
+    if r.get("notice"):
+        # A skipped night must not read as a tested one: a warning on the run's page, and the run's summary.
+        print("::warning title=nightly skipped::%s" % r["notice"])
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            with open(summary, "a", encoding="utf-8") as f:
+                f.write("**Nightly skipped.** %s\n" % r["notice"])
+    out = "tier=%s\njobs=%s\nmatrix=%s\nshard_oses=%s\nladder_oses=%s\ncovered_by=%s\n" % (
+        r["tier"], json.dumps(r["jobs"]), json.dumps(r["matrix"], separators=(",", ":")), r["shard_oses"], r["ladder_oses"],
+        r.get("covered_by", ""))
     sys.stdout.write(out)
     if a.github_output:
         with open(a.github_output, "a", encoding="utf-8") as f:
