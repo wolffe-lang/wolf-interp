@@ -499,6 +499,26 @@ mod tests {
     }
 
     #[test]
+    fn the_quick_child_fixture_is_silent() {
+        let argv = quick_argv();
+        let output = Command::new(&argv[0])
+            .args(&argv[1..])
+            .output()
+            .expect("the quick child runs");
+        assert!(
+            output.status.success(),
+            "the quick child exits successfully"
+        );
+        assert!(
+            output.stdout.is_empty() && output.stderr.is_empty(),
+            "a child whose streams are inherited must not splice libtest's result lines: \
+             stdout={:?}, stderr={:?}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
     fn an_empty_argv_is_the_not_found_row() {
         assert_eq!(ChildTable::default().spawn(&[]), Err("not_found"));
     }
