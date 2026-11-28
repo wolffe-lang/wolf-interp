@@ -1981,7 +1981,11 @@ impl Machine {
                     return None;
                 }
                 let store = self.shared.store.lock().expect("store lock");
-                let (handle, tail, moved) = slot::pool_address(
+                let slot::PoolAddress {
+                    handle,
+                    tail,
+                    moved,
+                } = slot::pool_address(
                     &store,
                     *handle,
                     &path.projections[depth + 1..],

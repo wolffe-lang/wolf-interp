@@ -48,6 +48,12 @@ pub(super) fn project_mut<'a>(slot: &'a mut Slot, step: &Proj) -> Option<&'a mut
     }
 }
 
+pub(super) struct PoolAddress {
+    pub handle: HandleValue,
+    pub tail: Vec<Proj>,
+    pub moved: Option<(Span, usize)>,
+}
+
 /// Resolve nested pool hops by identity while retaining the earliest move.
 /// The final guard needs only the last hop and ordinary projections below it.
 pub(super) fn pool_address(
@@ -56,7 +62,7 @@ pub(super) fn pool_address(
     tail: &[Proj],
     mut moved: Option<(Span, usize)>,
     depth: usize,
-) -> Option<(HandleValue, Vec<Proj>, Option<(Span, usize)>)> {
+) -> Option<PoolAddress> {
     let mut slot = &store
         .slot(handle.pool, handle.index, handle.generation)?
         .payload;
@@ -86,7 +92,11 @@ pub(super) fn pool_address(
             moved = Some((at, depth + i + 1));
         }
     }
-    Some((handle, suffix, moved))
+    Some(PoolAddress {
+        handle,
+        tail: suffix,
+        moved,
+    })
 }
 
 impl Deref for SlotMut<'_> {
