@@ -2861,7 +2861,7 @@ impl Machine {
         let key = key.clone();
         let mut parent = path.clone();
         parent.projections.pop();
-        let Some(slot) = self.slot_mut(&parent) else {
+        let Some(mut slot) = self.slot_mut(&parent) else {
             return Ok(false);
         };
         let Value::Map(pairs, _) = &mut slot.value else {
@@ -4549,7 +4549,7 @@ impl Machine {
             };
             let moved = final_moved.get(*index).copied().flatten();
             let mut was_moved = false;
-            if let Some(slot) = self.slot_mut(path) {
+            if let Some(mut slot) = self.slot_mut(path) {
                 was_moved = !slot.is_live();
                 slot.state = moved.map_or(SlotState::Live, SlotState::Moved);
                 slot.value = value.clone();
@@ -5713,10 +5713,10 @@ impl Machine {
         // a binding's annotation is — `v = 1 << 10` and `v += 1 << 9` at
         // `wrapping[u8]` compute the term at `wrapping[u8]` (4 and 2 on the
         // compiler's machines; computed wide they were 0 and 0).
-        let place_int = match self.slot_mut(&path).map(|s| &s.value) {
-            Some(Value::Int(_, ty)) if !ty.literal && !take && is_int_term(value) => Some(*ty),
+        let place_int = self.slot_mut(&path).and_then(|slot| match &slot.value {
+            Value::Int(_, ty) if !ty.literal && !take && is_int_term(value) => Some(*ty),
             _ => None,
-        };
+        });
         if op == AssignOp::Assign {
             let syntax = value;
             let value = match place_int {
@@ -7818,9 +7818,11 @@ impl Machine {
         if !map_base {
             // A read of an element of anything else: the ordinary value
             // read, from the base already evaluated.
-            let target = match self.resolve(&base_path) {
-                Some(_) => self.read_path(&base_path, base.span)?,
-                None => self.read_unresolved(&base_path, base.span)?,
+            let exists = self.resolve(&base_path).is_some();
+            let target = if exists {
+                self.read_path(&base_path, base.span)?
+            } else {
+                self.read_unresolved(&base_path, base.span)?
             };
             let index = self.eval(&arg.expr)?;
             let element = builtin::index(self, &target, &index, *origin, expr.span)?;
@@ -7861,6 +7863,9 @@ impl Machine {
                     builtin::index(self, &value, &Value::Int(*i, IntTy::INT), 0, span)?
                 }
                 Proj::Key(key) => builtin::index(self, &value, &key.to_value(), 0, span)?,
+                Proj::Pool(handle) => {
+                    builtin::index(self, &value, &Value::Handle(*handle), 0, span)?
+                }
                 Proj::Field(name) => match &value {
                     Value::Struct { fields, .. } => {
                         match fields.iter().find(|(field, _)| field == name) {
@@ -10039,7 +10044,7 @@ impl Machine {
         if let (Some(path), Ok(_), Some(at), Ok(())) = (&path, &result, self_moved, &written)
             && mode == Some(ParamMode::Mut)
         {
-            if let Some(slot) = self.slot_mut(path) {
+            if let Some(mut slot) = self.slot_mut(path) {
                 slot.state = SlotState::Moved(at);
             }
             self.note_part_moved(path);
@@ -11313,10 +11318,9 @@ impl Machine {
             return None;
         }
         let place = self.place_of(ptr_expr).ok()?;
-        match self.slot_mut(&place).map(|slot| &slot.value) {
-            Some(Value::Raw(ptr)) if ptr.strukt.is_some() => Some((cur, path)),
-            _ => None,
-        }
+        self.slot_mut(&place)
+            .is_some_and(|slot| matches!(&slot.value, Value::Raw(ptr) if ptr.strukt.is_some()))
+            .then_some((cur, path))
     }
 
     /// The element a raw field path is rooted at: the pointer is read, then
