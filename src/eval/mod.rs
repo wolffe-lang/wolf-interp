@@ -2790,7 +2790,9 @@ impl Machine {
         };
         let was_moved = !slot.is_live();
         slot.state = SlotState::Live;
-        slot.value = value;
+        if !path.projections.iter().any(|step| matches!(step, Proj::Pool(_))) {
+            slot.value = value;
+        }
         drop(slot);
         self.trace_write(path, was_moved, span);
         let rule = if was_moved {
