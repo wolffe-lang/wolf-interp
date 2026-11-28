@@ -263,7 +263,7 @@ fn build_probe(manifest_dir: &Path) -> ProbeStamp {
             .expect("utf8")
             .trim()
             .to_owned(),
-        script_ran: report.script_ran,
+        script_ran: false,
     }
 }
 
