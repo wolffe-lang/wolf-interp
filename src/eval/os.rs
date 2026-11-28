@@ -488,12 +488,15 @@ mod tests {
     use super::*;
 
     /// A quick real child, portable across the tier-1 hosts: this very test
-    /// binary, asked to list a filter that matches nothing.
+    /// binary, asked to list a filter that matches nothing. Terse listing
+    /// suppresses the unused footer: inherited descriptor writes bypass
+    /// libtest's capture and can splice another thread's result line.
     fn quick_argv() -> Vec<String> {
         let exe = std::env::current_exe().expect("a current exe");
         vec![
             exe.to_string_lossy().into_owned(),
             "--list".to_owned(),
+            "--format=terse".to_owned(),
             "no_such_test_filter_".to_owned(),
         ]
     }
