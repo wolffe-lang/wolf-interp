@@ -256,6 +256,36 @@ fn the_same_holds_from_a_worktree_where_dot_git_is_a_file() {
 }
 
 #[test]
+fn a_script_rerun_with_unchanged_output_is_observed() {
+    if !have_git() {
+        eprintln!("SKIP: git is not on PATH, so the stamp's invalidation cannot be exercised");
+        return;
+    }
+    let root = scratch("build-stamp-same-output");
+    let target = root.join("build-out");
+    seed_repo(&root);
+    assert_eq!(stamp(&root), "", "at the tag");
+    let first = script_ran_at(&target);
+
+    settle();
+    assert_eq!(stamp(&root), "", "unchanged tree, unchanged answer");
+    assert_eq!(script_ran_at(&target), first, "the unchanged build is fresh");
+
+    // An edit that changes none of the script's emitted values must still
+    // be distinguishable from Cargo replaying those values from its cache.
+    settle();
+    let script = root.join("build.rs");
+    let mut source = std::fs::read_to_string(&script).expect("the copied build script");
+    source.push_str("\n// Recompile and rerun without changing the emitted values.\n");
+    std::fs::write(script, source).expect("touch the copied build script");
+    assert_eq!(stamp(&root), "", "the script still computes the same suffix");
+    assert!(
+        script_ran_at(&target) > first,
+        "the build script changed but its same-output rerun went unnoticed"
+    );
+}
+
+#[test]
 fn a_re_vendor_invalidates_the_stamp_too() {
     if !have_git() {
         eprintln!("SKIP: git is not on PATH, so the stamp's invalidation cannot be exercised");
