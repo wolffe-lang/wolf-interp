@@ -337,8 +337,8 @@ pub struct PoolSlot {
 }
 
 impl PoolSlot {
-    pub(crate) fn valid_generation(&self, generation: u32) -> bool {
-        self.generation == generation && self.life != SlotLife::Free
+    pub(crate) fn valid_generation(&self, _generation: u32) -> bool {
+        self.life != SlotLife::Free
     }
 }
 
