@@ -124,9 +124,13 @@ fn probe_build_report(stdout: &[u8], stderr: &str, manifest: &Path) -> Result<Pr
         .find(|message| {
             message["reason"] == "compiler-artifact"
                 && message["target"]["kind"][0] == "custom-build"
-                && message["manifest_path"]
-                    .as_str()
-                    .is_some_and(|path| Path::new(path) == manifest)
+                && message["manifest_path"].as_str().is_some_and(|path| {
+                    let path = Path::new(path);
+                    path == manifest
+                        || path
+                            .canonicalize()
+                            .is_ok_and(|resolved| resolved == manifest)
+                })
         })
         .ok_or("Cargo did not report the probe's build-script artifact")?;
     let package = script["package_id"]
@@ -170,7 +174,7 @@ fn probe_build_report(stdout: &[u8], stderr: &str, manifest: &Path) -> Result<Pr
     // mistaking a script whose output did not change for a cached script.
     let fresh = format!(
         "Fresh stamp-probe v9.9.9 ({})",
-        manifest
+        Path::new(script["manifest_path"].as_str().expect("selected manifest"))
             .parent()
             .ok_or("the probe manifest has no parent")?
             .display()
@@ -439,7 +443,7 @@ fn a_script_rerun_with_unchanged_output_is_observed() {
         eprintln!("SKIP: git is not on PATH, so the stamp's invalidation cannot be exercised");
         return;
     }
-    let root = scratch("build-stamp-same-output");
+    let root = scratch("build-stamp same-output");
     seed_repo(&root);
     assert_eq!(stamp(&root), "", "at the tag");
 
