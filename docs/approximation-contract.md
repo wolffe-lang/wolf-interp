@@ -57,7 +57,7 @@ forest (`src/eval/prov.rs`; §7 below is its contract):
 | region state | `Open` \| `Suspended` \| `Frozen` \| `Freed` |
 | strategy | `arena` (default) \| `rc` \| `pool(T)` |
 | scope stack | a vector of open region ids; **the last is the current region**, the whole vector is the open set |
-| pool | `{region, elem, slots: [{generation, life, value}]}` with `life ∈ {Reserved, Live, Free}` |
+| pool | `{region, elem, slots: [{generation, life, payload: {state, value}}]}` with allocation `life ∈ {Reserved, Live, Free}` and independent payload move state |
 | `shared` cell | `{strong, weak, value, strong-edges-out, dead}` |
 | provenance forest | per allocation `{size, bytes, init, live, owner, root, tags, exposed}`, per tag `{parent, perms-per-byte, protected}` |
 | pointer value | `(allocation, offset, tag \| wildcard, pointee size)` |
@@ -101,6 +101,39 @@ dynamic meaning, and inventing one would be this implementation legislating.
 
 Detection is a comparison: a dangling reference is a live index whose region
 generation or slot generation no longer matches.
+
+### 3.1 Pool places and the accessor boundary
+
+`pool[h]` is a place, including a whole-slot store or a field below the slot
+(`[mem.shared.handle.3]`). Its projection retains the pool, index and generation,
+not an address into the payload buffer. A store evaluates the place operands
+once before its right-hand side, then resolves the storage after that expression
+has run (`[mem.model.place.rhs]`). Region, edge, exclusivity and simulated race
+checks apply to these accesses as they do to the existing memory paths.
+
+Moving a payload does not free or re-generation its slot. The allocation remains
+live, while the payload's own move state makes another payload read fault
+`use-after-move`. A store can reinitialize it. Header methods `len`, `count` and
+`is_empty` count initialized live slots without reading moved payloads
+(`[mem.model.place.elem]`); a whole receiver read still checks moved parts.
+Freed or re-generationed handles fault `stale-handle`, including after slot reuse.
+
+The initialized-slot accessor transitions in `corpus/memory/pool_accessors.lu`
+are implemented: `alive` and `has` reject stale generations by returning false,
+and `clear` invalidates the live slots. These additional cases remain outside
+the pinned accessor contract and return `unsupported` with a named reason:
+
+| case | `x-unsupported` |
+|---|---|
+| `alive` on a reserved, uninitialized slot | `Pool.alive on a reserved slot is outside the pinned accessor contract` |
+| `has` on a reserved, uninitialized slot | `Pool.has on a reserved slot is outside the pinned accessor contract` |
+| `clear` with outstanding uninitialized reservations | `Pool.clear with reserved slots is outside the pinned accessor contract` |
+| `alive` with another pool's handle | `Pool.alive with a handle from another pool is outside the pinned accessor contract` |
+| `has` with another pool's handle | `Pool.has with a handle from another pool is outside the pinned accessor contract` |
+
+A reserved payload read retains its existing `use-after-move` fault. No capacity
+or iteration syntax is introduced. `tests/pool_places.rs` exercises the five
+accepted corpus programs, the nearby faults and these explicit scope refusals.
 
 ## 4. The leak assertion
 
@@ -284,7 +317,7 @@ precedent).
 §3 says "on every store of a reference". The destinations that are region
 data in this machine are (a) struct-literal fields, checked against the current
 region at construction, and (b) pool slots, checked against the pool's region at
-`init`. Stack locals are not region data (`[mem.model.machine]`: "or *stack* for
+`init` and at stores through a handle, including a field below the slot. Stack locals are not region data (`[mem.model.machine]`: "or *stack* for
 locals"), so storing a region value in a local is unrestricted. That is what
 makes a region value first-class. Growing a collection *in place* inside a
 region is not yet a checked store, and no pinned corpus program performs one.
