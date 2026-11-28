@@ -136,7 +136,6 @@ fn main() {
     // CRATE already rebuilds when it moves — but this script's cache does not,
     // and #68's binary announced a stale pin beside a stale suffix. A
     // re-vendor is a change of identity; it belongs in this set.
-    println!("cargo:rerun-if-changed=vendor/upstream/PIN");
     // The declared escape hatch (see the module docs): change it and the
     // script re-runs, whatever the mtimes say.
     println!("cargo:rerun-if-env-changed=WOLF_INTERP_STAMP_NONCE");
