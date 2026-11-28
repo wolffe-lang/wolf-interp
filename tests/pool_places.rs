@@ -228,6 +228,149 @@ fn wrong_pool_has_is_explicitly_outside_scope() {
     unsupported(&initialized("var q = Pool[int]()\nq.has(h)"), OTHER_HAS);
 }
 #[test]
+fn wrong_pool_store_cannot_overwrite_a_matching_index() {
+    unsupported(
+        &initialized(
+            "var q = Pool[int]()\nlet k = (mut q).reserve()\n(mut q).init(k, 22)\nq[h] = 99",
+        ),
+        "Pool place handle belongs to a different pool",
+    );
+}
+#[test]
+fn wrong_pool_read_cannot_redirect_to_the_handles_owner() {
+    let (r, out) = observe(&initialized(
+        "var q = Pool[int]()\nlet k = (mut q).reserve()\n(mut q).init(k, 22)\nprint(\"{q[h]}\")",
+    ));
+    assert_eq!(r.verdict, Verdict::Unsupported, "{r:?}\n{out:?}");
+    let json = serde_json::to_value(r).unwrap();
+    assert!(
+        json["x-unsupported"].as_str().unwrap().contains("one pool"),
+        "{json}"
+    );
+}
+#[test]
+fn a_nested_payload_method_writes_back_to_the_pool() {
+    exits(
+        &nodes("(mut p[h].tags).push(2)\nprint(\"{p[h].tags.len}\")"),
+        "2\n",
+    );
+}
+
+fn outside_pool(body: &str) -> String {
+    format!(
+        "fn main() -> !int {{\nlet r = region(pool(int))\nvar p = in r {{ Pool[int]() }}\nlet h = in r {{ let h = (mut p).reserve(); (mut p).init(h, 10); h }}\n{body}\n0 }}"
+    )
+}
+#[test]
+fn a_pool_place_write_checks_the_suspended_region() {
+    traps(&outside_pool("p[h] = 12"), TrapKind::RegionFault);
+}
+#[test]
+fn a_pool_place_write_checks_the_frozen_region() {
+    traps(
+        &outside_pool("let frozen = freeze r\np[h] = 12"),
+        TrapKind::RegionFault,
+    );
+}
+#[test]
+fn a_frozen_pool_payload_remains_readable() {
+    exits(
+        &outside_pool("let frozen = freeze r\nprint(\"{p[h]}\")"),
+        "10\n",
+    );
+}
+#[test]
+fn a_freed_pool_place_store_stays_a_region_fault() {
+    traps(
+        r#"
+struct Node { value: int }
+fn main() -> !int {
+ var p = Pool[Node]()
+ var h = (mut p).reserve()
+ region r: pool(Node) {
+  var inner = Pool[Node]()
+  h = (mut inner).reserve()
+  (mut inner).init(h, Node { value: 1 })
+  p = move inner
+ }
+ p[h].value = 99
+ 0
+}
+"#,
+        TrapKind::RegionFault,
+    );
+}
+#[test]
+fn a_pool_field_store_checks_cross_region_edges() {
+    traps(
+        r#"
+struct Node { value: int, link: handle Node }
+fn main() -> !int {
+ region a: pool(Node) {
+  var pa = Pool[Node]()
+  let ha = (mut pa).reserve()
+  (mut pa).init(ha, Node { value: 1, link: ha })
+  region b: pool(Node) {
+   var pb = Pool[Node]()
+   let hb = (mut pb).reserve()
+   (mut pb).init(hb, Node { value: 2, link: hb })
+   pb[hb].link = ha
+  }
+ }
+ 0
+}
+"#,
+        TrapKind::RegionFault,
+    );
+}
+#[test]
+fn copied_handles_cannot_evade_one_calls_exclusivity() {
+    let source = format!(
+        "fn set(mut a: int, mut b: int) {{ a = 1; b = 2 }}\n{}",
+        initialized("let k = h\nset(mut p[h], mut p[k])")
+    );
+    traps(&source, TrapKind::Exclusivity);
+}
+#[test]
+fn separate_slots_can_be_lent_to_the_same_call() {
+    let source = format!(
+        "fn set(mut a: int, mut b: int) {{ a = 1; b = 2 }}\n{}",
+        initialized(
+            "let k = (mut p).reserve()\n(mut p).init(k, 20)\nset(mut p[h], mut p[k])\nprint(\"{p[h]} {p[k]}\")"
+        )
+    );
+    exits(&source, "1 2\n");
+}
+#[test]
+fn read_parameters_do_not_gain_pool_write_permission() {
+    let source = format!(
+        "fn inspect(p: Pool[int], h: handle int) {{ p[h] = 22 }}\n{}",
+        initialized("inspect(p, h)")
+    );
+    traps(&source, TrapKind::Exclusivity);
+}
+#[test]
+fn unordered_pool_place_writes_are_a_simulated_race() {
+    traps(
+        r#"
+fn main() -> !int {
+ region r: pool(int) {
+  var p = Pool[int]()
+  let h = (mut p).reserve()
+  (mut p).init(h, 0)
+  scope s {
+   s.spawn(fn() { p[h] = 1 })
+   s.spawn(fn() { p[h] = 2 })
+  }
+ }
+ 0
+}
+"#,
+        TrapKind::Race,
+    );
+}
+
+#[test]
 fn a_handle_is_not_admitted_as_a_map_key() {
     let (r, out) = observe(&initialized("var m = Map[int, int]()\nm[h] = 9"));
     assert_eq!(r.verdict, Verdict::Unsupported, "{r:?}\n{out:?}");
