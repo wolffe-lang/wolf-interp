@@ -107,6 +107,41 @@ struct ProbeBuild {
     script_ran: bool,
 }
 
+/// Cargo's Windows command display may omit .exe and a verbatim path prefix.
+/// Normalize only absolute Windows paths, not arbitrary Unix executable names.
+fn windows_display_path(path: &str) -> Option<String> {
+    let slashes = path.replace('\\', "/");
+    let path = if let Some(unc) = slashes.strip_prefix("//?/UNC/") {
+        format!("//{unc}")
+    } else {
+        slashes.strip_prefix("//?/").unwrap_or(&slashes).to_owned()
+    };
+    let bytes = path.as_bytes();
+    let drive =
+        bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'/';
+    (drive || path.starts_with("//")).then_some(path)
+}
+
+fn script_command_matches(command: &str, executable: &str) -> bool {
+    let command = command
+        .strip_prefix('\'')
+        .and_then(|c| c.strip_suffix('\''))
+        .or_else(|| command.strip_prefix('"').and_then(|c| c.strip_suffix('"')))
+        .unwrap_or(command);
+    if command == executable {
+        return true;
+    }
+    match (
+        windows_display_path(command),
+        windows_display_path(executable),
+    ) {
+        (Some(command), Some(executable)) => {
+            command == executable || executable.strip_suffix(".exe") == Some(command.as_str())
+        }
+        _ => false,
+    }
+}
+
 /// `build-script-executed` messages are emitted even for cached scripts. Only
 /// the verbose `Running` command establishes that the script actually ran.
 /// Its executable name comes from `compiler-artifact`, scoped to this manifest
@@ -160,15 +195,7 @@ fn probe_build_report(stdout: &[u8], stderr: &str, manifest: &Path) -> Result<Pr
         line.trim()
             .strip_prefix("Running `")
             .and_then(|command| command.strip_suffix('`'))
-            .is_some_and(|command| {
-                command == script_executable
-                    || command
-                        .strip_prefix('\'')
-                        .and_then(|c| c.strip_suffix('\''))
-                        == Some(script_executable)
-                    || command.strip_prefix('"').and_then(|c| c.strip_suffix('"'))
-                        == Some(script_executable)
-            })
+            .is_some_and(|command| script_command_matches(command, script_executable))
     });
     // Fail loudly on an unrecognized verbose format rather than silently
     // mistaking a script whose output did not change for a cached script.
@@ -180,7 +207,10 @@ fn probe_build_report(stdout: &[u8], stderr: &str, manifest: &Path) -> Result<Pr
             .display()
     );
     if !script_ran && !stderr.lines().any(|line| line.trim() == fresh) {
-        return Err("Cargo reported neither a fresh probe nor its running build script".to_owned());
+        return Err(format!(
+            "Cargo reported neither a fresh probe nor its running build script; \
+             expected script executable: {script_executable:?}"
+        ));
     }
     Ok(ProbeBuild {
         executable: PathBuf::from(executable),
@@ -217,7 +247,13 @@ fn build_probe(manifest_dir: &Path) -> ProbeStamp {
     let stderr = String::from_utf8(cargo.stderr).expect("Cargo stderr is utf8");
     assert!(cargo.status.success(), "the scratch crate builds: {stderr}");
     let report = probe_build_report(&cargo.stdout, &stderr, &manifest_dir.join("Cargo.toml"))
-        .unwrap_or_else(|err| panic!("{err}\n{stderr}"));
+        .unwrap_or_else(|err| {
+            panic!(
+                "{err}\nProbe manifest: {}\nCargo stdout JSON:\n{}\nCargo stderr:\n{stderr}",
+                manifest_dir.join("Cargo.toml").display(),
+                String::from_utf8_lossy(&cargo.stdout)
+            )
+        });
     let out = Command::new(&report.executable)
         .output()
         .expect("the probe runs");
