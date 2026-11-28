@@ -288,6 +288,39 @@ fn the_reported_script_command_is_rerun_evidence() {
 }
 
 #[test]
+fn windows_extensionless_script_commands_are_executions() {
+    let mut messages = reported_probe();
+    messages[0]["filenames"] =
+        serde_json::json!([r"\\?\D:\probe with spaces\build-script-build.exe"]);
+    // Windows Cargo's verbose command omits .exe, including at the
+    // verbatim path seen in the hosted regression. CRLF is incidental.
+    for command in [
+        r"\\?\D:\probe with spaces\build-script-build",
+        r"D:\probe with spaces\build-script-build",
+        "D:/probe with spaces/build-script-build.exe",
+    ] {
+        let built = report(&messages, &format!("     Running `{command}`\r\n"))
+            .expect("Windows Cargo ran the script named by the JSON artifact");
+        assert!(built.script_ran);
+    }
+}
+
+#[test]
+fn command_matching_does_not_accept_another_executable() {
+    let mut messages = reported_probe();
+    messages[0]["filenames"] = serde_json::json!([r"D:\probe\build-script-build.exe"]);
+    for command in [
+        r"D:\other\build-script-build",
+        r"D:\probe\other-script",
+        r"rustc.exe --out-dir D:\probe\build-script-build.exe",
+    ] {
+        assert!(report(&messages, &format!("     Running `{command}`\n")).is_err());
+    }
+    messages[0]["filenames"] = serde_json::json!(["/probe/build-script-build.exe"]);
+    assert!(report(&messages, "     Running `/probe/build-script-build`\n").is_err());
+}
+
+#[test]
 fn another_packages_output_cannot_supply_probe_evidence() {
     use serde_json::json;
     let mut messages = reported_probe();
