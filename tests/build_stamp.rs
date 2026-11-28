@@ -99,37 +99,239 @@ fn seed_repo(root: &Path) {
     assert!(git_at(root, &["tag", "v9.9.9"]), "git tag");
 }
 
-/// Builds the scratch package rooted at `manifest_dir` and returns the suffix
-/// its binary prints.
+/// The two executable paths come from Cargo's documented JSON messages; neither
+/// is inferred from the layout of its target directory.
+#[derive(Debug)]
+struct ProbeBuild {
+    executable: PathBuf,
+    script_ran: bool,
+}
+
+/// `build-script-executed` messages are emitted even for cached scripts. Only
+/// the verbose `Running` command establishes that the script actually ran.
+/// Its executable name comes from `compiler-artifact`, scoped to this manifest
+/// and then its package ID, so another package cannot supply that evidence.
+/// See Cargo's reference chapters "External tools" and "Build scripts".
+fn probe_build_report(stdout: &[u8], stderr: &str, manifest: &Path) -> Result<ProbeBuild, String> {
+    let messages: Vec<serde_json::Value> = stdout
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(serde_json::from_slice)
+        .collect::<Result<_, _>>()
+        .map_err(|err| format!("invalid Cargo JSON: {err}"))?;
+    let script = messages
+        .iter()
+        .find(|message| {
+            message["reason"] == "compiler-artifact"
+                && message["target"]["kind"][0] == "custom-build"
+                && message["manifest_path"]
+                    .as_str()
+                    .is_some_and(|path| Path::new(path) == manifest)
+        })
+        .ok_or("Cargo did not report the probe's build-script artifact")?;
+    let package = script["package_id"]
+        .as_str()
+        .ok_or("the probe's build-script artifact has no package ID")?;
+    let script_executable = script["filenames"][0]
+        .as_str()
+        .ok_or("the probe's build-script artifact has no executable filename")?;
+    if !messages.iter().any(|message| {
+        message["reason"] == "build-script-executed" && message["package_id"] == package
+    }) {
+        return Err("Cargo did not report the probe's build-script output".to_owned());
+    }
+    let binary = messages
+        .iter()
+        .find(|message| {
+            message["reason"] == "compiler-artifact"
+                && message["package_id"] == package
+                && message["target"]["kind"][0] == "bin"
+                && message["target"]["name"] == "stamp-probe"
+        })
+        .ok_or("Cargo did not report the probe binary's artifact")?;
+    let executable = binary["executable"]
+        .as_str()
+        .ok_or("the probe binary's artifact has no executable")?;
+    let script_ran = stderr.lines().any(|line| {
+        line.trim()
+            .strip_prefix("Running `")
+            .and_then(|command| command.strip_suffix('`'))
+            .is_some_and(|command| {
+                command == script_executable
+                    || command
+                        .strip_prefix('\'')
+                        .and_then(|c| c.strip_suffix('\''))
+                        == Some(script_executable)
+                    || command.strip_prefix('"').and_then(|c| c.strip_suffix('"'))
+                        == Some(script_executable)
+            })
+    });
+    // Fail loudly on an unrecognized verbose format rather than silently
+    // mistaking a script whose output did not change for a cached script.
+    let fresh = format!(
+        "Fresh stamp-probe v9.9.9 ({})",
+        manifest
+            .parent()
+            .ok_or("the probe manifest has no parent")?
+            .display()
+    );
+    if !script_ran && !stderr.lines().any(|line| line.trim() == fresh) {
+        return Err("Cargo reported neither a fresh probe nor its running build script".to_owned());
+    }
+    Ok(ProbeBuild {
+        executable: PathBuf::from(executable),
+        script_ran,
+    })
+}
+
+struct ProbeStamp {
+    suffix: String,
+    script_ran: bool,
+}
+
+/// Builds the scratch package, observes whether its script ran and executes
+/// the binary Cargo reported. The copied build.rs is unchanged.
 ///
 /// The target directory is per-build-root and NOT this package's, because a
-/// nested cargo sharing `target/` would deadlock on its lock.
-fn stamp(manifest_dir: &Path) -> String {
+/// nested cargo sharing the outer build's directory would deadlock on its lock.
+fn build_probe(manifest_dir: &Path) -> ProbeStamp {
+    let manifest_dir = manifest_dir.canonicalize().expect("the probe's root");
     let target = manifest_dir.join("build-out");
-    let status = Command::new(env!("CARGO"))
+    let cargo = Command::new(env!("CARGO"))
         .arg("build")
-        .arg("--quiet")
+        .arg("--verbose")
+        .arg("--message-format=json")
         .arg("--offline")
-        .current_dir(manifest_dir)
+        .current_dir(&manifest_dir)
         .env("CARGO_TARGET_DIR", &target)
+        .env("CARGO_TERM_COLOR", "never")
         .env_remove("RUSTFLAGS")
         .env_remove("CARGO_ENCODED_RUSTFLAGS")
         .env_remove("CARGO_BUILD_TARGET")
-        .status()
+        .output()
         .expect("cargo runs");
-    assert!(status.success(), "the scratch crate builds");
-
-    let exe = target.join("debug").join(if cfg!(windows) {
-        "stamp-probe.exe"
-    } else {
-        "stamp-probe"
-    });
-    let out = Command::new(&exe).output().expect("the probe runs");
+    let stderr = String::from_utf8(cargo.stderr).expect("Cargo stderr is utf8");
+    assert!(cargo.status.success(), "the scratch crate builds: {stderr}");
+    let report = probe_build_report(&cargo.stdout, &stderr, &manifest_dir.join("Cargo.toml"))
+        .unwrap_or_else(|err| panic!("{err}\n{stderr}"));
+    let out = Command::new(&report.executable)
+        .output()
+        .expect("the probe runs");
     assert!(out.status.success(), "the probe exits 0");
-    String::from_utf8(out.stdout)
-        .expect("utf8")
-        .trim()
-        .to_owned()
+    ProbeStamp {
+        suffix: String::from_utf8(out.stdout)
+            .expect("utf8")
+            .trim()
+            .to_owned(),
+        script_ran: report.script_ran,
+    }
+}
+
+fn stamp(manifest_dir: &Path) -> String {
+    build_probe(manifest_dir).suffix
+}
+
+/// Model the documented stream, not any Cargo cache directory layout.
+fn reported_probe() -> Vec<serde_json::Value> {
+    use serde_json::json;
+    vec![
+        json!({
+            "reason": "compiler-artifact", "package_id": "probe-id",
+            "manifest_path": "probe/Cargo.toml",
+            "target": {"kind": ["custom-build"]},
+            "filenames": ["script with spaces.exe"]
+        }),
+        json!({"reason": "build-script-executed", "package_id": "probe-id"}),
+        json!({
+            "reason": "compiler-artifact", "package_id": "probe-id",
+            "target": {"kind": ["bin"], "name": "stamp-probe"},
+            "executable": "reported-probe.exe"
+        }),
+    ]
+}
+
+fn report(messages: &[serde_json::Value], stderr: &str) -> Result<ProbeBuild, String> {
+    let stream = messages
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    probe_build_report(stream.as_bytes(), stderr, Path::new("probe/Cargo.toml"))
+}
+
+#[test]
+fn cached_script_output_is_not_a_script_execution() {
+    let built = report(
+        &reported_probe(),
+        "       Fresh stamp-probe v9.9.9 (probe)\n",
+    )
+    .expect("a fresh probe with its cached build-script-executed message");
+    assert!(!built.script_ran);
+    assert_eq!(built.executable, Path::new("reported-probe.exe"));
+}
+
+#[test]
+fn the_reported_script_command_is_rerun_evidence() {
+    for command in [
+        "script with spaces.exe",
+        "'script with spaces.exe'",
+        "\"script with spaces.exe\"",
+    ] {
+        let built = report(&reported_probe(), &format!("     Running `{command}`\n"))
+            .expect("the reported script ran");
+        assert!(built.script_ran);
+    }
+}
+
+#[test]
+fn another_packages_output_cannot_supply_probe_evidence() {
+    use serde_json::json;
+    let mut messages = reported_probe();
+    let mut other = messages[0].clone();
+    other["package_id"] = json!("other-id");
+    other["manifest_path"] = json!("other/Cargo.toml");
+    other["filenames"] = json!(["other-script"]);
+    messages.insert(0, other);
+    messages.push(json!({"reason": "build-script-executed", "package_id": "other-id"}));
+    let built = report(
+        &messages,
+        "     Running `other-script`\n       Fresh stamp-probe v9.9.9 (probe)\n",
+    )
+    .expect("the other script ran, but the probe is fresh");
+    assert!(!built.script_ran);
+
+    messages.retain(|message| {
+        message["reason"] != "build-script-executed" || message["package_id"] != "probe-id"
+    });
+    assert!(
+        report(&messages, "     Running `script with spaces.exe`\n")
+            .expect_err("the other package cannot supply the probe's script output")
+            .contains("probe's build-script output")
+    );
+}
+
+#[test]
+fn missing_probe_messages_fail_loudly() {
+    let messages = reported_probe();
+    for missing in 0..messages.len() {
+        let mut incomplete = messages.clone();
+        incomplete.remove(missing);
+        assert!(report(&incomplete, "     Running `script with spaces.exe`\n").is_err());
+    }
+    assert!(report(&[], "").is_err());
+    assert!(probe_build_report(b"not JSON\n", "", Path::new("probe/Cargo.toml")).is_err());
+}
+
+#[test]
+fn unrecognized_freshness_does_not_silently_mean_no_rerun() {
+    assert!(report(&reported_probe(), "").is_err());
+    assert!(
+        report(
+            &reported_probe(),
+            "       Fresh stamp-probe v9.9.9 (other)\n"
+        )
+        .is_err()
+    );
 }
 
 /// A beat between two builds.
@@ -140,30 +342,6 @@ fn stamp(manifest_dir: &Path) -> String {
 /// is cheaper than a flake.
 fn settle() {
     std::thread::sleep(std::time::Duration::from_millis(1100));
-}
-
-/// When the build script last ran, read from the cache file cargo writes its
-/// emitted lines into (`<target>/debug/build/stamp-probe-*/output`).
-///
-/// This is the only direct evidence that a script RE-RAN as opposed to
-/// answering the same thing twice, and #68 is precisely a case where the two
-/// look identical from outside.
-fn script_ran_at(target: &Path) -> std::time::SystemTime {
-    let builds = target.join("debug").join("build");
-    let mut newest = None;
-    for entry in std::fs::read_dir(&builds).expect("the build directory exists") {
-        let dir = entry.expect("readable").path();
-        let output = dir.join("output");
-        if !output.is_file() {
-            continue;
-        }
-        let at = output
-            .metadata()
-            .and_then(|meta| meta.modified())
-            .expect("an mtime");
-        newest = Some(newest.map_or(at, |seen: std::time::SystemTime| seen.max(at)));
-    }
-    newest.expect("the build script wrote an output file")
 }
 
 #[test]
@@ -262,14 +440,13 @@ fn a_script_rerun_with_unchanged_output_is_observed() {
         return;
     }
     let root = scratch("build-stamp-same-output");
-    let target = root.join("build-out");
     seed_repo(&root);
     assert_eq!(stamp(&root), "", "at the tag");
-    let first = script_ran_at(&target);
 
     settle();
-    assert_eq!(stamp(&root), "", "unchanged tree, unchanged answer");
-    assert_eq!(script_ran_at(&target), first, "the unchanged build is fresh");
+    let unchanged = build_probe(&root);
+    assert_eq!(unchanged.suffix, "", "unchanged tree, unchanged answer");
+    assert!(!unchanged.script_ran, "the unchanged build is fresh");
 
     // An edit that changes none of the script's emitted values must still
     // be distinguishable from Cargo replaying those values from its cache.
@@ -278,9 +455,13 @@ fn a_script_rerun_with_unchanged_output_is_observed() {
     let mut source = std::fs::read_to_string(&script).expect("the copied build script");
     source.push_str("\n// Recompile and rerun without changing the emitted values.\n");
     std::fs::write(script, source).expect("touch the copied build script");
-    assert_eq!(stamp(&root), "", "the script still computes the same suffix");
+    let rebuilt = build_probe(&root);
+    assert_eq!(
+        rebuilt.suffix, "",
+        "the script still computes the same suffix"
+    );
     assert!(
-        script_ran_at(&target) > first,
+        rebuilt.script_ran,
         "the build script changed but its same-output rerun went unnoticed"
     );
 }
@@ -292,20 +473,18 @@ fn a_re_vendor_invalidates_the_stamp_too() {
         return;
     }
     let root = scratch("build-stamp-pin");
-    let target = root.join("build-out");
     seed_repo(&root);
     assert_eq!(stamp(&root), "", "at the tag");
-    let first = script_ran_at(&target);
 
     // The negative control, and it is load-bearing: a script that re-ran on
     // every build would make the assertion below vacuous, and "re-runs
     // always" is its own defect (a `rerun-if-changed` on a path that does not
     // exist does exactly that).
     settle();
-    assert_eq!(stamp(&root), "", "unchanged tree, unchanged answer");
-    assert_eq!(
-        script_ran_at(&target),
-        first,
+    let unchanged = build_probe(&root);
+    assert_eq!(unchanged.suffix, "", "unchanged tree, unchanged answer");
+    assert!(
+        !unchanged.script_ran,
         "nothing changed and the build script re-ran anyway — the invalidation set names a \
          path that is not there"
     );
@@ -315,13 +494,13 @@ fn a_re_vendor_invalidates_the_stamp_too() {
     // not. #68's binary announced a stale PIN beside a stale suffix.
     settle();
     std::fs::write(root.join("vendor/upstream/PIN"), "1111111\n").expect("re-vendored");
+    let rebuilt = build_probe(&root);
     assert_eq!(
-        stamp(&root),
-        "",
+        rebuilt.suffix, "",
         "the tree is still at `v9.9.9`, so the ANSWER is still the bare version"
     );
     assert!(
-        script_ran_at(&target) > first,
+        rebuilt.script_ran,
         "`vendor/upstream/PIN` moved and the build script did not re-run — a re-vendor is a \
          change of identity, and invalidation is not the same thing as a changed answer"
     );
