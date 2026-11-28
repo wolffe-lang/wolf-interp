@@ -2112,13 +2112,7 @@ impl Machine {
                     );
                 }
                 Some(region::SlotLife::Reserved) => {
-                    return self.trap(
-                        TrapKind::UseAfterMove,
-                        Rule::HandleTwoPhase,
-                        span,
-                        "the pool slot was reserved and never initialized".to_owned(),
-                        None,
-                    );
+                    return self.uninitialized_pool_slot(*handle, span);
                 }
                 _ => {}
             }
@@ -3645,20 +3639,25 @@ impl Machine {
                 // Reserved but not yet `init`ed: the handle is valid and the
                 // storage is uninitialized, which `[mem.tier0.move.2]` already
                 // names — "use of an **uninitialized** … place".
-                self.trap(
-                    TrapKind::UseAfterMove,
-                    Rule::HandleTwoPhase,
-                    span,
-                    format!(
-                        "pool#{}[{}] was reserved and never initialized; `reserve` yields the \
-                         handle, `init` fills the slot",
-                        handle.pool, handle.index
-                    ),
-                    None,
-                )
+                self.uninitialized_pool_slot(handle, span)
             }
             None => self.stale_handle(handle, span),
         }
+    }
+
+    /// Keep value-based and place-based reserved-slot faults byte-identical.
+    fn uninitialized_pool_slot<T>(&mut self, handle: HandleValue, span: Span) -> EResult<T> {
+        self.trap(
+            TrapKind::UseAfterMove,
+            Rule::HandleTwoPhase,
+            span,
+            format!(
+                "pool#{}[{}] was reserved and never initialized; `reserve` yields the \
+                 handle, `init` fills the slot",
+                handle.pool, handle.index
+            ),
+            None,
+        )
     }
 
     pub(crate) fn stale_handle<T>(&mut self, handle: HandleValue, span: Span) -> EResult<T> {
