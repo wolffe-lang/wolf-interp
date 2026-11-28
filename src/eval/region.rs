@@ -44,7 +44,7 @@
 
 use std::fmt;
 
-use super::value::Value;
+use super::value::{Slot, Value};
 use crate::diag::Span;
 
 pub type RegionId = usize;
@@ -332,7 +332,26 @@ pub enum SlotLife {
 pub struct PoolSlot {
     pub generation: u32,
     pub life: SlotLife,
-    pub value: Value,
+    /// Payload move state is independent of allocation/generation state.
+    pub payload: Slot,
+}
+
+impl PoolSlot {
+    pub(crate) fn valid_generation(&self, generation: u32) -> bool {
+        self.generation == generation && self.life != SlotLife::Free
+    }
+}
+
+impl std::ops::Deref for PoolSlot {
+    type Target = Slot;
+    fn deref(&self) -> &Slot {
+        &self.payload
+    }
+}
+impl std::ops::DerefMut for PoolSlot {
+    fn deref_mut(&mut self) -> &mut Slot {
+        &mut self.payload
+    }
 }
 
 /// A `Pool[T]`, anchored to the region that was current when it was built.
@@ -787,7 +806,7 @@ impl Store {
                 for slot in &mut pool.slots {
                     slot.life = SlotLife::Free;
                     slot.generation += 1;
-                    slot.value = Value::Unit;
+                    slot.payload = Slot::live(Value::Unit);
                 }
             }
         }
@@ -1017,14 +1036,14 @@ impl Store {
         {
             let slot = &mut pool.slots[index];
             slot.life = SlotLife::Reserved;
-            slot.value = Value::Unit;
+            slot.payload = Slot::live(Value::Unit);
             return Some((index, slot.generation));
         }
         let index = pool.slots.len();
         pool.slots.push(PoolSlot {
             generation: 0,
             life: SlotLife::Reserved,
-            value: Value::Unit,
+            payload: Slot::live(Value::Unit),
         });
         Some((index, 0))
     }
@@ -1033,7 +1052,17 @@ impl Store {
     #[must_use]
     pub fn slot(&self, id: PoolId, index: usize, generation: u32) -> Option<&PoolSlot> {
         let slot = self.pools.get(id)?.slots.get(index)?;
-        (slot.generation == generation && slot.life != SlotLife::Free).then_some(slot)
+        slot.valid_generation(generation).then_some(slot)
+    }
+
+    pub(crate) fn slot_mut(
+        &mut self,
+        id: PoolId,
+        index: usize,
+        generation: u32,
+    ) -> Option<&mut PoolSlot> {
+        let slot = self.pools.get_mut(id)?.slots.get_mut(index)?;
+        slot.valid_generation(generation).then_some(slot)
     }
 
     /// Fills a reserved slot (`init`, phase two).
@@ -1048,7 +1077,7 @@ impl Store {
             return false;
         }
         slot.life = SlotLife::Live;
-        slot.value = value;
+        slot.payload = Slot::live(value);
         true
     }
 
@@ -1066,7 +1095,7 @@ impl Store {
         }
         slot.life = SlotLife::Free;
         slot.generation += 1;
-        slot.value = Value::Unit;
+        slot.payload = Slot::live(Value::Unit);
         true
     }
 

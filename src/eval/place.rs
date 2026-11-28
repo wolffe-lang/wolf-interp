@@ -22,7 +22,7 @@
 
 use std::fmt;
 
-use super::value::{IntTy, Value};
+use super::value::{HandleValue, IntTy, Value};
 use crate::diag::Span;
 
 /// A `Map` key as a place step — one of the four `[type.map.key]` admits
@@ -93,6 +93,8 @@ pub enum Proj {
     /// A map key, by value ([`MapKey`]): two keys are the same place iff
     /// they are the same key.
     Key(MapKey),
+    /// A pool slot, including its owning pool and generation. Never a Map key.
+    Pool(HandleValue),
     /// An index the machine could not reduce to a constant (a key expression
     /// with no evaluated value). Conservatively conflicts with every sibling
     /// index, which keeps the check sound in the only direction that matters.
@@ -105,6 +107,7 @@ impl fmt::Display for Proj {
             Proj::Field(name) => write!(f, ".{name}"),
             Proj::Index(i) => write!(f, "[{i}]"),
             Proj::Key(key) => write!(f, "[{key}]"),
+            Proj::Pool(h) => write!(f, "[pool#{}:{}@{}]", h.pool, h.index, h.generation),
             Proj::UnknownIndex => f.write_str("[?]"),
         }
     }
@@ -117,6 +120,8 @@ impl Proj {
             (Proj::Field(a), Proj::Field(b)) => a == b,
             (Proj::Index(a), Proj::Index(b)) => a == b,
             (Proj::Key(a), Proj::Key(b)) => a == b,
+            (Proj::Pool(a), Proj::Pool(b)) => a == b,
+            (Proj::UnknownIndex, Proj::Pool(_)) | (Proj::Pool(_), Proj::UnknownIndex) => true,
             (Proj::UnknownIndex, Proj::Index(_) | Proj::Key(_) | Proj::UnknownIndex)
             | (Proj::Index(_) | Proj::Key(_), Proj::UnknownIndex) => true,
             _ => false,

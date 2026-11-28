@@ -86,7 +86,7 @@ $ lupin corpus
 1253 file(s) under upstream/corpus: 1191 entries, 62 member(s), 0 failure(s)
 499 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 957 entries reach the `run` rung; 889 match their `check:` expectation, 135 are the dynamic counterpart of the static code the corpus pins, 66 are static-conservatism entries (the compiler rejects statically what this machine never checks), 96 are out of scope, 5 mismatch
+lupin: 963 entries reach the `run` rung; 894 match their `check:` expectation, 135 are the dynamic counterpart of the static code the corpus pins, 67 are static-conservatism entries (the compiler rejects statically what this machine never checks), 90 are out of scope, 5 mismatch
 ```
 
 On Windows, `os/ids_read.lu` and `os/signal_reserved_rows.lu` handle the
@@ -105,7 +105,7 @@ $ lupin corpus
 1253 file(s) under upstream/corpus: 1191 entries, 62 member(s), 0 failure(s)
 499 distinct conforms: anchor(s); every registered-namespace tag resolves against anchors.json
 
-lupin: 966 entries reach the `run` rung; 894 match their `check:` expectation, 135 are the dynamic counterpart of the static code the corpus pins, 66 are static-conservatism entries (the compiler rejects statically what this machine never checks), 87 are out of scope, 9 mismatch
+lupin: 972 entries reach the `run` rung; 899 match their `check:` expectation, 135 are the dynamic counterpart of the static code the corpus pins, 67 are static-conservatism entries (the compiler rejects statically what this machine never checks), 81 are out of scope, 9 mismatch
 ```
 
 ## Bumping the pin

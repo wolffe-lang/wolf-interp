@@ -48,6 +48,7 @@ pub mod region;
 pub mod repl;
 pub mod rules;
 pub mod sched;
+mod slot;
 pub mod value;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -69,6 +70,7 @@ use placetrace::{CopyBy, MoveBy};
 use prov::{AccessKind, Prov, Provenance, RawPtr, RetagKind, UbFinding, UbRow};
 use region::{Edge, Ref, RegionId, RegionState, Store, Strategy};
 use rules::Rule;
+use slot::SlotMut;
 use value::{
     ArithMode, CaptureLoan, ClosureValue, ElemTy, ErrorValue, HandleValue, IntTy, RangeElem,
     RegionValue, Slot, SlotState, Value,
@@ -1939,7 +1941,7 @@ impl Machine {
     /// The slot a path denotes, if the path is well-formed against the current
     /// state. `None` means "no such place", which the caller turns into a
     /// sema-lite gap rather than a trap.
-    fn slot_mut(&mut self, path: &Path) -> Option<&mut Slot> {
+    fn slot_mut(&mut self, path: &Path) -> Option<SlotMut<'_>> {
         self.resolve(path).map(|(slot, _)| slot)
     }
 
@@ -1949,7 +1951,7 @@ impl Machine {
     /// makes `a.x` unreadable too, because `a.x`'s storage went with it, and
     /// the fault has to name the move site that actually happened rather than
     /// the leaf's own state.
-    fn resolve(&mut self, path: &Path) -> Option<(&mut Slot, Option<(Span, usize)>)> {
+    fn resolve(&mut self, path: &Path) -> Option<(SlotMut<'_>, Option<(Span, usize)>)> {
         let mut slot: &mut Slot = if path.frame == usize::MAX {
             self.statics_dirty = true;
             self.globals.get_mut(&path.base)?
@@ -1974,6 +1976,31 @@ impl Machine {
             SlotState::Live => None,
         };
         for (depth, step) in path.projections.iter().enumerate() {
+            if let (Value::PoolRef(pool), Proj::Pool(handle)) = (&slot.value, step) {
+                if *pool != handle.pool {
+                    return None;
+                }
+                let store = self.shared.store.lock().expect("store lock");
+                let slot::PoolAddress {
+                    handle,
+                    tail,
+                    moved,
+                } = slot::pool_address(
+                    &store,
+                    *handle,
+                    &path.projections[depth + 1..],
+                    moved,
+                    depth + 1,
+                )?;
+                return Some((
+                    SlotMut::Pool {
+                        store,
+                        handle,
+                        tail,
+                    },
+                    moved,
+                ));
+            }
             slot = match (&mut slot.value, step) {
                 (Value::Struct { fields, .. }, Proj::Field(name)) => {
                     let index = fields.iter().position(|(f, _)| f == name)?;
@@ -2001,7 +2028,7 @@ impl Machine {
                 moved = Some((at, depth + 1));
             }
         }
-        Some((slot, moved))
+        Some((SlotMut::Local(slot), moved))
     }
 
     /// Checks a new access against everything currently held
@@ -2061,6 +2088,35 @@ impl Machine {
                 ),
                 Some((held_span, format!("`{held_path}` held here"))),
             );
+        }
+        Ok(())
+    }
+
+    /// A path names slots by identity, never by a cached address. Recheck every
+    /// pool hop at the actual access, including a store after its RHS ran.
+    fn check_pool_path(&mut self, path: &Path, writing: bool, span: Span) -> EResult<()> {
+        for step in &path.projections {
+            let Proj::Pool(handle) = step else {
+                continue;
+            };
+            self.check_pool_region(handle.pool, span, writing)?;
+            let life = self
+                .store()
+                .slot(handle.pool, handle.index, handle.generation)
+                .map(|s| s.life);
+            match life {
+                None => return self.stale_handle(*handle, span),
+                Some(region::SlotLife::Reserved) if writing => {
+                    return unsupported(
+                        "Pool place store to reserved storage requires init".to_owned(),
+                    );
+                }
+                Some(region::SlotLife::Reserved) => {
+                    return self.uninitialized_pool_slot(*handle, span);
+                }
+                _ => {}
+            }
+            self.race_check_pool(handle.pool, handle.index, writing, span)?;
         }
         Ok(())
     }
@@ -2137,10 +2193,12 @@ impl Machine {
         mode.is_none()
             && args.is_empty()
             && matches!(method, "len" | "count" | "is_empty")
-            && matches!(
-                self.slot_mut(place).map(|slot| &slot.value),
-                Some(Value::List(..) | Value::Map(..))
-            )
+            && self.slot_mut(place).is_some_and(|slot| {
+                matches!(
+                    &slot.value,
+                    Value::List(..) | Value::Map(..) | Value::PoolRef(_)
+                )
+            })
     }
 
     /// Everything a read of `path` *does* — the exclusivity check, the
@@ -2162,10 +2220,12 @@ impl Machine {
     /// read. A member read ([`Machine::read_header`]) makes its exclusivity
     /// check on the member's own path and the rest of the read here.
     fn read_claim_checked(&mut self, path: &Path, span: Span) -> EResult<()> {
+        self.check_pool_path(path, false, span)?;
         let display = path.to_string();
-        match self.resolve(path) {
+        let resolved = self.resolve(path).map(|(_, moved)| moved);
+        match resolved {
             None => unsupported(format!("`{display}` does not denote a place at run time")),
-            Some((_, None)) => {
+            Some(None) => {
                 // #25: any access through a container whose home region was
                 // freed wholesale faults, with the region named. Only
                 // `Freed` — a live (or frozen) home reads clean, and the
@@ -2178,7 +2238,7 @@ impl Machine {
                 self.trace_touch(path);
                 self.access_place(path, AccessKind::Read, span)
             }
-            Some((_, Some((moved_at, depth)))) => {
+            Some(Some((moved_at, depth))) => {
                 // Name the path that actually moved, which may be a *prefix* of
                 // the one being read: moving `p.x` is what makes `p.x.n`
                 // unreadable, and blaming `p.x.n` would send the reader to the
@@ -2211,7 +2271,7 @@ impl Machine {
     /// as the copy path would have copied them.
     fn lend_path(&mut self, path: &Path) -> Value {
         match self.resolve(path) {
-            Some((slot, _)) => std::mem::replace(&mut slot.value, Value::Unit),
+            Some((mut slot, _)) => std::mem::replace(&mut slot.value, Value::Unit),
             None => Value::Unit,
         }
     }
@@ -2221,7 +2281,7 @@ impl Machine {
     /// #20) says a method that only read its receiver performed a read, so
     /// there is no write to check, to guard against a freeze, or to fire.
     fn restore_lent(&mut self, path: &Path, value: Value) {
-        if let Some((slot, _)) = self.resolve(path) {
+        if let Some((mut slot, _)) = self.resolve(path) {
             slot.value = value;
         }
     }
@@ -2251,12 +2311,13 @@ impl Machine {
     /// place for the place trace (is72). The spelling decides nothing here.
     fn move_path_by(&mut self, path: &Path, span: Span, by: MoveBy) -> EResult<Value> {
         self.check_access(path, Access::Exclusive, span)?;
+        self.check_pool_path(path, true, span)?;
         let display = path.to_string();
-        let moved = match self.resolve(path) {
+        let moved = match self.resolve(path).map(|(_, moved)| moved) {
             None => {
                 return unsupported(format!("`{display}` does not denote a place at run time"));
             }
-            Some((_, moved)) => moved,
+            Some(moved) => moved,
         };
         if let Some((moved_at, depth)) = moved {
             let moved_path = prefix(path, depth);
@@ -2277,15 +2338,14 @@ impl Machine {
         // A move hands the whole value on: one holding a moved part is a
         // read of that part (wolf-interp#143).
         if self.parts_moved() {
-            let found = self
-                .resolve(path)
-                .and_then(|(slot, _)| moved_part(&slot.value));
+            let found = self.moved_part_at(path);
             self.moved_part_trap(found, Some(path), span)?;
         }
-        let Some((slot, _)) = self.resolve(path) else {
+        let Some((mut slot, _)) = self.resolve(path) else {
             return unsupported(format!("`{display}` does not denote a place at run time"));
         };
         let value = slot.take_value(span);
+        drop(slot);
         self.note_part_moved(path);
         self.trace_move(path, by, span);
         self.fire(Rule::Move, span, &format!("move out of `{display}`"));
@@ -2315,11 +2375,49 @@ impl Machine {
     /// Cost: nothing until the program first leaves a part moved-out (one
     /// atomic load); after that a walk of the value's slots, the price of the
     /// check `resolve` already makes for a place's own prefix chain.
+    fn pool_moved_part(&self, pool: region::PoolId) -> Option<(Vec<Proj>, Span)> {
+        let store = self.store();
+        let pool = store.pool(pool)?;
+        pool.slots.iter().enumerate().find_map(|(index, slot)| {
+            if slot.life != region::SlotLife::Live {
+                return None;
+            }
+            let step = Proj::Pool(HandleValue {
+                pool: pool.id,
+                index,
+                generation: slot.generation,
+            });
+            match slot.state {
+                SlotState::Moved(at) => Some((vec![step], at)),
+                SlotState::Live => moved_part(&slot.value).map(|(mut steps, at)| {
+                    steps.insert(0, step);
+                    (steps, at)
+                }),
+            }
+        })
+    }
+
+    fn moved_part_at(&mut self, path: &Path) -> Option<(Vec<Proj>, Span)> {
+        let (found, pool) = self.resolve(path).map(|(slot, _)| {
+            (
+                moved_part(&slot.value),
+                match &slot.value {
+                    Value::PoolRef(id) => Some(*id),
+                    _ => None,
+                },
+            )
+        })?;
+        found.or_else(|| pool.and_then(|pool| self.pool_moved_part(pool)))
+    }
+
     fn check_whole(&mut self, value: &Value, whole: Option<&Path>, span: Span) -> EResult<()> {
         if !self.parts_moved() {
             return Ok(());
         }
-        let found = moved_part(value);
+        let found = match value {
+            Value::PoolRef(pool) => self.pool_moved_part(*pool),
+            _ => moved_part(value),
+        };
         self.moved_part_trap(found, whole, span)
     }
 
@@ -2424,6 +2522,37 @@ impl Machine {
         include_target: bool,
         mut visit: impl FnMut(RegionId) -> Option<T>,
     ) -> Option<T> {
+        if path
+            .projections
+            .iter()
+            .any(|step| matches!(step, Proj::Pool(_)))
+        {
+            // Collect while the store is guarded, then release it before a
+            // visitor consults region state (and therefore locks the store).
+            let store = self.store();
+            let mut current = self.base_slot(path);
+            let mut homes = Vec::new();
+            for step in &path.projections {
+                let Some(slot) = current else {
+                    break;
+                };
+                homes.extend(slot.value.home());
+                current = match (&slot.value, step) {
+                    (Value::PoolRef(pool), Proj::Pool(handle)) if *pool == handle.pool => {
+                        homes.extend(store.pool_region(*pool));
+                        store
+                            .slot(*pool, handle.index, handle.generation)
+                            .map(|slot| &slot.payload)
+                    }
+                    _ => slot::project(slot, step),
+                };
+            }
+            if include_target && let Some(slot) = current {
+                homes.extend(slot.value.home());
+            }
+            drop(store);
+            return homes.into_iter().find_map(visit);
+        }
         let mut current: Option<&Slot> = self.base_slot(path);
         for step in &path.projections {
             let slot = current?;
@@ -2618,6 +2747,17 @@ impl Machine {
             );
         }
         self.check_access(path, Access::Exclusive, span)?;
+        self.check_pool_path(path, true, span)?;
+        if let Some(handle) = path.projections.iter().rev().find_map(|step| {
+            if let Proj::Pool(handle) = step {
+                Some(*handle)
+            } else {
+                None
+            }
+        }) {
+            let owner = self.store().pool_region(handle.pool);
+            self.check_edge_into(owner, &value, span, "pool place")?;
+        }
         // `[mem.region.intra.2]` / `[mem.region.freeze.1]`: a write into a
         // freed region's storage is #25's write arm, and frozen data is
         // immutable forever — through value paths as much as through
@@ -2645,12 +2785,13 @@ impl Machine {
         if self.slot_mut(path).is_none() && !self.insert_map_key(path, key, span)? {
             return unsupported(format!("`{display}` does not denote a place at run time"));
         }
-        let Some(slot) = self.slot_mut(path) else {
+        let Some(mut slot) = self.slot_mut(path) else {
             return unsupported(format!("`{display}` does not denote a place at run time"));
         };
         let was_moved = !slot.is_live();
         slot.state = SlotState::Live;
         slot.value = value;
+        drop(slot);
         self.trace_write(path, was_moved, span);
         let rule = if was_moved {
             Rule::Reinit
@@ -2718,7 +2859,7 @@ impl Machine {
         let key = key.clone();
         let mut parent = path.clone();
         parent.projections.pop();
-        let Some(slot) = self.slot_mut(&parent) else {
+        let Some(mut slot) = self.slot_mut(&parent) else {
             return Ok(false);
         };
         let Value::Map(pairs, _) = &mut slot.value else {
@@ -3476,7 +3617,17 @@ impl Machine {
             .cloned();
         match slot {
             Some(slot) if slot.life == region::SlotLife::Live => {
+                if let SlotState::Moved(at) = slot.state {
+                    return self.trap(
+                        TrapKind::UseAfterMove,
+                        Rule::UseAfterMove,
+                        span,
+                        "the pool payload was moved out and is uninitialized here".to_owned(),
+                        Some((at, "the pool payload moved here".to_owned())),
+                    );
+                }
                 let value = slot.value.clone();
+                self.check_whole(&value, None, span)?;
                 self.fire(
                     Rule::HandleAccess,
                     span,
@@ -3488,20 +3639,25 @@ impl Machine {
                 // Reserved but not yet `init`ed: the handle is valid and the
                 // storage is uninitialized, which `[mem.tier0.move.2]` already
                 // names — "use of an **uninitialized** … place".
-                self.trap(
-                    TrapKind::UseAfterMove,
-                    Rule::HandleTwoPhase,
-                    span,
-                    format!(
-                        "pool#{}[{}] was reserved and never initialized; `reserve` yields the \
-                         handle, `init` fills the slot",
-                        handle.pool, handle.index
-                    ),
-                    None,
-                )
+                self.uninitialized_pool_slot(handle, span)
             }
             None => self.stale_handle(handle, span),
         }
+    }
+
+    /// Keep value-based and place-based reserved-slot faults byte-identical.
+    fn uninitialized_pool_slot<T>(&mut self, handle: HandleValue, span: Span) -> EResult<T> {
+        self.trap(
+            TrapKind::UseAfterMove,
+            Rule::HandleTwoPhase,
+            span,
+            format!(
+                "pool#{}[{}] was reserved and never initialized; `reserve` yields the \
+                 handle, `init` fills the slot",
+                handle.pool, handle.index
+            ),
+            None,
+        )
     }
 
     pub(crate) fn stale_handle<T>(&mut self, handle: HandleValue, span: Span) -> EResult<T> {
@@ -4396,7 +4552,7 @@ impl Machine {
             };
             let moved = final_moved.get(*index).copied().flatten();
             let mut was_moved = false;
-            if let Some(slot) = self.slot_mut(path) {
+            if let Some(mut slot) = self.slot_mut(path) {
                 was_moved = !slot.is_live();
                 slot.state = moved.map_or(SlotState::Live, SlotState::Moved);
                 slot.value = value.clone();
@@ -5560,10 +5716,10 @@ impl Machine {
         // a binding's annotation is — `v = 1 << 10` and `v += 1 << 9` at
         // `wrapping[u8]` compute the term at `wrapping[u8]` (4 and 2 on the
         // compiler's machines; computed wide they were 0 and 0).
-        let place_int = match self.slot_mut(&path).map(|s| &s.value) {
-            Some(Value::Int(_, ty)) if !ty.literal && !take && is_int_term(value) => Some(*ty),
+        let place_int = self.slot_mut(&path).and_then(|slot| match &slot.value {
+            Value::Int(_, ty) if !ty.literal && !take && is_int_term(value) => Some(*ty),
             _ => None,
-        };
+        });
         if op == AssignOp::Assign {
             let syntax = value;
             let value = match place_int {
@@ -5862,7 +6018,17 @@ impl Machine {
             self.resolve(&path),
             Some((slot, _)) if matches!(slot.value, Value::Map(..))
         );
+        let pool_base = self.resolve(&path).and_then(|(slot, _)| match &slot.value {
+            Value::PoolRef(pool) => Some(*pool),
+            _ => None,
+        });
         Ok(match key {
+            Value::Handle(handle) if pool_base.is_some() => {
+                if Some(handle.pool) != pool_base {
+                    return unsupported("Pool place handle belongs to a different pool".to_owned());
+                }
+                path.project(Proj::Pool(handle))
+            }
             Value::Int(i, _) if !map_base => {
                 // An ordinal WRITE place shifts under origin 1
                 // exactly as the read does (`xs[1] = v` stores the
@@ -7655,9 +7821,11 @@ impl Machine {
         if !map_base {
             // A read of an element of anything else: the ordinary value
             // read, from the base already evaluated.
-            let target = match self.resolve(&base_path) {
-                Some(_) => self.read_path(&base_path, base.span)?,
-                None => self.read_unresolved(&base_path, base.span)?,
+            let exists = self.resolve(&base_path).is_some();
+            let target = if exists {
+                self.read_path(&base_path, base.span)?
+            } else {
+                self.read_unresolved(&base_path, base.span)?
             };
             let index = self.eval(&arg.expr)?;
             let element = builtin::index(self, &target, &index, *origin, expr.span)?;
@@ -7698,6 +7866,9 @@ impl Machine {
                     builtin::index(self, &value, &Value::Int(*i, IntTy::INT), 0, span)?
                 }
                 Proj::Key(key) => builtin::index(self, &value, &key.to_value(), 0, span)?,
+                Proj::Pool(handle) => {
+                    builtin::index(self, &value, &Value::Handle(*handle), 0, span)?
+                }
                 Proj::Field(name) => match &value {
                     Value::Struct { fields, .. } => {
                         match fields.iter().find(|(field, _)| field == name) {
@@ -9537,9 +9708,7 @@ impl Machine {
             && self.parts_moved()
             && !self.header_read(path, method, mode, args)
         {
-            let found = self
-                .resolve(path)
-                .and_then(|(slot, _)| moved_part(&slot.value));
+            let found = self.moved_part_at(path);
             self.moved_part_trap(found, Some(path), span)?;
         }
         // `[mem.str.get]`: the boundary primitive's argument is a RANGE
@@ -9878,7 +10047,7 @@ impl Machine {
         if let (Some(path), Ok(_), Some(at), Ok(())) = (&path, &result, self_moved, &written)
             && mode == Some(ParamMode::Mut)
         {
-            if let Some(slot) = self.slot_mut(path) {
+            if let Some(mut slot) = self.slot_mut(path) {
                 slot.state = SlotState::Moved(at);
             }
             self.note_part_moved(path);
@@ -11152,10 +11321,9 @@ impl Machine {
             return None;
         }
         let place = self.place_of(ptr_expr).ok()?;
-        match self.slot_mut(&place).map(|slot| &slot.value) {
-            Some(Value::Raw(ptr)) if ptr.strukt.is_some() => Some((cur, path)),
-            _ => None,
-        }
+        self.slot_mut(&place)
+            .is_some_and(|slot| matches!(&slot.value, Value::Raw(ptr) if ptr.strukt.is_some()))
+            .then_some((cur, path))
     }
 
     /// The element a raw field path is rooted at: the pointer is read, then

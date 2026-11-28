@@ -4104,13 +4104,73 @@ pub fn method(
             let _ = pool;
             machine.read_slot(handle, span)
         }
-        (Value::PoolRef(pool), "len" | "count") => {
+        (Value::PoolRef(pool), "len" | "count" | "is_empty") => {
+            machine.check_pool_region(*pool, span, false)?;
             let count = machine
                 .store()
                 .pool(*pool)
                 .map(|p| p.slots.iter().filter(|s| s.life == SlotLife::Live).count())
                 .unwrap_or_default();
-            Ok(Value::Int(count as i128, IntTy::INT))
+            if name == "is_empty" {
+                Ok(Value::Bool(count == 0))
+            } else {
+                Ok(Value::Int(count as i128, IntTy::INT))
+            }
+        }
+        (Value::PoolRef(pool), "alive" | "has") => {
+            machine.check_pool_region(*pool, span, false)?;
+            let Some(handle) = handle_arg(&args) else {
+                return unsupported(format!("Pool.{name} takes a handle"));
+            };
+            if handle.pool != *pool {
+                return unsupported(format!(
+                    "Pool.{name} with a handle from another pool is outside the pinned accessor contract"
+                ));
+            }
+            let life = machine
+                .store()
+                .slot(*pool, handle.index, handle.generation)
+                .map(|s| s.life);
+            match life {
+                Some(SlotLife::Reserved) => unsupported(format!(
+                    "Pool.{name} on a reserved slot is outside the pinned accessor contract"
+                )),
+                Some(SlotLife::Live) => Ok(Value::Bool(true)),
+                _ => Ok(Value::Bool(false)),
+            }
+        }
+        (Value::PoolRef(pool), "clear") => {
+            machine.check_pool_region(*pool, span, true)?;
+            let slots = machine
+                .store()
+                .pool(*pool)
+                .expect("checked pool")
+                .slots
+                .iter()
+                .enumerate()
+                .map(|(i, s)| (i, s.generation, s.life))
+                .collect::<Vec<_>>();
+            if slots.iter().any(|(_, _, life)| *life == SlotLife::Reserved) {
+                return unsupported(
+                    "Pool.clear with reserved slots is outside the pinned accessor contract",
+                );
+            }
+            for (index, _, life) in &slots {
+                if *life == SlotLife::Live {
+                    machine.race_check_pool(*pool, *index, true, span)?;
+                }
+            }
+            for (index, generation, life) in slots {
+                if life == SlotLife::Live {
+                    machine.store().remove_slot(*pool, index, generation);
+                }
+            }
+            machine.note(
+                Rule::HandleStale,
+                span,
+                "clear invalidated the live pool slots",
+            );
+            Ok(Value::Unit)
         }
 
         // -- Tier 2: `shared` and `weak` (`[mem.shared.rc]`) ---------------

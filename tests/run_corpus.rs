@@ -1860,10 +1860,11 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     // The ec56a08f pin (r24, wolf-lang **v0.2.18** — the TAG, two releases
     // forward of 93a5fe50): FIFTY-TWO of the fifty-six new entries reach
     // `run`, and `memory/list_session_struct.lu` changes answer (below). The
-    // four that do not: the three `Pool` rows (`memory/elem_pool_handle_revive.lu`,
-    // `memory/elem_pool_handles_one_place.lu`, `memory/store_rhs_first_pool.lu`,
-    // `unsupported` at resolve — no `Pool` here) and s181's
-    // `resolve/sibling_diag/main.lu` (`fail(E0302)` at resolve, a match).
+    // four that did not at that point: the three `Pool` rows
+    // (`memory/elem_pool_handle_revive.lu`, `memory/elem_pool_handles_one_place.lu`,
+    // `memory/store_rhs_first_pool.lu`) and `resolve/sibling_diag/main.lu`
+    // (`fail(E0302)` at resolve, a match). Pool place support adds those
+    // previously declined Pool rows below.
     //
     // THIRTY-TWO are run expectations and every one matches its `check:`
     // (the `ctl_store_order*`, `index_store_copies_*`/`copy_elem`/`read_param`,
@@ -1954,8 +1955,8 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("memory/store_rhs_first_map.lu", "exit(0)"),
     // The c2401f05 pin (r25, wolf-lang **v0.2.19** — the TAG, one release
     // forward of ec56a08f): THIRTY of the thirty-one new entries reach `run`.
-    // The one that does not: `memory/elem_header_methods_after_move_pool.lu`
-    // (`unsupported` at resolve — no `Pool` here, as r24's three `Pool` rows).
+    // The one that did not then, `memory/elem_header_methods_after_move_pool.lu`,
+    // now runs with Pool place support and is recorded below.
     // `memory/mut_elem_excl.lu` (above) keeps its answer, `exit(0)` `2`, and
     // moves from conservatism to a match: eg02 turned its `check:` from
     // `fail(E1002)` to `run "2"`.
@@ -2602,6 +2603,15 @@ const RUN_LEDGER: &[(&str, &str)] = &[
     ("os/chroot_rows.lu", "exit(0)"),
     #[cfg(windows)]
     ("os/priority_rows.lu", "exit(0)"),
+    // Pool places and accessors: five accepted programs now execute, and
+    // distinct runtime handles are distinguishable in this dynamic machine.
+    // The latter remains conservatism against the corpus's static E1002.
+    ("memory/elem_header_methods_after_move_pool.lu", "exit(0)"),
+    ("memory/elem_pool_handle_revive.lu", "exit(0)"),
+    ("memory/elem_pool_handles_one_place.lu", "exit(0)"),
+    ("memory/pool_place_write.lu", "exit(0)"),
+    ("memory/store_rhs_first_pool.lu", "exit(0)"),
+    ("memory/pool_accessors.lu", "exit(0)"),
     #[cfg(windows)]
     ("os/signal_action_rows.lu", "exit(0)"),
 ];
